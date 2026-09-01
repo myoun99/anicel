@@ -2263,6 +2263,152 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
+  /// The cursor over the cells — the playhead, the drag preview and the
+  /// selection band, drawn once above every row.
+  ///
+  /// The third of `TimelineFrameGridStack`'s slots. It reads the rows for
+  /// their count and the hooks for the band; the two extents are what the
+  /// stack already sized the layer to.
+  Widget _buildPlayhead(
+    List<TimelineDisplayRow> rows,
+    TimelineFrameRangeHooks? rangeHooks,
+    double verticalContentHeight,
+    double viewportWidth,
+  ) {
+    return TimelineCursorLayer(
+      currentRow: widget.currentRowHooks?.currentRow,
+      frameCursor: widget.frameCursor,
+      dragPreview: widget.dragPreview,
+      frameRangeSelection: rangeHooks?.selection,
+      // R27 #14: the lane
+      // span draws the SAME
+      // band here.
+      laneRangeSelection: widget.laneRange?.selection,
+      rows: rows,
+      activeLayerId: widget.activeLayerId,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: _renderedFrameCount,
+      leadingFrameSpacerWidth: 0,
+      metrics: _metrics,
+      exposureStateForLayer: widget.exposureStateForLayer,
+      crossAxisExtent: verticalContentHeight,
+      windowBucket: _frameWindowBucket,
+      viewportMainExtent: viewportWidth,
+    );
+  }
+
+  /// The frame cells and everything layered on them, in the width the rail
+  /// left over.
+  ///
+  /// The fourth slot of `TimelineLayerFrameBodyLayout`. It is composition:
+  /// it sizes the area, then hands the rows body, the beat lines and the
+  /// playhead to `TimelineFrameGridStack`. ⚠️Seven parameters, and every
+  /// one is passed straight through to a slot below — this method owns
+  /// no logic of its own, which is why it may carry that many.
+  Widget _buildFrameGridArea(
+    ColorScheme colorScheme,
+    List<TimelineDisplayRow> rows,
+    _RowWindow window,
+    TimelineFrameRangeHooks? rangeHooks,
+    TimelineRangeGestureCallbacks? rangeGesture,
+    TimelineLaneRangeCallbacks? laneRange,
+    double verticalContentHeight,
+  ) {
+    return Expanded(
+      child: KeyedSubtree(
+        key: const ValueKey<String>('timeline-frame-grid-area'),
+        // D8: the frame area's
+        // LEFT edge hairline.
+        // D8-2: the ruler wears
+        // the SAME widget above
+        // — one line, two areas.
+        child: TimelineFrameAreaEdge(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportWidth = constraints.hasBoundedWidth
+                  ? constraints.maxWidth
+                  : 0.0;
+              _lastEffectiveHorizontalScrollOffset = _frameAxisOffset.value;
+              _synchronizeHorizontalScrollController(
+                _effectiveHorizontalScrollOffset(
+                  requestedOffset: _frameAxisOffset.value,
+                  viewportWidth: viewportWidth,
+                ),
+              );
+
+              // PRO-TIMELINE scrolling
+              // (UI-R15): the body builds
+              // ONCE for the full frame
+              // bounds — the drawing rows'
+              // painters window themselves
+              // off the live offset
+              // (repaint-only), sparse
+              // rows re-window internally
+              // under the bucket, and the
+              // overlays position
+              // content-absolutely. A
+              // scroll rebuilds NOTHING
+              // here.
+              final totalFrameContentWidth =
+                  _renderedFrameCount * _metrics.frameCellWidth;
+              return TimelineFrameScrollViewport(
+                controller: _horizontalScrollController,
+                contentWidth: totalFrameContentWidth,
+                contentHeight: verticalContentHeight,
+                child: TimelineFrameGridStack(
+                  rowsBody: _buildFrameRowsBody(
+                    rows,
+                    window,
+                    rangeGesture,
+                    laneRange,
+                    totalFrameContentWidth,
+                    viewportWidth,
+                  ),
+                  // UI-R13 #7: the
+                  // beat lines span
+                  // EVERY row now, one
+                  // grid-wide overlay.
+                  beatLines: _buildBeatLines(colorScheme),
+                  cutEndBoundaryLeft: timelineCutEndBoundaryX(
+                    playbackFrameCount: widget.playbackFrameCount,
+                    metrics: _metrics,
+                  ),
+                  // UI-R18 #14: the end
+                  // line grows a trim
+                  // grip and follows the
+                  // live preview.
+                  cutEndDrag: widget.cutEndDrag,
+                  dragPreview: widget.dragPreview,
+                  frameCellExtent: _metrics.frameCellWidth,
+                  playbackFrameCount: widget.playbackFrameCount,
+                  // のりしろ: the blue
+                  // line runs through
+                  // the body too, and
+                  // the wash starts
+                  // behind it.
+                  drawnFrameCount: widget.drawnFrameCount,
+                  // The cursor layer decides
+                  // per frame what to show —
+                  // the slot itself is static
+                  // so ticks rebuild nothing
+                  // here.
+                  showPlayhead: true,
+                  playheadWidth: totalFrameContentWidth,
+                  playhead: _buildPlayhead(
+                    rows,
+                    rangeHooks,
+                    verticalContentHeight,
+                    viewportWidth,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -2814,159 +2960,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   LayerRailSplitter
                                                                       .thickness,
                                                             ),
-                                                        frameGridArea: Expanded(
-                                                          child: KeyedSubtree(
-                                                            key:
-                                                                const ValueKey<
-                                                                  String
-                                                                >(
-                                                                  'timeline-frame-grid-area',
-                                                                ),
-                                                            // D8: the frame area's
-                                                            // LEFT edge hairline.
-                                                            // D8-2: the ruler wears
-                                                            // the SAME widget above
-                                                            // — one line, two areas.
-                                                            child: TimelineFrameAreaEdge(
-                                                              child: LayoutBuilder(
-                                                                builder:
-                                                                    (
-                                                                      context,
-                                                                      constraints,
-                                                                    ) {
-                                                                      final viewportWidth =
-                                                                          constraints
-                                                                              .hasBoundedWidth
-                                                                          ? constraints.maxWidth
-                                                                          : 0.0;
-                                                                      _lastEffectiveHorizontalScrollOffset =
-                                                                          _frameAxisOffset
-                                                                              .value;
-                                                                      _synchronizeHorizontalScrollController(
-                                                                        _effectiveHorizontalScrollOffset(
-                                                                          requestedOffset:
-                                                                              _frameAxisOffset.value,
-                                                                          viewportWidth:
-                                                                              viewportWidth,
-                                                                        ),
-                                                                      );
-
-                                                                      // PRO-TIMELINE scrolling
-                                                                      // (UI-R15): the body builds
-                                                                      // ONCE for the full frame
-                                                                      // bounds — the drawing rows'
-                                                                      // painters window themselves
-                                                                      // off the live offset
-                                                                      // (repaint-only), sparse
-                                                                      // rows re-window internally
-                                                                      // under the bucket, and the
-                                                                      // overlays position
-                                                                      // content-absolutely. A
-                                                                      // scroll rebuilds NOTHING
-                                                                      // here.
-                                                                      final totalFrameContentWidth =
-                                                                          _renderedFrameCount *
-                                                                          _metrics
-                                                                              .frameCellWidth;
-                                                                      return TimelineFrameScrollViewport(
-                                                                        controller:
-                                                                            _horizontalScrollController,
-                                                                        contentWidth:
-                                                                            totalFrameContentWidth,
-                                                                        contentHeight:
-                                                                            verticalContentHeight,
-                                                                        child: TimelineFrameGridStack(
-                                                                          rowsBody: _buildFrameRowsBody(
-                                                                            rows,
-                                                                            window,
-                                                                            rangeGesture,
-                                                                            laneRange,
-                                                                            totalFrameContentWidth,
-                                                                            viewportWidth,
-                                                                          ),
-                                                                          // UI-R13 #7: the
-                                                                          // beat lines span
-                                                                          // EVERY row now, one
-                                                                          // grid-wide overlay.
-                                                                          beatLines: _buildBeatLines(
-                                                                            colorScheme,
-                                                                          ),
-                                                                          cutEndBoundaryLeft: timelineCutEndBoundaryX(
-                                                                            playbackFrameCount:
-                                                                                widget.playbackFrameCount,
-                                                                            metrics:
-                                                                                _metrics,
-                                                                          ),
-                                                                          // UI-R18 #14: the end
-                                                                          // line grows a trim
-                                                                          // grip and follows the
-                                                                          // live preview.
-                                                                          cutEndDrag:
-                                                                              widget.cutEndDrag,
-                                                                          dragPreview:
-                                                                              widget.dragPreview,
-                                                                          frameCellExtent:
-                                                                              _metrics.frameCellWidth,
-                                                                          playbackFrameCount:
-                                                                              widget.playbackFrameCount,
-                                                                          // のりしろ: the blue
-                                                                          // line runs through
-                                                                          // the body too, and
-                                                                          // the wash starts
-                                                                          // behind it.
-                                                                          drawnFrameCount:
-                                                                              widget.drawnFrameCount,
-                                                                          // The cursor layer decides
-                                                                          // per frame what to show —
-                                                                          // the slot itself is static
-                                                                          // so ticks rebuild nothing
-                                                                          // here.
-                                                                          showPlayhead:
-                                                                              true,
-                                                                          playheadWidth:
-                                                                              totalFrameContentWidth,
-                                                                          playhead: TimelineCursorLayer(
-                                                                            currentRow:
-                                                                                widget.currentRowHooks?.currentRow,
-                                                                            frameCursor:
-                                                                                widget.frameCursor,
-                                                                            dragPreview:
-                                                                                widget.dragPreview,
-                                                                            frameRangeSelection:
-                                                                                rangeHooks?.selection,
-                                                                            // R27 #14: the lane
-                                                                            // span draws the SAME
-                                                                            // band here.
-                                                                            laneRangeSelection:
-                                                                                widget.laneRange?.selection,
-                                                                            rows:
-                                                                                rows,
-                                                                            activeLayerId:
-                                                                                widget.activeLayerId,
-                                                                            frameStartIndex:
-                                                                                0,
-                                                                            frameEndIndexExclusive:
-                                                                                _renderedFrameCount,
-                                                                            leadingFrameSpacerWidth:
-                                                                                0,
-                                                                            metrics:
-                                                                                _metrics,
-                                                                            exposureStateForLayer:
-                                                                                widget.exposureStateForLayer,
-                                                                            crossAxisExtent:
-                                                                                verticalContentHeight,
-                                                                            windowBucket:
-                                                                                _frameWindowBucket,
-                                                                            viewportMainExtent:
-                                                                                viewportWidth,
-                                                                          ),
-                                                                        ),
-                                                                      );
-                                                                    },
-                                                              ),
+                                                        frameGridArea:
+                                                            _buildFrameGridArea(
+                                                              colorScheme,
+                                                              rows,
+                                                              window,
+                                                              rangeHooks,
+                                                              rangeGesture,
+                                                              laneRange,
+                                                              verticalContentHeight,
                                                             ),
-                                                          ),
-                                                        ),
                                                       ),
                                                     ),
                                                   ),
