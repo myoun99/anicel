@@ -3,9 +3,9 @@ import 'package:flutter/widgets.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../widgets/app_scrollbar_lane.dart';
 
 class CanvasViewportPanMetrics {
-  static const double minThumbExtent = 24;
 
   CanvasViewportPanMetrics({
     required this.axis,
@@ -38,7 +38,14 @@ class CanvasViewportPanMetrics {
 
     final proportionalExtent =
         visibleExtent / scaledContentExtent * this.trackExtent;
-    final safeMinimum = minThumbExtent.clamp(0.0, this.trackExtent).toDouble();
+    // ⛔ONE MINIMUM FOR THE WHOLE APP — 유저 (ARCH-audit-Q1, 2026-09-01)
+    // chose 「32 하나로 통일」 over three named steps. The panbar carried
+    // its own 24 and `AppScrollbar` defaulted to 28, and neither number
+    // could say who asked for it: `git log -S` finds the commits and the
+    // messages say nothing.
+    final safeMinimum = AppScrollbarThumb.minimum
+        .clamp(0.0, this.trackExtent)
+        .toDouble();
     thumbExtent = proportionalExtent
         .clamp(safeMinimum, this.trackExtent)
         .toDouble();

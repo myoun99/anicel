@@ -449,77 +449,74 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
               side: BorderSide(color: colorScheme.outlineVariant),
             ),
           ),
-          child: Scrollbar(
-            // ⛔A scrollbar in this app never fades out. CLAUDE.md: 「스크롤바를
-            // 자동으로 숨기지 않는다」 — Material's default is to show the
-            // thumb only while the list is moving, which is exactly the
-            // behaviour that rule forbids.
-            thumbVisibility: true,
+          // ⛔NO SCROLLBAR BY HAND. `AppScrollBehavior` already gives every
+          // scrollable in the app the same one, so this was a SECOND bar over
+          // it. 🧪It was also the app's one auto-hiding bar — the framework's
+          // default fades the thumb when the list stops — which is how a rule
+          // gets broken by writing nothing.
+          child: ListView.builder(
             controller: _scroll,
-            child: ListView.builder(
-              controller: _scroll,
-              itemCount: _rows.length,
-              itemExtent: 24,
-              itemBuilder: (context, index) {
-                final row = _rows[index];
-                final selected = _selected.contains(row.path);
-                return ControlPressClaim(
-                  onPressed: () => setState(() {
-                    if (!_selected.add(row.path)) {
-                      _selected.remove(row.path);
-                    }
-                  }),
-                  child: InkWell(
-                    key: ValueKey<String>('settings-recovery-row-${row.path}'),
-                    onTap: silentPress(
-                      () => setState(() {
-                        if (!_selected.add(row.path)) {
-                          _selected.remove(row.path);
-                        }
-                      }),
-                    ),
-                    child: Container(
-                      // Selection is COLOR only (법): no mark, no reflow.
-                      color: selected
-                          ? colorScheme.primary.withValues(alpha: 0.16)
-                          : null,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              row.projectPath ?? row.projectName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: selected ? colorScheme.primary : null,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _dateLabel(row.modified),
+            itemCount: _rows.length,
+            itemExtent: 24,
+            itemBuilder: (context, index) {
+              final row = _rows[index];
+              final selected = _selected.contains(row.path);
+              return ControlPressClaim(
+                onPressed: () => setState(() {
+                  if (!_selected.add(row.path)) {
+                    _selected.remove(row.path);
+                  }
+                }),
+                child: InkWell(
+                  key: ValueKey<String>('settings-recovery-row-${row.path}'),
+                  onTap: silentPress(
+                    () => setState(() {
+                      if (!_selected.add(row.path)) {
+                        _selected.remove(row.path);
+                      }
+                    }),
+                  ),
+                  child: Container(
+                    // Selection is COLOR only (법): no mark, no reflow.
+                    color: selected
+                        ? colorScheme.primary.withValues(alpha: 0.16)
+                        : null,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            row.projectPath ?? row.projectName,
                             style: TextStyle(
                               fontSize: 12,
-                              color: colorScheme.onSurfaceVariant,
+                              color: selected ? colorScheme.primary : null,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            byteSizeLabel(row.bytes),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _dateLabel(row.modified),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          byteSizeLabel(row.bytes),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ),
       ],

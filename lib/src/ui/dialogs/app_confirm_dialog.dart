@@ -114,25 +114,27 @@ class _DetailsDisclosureState extends State<_DetailsDisclosure> {
         if (_open)
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 180),
-            child: Scrollbar(
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                key: const ValueKey<String>('app-notice-details-list'),
-                primary: false,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final line in widget.lines)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 1),
-                        child: Text(
-                          line,
-                          style: theme.textTheme.bodySmall,
-                        ),
+            // ⛔NO SCROLLBAR BY HAND. `AppScrollBehavior` already gives
+            // every scrollable in the app the same one, so a framework
+            // `Scrollbar` here drew a SECOND bar over it — 유저 answered
+            // ARCH-audit-Q2 「unify」 and this is what unifying means: not
+            // swapping the widget, but deleting the one that was doubled.
+            child: SingleChildScrollView(
+              key: const ValueKey<String>('app-notice-details-list'),
+              primary: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final line in widget.lines)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: Text(
+                        line,
+                        style: theme.textTheme.bodySmall,
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
           ),

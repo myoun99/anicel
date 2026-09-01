@@ -5300,7 +5300,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
             offset: metrics.scrollOffset,
             viewportExtent: metrics.visibleExtent,
             contentExtent: metrics.scaledContentExtent,
-            minThumbExtent: CanvasViewportPanMetrics.minThumbExtent,
+            minThumbExtent: AppScrollbarThumb.minimum,
             // The whole lane pans relatively: the canvas panbar has always
             // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
             lanePress: AppScrollbarLanePress.relativeDrag,
