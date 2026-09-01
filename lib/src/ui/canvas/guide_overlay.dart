@@ -442,13 +442,19 @@ CutGuides dragGuideHandle(
       };
     case PerspectiveShape():
       switch (handle.kind) {
+        // 🚨유저 (guide-sym): 「소실점 아이레벨 고정시, 아이레벨 움직이면
+        // 소실점도 움직이도록. 로직부터 통일」 — both eye-level handles go
+        // through the ONE function that knows what rides along, so the two
+        // cannot drift apart.
         case GuideHandleKind.origin:
-          next = shape.copyWith(
-            eyeLevel: shape.eyeLevel.copyWith(origin: to),
+          next = perspectiveWithEyeLevel(
+            shape,
+            shape.eyeLevel.copyWith(origin: to),
           );
         case GuideHandleKind.eyeLevelAngle:
-          next = shape.copyWith(
-            eyeLevel: shape.eyeLevel.copyWith(
+          next = perspectiveWithEyeLevel(
+            shape,
+            shape.eyeLevel.copyWith(
               angleDegrees: _angleTowards(shape.eyeLevel.origin, to),
             ),
           );

@@ -369,6 +369,68 @@ VanishingPoint _mapVanishingPoint(
 GuideLine _mapLine(GuideLine line, GuideTransform transform) =>
     GuideLine(a: transform.apply(line.a), b: transform.apply(line.b));
 
+/// The perspective after its EYE LEVEL moved to [eyeLevel], with everything
+/// constrained to it carried along.
+///
+/// 🚨★★★유저 (guide-sym): 「소실점 아이레벨 고정시, **아이레벨 움직이면
+/// 소실점도 움직이도록. 로직부터 통일**」 — and until now dragging the horizon
+/// left the points exactly where they were, so a guide with the constraint
+/// ON came out of the drag with its points off the line the constraint says
+/// they live on.
+///
+/// ⚠️A RIGID MOTION, not a re-projection. Sweeping each point onto the new
+/// horizon would land them all at their own foot of perpendicular — the
+/// spacing the user set along the line would be gone, and a
+/// [VanishingPointFromLines] would lose the lines that define it (the very
+/// cost [constrainedVanishingPointTarget] refuses to pay). Moving the whole
+/// construction the way the horizon moved keeps both: the points stay on the
+/// line, at the same places along it, and a line-defined point stays defined
+/// by lines.
+///
+/// ★It reuses `_mapVanishingPoint`, the same map a cut-level transform
+/// already puts guides through — 「로직부터 통일」 in the literal sense.
+///
+/// ⛔With the constraint OFF nothing moves but the horizon. That is what the
+/// switch means, and it is also what makes this safe to call unconditionally
+/// from the two drags below.
+PerspectiveShape perspectiveWithEyeLevel(
+  PerspectiveShape shape,
+  GuideAxis eyeLevel,
+) {
+  if (!shape.constrainToEyeLevel) {
+    return shape.copyWith(eyeLevel: eyeLevel);
+  }
+  final motion = _rigidMotionBetween(shape.eyeLevel, eyeLevel);
+  return shape.copyWith(
+    eyeLevel: eyeLevel,
+    vanishingPoints: [
+      for (final point in shape.vanishingPoints)
+        _mapVanishingPoint(point, motion),
+    ],
+  );
+}
+
+/// The rotation-and-translation that takes [from] onto [to].
+///
+/// Rotate about the OLD origin by the angle difference, then translate the
+/// old origin onto the new one — in that order, which is what keeps a point
+/// that sat on the old axis sitting on the new one.
+GuideTransform _rigidMotionBetween(GuideAxis from, GuideAxis to) {
+  final rotation = GuideTransform.rotation(
+    from.origin,
+    to.angleDegrees - from.angleDegrees,
+  );
+  final moved = rotation.apply(from.origin);
+  return GuideTransform(
+    rotation.a,
+    rotation.b,
+    rotation.c,
+    rotation.d,
+    rotation.tx + (to.origin.x - moved.x),
+    rotation.ty + (to.origin.y - moved.y),
+  );
+}
+
 /// Where a vanishing point being dragged to [target] actually lands.
 ///
 /// The eye-level constraint is a rule about DRAGGING, not a normalisation
