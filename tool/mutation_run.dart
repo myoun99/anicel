@@ -38,6 +38,8 @@
 //   dart run tool/mutation_run.dart lib/src/services/x.dart --sample 6
 //   dart run tool/mutation_run.dart --out results.jsonl lib/a.dart lib/b.dart
 //   dart run tool/mutation_run.dart --plan lib/a.dart   # say what it would do
+//   dart run tool/mutation_run.dart --max-namers 3 lib/a.dart
+//   dart run tool/mutation_run.dart --resume --out r.jsonl lib/*.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -66,6 +68,27 @@ Verdict classifyRun({required int exitCode, required String output}) {
     return Verdict.unbuilt;
   }
   return exitCode == 0 ? Verdict.survived : Verdict.killed;
+}
+
+/// The files [out] already carries a verdict for.
+///
+/// ⚠️A campaign over hundreds of files runs for days and WILL be interrupted.
+/// Appending to the same JSONL and skipping what is in it makes the restart
+/// the same command as the start. ⛔It skips by FILE, not by mutation: a file
+/// interrupted halfway is re-run whole, because a partial file's verdicts
+/// would otherwise look like the whole file's.
+Set<String> filesAlreadyDone(File out) {
+  if (!out.existsSync()) return const {};
+  final done = <String>{};
+  for (final line in out.readAsLinesSync()) {
+    final t = line.trim();
+    if (t.isEmpty) continue;
+    // ⛔Read the field rather than decoding: a truncated last line — which is
+    // exactly what an interrupt leaves — must not take the whole resume down.
+    final m = RegExp(r'"file":"([^"]+)"').firstMatch(t);
+    if (m != null) done.add(m.group(1)!);
+  }
+  return done;
 }
 
 /// Whether `dart analyze`'s output says the mutated file will not build.
@@ -109,9 +132,11 @@ List<Mutation> sampleOf(List<Mutation> all, int count) {
 
 Future<void> main(List<String> args) async {
   final sample = int.tryParse(_flag(args, '--sample') ?? '') ?? 5;
+  final maxNamers = int.tryParse(_flag(args, '--max-namers') ?? '') ?? 6;
   final outPath = _flag(args, '--out');
   final planOnly = args.contains('--plan');
-  final targets = args
+  final resume = args.contains('--resume');
+  var targets = args
       .where((a) => a.endsWith('.dart') && !a.startsWith('--'))
       .toList();
 
@@ -128,6 +153,16 @@ Future<void> main(List<String> args) async {
     for (final target in entry.value) {
       namersOf.putIfAbsent(target, () => []).add(entry.key);
     }
+  }
+
+  if (resume && outPath != null) {
+    final done = filesAlreadyDone(File(outPath));
+    final before = targets.length;
+    targets = targets.where((t) => !done.contains(t)).toList();
+    // ⛔Never silent: a resume that quietly ran 3 of 339 files would read as
+    // a finished campaign.
+    stdout.writeln('[resume] ${before - targets.length} of $before already '
+        'in $outPath — ${targets.length} left');
   }
 
   final sink = outPath == null
@@ -155,11 +190,16 @@ Future<void> main(List<String> args) async {
         continue;
       }
 
+      final chosen = namersToRun(namers, maxNamers);
       final original = file.readAsStringSync();
       final candidates = sampleOf(mutationsIn(original), sample);
-      _say(target, '${namers.length} namer(s), ${candidates.length} mutation(s)'
+      _say(target,
+          '${chosen.length} of ${namers.length} namer(s), '
+          '${candidates.length} mutation(s)'
+          '${chosen.length < namers.length ? ' — CAPPED, a survivor here means '
+              'only that these ${chosen.length} did not notice' : ''}'
           '${planOnly ? ' — plan only' : ''}');
-      for (final namer in namers) {
+      for (final namer in chosen) {
         _say(target, '  namer: $namer');
       }
       if (planOnly) {
@@ -172,7 +212,7 @@ Future<void> main(List<String> args) async {
       _refuseIfDirty(target);
 
       for (final m in candidates) {
-        final verdict = await _runOne(file, original, m, namers);
+        final verdict = await _runOne(file, original, m, chosen);
         switch (verdict) {
           case Verdict.killed:
             killed += 1;
@@ -193,6 +233,7 @@ Future<void> main(List<String> args) async {
           'was': m.was,
           'became': m.replacement,
           'verdict': verdict.name,
+          'namersRun': chosen.length,
           'namers': namers.length,
         }));
       }
@@ -262,6 +303,42 @@ Future<Verdict> _runOne(
   }
 }
 
+/// The [max] namers most likely to be about [target], cheapest first.
+///
+/// 🚨★★★A CAP IS NECESSARY AND MUST NEVER BE SILENT.
+///
+/// `lib/src/models/layer.dart` is named by 305 test files. A survivor there
+/// means every one of them ran — at ~2.7 minutes each that is a day and a
+/// half for one mutation, and the 304th suite is not telling you anything the
+/// first six did not.
+///
+/// ⛔So the count actually run is printed and written into the JSONL beside
+/// every verdict. A capped SURVIVED means 「the N cheapest namers did not
+/// notice」, which is weaker than 「nobody noticed」, and a report that hid the
+/// difference would be claiming the stronger thing.
+///
+/// Cheapest first, on two measured grounds: a widget test costs several times
+/// a service test, and a short test file costs less than a long one. ⚠️Both
+/// are heuristics about TIME, not about truth — a wrong guess reorders the
+/// runs and changes no verdict.
+List<String> namersToRun(List<String> namers, int max) {
+  final ordered = namers.toList()
+    ..sort((a, b) {
+      final aUi = a.startsWith('test/ui/') ? 1 : 0;
+      final bUi = b.startsWith('test/ui/') ? 1 : 0;
+      if (aUi != bUi) return aUi - bUi;
+      final aLen = _sizeOf(a);
+      final bLen = _sizeOf(b);
+      return aLen != bLen ? aLen.compareTo(bLen) : a.compareTo(b);
+    });
+  return max <= 0 || ordered.length <= max ? ordered : ordered.sublist(0, max);
+}
+
+int _sizeOf(String path) {
+  final file = File(path);
+  return file.existsSync() ? file.lengthSync() : 1 << 30;
+}
+
 /// Runs [namers] one at a time, cheapest first, stopping at the first red.
 ///
 /// 🧪MEASURED, AND IT IS THE WHOLE COST OF A CAMPAIGN. One informative
@@ -280,13 +357,7 @@ Future<Verdict> _runOne(
 /// ⛔A SURVIVOR STILL PAYS FULL PRICE, by definition: 「nobody noticed」 is
 /// only true once every namer has failed to notice. That is the answer the
 /// audit most wants, and it is the expensive one.
-Future<Verdict> _runNamers(List<String> namers) async {
-  final ordered = namers.toList()
-    ..sort((a, b) {
-      final aUi = a.startsWith('test/ui/') ? 1 : 0;
-      final bUi = b.startsWith('test/ui/') ? 1 : 0;
-      return aUi != bUi ? aUi - bUi : a.compareTo(b);
-    });
+Future<Verdict> _runNamers(List<String> ordered) async {
   var worst = Verdict.survived;
   for (final namer in ordered) {
     final verdict = await _runSuite([namer]);

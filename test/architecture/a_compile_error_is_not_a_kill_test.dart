@@ -1,6 +1,8 @@
 @TestOn('vm')
 library;
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/mutation_run.dart';
@@ -111,6 +113,101 @@ void main() {
       // ⛔A zero here means 「no limit was set」. Returning an empty list would
       // silently run no mutations and report a clean file.
       expect(sampleOf(candidates(4), 0), hasLength(4));
+    });
+  });
+
+  group('the namer cap', () {
+    test('a small set is not capped', () {
+      final chosen = namersToRun(['test/services/a_test.dart'], 6);
+      expect(chosen, ['test/services/a_test.dart']);
+    });
+
+    test('a widget suite goes last even when it is the smallest', () {
+      // ⚠️A widget test costs several times a service test. The order is a
+      // guess about TIME and never about the verdict — a kill is a kill
+      // whichever suite finds it — but across a 339-file campaign it is the
+      // difference between minutes and hours.
+      //
+      // 🚨REAL FILES, AND THE SIZES ARE THE POINT. 🧪The first version of
+      // this used invented paths, and a mutation that switched the widget
+      // rule off SURVIVED: with no file to measure, every path tied on size
+      // and fell through to alphabetical order — where `test/services/`
+      // happens to come before `test/ui/` anyway. The rule was unobservable.
+      // A small UI file against a large service file separates them.
+      const smallUi = 'test/ui/timeline/timeline_scale_test.dart';
+      const bigService =
+          'test/services/commands/cut_command_coordinator_test.dart';
+      expect(File(smallUi).existsSync(), isTrue, reason: 'fixture moved');
+      expect(File(bigService).existsSync(), isTrue, reason: 'fixture moved');
+      expect(
+        File(smallUi).lengthSync(),
+        lessThan(File(bigService).lengthSync()),
+        reason: 'the premise: without the widget rule, the UI file sorts '
+            'FIRST on size, so this test would prove nothing',
+      );
+
+      expect(namersToRun([smallUi, bigService], 2), [bigService, smallUi]);
+    });
+
+    test('among equals, the smaller suite goes first', () {
+      const small = 'test/ui/timeline/timeline_scale_test.dart';
+      const big = 'test/ui/brush_canvas_fixture_test.dart';
+      expect(File(small).lengthSync(), lessThan(File(big).lengthSync()));
+      expect(namersToRun([big, small], 2), [small, big]);
+    });
+
+    test('a large set is cut to the cap', () {
+      // 🧪`lib/src/models/layer.dart` is named by 305 test files. A survivor
+      // there would run every one — a day and a half for one mutation — and
+      // the 304th suite says nothing the first six did not.
+      final many = [
+        for (var i = 0; i < 40; i += 1) 'test/services/f${i}_test.dart',
+      ];
+      expect(namersToRun(many, 6), hasLength(6));
+    });
+
+    test('a cap of zero means no cap', () {
+      final many = [
+        for (var i = 0; i < 9; i += 1) 'test/services/f${i}_test.dart',
+      ];
+      expect(namersToRun(many, 0), hasLength(9));
+    });
+  });
+
+  group('resuming a campaign', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('resume_fx'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    File out(String contents) =>
+        File('${dir.path}/r.jsonl')..writeAsStringSync(contents);
+
+    test('a file with any verdict is done', () {
+      final done = filesAlreadyDone(out(
+        '{"file":"lib/a.dart","verdict":"killed"}\n'
+        '{"file":"lib/b.dart","verdict":"unnamed"}\n',
+      ));
+      expect(done, {'lib/a.dart', 'lib/b.dart'});
+    });
+
+    test('a missing file means nothing is done, not a crash', () {
+      expect(filesAlreadyDone(File('${dir.path}/nope.jsonl')), isEmpty);
+    });
+
+    test('a truncated last line does not take the resume down', () {
+      // 🚨★★★AN INTERRUPT LEAVES EXACTLY THIS. A resume that threw on a half
+      // written line would refuse to restart the campaign it was built to
+      // restart — and the fix people reach for is deleting the results.
+      final done = filesAlreadyDone(out(
+        '{"file":"lib/a.dart","verdict":"killed"}\n'
+        '{"file":"lib/b.dart","verd',
+      ));
+      expect(done, contains('lib/a.dart'));
+      expect(done, contains('lib/b.dart'));
+    });
+
+    test('an empty file is not a done file', () {
+      expect(filesAlreadyDone(out('')), isEmpty);
     });
   });
 }
