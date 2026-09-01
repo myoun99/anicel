@@ -25,7 +25,6 @@ import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/flip_hud_controller.dart';
-import '../models/drawing_guide.dart';
 import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_position_gizmo.dart';
@@ -159,7 +158,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// Null except while a handle is moving. The project is not written until
   /// the finger lifts, so dragging an axis across the canvas is one undo
   /// entry rather than one per pointer sample.
-  CutGuides? _liveGuides;
 
   /// Null until something frames the canvas — the user, playback fit, or a
   /// camera restore.
@@ -1032,8 +1030,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                   // The live drag value while a handle is
                                   // moving, so the drawn guide follows the
                                   // finger without a project write.
-                                  guides:
-                                      _liveGuides ?? session.activeCutGuides,
+                                  guides: session.activeCutGuidesForDisplay,
                                   viewport: viewport,
                                   canvasSize: canvasSize,
                                   emphasized:
@@ -1049,18 +1046,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         if (toolState.tool == CanvasTool.guide)
                           Positioned.fill(
                             child: GuideEditLayer(
-                              guides: _liveGuides ?? session.activeCutGuides,
+                              guides: session.activeCutGuidesForDisplay,
                               viewport: viewport,
                               onGuideSelected: (id) =>
                                   session.selectedGuideId = id,
                               // Live while dragging: the project is not
                               // touched, so a drag is one undo entry.
-                              onGuidesChanged: (guides) =>
-                                  setState(() => _liveGuides = guides),
-                              onGuidesCommitted: (guides) {
-                                setState(() => _liveGuides = null);
-                                session.setActiveCutGuides(guides);
-                              },
+                              // ⛔The preview is the SESSION's now, not this
+                              // widget's: the settings panel edits the same
+                              // guides from a different subtree and could
+                              // not reach a copy kept here.
+                              onGuidesChanged: session.previewCutGuides,
+                              onGuidesCommitted: session.setActiveCutGuides,
                             ),
                           ),
                         if (seNameTags.isNotEmpty)

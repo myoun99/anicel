@@ -319,11 +319,43 @@ class GuideSettings extends StatelessWidget {
     required this.guides,
     required this.selectedGuideId,
     required this.onGuidesCommitted,
+    this.onGuidesPreview,
   });
 
   final CutGuides guides;
   final GuideId? selectedGuideId;
   final ValueChanged<CutGuides> onGuidesCommitted;
+
+  /// 🚨THE DRAG IN FLIGHT — shown, not recorded.
+  ///
+  /// 유저 (guide-sym): 「자에 대한 위치이동 등 편집도 전부 언두 기록」, and
+  /// 🧪measuring it found the opposite of a missing entry: ONE drag of the
+  /// slider below pushed **eleven**, because every sample committed. Undo
+  /// took the drag apart a pixel at a time.
+  ///
+  /// ★The law is the one the guide EDIT LAYER already keeps — a drag
+  /// previews, a release commits — and this is the half the panel was
+  /// missing. Null keeps the old behaviour for a host that has nowhere to
+  /// show a preview (the tests that mount this panel alone).
+  final ValueChanged<CutGuides>? onGuidesPreview;
+
+  /// Same edit, shown but not written. Falls back to committing when the
+  /// host offers no preview channel, so nothing is ever silently dropped.
+  void _previewShape(DrawingGuide guide, GuideShape shape) {
+    final preview = onGuidesPreview;
+    if (preview == null) {
+      _replaceShape(guide, shape);
+      return;
+    }
+    preview(
+      guides.copyWith(
+        guides: [
+          for (final entry in guides.guides)
+            if (entry.id == guide.id) entry.copyWith(shape: shape) else entry,
+        ],
+      ),
+    );
+  }
 
   void _replaceShape(DrawingGuide guide, GuideShape shape) {
     onGuidesCommitted(
@@ -398,10 +430,13 @@ class GuideSettings extends StatelessWidget {
           divisions: shape.lineSymmetry
               ? (maxSymmetryLineCount - 2) ~/ 2
               : maxSymmetryLineCount - 2,
-          onChanged: (value) => _replaceShape(
-            guide,
-            shape.copyWith(lineCount: value.round()),
-          ),
+          // ⛔PREVIEW while the finger is down, COMMIT on release — one
+          // drag, one undo. The canvas still follows every sample, because
+          // the preview goes to the session and the overlay reads it.
+          onChanged: (value) =>
+              _previewShape(guide, shape.copyWith(lineCount: value.round())),
+          onChangeEnd: (value) =>
+              _replaceShape(guide, shape.copyWith(lineCount: value.round())),
         ),
       ),
     ];

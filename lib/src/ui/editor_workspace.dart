@@ -2644,7 +2644,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         guideLibrary: ListenableBuilder(
                           listenable: widget.session,
                           builder: (context, _) => GuideLibraryList(
-                            guides: widget.session.activeCutGuides,
+                            guides: widget.session.activeCutGuidesForDisplay,
                             canvasSize:
                                 widget.session.activeCutOrNull?.canvasSize ??
                                 BrushCanvasDefaults.canvasSize,
@@ -2722,13 +2722,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                                       _brushTool.value = state,
                                                   guides: widget
                                                       .session
-                                                      .activeCutGuides,
+                                                      .activeCutGuidesForDisplay,
                                                   selectedGuideId: widget
                                                       .session
                                                       .selectedGuideId,
                                                   onGuidesCommitted: widget
                                                       .session
                                                       .setActiveCutGuides,
+                                                  onGuidesPreview: widget
+                                                      .session
+                                                      .previewCutGuides,
                                                   tips: _tipLibrary.tips,
                                                   onTipImportRequested: () {
                                                     unawaited(

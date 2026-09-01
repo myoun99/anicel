@@ -3100,6 +3100,48 @@ class EditorSessionManager extends ChangeNotifier {
   /// The active cut's drawing guides — empty when parked in a gap.
   CutGuides get activeCutGuides => activeCutOrNull?.guides ?? CutGuides.empty;
 
+  CutGuides? _liveGuides;
+
+  /// 🚨★★★WHAT THE GUIDES LOOK LIKE RIGHT NOW, mid-drag included.
+  ///
+  /// 유저 (guide-sym): 「대칭자나 퍼스자 등 해당 자에 대한 위치이동 등 **편집도
+  /// 전부 언두 기록**」 — and 🧪measuring it found the opposite of a missing
+  /// entry: ONE drag of the panel's line-count slider pushed **eleven**,
+  /// because every sample committed. Undo took the drag apart a pixel at a
+  /// time.
+  ///
+  /// ⇒ The law the guide EDIT LAYER already keeps: a drag PREVIEWS and a
+  /// release COMMITS. It kept its preview in `editor_canvas_area`'s own
+  /// State, which is why the settings panel — a different subtree — had no
+  /// way to preview and committed instead. The preview lives here now, so
+  /// there is ONE of it and both editors reach it.
+  ///
+  /// ⛔[activeCutGuides] deliberately does NOT read it. A preview is what
+  /// the eye should see; what the BRUSH snaps to and what gets saved is the
+  /// committed value, exactly as before. Two questions, two getters.
+  CutGuides get activeCutGuidesForDisplay => _liveGuides ?? activeCutGuides;
+
+  /// Shows [guides] without recording anything — the drag in flight.
+  ///
+  /// ⚠️Pure view state: no command, no history, nothing written to the
+  /// project. The release is what lands.
+  void previewCutGuides(CutGuides guides) {
+    if (_liveGuides == guides) {
+      return;
+    }
+    _liveGuides = guides;
+    notifyListeners();
+  }
+
+  /// Drops a preview that no release claimed — a cancelled drag.
+  void forgetGuidePreview() {
+    if (_liveGuides == null) {
+      return;
+    }
+    _liveGuides = null;
+    notifyListeners();
+  }
+
   GuideId? _selectedGuideId;
 
   /// Which guide the guide tool is editing.
@@ -3124,7 +3166,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// so a drag is one undo entry rather than one per pointer sample.
   void setActiveCutGuides(CutGuides guides) {
     final cut = activeCutOrNull;
+    // ⚠️The preview goes either way — including on the early return, where
+    // the drag ended back on the value it started from. Leaving it would
+    // pin the canvas to a preview nothing will ever replace.
+    _liveGuides = null;
     if (cut == null || cut.guides == guides) {
+      notifyListeners();
       return;
     }
     _historyManager.execute(
