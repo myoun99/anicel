@@ -101,6 +101,18 @@ final class QaVideoDecoder {
   /// not known — see [openDocument].
   QaVideoDocument? _current;
 
+  /// How many times [frameOf] has had to put a document back.
+  ///
+  /// 🚨★★★**BECAUSE THE COST IS THE ONLY THING A TEST CAN SEE.** Re-opening
+  /// is self-healing: a consumer whose movie was closed under it simply gets
+  /// it back on the next frame, so 「it still works」 is true whether or not
+  /// anything is being done well. A measured ~111ms per re-open at 1080p is
+  /// the difference between an interleave that costs nothing and one that
+  /// stutters, and this counter is what lets a test say which happened.
+  ///
+  /// ⛔Not a metric anything ships on — the app never reads it.
+  static int debugReopens = 0;
+
   /// Opens [path] as a DOCUMENT a caller can keep and come back to.
   ///
   /// 🚨★★★**THERE IS ONE NATIVE DOCUMENT AND THERE ARE TWO CALLERS.** The
@@ -135,6 +147,7 @@ final class QaVideoDecoder {
   /// read — [lastError] says which.
   Uint8List? frameOf(QaVideoDocument document, int index, {Uint8List? into}) {
     if (!identical(_current, document)) {
+      debugReopens += 1;
       if (open(document.path, range: document.range) == null) {
         return null;
       }
