@@ -141,6 +141,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.overlayModel,
     this.paintsContent = true,
     this.editable = true,
+    this.onPressNeedsCel,
     CanvasViewport? viewport,
     CutGuides? guides,
   }) : viewport = viewport ?? CanvasViewport(),
@@ -161,6 +162,28 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// above [key]: a frame flip must reset this view IN PLACE, never
   /// rebuild it.
   final bool editable;
+
+  /// 🚨I-10 — WHOEVER HEARS THE PRESS IS THE ONLY ONE WHO CAN DRAW IT.
+  ///
+  /// 유저 (F-61): 「그릴때 자동생성은 되는데 **선이 안그려지고있음**」, against
+  /// what the feature was asked for: 「빈 칸에서 펜다운하면 블록이 자동생성되고
+  /// **그대로 스트로크 그려지기시작**」.
+  ///
+  /// ⛔The block used to be made by a `Listener` ABOVE this view, and a
+  /// widget that appears afterwards can never draw the press that made it:
+  /// Flutter routes the rest of a gesture to the hit path captured at
+  /// pointer-DOWN, so the newly built view gets no moves and no up. The
+  /// block appeared and the line never started — exactly the report.
+  ///
+  /// ⇒ The press lands HERE even while [editable] is false, and this is what
+  /// it asks then: 「there is nothing under me — make a cel if you can」.
+  /// True means one was made, and this view begins the stroke at that same
+  /// down position the moment it becomes editable.
+  ///
+  /// ⚠️Null on the surfaces that have nothing to make (the conte, the
+  /// timesheet, the cut envelope): they pass nothing and stand down exactly
+  /// as before.
+  final bool Function()? onPressNeedsCel;
 
   /// The cut's drawing guides. Empty (the default) leaves the stroke path
   /// exactly as it was — the ink surfaces that reuse this view (conte,
@@ -239,6 +262,15 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
   int? _activeDrawingPointer;
+
+  /// I-10: the press that MADE the cel, waiting for the cel to arrive.
+  ///
+  /// ⚠️Held rather than acted on, because the two are a frame apart: the
+  /// block is created inside the down event, the rebuild that hands us the
+  /// new frame happens after it, and only then is there a surface to ink.
+  /// The stroke begins at the position stored here, so the line starts
+  /// where the pen actually landed rather than where it had moved on to.
+  PointerDownEvent? _pendingCelPress;
 
   /// PEN-12 #4: the touch stroke's commitment tracking — sub-slop, a
   /// simultaneous second finger still converts the pair to navigation;
@@ -446,16 +478,17 @@ class _InteractiveBrushEditCanvasViewState
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.editable) {
-      // Standing down on an EMPTY frame. The State lives on — a flip back
-      // onto a cel resets this view in place instead of mounting it, which
-      // is the whole point of the flag — but nothing is BUILT: no
-      // listener, so the subtree leaves hit testing exactly as an absent
-      // widget did and the shell's "no frame here" notice still sees the
-      // press; and no canvas, so the cel the playhead has LEFT is not
-      // painted (the session state still points at it).
-      return const SizedBox.expand();
-    }
+    // ⚠️ONE TREE SHAPE, editable or not. It used to return a bare
+    // `SizedBox.expand()` while standing down, and that is what made I-10's
+    // second half impossible: a listener that appears only after the cel
+    // exists cannot be in the hit path of the press that created it. The
+    // listener is here either way now — TRANSLUCENT while standing down, so
+    // what is under this view in the panel's Stack keeps receiving exactly
+    // as it did when nothing was built at all.
+    //
+    // ⛔Still nothing PAINTED while standing down: the cel the playhead has
+    // LEFT must not be drawn (the session state still points at it), which
+    // is what the flag was written for.
     final canvasSize =
         widget.sessionState.canvasState.currentSurface.canvasSize;
     return LayoutBuilder(
@@ -474,7 +507,9 @@ class _InteractiveBrushEditCanvasViewState
             key: const ValueKey<String>(
               'interactive-brush-edit-canvas-view-listener',
             ),
-            behavior: HitTestBehavior.opaque,
+            behavior: widget.editable
+                ? HitTestBehavior.opaque
+                : HitTestBehavior.translucent,
             onPointerDown: _handlePointerDown,
             onPointerMove: _handlePointerMove,
             onPointerUp: _handlePointerUp,
@@ -484,7 +519,7 @@ class _InteractiveBrushEditCanvasViewState
             // surface in TREE order (inside whatever folder buffer holds
             // it) — this view stays for input alone. The listener above is
             // untouched, so the stroke path is identical.
-            child: widget.paintsContent
+            child: widget.paintsContent && widget.editable
                 ? ClipRect(
                     key: const ValueKey<String>(
                       'interactive-brush-edit-canvas-clip',
@@ -552,6 +587,11 @@ class _InteractiveBrushEditCanvasViewState
         }
         return;
       }
+    }
+
+    if (!widget.editable) {
+      _pressAsksForACel(event);
+      return;
     }
 
     // PEN-7a: the CANVAS mapping for standard secondary inputs. Pen
@@ -816,7 +856,46 @@ class _InteractiveBrushEditCanvasViewState
     _nextSequence += emitted.length;
   }
 
+  /// Standing down, and something pressed: ask the shell for a cel.
+  ///
+  /// ⛔PRIMARY contact only, the rule the stroke path keeps as well: a
+  /// mapped barrel/middle press means pan or undo, and none of those wants
+  /// a block made underneath it.
+  void _pressAsksForACel(PointerDownEvent event) {
+    if (_pendingCelPress != null) {
+      return;
+    }
+    if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
+      return;
+    }
+    if (!(widget.onPressNeedsCel?.call() ?? false)) {
+      return;
+    }
+    _pendingCelPress = event;
+  }
+
+  /// Begins the held press now that there is somewhere for it to go.
+  ///
+  /// ⚠️Called from the MOVE and the UP rather than from a post-frame
+  /// callback: those are the next events this listener receives, they carry
+  /// the proof that the finger is still down, and they arrive after the
+  /// rebuild for anything but an impossibly fast tap. A move that beats the
+  /// rebuild is simply dropped and the next one tries again — the stroke
+  /// still starts at the DOWN position either way.
+  void _resumePressThatMadeTheCel(int pointer) {
+    final pending = _pendingCelPress;
+    if (pending == null || pending.pointer != pointer || !widget.editable) {
+      return;
+    }
+    _pendingCelPress = null;
+    _handlePointerDown(pending);
+  }
+
   void _handlePointerMove(PointerMoveEvent event) {
+    _resumePressThatMadeTheCel(event.pointer);
+    if (!widget.editable) {
+      return; // Standing down: inert, exactly as when nothing was built.
+    }
     // R27 #17: a mapped button can also rise DURING contact — some pen
     // drivers report the barrel bit a moment after the tip lands rather
     // than on the down event, and the hover edge above never sees it
@@ -1011,6 +1090,15 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    // A TAP on an empty cel is a dot, so the press still begins here — and
+    // then this same event ends it: one dab, one undo entry.
+    _resumePressThatMadeTheCel(event.pointer);
+    if (_pendingCelPress?.pointer == event.pointer) {
+      _pendingCelPress = null; // Never resumed; nothing is left to draw.
+    }
+    if (!widget.editable) {
+      return;
+    }
     _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
@@ -1231,6 +1319,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    if (_pendingCelPress?.pointer == event.pointer) {
+      _pendingCelPress = null;
+    }
+    if (!widget.editable) {
+      return;
+    }
     _lastContactButtons.remove(event.pointer);
     if (event.pointer == _fillTapPointer) {
       _forgetFillTap();
@@ -1397,6 +1491,9 @@ class _InteractiveBrushEditCanvasViewState
   int _hoverToolHoldButton = 0;
 
   void _handlePointerHover(PointerHoverEvent event) {
+    if (!widget.editable) {
+      return; // Nothing to hover OVER while standing down.
+    }
     if (event.kind == PointerDeviceKind.touch) {
       return;
     }

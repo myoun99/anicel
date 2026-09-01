@@ -715,6 +715,13 @@ class AppStrings {
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
 
+  /// 🚨F-61 — it used to be `brAutoCreateFrame`, in the brush panel. 유저:
+  /// 「프레임 자동생성 버튼 툴 설정에 있는데, **왜 이딴식으로 결정한거지?**
+  /// … 프레임 알약 안, 중간나누기 버튼 오른쪽에 두도록」. The key follows the
+  /// control: this is a timeline string now, and the `br` prefix would have
+  /// pointed the next reader at a panel it no longer lives in.
+  String get tlAutoFrame => _s('tlAutoFrame');
+
   /// Design D: the rigid shove as a verb. PUSH opens frames at the anchor
   /// and everything after travels with its spacing; PULL closes them and
   /// stops where the first affected row runs out of room.
@@ -1030,7 +1037,7 @@ class AppStrings {
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
   String get brStabilizer => _s('brStabilizer');
-  String get brAutoCreateFrame => _s('brAutoCreateFrame');
+
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
   String get brBlendLock => _s('brBlendLock');
@@ -1798,7 +1805,7 @@ class AppStrings {
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
     'brStabilizer': 'Stabilizer',
-    'brAutoCreateFrame': 'Make a frame where there is none',
+    'tlAutoFrame': 'Make a frame where there is none',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brBlendLock': 'Pin this blend mode to the brush',
@@ -2724,7 +2731,7 @@ class AppStrings {
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
     'brStabilizer': '手ブレ補正',
-    'brAutoCreateFrame': '空のセルに描いたらフレームを作る',
+    'tlAutoFrame': '空のセルに描いたらフレームを作る',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
     'brBlendLock': '合成モードをブラシに固定',
@@ -3672,7 +3679,7 @@ class AppStrings {
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',
     'brStabilizer': '손떨림 보정',
-    'brAutoCreateFrame': '빈 칸에 그리면 프레임 자동 생성',
+    'tlAutoFrame': '빈 칸에 그리면 프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
     'brBlendLock': '합성 모드를 브러시에 고정',
@@ -4660,7 +4667,7 @@ class AppStrings {
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
     'brStabilizer': 'Stabilisateur',
-    'brAutoCreateFrame': "Créer une image là où il n'y en a pas",
+    'tlAutoFrame': "Créer une image là où il n'y en a pas",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
     'brBlendLock': 'Épingler ce mode de fusion au pinceau',
@@ -5562,7 +5569,7 @@ class AppStrings {
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',
     'brStabilizer': '防抖',
-    'brAutoCreateFrame': '在空单元格上绘制时自动创建帧',
+    'tlAutoFrame': '在空单元格上绘制时自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
     'brBlendLock': '将混合模式固定到画笔',

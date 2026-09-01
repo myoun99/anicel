@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../input/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
@@ -597,6 +598,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required VoidCallback? onPressed,
     bool accent = false,
     bool danger = false,
+    Color? color,
   }) {
     return AppIconButton(
       keyValue: key.value,
@@ -611,11 +613,16 @@ class TimelineActionToolbar extends StatelessWidget {
       // GLYPH only, and it goes out with the button.
       icon: Icon(
         icon,
-        color: danger
-            ? AppColors.deleteGlyph(enabled: onPressed != null)
-            : (accent
-                  ? AppColors.addGlyph(enabled: onPressed != null)
-                  : null),
+        // [color] is the caller's own answer — a toggle's ON state, which
+        // is neither of the two GLYPH laws below and must not borrow either
+        // of their colours.
+        color:
+            color ??
+            (danger
+                ? AppColors.deleteGlyph(enabled: onPressed != null)
+                : (accent
+                      ? AppColors.addGlyph(enabled: onPressed != null)
+                      : null)),
       ),
     );
   }
@@ -1006,6 +1013,46 @@ class TimelineActionToolbar extends StatelessWidget {
               onPressed: panelContext.canBlankExposure
                   ? panelContext.blankExposure
                   : null,
+            ),
+            // 🚨F-61 (유저): 「프레임 자동생성 버튼 툴 설정에 있는데, **왜
+            // 이딴식으로 결정한거지? 내가 분명 타임라인 헤더쪽에
+            // 두라하지않았나?** 프레임 알약 안, **중간나누기 버튼 오른쪽**에
+            // 두도록. 기존 잔재는 삭제」.
+            //
+            // 「중간나누기 버튼」 is the × above — `tlBlankX`, 「중간 없음 /
+            // ×」 (中割なし). This sits to its right, exactly as asked.
+            //
+            // ⚠️A SETTING among commands, and that is the point: it is the
+            // standing answer to 「what does a press on an empty cell do」,
+            // so it belongs beside the verbs that make and unmake a block
+            // rather than beside brush size.
+            //
+            // ★It listens for ITSELF. This group is memoized on
+            // [_StaticCommandGroup.rebuildKey] and baked into a
+            // [StaticRaster]; the toolbar does not rebuild when
+            // `AppInput.settings` moves, so a plain read here would show
+            // yesterday's state for ever. A listener inside the bake is
+            // safe — a rebuild ends in `markNeedsPaint`, which is exactly
+            // what the raster captures on. ⛔What must never go in is
+            // another repaint BOUNDARY; a `ValueListenableBuilder` is not
+            // one.
+            ValueListenableBuilder<AppInputSettings>(
+              valueListenable: AppInput.settings,
+              builder: (context, input, _) => _iconButton(
+                key: const ValueKey<String>('auto-frame-toggle-button'),
+                tooltip: AppText.strings.tlAutoFrame,
+                icon: Icons.auto_awesome,
+                // ⛔NOT `accent:` — that flag is [AppColors.addGlyph] and
+                // 유저 확정 reserved it for the ＋ glyph 「＋가 있는 모든
+                // 곳에」. This is an ON state, which the app already says in
+                // colour alone (`project_settings_pill`: current ? accent :
+                // text) — and colour alone is the standing rule for
+                // selection.
+                color: input.autoCreateFrameOnDraw ? AppColors.accent : null,
+                onPressed: () => AppInput.settings.value = input.copyWith(
+                  autoCreateFrameOnDraw: !input.autoCreateFrameOnDraw,
+                ),
+              ),
             ),
             _iconButton(
               key: const ValueKey<String>('toggle-mark-button'),
