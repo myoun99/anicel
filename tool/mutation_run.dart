@@ -130,6 +130,37 @@ List<Mutation> sampleOf(List<Mutation> all, int count) {
   return [for (var i = 0; i < count; i += 1) all[(i * step).floor()]];
 }
 
+/// Every candidate, reordered so that taking any prefix is an even spread.
+///
+/// 🚨★★★WHY THIS EXISTS: `--sample 3` used to mean 「try three」, and a file
+/// whose three came back UNBUILT was written down as DONE having measured
+/// NOTHING. 🧪Slice 1 measured the hole: **4 of 40 files** — including
+/// `resample_kernel.dart`, the most complex function in the tree — reported
+/// three unbuilt verdicts and nothing else, and `--resume` would have skipped
+/// them forever.
+///
+/// So the sample counts INFORMATIVE verdicts now, and the runner keeps taking
+/// from this order until it has that many. ⛔The order still has to spread:
+/// walking the file top-down would spend the whole budget in its first
+/// function.
+///
+/// Built by widening [sampleOf] — 1, 2, 4, 8 … — so the first entries are the
+/// ends and the middle, then the quarters, and so on. Deterministic, and the
+/// same prefix a plain `sampleOf` would have chosen.
+List<Mutation> spreadOrder(List<Mutation> all) {
+  final out = <Mutation>[];
+  final seen = <int>{};
+  for (var count = 1; count < all.length; count *= 2) {
+    for (final m in sampleOf(all, count)) {
+      if (seen.add(m.offset)) out.add(m);
+    }
+  }
+  for (final m in all) {
+    if (seen.add(m.offset)) out.add(m);
+  }
+  return out;
+}
+
 Future<void> main(List<String> args) async {
   final sample = int.tryParse(_flag(args, '--sample') ?? '') ?? 5;
   final maxNamers = int.tryParse(_flag(args, '--max-namers') ?? '') ?? 6;
@@ -192,10 +223,15 @@ Future<void> main(List<String> args) async {
 
       final chosen = namersToRun(namers, maxNamers);
       final original = file.readAsStringSync();
-      final candidates = sampleOf(mutationsIn(original), sample);
+      final all = spreadOrder(mutationsIn(original));
+      // ⚠️An attempt budget, because a file can be all-unbuilt and there is
+      // no point walking every candidate to learn that twice. UNBUILT costs
+      // ~3s (the analyze pre-check), so 8 tries per wanted verdict is cheap.
+      final budget = all.length < sample * 8 ? all.length : sample * 8;
+      final candidates = all.take(budget).toList();
       _say(target,
           '${chosen.length} of ${namers.length} namer(s), '
-          '${candidates.length} mutation(s)'
+          'want $sample informative from ${all.length} candidate(s)'
           '${chosen.length < namers.length ? ' — CAPPED, a survivor here means '
               'only that these ${chosen.length} did not notice' : ''}'
           '${planOnly ? ' — plan only' : ''}');
@@ -211,8 +247,13 @@ Future<void> main(List<String> args) async {
 
       _refuseIfDirty(target);
 
+      var informative = 0;
       for (final m in candidates) {
+        if (informative >= sample) break;
         final verdict = await _runOne(file, original, m, chosen);
+        if (verdict == Verdict.killed || verdict == Verdict.survived) {
+          informative += 1;
+        }
         switch (verdict) {
           case Verdict.killed:
             killed += 1;
@@ -235,6 +276,22 @@ Future<void> main(List<String> args) async {
           'verdict': verdict.name,
           'namersRun': chosen.length,
           'namers': namers.length,
+        }));
+      }
+      // ⛔NEVER SILENT. A file that taught us nothing must say so, or the
+      // JSONL reads as 「measured, and clean」 — which is what slice 1's four
+      // all-unbuilt files looked like.
+      if (informative < sample) {
+        _say(target,
+            'only $informative informative verdict(s) out of $sample asked '
+            'for — ${all.length} candidate(s) existed, $budget tried');
+        sink?.writeln(jsonEncode({
+          'file': target,
+          'verdict': 'incomplete',
+          'informative': informative,
+          'wanted': sample,
+          'candidates': all.length,
+          'tried': budget,
         }));
       }
     }

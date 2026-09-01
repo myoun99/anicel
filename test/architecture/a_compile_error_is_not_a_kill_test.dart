@@ -116,6 +116,61 @@ void main() {
     });
   });
 
+  group('the sample counts what it learned, not what it tried', () {
+    List<Mutation> candidates(int n) => [
+          for (var i = 0; i < n; i += 1)
+            Mutation(
+              offset: i,
+              length: 1,
+              was: '<',
+              replacement: '<=',
+              line: i + 1,
+              kind: 'comparison',
+            ),
+        ];
+
+    test('every candidate is in the order, exactly once', () {
+      // ⛔THE PREMISE. An order that quietly dropped candidates would make
+      // the runner stop early and report a file as measured.
+      final order = spreadOrder(candidates(100));
+      expect(order, hasLength(100));
+      expect(order.map((m) => m.offset).toSet(), hasLength(100));
+    });
+
+    test('a prefix spreads across the file instead of sitting on top', () {
+      // 🚨THE FAILURE THIS CATCHES: returning `all` unchanged passes the
+      // case above and spends the whole budget in the first function.
+      final first = spreadOrder(candidates(100)).take(8).map((m) => m.line);
+      expect(
+        first.reduce((a, b) => a > b ? a : b),
+        greaterThan(50),
+        reason: 'the first eight must reach the far half of the file',
+      );
+    });
+
+    test('the same input gives the same order', () {
+      expect(
+        spreadOrder(candidates(50)).map((m) => m.offset),
+        spreadOrder(candidates(50)).map((m) => m.offset),
+      );
+    });
+
+    test('a short list survives', () {
+      expect(spreadOrder(candidates(1)), hasLength(1));
+      expect(spreadOrder(candidates(2)), hasLength(2));
+      expect(spreadOrder(const []), isEmpty);
+    });
+
+    test('the order opens with the ends, which is where a file forgets', () {
+      // ⚠️`sampleOf(all, 1)` is index 0 and `sampleOf(all, 2)` adds the
+      // midpoint, so the first entries are the extremes of the spread. A
+      // file's last function is the one a top-down walk never reaches.
+      final order = spreadOrder(candidates(64));
+      expect(order.first.offset, 0);
+      expect(order.take(4).map((m) => m.offset), contains(32));
+    });
+  });
+
   group('the namer cap', () {
     test('a small set is not capped', () {
       final chosen = namersToRun(['test/services/a_test.dart'], 6);
