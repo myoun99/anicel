@@ -97,8 +97,86 @@ final class QaVideoDecoder {
     return pointer == nullptr ? '' : pointer.toDartString();
   }
 
+  /// Which movie the one native document is holding, or null when that is
+  /// not known — see [openDocument].
+  QaVideoDocument? _current;
+
+  /// How many times [frameOf] has had to put a document back.
+  ///
+  /// 🚨★★★**BECAUSE THE COST IS THE ONLY THING A TEST CAN SEE.** Re-opening
+  /// is self-healing: a consumer whose movie was closed under it simply gets
+  /// it back on the next frame, so 「it still works」 is true whether or not
+  /// anything is being done well. A measured ~111ms per re-open at 1080p is
+  /// the difference between an interleave that costs nothing and one that
+  /// stutters, and this counter is what lets a test say which happened.
+  ///
+  /// ⛔Not a metric anything ships on — the app never reads it.
+  static int debugReopens = 0;
+
+  /// Opens [path] as a DOCUMENT a caller can keep and come back to.
+  ///
+  /// 🚨★★★**THERE IS ONE NATIVE DOCUMENT AND THERE ARE TWO CALLERS.** The
+  /// viewer plays a movie; the import window scrubs one. Both used to call
+  /// [open] and then [frame], and the second open silently closed the
+  /// first — the import preview even said so in a comment: 「opening one
+  /// here is also what closes the last」. What that reads as is a viewer
+  /// that stops changing its picture, with no error anywhere.
+  ///
+  /// ⛔The fix is not 「remember to re-open」 at two call sites. A handle
+  /// carries WHICH movie and how to get back to it, and [frameOf] re-opens
+  /// when the document that is loaded is not the one being asked about. A
+  /// caller cannot ask for a frame without saying which movie any more,
+  /// which is the only shape where forgetting is impossible.
+  ///
+  /// ⚠️Re-opening is not free — a random-access frame measured ~111ms at
+  /// 1080p. Two consumers alternating pay that per switch, which is the
+  /// honest price of one native document and is still incomparably better
+  /// than one of them going quietly blank.
+  QaVideoDocument? openDocument(String path, {({int offset, int length})? range}) {
+    final info = open(path, range: range);
+    if (info == null) {
+      return null;
+    }
+    return _current = QaVideoDocument._(path: path, range: range, info: info);
+  }
+
+  /// The frame at [index] OF [document], re-opening it first if the native
+  /// side is currently holding a different movie.
+  ///
+  /// Null when the movie could not be re-opened or the frame could not be
+  /// read — [lastError] says which.
+  Uint8List? frameOf(QaVideoDocument document, int index, {Uint8List? into}) {
+    if (!identical(_current, document)) {
+      debugReopens += 1;
+      if (open(document.path, range: document.range) == null) {
+        return null;
+      }
+      _current = document;
+    }
+    return frame(
+      index,
+      width: document.info.width,
+      height: document.info.height,
+      into: into,
+    );
+  }
+
+  /// Closes [document] — and ONLY if it is the one that is open.
+  ///
+  /// ⛔A bare [close] from one consumer would take the other's movie with
+  /// it, which is the same bug as the silent replace above wearing a
+  /// different hat.
+  void closeDocument(QaVideoDocument document) {
+    if (identical(_current, document)) {
+      close();
+    }
+  }
+
   /// Opens [path], replacing whatever was open. Null when it cannot be
   /// read — [lastError] says why.
+  ///
+  /// ⚠️Prefer [openDocument]: this one leaves nothing that says WHICH movie
+  /// is loaded, so the next [frameOf] has to re-open on principle.
   ///
   /// [range] opens a MOVIE THAT LIVES INSIDE [path] rather than the file
   /// itself — the shape a carried video has, since its bytes are a stretch
@@ -107,6 +185,7 @@ final class QaVideoDecoder {
   /// native side says why in its own comment, and the short version is that
   /// Android below API 28 has no other way to open one.
   QaVideoInfo? open(String path, {({int offset, int length})? range}) {
+    _current = null;
     final utf8Path = path.toNativeUtf8(allocator: malloc);
     try {
       final opened = range == null
@@ -193,6 +272,7 @@ final class QaVideoDecoder {
   int _scratchBytes = 0;
 
   void close() {
+    _current = null;
     _close();
     if (_scratchBytes > 0) {
       malloc.free(_scratch);
@@ -200,6 +280,28 @@ final class QaVideoDecoder {
       _scratchBytes = 0;
     }
   }
+}
+
+/// A movie a caller has opened, and everything needed to open it AGAIN.
+///
+/// 🚨It exists because there is one native document and more than one part
+/// of the app wants one. Holding a handle rather than a path is what lets
+/// [QaVideoDecoder.frameOf] notice that somebody else's movie is loaded and
+/// put yours back, instead of reading frames out of theirs.
+///
+/// ⛔Compared by IDENTITY, not by path: two consumers looking at the same
+/// file still each own their document, and「my document」is a question about
+/// who opened it, not about which bytes it is.
+final class QaVideoDocument {
+  const QaVideoDocument._({
+    required this.path,
+    required this.range,
+    required this.info,
+  });
+
+  final String path;
+  final ({int offset, int length})? range;
+  final QaVideoInfo info;
 }
 
 /// What a document says about itself.

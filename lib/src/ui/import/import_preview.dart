@@ -66,11 +66,13 @@ class _ImportPreviewState extends State<ImportPreview> {
   ui.Image? _pdfPage;
   int _pdfPageShown = -1;
 
-  /// A movie, once the reader has said what it is.
-  QaVideoInfo? _video;
+  /// A movie, once the reader has said what it is — the HANDLE, so the
+  /// viewer holding its own does not turn this one into a still picture.
+  /// See [QaVideoDecoder.frameOf].
+  QaVideoDocument? _video;
   ui.Image? _videoFrame;
   int _videoFrameShown = -1;
-  bool _videoOpen = false;
+
 
   @override
   void initState() {
@@ -104,10 +106,11 @@ class _ImportPreviewState extends State<ImportPreview> {
     _videoFrame?.dispose();
     _videoFrame = null;
     _videoFrameShown = -1;
+    final video = _video;
     _video = null;
-    if (_videoOpen) {
-      _videoOpen = false;
-      QaVideoDecoder.instance?.close();
+    if (video != null) {
+      // ⛔Only if it is still ours — see [QaVideoDecoder.closeDocument].
+      QaVideoDecoder.instance?.closeDocument(video);
     }
     final pdf = _pdf;
     _pdf = null;
@@ -116,8 +119,12 @@ class _ImportPreviewState extends State<ImportPreview> {
     }
   }
 
-  /// A movie, on the platforms whose reader exists. The decoder holds ONE
-  /// document, so opening one here is also what closes the last.
+  /// A movie, on the platforms whose reader exists.
+  ///
+  /// 🪦This used to say 「the decoder holds ONE document, so opening one here
+  /// is also what closes the last」 — a true sentence about a bug. The last
+  /// one was usually the media viewer's, and it went blank with no error.
+  /// A handle says which movie is whose, and the decoder puts it back.
   Future<void> _loadVideo(String path) async {
     final decoder = QaVideoDecoder.instance;
     if (decoder == null || !decoder.isSupported) {
@@ -126,19 +133,18 @@ class _ImportPreviewState extends State<ImportPreview> {
       setState(() {});
       return;
     }
-    final info = decoder.open(path);
+    final video = decoder.openDocument(path);
     if (!mounted || _loadedPath != path) {
-      decoder.close();
+      if (video != null) {
+        decoder.closeDocument(video);
+      }
       return;
     }
-    if (info == null) {
+    if (video == null) {
       setState(() {});
       return;
     }
-    setState(() {
-      _video = info;
-      _videoOpen = true;
-    });
+    setState(() => _video = video);
     await _renderVideoFrame(0);
   }
 
@@ -151,19 +157,15 @@ class _ImportPreviewState extends State<ImportPreview> {
       return;
     }
     _videoFrameShown = index;
-    final rgba = decoder.frame(
-      index,
-      width: info.width,
-      height: info.height,
-    );
+    final rgba = decoder.frameOf(info, index);
     if (rgba == null || !mounted || _video != info) {
       return;
     }
     final completer = Completer<ui.Image>();
     decodeStraightRgbaImage(
       rgba: rgba,
-      width: info.width,
-      height: info.height,
+      width: info.info.width,
+      height: info.info.height,
       onDecoded: completer.complete,
     );
     final image = await completer.future;
@@ -265,7 +267,7 @@ class _ImportPreviewState extends State<ImportPreview> {
   @override
   Widget build(BuildContext context) {
     final frameCount = _video != null
-        ? _video!.frameCount
+        ? _video!.info.frameCount
         : _pdfPages > 0
         ? _pdfPages
         : (_frames.isEmpty ? 1 : _frames.length);
