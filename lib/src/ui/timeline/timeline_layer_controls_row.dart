@@ -15,6 +15,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
 import '../text/vertical_writing_text.dart';
 import 'layer_label_controls.dart';
+import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
@@ -470,18 +471,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     iconSize: iconSize,
   );
 
-  /// A cell that is [across] the strip and whatever its child is along it —
-  /// the tight SizedBox that stops an M3 IconButton inflating to its 48px
-  /// minimum tap target and overflowing the row.
-  Widget _acrossBox(double across, {required Widget child}) => _horizontal
-      ? SizedBox(height: across, child: child)
-      : SizedBox(width: across, child: child);
-
-  /// A cell that is [along] the strip.
-  Widget _alongBox(double along, {Widget? child}) => _horizontal
-      ? SizedBox(width: along, child: child)
-      : SizedBox(height: along, child: child);
-
   // ── the leading run ───────────────────────────────────────────────────
 
   /// The rail's shared column skeleton (R9 #22): slot order and widths come
@@ -591,13 +580,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// level, drawn inside the name's own box.
   Widget? _depthGuides(ColorScheme colorScheme) {
     if (depth == 0) return null;
-    return _alongBox(
+    return alongBox(
+      axis,
       layerRailNameIndent(depth),
       child: Flex(
         direction: axis,
         children: [
           for (var level = 0; level < depth; level += 1)
-            _alongBox(
+            alongBox(
+              axis,
               layerRailGuideWidth,
               child: Center(child: _guideHairline(colorScheme)),
             ),
@@ -653,7 +644,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
               ],
             ),
           ),
-          _alongBox(layerLaneToggleSlotWidth, child: _foldTwirl()),
+          alongBox(axis, layerLaneToggleSlotWidth, child: _foldTwirl()),
         ],
       ),
     ),
@@ -711,9 +702,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
         onTap: silentPress(() => onToggleGroupFold!(layer.id)),
         // R26 #28
         customBorder: const CircleBorder(),
-        child: _alongBox(
+        child: alongBox(
+          axis,
           layerLaneToggleSlotWidth,
-          child: _acrossBox(
+          child: acrossBox(
+            axis,
             24,
             child: Icon(
               layerRailTwirlIcon(expanded: groupFoldExpanded),
@@ -747,7 +740,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _fillReferenceToggle(ColorScheme colorScheme) {
     final onToggle = onToggleLayerFillReference;
     if (onToggle == null || layer.kind != LayerKind.animation) return null;
-    return _acrossBox(
+    return acrossBox(
+      axis,
       26,
       child: AppIconButton(
         keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
@@ -799,7 +793,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (onToggle == null || !layerKindAcceptsBrushInput(layer.kind)) {
       return null;
     }
-    return _acrossBox(
+    return acrossBox(
+      axis,
       26,
       child: RailSwipeColumnPointer(
         child: AppIconButton(
@@ -833,7 +828,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _muteButton() {
     final onOpenMixer = onOpenLayerMixer;
     if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
-    return _acrossBox(
+    return acrossBox(
+      axis,
       26,
       child: LayerMuteToggleButton(
         keyValue: '$keyPrefix-layer-mute-${layer.id}',

@@ -109,7 +109,7 @@ void main() {
     // 2026-09-02, the day the ratchet was switched on.
     expect(
       complexityBaseline.length,
-      1218,
+      1217,
       reason:
           'The baseline count changed. Going DOWN is the point — update this '
           'number and say so in the commit. Going UP needs an argument.',

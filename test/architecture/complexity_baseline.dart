@@ -1098,7 +1098,6 @@ const complexityBaseline = <String>{
   'lib/src/ui/timeline/timeline_frame_cell.dart::_markerForCell',
   'lib/src/ui/timeline/timeline_frame_cell.dart::_semanticsLabelForCell',
   'lib/src/ui/timeline/timeline_frame_cells_row.dart::TimelineFrameCellsRow.build',
-  'lib/src/ui/timeline/timeline_frame_cursor_layer.dart::TimelineCursorLayer.build',
   'lib/src/ui/timeline/timeline_frame_geometry.dart::TimelineFrameGeometry.==',
   'lib/src/ui/timeline/timeline_frame_range_gesture.dart::_TimelineFrameRangeGestureLayerState._updateDrag',
   'lib/src/ui/timeline/timeline_frame_range_gesture.dart::_TimelineLaneRangeGestureLayerState._updateDrag',

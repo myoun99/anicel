@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'axis_turn.dart';
+
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -88,9 +90,7 @@ const double layerRailLeadingWidth =
 /// button, and this rail reserves a great deal of it.
 Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
   final content = child == null ? null : RowControlSurface(child: child);
-  return axis == Axis.horizontal
-      ? SizedBox(width: extent, child: content)
-      : SizedBox(height: extent, child: content);
+  return alongBox(axis, extent, child: content);
 }
 
 /// The cells BEFORE a rail row's name, in order. Null cells reserve their
