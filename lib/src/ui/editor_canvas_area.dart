@@ -1038,6 +1038,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                   canvasSize: canvasSize,
                                   emphasized:
                                       toolState.tool == CanvasTool.guide,
+                                  vanishingPointLabel:
+                                      AppText.strings.guideVanishingPoint,
                                   color: Theme.of(context).colorScheme.primary,
                                   selectedGuideId: session.selectedGuideId,
                                 ),
