@@ -3,25 +3,16 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
-import '../../models/layer_id.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
-import '../../models/app_language.dart' show AppLanguage;
-import '../../models/attached_placement.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
-import '../../models/layer_mark.dart';
-import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'rail_column_swipe.dart';
 import 'layer_rail_window.dart';
-import 'timeline_cel_content_source.dart';
-import 'timeline_cell_exposure_state.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import 'timeline_cell_style.dart';
@@ -29,7 +20,6 @@ import 'timeline_frame_ruler_painter.dart'
     show TimelineRulerHeaderModel, timelineRulerSecondsLabel;
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
-import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
@@ -38,7 +28,6 @@ import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
-import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart'
     show
@@ -48,7 +37,6 @@ import 'timeline_row_span_resolver.dart'
         resolveLaneSpanEscalation;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
-import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
@@ -58,9 +46,7 @@ import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
-import 'timeline_cell_editor_policy.dart';
 import 'property_lane_model.dart';
-import 'timeline_row_filter.dart';
 import 'timeline_grid_metrics.dart';
 import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
@@ -80,6 +66,7 @@ import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
+import 'timeline_grid_hooks.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -94,337 +81,26 @@ import '../layout/device_grid_scroll_controller.dart';
 class XSheetTimelineGrid extends StatefulWidget {
   const XSheetTimelineGrid({
     super.key,
+    required this.hooks,
     required this.layers,
-    required this.activeLayerId,
-    required this.frameCursor,
-    this.frameReadySignal,
-    this.revealSelectionTick,
-    required this.frameCount,
-    this.drawnFrameCount,
-    this.noriShiroLabel = '',
-    required this.exposureStateForLayer,
-    this.frameNameForLayer,
-    this.celContent,
-    required this.onSelectLayer,
-    required this.onSelectFrame,
-    this.onSettledPress,
-    this.onScrubFrame,
-    this.onScrubEnd,
-    this.onActivateCell,
-    this.instructionDefById,
-    this.instructionCrossingTooltip,
-    this.audioPeaksFor,
-    this.projectFrameRate = ProjectFrameRate.fps24,
-    this.showSeconds = false,
-    this.onShowSecondsChanged,
     this.railExtent,
-    this.audioLane,
-    this.onDropMediaAssetOnLayer,
-    this.isLayerSoloed,
-    this.onOpenLayerMixer,
-    this.attachArrowPlacementOf,
-    required this.onAddLayer,
-    required this.onToggleLayerVisibility,
-    required this.onLayerOpacityChanged,
-    this.onLayerOpacityChangeEnd,
-    this.opacityDragPreview,
-    required this.onToggleLayerTimesheet,
-    required this.onLayerMarkSelected,
-    this.layerFxStateOf,
-    this.onToggleLayerFx,
-    this.layerIsLinkedOf,
-    this.layerOpacityOverrideOf,
-    this.onToggleLayerFillReference,
-    this.onToggleLayerOnionSkin,
-    this.layerOnionSkinEnabledOf,
-    this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
-    this.commaDrag,
-    this.rangeHooks,
-    this.laneRange,
-    this.currentRowHooks,
-    this.rowDragHooks,
-    this.selectedRows = const {},
-    this.onRowSelectionSpan,
-    this.runEdit,
-    this.isFrameReady,
     this.metrics = defaultMetrics,
-    this.expandedLaneLayerIds = const {},
-    this.laneOpenOf,
-    this.laneGroupOnOf,
-    this.layerEyeOnOf,
-    this.onToggleLayerLanes,
-    this.lanesForLayer,
-    this.unionLaneForLayer,
-    this.laneEdit,
-    this.onToggleLaneGroup,
-    this.onToggleLaneGroupEnabled,
-    this.onResetLaneGroup,
-    this.hiddenSections = const {},
-    this.rowFilter = TimelineRowFilter.none,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleLayerCollapsed,
-    this.onToggleAttachGroup,
-    this.seSpillInLayerIds = const {},
-    this.seClipMarkerTooltip,
-    this.dragPreview,
-    this.cutEndDrag,
-    this.substrateGeneration = '',
   });
 
-  /// #29: the (project, cut) world this grid's resolvers answer from —
-  /// see [TimelineRowCellsPainter.substrateGeneration].
-  final String substrateGeneration;
-
   final List<Layer> layers;
-  final LayerId? activeLayerId;
 
-  /// Track-SE layers whose sound spills in from the previous cut (UI-R7 #6):
-  /// their first block shows the `~` continuation mark instead of a start
-  /// grip. Mirrors the horizontal timeline's plumbing.
-  final Set<LayerId> seSpillInLayerIds;
-
-  /// The recorded-take clipping warning tooltip (REC1-D): non-null mounts
-  /// the red block-corner marker on SE cells, matching the horizontal
-  /// timeline. Null hides it (the "clipping notice" setting is off).
-  final String? seClipMarkerTooltip;
-
-  /// The session's edit-drag preview channel: a comma-drag step rebuilds
-  /// only the dragged layer's column (its gate) and the cursor overlay —
-  /// never this grid.
-  final ValueListenable<TimelineDragPreview?>? dragPreview;
-
-  /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
-  /// grip that end-trims the ACTIVE cut; the line follows the live trim
-  /// preview. Null = display-only.
-  final TimelineCutEndDragCallbacks? cutEndDrag;
-
-  /// The frame cursor (editing playhead / playback position). Only the
-  /// cursor layer, the frame-number rail and the lane headers subscribe —
-  /// ticks never rebuild the grid (playback-performance architecture,
-  /// mirroring the horizontal timeline).
-  final ValueListenable<int> frameCursor;
-
-  /// Repaints the frame rail's cached-range green strip as frames warm.
-  final Listenable? frameReadySignal;
-
-  /// R5: the session's "bring the selection back into view" tick.
-  final ValueListenable<int>? revealSelectionTick;
-
-  /// Playback frame count of the active cut (the visible range extends to
-  /// the shared minimum, exactly like the horizontal timeline).
-  final int frameCount;
-
-  /// How many frames the cut is DRAWN for (尺 + のりしろ) and the word the
-  /// frame rail spells across the difference. Null/empty keeps it off.
-  final int? drawnFrameCount;
-  final String noriShiroLabel;
-  final TimelineCellExposureState Function(Layer layer, int frameIndex)
-  exposureStateForLayer;
-  final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
-
-  /// R26 #44: the unworked-block tint's fact and its event (null = no tint).
-  final TimelineCelContentSource? celContent;
-  final ValueChanged<LayerId> onSelectLayer;
-  final ValueChanged<int> onSelectFrame;
-
-  /// 🚨T10's second half: a press that turned out to be a TAP clears
-  /// whatever was selected (유저: 「클릭하고 떼면 뭐든 비우게」). The sheet
-  /// is the same surface stood up, so it takes the same law.
-  final VoidCallback? onSettledPress;
-
-  /// Frame-rail scrub path: per-move frames go to [onScrubFrame]
-  /// (cursor-only, no commit) and the pointer's release fires [onScrubEnd]
-  /// to commit once. Null falls back to [onSelectFrame] per move.
-  final ValueChanged<int>? onScrubFrame;
-  final VoidCallback? onScrubEnd;
-
-  /// Double-tap cell editor hook (SE label dialog; see
-  /// [layerKindOpensCellEditorOnDoubleTap]).
-  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
-
-  /// Resolves instruction ids to defs for CAM column chips.
-  final CameraInstructionDef? Function(String instructionId)?
-  instructionDefById;
-
-  /// D26: crossing-fade warning resolver (projected keys — this surface
-  /// shows the cut-local display clone).
-  final String? Function(int spanStartKey)? instructionCrossingTooltip;
-
-  /// Waveform peaks for SE columns' audio clips + the removal hook.
-  final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final ProjectFrameRate projectFrameRate;
-
-  /// The frame rail's number mode (UI-R10 #27): seconds display repeats
-  /// 1..fps per second instead of absolute frame numbers.
-  final bool showSeconds;
-
-  /// The toggle itself, in the corner where the two axes meet (it used to
-  /// be a command-bar button). Null leaves the corner blank.
-  final ValueChanged<bool>? onShowSecondsChanged;
+  /// What the session answers this grid — see [TimelineGridHooks]. The
+  /// rail and the sheet read the SAME bundle, so neither can lack an
+  /// answer the other has.
+  final TimelineGridHooks hooks;
 
   /// The header block's window size, set by this sheet's splitter and
   /// persisted by the workspace. Null = a session-local one of our own.
   final LayerRailExtent? railExtent;
 
-  /// What the audio lane may ask the session to do; null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
-
-  /// A media-browser row dropped on a drawing column; null refuses the drag.
-  final void Function(LayerId layerId, int frameIndex, String path)?
-  onDropMediaAssetOnLayer;
-
-  /// The SE column's mixer (R10 R3): its solo tint, and the speaker press
-  /// that opens the window carrying mute/solo/fader/pan. Null hides the
-  /// speaker.
-  final bool Function(LayerId layerId)? isLayerSoloed;
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
-
-  /// Which way a column's attach ARROW points in its sheet slot (R10 R3),
-  /// or null off an attach group. A RESOLVER for the same reason the rail
-  /// takes one: the answer is stack order against the base, and a grid is
-  /// handed a DISPLAY order.
-  final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
-
-  final VoidCallback onAddLayer;
-  final ValueChanged<LayerId> onToggleLayerVisibility;
-  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
-
-  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
-  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
-
-  /// The session's live opacity-drag preview (UI-R6 #2).
-  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
-  opacityDragPreview;
-
-  final ValueChanged<LayerId> onToggleLayerTimesheet;
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
-
-  /// The AE-style layer fx MASTER (R8: persisted, tri-state); null hides it.
-  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
-  final ValueChanged<LayerId>? onToggleLayerFx;
-
-  /// The link badge (L4) and the camera column's live opacity (R27 #9):
-  /// two answers the panel held for the rail alone, until the sheet's
-  /// header became the rail's row stood up and asked for them too.
-  final bool Function(LayerId layerId)? layerIsLinkedOf;
-  final ValueListenable<double>? Function(LayerId layerId)?
-  layerOpacityOverrideOf;
-
-  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
-
-  /// The ONION and BLEND columns (UI-R17 #5, R27 #6). The sheet went
-  /// without them until the user's R10 R6 call — "타임라인에 있는거 싹다
-  /// 넣어" — and the panel had been holding both callbacks all along,
-  /// passing them to the horizontal grid only.
-  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
-  final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
-  final void Function(LayerId layerId, LayerBlendMode mode)?
-  onLayerBlendModeSelected;
-
-  /// PROGRAM language for the blend column's mode names.
-  final AppLanguage blendLanguage;
-
-  /// Comma-drag hooks for the block edge grips (shared policy with the
-  /// horizontal timeline); null hides the grips.
-  final TimelineCommaDragCallbacks? commaDrag;
-
-  /// The frame-range select/move hooks (UI-R8, the block-body move's
-  /// successor): the grid resolves the pointer's COLUMN onto display
-  /// entries and forwards frame delta + target layer to the session.
-  final TimelineFrameRangeHooks? rangeHooks;
-
-  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
-  /// keeps the lane bands display-only.
-  final TimelineLaneRangeHooks? laneRange;
-
-  /// Which row the frame-axis verbs act on, and the label press that moves
-  /// it (R10 #19's rail half); null leaves lane headers inert and unwashed.
-  final TimelineCurrentRowHooks? currentRowHooks;
-
-  /// The row-order drag. The sheet's columns ARE the rail's rows stood up,
-  /// so the same handle rule applies along its own axis: grabbing a column
-  /// header moves that layer, an fx header re-orders that chain.
-  final TimelineRowDragHooks? rowDragHooks;
-
-  /// ⑨: the row SELECT drag's span, in this sheet's own display columns —
-  /// the rail's rule along the other axis, so the two surfaces select the
-  /// same way without either learning the other's order.
-  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
-  onRowSelectionSpan;
-
-  /// ⑨: the columns currently selected, as layer ids.
-  final Set<TimelineRowAddress> selectedRows;
-
-  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
-  final TimelineRunEditCallbacks? runEdit;
-
-  /// Cached-range resolver for the frame rail's green strip (the transposed
-  /// counterpart of the horizontal ruler's strip).
-  final bool Function(int frameIndex)? isFrameReady;
-
   /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
   /// as the frame ROW height here.
   final TimelineGridMetrics metrics;
-
-  /// AE-style property lanes, transposed: an expanded layer's lanes appear
-  /// as COLUMNS beside it (the layer axis runs horizontally here). Same
-  /// generic provider + edit hooks as the horizontal timeline.
-  final Set<LayerId> expandedLaneLayerIds;
-
-  /// A LIVE read of the twirl state — see [LayerTimelineGrid.laneOpenOf].
-  final bool Function(LayerId layerId)? laneOpenOf;
-
-  /// See [LayerTimelineGrid.laneGroupOnOf].
-  final bool Function(LayerId layerId)? laneGroupOnOf;
-
-  /// A LIVE read of a layer’s own eye — the rail’s bulk-drag needs the value
-  /// the press just set, and a captured [Layer] still reports the last
-  /// frame.
-  final bool Function(LayerId layerId)? layerEyeOnOf;
-  final ValueChanged<LayerId>? onToggleLayerLanes;
-  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
-
-  /// The union-summary provider (the CAMERA column's key markers, B4) —
-  /// see [TimelineFrameRowsScrollBody.unionLaneForLayer].
-  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
-
-  final PropertyLaneEditCallbacks? laneEdit;
-
-  /// Group headers: tapping twirls the group's member lanes (AE collapse).
-  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
-
-  /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)?
-  onToggleLaneGroupEnabled;
-
-  /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
-
-  /// Sections hidden from the grid entirely (toolbar visibility toggles;
-  /// the section axis runs horizontally here, so hiding drops columns).
-  final Set<TimelineSection> hiddenSections;
-
-  /// The rail's row FILTER (R2): drops the columns of layers failing its
-  /// predicate; the active layer is exempt. Shared with the horizontal
-  /// timeline (Axis rule).
-  final TimelineRowFilter rowFilter;
-
-  /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
-  /// columns drop — the shared view state; the fold toggle lives on the
-  /// horizontal rail.
-  final Set<LayerId> collapsedAttachBaseIds;
-
-  /// The GROUP-FOLD twirl's two commits — a folder folding its members, an
-  /// attach base folding its rows. R5 #2: the sheet already HID what those
-  /// sets say (it reads [collapsedAttachBaseIds] and `subtreeCollapsed`
-  /// like the rail does), but it carried no control to say it with, so a
-  /// folder could only be folded from the other panel. One skeleton, one
-  /// row vocabulary — a column that shows a fold has to offer it.
-  final ValueChanged<LayerId>? onToggleLayerCollapsed;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -507,7 +183,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
   /// [ProjectFrameRate.countingBase]).
-  int get _countingFps => widget.projectFrameRate.countingBase;
+  int get _countingFps => widget.hooks.projectFrameRate.countingBase;
 
   /// Resolves range-move column deltas against the entries built this pass.
   final TimelineRangeMoveRowResolver _rangeMoveResolver =
@@ -555,8 +231,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// rail costs laid out in full. The window never changes it.
   double get _naturalHeaderBlockExtent =>
       XSheetTimelineGrid.naturalHeaderBlockExtent(
-        hasOnionColumn: widget.onToggleLayerOnionSkin != null,
-        hasBlendColumn: widget.onLayerBlendModeSelected != null,
+        hasOnionColumn: widget.hooks.onToggleLayerOnionSkin != null,
+        hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
       );
 
   /// Just the column headers — the band strip has its own row above.
@@ -603,22 +279,23 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// "row width" turned on its side — the slot skeleton lays these cells
   /// with `axis: Axis.vertical`, so a slot's WIDTH is its height here.
   List<RailToggleColumn<Layer>> _swipeColumns() {
-    final onToggleFx = widget.onToggleLayerFx;
-    final fxStateOf = widget.layerFxStateOf;
-    final onToggleOnion = widget.onToggleLayerOnionSkin;
-    final onionOf = widget.layerOnionSkinEnabledOf;
-    final onToggleLanes = widget.onToggleLayerLanes;
-    final lanesForLayer = widget.lanesForLayer;
+    final onToggleFx = widget.hooks.onToggleLayerFx;
+    final fxStateOf = widget.hooks.layerFxStateOf;
+    final onToggleOnion = widget.hooks.onToggleLayerOnionSkin;
+    final onionOf = widget.hooks.layerOnionSkinEnabledOf;
+    final onToggleLanes = widget.hooks.onToggleLayerLanes;
+    final lanesForLayer = widget.hooks.lanesForLayer;
 
     return railSwipeColumns<Layer>(
       crossExtent: _naturalHeaderExtent,
       leadingOrigin: 0,
       hasOnionColumn: onToggleOnion != null,
-      hasBlendColumn: widget.onLayerBlendModeSelected != null,
+      hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
       visibility: (
-        valueOf: (layer) => layerRailEyeIsOn(layer, live: widget.layerEyeOnOf),
+        valueOf: (layer) =>
+            layerRailEyeIsOn(layer, live: widget.hooks.layerEyeOnOf),
 
-        toggle: (layer) => widget.onToggleLayerVisibility(layer.id),
+        toggle: (layer) => widget.hooks.onToggleLayerVisibility(layer.id),
       ),
       onion: onToggleOnion == null || onionOf == null
           ? null
@@ -646,15 +323,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 layer.attachedToLayerId == null
             ? layer.onTimesheet
             : null,
-        toggle: (layer) => widget.onToggleLayerTimesheet(layer.id),
+        toggle: (layer) => widget.hooks.onToggleLayerTimesheet(layer.id),
       ),
       laneToggle: onToggleLanes == null || lanesForLayer == null
           ? null
           : (
               valueOf: (layer) => lanesForLayer(layer).isEmpty
                   ? null
-                  : (widget.laneOpenOf?.call(layer.id) ??
-                        widget.expandedLaneLayerIds.contains(layer.id)),
+                  : (widget.hooks.laneOpenOf?.call(layer.id) ??
+                        widget.hooks.expandedLaneLayerIds.contains(layer.id)),
               toggle: (layer) => onToggleLanes(layer.id),
             ),
     );
@@ -734,7 +411,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _layerScrollController = PenFriendlyScrollController();
     _frameScrollController.addListener(_handleFrameScroll);
     _frameWindowBucket.addListener(_handleFrameWindowBucket);
-    widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
   }
 
   /// R5: the same reveal the rail does, asked of THIS surface's axes — the
@@ -755,7 +432,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       final target = revealScrollOffset(
         offset: position.pixels,
         viewport: position.viewportDimension,
-        start: widget.frameCursor.value * cell,
+        start: widget.hooks.frameCursor.value * cell,
         extent: cell,
         margin: cell,
       ).clamp(position.minScrollExtent, position.maxScrollExtent);
@@ -764,7 +441,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       }
     }
     final columnWidth = _metrics.layerRowHeight;
-    final activeId = widget.activeLayerId;
+    final activeId = widget.hooks.activeLayerId;
     if (!_layerScrollController.hasClients ||
         activeId == null ||
         columnWidth <= 0) {
@@ -792,9 +469,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   @override
   void didUpdateWidget(covariant XSheetTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.revealSelectionTick != widget.revealSelectionTick) {
-      oldWidget.revealSelectionTick?.removeListener(_handleRevealSelection);
-      widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    if (oldWidget.hooks.revealSelectionTick !=
+        widget.hooks.revealSelectionTick) {
+      oldWidget.hooks.revealSelectionTick?.removeListener(
+        _handleRevealSelection,
+      );
+      widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
     }
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
@@ -808,7 +488,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           oldPixelsPerFrame: oldCell,
           newPixelsPerFrame: newCell,
           viewportExtent: _frameScrollController.position.viewportDimension,
-          anchorFrame: widget.frameCursor.value,
+          anchorFrame: widget.hooks.frameCursor.value,
         ),
       );
     }
@@ -816,7 +496,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   @override
   void dispose() {
-    widget.revealSelectionTick?.removeListener(_handleRevealSelection);
+    widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     _watchedFramePosition?.isScrollingNotifier.removeListener(
       _handleFrameScrollActivity,
     );
@@ -903,7 +583,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   TimelineFrameRange get _frameRangePolicy =>
       TimelineFrameRange.fromPlaybackDuration(
-        playbackFrameCount: widget.frameCount,
+        playbackFrameCount: widget.hooks.playbackFrameCount,
         minimumVisibleFrameCells: _metrics.minimumVisibleFrameCells,
       );
 
@@ -986,14 +666,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
 
     _lastRailScrubbedFrameIndex = clampedFrameIndex;
-    (widget.onScrubFrame ?? widget.onSelectFrame)(clampedFrameIndex);
+    (widget.hooks.onScrubFrame ?? widget.hooks.onSelectFrame)(
+      clampedFrameIndex,
+    );
   }
 
   /// The scrub gesture's release (raw pointer up/cancel — fires for taps
   /// AND drags). Tracking is NOT reset here so trailing tap handlers stay
   /// deduplicated.
   void _endRailScrub() {
-    widget.onScrubEnd?.call();
+    widget.hooks.onScrubEnd?.call();
   }
 
   /// [autoPan] false is a PRESS: landing near an end of the rail is not a
@@ -1051,16 +733,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   }
 
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
-      widget.lanesForLayer?.call(layer) ?? const [];
+      widget.hooks.lanesForLayer?.call(layer) ?? const [];
 
   /// The row's fold twirl — [timelineGroupFoldFor] bound to this grid's hooks.
   TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
       timelineGroupFoldFor(
         row: row,
         layers: widget.layers,
-        collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
-        onToggleAttachGroup: widget.onToggleAttachGroup,
+        collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
+        onToggleLayerCollapsed: widget.hooks.onToggleLayerCollapsed,
+        onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
       );
 
   /// One column wrapped in its repaint boundary + drag-preview gate: an
@@ -1086,7 +768,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// chain the other way round from the rail — neither is stated here.
   /// Both are inferred by the policy from the lists themselves.
   Widget _draggableHeader(TimelineDisplayRow entry, Widget child) {
-    final hooks = widget.rowDragHooks;
+    final hooks = widget.hooks.rowDragHooks;
     if (hooks == null) {
       return child;
     }
@@ -1101,7 +783,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         axis: Axis.vertical,
         hooks: hooks,
         onSelectCrossed: (rowDelta) =>
-            widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+            widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
         child: child,
       );
       if (unmovable != null) {
@@ -1140,7 +822,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         onSelectCrossed: hooks.onSelectBegin == null
             ? null
             : (rowDelta) =>
-                  widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+                  widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
         child: child,
       );
     }
@@ -1148,7 +830,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // RE-ORDERED unless it heads a chain, but every row can be SELECTED —
     // two questions, and only the first one ever needed an answer here.
     Widget selectOnly() {
-      if (hooks.onSelectBegin == null || widget.onRowSelectionSpan == null) {
+      if (hooks.onSelectBegin == null ||
+          widget.hooks.onRowSelectionSpan == null) {
         return child;
       }
       return LayerRowDragTarget(
@@ -1160,7 +843,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         isLastRow: false,
         onCrossed: (_, _, _) {},
         onSelectCrossed: (rowDelta) =>
-            widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+            widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
         child: child,
       );
     }
@@ -1201,16 +884,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       // B4-3: the SELECT half, the same one every other row already had.
       onSelectCrossed: hooks.onSelectBegin == null
           ? null
-          : (rowDelta) => widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+          : (rowDelta) =>
+                widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }
 
   Widget _laneHeader(TimelineDisplayRow entry) {
     return ValueListenableBuilder<int>(
-      valueListenable: widget.frameCursor,
+      valueListenable: widget.hooks.frameCursor,
       builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
-        dragPreview: widget.dragPreview,
+        dragPreview: widget.hooks.dragPreview,
         layer: entry.layer,
         rowBuilder: (context, layer) => TimelineLaneControlsRow(
           axis: Axis.vertical,
@@ -1227,16 +911,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           // rail window above is what cuts it.
           height: _naturalHeaderExtent,
           currentFrameIndex: cursorFrame,
-          onSelectFrame: widget.onSelectFrame,
-          laneEdit: widget.laneEdit,
-          onToggleLaneGroup: widget.onToggleLaneGroup,
-          onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
-          onResetLaneGroup: widget.onResetLaneGroup,
-          currentRowHooks: widget.currentRowHooks,
+          onSelectFrame: widget.hooks.onSelectFrame,
+          laneEdit: widget.hooks.laneEdit,
+          onToggleLaneGroup: widget.hooks.onToggleLaneGroup,
+          onToggleLaneGroupEnabled: widget.hooks.onToggleLaneGroupEnabled,
+          onResetLaneGroup: widget.hooks.onResetLaneGroup,
+          currentRowHooks: widget.hooks.currentRowHooks,
           // The SAME flags the layer's own column header passes, so a
           // group header's fx lands in the sheet's fx row (R5 #7).
-          hasOnionColumn: widget.onToggleLayerOnionSkin != null,
-          hasBlendColumn: widget.onLayerBlendModeSelected != null,
+          hasOnionColumn: widget.hooks.onToggleLayerOnionSkin != null,
+          hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
         ),
       ),
     );
@@ -1253,7 +937,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
       ),
       child: TimelineDragPreviewRowGate(
-        dragPreview: widget.dragPreview,
+        dragPreview: widget.hooks.dragPreview,
         layer: entry.layer,
         rowBuilder: (context, layer) =>
             _columnFor(entry, layer, frameRange, plan, viewportExtent),
@@ -1282,21 +966,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
               trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
               metrics: _metrics,
-              frameRate: widget.projectFrameRate,
-              audioPeaksFor: widget.audioPeaksFor,
-              onSetClipOffset: widget.audioLane?.onSetClipOffset == null
+              frameRate: widget.hooks.projectFrameRate,
+              audioPeaksFor: widget.hooks.audioPeaksFor,
+              onSetClipOffset: widget.hooks.audioLane?.onSetClipOffset == null
                   ? null
                   : (clipIndex, offsetFrames) =>
-                        widget.audioLane!.onSetClipOffset!(
+                        widget.hooks.audioLane!.onSetClipOffset!(
                           entry.layer.id,
                           clipIndex,
                           offsetFrames,
                         ),
-              offsetDrag: widget.audioLane?.offsetDrag,
-              onSetClipFades: widget.audioLane?.onSetClipFades == null
+              offsetDrag: widget.hooks.audioLane?.offsetDrag,
+              onSetClipFades: widget.hooks.audioLane?.onSetClipFades == null
                   ? null
                   : (clipIndex, fadeIn, fadeOut) =>
-                        widget.audioLane!.onSetClipFades!(
+                        widget.hooks.audioLane!.onSetClipFades!(
                           entry.layer.id,
                           clipIndex,
                           fadeIn,
@@ -1308,7 +992,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               keyPrefix: 'xsheet',
               // F-25, transposed: the sheet's lane COLUMN lights with its
               // header, same law one axis over.
-              currentRow: widget.currentRowHooks?.currentRow,
+              currentRow: widget.hooks.currentRowHooks?.currentRow,
               layer: layer,
               // R10: the previewed lane while a key drag is in flight —
               // the same re-derivation the horizontal body does.
@@ -1337,37 +1021,37 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     return TimelineFrameCellsRow(
       axis: Axis.vertical,
       keyPrefix: 'xsheet',
-      onActivateCell: widget.onActivateCell,
-      instructionDefById: widget.instructionDefById,
-      instructionCrossingTooltip: widget.instructionCrossingTooltip,
-      audioPeaksFor: widget.audioPeaksFor,
-      projectFrameRate: widget.projectFrameRate,
-      showSeconds: widget.showSeconds,
-      audioLane: widget.audioLane,
-      onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
-      seClipMarkerTooltip: widget.seClipMarkerTooltip,
-      seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
+      onActivateCell: widget.hooks.onActivateCell,
+      instructionDefById: widget.hooks.instructionDefById,
+      instructionCrossingTooltip: widget.hooks.instructionCrossingTooltip,
+      audioPeaksFor: widget.hooks.audioPeaksFor,
+      projectFrameRate: widget.hooks.projectFrameRate,
+      showSeconds: widget.hooks.showSeconds,
+      audioLane: widget.hooks.audioLane,
+      onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
+      seClipMarkerTooltip: widget.hooks.seClipMarkerTooltip,
+      seSpillsIn: widget.hooks.seSpillInLayerIds.contains(layer.id),
       layer: layer,
       baseLayer: entry.layer,
-      active: entry.layer.id == widget.activeLayerId,
-      playbackFrameCount: widget.frameCount,
+      active: entry.layer.id == widget.hooks.activeLayerId,
+      playbackFrameCount: widget.hooks.playbackFrameCount,
       geometry: _publishFrameGeometry(layer.kind),
       crossAxisExtent: _metrics.layerRowHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportExtent,
-      exposureStateForLayer: widget.exposureStateForLayer,
-      frameNameForLayer: widget.frameNameForLayer,
-      celContent: widget.celContent,
-      onSelectLayer: widget.onSelectLayer,
-      onSelectFrame: widget.onSelectFrame,
-      onSettledPress: widget.onSettledPress,
-      commaDrag: widget.commaDrag,
+      exposureStateForLayer: widget.hooks.exposureStateForLayer,
+      frameNameForLayer: widget.hooks.frameNameForLayer,
+      celContent: widget.hooks.celContent,
+      onSelectLayer: widget.hooks.onSelectLayer,
+      onSelectFrame: widget.hooks.onSelectFrame,
+      onSettledPress: widget.hooks.onSettledPress,
+      commaDrag: widget.hooks.commaDrag,
       rangeGesture: _rangeGesture,
-      runEdit: widget.runEdit,
-      substrateGeneration: widget.substrateGeneration,
+      runEdit: widget.hooks.runEdit,
+      substrateGeneration: widget.hooks.substrateGeneration,
       // The CAMERA column's union key markers (B4) — the shared lane key
       // marker code, resolved per rebuild like the lanes are.
-      unionLane: widget.unionLaneForLayer?.call(layer),
+      unionLane: widget.hooks.unionLaneForLayer?.call(layer),
     );
   }
 
@@ -1394,7 +1078,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   TimelineRangeGestureCallbacks? _rangeGestureFor(
     List<TimelineDisplayRow> entries,
   ) {
-    final rangeHooks = widget.rangeHooks;
+    final rangeHooks = widget.hooks.rangeHooks;
     _rangeMoveResolver
       ..rows = entries
       ..session = rangeHooks?.move;
@@ -1454,8 +1138,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // 🚨B4-④, transposed: the lane-anchored drag joins the cells
     // law the moment it leaves its own lane group — the same
     // wrap the horizontal grid applies (one law, both axes).
-    final rangeHooks = widget.rangeHooks;
-    final hostLaneRange = widget.laneRange;
+    final rangeHooks = widget.hooks.rangeHooks;
+    final hostLaneRange = widget.hooks.laneRange;
     return hostLaneRange == null
         ? null
         : TimelineLaneRangeCallbacks(
@@ -1549,9 +1233,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   double _drawnEndOffset(TimelineDragPreview? preview) =>
       timelineDrawnEndOffset(
         preview: preview,
-        cutId: widget.cutEndDrag?.cutId,
-        playbackFrameCount: widget.frameCount,
-        drawnFrameCount: widget.drawnFrameCount,
+        cutId: widget.hooks.cutEndDrag?.cutId,
+        playbackFrameCount: widget.hooks.playbackFrameCount,
+        drawnFrameCount: widget.hooks.drawnFrameCount,
         frameCellExtent: _metrics.frameCellWidth,
       );
 
@@ -1611,11 +1295,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 beatLines: _buildBeatLines(colorScheme),
                 playheadExtent: geometry.totalFrameContentHeight,
                 playhead: _buildCursorLayer(entries, plan),
-                cutEndDrag: widget.cutEndDrag,
-                dragPreview: widget.dragPreview,
+                cutEndDrag: widget.hooks.cutEndDrag,
+                dragPreview: widget.hooks.dragPreview,
                 frameCellExtent: _metrics.frameCellWidth,
-                playbackFrameCount: widget.frameCount,
-                drawnFrameCount: widget.drawnFrameCount,
+                playbackFrameCount: widget.hooks.playbackFrameCount,
+                drawnFrameCount: widget.hooks.drawnFrameCount,
               );
             },
           ),
@@ -1656,20 +1340,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     final frameRange = plan.frameRange;
     return TimelineCursorLayer(
       axis: Axis.vertical,
-      currentRow: widget.currentRowHooks?.currentRow,
+      currentRow: widget.hooks.currentRowHooks?.currentRow,
       selectedSemanticsKey: const ValueKey<String>('xsheet-selected-cell'),
-      frameRangeSelection: widget.rangeHooks?.selection,
+      frameRangeSelection: widget.hooks.rangeHooks?.selection,
       // R27 #14: one band for cells and lanes alike.
-      laneRangeSelection: widget.laneRange?.selection,
-      frameCursor: widget.frameCursor,
-      dragPreview: widget.dragPreview,
+      laneRangeSelection: widget.hooks.laneRange?.selection,
+      frameCursor: widget.hooks.frameCursor,
+      dragPreview: widget.hooks.dragPreview,
       rows: entries,
-      activeLayerId: widget.activeLayerId,
+      activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: frameRange.startIndex,
       frameEndIndexExclusive: frameRange.endIndexExclusive,
       leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
       metrics: _metrics,
-      exposureStateForLayer: widget.exposureStateForLayer,
+      exposureStateForLayer: widget.hooks.exposureStateForLayer,
       crossAxisExtent: entries.length * _metrics.layerRowHeight,
     );
   }
@@ -1688,35 +1372,36 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       keyPrefix: 'xsheet',
       mainExtent: _naturalHeaderExtent,
       depth: entry.depth,
-      onSettledPress: widget.onSettledPress,
-      isLinked: widget.layerIsLinkedOf?.call(layer.id) ?? false,
-      opacityOverride: widget.layerOpacityOverrideOf?.call(layer.id),
-      onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
-      onionSkinEnabled: widget.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
-      onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
-      blendLanguage: widget.blendLanguage,
+      onSettledPress: widget.hooks.onSettledPress,
+      isLinked: widget.hooks.layerIsLinkedOf?.call(layer.id) ?? false,
+      opacityOverride: widget.hooks.layerOpacityOverrideOf?.call(layer.id),
+      onToggleLayerOnionSkin: widget.hooks.onToggleLayerOnionSkin,
+      onionSkinEnabled:
+          widget.hooks.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
+      onLayerBlendModeSelected: widget.hooks.onLayerBlendModeSelected,
+      blendLanguage: widget.hooks.blendLanguage,
       wearsBaseComposite: attachRowWearsBaseComposite(layer, widget.layers),
       layer: layer,
-      active: layer.id == widget.activeLayerId,
+      active: layer.id == widget.hooks.activeLayerId,
       // ⑨ · T1
-      selected: widget.selectedRows.contains(LayerRowAddress(layer.id)),
+      selected: widget.hooks.selectedRows.contains(LayerRowAddress(layer.id)),
       metrics: _metrics,
-      onSelectLayer: widget.onSelectLayer,
-      onToggleLayerVisibility: widget.onToggleLayerVisibility,
-      onLayerOpacityChanged: widget.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
-      opacityDragPreview: widget.opacityDragPreview,
-      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
-      fxState: widget.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
-      onToggleLayerFx: widget.onToggleLayerFx,
-      onLayerMarkSelected: widget.onLayerMarkSelected,
-      onToggleLayerFillReference: widget.onToggleLayerFillReference,
-      onOpenLayerMixer: widget.onOpenLayerMixer,
-      attachArrowPlacement: widget.attachArrowPlacementOf?.call(layer.id),
-      isLayerSoloed: widget.isLayerSoloed?.call(layer.id) ?? false,
+      onSelectLayer: widget.hooks.onSelectLayer,
+      onToggleLayerVisibility: widget.hooks.onToggleLayerVisibility,
+      onLayerOpacityChanged: widget.hooks.onLayerOpacityChanged,
+      onLayerOpacityChangeEnd: widget.hooks.onLayerOpacityChangeEnd,
+      opacityDragPreview: widget.hooks.opacityDragPreview,
+      onToggleLayerTimesheet: widget.hooks.onToggleLayerTimesheet,
+      fxState: widget.hooks.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
+      onToggleLayerFx: widget.hooks.onToggleLayerFx,
+      onLayerMarkSelected: widget.hooks.onLayerMarkSelected,
+      onToggleLayerFillReference: widget.hooks.onToggleLayerFillReference,
+      onOpenLayerMixer: widget.hooks.onOpenLayerMixer,
+      attachArrowPlacement: widget.hooks.attachArrowPlacementOf?.call(layer.id),
+      isLayerSoloed: widget.hooks.isLayerSoloed?.call(layer.id) ?? false,
       hasLanes: _lanesFor(layer).isNotEmpty,
-      lanesExpanded: widget.expandedLaneLayerIds.contains(layer.id),
-      onToggleLanes: widget.onToggleLayerLanes,
+      lanesExpanded: widget.hooks.expandedLaneLayerIds.contains(layer.id),
+      onToggleLanes: widget.hooks.onToggleLayerLanes,
       // One fold twirl — the rail's rule, the rail's function.
       hasGroupFold: fold.has,
       groupFoldExpanded: fold.expanded,
@@ -1810,7 +1495,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             axis: Axis.vertical,
                             selectedFlags: [
                               for (final entry in entries)
-                                widget.selectedRows.contains(entry.address),
+                                widget.hooks.selectedRows.contains(
+                                  entry.address,
+                                ),
                             ],
                             rowExtent: _metrics.layerRowHeight,
                             leadingSpacer: 0,
@@ -1865,13 +1552,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     return TimelineRulerCursorOverlay(
       keyValue: 'xsheet-rail-cursor-overlay',
       axis: Axis.vertical,
-      playhead: widget.frameCursor,
-      repaintSignal: widget.frameReadySignal,
+      playhead: widget.hooks.frameCursor,
+      repaintSignal: widget.hooks.frameReadySignal,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: bodyViewportHeight,
       renderedFrames: _renderedFrameCount,
       cellWidth: _metrics.frameCellWidth,
-      isFrameReady: widget.isFrameReady,
+      isFrameReady: widget.hooks.isFrameReady,
     );
   }
 
@@ -1938,13 +1625,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             // The tint lives in the
                             // overlay now.
                             currentFrameIndex: -1,
-                            playbackFrameCount: widget.frameCount,
+                            playbackFrameCount: widget.hooks.playbackFrameCount,
                             leadingFrameSpacerHeight: 0,
                             trailingFrameSpacerHeight: 0,
                             metrics: _metrics,
                             onSelectFrame: _selectClampedFrameFromRail,
                             framesPerSecond: _countingFps,
-                            showSeconds: widget.showSeconds,
+                            showSeconds: widget.hooks.showSeconds,
                             windowBucket: _frameWindowBucket,
                             viewportMainExtent: bodyViewportHeight,
                           ),
@@ -1956,18 +1643,19 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         // line follows the live
                         // trim preview so it never
                         // splits from the body's.
-                        if (widget.cutEndDrag != null &&
-                            widget.dragPreview != null)
+                        if (widget.hooks.cutEndDrag != null &&
+                            widget.hooks.dragPreview != null)
                           ValueListenableBuilder<TimelineDragPreview?>(
-                            valueListenable: widget.dragPreview!,
+                            valueListenable: widget.hooks.dragPreview!,
                             builder: (context, preview, _) =>
                                 TimelineRulerCutEndBoundary(
                                   axis: Axis.vertical,
                                   left:
                                       timelineCutEndPreviewFrameCount(
                                         preview: preview,
-                                        cutId: widget.cutEndDrag!.cutId,
-                                        playbackFrameCount: widget.frameCount,
+                                        cutId: widget.hooks.cutEndDrag!.cutId,
+                                        playbackFrameCount:
+                                            widget.hooks.playbackFrameCount,
                                       ) *
                                       _metrics.frameCellWidth,
                                 ),
@@ -1984,7 +1672,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           axis: Axis.vertical,
                           cutEnd: cutEndBoundaryOffset,
                           drawnEnd: _drawnEndOffset(null),
-                          label: widget.noriShiroLabel,
+                          label: widget.hooks.noriShiroLabel,
                         ),
                       ],
                     ),
@@ -2132,14 +1820,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 // policy with the horizontal grid).
                 final entries = buildTimelineDisplayRows(
                   layers: widget.layers,
-                  expandedLayerIds: widget.expandedLaneLayerIds,
+                  expandedLayerIds: widget.hooks.expandedLaneLayerIds,
                   lanesForLayer: _lanesFor,
-                  hiddenSections: widget.hiddenSections,
-                  rowFilter: widget.rowFilter,
-                  collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-                  activeLayerId: widget.activeLayerId,
+                  hiddenSections: widget.hooks.hiddenSections,
+                  rowFilter: widget.hooks.rowFilter,
+                  collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
+                  activeLayerId: widget.hooks.activeLayerId,
                   fxEnabledOf: (layerId) =>
-                      (widget.layerFxStateOf?.call(layerId) ??
+                      (widget.hooks.layerFxStateOf?.call(layerId) ??
                           LayerFxState.on) !=
                       LayerFxState.off,
                   // R9 #23: the sheet's lanes open LEFTWARD — one axis rule
@@ -2173,7 +1861,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   _metrics,
                 );
                 final cutEndBoundaryOffset = timelineCutEndBoundaryX(
-                  playbackFrameCount: widget.frameCount,
+                  playbackFrameCount: widget.hooks.playbackFrameCount,
                   metrics: _metrics,
                 );
                 // ONE value for the seven numbers above — see [_SheetGeometry].
@@ -2208,8 +1896,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 ),
                                 width: _metrics.verticalScrollbarWidth,
                                 height: layerAxisScrollbarExtent,
-                                showSeconds: widget.showSeconds,
-                                onChanged: widget.onShowSecondsChanged,
+                                showSeconds: widget.hooks.showSeconds,
+                                onChanged: widget.hooks.onShowSecondsChanged,
                               ),
                               Expanded(
                                 child: LayoutBuilder(
@@ -2263,12 +1951,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                         // what the ROWS carry — or its icons stop
                                         // naming the columns under them.
                                         hasOnionColumn:
-                                            widget.onToggleLayerOnionSkin !=
+                                            widget
+                                                .hooks
+                                                .onToggleLayerOnionSkin !=
                                             null,
                                         hasBlendColumn:
-                                            widget.onLayerBlendModeSelected !=
+                                            widget
+                                                .hooks
+                                                .onLayerBlendModeSelected !=
                                             null,
-                                        hiddenSections: widget.hiddenSections,
+                                        hiddenSections:
+                                            widget.hooks.hiddenSections,
                                       ),
                                     ),
                                     SizedBox(height: splitterSlotExtent),

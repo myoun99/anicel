@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// The Krita-style EYE SWIPE (R2): a vertical drag down the eye column
 /// toggles every row it crosses to the value latched from the first.
@@ -42,23 +43,23 @@ Widget _grid({
         width: 1000,
         height: 400,
         child: LayerTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: layers.first.id,
+            frameCursor: ValueNotifier<int>(0),
+            playbackFrameCount: 8,
+            exposureStateForLayer: (_, _) =>
+                TimelineCellExposureState.uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: onToggleLayerVisibility,
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            onLayerBlendModeSelected: withBlendColumn
+                ? (LayerId _, LayerBlendMode _) {}
+                : null,
+          ),
           layers: layers,
-          activeLayerId: layers.first.id,
-          frameCursor: ValueNotifier<int>(0),
-          playbackFrameCount: 8,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: onToggleLayerVisibility,
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          // Non-null is what mounts the BLEND column, and therefore what
-          // used to move the eye 58px away from where the band looked.
-          onLayerBlendModeSelected: withBlendColumn
-              ? (LayerId _, LayerBlendMode _) {}
-              : null,
         ),
       ),
     ),

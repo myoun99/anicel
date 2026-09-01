@@ -9,6 +9,7 @@ import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// 🚨F-47 — **어태치를 펼치면 스크롤도 같이 자란다.**
 ///
@@ -51,25 +52,24 @@ void main() {
         width: 900,
         height: 150,
         child: LayerTimelineGrid(
-          layers: layers,
-          activeLayerId: const LayerId('E'),
-          frameCursor: ValueNotifier<int>(0),
-          playbackFrameCount: 12,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          collapsedAttachBaseIds: collapsed,
-          onToggleAttachGroup: (_) {},
-          attachArrowPlacementOf: (layerId) => attachArrowPlacement(
+hooks: TimelineGridHooks(activeLayerId: const LayerId('E'),
+frameCursor: ValueNotifier<int>(0),
+playbackFrameCount: 12,
+exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+collapsedAttachBaseIds: collapsed,
+onToggleAttachGroup: (_) {},
+attachArrowPlacementOf: (layerId) => attachArrowPlacement(
             layers.firstWhere((l) => l.id == layerId),
             layers,
-          ),
-        ),
+          ),),
+layers: layers,
+),
       ),
     ),
   );
@@ -169,27 +169,26 @@ void main() {
               width: 900,
               height: 150,
               child: LayerTimelineGrid(
-                layers: layers,
-                activeLayerId: const LayerId('E'),
-                frameCursor: ValueNotifier<int>(0),
-                playbackFrameCount: 12,
-                exposureStateForLayer: (_, _) =>
+hooks: TimelineGridHooks(activeLayerId: const LayerId('E'),
+frameCursor: ValueNotifier<int>(0),
+playbackFrameCount: 12,
+exposureStateForLayer: (_, _) =>
                     TimelineCellExposureState.uncovered,
-                onSelectLayer: (_) {},
-                onSelectFrame: (_) {},
-                onAddLayer: () {},
-                onToggleLayerVisibility: (_) {},
-                onLayerOpacityChanged: (_, _) {},
-                onToggleLayerTimesheet: (_) {},
-                onLayerMarkSelected: (_, _) {},
-                collapsedAttachBaseIds: collapsed,
-                onToggleAttachGroup: (id) =>
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+collapsedAttachBaseIds: collapsed,
+onToggleAttachGroup: (id) =>
                     setState(() => collapsed = collapsed.isEmpty ? {id} : {}),
-                attachArrowPlacementOf: (layerId) => attachArrowPlacement(
+attachArrowPlacementOf: (layerId) => attachArrowPlacement(
                   layers.firstWhere((l) => l.id == layerId),
                   layers,
-                ),
-              ),
+                ),),
+layers: layers,
+),
             ),
           ),
         ),

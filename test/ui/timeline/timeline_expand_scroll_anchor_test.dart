@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// UI-R5 #3: expanding an attach group must not SCROLL the timeline.
 ///
@@ -51,25 +52,26 @@ void main() {
           child: ValueListenableBuilder<Set<LayerId>>(
             valueListenable: collapsed,
             builder: (context, collapsedIds, _) => LayerTimelineGrid(
+              hooks: TimelineGridHooks(
+                activeLayerId: const LayerId('base'),
+                frameCursor: ValueNotifier<int>(0),
+                playbackFrameCount: 12,
+                exposureStateForLayer: (_, _) =>
+                    TimelineCellExposureState.uncovered,
+                onSelectLayer: (_) {},
+                onSelectFrame: (_) {},
+                onToggleLayerVisibility: (_) {},
+                onLayerOpacityChanged: (_, _) {},
+                onToggleLayerTimesheet: (_) {},
+                onLayerMarkSelected: (_, _) {},
+                collapsedAttachBaseIds: collapsedIds,
+                onToggleAttachGroup: (baseId) {
+                  collapsed.value = collapsedIds.contains(baseId)
+                      ? (Set<LayerId>.from(collapsedIds)..remove(baseId))
+                      : (Set<LayerId>.from(collapsedIds)..add(baseId));
+                },
+              ),
               layers: layers,
-              activeLayerId: const LayerId('base'),
-              frameCursor: ValueNotifier<int>(0),
-              playbackFrameCount: 12,
-              exposureStateForLayer: (_, _) =>
-                  TimelineCellExposureState.uncovered,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onAddLayer: () {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              collapsedAttachBaseIds: collapsedIds,
-              onToggleAttachGroup: (baseId) {
-                collapsed.value = collapsedIds.contains(baseId)
-                    ? (Set<LayerId>.from(collapsedIds)..remove(baseId))
-                    : (Set<LayerId>.from(collapsedIds)..add(baseId));
-              },
             ),
           ),
         ),

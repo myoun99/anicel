@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 import '../helpers/vertical_text_finder.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// Painted-cell glyph probe, X-sheet prefix (UI-R9 #12b).
 String _xsheetGlyph(WidgetTester tester, String layerId, int frameIndex) =>
@@ -603,7 +604,6 @@ Widget _grid({
   exposureStateForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
-  VoidCallback? onAddLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
@@ -617,22 +617,23 @@ Widget _grid({
         width: 900,
         height: 600,
         child: XSheetTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: const LayerId('layer-1'),
+            frameCursor: ValueNotifier<int>(currentFrameIndex),
+            playbackFrameCount: frameCount,
+            exposureStateForLayer:
+                exposureStateForLayer ??
+                (_, _) => TimelineCellExposureState.uncovered,
+            frameNameForLayer: frameNameForLayer,
+            onSelectLayer: onSelectLayer ?? (_) {},
+            onSelectFrame: onSelectFrame ?? (_) {},
+            onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
+            onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+            onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
+            onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
+            isFrameReady: isFrameReady,
+          ),
           layers: _layers,
-          activeLayerId: const LayerId('layer-1'),
-          frameCursor: ValueNotifier<int>(currentFrameIndex),
-          frameCount: frameCount,
-          exposureStateForLayer:
-              exposureStateForLayer ??
-              (_, _) => TimelineCellExposureState.uncovered,
-          frameNameForLayer: frameNameForLayer,
-          onSelectLayer: onSelectLayer ?? (_) {},
-          onSelectFrame: onSelectFrame ?? (_) {},
-          onAddLayer: onAddLayer ?? () {},
-          onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
-          onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
-          onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
-          onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
-          isFrameReady: isFrameReady,
         ),
       ),
     ),

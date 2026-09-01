@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// UI-R20 P6 (#8–#11): the attach-layer rail — placement arrows instead
 /// of kind icons, the group fold twirl, and the + flyout entrance.
@@ -46,28 +47,25 @@ void main() {
           width: 900,
           height: 260,
           child: LayerTimelineGrid(
-            layers: layers,
-            activeLayerId: activeLayerId,
-            frameCursor: ValueNotifier<int>(0),
-            playbackFrameCount: 12,
-            exposureStateForLayer: (_, _) =>
+hooks: TimelineGridHooks(activeLayerId: activeLayerId,
+frameCursor: ValueNotifier<int>(0),
+playbackFrameCount: 12,
+exposureStateForLayer: (_, _) =>
                 TimelineCellExposureState.uncovered,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            collapsedAttachBaseIds: collapsedAttachBaseIds,
-            onToggleAttachGroup: onToggleAttachGroup,
-            // The grid takes a RESOLVER, never the list: it is handed a
-            // DISPLAY order and the arrow's answer is stack order.
-            attachArrowPlacementOf: (layerId) => attachArrowPlacement(
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+collapsedAttachBaseIds: collapsedAttachBaseIds,
+onToggleAttachGroup: onToggleAttachGroup,
+attachArrowPlacementOf: (layerId) => attachArrowPlacement(
               layers.firstWhere((layer) => layer.id == layerId),
               layers,
-            ),
-          ),
+            ),),
+layers: layers,
+),
         ),
       ),
     );

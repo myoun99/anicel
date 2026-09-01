@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// UI-R18 #14: the timeline's red cut-end boundary line grows a drag
 /// grip — dragging it end-trims the ACTIVE cut through the session's
@@ -59,20 +60,21 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-1'),
+              frameCursor: cursor,
+              playbackFrameCount: 10,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              dragPreview: channel,
+              cutEndDrag: rec.callbacks,
+            ),
             layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            playbackFrameCount: 10,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            dragPreview: channel,
-            cutEndDrag: rec.callbacks,
           ),
         ),
       ),
@@ -129,20 +131,21 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-1'),
+              frameCursor: cursor,
+              playbackFrameCount: 10,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              dragPreview: channel,
+              cutEndDrag: rec.callbacks,
+            ),
             layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            frameCount: 10,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            dragPreview: channel,
-            cutEndDrag: rec.callbacks,
           ),
         ),
       ),

@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 import 'timeline_cell_probe.dart';
 import 'timeline_row_chrome_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// UI-R9 #10: the run-edge cluster — the accent [+] add chip, the N/H/R
 /// property tag + flyout, and the GHOST display.
@@ -78,21 +79,21 @@ void main() {
     return MaterialApp(
       home: Scaffold(
         body: LayerTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: layers.first.id,
+            frameCursor: cursor,
+            playbackFrameCount: 24,
+            exposureStateForLayer: stateFor,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            runEdit: runEdit,
+            dragPreview: dragPreview,
+          ),
           layers: layers,
-          activeLayerId: layers.first.id,
-          frameCursor: cursor,
-          playbackFrameCount: 24,
-          exposureStateForLayer: stateFor,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          runEdit: runEdit,
-          dragPreview: dragPreview,
-          // Classic geometry: drags below assume 48px cells.
           metrics: const TimelineGridMetrics(
             frameCellWidth: 48,
             layerRowHeight: 52,
@@ -446,24 +447,25 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: [repeatedLayer()],
-            activeLayerId: const LayerId('layer-r'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            commaDrag: TimelineCommaDragCallbacks(
-              onBegin: (_, _, _) => true,
-              onUpdate: (_) {},
-              onEnd: () {},
-              onCancel: () {},
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-r'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              commaDrag: TimelineCommaDragCallbacks(
+                onBegin: (_, _, _) => true,
+                onUpdate: (_) {},
+                onEnd: () {},
+                onCancel: () {},
+              ),
             ),
+            layers: [repeatedLayer()],
           ),
         ),
       ),

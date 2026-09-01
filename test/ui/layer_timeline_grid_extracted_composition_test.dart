@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 void main() {
   group('LayerTimelineGrid extracted composition', () {
@@ -122,18 +123,20 @@ Widget _grid({int currentFrameIndex = 0, int playbackFrameCount = 24}) {
         width: 900,
         height: 260,
         child: LayerTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: const LayerId('layer-1'),
+            frameCursor: ValueNotifier<int>(currentFrameIndex),
+            playbackFrameCount: playbackFrameCount,
+            exposureStateForLayer: (_, _) =>
+                TimelineCellExposureState.uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+          ),
           layers: _layers,
-          activeLayerId: const LayerId('layer-1'),
-          frameCursor: ValueNotifier<int>(currentFrameIndex),
-          playbackFrameCount: playbackFrameCount,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
         ),
       ),
     ),

@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
 /// default is pinned in timeline_grid_metrics_test).
@@ -2839,7 +2840,6 @@ Widget _grid({
   exposureStateForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
-  VoidCallback? onAddLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -2853,28 +2853,26 @@ Widget _grid({
         width: width,
         height: 260,
         child: LayerTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: const LayerId('layer-1'),
+            frameCursor: ValueNotifier<int>(currentFrameIndex),
+            playbackFrameCount: playbackFrameCount,
+            exposureStateForLayer:
+                exposureStateForLayer ??
+                (_, _) => TimelineCellExposureState.uncovered,
+            frameNameForLayer: frameNameForLayer,
+            onSelectLayer: onSelectLayer ?? (_) {},
+            onSelectFrame: onSelectFrame ?? (_) {},
+            onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
+            onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            rowDragHooks: rowDragHooks,
+            onRowSelectionSpan: onRowSelectionSpan,
+          ),
           layers: layers ?? _layers,
-          activeLayerId: const LayerId('layer-1'),
-          frameCursor: ValueNotifier<int>(currentFrameIndex),
-          // Classic geometry: this file's pixel oracles (taps, scroll
-          // offsets, virtualization windows) assume 48×52 cells; the slim
-          // default is pinned in timeline_grid_metrics_test.
           metrics: metrics,
           railExtent: railExtent,
-          playbackFrameCount: playbackFrameCount,
-          exposureStateForLayer:
-              exposureStateForLayer ??
-              (_, _) => TimelineCellExposureState.uncovered,
-          frameNameForLayer: frameNameForLayer,
-          onSelectLayer: onSelectLayer ?? (_) {},
-          onSelectFrame: onSelectFrame ?? (_) {},
-          onAddLayer: onAddLayer ?? () {},
-          onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
-          onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          rowDragHooks: rowDragHooks,
-          onRowSelectionSpan: onRowSelectionSpan,
         ),
       ),
     ),

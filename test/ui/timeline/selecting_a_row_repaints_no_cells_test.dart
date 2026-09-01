@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// 🚨THE SELECTION'S HALF OF THE PLAYBACK-PERFORMANCE INVARIANT.
 ///
@@ -49,20 +50,19 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            playbackFrameCount: frameCount,
-            exposureStateForLayer: stateFor,
-            selectedRows: selected,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-          ),
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+frameCursor: cursor,
+playbackFrameCount: frameCount,
+exposureStateForLayer: stateFor,
+selectedRows: selected,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},),
+layers: layers,
+),
         ),
       );
 

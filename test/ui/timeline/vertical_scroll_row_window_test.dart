@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// T8: crossing a ROW boundary re-windows the scroll body and nothing else.
 ///
@@ -36,18 +37,20 @@ void main() {
         width: 900,
         height: 240,
         child: LayerTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: const LayerId('L0'),
+            frameCursor: ValueNotifier<int>(0),
+            playbackFrameCount: 12,
+            exposureStateForLayer: (_, _) =>
+                TimelineCellExposureState.uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+          ),
           layers: layers,
-          activeLayerId: const LayerId('L0'),
-          frameCursor: ValueNotifier<int>(0),
-          playbackFrameCount: 12,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
         ),
       ),
     ),

@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import 'timeline_cell_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// THE playback-performance invariant: moving the frame cursor (a playback
 /// tick, an editing seek) repaints the cursor layer and rulers only — the
@@ -31,18 +32,19 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-1'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+            ),
             layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
           ),
         ),
       ),
@@ -83,18 +85,19 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-1'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+            ),
             layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            frameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
           ),
         ),
       ),

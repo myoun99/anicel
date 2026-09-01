@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import 'timeline_cell_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// THE edit-drag performance invariant (W1): an edge-drag step travels the
 /// scoped [dragPreview] channel only — it rebuilds the dragged layer's row
@@ -45,19 +46,20 @@ void main() {
     double? height,
   }) {
     final grid = LayerTimelineGrid(
+      hooks: TimelineGridHooks(
+        activeLayerId: activeLayerId ?? layers.first.id,
+        frameCursor: cursor,
+        dragPreview: dragPreview,
+        playbackFrameCount: 24,
+        exposureStateForLayer: stateFor,
+        onSelectLayer: (_) {},
+        onSelectFrame: (_) {},
+        onToggleLayerVisibility: (_) {},
+        onLayerOpacityChanged: (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
+      ),
       layers: layers,
-      activeLayerId: activeLayerId ?? layers.first.id,
-      frameCursor: cursor,
-      dragPreview: dragPreview,
-      playbackFrameCount: 24,
-      exposureStateForLayer: stateFor,
-      onSelectLayer: (_) {},
-      onSelectFrame: (_) {},
-      onAddLayer: () {},
-      onToggleLayerVisibility: (_) {},
-      onLayerOpacityChanged: (_, _) {},
-      onToggleLayerTimesheet: (_) {},
-      onLayerMarkSelected: (_, _) {},
     );
     return MaterialApp(
       home: Scaffold(
@@ -137,19 +139,20 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: XSheetTimelineGrid(
+              hooks: TimelineGridHooks(
+                activeLayerId: layerA.id,
+                frameCursor: cursor,
+                dragPreview: preview,
+                playbackFrameCount: 24,
+                exposureStateForLayer: stateFor,
+                onSelectLayer: (_) {},
+                onSelectFrame: (_) {},
+                onToggleLayerVisibility: (_) {},
+                onLayerOpacityChanged: (_, _) {},
+                onToggleLayerTimesheet: (_) {},
+                onLayerMarkSelected: (_, _) {},
+              ),
               layers: [layerA, layerB],
-              activeLayerId: layerA.id,
-              frameCursor: cursor,
-              dragPreview: preview,
-              frameCount: 24,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onAddLayer: () {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
             ),
           ),
         ),
@@ -312,18 +315,19 @@ void main() {
               builder: (context, setState) {
                 rebuild = setState;
                 return LayerTimelineGrid(
+                  hooks: TimelineGridHooks(
+                    activeLayerId: layerA.id,
+                    frameCursor: cursor,
+                    playbackFrameCount: 24,
+                    exposureStateForLayer: stateFor,
+                    onSelectLayer: (_) {},
+                    onSelectFrame: (_) {},
+                    onToggleLayerVisibility: (_) {},
+                    onLayerOpacityChanged: (_, _) {},
+                    onToggleLayerTimesheet: (_) {},
+                    onLayerMarkSelected: (_, _) {},
+                  ),
                   layers: [layerA, layerB],
-                  activeLayerId: layerA.id,
-                  frameCursor: cursor,
-                  playbackFrameCount: 24,
-                  exposureStateForLayer: stateFor,
-                  onSelectLayer: (_) {},
-                  onSelectFrame: (_) {},
-                  onAddLayer: () {},
-                  onToggleLayerVisibility: (_) {},
-                  onLayerOpacityChanged: (_, _) {},
-                  onToggleLayerTimesheet: (_) {},
-                  onLayerMarkSelected: (_, _) {},
                 );
               },
             ),

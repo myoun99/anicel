@@ -4,8 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/camera_instruction.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/attached_layer_resolve.dart'
@@ -15,7 +13,6 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
-import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart'
     show
         laneSpanOverDrawnRows,
@@ -27,16 +24,10 @@ import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
-import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
-import 'timeline_run_end_handles.dart';
-import 'timeline_cel_content_source.dart';
-import 'timeline_cell_exposure_state.dart';
-import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
-import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_grid_stack.dart';
@@ -59,7 +50,6 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
@@ -77,356 +67,43 @@ import 'timeline_visible_range.dart';
 import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart' show AppText;
 import '../layout/device_grid_scroll_controller.dart';
+import 'timeline_grid_hooks.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
     super.key,
+    required this.hooks,
     required this.layers,
-    required this.activeLayerId,
-    required this.frameCursor,
-    this.frameReadySignal,
-    this.revealSelectionTick,
-    required this.playbackFrameCount,
-    this.drawnFrameCount,
-    this.noriShiroLabel = '',
-    required this.exposureStateForLayer,
-    this.frameNameForLayer,
-    this.celContent,
-    required this.onSelectLayer,
-    required this.onSelectFrame,
-    this.onSettledPress,
-    this.onScrubFrame,
-    this.onScrubEnd,
-    this.onActivateCell,
-    this.instructionDefById,
-    this.instructionCrossingTooltip,
-    this.audioPeaksFor,
-    this.seClipMarkerTooltip,
-    this.projectFrameRate = ProjectFrameRate.fps24,
-    this.showSeconds = false,
-    this.onShowSecondsChanged,
     this.railExtent,
-    this.audioLane,
-    this.onDropMediaAssetOnLayer,
-    this.isLayerSoloed,
-    this.onOpenLayerMixer,
-    this.attachArrowPlacementOf,
-    required this.onAddLayer,
-    required this.onToggleLayerVisibility,
-    required this.onLayerOpacityChanged,
-    this.onLayerOpacityChangeEnd,
-    required this.onToggleLayerTimesheet,
-    this.layerFxStateOf,
-    this.layerIsLinkedOf,
-    this.onToggleLayerCollapsed,
-    this.layerOnionSkinEnabledOf,
-    this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
-    this.onToggleLayerFx,
-    required this.onLayerMarkSelected,
-    this.onToggleLayerFillReference,
-    this.commaDrag,
-    this.rangeHooks,
-    this.laneRange,
-    this.currentRowHooks,
-    this.rowDragHooks,
-    this.onRowSelectionSpan,
-    this.selectedRows = const {},
-    this.runEdit,
-    this.isFrameReady,
     this.metrics = TimelineGridMetrics.defaults,
-    this.expandedLaneLayerIds = const {},
-    this.laneOpenOf,
-    this.laneGroupOnOf,
-    this.layerEyeOnOf,
-    this.onToggleLayerLanes,
-    this.lanesForLayer,
-    this.unionLaneForLayer,
-    this.laneEdit,
-    this.onToggleLaneGroup,
-    this.onToggleLaneGroupEnabled,
-    this.onResetLaneGroup,
-    this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
-    this.rowFilter = TimelineRowFilter.none,
-    this.onSetRowFilter,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
     this.visibilitySoloEnabled = false,
-    this.dragPreview,
-    this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
-    this.seSpillInLayerIds = const {},
-    this.cutEndDrag,
-    this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
-    this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
-    this.layerOpacityOverrideOf,
   });
 
   final List<Layer> layers;
-  final LayerId? activeLayerId;
 
-  /// R27 #6: the label's blend-mode dropdown (rightmost column) and the
-  /// legend's bulk pick both commit through this.
-  final void Function(LayerId layerId, LayerBlendMode mode)?
-  onLayerBlendModeSelected;
-
-  /// PROGRAM language for the blend-mode names.
-  final AppLanguage blendLanguage;
-
-  /// R27 #9: rows whose opacity is a live VIEW notifier (the camera row's
-  /// dim) hand it over here — the slider subscribes and the drag never
-  /// touches the host.
-  final ValueListenable<double>? Function(LayerId layerId)?
-  layerOpacityOverrideOf;
-
-  /// The session's edit-drag preview channel: a comma-drag step rebuilds
-  /// only the dragged layer's row (its gate) and the cursor overlay —
-  /// never this grid.
-  final ValueListenable<TimelineDragPreview?>? dragPreview;
-
-  /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
-  /// grip that end-trims the ACTIVE cut through the session's trim
-  /// channel; the line follows the live preview. Null = display-only.
-  final TimelineCutEndDragCallbacks? cutEndDrag;
+  /// What the session answers this grid — see [TimelineGridHooks]. The
+  /// rail and the sheet read the SAME bundle, so neither can lack an
+  /// answer the other has.
+  final TimelineGridHooks hooks;
 
   /// Sparse-row memo identity tokens (UI-R20 #4) — see
   /// [TimelineFrameRowsScrollBody.memoAux].
   final TimelineRowMemoAux memoAux;
-
-  /// #29: the (project, cut) world the rows' resolvers answer from — see
-  /// [TimelineRowCellsPainter.substrateGeneration].
-  final String substrateGeneration;
-
-  /// Track-SE rows whose display clone starts with a spill-in block
-  /// (UI-R7 #6: `~` at the cut start, start grip stands down).
-  final Set<LayerId> seSpillInLayerIds;
-
-  /// The frame cursor (editing playhead, or the playback position while
-  /// playing). ONLY the cursor layer, the ruler and the lane labels
-  /// subscribe — a tick never rebuilds the grid or its cells (the
-  /// playback-performance architecture).
-  final ValueListenable<int> frameCursor;
-
-  /// Repaints the ruler's cached-range green strip as frames warm; never
-  /// rebuilds anything else.
-  final Listenable? frameReadySignal;
-
-  /// R5: the session's "bring the selection back into view" tick. Null
-  /// leaves the grid scrolling only where the user put it, which is what a
-  /// passive host wants.
-  final ValueListenable<int>? revealSelectionTick;
-
-  final int playbackFrameCount;
-
-  /// How many frames the cut is DRAWN for (尺 + のりしろ). Null keeps the
-  /// ruler's blue handle boundary off, which is every cut no transition
-  /// crosses.
-  final int? drawnFrameCount;
-
-  /// The word the ruler spells across the handle.
-  final String noriShiroLabel;
-  final TimelineCellExposureState Function(Layer layer, int frameIndex)
-  exposureStateForLayer;
-  final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
-
-  /// R26 #44: the unworked-block tint's fact source + its memo token
-  /// (see [TimelineFrameRowsScrollBody]); null = no tint.
-  /// R26 #44: the unworked-block tint's fact and its event.
-  final TimelineCelContentSource? celContent;
-  final ValueChanged<LayerId> onSelectLayer;
-  final ValueChanged<int> onSelectFrame;
-
-  /// 🚨T10's second half: a press that turned out to be a TAP clears
-  /// whatever was selected (유저: 「클릭하고 떼면 뭐든 비우게」). Handed
-  /// down to the cell rows; null leaves the grid display-only.
-  final VoidCallback? onSettledPress;
-
-  /// Ruler-scrub path: per-move frames go to [onScrubFrame] (cursor-only,
-  /// no commit) and the pointer's release fires [onScrubEnd] to commit
-  /// once. Null falls back to [onSelectFrame] per move.
-  final ValueChanged<int>? onScrubFrame;
-  final VoidCallback? onScrubEnd;
-
-  /// Double-tap cell editor hook (SE label dialog; see
-  /// [layerKindOpensCellEditorOnDoubleTap]).
-  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
-
-  /// Resolves instruction ids to defs for CAM row chips.
-  final CameraInstructionDef? Function(String instructionId)?
-  instructionDefById;
-
-  /// D26: crossing-fade warning resolver, by span start key (the display
-  /// clone's projected key on this cut-local surface).
-  final String? Function(int spanStartKey)? instructionCrossingTooltip;
-
-  /// Waveform peaks for SE rows' audio clips + the removal hook.
-  final AudioPeaks? Function(String filePath)? audioPeaksFor;
-
-  /// Clipped-take marker tooltip (REC1-D); null = markers off.
-  final String? seClipMarkerTooltip;
-  final ProjectFrameRate projectFrameRate;
-
-  /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
-  /// 1..fps per second instead of absolute frame numbers.
-  final bool showSeconds;
-
-  /// The seconds toggle moved OUT of the command bar and onto the grid's
-  /// top-left corner cell (the rail-window round) — it belongs beside the
-  /// axis it relabels. Null leaves the corner as a plain spacer.
-  final ValueChanged<bool>? onShowSecondsChanged;
 
   /// The rail's window size, set by this grid's splitter and persisted by
   /// the workspace. Null = a session-local one of our own (tests, and any
   /// host that has no place to keep it).
   final LayerRailExtent? railExtent;
 
-  /// What the audio lane may ask the session to do; null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
-
-  /// A media-browser row dropped on a DRAWING layer: the window opens with
-  /// this cut and this layer already answered.
-  final void Function(LayerId layerId, int frameIndex, String path)?
-  onDropMediaAssetOnLayer;
-
-  /// The SE row's mixer (R10 R3): its solo tint, and the speaker press
-  /// that opens the window carrying mute/solo/fader/pan. Null hides the
-  /// speaker.
-  final bool Function(LayerId layerId)? isLayerSoloed;
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
-
-  /// Which way a row's attach ARROW points in its sheet slot (R10 R3), or
-  /// null off an attach group. A RESOLVER, not a list: the answer depends
-  /// on stack order against the base, and this grid holds the horizontal
-  /// DISPLAY order (`sectionedLayerOrder(...).reversed`) — computing it
-  /// here would invert every organizer folder's arrow on this surface
-  /// alone.
-  final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
-
-  final VoidCallback onAddLayer;
-  final ValueChanged<LayerId> onToggleLayerVisibility;
-  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
-
-  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
-  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
-  final ValueChanged<LayerId> onToggleLayerTimesheet;
-
-  /// The AE-style layer fx MASTER (R8: persisted, tri-state); null hides it.
-  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
-
-  /// Link badge state (L4): whether a layer's pictures are shared with a
-  /// link group. Null shows no badges.
-  final bool Function(LayerId layerId)? layerIsLinkedOf;
-
-  /// The row twirl that folds a FOLDER's members (the attach fold has its
-  /// own hook because it is session state, not layer state).
-  final ValueChanged<LayerId>? onToggleLayerCollapsed;
-
-  /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
-  /// engaged state. Null hides the onion column entirely.
-  final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
-  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
   final bool displayedOnionSkinOn;
-  final ValueChanged<LayerId>? onToggleLayerFx;
-  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
-
-  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
-
-  /// Comma-drag hooks for the block edge grips (shared policy with the
-  /// X-sheet); null hides the grips.
-  final TimelineCommaDragCallbacks? commaDrag;
-
-  /// The frame-range select/move hooks (UI-R8, the block-body move's
-  /// successor): the grid resolves the pointer's row onto display rows and
-  /// forwards frame delta + target layer to the session. Null keeps rows
-  /// display-only.
-  final TimelineFrameRangeHooks? rangeHooks;
-
-  /// The LANE selection domain's host hooks (UI-R23 #3 part 2); null
-  /// keeps the lane bands display-only. The grid resolves geometry and
-  /// mounts the gesture-level bundle itself (C②'s two-level shape).
-  final TimelineLaneRangeHooks? laneRange;
-
-  /// Which row the frame-axis verbs act on, and the label press that moves
-  /// it (R10 #19's rail half); null leaves lane labels inert and unwashed.
-  final TimelineCurrentRowHooks? currentRowHooks;
-
-  /// The row-order drag: grabbing a rail row moves it. Null leaves the rows
-  /// undraggable, which is what a passive host wants.
-  final TimelineRowDragHooks? rowDragHooks;
-
-  /// ⑨: the row SELECT drag's span, in this rail's own DISPLAY rows.
-  ///
-  /// Separate from [rowDragHooks] because it carries the row list — the
-  /// same reason the caret's slot updates do, and the same list the cell
-  /// span already walks, so "visible means selectable" stays structural
-  /// rather than being re-derived per verb (뿌리 A).
-  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
-  onRowSelectionSpan;
-
-  /// ⑨: the rows currently in the selection, as layer ids — what the rail
-  /// washes and what the row verbs act on.
-  final Set<TimelineRowAddress> selectedRows;
-
-  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
-  final TimelineRunEditCallbacks? runEdit;
-
-  /// Cached-range resolver for the ruler's green strip.
-  final bool Function(int frameIndex)? isFrameReady;
 
   /// Grid geometry; the frame-axis cell width carries the panel zoom.
   final TimelineGridMetrics metrics;
-
-  /// AE-style property lanes: layers whose twirl-down is open, the toggle,
-  /// and the lane provider (generic — transform lanes now, FX lanes later).
-  final Set<LayerId> expandedLaneLayerIds;
-
-  /// A LIVE read of the twirl state, when the host can give one.
-  ///
-  /// 🚨[expandedLaneLayerIds] is a widget property: the host mutates its set
-  /// and the new value reaches here on the NEXT build, which is a frame too
-  /// late for a bulk-drag that started on the twirl itself (the button fires
-  /// on the down — 유저 2026-08-30 — and the sweep spreads what it set).
-  final bool Function(LayerId layerId)? laneOpenOf;
-
-  /// A LIVE read of a lane GROUP’s switch, when the host can give one — the
-  /// transform group’s flag is the layer’s own field, and a lane row built
-  /// last frame carries a stale copy.
-  final bool Function(LayerId layerId)? laneGroupOnOf;
-
-  /// A LIVE read of a layer’s own eye — the rail’s bulk-drag needs the value
-  /// the press just set, and a captured [Layer] still reports the last
-  /// frame.
-  final bool Function(LayerId layerId)? layerEyeOnOf;
-  final ValueChanged<LayerId>? onToggleLayerLanes;
-  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
-
-  /// The union-summary provider (the CAMERA row's key markers, B4) — see
-  /// [TimelineFrameRowsScrollBody.unionLaneForLayer].
-  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
-
-  /// Lane key editing hooks (navigator toggle, marker drags, hold/delete).
-  final PropertyLaneEditCallbacks? laneEdit;
-
-  /// Group headers: tapping twirls the group's member lanes (AE collapse).
-  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
-
-  /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)?
-  onToggleLaneGroupEnabled;
-
-  /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
-
-  /// Sections folded to one stub row (SE/camera; drawing never folds) and
-  /// the gutter-label toggle.
-  /// Sections hidden from the grid entirely (toolbar visibility toggles).
-  final Set<TimelineSection> hiddenSections;
 
   /// Folds/unfolds a hideable section (the legend corner's sections cell).
   final ValueChanged<TimelineSection>? onToggleSection;
@@ -434,27 +111,8 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The rail legend's bulk commands; null renders a display-only legend.
   final LayerLegendCallbacks? legend;
 
-  /// The rail's row FILTER (R2): hides layer rows failing its predicate;
-  /// the active layer is exempt.
-  final TimelineRowFilter rowFilter;
-
-  /// Applies a row-filter edit (legend solo toggles).
-  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
-
-  /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
-  /// rows contribute no display rows; the base row's chevron reflects it.
-  final Set<LayerId> collapsedAttachBaseIds;
-
-  /// The base-row chevron's toggle; null hides the twirl UI.
-  final ValueChanged<LayerId>? onToggleAttachGroup;
-
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
-
-  /// The session's live opacity-drag preview (UI-R6 #2): rows follow it
-  /// while the master bar sweeps them.
-  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
-  opacityDragPreview;
 
   /// The master bar's resting value (the LAST committed sweep, UI-R6 #2).
   final double masterOpacityValue;
@@ -523,7 +181,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
   /// [ProjectFrameRate.countingBase]).
-  int get _countingFps => widget.projectFrameRate.countingBase;
+  int get _countingFps => widget.hooks.projectFrameRate.countingBase;
 
   TimelineGridMetrics get _metrics => widget.metrics;
 
@@ -601,24 +259,24 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// to layer rows only and answers null on a lane, which is already what
   /// [RailToggleColumn.valueOf]'s null means.
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() {
-    final onToggleFx = widget.onToggleLayerFx;
-    final fxStateOf = widget.layerFxStateOf;
-    final onToggleOnion = widget.onToggleLayerOnionSkin;
-    final onionOf = widget.layerOnionSkinEnabledOf;
-    final onToggleLanes = widget.onToggleLayerLanes;
-    final onToggleLaneGroup = widget.onToggleLaneGroupEnabled;
+    final onToggleFx = widget.hooks.onToggleLayerFx;
+    final fxStateOf = widget.hooks.layerFxStateOf;
+    final onToggleOnion = widget.hooks.onToggleLayerOnionSkin;
+    final onionOf = widget.hooks.layerOnionSkinEnabledOf;
+    final onToggleLanes = widget.hooks.onToggleLayerLanes;
+    final onToggleLaneGroup = widget.hooks.onToggleLaneGroupEnabled;
 
     return railSwipeColumns<TimelineDisplayRow>(
       crossExtent:
           _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
       leadingOrigin: timelineLayerRowLeadingBorder,
       hasOnionColumn: onToggleOnion != null,
-      hasBlendColumn: widget.onLayerBlendModeSelected != null,
+      hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
       visibility: (
         valueOf: (row) => row.isLane
             ? null
-            : layerRailEyeIsOn(row.layer, live: widget.layerEyeOnOf),
-        toggle: (row) => widget.onToggleLayerVisibility(row.layer.id),
+            : layerRailEyeIsOn(row.layer, live: widget.hooks.layerEyeOnOf),
+        toggle: (row) => widget.hooks.onToggleLayerVisibility(row.layer.id),
       ),
       onion: onToggleOnion == null || onionOf == null
           ? null
@@ -641,7 +299,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           if (lane != null) {
             return onToggleLaneGroup == null
                 ? null
-                : (widget.laneGroupOnOf?.call(row.layer.id) ??
+                : (widget.hooks.laneGroupOnOf?.call(row.layer.id) ??
                       lane.groupEnabled);
           }
           return onToggleFx == null ||
@@ -672,7 +330,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 row.layer.attachedToLayerId == null
             ? row.layer.onTimesheet
             : null,
-        toggle: (row) => widget.onToggleLayerTimesheet(row.layer.id),
+        toggle: (row) => widget.hooks.onToggleLayerTimesheet(row.layer.id),
       ),
       laneToggle: onToggleLanes == null
           ? null
@@ -682,7 +340,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // likely to be crossed at two different depths in one drag.
               valueOf: (row) => row.isLane || _lanesFor(row.layer).isEmpty
                   ? null
-                  : widget.expandedLaneLayerIds.contains(row.layer.id),
+                  : widget.hooks.expandedLaneLayerIds.contains(row.layer.id),
               toggle: (row) => onToggleLanes(row.layer.id),
             ),
     );
@@ -728,7 +386,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _verticalScrollController = PenFriendlyScrollController();
     _horizontalScrollController.addListener(_handleHorizontalScroll);
     _verticalScrollController.addListener(_handleVerticalScroll);
-    widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
   }
 
   /// The reveal runs AFTER the frame the selection moved in: the rows this
@@ -745,9 +403,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   void didUpdateWidget(covariant LayerTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.revealSelectionTick != widget.revealSelectionTick) {
-      oldWidget.revealSelectionTick?.removeListener(_handleRevealSelection);
-      widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    if (oldWidget.hooks.revealSelectionTick !=
+        widget.hooks.revealSelectionTick) {
+      oldWidget.hooks.revealSelectionTick?.removeListener(
+        _handleRevealSelection,
+      );
+      widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
     }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise the leading-edge frame anchors.
@@ -761,7 +422,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           newPixelsPerFrame: newCell,
           viewportExtent:
               _horizontalScrollController.position.viewportDimension,
-          anchorFrame: widget.frameCursor.value,
+          anchorFrame: widget.hooks.frameCursor.value,
         ),
       );
     }
@@ -769,7 +430,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   @override
   void dispose() {
-    widget.revealSelectionTick?.removeListener(_handleRevealSelection);
+    widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
       _handleHorizontalScrollActivity,
     );
@@ -912,7 +573,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   TimelineFrameRange get _frameRangePolicy =>
       TimelineFrameRange.fromPlaybackDuration(
-        playbackFrameCount: widget.playbackFrameCount,
+        playbackFrameCount: widget.hooks.playbackFrameCount,
         minimumVisibleFrameCells: _metrics.minimumVisibleFrameCells,
       );
 
@@ -1037,14 +698,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
 
     _lastRulerScrubbedFrameIndex = clampedFrameIndex;
-    (widget.onScrubFrame ?? widget.onSelectFrame)(clampedFrameIndex);
+    (widget.hooks.onScrubFrame ?? widget.hooks.onSelectFrame)(
+      clampedFrameIndex,
+    );
   }
 
   /// The scrub gesture's release (raw pointer up/cancel — fires for taps
   /// AND drags, wherever the pointer ends up). Tracking is NOT reset here
   /// so the ruler InkWell's trailing onTap stays deduplicated.
   void _endRulerScrub() {
-    widget.onScrubEnd?.call();
+    widget.hooks.onScrubEnd?.call();
   }
 
   double? _rulerViewportLocalXFromGlobal(Offset globalPosition) {
@@ -1118,7 +781,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       final target = revealScrollOffset(
         offset: position.pixels,
         viewport: position.viewportDimension,
-        start: widget.frameCursor.value * cell,
+        start: widget.hooks.frameCursor.value * cell,
         extent: cell,
         margin: cell,
       ).clamp(position.minScrollExtent, position.maxScrollExtent);
@@ -1153,7 +816,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (rows.isEmpty) {
       return null;
     }
-    final current = widget.currentRowHooks?.currentRow.value;
+    final current = widget.hooks.currentRowHooks?.currentRow.value;
     if (current is LaneRowAddress) {
       final at = rows.indexWhere(
         (row) =>
@@ -1164,7 +827,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         return at;
       }
     }
-    final activeId = widget.activeLayerId;
+    final activeId = widget.hooks.activeLayerId;
     if (activeId == null) {
       return null;
     }
@@ -1175,7 +838,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }
 
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
-      widget.lanesForLayer?.call(layer) ?? const [];
+      widget.hooks.lanesForLayer?.call(layer) ?? const [];
 
   /// Marks assigned across the current layer list — the mark-solo menu's
   /// "solo color X" list is built from these.
@@ -1218,24 +881,24 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// layers HAVE lanes, which are expanded), so the all-lane fold rides its
   /// existing per-layer toggle.
   void _expandAllLanes() {
-    final onToggle = widget.onToggleLayerLanes;
+    final onToggle = widget.hooks.onToggleLayerLanes;
     if (onToggle == null) {
       return;
     }
     for (final layer in widget.layers) {
       if (_lanesFor(layer).isNotEmpty &&
-          !widget.expandedLaneLayerIds.contains(layer.id)) {
+          !widget.hooks.expandedLaneLayerIds.contains(layer.id)) {
         onToggle(layer.id);
       }
     }
   }
 
   void _collapseAllLanes() {
-    final onToggle = widget.onToggleLayerLanes;
+    final onToggle = widget.hooks.onToggleLayerLanes;
     if (onToggle == null) {
       return;
     }
-    for (final layerId in widget.expandedLaneLayerIds.toList()) {
+    for (final layerId in widget.hooks.expandedLaneLayerIds.toList()) {
       onToggle(layerId);
     }
   }
@@ -1248,7 +911,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// R28 #11: ONE selection — and now there is only one THING that can be
   /// selected. A folder is a layer, so `activeLayerId` answers for both
   /// and two rows can no longer read as selected at once by construction.
-  bool _layerRowIsActive(Layer layer) => layer.id == widget.activeLayerId;
+  bool _layerRowIsActive(Layer layer) => layer.id == widget.hooks.activeLayerId;
 
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
@@ -1261,30 +924,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final inputs = (
       layer: row.layer,
       active: _layerRowIsActive(row.layer),
-      selected: widget.selectedRows.contains(row.address),
+      selected: widget.hooks.selectedRows.contains(row.address),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
-      lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
+      lanesExpanded: widget.hooks.expandedLaneLayerIds.contains(row.layer.id),
       depth: row.depth,
       hasGroupFold: fold.has,
       groupFoldExpanded: fold.expanded,
-      fxState: widget.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
+      fxState:
+          widget.hooks.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
       onionSkinEnabled:
-          widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
-      isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
+          widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
+      isLinked: widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
       // Solo is SESSION state, not a Layer field, so the layer comparison
       // cannot see it: the speaker's accent tint went stale the moment
       // solo moved anywhere but this row. It has always been shown here —
       // R10 R3 only made it settable from every rail, which is what turned
       // a latent staleness into one a user would hit.
-      soloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
+      soloed: widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
       // The arrow reads the STACK (a folder's direction is its position
       // against its base), so the Layer comparison cannot see it change.
-      attachArrow: widget.attachArrowPlacementOf?.call(row.layer.id),
+      attachArrow: widget.hooks.attachArrowPlacementOf?.call(row.layer.id),
       layerRowHeight: _metrics.layerRowHeight,
       layerControlsWidth: _metrics.layerControlsWidth,
       sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
-      opacityDragPreview: widget.opacityDragPreview,
-      blendLanguage: widget.blendLanguage,
+      opacityDragPreview: widget.hooks.opacityDragPreview,
+      blendLanguage: widget.hooks.blendLanguage,
     );
     final cached = _railRowMemo[row.layer.id];
     if (cached != null && _railRowInputsMatch(cached.inputs, inputs)) {
@@ -1323,7 +987,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// for why it cannot be [TimelineDisplayRow.layerIndex] and
   /// `widget.layers` (F-31).
   Widget _draggable(TimelineDisplayRow row, Widget child) {
-    final hooks = widget.rowDragHooks;
+    final hooks = widget.hooks.rowDragHooks;
     // 🚨A5-4 (유저 2026-08-22): 「카메라·트랜지션 = **드래그 불가**」 —
     // 그런데 F-16: **선택은 된다.** 두 레일이 각자 적던 그 판단은 이제
     // [unmovableRowSelectTarget] 하나가 답한다.
@@ -1334,7 +998,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       axis: Axis.horizontal,
       hooks: hooks,
       onSelectCrossed: (rowDelta) =>
-          widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+          widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
     if (unmovable != null) {
@@ -1382,7 +1046,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // list does not contain.
       onSelectCrossed: hooks?.onSelectBegin == null
           ? null
-          : (rowDelta) => widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+          : (rowDelta) =>
+                widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }
@@ -1391,7 +1056,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// CHAIN. The Transform group header is never wrapped — it is not a chain
   /// member, it is where the chain ends.
   Widget _effectDraggable(TimelineDisplayRow row, Widget child) {
-    final hooks = widget.rowDragHooks;
+    final hooks = widget.hooks.rowDragHooks;
     final lane = row.lane;
     if (hooks == null || lane == null) {
       return child;
@@ -1456,7 +1121,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // B4-3: the SELECT half, the same one every layer row already had.
       onSelectCrossed: hooks.onSelectBegin == null
           ? null
-          : (rowDelta) => widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+          : (rowDelta) =>
+                widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }
@@ -1474,7 +1140,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     TimelineRowDragHooks hooks,
     Widget child,
   ) {
-    if (hooks.onSelectBegin == null || widget.onRowSelectionSpan == null) {
+    if (hooks.onSelectBegin == null ||
+        widget.hooks.onRowSelectionSpan == null) {
       return child;
     }
     return LayerRowDragTarget(
@@ -1486,7 +1153,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       isLastRow: false,
       onCrossed: (_, _, _) {},
       onSelectCrossed: (rowDelta) =>
-          widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+          widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }
@@ -1525,18 +1192,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       layerRowHeight: _metrics.layerRowHeight,
       layerControlsWidth: _metrics.layerControlsWidth,
       hasLegend: widget.legend != null,
-      hiddenSections: widget.hiddenSections,
-      rowFilter: widget.rowFilter,
+      hiddenSections: widget.hooks.hiddenSections,
+      rowFilter: widget.hooks.rowFilter,
       marksInUse: _marksInUse(),
       kindsInUse: _kindsInUse(),
       visibilitySoloEnabled: widget.visibilitySoloEnabled,
-      anyLanesExpanded: widget.expandedLaneLayerIds.isNotEmpty,
+      anyLanesExpanded: widget.hooks.expandedLaneLayerIds.isNotEmpty,
       allSeMuted: _allSeMuted(),
       displayedIds: displayedIds,
       masterOpacityValue: widget.masterOpacityValue,
-      hasLaneToggles: widget.onToggleLayerLanes != null,
+      hasLaneToggles: widget.hooks.onToggleLayerLanes != null,
       displayedOnionSkinOn: widget.displayedOnionSkinOn,
-      blendLanguage: widget.blendLanguage,
+      blendLanguage: widget.hooks.blendLanguage,
       hasBlendBulk: widget.legend?.onSetBlendModeForDisplayed != null,
     );
     final cached = _legendHeaderMemo;
@@ -1546,9 +1213,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final header = TimelineLayerControlsHeader(
       metrics: _metrics,
       legend: widget.legend,
-      hiddenSections: widget.hiddenSections,
+      hiddenSections: widget.hooks.hiddenSections,
       onToggleSection: widget.onToggleSection,
-      rowFilter: widget.rowFilter,
+      rowFilter: widget.hooks.rowFilter,
       marksInUse: inputs.marksInUse,
       kindsInUse: inputs.kindsInUse,
       visibilitySoloEnabled: widget.visibilitySoloEnabled,
@@ -1559,13 +1226,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       displayedLayerIds: () => displayedIds,
       displayedOpacity: widget.masterOpacityValue,
       displayedOnionSkinOn: widget.displayedOnionSkinOn,
-      onExpandAllLanes: widget.onToggleLayerLanes == null
+      onExpandAllLanes: widget.hooks.onToggleLayerLanes == null
           ? null
           : _expandAllLanes,
-      onCollapseAllLanes: widget.onToggleLayerLanes == null
+      onCollapseAllLanes: widget.hooks.onToggleLayerLanes == null
           ? null
           : _collapseAllLanes,
-      blendLanguage: widget.blendLanguage,
+      blendLanguage: widget.hooks.blendLanguage,
     );
     _legendHeaderMemo = (inputs: inputs, header: header);
     return header;
@@ -1603,9 +1270,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // still read the committed track — the label is where you WATCH the
       // value, so it is the half that most needed to be live.
       return ValueListenableBuilder<int>(
-        valueListenable: widget.frameCursor,
+        valueListenable: widget.hooks.frameCursor,
         builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
-          dragPreview: widget.dragPreview,
+          dragPreview: widget.hooks.dragPreview,
           layer: row.layer,
           rowBuilder: (context, layer) => TimelineLaneControlsRow(
             layer: layer,
@@ -1616,17 +1283,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             ),
             metrics: _metrics,
             currentFrameIndex: cursorFrame,
-            onSelectFrame: widget.onSelectFrame,
-            laneEdit: widget.laneEdit,
-            onToggleLaneGroup: widget.onToggleLaneGroup,
-            onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
-            onResetLaneGroup: widget.onResetLaneGroup,
-            currentRowHooks: widget.currentRowHooks,
+            onSelectFrame: widget.hooks.onSelectFrame,
+            laneEdit: widget.hooks.laneEdit,
+            onToggleLaneGroup: widget.hooks.onToggleLaneGroup,
+            onToggleLaneGroupEnabled: widget.hooks.onToggleLaneGroupEnabled,
+            onResetLaneGroup: widget.hooks.onResetLaneGroup,
+            currentRowHooks: widget.hooks.currentRowHooks,
             leadingInset: layerSectionLabelSlotWidth,
             // The SAME flags the layer row below passes, so a group
             // header's fx lands in the layer rows' fx column (R5 #7).
-            hasOnionColumn: widget.onToggleLayerOnionSkin != null,
-            hasBlendColumn: widget.onLayerBlendModeSelected != null,
+            hasOnionColumn: widget.hooks.onToggleLayerOnionSkin != null,
+            hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
           ),
         ),
       );
@@ -1637,40 +1304,43 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       wearsBaseComposite: attachRowWearsBaseComposite(row.layer, widget.layers),
       active: _layerRowIsActive(row.layer),
       // ⑨: in the row selection the row verbs act on.
-      selected: widget.selectedRows.contains(row.address),
+      selected: widget.hooks.selectedRows.contains(row.address),
       metrics: _metrics,
-      onSelectLayer: widget.onSelectLayer,
+      onSelectLayer: widget.hooks.onSelectLayer,
       // T10: the rail row and the frame cells take the SAME settled-tap
       // clear, because 「행이든 뭐든 동일하게」.
-      onSettledPress: widget.onSettledPress,
-      onToggleLayerVisibility: widget.onToggleLayerVisibility,
-      onLayerOpacityChanged: widget.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
-      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
-      fxState: widget.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
-      onToggleLayerFx: widget.onToggleLayerFx,
+      onSettledPress: widget.hooks.onSettledPress,
+      onToggleLayerVisibility: widget.hooks.onToggleLayerVisibility,
+      onLayerOpacityChanged: widget.hooks.onLayerOpacityChanged,
+      onLayerOpacityChangeEnd: widget.hooks.onLayerOpacityChangeEnd,
+      onToggleLayerTimesheet: widget.hooks.onToggleLayerTimesheet,
+      fxState:
+          widget.hooks.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
+      onToggleLayerFx: widget.hooks.onToggleLayerFx,
       onionSkinEnabled:
-          widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
-      onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
-      onLayerMarkSelected: widget.onLayerMarkSelected,
-      onToggleLayerFillReference: widget.onToggleLayerFillReference,
-      onOpenLayerMixer: widget.onOpenLayerMixer,
-      isLayerSoloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
-      attachArrowPlacement: widget.attachArrowPlacementOf?.call(row.layer.id),
+          widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
+      onToggleLayerOnionSkin: widget.hooks.onToggleLayerOnionSkin,
+      onLayerMarkSelected: widget.hooks.onLayerMarkSelected,
+      onToggleLayerFillReference: widget.hooks.onToggleLayerFillReference,
+      onOpenLayerMixer: widget.hooks.onOpenLayerMixer,
+      isLayerSoloed: widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
+      attachArrowPlacement: widget.hooks.attachArrowPlacementOf?.call(
+        row.layer.id,
+      ),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
-      lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
-      onToggleLanes: widget.onToggleLayerLanes,
+      lanesExpanded: widget.hooks.expandedLaneLayerIds.contains(row.layer.id),
+      onToggleLanes: widget.hooks.onToggleLayerLanes,
       depth: row.depth,
       // One fold twirl: a folder folds its members, an attach base folds
       // its attach rows — the one answer both grids ask for.
       hasGroupFold: fold.has,
       groupFoldExpanded: fold.expanded,
       onToggleGroupFold: fold.onToggle,
-      opacityDragPreview: widget.opacityDragPreview,
-      isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
-      onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
-      blendLanguage: widget.blendLanguage,
-      opacityOverride: widget.layerOpacityOverrideOf?.call(row.layer.id),
+      opacityDragPreview: widget.hooks.opacityDragPreview,
+      isLinked: widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      onLayerBlendModeSelected: widget.hooks.onLayerBlendModeSelected,
+      blendLanguage: widget.hooks.blendLanguage,
+      opacityOverride: widget.hooks.layerOpacityOverrideOf?.call(row.layer.id),
     );
   }
 
@@ -1679,9 +1349,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       timelineGroupFoldFor(
         row: row,
         layers: widget.layers,
-        collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
-        onToggleAttachGroup: widget.onToggleAttachGroup,
+        collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
+        onToggleLayerCollapsed: widget.hooks.onToggleLayerCollapsed,
+        onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
       );
 
   /// The section ZONES over the rail rows' reserved band slots (UI-R7 #2):
@@ -1730,7 +1400,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   TimelineRangeGestureCallbacks? _rangeGestureFor(
     List<TimelineDisplayRow> rows,
   ) {
-    final rangeHooks = widget.rangeHooks;
+    final rangeHooks = widget.hooks.rangeHooks;
     _rangeMoveResolver
       ..rows = rows
       ..session = rangeHooks?.move;
@@ -1844,8 +1514,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // arguments a cells anchor would report (유저: 「선택범위는 어떤
     // 레이어를 건너든 자유롭게, 규칙 두지 말 것」). Inside the group the
     // host's lane-span path keeps the drag, unchanged.
-    final rangeHooks = widget.rangeHooks;
-    final hostLaneRange = widget.laneRange;
+    final rangeHooks = widget.hooks.rangeHooks;
+    final hostLaneRange = widget.hooks.laneRange;
     return hostLaneRange == null
         ? null
         : TimelineLaneRangeCallbacks(
@@ -2148,7 +1818,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   child: TimelineRowSelectionBands(
                     selectedFlags: [
                       for (final row in windowRows)
-                        widget.selectedRows.contains(row.address),
+                        widget.hooks.selectedRows.contains(row.address),
                     ],
                     rowExtent: _metrics.layerRowHeight,
                     leadingSpacer: leadingRowSpacerHeight,
@@ -2189,7 +1859,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return TimelineFrameRowsScrollBody(
       // F-25: the lane bands light
       // with their rail halves.
-      currentRow: widget.currentRowHooks?.currentRow,
+      currentRow: widget.hooks.currentRowHooks?.currentRow,
       rows: windowRows,
       leadingLayerSpacerHeight: leadingRowSpacerHeight,
       trailingLayerSpacerHeight: trailingRowSpacerHeight,
@@ -2207,9 +1877,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ? (pinnedIndex - rowWindow.endIndexExclusive) *
                 _metrics.layerRowHeight
           : 0,
-      dragPreview: widget.dragPreview,
-      activeLayerId: widget.activeLayerId,
-      playbackFrameCount: widget.playbackFrameCount,
+      dragPreview: widget.hooks.dragPreview,
+      activeLayerId: widget.hooks.activeLayerId,
+      playbackFrameCount: widget.hooks.playbackFrameCount,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
@@ -2218,31 +1888,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
       metrics: _metrics,
-      exposureStateForLayer: widget.exposureStateForLayer,
-      frameNameForLayer: widget.frameNameForLayer,
-      celContent: widget.celContent,
-      onSelectLayer: widget.onSelectLayer,
-      onSelectFrame: widget.onSelectFrame,
-      onSettledPress: widget.onSettledPress,
-      onActivateCell: widget.onActivateCell,
-      instructionDefById: widget.instructionDefById,
-      instructionCrossingTooltip: widget.instructionCrossingTooltip,
-      audioPeaksFor: widget.audioPeaksFor,
-      seClipMarkerTooltip: widget.seClipMarkerTooltip,
-      projectFrameRate: widget.projectFrameRate,
-      audioLane: widget.audioLane,
-      onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
-      showSeconds: widget.showSeconds,
-      commaDrag: widget.commaDrag,
+      exposureStateForLayer: widget.hooks.exposureStateForLayer,
+      frameNameForLayer: widget.hooks.frameNameForLayer,
+      celContent: widget.hooks.celContent,
+      onSelectLayer: widget.hooks.onSelectLayer,
+      onSelectFrame: widget.hooks.onSelectFrame,
+      onSettledPress: widget.hooks.onSettledPress,
+      onActivateCell: widget.hooks.onActivateCell,
+      instructionDefById: widget.hooks.instructionDefById,
+      instructionCrossingTooltip: widget.hooks.instructionCrossingTooltip,
+      audioPeaksFor: widget.hooks.audioPeaksFor,
+      seClipMarkerTooltip: widget.hooks.seClipMarkerTooltip,
+      projectFrameRate: widget.hooks.projectFrameRate,
+      audioLane: widget.hooks.audioLane,
+      onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
+      showSeconds: widget.hooks.showSeconds,
+      commaDrag: widget.hooks.commaDrag,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
       lanesForLayer: _lanesFor,
-      unionLaneForLayer: widget.unionLaneForLayer,
-      runEdit: widget.runEdit,
-      laneEdit: widget.laneEdit,
-      seSpillInLayerIds: widget.seSpillInLayerIds,
+      unionLaneForLayer: widget.hooks.unionLaneForLayer,
+      runEdit: widget.hooks.runEdit,
+      laneEdit: widget.hooks.laneEdit,
+      seSpillInLayerIds: widget.hooks.seSpillInLayerIds,
       memoAux: widget.memoAux,
-      substrateGeneration: widget.substrateGeneration,
+      substrateGeneration: widget.hooks.substrateGeneration,
     );
   }
 
@@ -2275,21 +1945,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     double viewportWidth,
   ) {
     return TimelineCursorLayer(
-      currentRow: widget.currentRowHooks?.currentRow,
-      frameCursor: widget.frameCursor,
-      dragPreview: widget.dragPreview,
+      currentRow: widget.hooks.currentRowHooks?.currentRow,
+      frameCursor: widget.hooks.frameCursor,
+      dragPreview: widget.hooks.dragPreview,
       frameRangeSelection: rangeHooks?.selection,
       // R27 #14: the lane
       // span draws the SAME
       // band here.
-      laneRangeSelection: widget.laneRange?.selection,
+      laneRangeSelection: widget.hooks.laneRange?.selection,
       rows: rows,
-      activeLayerId: widget.activeLayerId,
+      activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
       metrics: _metrics,
-      exposureStateForLayer: widget.exposureStateForLayer,
+      exposureStateForLayer: widget.hooks.exposureStateForLayer,
       crossAxisExtent: verticalContentHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
@@ -2372,16 +2042,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   // line grows a trim
                   // grip and follows the
                   // live preview.
-                  cutEndDrag: widget.cutEndDrag,
-                  dragPreview: widget.dragPreview,
+                  cutEndDrag: widget.hooks.cutEndDrag,
+                  dragPreview: widget.hooks.dragPreview,
                   frameCellExtent: _metrics.frameCellWidth,
-                  playbackFrameCount: widget.playbackFrameCount,
+                  playbackFrameCount: widget.hooks.playbackFrameCount,
                   // のりしろ: the blue
                   // line runs through
                   // the body too, and
                   // the wash starts
                   // behind it.
-                  drawnFrameCount: widget.drawnFrameCount,
+                  drawnFrameCount: widget.hooks.drawnFrameCount,
                   // The cursor layer decides
                   // per frame what to show —
                   // the slot itself is static
@@ -2409,21 +2079,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
     final rows = buildTimelineDisplayRows(
       layers: widget.layers,
-      expandedLayerIds: widget.expandedLaneLayerIds,
+      expandedLayerIds: widget.hooks.expandedLaneLayerIds,
       lanesForLayer: _lanesFor,
-      hiddenSections: widget.hiddenSections,
-      rowFilter: widget.rowFilter,
-      collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-      activeLayerId: widget.activeLayerId,
+      hiddenSections: widget.hooks.hiddenSections,
+      rowFilter: widget.hooks.rowFilter,
+      collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
+      activeLayerId: widget.hooks.activeLayerId,
       fxEnabledOf: (layerId) =>
-          (widget.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
+          (widget.hooks.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
           LayerFxState.off,
     );
     // The row drag counts ROWS and lands on SLOTS, and only this list knows
     // how many rows sit between two fx headers (their members may be
     // twirled open). Held for the wrappers built below in the same pass.
     _dragRows = rows;
-    final rangeHooks = widget.rangeHooks;
+    final rangeHooks = widget.hooks.rangeHooks;
     final rangeGesture = _rangeGestureFor(rows);
     final laneRange = _laneRangeFor(rows);
 
@@ -2602,9 +2272,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 width: _metrics
                                                     .verticalScrollbarWidth,
                                                 height: headerHeight,
-                                                showSeconds: widget.showSeconds,
-                                                onChanged:
-                                                    widget.onShowSecondsChanged,
+                                                showSeconds:
+                                                    widget.hooks.showSeconds,
+                                                onChanged: widget
+                                                    .hooks
+                                                    .onShowSecondsChanged,
                                               ),
                                               // The legend rides INSIDE the rail's
                                               // window: it is the rail's own top row,
@@ -2705,12 +2377,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                     -1,
                                                                 playbackFrameCount:
                                                                     widget
+                                                                        .hooks
                                                                         .playbackFrameCount,
                                                                 drawnFrameCount:
                                                                     widget
+                                                                        .hooks
                                                                         .drawnFrameCount,
                                                                 noriShiroLabel:
                                                                     widget
+                                                                        .hooks
                                                                         .noriShiroLabel,
                                                                 leadingFrameSpacerWidth:
                                                                     0,
@@ -2723,15 +2398,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 framesPerSecond:
                                                                     _countingFps,
                                                                 showSeconds: widget
+                                                                    .hooks
                                                                     .showSeconds,
                                                                 windowBucket:
                                                                     _frameWindowBucket,
                                                                 viewportMainExtent:
                                                                     viewportWidth,
                                                                 dragPreview: widget
+                                                                    .hooks
                                                                     .dragPreview,
                                                                 previewCutId:
                                                                     widget
+                                                                        .hooks
                                                                         .cutEndDrag
                                                                         ?.cutId,
                                                               ),
@@ -2741,9 +2419,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 keyValue:
                                                                     'timeline-ruler-cursor-overlay',
                                                                 playhead: widget
+                                                                    .hooks
                                                                     .frameCursor,
                                                                 repaintSignal:
                                                                     widget
+                                                                        .hooks
                                                                         .frameReadySignal,
                                                                 windowBucket:
                                                                     _frameWindowBucket,
@@ -2754,6 +2434,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 cellWidth: _metrics
                                                                     .frameCellWidth,
                                                                 isFrameReady: widget
+                                                                    .hooks
                                                                     .isFrameReady,
                                                               ),
                                                             ),

@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import 'timeline_cell_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// R5-⑤ geometry pin, revised 2026-08-08: the instruction endpoints (A/B)
 /// still sit DEAD CENTER in their cells — both axes, and nothing is drawn
@@ -62,19 +63,20 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: null,
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              instructionDefById: CameraInstructionSet.standard.defById,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+            ),
             layers: [camLayer],
-            activeLayerId: null,
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            instructionDefById: CameraInstructionSet.standard.defById,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
           ),
         ),
       ),
@@ -119,19 +121,20 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: null,
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              instructionDefById: CameraInstructionSet.standard.defById,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+            ),
             layers: [camLayer],
-            activeLayerId: null,
-            frameCursor: cursor,
-            frameCount: 24,
-            exposureStateForLayer: stateFor,
-            instructionDefById: CameraInstructionSet.standard.defById,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
           ),
         ),
       ),
@@ -195,19 +198,20 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: null,
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              instructionDefById: CameraInstructionSet.standard.defById,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+            ),
             layers: [longNamed, neighbourLayer],
-            activeLayerId: null,
-            frameCursor: cursor,
-            frameCount: 24,
-            exposureStateForLayer: stateFor,
-            instructionDefById: CameraInstructionSet.standard.defById,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
           ),
         ),
       ),

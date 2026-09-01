@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// 🚨F-32 (유저): 「트랜지션·카메라 레이어만 **스크롤에 따라** 위치가
 /// 어긋난다」.
@@ -53,18 +54,20 @@ void main() {
         width: 1100,
         height: 264,
         child: LayerTimelineGrid(
+          hooks: TimelineGridHooks(
+            activeLayerId: const LayerId('draw-0'),
+            frameCursor: ValueNotifier<int>(0),
+            playbackFrameCount: 12,
+            exposureStateForLayer: (_, _) =>
+                TimelineCellExposureState.uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+          ),
           layers: layers,
-          activeLayerId: const LayerId('draw-0'),
-          frameCursor: ValueNotifier<int>(0),
-          playbackFrameCount: 12,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
         ),
       ),
     ),

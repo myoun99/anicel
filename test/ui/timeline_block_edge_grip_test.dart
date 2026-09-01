@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import 'timeline/timeline_frame_geometry_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// TVPaint-style comma grips: every drawing block shows inset bars inside
 /// BOTH edges, in both orientations; dragging reports cumulative frame
@@ -402,20 +403,19 @@ Widget _xsheetHarness({
   return MaterialApp(
     home: Scaffold(
       body: XSheetTimelineGrid(
-        layers: [layer],
-        activeLayerId: layer.id,
-        frameCursor: ValueNotifier<int>(0),
-        frameCount: 24,
-        exposureStateForLayer: _stateFor,
-        onSelectLayer: (_) {},
-        onSelectFrame: (_) {},
-        onAddLayer: () {},
-        onToggleLayerVisibility: (_) {},
-        onLayerOpacityChanged: (_, _) {},
-        onToggleLayerTimesheet: (_) {},
-        onLayerMarkSelected: (_, _) {},
-        commaDrag: commaDrag,
-      ),
+hooks: TimelineGridHooks(activeLayerId: layer.id,
+frameCursor: ValueNotifier<int>(0),
+playbackFrameCount: 24,
+exposureStateForLayer: _stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+commaDrag: commaDrag,),
+layers: [layer],
+),
     ),
   );
 }

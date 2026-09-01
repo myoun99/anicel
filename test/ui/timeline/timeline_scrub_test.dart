@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import 'timeline_cell_probe.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// The ruler-scrub performance invariant (R4): drag moves ride the cursor
 /// path — per-move frames go to the scrub callback WITHOUT a session
@@ -45,21 +46,20 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            playbackFrameCount: 20,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: selected.add,
-            onScrubFrame: scrubbed.add,
-            onScrubEnd: () => scrubEnds += 1,
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-          ),
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+frameCursor: cursor,
+playbackFrameCount: 20,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: selected.add,
+onScrubFrame: scrubbed.add,
+onScrubEnd: () => scrubEnds += 1,
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},),
+layers: layers,
+),
         ),
       ),
     );
@@ -96,21 +96,20 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
-            layers: layers,
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: cursor,
-            frameCount: 20,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: selected.add,
-            onScrubFrame: scrubbed.add,
-            onScrubEnd: () => scrubEnds += 1,
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-          ),
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+frameCursor: cursor,
+playbackFrameCount: 20,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: selected.add,
+onScrubFrame: scrubbed.add,
+onScrubEnd: () => scrubEnds += 1,
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},),
+layers: layers,
+),
         ),
       ),
     );

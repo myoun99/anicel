@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformPropertyLanes;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 /// UI-R8: the row-wide range gesture layer — a cell drag SELECTS a frame
 /// range, a drag starting inside the selection MOVES it (frame steps along
@@ -64,21 +65,20 @@ void main() {
     return MaterialApp(
       home: Scaffold(
         body: LayerTimelineGrid(
-          layers: layers,
-          activeLayerId: layers.first.id,
-          frameCursor: cursor,
-          playbackFrameCount: 24,
-          exposureStateForLayer: stateFor,
-          onSelectLayer: (_) {},
-          onSelectFrame: onSelectFrame ?? (_) {},
-          onAddLayer: () {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          rangeHooks: rangeHooks,
-          metrics: metrics,
-        ),
+hooks: TimelineGridHooks(activeLayerId: layers.first.id,
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: onSelectFrame ?? (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+rangeHooks: rangeHooks,),
+layers: layers,
+metrics: metrics,
+),
       ),
     );
   }
@@ -346,27 +346,25 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: [blockLayer('layer-a')],
-            activeLayerId: const LayerId('layer-a'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            expandedLaneLayerIds: {const LayerId('layer-a')},
-            lanesForLayer: (_) => [
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+expandedLaneLayerIds: {const LayerId('layer-a')},
+lanesForLayer: (_) => [
               const PropertyLaneRow(
                 laneId: 'position',
                 label: 'Position',
                 keyedFrames: {2},
               ),
             ],
-            laneRange: TimelineLaneRangeHooks(
+laneRange: TimelineLaneRangeHooks(
               selection: laneSelection,
               onSelectUpdate: (layerId, laneId, anchor, head, headLaneId, span) {
                 selectUpdates.add((layerId, laneId, anchor, head));
@@ -383,12 +381,13 @@ void main() {
               onMoveUpdate: (_) {},
               onMoveEnd: () {},
               onMoveCancel: () {},
-            ),
-            metrics: const TimelineGridMetrics(
+            ),),
+layers: [blockLayer('layer-a')],
+metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
             ),
-          ),
+),
         ),
       ),
     );
@@ -470,20 +469,18 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: [se1, se2],
-            activeLayerId: const LayerId('se-1'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            dragPreview: dragPreview,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            rangeHooks: TimelineFrameRangeHooks(
+hooks: TimelineGridHooks(activeLayerId: const LayerId('se-1'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+dragPreview: dragPreview,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+rangeHooks: TimelineFrameRangeHooks(
               selection: selection,
               onSelectUpdate:
                   (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
@@ -507,12 +504,13 @@ void main() {
                 onEnd: () => ended += 1,
                 onCancel: () {},
               ),
-            ),
-            metrics: const TimelineGridMetrics(
+            ),),
+layers: [se1, se2],
+metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
             ),
-          ),
+),
         ),
       ),
     );
@@ -557,24 +555,23 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: [blockLayer('se-1').copyWith(kind: LayerKind.se)],
-            activeLayerId: const LayerId('se-1'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: seeks.add,
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            rangeHooks: hooks(selection: selection),
-            metrics: const TimelineGridMetrics(
+hooks: TimelineGridHooks(activeLayerId: const LayerId('se-1'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: seeks.add,
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+rangeHooks: hooks(selection: selection),),
+layers: [blockLayer('se-1').copyWith(kind: LayerKind.se)],
+metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
             ),
-          ),
+),
         ),
       ),
     );
@@ -648,27 +645,26 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: [
+hooks: TimelineGridHooks(activeLayerId: const LayerId('anim-1'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: seeks.add,
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+rangeHooks: hooks(selection: selection),),
+layers: [
               blockLayer('anim-1'), // painter row
               blockLayer('se-1').copyWith(kind: LayerKind.se), // sparse row
             ],
-            activeLayerId: const LayerId('anim-1'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: seeks.add,
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            rangeHooks: hooks(selection: selection),
-            metrics: const TimelineGridMetrics(
+metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
             ),
-          ),
+),
         ),
       ),
     );
@@ -1123,23 +1119,22 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-            layers: [blockLayer('layer-a')],
-            activeLayerId: const LayerId('layer-a'),
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: selectedFrames.add,
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            rangeHooks: hooks(
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: selectedFrames.add,
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+rangeHooks: hooks(
               selection: selection,
               onClear: () => cleared += 1,
-            ),
-          ),
+            ),),
+layers: [blockLayer('layer-a')],
+),
         ),
       ),
     );
@@ -1162,26 +1157,25 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
-            layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
-            activeLayerId: const LayerId('layer-a'),
-            frameCursor: cursor,
-            frameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            rangeHooks: hooks(
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+rangeHooks: hooks(
               selection: selection,
               onSelectUpdate: (layerId, anchor, head) =>
                   selectUpdates.add((layerId, anchor, head)),
               onMoveUpdate: ({required frameDelta, targetLayerId}) =>
                   moveUpdates.add((frameDelta, targetLayerId)),
-            ),
-          ),
+            ),),
+layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
+),
         ),
       ),
     );
@@ -1491,28 +1485,26 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: LayerTimelineGrid(
-              layers: [blockLayer('layer-a')],
-              activeLayerId: const LayerId('layer-a'),
-              frameCursor: cursor,
-              playbackFrameCount: 24,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onAddLayer: () {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              expandedLaneLayerIds: {const LayerId('layer-a')},
-              lanesForLayer: (_) => [
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+expandedLaneLayerIds: {const LayerId('layer-a')},
+lanesForLayer: (_) => [
                 const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
                   keyedFrames: {2, 5},
                 ),
               ],
-              laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
-              laneRange: TimelineLaneRangeHooks(
+laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
+laneRange: TimelineLaneRangeHooks(
                 selection: selection,
                 onSelectUpdate: (_, _, anchor, _, _, _) =>
                     selectUpdates.add(anchor),
@@ -1522,12 +1514,13 @@ void main() {
                 onMoveUpdate: moveUpdates.add,
                 onMoveEnd: () {},
                 onMoveCancel: () {},
-              ),
-              metrics: const TimelineGridMetrics(
+              ),),
+layers: [blockLayer('layer-a')],
+metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
               ),
-            ),
+),
           ),
         ),
       );
@@ -1666,27 +1659,25 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: LayerTimelineGrid(
-              layers: [blockLayer('layer-a')],
-              activeLayerId: const LayerId('layer-a'),
-              frameCursor: cursor,
-              playbackFrameCount: 24,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: (frame) => cursor.value = frame,
-              onAddLayer: () {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              expandedLaneLayerIds: {const LayerId('layer-a')},
-              lanesForLayer: (_) => [
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (frame) => cursor.value = frame,
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+expandedLaneLayerIds: {const LayerId('layer-a')},
+lanesForLayer: (_) => [
                 const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
                   keyedFrames: {2},
                 ),
               ],
-              laneRange: TimelineLaneRangeHooks(
+laneRange: TimelineLaneRangeHooks(
                 selection: ValueNotifier<TimelineLaneSelection?>(null),
                 onSelectUpdate: (_, _, _, _, _, _) {},
                 // The production host seeks here; this harness stands in
@@ -1697,12 +1688,13 @@ void main() {
                 onMoveUpdate: (_) {},
                 onMoveEnd: () {},
                 onMoveCancel: () {},
-              ),
-              metrics: const TimelineGridMetrics(
+              ),),
+layers: [blockLayer('layer-a')],
+metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
               ),
-            ),
+),
           ),
         ),
       );
@@ -1753,30 +1745,27 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: LayerTimelineGrid(
-              layers: [committed],
-              activeLayerId: const LayerId('layer-a'),
-              frameCursor: cursor,
-              playbackFrameCount: 24,
-              dragPreview: dragPreview,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onAddLayer: () {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              expandedLaneLayerIds: {const LayerId('layer-a')},
-              // THE production shape: the lane is derived from the layer,
-              // so whichever layer the gate hands over decides the keys.
-              lanesForLayer: (layer) => transformPropertyLanes(
+hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+frameCursor: cursor,
+playbackFrameCount: 24,
+dragPreview: dragPreview,
+exposureStateForLayer: stateFor,
+onSelectLayer: (_) {},
+onSelectFrame: (_) {},
+onToggleLayerVisibility: (_) {},
+onLayerOpacityChanged: (_, _) {},
+onToggleLayerTimesheet: (_) {},
+onLayerMarkSelected: (_, _) {},
+expandedLaneLayerIds: {const LayerId('layer-a')},
+lanesForLayer: (layer) => transformPropertyLanes(
                 layer.transformTrack,
-              ).where((lane) => lane.laneId == 'position').toList(),
-              metrics: const TimelineGridMetrics(
+              ).where((lane) => lane.laneId == 'position').toList(),),
+layers: [committed],
+metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
               ),
-            ),
+),
           ),
         ),
       );
