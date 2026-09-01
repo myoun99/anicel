@@ -134,6 +134,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.brushToolState = BrushToolState.defaults,
     this.historyManager,
     this.takeStrokePrefixCommand,
+    this.onPressNeedsCel,
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
@@ -254,6 +255,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// everywhere but the main canvas; the timesheet and conte hosts
   /// have no empty-cell press to make a block for.
   final Command? Function()? takeStrokePrefixCommand;
+
+  /// I-10: what a press does when there is no cel under it — see
+  /// [InteractiveBrushEditCanvasView.onPressNeedsCel], which is where it
+  /// goes. The shell answers 「make one, or say why not」.
+  final bool Function()? onPressNeedsCel;
 
   /// The view PUSHED by a caller that keeps it in its own `setState` — an
   /// input, re-applied whenever the caller changes it.
@@ -2954,6 +2960,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                 widget.onAltColorPick!(color);
               }
             },
+      onPressNeedsCel: widget.onPressNeedsCel,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       // PEN-11: one-shot mapped actions (undo/redo) from pen buttons.

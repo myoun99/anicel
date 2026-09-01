@@ -804,14 +804,31 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               onSelectionInteractionChanged: (active) => active
                   ? session.beginSelectionInteraction()
                   : session.endSelectionInteraction(),
-              // R26 #35: a paint press with no cel here says WHY, at the
-              // cursor. Which refusal applies is a SECTION question, so
-              // only the shell can answer it.
-              onDrawRefused: () => cursorNotices.show(_drawRefusalFor(session)),
-              // I-10: the toggle, the row's own gates and 「is this cell
-              // empty」 are all inside `beginAutoFrameForStroke` — the
-              // shell only says WHERE the press landed.
-              onAutoCreateFrame: session.beginAutoFrameForStroke,
+              // 🚨ONE ANSWER TO 「이 프레스 밑에 셀이 없다」 (I-10 + R26 #35),
+              // because two callers ask it now: the interactive view, which
+              // stands down on an empty cel, and the shell listener above it
+              // for a project that has no editing stack yet.
+              //
+              // ⛔The TOOL first, and HERE rather than at either caller: the
+              // eyedropper reads a colour and the selection tools mark
+              // nothing, so neither wants a block made underneath — and
+              // neither earns a 「no frame here」 notice either.
+              //
+              // Then make the block if the toggle and the row allow it —
+              // every one of those gates already lives inside
+              // `beginAutoFrameForStroke`, so nothing re-asks them — and
+              // otherwise say WHY at the cursor, which only the shell can
+              // answer because the refusal is a SECTION question.
+              onPressNeedsCel: () {
+                if (!canvasToolMarksCel(toolState.tool)) {
+                  return false;
+                }
+                if (session.beginAutoFrameForStroke()) {
+                  return true;
+                }
+                cursorNotices.show(_drawRefusalFor(session));
+                return false;
+              },
               takeStrokePrefixCommand: session.takeAutoFrameForStroke,
               onAutoFrameSettled: session.flushAutoFrameForStroke,
               // P5 eyedropper. Picks NEVER switch tools (R11-②): the

@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
@@ -15,6 +16,9 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+
+import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 
 /// The interactive canvas STAYS MOUNTED as the playhead crosses "no cel ↔
 /// cel". It used to be swapped for a blank box whenever the frame under
@@ -112,23 +116,35 @@ void main() {
       isFalse,
       reason: 'the frame is empty, so the view stands down',
     );
-    // The State is alive but NOTHING under it is built: no listener (so
-    // the subtree leaves hit testing, exactly as an absent widget did and
-    // the shell's refusal notice still sees the press) and no canvas (so
-    // the cel the playhead has left is not painted).
+    // The State is alive and so is its listener — but TRANSLUCENT, which
+    // leaves hit testing exactly as the absent widget did: what is under
+    // this view in the panel's Stack still receives, and the shell's
+    // refusal notice still sees the press.
+    //
+    // ⚠️It used to be built at all only when editable, and asserted here as
+    // `findsNothing`. That is what made I-10's second half impossible: a
+    // listener that appears only AFTER the cel exists cannot be in the hit
+    // path of the press that created it, so the block appeared and the
+    // stroke never started (유저: 「자동생성은 되는데 선이 안그려지고있음」).
+    // The invariant that actually mattered was 「takes nothing away from
+    // what is underneath」, and that is what is asserted now.
     // Scoped to THIS view: the conte, timesheet and envelope sheets mount
     // interactive views of their own, and theirs are still live.
     expect(
-      find.descendant(
-        of: canvasView,
-        matching: find.byKey(
-          const ValueKey<String>(
-            'interactive-brush-edit-canvas-view-listener',
-          ),
-        ),
-      ),
-      findsNothing,
-      reason: 'the standing-down view takes no pointers',
+      tester
+          .widget<Listener>(
+            find.descendant(
+              of: canvasView,
+              matching: find.byKey(
+                const ValueKey<String>(
+                  'interactive-brush-edit-canvas-view-listener',
+                ),
+              ),
+            ),
+          )
+          .behavior,
+      HitTestBehavior.translucent,
+      reason: 'the standing-down view stands in nobody\u0027s way',
     );
     expect(
       find.descendant(
@@ -166,10 +182,34 @@ void main() {
     expect(hasCel(tester), isFalse);
 
     final press = await tester.startGesture(
-      tester.getCenter(canvasView),
+      // 🚨NOT `getCenter(canvasView)`. The canvas is the app's FLOOR — laid
+      // out full-bleed with the panels lying on top — so the centre of its
+      // BOX is under the always-open timeline, and a press aimed there
+      // never reaches the drawing view at all. 🧪Measured: with a probe in
+      // `_handlePointerDown`, a press at that point produced NOTHING even
+      // on a frame that HAS a cel and draws fine by hand.
+      //
+      // ⛔That is what made the refusal below vacuous: it asserted no ink
+      // from a press the canvas never heard, so it would have passed
+      // against a canvas that inked everything. `visibleCanvasPoint` is the
+      // helper that exists for exactly this, and its own doc names the trap.
+      visibleCanvasPoint(tester),
       kind: PointerDeviceKind.stylus,
     );
     await tester.pump();
+    // 🚨R26 #35's whole point, and it had never once been measured: the
+    // refusal SPEAKS. It could not be, because the press was aimed at the
+    // centre of the canvas BOX — under the timeline — so nothing ever
+    // reached the canvas and 「no ink」 was true of a press that never
+    // happened.
+    // ⚠️Pumped by hand rather than settled: the notice is transient, and
+    // `pumpAndSettle` would wait for it to expire and then find nothing.
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      find.text(AppText.strings.noticeNoFrameHere),
+      findsOneWidget,
+      reason: 'the shell says WHY nothing happened',
+    );
     await press.moveBy(const Offset(40, 30));
     await tester.pump();
     await press.up();
@@ -182,6 +222,112 @@ void main() {
           .length,
       drawnBefore,
       reason: 'the empty frame took no ink — the view refused the pointer',
+    );
+
+    session.prerenderScheduler.cancel();
+  });
+
+  // 🚨I-10's SECOND HALF, and the report that reopened it (F-61, 유저:
+  // 「그릴때 자동생성은 되는데 **선이 안그려지고있음**」) against what was
+  // asked for: 「빈 칸에서 펜다운하면 블록이 자동생성되고 **그대로 스트로크
+  // 그려지기시작**」.
+  //
+  // ⚠️TWO oracles on ONE press, and both are needed: the block alone was
+  // already true when the bug was reported, and ink alone could come from a
+  // cel that existed beforehand.
+  testWidgets('with the toggle ON one press makes the block AND draws into '
+      'it', (tester) async {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+      autoCreateFrameOnDraw: true,
+    );
+    final session = (await openApp(tester)).session;
+
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    final layerId = session.activeLayerId!;
+    Layer layer() => session.activeCutOrNull!.layers.firstWhere(
+      (candidate) => candidate.id == layerId,
+    );
+    final drawnBefore = layer().timeline.length;
+
+    session.selectFrameIndex(4);
+    await tester.pumpAndSettle();
+    // ★The premise, and it is the whole setup: there is no cel here, and
+    // there IS a coordinator (frame 0 was drawn on), so the interactive
+    // view is mounted and standing down — the case the fix is about.
+    expect(hasCel(tester), isFalse);
+    expect(
+      session.layerContentBoundsAt(layer(), 4),
+      isNull,
+      reason: 'nothing is on this frame yet',
+    );
+
+    final press = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await press.moveBy(const Offset(40, 30));
+    await tester.pump();
+    await press.moveBy(const Offset(30, 20));
+    await tester.pump();
+    await press.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      layer().timeline.length,
+      drawnBefore + 1,
+      reason: '「빈 칸에서 펜다운하면 블록이 자동생성되고」',
+    );
+    expect(
+      session.layerContentBoundsAt(layer(), 4),
+      isNotNull,
+      reason: '「그대로 스트로크 그려지기시작」 — the half that was missing',
+    );
+
+    session.prerenderScheduler.cancel();
+  });
+
+  // 「답은 추천대로」 = merged: one press on an empty cel is ONE undo, and
+  // both halves go back together.
+  testWidgets('and the block and the stroke undo as one', (tester) async {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+      autoCreateFrameOnDraw: true,
+    );
+    final session = (await openApp(tester)).session;
+
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    final layerId = session.activeLayerId!;
+    Layer layer() => session.activeCutOrNull!.layers.firstWhere(
+      (candidate) => candidate.id == layerId,
+    );
+    final drawnBefore = layer().timeline.length;
+
+    session.selectFrameIndex(4);
+    await tester.pumpAndSettle();
+
+    final press = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await press.moveBy(const Offset(40, 30));
+    await tester.pump();
+    await press.up();
+    await tester.pumpAndSettle();
+    expect(layer().timeline.length, drawnBefore + 1);
+
+    session.historyManager.undo();
+    await tester.pumpAndSettle();
+    expect(
+      layer().timeline.length,
+      drawnBefore,
+      reason: '⛔ONE undo takes the ink AND the block it was drawn into',
     );
 
     session.prerenderScheduler.cancel();

@@ -93,8 +93,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.cutPieceSlot,
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
-    this.onDrawRefused,
-    this.onAutoCreateFrame,
+    this.onPressNeedsCel,
     this.onAutoFrameSettled,
     this.takeStrokePrefixCommand,
     this.rowAcceptsStrokes = true,
@@ -281,26 +280,26 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// The shell answers through the shared cursor notice ("no frame here"
   /// / "only the Action section can be drawn on") — the host cannot know
   /// WHICH refusal applies, so it only reports the attempt.
-  final VoidCallback? onDrawRefused;
-
-  /// I-10: 「빈 칸에서 펜다운하면 블록이 생기고 그대로 그려진다」.
+  /// 🚨WHAT A PRESS WITH NO CEL UNDER IT DOES — ONE QUESTION, ONE ANSWER.
   ///
-  /// Returns true when it MADE the block — the press then falls
-  /// through to the panel below and draws, so no refusal is shown.
-  /// Null or false leaves [onDrawRefused] to explain the silence.
+  /// It used to be two callbacks (`onAutoCreateFrame`, then `onDrawRefused`
+  /// if that returned false) spelled out at one call site. That reads as one
+  /// question written in two places, and the moment there were TWO call
+  /// sites — the view hears the empty-cel press itself now (I-10) — the
+  /// shape would have made the shell explain a refusal for a cel it had just
+  /// created.
   ///
-  /// ⛔It hangs off the SAME listener rather than a second one. That
-  /// listener is always mounted and only its callback stands down —
-  /// the comment below says what happened the day this widget changed
-  /// shape under a live gesture, and a new conditional wrapper would
-  /// be that mistake again.
-  final bool Function()? onAutoCreateFrame;
+  /// Returns true when a cel was made and the caller may draw into it. False
+  /// means nothing was made, and the shell has already said why (or had
+  /// nothing to say: a tool that marks nothing asks for no block and earns
+  /// no notice).
+  final bool Function()? onPressNeedsCel;
 
-  /// Settles a block [onAutoCreateFrame] made that no stroke claimed
+  /// Settles a block [onPressNeedsCel] made that no stroke claimed
   /// (I-10). Safe in either order against the stroke's own take.
   final VoidCallback? onAutoFrameSettled;
 
-  /// The block [onAutoCreateFrame] made, handed to the stroke it was
+  /// The block [onPressNeedsCel] made, handed to the stroke it was
   /// made for so the two undo together (I-10).
   final Command? Function()? takeStrokePrefixCommand;
 
@@ -390,8 +389,23 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         widget.contentOverride ??
         (coordinator == null ? _blankCanvasContent : null);
 
-    final onDrawRefused = widget.onDrawRefused;
-    final onAutoCreateFrame = widget.onAutoCreateFrame;
+    final onPressNeedsCel = widget.onPressNeedsCel;
+    // 🚨WHOEVER HEARS THE PRESS IS THE ONLY ONE WHO CAN DRAW IT (I-10).
+    //
+    // The interactive view is mounted whenever there is a coordinator, and
+    // it stands down IN PLACE on an empty cel — so it is already in the hit
+    // path, and it is the one that must ask for the cel. A `Listener` up
+    // here cannot: Flutter routes the rest of a gesture to the path it
+    // captured at pointer-DOWN, so a view built afterwards never sees the
+    // moves. 유저 (F-61): 「자동생성은 되는데 **선이 안그려지고있음**」.
+    //
+    // ⚠️What is left for this one is the case the view cannot cover: a
+    // project with NO editing stack at all, where `contentOverride` stands
+    // in and the view is not built. There the block still gets made and the
+    // stroke still does not start — one press, once per project, before
+    // there has ever been a coordinator. Written down rather than papered
+    // over.
+    final viewHearsTheEmptyPress = coordinator != null && _frameKeys.isEmpty;
     // R26 #35: without an editable cel a paint press does nothing at all
     // — the passive Listener above the panel turns that silence into the
     // shared cursor notice. Translucent: it observes, never consumes, so
@@ -412,17 +426,18 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown:
-          hasEditableFrame ||
-              (onDrawRefused == null && onAutoCreateFrame == null)
+          hasEditableFrame || viewHearsTheEmptyPress || onPressNeedsCel == null
           ? null
           : (event) {
               if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
                 return;
               }
-              final tool = widget.brushToolState.tool;
-              if (!canvasToolMarksCel(tool)) {
-                return; // Eyedropper/selection/guides/pan mean other things.
-              }
+              // ⛔The TOOL question is NOT asked here any more. It rode
+              // this call site while this was the only one; it lives inside
+              // `onPressNeedsCel` now, so the view's press and this one get
+              // the same answer rather than two copies of one predicate
+              // drifting apart.
+              //
               // R27 #15: only a press that would actually DRAW earns the
               // notice. A finger whose one-finger slot is flip/pan/none is
               // navigating, not drawing — telling it "no frame here" was
@@ -431,13 +446,11 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
                   !AppInput.touchDraws) {
                 return;
               }
-              // I-10 first: making the cell is what the user asked
-              // for, and a notice explaining why nothing happened would be
-              // wrong the moment something did.
-              if (onAutoCreateFrame != null && onAutoCreateFrame()) {
-                return;
-              }
-              onDrawRefused?.call();
+              // Make the cell if it can be made, and explain the silence
+              // if it cannot — ONE call, because it is one question. A
+              // notice about nothing having happened would be wrong the
+              // moment something did.
+              onPressNeedsCel();
             },
       onPointerUp: widget.onAutoFrameSettled == null
           ? null
@@ -476,6 +489,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       guides: widget.guides,
       historyManager: widget.historyManager,
       takeStrokePrefixCommand: widget.takeStrokePrefixCommand,
+      onPressNeedsCel: widget.onPressNeedsCel,
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
