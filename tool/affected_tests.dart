@@ -246,7 +246,6 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   // believed once.
   if (failed.isEmpty) {
     _report('PASSED (${batches.length} batch(es), exit 0)');
-    _reportSkips(skipped);
   } else {
     _report('FAILED — batch(es) ${failed.join(', ')} of ${batches.length}, '
         'exit $worst');
@@ -259,13 +258,23 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
 void _reportSkips(int skipped) {
   if (skipped == 0) return;
   _report('⚠️$skipped test(s) SKIPPED — a skip is not a pass.');
-  _report('  The usual cause in this repo is a missing native engine: '
-      'every parity pin');
-  _report('  becomes an empty stub, so the C kernel is never compared with '
-      'the Dart one.');
-  _report('  cmake -S packages/qa_native/src -B build/native_standalone '
+  _report('  Every skip in this tree is a native-engine gate: the parity '
+      'pins become');
+  _report('  empty stubs, so the C kernel is never compared with the Dart '
+      'reference.');
+  _report('  If the engine is not built:');
+  _report('    cmake -S packages/qa_native/src -B build/native_standalone '
       '-DCMAKE_BUILD_TYPE=Release');
-  _report('  cmake --build build/native_standalone --config Release');
+  _report('    cmake --build build/native_standalone --config Release');
+  // ⚠️Building it does not always take the count to zero, and saying so is
+  // the difference between a hint and a lie. 🧪Measured 2026-09-02: with
+  // `qa_engine.dll` present the resample parity pins ran (+77, no tilde) and
+  // five audio/conform ones still skipped — those gate on a RUNTIME
+  // capability (`QaCelCompressor.isSupported`), not on the file existing.
+  _report('  Already built? Some suites gate on a runtime capability rather '
+      'than the file,');
+  _report('  so the binary can be there and the pin still not run. Name the '
+      'skipped test.');
 }
 
 class _BatchResult {

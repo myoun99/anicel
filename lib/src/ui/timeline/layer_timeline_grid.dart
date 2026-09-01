@@ -1719,31 +1719,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   final TimelineRangeMoveRowResolver _rangeMoveResolver =
       TimelineRangeMoveRowResolver();
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
-    final rows = buildTimelineDisplayRows(
-      layers: widget.layers,
-      expandedLayerIds: widget.expandedLaneLayerIds,
-      lanesForLayer: _lanesFor,
-      hiddenSections: widget.hiddenSections,
-      rowFilter: widget.rowFilter,
-      collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-      activeLayerId: widget.activeLayerId,
-      fxEnabledOf: (layerId) =>
-          (widget.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
-          LayerFxState.off,
-    );
-    // The row drag counts ROWS and lands on SLOTS, and only this list knows
-    // how many rows sit between two fx headers (their members may be
-    // twirled open). Held for the wrappers built below in the same pass.
-    _dragRows = rows;
+  /// The cells-family drag callbacks for this pass, or null when the
+  /// host wired none.
+  ///
+  /// ⚠️It also loads `_rangeMoveResolver` with [rows], which is why it
+  /// takes them rather than reading a field: the drag counts ROWS and
+  /// lands on SLOTS, and only this list knows how many rows sit between
+  /// two fx headers. Both happen in the same pass or neither does.
+  TimelineRangeGestureCallbacks? _rangeGestureFor(
+    List<TimelineDisplayRow> rows,
+  ) {
     final rangeHooks = widget.rangeHooks;
     _rangeMoveResolver
       ..rows = rows
       ..session = rangeHooks?.move;
-    final rangeGesture = rangeHooks == null
+    return rangeHooks == null
         ? null
         : TimelineRangeGestureCallbacks(
             // WHICH LAYER the pressed row belongs to — a lane row answers
@@ -1842,14 +1832,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               }
             },
           );
+  }
 
+  /// The lane-family drag callbacks for this pass, or null when the host
+  /// wired none. Same display-row slice and the same hooks as the cells
+  /// family above — see the comment inside.
+  TimelineLaneRangeCallbacks? _laneRangeFor(List<TimelineDisplayRow> rows) {
     // 🚨B4-④: a lane-anchored select drag that leaves its own lane group
     // JOINS the cells law above — same display-row slice, same hooks, same
     // arguments a cells anchor would report (유저: 「선택범위는 어떤
     // 레이어를 건너든 자유롭게, 규칙 두지 말 것」). Inside the group the
     // host's lane-span path keeps the drag, unchanged.
+    final rangeHooks = widget.rangeHooks;
     final hostLaneRange = widget.laneRange;
-    final laneRange = hostLaneRange == null
+    return hostLaneRange == null
         ? null
         : TimelineLaneRangeCallbacks(
             selection: hostLaneRange.selection,
@@ -1927,6 +1923,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               }
             },
           );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
+    final rows = buildTimelineDisplayRows(
+      layers: widget.layers,
+      expandedLayerIds: widget.expandedLaneLayerIds,
+      lanesForLayer: _lanesFor,
+      hiddenSections: widget.hiddenSections,
+      rowFilter: widget.rowFilter,
+      collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+      activeLayerId: widget.activeLayerId,
+      fxEnabledOf: (layerId) =>
+          (widget.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
+          LayerFxState.off,
+    );
+    // The row drag counts ROWS and lands on SLOTS, and only this list knows
+    // how many rows sit between two fx headers (their members may be
+    // twirled open). Held for the wrappers built below in the same pass.
+    _dragRows = rows;
+    final rangeHooks = widget.rangeHooks;
+    final rangeGesture = _rangeGestureFor(rows);
+    final laneRange = _laneRangeFor(rows);
 
     // PEN-9: a stylus approach stops a coasting fling — mid-glide the
     // viewports ignore-pointer their children, so without the stop a pen
