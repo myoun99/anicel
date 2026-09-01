@@ -35,6 +35,7 @@ class SelectionAntsPainter extends CustomPainter {
     this.cursor,
     this.transformChrome,
     this.sessionHasChanges = false,
+    this.outlineIsLive = false,
   }) : _phase = repaint,
        super(
          repaint: cursor == null
@@ -94,12 +95,46 @@ class SelectionAntsPainter extends CustomPainter {
   /// unconfirmed changes, GREEN when confirmed/untouched.
   final bool sessionHasChanges;
 
-  /// The one colour every part of this painter draws the session in — ants,
-  /// transform box, handles, rotate lever. ⛔Three separate constants lived
-  /// here, and the box's was a fixed blue that never answered the question
-  /// the other two did.
+  /// Whether [committedRegion] is still MOVING — an open transform, warp or
+  /// mesh session remaps it into a new region on every frame.
+  ///
+  /// 유저 (F-65): 「**라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도
+  /// 상관없는데**, 선택 커밋될떈 픽셀에 제대로 안착한 상태로」 — so a live
+  /// outline traces the polygon and a settled one walks the pixels.
+  ///
+  /// ⚠️It is also what keeps the walk affordable. The pixel outline is
+  /// memoised on the region, which is an exact key precisely because a
+  /// region is immutable — and a session that builds a NEW region per frame
+  /// would therefore miss that memo every frame and rasterise a mask over
+  /// the whole selection to draw one line. ⛔The two reasons agree here, but
+  /// the USER'S rule is the one this flag is named for: if they ever ask for
+  /// pixel-exact ants mid-drag, the cost is the thing to solve, not this.
+  final bool outlineIsLive;
+
+  /// The colour the SESSION CHROME is drawn in — transform box, handles,
+  /// rotate lever. ⛔Three separate constants lived here, and the box's was
+  /// a fixed blue that never answered the question the other two did.
+  ///
+  /// ⚠️The ANTS left this in F-65 (see [_antColour]); R16-①'s red/green
+  /// grammar still reads, because the parts that carry it are exactly the
+  /// parts a move session puts on screen.
   Color get _sessionColor =>
       AppColors.selectionSession(changed: sessionHasChanges);
+
+  /// 🚨★★★THE ANTS ARE BLACK — 유저 (F-65): 「선택툴의 개미행렬 색을 앱
+  /// 강조색이아니라 **검정색으로. 그러니 흰색바탕에 검정 개미가 지나가도록.
+  /// 앞으로 개미행렬은 이 공통 ui를 사용**」.
+  ///
+  /// ⚠️They read it as the app accent; it was actually
+  /// `AppColors.selectionSession`'s green (red while a move session holds
+  /// changes). Either way the instruction is the same, and the white
+  /// under-stroke this pairs with was already there — 「흰색바탕에 검정
+  /// 개미」 is that pair, now spelled the way they asked.
+  ///
+  /// ⛔A constant, not a theme token: it must not follow the accent, and
+  /// following a THEME colour would be the same mistake one level up. The
+  /// white beneath it is `Colors.white` for the same reason.
+  static const Color _antColour = Color(0xFF000000);
 
   static const double _dashOn = 5;
   static const double _dashOff = 4;
@@ -115,6 +150,17 @@ class SelectionAntsPainter extends CustomPainter {
     return Offset(mapped.x, mapped.y);
   }
 
+  /// The committed region's pixel-edge outline, in SCREEN space.
+  ///
+  /// ⚠️No cache HERE. The expensive half — the mask and the boundary walk —
+  /// is memoised on the region itself, which is immutable and therefore an
+  /// exact key; what is left is mapping the points, which is what tracing
+  /// the polygon cost all along. A cache in this class would either vanish
+  /// every tick (the painter is rebuilt per frame) or be a global that the
+  /// two painters on screen take turns evicting.
+  Path _committedOutline(CanvasSelectionRegion region) =>
+      region.pixelOutlineIn((point) => _map(point) + screenOffset);
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
@@ -122,11 +168,23 @@ class SelectionAntsPainter extends CustomPainter {
 
     final committed = committedRegion;
     if (committed != null) {
-      // The composite outline: unions merge, subtractions cut holes — the
-      // ants trace exactly what the fold selects.
-      final path = committed.pathIn(
-        (point) => _map(point) + screenOffset,
-      );
+      // 🚨THE COMMITTED OUTLINE WALKS THE PIXELS, not the polygon (F-65,
+      // 유저: 「선택 커밋될떈 픽셀에 제대로 안착한 상태로. 지금은 **변형되는
+      // 픽셀 범위와 개미행렬 위치가 다르다**」).
+      //
+      // ⛔`pathIn` traces where the DRAG went; membership is decided by
+      // pixel CENTRE. Both were right about which pixels are in, and only
+      // one of them was where the user was looking. The fold still decides
+      // everything — unions merge and subtractions cut holes — the line has
+      // simply moved onto the edges of the pixels that will actually move.
+      //
+      // ⚠️The LIVE outlines below keep `pathIn` on purpose — 「라이브로
+      // 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도 상관없는데」 — and that
+      // is also what keeps a drag cheap: nothing rasterises while the
+      // finger is down.
+      final path = outlineIsLive
+          ? committed.pathIn((point) => _map(point) + screenOffset)
+          : _committedOutline(committed);
       _paintAnts(canvas, path, phase);
     }
     if (marqueeShapes.isNotEmpty) {
@@ -223,9 +281,15 @@ class SelectionAntsPainter extends CustomPainter {
     }
   }
 
-  /// White under-stroke + phase-offset dashes in [_sessionColor] — see
-  /// `AppColors.selectionSession` for what the two colours mean. The white
-  /// underneath is what keeps either of them readable on any artwork.
+  /// White under-stroke + phase-offset dashes in [_antColour]. The white
+  /// underneath is what keeps the black readable on dark artwork, and the
+  /// black is what keeps the white readable on light — 「흰색바탕에 검정
+  /// 개미가 지나가도록」 is the pair, not the dash alone.
+  ///
+  /// ★THIS is 「이 공통 ui」. Every marching outline in the app is painted
+  /// here already (R28-S pulled it out of the selection layer so the same
+  /// ants show under every tool), so 「앞으로 개미행렬은 이 공통 ui를 사용」
+  /// is a rule about where the NEXT one goes rather than a change here.
   void _paintAnts(Canvas canvas, Path path, double phase) {
     final white = Paint()
       ..style = PaintingStyle.stroke
@@ -234,7 +298,7 @@ class SelectionAntsPainter extends CustomPainter {
     final dashes = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = _sessionColor;
+      ..color = _antColour;
     canvas.drawPath(path, white);
     canvas.drawPath(_dashPath(path, phase), dashes);
   }
@@ -257,6 +321,7 @@ class SelectionAntsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SelectionAntsPainter oldDelegate) =>
+      oldDelegate.outlineIsLive != outlineIsLive ||
       oldDelegate.viewport != viewport ||
       oldDelegate.committedRegion != committedRegion ||
       oldDelegate.screenOffset != screenOffset ||

@@ -3943,6 +3943,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   repaint: _ants,
                   viewport: widget.viewport,
                   committedRegion: displayShape,
+                  // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
+                  // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
+                  //
+                  // ★`identical` says exactly that, and says it without a
+                  // second opinion to keep in sync: every session that is
+                  // still moving the selection (transform, warp, mesh) hands
+                  // `displayShape` a NEW region above, and nothing else
+                  // does. When the outline has settled the two ARE the same
+                  // object.
+                  outlineIsLive: !identical(displayShape, region),
                   // TP5: the ants step with the PIXELS, not with the
                   // pointer — the outline has to be around the thing that
                   // will land, or the confirm looks like it moved.
