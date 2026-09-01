@@ -256,16 +256,401 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
+  Widget _buildSectionBand(
+    LayerLegendCallbacks? legend,
+    ColorScheme colorScheme,
+  ) {
+    return _cell(
+      keyValue: 'legend-sections',
+      tooltip: AppText.strings.tlSections,
+      entriesBuilder: _sectionEntries,
+      child: Icon(
+        Icons.view_agenda_outlined,
+        size: 13,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  Widget? _buildLaneToggle(LayerLegendCallbacks? legend, Color restColor) {
+    return onExpandAllLanes != null && onCollapseAllLanes != null
+        // The lane column's header: fold/unfold EVERY
+        // layer's lanes in one tap (R3 feedback #5).
+        ? Tooltip(
+            message: anyLanesExpanded
+                ? 'Collapse all layers'
+                : 'Expand all layers',
+            child: ControlPressClaim(
+              onPressed: anyLanesExpanded
+                  ? onCollapseAllLanes
+                  : onExpandAllLanes,
+              child: InkWell(
+                key: const ValueKey<String>('legend-lanes-toggle'),
+                onTap: silentPress(
+                  anyLanesExpanded ? onCollapseAllLanes : onExpandAllLanes,
+                ),
+                child: Center(
+                  child: Icon(
+                    anyLanesExpanded ? Icons.unfold_less : Icons.unfold_more,
+                    size: 13,
+                    color: restColor,
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null;
+  }
+
+  Widget _buildTimesheet(LayerLegendCallbacks? legend, Color restColor) {
+    return _cell(
+      keyValue: 'legend-sheet',
+      tooltip: AppText.strings.tlColTimesheet,
+      entriesBuilder: legend == null
+          ? null
+          : () => [
+              PanelFlyoutItem(
+                keyValue: 'legend-sheet-all-on',
+                label: AppText.strings.tlAllOnTimesheet,
+                icon: Icons.table_chart,
+                onSelected: legend.onSheetAllOn,
+              ),
+              PanelFlyoutItem(
+                keyValue: 'legend-sheet-all-off',
+                label: AppText.strings.tlAllOffTimesheet,
+                icon: Icons.table_chart_outlined,
+                onSelected: legend.onSheetAllOff,
+              ),
+              if (showRowSolos) ...[
+                const PanelFlyoutDivider(),
+                PanelFlyoutItem(
+                  keyValue: 'legend-filter-sheet',
+                  label: AppText.strings.tlSoloSheetOnRows,
+                  icon: Icons.center_focus_strong_outlined,
+                  checked: rowFilter.onTimesheetOnly,
+                  onSelected: legend.onToggleSheetOnlyFilter,
+                ),
+              ],
+            ],
+      child: _legendIcon(
+        Icons.table_chart_outlined,
+        restColor: restColor,
+        engaged: rowFilter.onTimesheetOnly,
+      ),
+    );
+  }
+
+  Widget _buildMark(LayerLegendCallbacks? legend, Color restColor) {
+    return _cell(
+      keyValue: 'legend-mark',
+      tooltip: AppText.strings.tlColMark,
+      entriesBuilder: legend == null
+          ? null
+          : () => [
+              PanelFlyoutItem(
+                keyValue: 'legend-mark-clear',
+                label: AppText.strings.tlClearAllMarks,
+                icon: Icons.label_off_outlined,
+                onSelected: legend.onClearAllMarks,
+              ),
+              if (showRowSolos && marksInUse.isNotEmpty) ...[
+                const PanelFlyoutDivider(),
+                PanelFlyoutHeader(AppText.strings.tlSoloColor),
+                // 🚨THE MARKS IN USE, not every mark there
+                // could be. A mark is a 공정/수정 pair now,
+                // so «every value» is a product of two lists
+                // and most of it would never appear in this
+                // project — the filter was always about what
+                // is actually on the rows, and this says so.
+                for (final mark
+                    in marksInUse.toList()
+                      ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
+                  if (!mark.isNone)
+                    PanelFlyoutItem(
+                      keyValue: 'legend-filter-mark-${mark.keySlug}',
+                      label: layerMarkDisplayName(mark),
+                      checked: rowFilter.markColors.contains(mark),
+                      onSelected: () => legend.onToggleMarkFilter(mark),
+                    ),
+              ],
+            ],
+      child: _legendIcon(
+        Icons.label_outline,
+        restColor: restColor,
+        engaged: rowFilter.markColors.isNotEmpty,
+      ),
+    );
+  }
+
+  Widget _buildTypeButton(LayerLegendCallbacks? legend, Color restColor) {
+    return _cell(
+      keyValue: 'legend-kind',
+      tooltip: AppText.strings.tlColLayerKind,
+      entriesBuilder: legend == null || kindsInUse.isEmpty || !showRowSolos
+          ? null
+          : () => [
+              PanelFlyoutHeader(AppText.strings.tlSoloKind),
+              for (final kind in LayerKind.values)
+                if (kindsInUse.contains(kind))
+                  PanelFlyoutItem(
+                    keyValue: 'legend-filter-kind-${kind.name}',
+                    label: layerKindDisplayName(kind),
+                    icon: layerKindIcon(kind),
+                    checked: rowFilter.kinds.contains(kind),
+                    onSelected: () => legend.onToggleKindFilter(kind),
+                  ),
+            ],
+      child: _legendIcon(
+        Icons.interests_outlined,
+        restColor: restColor,
+        engaged: rowFilter.kinds.isNotEmpty,
+      ),
+    );
+  }
+
+  Widget _buildFillReference(LayerLegendCallbacks? legend, Color restColor) {
+    return _cell(
+      keyValue: 'legend-fill-ref',
+      tooltip: AppText.strings.tlColFillReference,
+      entriesBuilder: legend == null
+          ? null
+          : () => [
+              PanelFlyoutItem(
+                keyValue: 'legend-fill-ref-clear',
+                label: AppText.strings.tlClearAllFillRefs,
+                icon: Icons.format_color_reset_outlined,
+                onSelected: legend.onClearAllFillReferences,
+              ),
+              if (showRowSolos) ...[
+                const PanelFlyoutDivider(),
+                PanelFlyoutItem(
+                  keyValue: 'legend-filter-fill-ref',
+                  label: AppText.strings.tlSoloFillReferences,
+                  icon: Icons.center_focus_strong_outlined,
+                  checked: rowFilter.fillReferenceOnly,
+                  onSelected: legend.onToggleFillReferenceOnlyFilter,
+                ),
+              ],
+            ],
+      child: _legendIcon(
+        Icons.format_color_fill,
+        restColor: restColor,
+        engaged: rowFilter.fillReferenceOnly,
+      ),
+    );
+  }
+
+  Widget _buildFx(BuildContext context, LayerLegendCallbacks? legend) {
+    return _cell(
+      keyValue: 'legend-fx',
+      tooltip: AppText.strings.tlColFx,
+      entriesBuilder: legend == null
+          ? null
+          : () => [
+              PanelFlyoutItem(
+                keyValue: 'legend-fx-enable-all',
+                label: AppText.strings.tlApplyAllFx,
+                onSelected: legend.onEnableAllFx,
+              ),
+              PanelFlyoutItem(
+                keyValue: 'legend-fx-bypass-all',
+                label: AppText.strings.tlBypassAllFx,
+                onSelected: legend.onBypassAllFx,
+              ),
+              if (showRowSolos) ...[
+                const PanelFlyoutDivider(),
+                PanelFlyoutItem(
+                  keyValue: 'legend-filter-fx',
+                  label: AppText.strings.tlSoloFxOnRows,
+                  icon: Icons.center_focus_strong_outlined,
+                  checked: rowFilter.fxOnly,
+                  onSelected: legend.onToggleFxOnlyFilter,
+                ),
+              ],
+            ],
+      // The shared fx glyph (R28 follow-up) — the column
+      // header and the row switches read the same mark.
+      child: fxGlyph(context: context, active: rowFilter.fxOnly, fontSize: 11),
+    );
+  }
+
+  Widget? _buildOnion(
+    LayerLegendCallbacks? legend,
+    bool hasOnion,
+    Color restColor,
+  ) {
+    return !hasOnion
+        ? null
+        : _cell(
+            keyValue: 'legend-onion',
+            tooltip: AppText.strings.tlColOnionSkin,
+            entriesBuilder: legend?.onToggleOnionSkinForDisplayed == null
+                ? null
+                : () => [
+                    PanelFlyoutItem(
+                      keyValue: 'legend-onion-toggle-displayed',
+                      label: displayedOnionSkinOn
+                          ? 'Clear onion on displayed layers'
+                          : 'Apply onion to displayed layers',
+                      icon: Icons.filter_none,
+                      checked: displayedOnionSkinOn,
+                      onSelected: legend!.onToggleOnionSkinForDisplayed!,
+                    ),
+                    if (legend.onRevealOnionSkinPanel != null)
+                      PanelFlyoutItem(
+                        keyValue: 'legend-onion-open-panel',
+                        label: AppText.strings.tlOpenOnionPanel,
+                        icon: Icons.open_in_new,
+                        onSelected: legend.onRevealOnionSkinPanel!,
+                      ),
+                  ],
+            child: _legendIcon(
+              Icons.filter_none,
+              restColor: restColor,
+              engaged: displayedOnionSkinOn,
+            ),
+          );
+  }
+
+  Widget _buildVisibility(LayerLegendCallbacks? legend, Color restColor) {
+    return _cell(
+      keyValue: 'legend-eye',
+      tooltip: AppText.strings.tlColVisibility,
+      entriesBuilder: legend == null
+          ? null
+          : () => [
+              PanelFlyoutItem(
+                keyValue: 'legend-eye-show-all',
+                label: AppText.strings.tlShowAll,
+                icon: Icons.visibility,
+                onSelected: legend.onShowAllLayers,
+              ),
+              PanelFlyoutItem(
+                keyValue: 'legend-eye-hide-all',
+                label: AppText.strings.tlHideAll,
+                icon: Icons.visibility_off,
+                onSelected: legend.onHideAllLayers,
+              ),
+              PanelFlyoutItem(
+                keyValue: 'legend-eye-solo',
+                label: AppText.strings.tlSoloActiveLayer,
+                icon: Icons.center_focus_strong_outlined,
+                checked: visibilitySoloEnabled,
+                onSelected: legend.onToggleVisibilitySolo,
+              ),
+            ],
+      child: _legendIcon(
+        Icons.visibility_outlined,
+        restColor: restColor,
+        engaged: visibilitySoloEnabled,
+      ),
+    );
+  }
+
+  Widget _buildMute(LayerLegendCallbacks? legend, Color restColor) {
+    return Tooltip(
+      message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
+      child: ControlPressClaim(
+        onPressed: legend == null
+            ? null
+            : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe),
+        child: InkWell(
+          key: const ValueKey<String>('legend-mute'),
+          onTap: silentPress(
+            legend == null
+                ? null
+                : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe),
+          ),
+          child: Center(
+            child: _legendIcon(
+              allSeMuted ? Icons.volume_off : Icons.volume_up_outlined,
+              restColor: restColor,
+              engaged: allSeMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOpacity(
+    LayerLegendCallbacks? legend,
+    bool isVertical,
+    ColorScheme colorScheme,
+  ) {
+    return legend != null && displayedLayerIds != null && !isVertical
+        ? Tooltip(
+            message: AppText.strings.tlAllDisplayedOpacity,
+            child: FieldSlider.opacity(
+              key: const ValueKey<String>('legend-opacity'),
+              value: displayedOpacity.clamp(0.0, 1.0).toDouble(),
+              valueText: 'OPAC',
+              height: 18,
+              restingAccent: colorScheme.onSurfaceVariant.withValues(
+                alpha: 0.45,
+              ),
+              onChanged: (value) =>
+                  legend.onPreviewLayersOpacity(displayedLayerIds!(), value),
+              onChangeEnd: (value) =>
+                  legend.onCommitLayersOpacity(displayedLayerIds!(), value),
+            ),
+          )
+        : _cell(
+            keyValue: 'legend-opacity',
+            tooltip: AppText.strings.tlColOpacity,
+            child: _columnHeading('OPAC', colorScheme, axis),
+          );
+  }
+
+  Widget? _buildBlend(
+    LayerLegendCallbacks? legend,
+    bool hasBlend,
+    ColorScheme colorScheme,
+  ) {
+    return !hasBlend
+        ? null
+        : _cell(
+            keyValue: 'legend-blend',
+            tooltip: AppText.strings.tlColBlendMode,
+            entriesBuilder:
+                legend?.onSetBlendModeForDisplayed == null ||
+                    displayedLayerIds == null
+                ? null
+                : () => [
+                    PanelFlyoutHeader(AppText.strings.tlAllDisplayedLayers),
+                    // The bulk set writes DRAWING rows;
+                    // pass-through is a group-only answer,
+                    // so it never appears here.
+                    for (final mode in LayerBlendMode.optionsFor(
+                      isGroup: false,
+                    ))
+                      PanelFlyoutItem(
+                        keyValue: 'legend-blend-${mode.name}',
+                        label: mode.labelFor(blendLanguage),
+                        onSelected: () => legend!.onSetBlendModeForDisplayed!(
+                          displayedLayerIds!(),
+                          mode,
+                        ),
+                      ),
+                  ],
+            child: _columnHeading('BLND', colorScheme, axis),
+          );
+  }
+
+  /// Legend icons read like the row toggles now (R3 feedback #2): GRAY at
+  /// rest, ACCENT while their column's display-solo/state is engaged.
+  Widget _legendIcon(
+    IconData icon, {
+    required Color restColor,
+    bool engaged = false,
+  }) => Icon(icon, size: 13, color: engaged ? AppColors.accent : restColor);
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final legend = this.legend;
 
-    // Legend icons read like the row toggles now (R3 feedback #2): GRAY at
-    // rest, ACCENT while their column's display-solo/state is engaged.
     final restColor = colorScheme.onSurfaceVariant;
-    Widget legendIcon(IconData icon, {bool engaged = false}) =>
-        Icon(icon, size: 13, color: engaged ? AppColors.accent : restColor);
 
     final isVertical = axis == Axis.vertical;
     // Which optional columns this host carries. Hoisted because the stood-up
@@ -330,153 +715,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     axis: axis,
                     // Over the rows' inline section band (UI-R5/R6 #5):
                     // the sections flyout.
-                    sectionBand: _cell(
-                      keyValue: 'legend-sections',
-                      tooltip: AppText.strings.tlSections,
-                      entriesBuilder: _sectionEntries,
-                      child: Icon(
-                        Icons.view_agenda_outlined,
-                        size: 13,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    laneToggle:
-                        onExpandAllLanes != null && onCollapseAllLanes != null
-                        // The lane column's header: fold/unfold EVERY
-                        // layer's lanes in one tap (R3 feedback #5).
-                        ? Tooltip(
-                            message: anyLanesExpanded
-                                ? 'Collapse all layers'
-                                : 'Expand all layers',
-                            child: ControlPressClaim(
-                              onPressed: anyLanesExpanded
-                                  ? onCollapseAllLanes
-                                  : onExpandAllLanes,
-                              child: InkWell(
-                                key: const ValueKey<String>(
-                                  'legend-lanes-toggle',
-                                ),
-                                onTap: silentPress(
-                                  anyLanesExpanded
-                                      ? onCollapseAllLanes
-                                      : onExpandAllLanes,
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    anyLanesExpanded
-                                        ? Icons.unfold_less
-                                        : Icons.unfold_more,
-                                    size: 13,
-                                    color: restColor,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        : null,
-                    timesheet: _cell(
-                      keyValue: 'legend-sheet',
-                      tooltip: AppText.strings.tlColTimesheet,
-                      entriesBuilder: legend == null
-                          ? null
-                          : () => [
-                              PanelFlyoutItem(
-                                keyValue: 'legend-sheet-all-on',
-                                label: AppText.strings.tlAllOnTimesheet,
-                                icon: Icons.table_chart,
-                                onSelected: legend.onSheetAllOn,
-                              ),
-                              PanelFlyoutItem(
-                                keyValue: 'legend-sheet-all-off',
-                                label: AppText.strings.tlAllOffTimesheet,
-                                icon: Icons.table_chart_outlined,
-                                onSelected: legend.onSheetAllOff,
-                              ),
-                              if (showRowSolos) ...[
-                                const PanelFlyoutDivider(),
-                                PanelFlyoutItem(
-                                  keyValue: 'legend-filter-sheet',
-                                  label: AppText.strings.tlSoloSheetOnRows,
-                                  icon: Icons.center_focus_strong_outlined,
-                                  checked: rowFilter.onTimesheetOnly,
-                                  onSelected: legend.onToggleSheetOnlyFilter,
-                                ),
-                              ],
-                            ],
-                      child: legendIcon(
-                        Icons.table_chart_outlined,
-                        engaged: rowFilter.onTimesheetOnly,
-                      ),
-                    ),
-                    mark: _cell(
-                      keyValue: 'legend-mark',
-                      tooltip: AppText.strings.tlColMark,
-                      entriesBuilder: legend == null
-                          ? null
-                          : () => [
-                              PanelFlyoutItem(
-                                keyValue: 'legend-mark-clear',
-                                label: AppText.strings.tlClearAllMarks,
-                                icon: Icons.label_off_outlined,
-                                onSelected: legend.onClearAllMarks,
-                              ),
-                              if (showRowSolos && marksInUse.isNotEmpty) ...[
-                                const PanelFlyoutDivider(),
-                                PanelFlyoutHeader(AppText.strings.tlSoloColor),
-                                // 🚨THE MARKS IN USE, not every mark there
-                                // could be. A mark is a 공정/수정 pair now,
-                                // so «every value» is a product of two lists
-                                // and most of it would never appear in this
-                                // project — the filter was always about what
-                                // is actually on the rows, and this says so.
-                                for (final mark
-                                    in marksInUse.toList()..sort(
-                                      (a, b) => a.sortKey.compareTo(b.sortKey),
-                                    ))
-                                  if (!mark.isNone)
-                                    PanelFlyoutItem(
-                                      keyValue:
-                                          'legend-filter-mark-${mark.keySlug}',
-                                      label: layerMarkDisplayName(mark),
-                                      checked: rowFilter.markColors.contains(
-                                        mark,
-                                      ),
-                                      onSelected: () =>
-                                          legend.onToggleMarkFilter(mark),
-                                    ),
-                              ],
-                            ],
-                      child: legendIcon(
-                        Icons.label_outline,
-                        engaged: rowFilter.markColors.isNotEmpty,
-                      ),
-                    ),
+                    sectionBand: _buildSectionBand(legend, colorScheme),
+                    laneToggle: _buildLaneToggle(legend, restColor),
+                    timesheet: _buildTimesheet(legend, restColor),
+                    mark: _buildMark(legend, restColor),
                     // Kind-solo flyout over the rows' TYPE BUTTON column
                     // (R4 #8): solo one layer TYPE like the mark colors.
-                    typeButton: _cell(
-                      keyValue: 'legend-kind',
-                      tooltip: AppText.strings.tlColLayerKind,
-                      entriesBuilder:
-                          legend == null || kindsInUse.isEmpty || !showRowSolos
-                          ? null
-                          : () => [
-                              PanelFlyoutHeader(AppText.strings.tlSoloKind),
-                              for (final kind in LayerKind.values)
-                                if (kindsInUse.contains(kind))
-                                  PanelFlyoutItem(
-                                    keyValue: 'legend-filter-kind-${kind.name}',
-                                    label: layerKindDisplayName(kind),
-                                    icon: layerKindIcon(kind),
-                                    checked: rowFilter.kinds.contains(kind),
-                                    onSelected: () =>
-                                        legend.onToggleKindFilter(kind),
-                                  ),
-                            ],
-                      child: legendIcon(
-                        Icons.interests_outlined,
-                        engaged: rowFilter.kinds.isNotEmpty,
-                      ),
-                    ),
+                    typeButton: _buildTypeButton(legend, restColor),
                   ),
                   // Plain heading (R4 #3): the old LAYER ▾ flyout's jobs
                   // moved to the command bar (add) and the lane-column
@@ -515,70 +760,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ),
                   ...layerRailTrailingCells(
                     axis: axis,
-                    fillReference: _cell(
-                      keyValue: 'legend-fill-ref',
-                      tooltip: AppText.strings.tlColFillReference,
-                      entriesBuilder: legend == null
-                          ? null
-                          : () => [
-                              PanelFlyoutItem(
-                                keyValue: 'legend-fill-ref-clear',
-                                label: AppText.strings.tlClearAllFillRefs,
-                                icon: Icons.format_color_reset_outlined,
-                                onSelected: legend.onClearAllFillReferences,
-                              ),
-                              if (showRowSolos) ...[
-                                const PanelFlyoutDivider(),
-                                PanelFlyoutItem(
-                                  keyValue: 'legend-filter-fill-ref',
-                                  label: AppText.strings.tlSoloFillReferences,
-                                  icon: Icons.center_focus_strong_outlined,
-                                  checked: rowFilter.fillReferenceOnly,
-                                  onSelected:
-                                      legend.onToggleFillReferenceOnlyFilter,
-                                ),
-                              ],
-                            ],
-                      child: legendIcon(
-                        Icons.format_color_fill,
-                        engaged: rowFilter.fillReferenceOnly,
-                      ),
-                    ),
-                    fx: _cell(
-                      keyValue: 'legend-fx',
-                      tooltip: AppText.strings.tlColFx,
-                      entriesBuilder: legend == null
-                          ? null
-                          : () => [
-                              PanelFlyoutItem(
-                                keyValue: 'legend-fx-enable-all',
-                                label: AppText.strings.tlApplyAllFx,
-                                onSelected: legend.onEnableAllFx,
-                              ),
-                              PanelFlyoutItem(
-                                keyValue: 'legend-fx-bypass-all',
-                                label: AppText.strings.tlBypassAllFx,
-                                onSelected: legend.onBypassAllFx,
-                              ),
-                              if (showRowSolos) ...[
-                                const PanelFlyoutDivider(),
-                                PanelFlyoutItem(
-                                  keyValue: 'legend-filter-fx',
-                                  label: AppText.strings.tlSoloFxOnRows,
-                                  icon: Icons.center_focus_strong_outlined,
-                                  checked: rowFilter.fxOnly,
-                                  onSelected: legend.onToggleFxOnlyFilter,
-                                ),
-                              ],
-                            ],
-                      // The shared fx glyph (R28 follow-up) — the column
-                      // header and the row switches read the same mark.
-                      child: fxGlyph(
-                        context: context,
-                        active: rowFilter.fxOnly,
-                        fontSize: 11,
-                      ),
-                    ),
+                    fillReference: _buildFillReference(legend, restColor),
+                    fx: _buildFx(context, legend),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
                     // displayed layers + the panel reveal. Hosts without
                     // the callback (storyboard rail) skip the COLUMN so
@@ -590,101 +773,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // onion but which passes no legend bulk commands —
                     // reserved the slot and left it blank: the one column
                     // on that surface with no heading over it.
-                    onion: !hasOnion
-                        ? null
-                        : _cell(
-                            keyValue: 'legend-onion',
-                            tooltip: AppText.strings.tlColOnionSkin,
-                            entriesBuilder:
-                                legend?.onToggleOnionSkinForDisplayed == null
-                                ? null
-                                : () => [
-                                    PanelFlyoutItem(
-                                      keyValue: 'legend-onion-toggle-displayed',
-                                      label: displayedOnionSkinOn
-                                          ? 'Clear onion on displayed layers'
-                                          : 'Apply onion to displayed layers',
-                                      icon: Icons.filter_none,
-                                      checked: displayedOnionSkinOn,
-                                      onSelected: legend!
-                                          .onToggleOnionSkinForDisplayed!,
-                                    ),
-                                    if (legend.onRevealOnionSkinPanel != null)
-                                      PanelFlyoutItem(
-                                        keyValue: 'legend-onion-open-panel',
-                                        label: AppText.strings.tlOpenOnionPanel,
-                                        icon: Icons.open_in_new,
-                                        onSelected:
-                                            legend.onRevealOnionSkinPanel!,
-                                      ),
-                                  ],
-                            child: legendIcon(
-                              Icons.filter_none,
-                              engaged: displayedOnionSkinOn,
-                            ),
-                          ),
-                    visibility: _cell(
-                      keyValue: 'legend-eye',
-                      tooltip: AppText.strings.tlColVisibility,
-                      entriesBuilder: legend == null
-                          ? null
-                          : () => [
-                              PanelFlyoutItem(
-                                keyValue: 'legend-eye-show-all',
-                                label: AppText.strings.tlShowAll,
-                                icon: Icons.visibility,
-                                onSelected: legend.onShowAllLayers,
-                              ),
-                              PanelFlyoutItem(
-                                keyValue: 'legend-eye-hide-all',
-                                label: AppText.strings.tlHideAll,
-                                icon: Icons.visibility_off,
-                                onSelected: legend.onHideAllLayers,
-                              ),
-                              PanelFlyoutItem(
-                                keyValue: 'legend-eye-solo',
-                                label: AppText.strings.tlSoloActiveLayer,
-                                icon: Icons.center_focus_strong_outlined,
-                                checked: visibilitySoloEnabled,
-                                onSelected: legend.onToggleVisibilitySolo,
-                              ),
-                            ],
-                      child: legendIcon(
-                        Icons.visibility_outlined,
-                        engaged: visibilitySoloEnabled,
-                      ),
-                    ),
+                    onion: _buildOnion(legend, hasOnion, restColor),
+                    visibility: _buildVisibility(legend, restColor),
                     // The mute cell is a DIRECT all-SE toggle (R3 feedback
                     // #10): one tap mutes/unmutes every SE row, colored by
                     // the muted state — no flyout.
-                    mute: Tooltip(
-                      message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
-                      child: ControlPressClaim(
-                        onPressed: legend == null
-                            ? null
-                            : (allSeMuted
-                                  ? legend.onUnmuteAllSe
-                                  : legend.onMuteAllSe),
-                        child: InkWell(
-                          key: const ValueKey<String>('legend-mute'),
-                          onTap: silentPress(
-                            legend == null
-                                ? null
-                                : (allSeMuted
-                                      ? legend.onUnmuteAllSe
-                                      : legend.onMuteAllSe),
-                          ),
-                          child: Center(
-                            child: legendIcon(
-                              allSeMuted
-                                  ? Icons.volume_off
-                                  : Icons.volume_up_outlined,
-                              engaged: allSeMuted,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    mute: _buildMute(legend, restColor),
                     // MASTER opacity bar (R4 #6): drags every DISPLAYED
                     // row's opacity (filter-passing — solo a color/kind
                     // first to scope it). Gray at rest on the LAST
@@ -694,38 +788,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // not a slider, and a rotated one would lose the arena
                     // (a vertical screen drag never reaches a horizontal
                     // recognizer). The column keeps its heading.
-                    opacity:
-                        legend != null &&
-                            displayedLayerIds != null &&
-                            !isVertical
-                        ? Tooltip(
-                            message: AppText.strings.tlAllDisplayedOpacity,
-                            child: FieldSlider.opacity(
-                              key: const ValueKey<String>('legend-opacity'),
-                              value: displayedOpacity
-                                  .clamp(0.0, 1.0)
-                                  .toDouble(),
-                              valueText: 'OPAC',
-                              height: 18,
-                              restingAccent: colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.45),
-                              onChanged: (value) =>
-                                  legend.onPreviewLayersOpacity(
-                                    displayedLayerIds!(),
-                                    value,
-                                  ),
-                              onChangeEnd: (value) =>
-                                  legend.onCommitLayersOpacity(
-                                    displayedLayerIds!(),
-                                    value,
-                                  ),
-                            ),
-                          )
-                        : _cell(
-                            keyValue: 'legend-opacity',
-                            tooltip: AppText.strings.tlColOpacity,
-                            child: _columnHeading('OPAC', colorScheme, axis),
-                          ),
+                    opacity: _buildOpacity(legend, isVertical, colorScheme),
                     // R27 #6: the BLEND column header — one pick applies
                     // the mode to every displayed compositing row, the
                     // master opacity bar's logic in a flyout. Hosts
@@ -735,38 +798,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     hasBlendColumn: hasBlend,
                     // Heading follows the COLUMN, flyout follows the bulk
                     // callback — see the onion cell above.
-                    blend: !hasBlend
-                        ? null
-                        : _cell(
-                            keyValue: 'legend-blend',
-                            tooltip: AppText.strings.tlColBlendMode,
-                            entriesBuilder:
-                                legend?.onSetBlendModeForDisplayed == null ||
-                                    displayedLayerIds == null
-                                ? null
-                                : () => [
-                                    PanelFlyoutHeader(
-                                      AppText.strings.tlAllDisplayedLayers,
-                                    ),
-                                    // The bulk set writes DRAWING rows;
-                                    // pass-through is a group-only answer,
-                                    // so it never appears here.
-                                    for (final mode
-                                        in LayerBlendMode.optionsFor(
-                                          isGroup: false,
-                                        ))
-                                      PanelFlyoutItem(
-                                        keyValue: 'legend-blend-${mode.name}',
-                                        label: mode.labelFor(blendLanguage),
-                                        onSelected: () =>
-                                            legend!.onSetBlendModeForDisplayed!(
-                                              displayedLayerIds!(),
-                                              mode,
-                                            ),
-                                      ),
-                                  ],
-                            child: _columnHeading('BLND', colorScheme, axis),
-                          ),
+                    blend: _buildBlend(legend, hasBlend, colorScheme),
                   ),
                 ],
               ),
