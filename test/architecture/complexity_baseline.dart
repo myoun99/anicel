@@ -1125,7 +1125,6 @@ const complexityBaseline = <String>{
   'lib/src/ui/timeline/timeline_lane_rows.dart::_TimelineLaneControlsRowState._valueLines',
   'lib/src/ui/timeline/timeline_lane_rows.dart::_TimelineLaneControlsRowState._valueCell',
   'lib/src/ui/timeline/timeline_lane_rows.dart::_TimelineLaneControlsRowState._valueEditor',
-  'lib/src/ui/timeline/timeline_lane_rows.dart::_TimelineLaneControlsRowState._buildCell',
   'lib/src/ui/timeline/timeline_lane_rows.dart::TimelineLaneFrameRow._buildBand',
   'lib/src/ui/timeline/timeline_layer_controls_header.dart::TimelineLayerControlsHeader.build',
   'lib/src/ui/timeline/timeline_layer_controls_row.dart::timelineLayerControlsRowShowsSameState',

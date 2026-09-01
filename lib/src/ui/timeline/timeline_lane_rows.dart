@@ -12,7 +12,6 @@ import '../input/eager_pan_gesture_recognizer.dart';
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
-import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart'
     show
@@ -48,6 +47,7 @@ import 'timeline_frame_range_gesture.dart'
 import 'timeline_frame_span_layout.dart'
     show TimelineFrameSpan, TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
+import 'axis_turn.dart';
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
 /// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
@@ -718,348 +718,354 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   Widget _buildCell(BuildContext context, TimelineRowAddress? currentRow) {
     final colorScheme = Theme.of(context).colorScheme;
-    // The lane's PLATE: the shared "you are standing here" wash while this
-    // row is the verbs' subject — or while you are standing INSIDE the
-    // group it leads, so the rail reads as the chain it is (layer ▸ Blur ▸
-    // Radius all lit, user 2026-08-07).
+    final plate = _plate(colorScheme, currentRow);
+    return _standable(
+      lane.isGroupHeader
+          ? _headerCell(context, colorScheme, plate)
+          : _memberCell(colorScheme, plate),
+    );
+  }
+
+  /// The lane's PLATE: the shared "you are standing here" wash while this
+  /// row is the verbs' subject — or while you are standing INSIDE the group
+  /// it leads, so the rail reads as the chain it is (layer ▸ Blur ▸ Radius
+  /// all lit, user 2026-08-07).
+  Color _plate(ColorScheme colorScheme, TimelineRowAddress? currentRow) {
     final lit =
         currentRowIsLane(currentRow, layer.id, lane.laneId) ||
         (lane.isGroupHeader &&
             currentRowIsInsideGroup(currentRow, layer.id, lane.laneId));
-    final plate = lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
-    if (lane.isGroupHeader) {
-      // AE group header ('Transform', an effect): a structural label one
-      // indent LEFT of its member lanes, no navigator/value. The chevron
-      // twirls the group open/closed (default collapsed); pressing the
-      // header itself stands on it.
-      final onToggleGroup = widget.onToggleLaneGroup;
-      final headerCell = Container(
-        key: ValueKey<String>(
-          '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
-        ),
-        width:
-            widget.width ??
-            (widget.metrics.layerControlsWidth -
-                widget.metrics.sectionLabelGutterWidth),
-        height: widget.height ?? widget.metrics.layerRowHeight,
-        decoration: BoxDecoration(
-          // A lane row is a PLATE belonging to the layer above it, not one of
-          // the three chrome surfaces — the same reading its frame-side half
-          // already takes.
-          color: plate,
-          border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
-        ),
-        // The TWIRL is the chevron's, not the whole header's (R10 #19's
-        // rail half). A header is a row you stand on and — next round —
-        // grab to reorder the chain; a label that toggles instead would
-        // have to be excluded from both, and that exclusion is exactly the
-        // kind of surface-local rule this rail keeps paying for.
-        child: Padding(
-          padding: widget.axis == Axis.horizontal
-              ? const EdgeInsets.only(right: 8)
-              : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-          // R10 R6: stood up on the sheet, like every other header.
-          child: Flex(
-            direction: widget.axis,
-            // START on BOTH axes (user, 2026-08-08): the sheet's headers
-            // used to center their contents while the rail's began at the
-            // leading edge, so the twirl and the name sat at a different
-            // place on each surface for no reason either of them has.
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              if (widget.axis == Axis.horizontal &&
-                  widget.leadingInset > 0) ...[
-                // The rows' section band continues through lane rows
-                // (UI-R6 #5).
-                const LayerSectionBandCell(),
-                const SizedBox(width: 10),
-              ],
-              ControlPressClaim(
-                onPressed: onToggleGroup == null
-                    ? null
-                    : () => onToggleGroup(layer, lane),
-                child: InkWell(
-                  key: ValueKey<String>(
-                    '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-                  ),
-                  onTap: silentPress(
-                    onToggleGroup == null
-                        ? null
-                        : () => onToggleGroup(layer, lane),
-                  ),
-                  customBorder: const CircleBorder(), // R26 #28
-                  child: Icon(
-                    layerRailTwirlIcon(expanded: lane.groupExpanded),
-                    size: 16,
-                  ),
-                ),
-              ),
-              // The name takes the leftover; the controls after it are a
-              // fixed grid, so `Expanded` (not `Flexible`) — the trailing
-              // run has to start at the same place on every header, and
-              // shrink-wrapping the name is what made it start wherever a
-              // name happened to end.
-              Expanded(
-                child: widget.axis == Axis.horizontal
-                    ? Text(
-                        lane.label,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface,
-                        ),
-                      )
-                    : VerticalWritingText(
-                        text: lane.label,
-                        // 'Transform', 'Gaussian Blur' — property names a
-                        // person reads, so they stand up (user, 2026-08-08).
-                        latinForm: VerticalLatinForm.upright,
-                        mainAlignment: 0,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-              ),
-              // R5 #7: the group's switch sits in the LAYER ROW'S fx
-              // column, through the layer row's own skeleton. R6 put it
-              // straight after the label, which put it at a different x on
-              // every header. The shared `fx` glyph either way, so
-              // restyling fx still happens in exactly one place.
-              ...layerRailTrailingCells(
-                axis: widget.axis,
-                // R5: AE's group Reset, in the slot immediately left of fx
-                // — the one the fill-reference toggle owns on layer rows,
-                // and the two never appear on the same row.
-                fillReference: widget.onResetLaneGroup == null
-                    ? null
-                    : AppIconButton(
-                        keyValue:
-                            '$_keyPrefix-lane-group-reset-'
-                            '${layer.id}-${lane.laneId}',
-                        tooltip: AppText.strings.tlResetGroup,
-                        size: AppIconButtonSize.micro,
-                        onPressed: () => widget.onResetLaneGroup!(layer, lane),
-                        icon: Icon(
-                          Icons.settings_backup_restore,
-                          size: 14,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                fx: lane.groupEnabled == null
-                    ? null
-                    : RailSwipeColumnPointer(
-                        child: AppIconButton(
-                          keyValue:
-                              '$_keyPrefix-lane-group-fx-'
-                              '${layer.id}-${lane.laneId}',
-                          tooltip: lane.groupEnabled!
-                              ? 'Bypass ${lane.label}'
-                              : 'Apply ${lane.label}',
-                          onPressed: widget.onToggleLaneGroupEnabled == null
-                              ? null
-                              : () => widget.onToggleLaneGroupEnabled!(
-                                  layer,
-                                  lane,
-                                ),
-                          icon: fxGlyph(
-                            context: context,
-                            active: lane.groupEnabled!,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                hasOnionColumn: widget.hasOnionColumn,
-                hasBlendColumn: widget.hasBlendColumn,
-                // R5 #7: the preview fills the slots RIGHT OF fx as ONE
-                // region, right-aligned — the user's placement ②. It goes
-                // through the skeleton rather than beside it, so it cannot
-                // drift from the fx column the way a hand-placed run did.
-                trailingRegion: lane.previewText == null
-                    ? null
-                    : Align(
-                        alignment: widget.axis == Axis.horizontal
-                            ? Alignment.centerRight
-                            : Alignment.bottomCenter,
-                        child: SeNameTagLanePreview(
-                          key: ValueKey<String>(
-                            '$_keyPrefix-lane-group-preview-'
-                            '${layer.id}-${lane.laneId}',
-                          ),
-                          name: lane.previewText!.name,
-                          // The dialogue SAMPLE follows the Show Dialogue
-                          // member — the one thing a fixed-string preview
-                          // does track.
-                          line: _previewTag.showLine
-                              ? lane.previewText!.line
-                              : '',
-                          tag: _previewTag,
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
-      );
-      return _standable(headerCell);
-    }
-    final valueLabel = lane.valueLabel?.call(widget.currentFrameIndex);
-    final labelStyle = TextStyle(
-      fontSize: 12,
-      color: colorScheme.onSurfaceVariant,
-    );
-    // A lane's name reads down its column on the sheet, through the shared
-    // vertical-writing table — 'Position' will not fit across 28px, and
-    // ellipsis would have left one glyph and a dot. The letters STAND UP
-    // in it (user, 2026-08-08) and the column starts at the column's top,
-    // which is the rail's `centerLeft` transposed.
-    final label = widget.axis == Axis.horizontal
-        ? Text(lane.label, overflow: TextOverflow.ellipsis, style: labelStyle)
-        : VerticalWritingText(
-            text: lane.label,
-            latinForm: VerticalLatinForm.upright,
-            mainAlignment: 0,
-            style: labelStyle,
-          );
+    return lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
+  }
 
-    final Widget content;
-    if (widget.axis == Axis.horizontal) {
-      content = Row(
+  /// The cell's box, the same for a header and a member: the rail's row
+  /// width (the sheet's column), the row height, the plate and its hairline.
+  /// A lane row is a PLATE belonging to the layer above it, not one of the
+  /// three chrome surfaces — the same reading its frame-side half takes.
+  Widget _cellBox({
+    required Color plate,
+    required ColorScheme colorScheme,
+    required EdgeInsets padding,
+    Alignment? alignment,
+    required Widget child,
+  }) => Container(
+    key: ValueKey<String>('$_keyPrefix-lane-label-${layer.id}-${lane.laneId}'),
+    // Horizontal: the section bracket occupies the leading gutter beside
+    // the rail, and lane labels indent past the twirl-down chevron slot.
+    width:
+        widget.width ??
+        (widget.metrics.layerControlsWidth -
+            widget.metrics.sectionLabelGutterWidth),
+    height: widget.height ?? widget.metrics.layerRowHeight,
+    padding: padding,
+    decoration: BoxDecoration(
+      color: plate,
+      border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
+    ),
+    alignment: alignment,
+    child: child,
+  );
+
+  /// The rows' section band continues through lane rows (UI-R6 #5); the
+  /// lane indent follows it by [gap]. Null off the rail (the sheet has no
+  /// leading inset).
+  List<Widget>? _sectionLead(double gap) {
+    if (widget.axis != Axis.horizontal || widget.leadingInset <= 0) {
+      return null;
+    }
+    return [const LayerSectionBandCell(), SizedBox(width: gap)];
+  }
+
+  // ── the group header ──────────────────────────────────────────────────
+
+  /// AE group header ('Transform', an effect): a structural label one indent
+  /// LEFT of its member lanes, no navigator/value. The chevron twirls the
+  /// group open/closed (default collapsed); pressing the header itself
+  /// stands on it. R10 R6: stood up on the sheet, like every other header.
+  Widget _headerCell(
+    BuildContext context,
+    ColorScheme colorScheme,
+    Color plate,
+  ) {
+    return _cellBox(
+      plate: plate,
+      colorScheme: colorScheme,
+      padding: _headerPadding,
+      child: Flex(
+        direction: widget.axis,
+        // START on BOTH axes (user, 2026-08-08): the sheet's headers used
+        // to center their contents while the rail's began at the leading
+        // edge, so the twirl and the name sat at a different place on each
+        // surface for no reason either of them has.
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          if (lane.showsKeyNavigator) ...[
-            _navigator(colorScheme),
-            const SizedBox(width: 6),
-          ],
-          // The NAME takes the leftover and ellipsises; the VALUE is a
-          // fixed column at the end (R5 #20). Two flex children of equal
-          // weight is what put the numbers at a different x on every row —
-          // each was right-aligned inside HALF of whatever its name left
-          // over, and names are not the same length.
-          Expanded(child: label),
-          const SizedBox(width: 4),
-          SizedBox(
-            width: layerLaneValueSlotWidth,
-            // Reserved even with nothing to show, so the column survives
-            // the rows that carry no readout (the Excel-grid rule the
-            // control slots already follow).
-            child: valueLabel == null
-                ? null
-                : _editingValue
-                ? _valueCell(colorScheme, valueLabel)
-                : Align(
-                    alignment: Alignment.centerRight,
-                    // A truncated coordinate is a WRONG coordinate — the
-                    // sheet's stood-up readout already made that call, and
-                    // a fixed column is where it starts to matter here too.
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: _valueCell(colorScheme, valueLabel),
-                    ),
-                  ),
-          ),
+          ...?_sectionLead(10),
+          _groupTwirl(),
+          // The name takes the leftover; the controls after it are a fixed
+          // grid, so `Expanded` (not `Flexible`) — the trailing run has to
+          // start at the same place on every header, and shrink-wrapping
+          // the name is what made it start wherever a name happened to end.
+          Expanded(child: _headerLabel(colorScheme)),
+          ..._headerTrailing(context, colorScheme),
         ],
-      );
-    } else {
-      // X-sheet lane column header: the same controls stacked vertically,
-      // and the same rule the LAYER heading beside it follows — the NAME is
-      // what a heading is for, so it is paid first and the controls shed.
-      //
-      // R10 R6: without that, the label was simply `Expanded` over whatever
-      // the navigator and the value left, and at the default dock height
-      // 'Position' packed into 35px — 2.6px per glyph, against the layer
-      // heading's guaranteed 48 one column to its left.
-      content = LayoutBuilder(
-        builder: (context, constraints) {
-          final extent = constraints.maxHeight;
-          // Value first (it is a readout, and the same number is on the
-          // timeline rail), then the navigator (whose diamond is also on
-          // the frame axis).
-          // The gaps count too: without them the label's floor was 4px
-          // short of what the gate promised at every rung, and nothing
-          // noticed while the label could still pack.
-          const gap = 4.0;
-          final showsValue =
-              valueLabel != null &&
-              extent >= _laneLabelFloor + gap + _laneValueExtent;
-          final showsNavigator =
-              lane.showsKeyNavigator &&
-              extent >=
-                  _laneLabelFloor +
-                      gap +
-                      _laneNavigatorExtent +
-                      (showsValue ? gap + _laneValueExtent : 0);
-          // THE RAIL ROW'S ORDER, TRANSPOSED (user, 2026-08-08): navigator,
-          // then the name, then the value at the far end. The sheet used to
-          // lead with the name and put the navigator after it, so the same
-          // three controls read in two different orders depending on which
-          // way the panel was turned.
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (showsNavigator) ...[
-                _navigator(colorScheme),
-                const SizedBox(height: gap),
-              ],
-              Expanded(child: label),
-              if (showsValue) ...[
-                const SizedBox(height: gap),
-                // A fixed slot, so a long readout ellipsises inside it
-                // instead of pushing the heading out of its own column.
-                SizedBox(
-                  height: _laneValueExtent,
-                  child: _valueCell(colorScheme, valueLabel),
-                ),
-              ],
-            ],
-          );
-        },
-      );
-    }
+      ),
+    );
+  }
 
-    final memberCell = Container(
-      key: ValueKey<String>(
-        '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
+  EdgeInsets get _headerPadding => widget.axis == Axis.horizontal
+      ? const EdgeInsets.only(right: 8)
+      : const EdgeInsets.symmetric(horizontal: 2, vertical: 4);
+
+  /// The TWIRL is the chevron's, not the whole header's (R10 #19's rail
+  /// half). A header is a row you stand on and — next round — grab to
+  /// reorder the chain; a label that toggles instead would have to be
+  /// excluded from both, and that exclusion is exactly the kind of
+  /// surface-local rule this rail keeps paying for.
+  Widget _groupTwirl() {
+    final onToggleGroup = widget.onToggleLaneGroup;
+    final toggle = onToggleGroup == null
+        ? null
+        : () => onToggleGroup(layer, lane);
+    return ControlPressClaim(
+      onPressed: toggle,
+      child: InkWell(
+        key: ValueKey<String>(
+          '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+        ),
+        onTap: silentPress(toggle),
+        customBorder: const CircleBorder(), // R26 #28
+        child: Icon(layerRailTwirlIcon(expanded: lane.groupExpanded), size: 16),
       ),
-      // Horizontal: the section bracket occupies the leading gutter beside
-      // the rail, and lane labels indent past the twirl-down chevron slot.
-      width:
-          widget.width ??
-          (widget.metrics.layerControlsWidth -
-              widget.metrics.sectionLabelGutterWidth),
-      height: widget.height ?? widget.metrics.layerRowHeight,
-      padding: widget.axis == Axis.horizontal
-          ? (widget.leadingInset > 0
-                ? const EdgeInsets.only(right: 8)
-                : const EdgeInsets.only(left: 24, right: 8))
-          // 8 → 2: a 28px column cannot spend 16 of it on side padding.
-          : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-      decoration: BoxDecoration(
-        color: plate,
-        border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
+    );
+  }
+
+  /// 'Transform', 'Gaussian Blur' — property names a person reads, so they
+  /// stand up on the sheet (user, 2026-08-08).
+  Widget _headerLabel(ColorScheme colorScheme) => readableText(
+    widget.axis,
+    lane.label,
+    style: TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: colorScheme.onSurface,
+    ),
+  );
+
+  /// R5 #7: the group's switch sits in the LAYER ROW'S fx column, through
+  /// the layer row's own skeleton. R6 put it straight after the label, which
+  /// put it at a different x on every header. The shared `fx` glyph either
+  /// way, so restyling fx still happens in exactly one place.
+  List<Widget> _headerTrailing(BuildContext context, ColorScheme colorScheme) =>
+      layerRailTrailingCells(
+        axis: widget.axis,
+        fillReference: _groupReset(colorScheme),
+        fx: _groupFx(context),
+        hasOnionColumn: widget.hasOnionColumn,
+        hasBlendColumn: widget.hasBlendColumn,
+        trailingRegion: _groupPreview(),
+      );
+
+  /// R5: AE's group Reset, in the slot immediately left of fx — the one the
+  /// fill-reference toggle owns on layer rows, and the two never appear on
+  /// the same row.
+  Widget? _groupReset(ColorScheme colorScheme) {
+    final onReset = widget.onResetLaneGroup;
+    if (onReset == null) return null;
+    return AppIconButton(
+      keyValue: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
+      tooltip: AppText.strings.tlResetGroup,
+      size: AppIconButtonSize.micro,
+      onPressed: () => onReset(layer, lane),
+      icon: Icon(
+        Icons.settings_backup_restore,
+        size: 14,
+        color: colorScheme.onSurfaceVariant,
       ),
+    );
+  }
+
+  Widget? _groupFx(BuildContext context) {
+    final enabled = lane.groupEnabled;
+    if (enabled == null) return null;
+    final onToggle = widget.onToggleLaneGroupEnabled;
+    return RailSwipeColumnPointer(
+      child: AppIconButton(
+        keyValue: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
+        tooltip: enabled ? 'Bypass ${lane.label}' : 'Apply ${lane.label}',
+        onPressed: onToggle == null ? null : () => onToggle(layer, lane),
+        icon: fxGlyph(context: context, active: enabled, fontSize: 11),
+      ),
+    );
+  }
+
+  /// R5 #7: the preview fills the slots RIGHT OF fx as ONE region,
+  /// right-aligned — the user's placement ②. It goes through the skeleton
+  /// rather than beside it, so it cannot drift from the fx column the way a
+  /// hand-placed run did.
+  Widget? _groupPreview() {
+    final preview = lane.previewText;
+    if (preview == null) return null;
+    return Align(
+      alignment: widget.axis == Axis.horizontal
+          ? Alignment.centerRight
+          : Alignment.bottomCenter,
+      child: SeNameTagLanePreview(
+        key: ValueKey<String>(
+          '$_keyPrefix-lane-group-preview-${layer.id}-${lane.laneId}',
+        ),
+        name: preview.name,
+        // The dialogue SAMPLE follows the Show Dialogue member — the one
+        // thing a fixed-string preview does track.
+        line: _previewTag.showLine ? preview.line : '',
+        tag: _previewTag,
+      ),
+    );
+  }
+
+  // ── a member lane ─────────────────────────────────────────────────────
+
+  Widget _memberCell(ColorScheme colorScheme, Color plate) {
+    final valueLabel = lane.valueLabel?.call(widget.currentFrameIndex);
+    // A lane's name reads down its column on the sheet, through the shared
+    // vertical-writing table ([readableText]).
+    final label = readableText(
+      widget.axis,
+      lane.label,
+      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+    );
+    final content = widget.axis == Axis.horizontal
+        ? _memberRow(colorScheme, label, valueLabel)
+        : _memberColumn(colorScheme, label, valueLabel);
+    final lead = _sectionLead(24);
+    return _cellBox(
+      plate: plate,
+      colorScheme: colorScheme,
+      padding: _memberPadding,
       // The rail's `centerLeft` transposed: the START of the main axis,
       // centered across it. The sheet centered on BOTH axes, which is what
-      // made its lane names float in the middle of a column whose rail
-      // twin begins at the leading edge.
+      // made its lane names float in the middle of a column whose rail twin
+      // begins at the leading edge.
       alignment: widget.axis == Axis.horizontal
           ? Alignment.centerLeft
           : Alignment.topCenter,
-      child: widget.axis == Axis.horizontal && widget.leadingInset > 0
-          ? Row(
+      child: lead == null
+          ? _clipToContent(content)
+          : Row(
               children: [
-                // The rows' section band continues through lane rows
-                // (UI-R6 #5); the 24px lane indent follows it.
-                const LayerSectionBandCell(),
-                const SizedBox(width: 24),
+                ...lead,
                 Expanded(child: content),
               ],
-            )
-          : _clipToContent(content),
+            ),
     );
-    return _standable(memberCell);
+  }
+
+  /// 8 → 2 on the sheet: a 28px column cannot spend 16 of it on side padding.
+  EdgeInsets get _memberPadding {
+    if (widget.axis != Axis.horizontal) {
+      return const EdgeInsets.symmetric(horizontal: 2, vertical: 4);
+    }
+    return widget.leadingInset > 0
+        ? const EdgeInsets.only(right: 8)
+        : const EdgeInsets.only(left: 24, right: 8);
+  }
+
+  /// Along the rail: navigator, name, value. The NAME takes the leftover and
+  /// ellipsises; the VALUE is a fixed column at the end (R5 #20). Two flex
+  /// children of equal weight is what put the numbers at a different x on
+  /// every row — each was right-aligned inside HALF of whatever its name
+  /// left over, and names are not the same length.
+  Widget _memberRow(ColorScheme colorScheme, Widget label, String? valueLabel) {
+    return Row(
+      children: [
+        if (lane.showsKeyNavigator) ...[
+          _navigator(colorScheme),
+          const SizedBox(width: 6),
+        ],
+        Expanded(child: label),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: layerLaneValueSlotWidth,
+          // Reserved even with nothing to show, so the column survives the
+          // rows that carry no readout (the Excel-grid rule the control
+          // slots already follow).
+          child: valueLabel == null
+              ? null
+              : _editingValue
+              ? _valueCell(colorScheme, valueLabel)
+              : Align(
+                  alignment: Alignment.centerRight,
+                  // A truncated coordinate is a WRONG coordinate — the
+                  // sheet's stood-up readout already made that call, and a
+                  // fixed column is where it starts to matter here too.
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: _valueCell(colorScheme, valueLabel),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// X-sheet lane column header: the same controls stacked vertically, and
+  /// the same rule the LAYER heading beside it follows — the NAME is what a
+  /// heading is for, so it is paid first and the controls shed.
+  ///
+  /// R10 R6: without that, the label was simply `Expanded` over whatever the
+  /// navigator and the value left, and at the default dock height 'Position'
+  /// packed into 35px — 2.6px per glyph, against the layer heading's
+  /// guaranteed 48 one column to its left.
+  ///
+  /// THE RAIL ROW'S ORDER, TRANSPOSED (user, 2026-08-08): navigator, then
+  /// the name, then the value at the far end. The sheet used to lead with
+  /// the name and put the navigator after it, so the same three controls
+  /// read in two different orders depending on which way the panel was
+  /// turned. Value first in the GATE (it is a readout, and the same number
+  /// is on the timeline rail), then the navigator (whose diamond is also on
+  /// the frame axis). The gaps count too: without them the label's floor
+  /// was 4px short of what the gate promised at every rung, and nothing
+  /// noticed while the label could still pack.
+  Widget _memberColumn(
+    ColorScheme colorScheme,
+    Widget label,
+    String? valueLabel,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final extent = constraints.maxHeight;
+        const gap = 4.0;
+        final showsValue =
+            valueLabel != null &&
+            extent >= _laneLabelFloor + gap + _laneValueExtent;
+        final showsNavigator =
+            lane.showsKeyNavigator &&
+            extent >=
+                _laneLabelFloor +
+                    gap +
+                    _laneNavigatorExtent +
+                    (showsValue ? gap + _laneValueExtent : 0);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showsNavigator) ...[
+              _navigator(colorScheme),
+              const SizedBox(height: gap),
+            ],
+            Expanded(child: label),
+            if (showsValue) ...[
+              const SizedBox(height: gap),
+              // A fixed slot, so a long readout ellipsises inside it instead
+              // of pushing the heading out of its own column.
+              SizedBox(
+                height: _laneValueExtent,
+                child: _valueCell(colorScheme, valueLabel),
+              ),
+            ],
+          ],
+        );
+      },
+    );
   }
 
   /// Below the host's stated content extent the cell SCALES instead of

@@ -11,6 +11,8 @@ library;
 
 import 'package:flutter/widgets.dart';
 
+import '../text/vertical_writing_text.dart';
+
 /// A box of [extent] along [axis]; the other dimension is the child's own.
 SizedBox alongBox(Axis axis, double extent, {Widget? child}) =>
     axis == Axis.horizontal
@@ -93,4 +95,23 @@ Positioned stripAlong(
         top: along,
         height: alongExtent,
         child: child,
+      );
+
+/// Text a person READS, turned by the axis: across the strip it is one line
+/// that ellipsises; down a column it STANDS UP — upright letters, the column
+/// beginning at its top (user, 2026-08-08: the rail's left-aligned name,
+/// transposed). 'Position' will not fit across 28px, and an ellipsis there
+/// would have left one glyph and a dot. Three cells spelled this fork by
+/// hand — the layer name, the lane group header, the lane member — before it
+/// had a name.
+Widget readableText(Axis axis, String text, {TextStyle? style}) =>
+    axis == Axis.horizontal
+    ? Text(text, overflow: TextOverflow.ellipsis, style: style)
+    : ClipRect(
+        child: VerticalWritingText(
+          text: text,
+          latinForm: VerticalLatinForm.upright,
+          mainAlignment: 0,
+          style: style,
+        ),
       );

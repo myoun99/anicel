@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 
 /// The four turns, both ways. Each case fixes the DIRECTION a number goes —
@@ -97,6 +98,22 @@ void main() {
       );
       expect((p.left, p.right, p.top, p.height), (0, 0, 120, 12));
       expect((p.bottom, p.width), (null, null));
+    });
+  });
+
+  group('readableText', () {
+    test('across the strip it is one ellipsising line', () {
+      final w = readableText(Axis.horizontal, 'Position');
+      expect(w, isA<Text>());
+      expect((w as Text).overflow, TextOverflow.ellipsis);
+    });
+
+    test('down a column the letters stand up from the top', () {
+      final w = readableText(Axis.vertical, 'Position');
+      expect(w, isA<ClipRect>());
+      final text = (w as ClipRect).child! as VerticalWritingText;
+      expect(text.latinForm, VerticalLatinForm.upright);
+      expect(text.mainAlignment, 0);
     });
   });
 }

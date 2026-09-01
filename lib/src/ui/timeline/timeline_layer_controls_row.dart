@@ -13,7 +13,6 @@ import '../../models/layer_mark.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
-import '../text/vertical_writing_text.dart';
 import 'layer_label_controls.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
@@ -656,20 +655,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// READ, so the letters stand up and the column begins at the top — the
   /// rail's left-aligned name, transposed (user, 2026-08-08). It used to lie
   /// down AND float in the middle of its own column.
-  Widget _nameText(BuildContext context) => _horizontal
-      ? Text(
-          layer.name,
-          style: layerRowNameStyle(context),
-          overflow: TextOverflow.ellipsis,
-        )
-      : ClipRect(
-          child: VerticalWritingText(
-            text: layer.name,
-            latinForm: VerticalLatinForm.upright,
-            mainAlignment: 0,
-            style: layerRowNameStyle(context),
-          ),
-        );
+  Widget _nameText(BuildContext context) =>
+      readableText(axis, layer.name, style: layerRowNameStyle(context));
 
   Widget? _linkBadge(ColorScheme colorScheme) {
     if (!isLinked) return null;
