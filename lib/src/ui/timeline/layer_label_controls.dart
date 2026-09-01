@@ -476,6 +476,13 @@ Widget fxGlyph({
   );
 }
 
+/// The rail's 「off」 alpha: what a switched-off icon or plate wears.
+///
+/// ⚠️It was the literal 0.45, written at each of its wearers — the onion,
+/// the fx glyph, the hidden row's label plate — with a comment at one of
+/// them explaining that the other two had to match by hand.
+const double layerRailOffAlpha = 0.45;
+
 /// The ONE eye: whether this row shows.
 ///
 /// It was written inline in three rails (timeline, x-sheet, storyboard)
@@ -489,12 +496,18 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     required this.isVisible,
     required this.onToggle,
     this.subject = 'layer',
+    this.tooltip,
     this.size = layerVisibilitySlotWidth,
     this.iconSize = 18,
   });
 
   /// Names the row kind in the tooltip ('layer', 'folder').
   final String subject;
+
+  /// The whole tooltip, when the caller has one of its own — the guides
+  /// panel says 「가이드 표시」 rather than 'Show guide'. Null keeps the
+  /// Show/Hide pair built from [subject], which is what every rail wants.
+  final String? tooltip;
 
   /// The full widget key string ('timeline-layer-visibility-a').
   final String keyValue;
@@ -513,11 +526,28 @@ class LayerVisibilityToggleButton extends StatelessWidget {
       height: 26,
       child: AppIconButton(
         keyValue: keyValue,
-        tooltip: isVisible ? 'Hide $subject' : 'Show $subject',
+        tooltip: tooltip ?? (isVisible ? 'Hide $subject' : 'Show $subject'),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
         size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
-        icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off),
+        icon: Icon(
+          isVisible ? Icons.visibility : Icons.visibility_off,
+          // 🚨F-58 (유저): 「비지블off일경우 색라벨이 불투명도가 낮아지는데.
+          // 이거 멋대로 추가한건데 맘에드니 채용. 근데 내가말한건 **비지블off시
+          // 비지블버튼 자체를 비활성화색(어둡게)** 하란거였음. 그러니 작업하고,
+          // 추가적으로 **비지블버튼은 다른곳에서도 쓰니까 공용화/통일화**시켜서
+          // 결과적으로 다른곳도 비활성화시 비활성화색 되도록」.
+          //
+          // ★HERE, so 「결과적으로 다른곳도」 is automatic rather than five
+          // edits. ⚠️[layerRailOffAlpha] is the rail's OWN off language —
+          // the alpha the onion and fx icons already wear — so a hidden row
+          // reads as off in one language rather than in three.
+          color: isVisible
+              ? null
+              : IconTheme.of(
+                  context,
+                ).color?.withValues(alpha: layerRailOffAlpha),
+        ),
         onPressed: onToggle,
       ),
     );
@@ -1067,7 +1097,7 @@ class LayerMarkChip extends StatelessWidget {
             // and fx icons wear — so a hidden layer reads as off in one
             // language rather than in three.
             fill: !isVisible
-                ? layerMarkColor(mark).withValues(alpha: 0.45)
+                ? layerMarkColor(mark).withValues(alpha: layerRailOffAlpha)
                 : layerMarkColor(mark),
             columns: [
               layerMarkChipText(mark).process,

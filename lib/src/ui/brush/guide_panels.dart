@@ -1,3 +1,4 @@
+import '../timeline/layer_label_controls.dart' show LayerVisibilityToggleButton;
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
@@ -286,16 +287,15 @@ class _GuideRow extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AppIconButton(
+            // ⛔NOT a hand-rolled eye. 유저 (F-58): 「비지블버튼은
+            // 다른곳에서도 쓰니까 공용화/통일화」 — and this was the last
+            // copy, the one that dimmed its OFF state in a colour of its
+            // own while the five rails dimmed in none.
+            LayerVisibilityToggleButton(
               keyValue: 'guide-visible-${guide.id.value}',
+              isVisible: guide.visible,
               tooltip: strings.guideShow,
-              icon: Icon(
-                guide.visible ? Icons.visibility : Icons.visibility_off,
-                color: guide.visible
-                    ? colorScheme.onSurface
-                    : colorScheme.onSurfaceVariant,
-              ),
-              onPressed: () => onVisibleChanged(!guide.visible),
+              onToggle: () => onVisibleChanged(!guide.visible),
             ),
             AppIconButton(
               keyValue: 'guide-delete-${guide.id.value}',
