@@ -68,7 +68,7 @@ String boardCheckComplaints(
     ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
     ..._workThatShipped(cards, acks, since),
     ..._questionsNobodyCanAnswer(cards, acks, since),
-    ..._answersNobodyRead(cards, acks, since),
+    ..._answersNobodyRead(cards, acks, since, now),
     ..._deadAcks(cards, acks),
     ..._drawnNowhere(cards, acks),
   ];
@@ -698,10 +698,22 @@ Iterable<String> _answersNobodyRead(
   List<BoardCard> cards,
   Set<String> acks,
   String since,
+  DateTime? clock,
 ) sync* {
   final untriaged = <String>[];
   final waiting = <String>[];
-  final now = DateTime.now();
+  // 🚨THE INJECTED CLOCK, like every other check here.
+  //
+  // ⛔This called `DateTime.now()` directly, and that is a TIME BOMB rather
+  // than a flake: the fixtures next door are stamped from a fixed instant so
+  // a case means the same thing whenever it runs, and this one check aged
+  // them against the real day instead. It passed for as long as the fixture
+  // date was today and went red on the next one — 2026-09-01, on CI, on a PR
+  // that had not touched the board at all. The file's own comment already
+  // says why (「Comparing fixtures against the gate's hardcoded dates made
+  // the suite depend on what day the machine thinks it is」); this line was
+  // simply missed when that was fixed.
+  final now = clock ?? DateTime.now();
   for (final c in cards) {
     if (!_live(c) || acks.contains(c.id)) continue;
     final section = lastSection(c);

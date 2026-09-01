@@ -286,6 +286,55 @@ void main() {
       expect(out, contains('A'));
     });
 
+    // 🚨★★★THE GATE HAS ONE CLOCK, AND THE TEST HANDS IT OVER.
+    //
+    // ⛔`_answersNobodyRead` called `DateTime.now()` directly, so every
+    // fixture here aged against the REAL day while the rest of the gate aged
+    // against `base`. That is a time BOMB rather than a flake: it passed for
+    // as long as `base` was today, and on 2026-09-01 it went red on CI, on a
+    // PR that had not touched the board at all.
+    //
+    // ⚠️This case exists so the next such line cannot hide. It runs the
+    // whole gate against a board stamped a WEEK before its `now` — if any
+    // check reaches for the wall clock again, the fixture is minutes old by
+    // that clock and the complaint it should raise goes missing.
+    test('🚨every check ages against the clock it was HANDED', () {
+      final old = DateTime.parse('2026-08-24T00:00:00Z');
+      final file = File('${dir.path}/aged.jsonl')
+        ..writeAsStringSync(
+          [
+            '{"kind":"item","id":"A","title":"t","at":"분류 전",'
+                '"note":"n","ts":"${old.toIso8601String()}"}',
+          ].map((l) => '$l\n').join(),
+        );
+
+      expect(
+        boardCheckComplaints(
+          file,
+          since: old.toIso8601String(),
+          linesSince: old.toIso8601String(),
+          now: old.add(const Duration(minutes: 5)),
+        ),
+        isNot(contains('분류 전에 하루 넘게')),
+        reason:
+            'five minutes old by the clock it was given — a check that '
+            'asks the machine what day it is would call this a week stale',
+      );
+      expect(
+        boardCheckComplaints(
+          file,
+          since: old.toIso8601String(),
+          linesSince: old.toIso8601String(),
+          now: old.add(const Duration(days: 7)),
+        ),
+        contains('분류 전에 하루 넘게'),
+        reason:
+            '★and the premise: the SAME board does raise it once the handed '
+            'clock has moved on, so the case above is not passing by '
+            'measuring nothing',
+      );
+    });
+
     test('⛔a question folded in with nothing after it IS 답할 것', () {
       expect(
         complaintsFor([
