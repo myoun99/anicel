@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -101,17 +101,17 @@ void main() {
 
     final layerALeft = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('xsheet-layer-header-layer-a')),
+          find.byKey(const ValueKey<String>('xsheet-layer-row-layer-a')),
         )
         .dx;
     final layerBLeft = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('xsheet-layer-header-layer-b')),
+          find.byKey(const ValueKey<String>('xsheet-layer-row-layer-b')),
         )
         .dx;
     final layerCLeft = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('xsheet-layer-header-layer-c')),
+          find.byKey(const ValueKey<String>('xsheet-layer-row-layer-c')),
         )
         .dx;
 

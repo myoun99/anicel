@@ -278,13 +278,35 @@ void _axisAgreement() {
 void _oneWidgetBothSurfaces() {
   test('레일과 x시트가 같은 칩 위젯을 쓴다 — 사본이 아니다', () {
     // 소스 스캔이다: 행동 테스트는 「지금은 똑같이 생긴 사본 둘」을 통과시킨다.
+    //
+    // 🆕2026-09-02: x시트는 칩을 **직접 세우지도 않는다** — 레일의 행 위젯을
+    // `axis: Axis.vertical` 로 세우고, 칩은 그 행이 한 곳에서 세운다. 그래서
+    // 「x시트에 `LayerMarkChip(` 이 있다」는 이제 사본의 징후다.
     final grid = File(
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ).readAsStringSync();
     expect(
       grid,
+      contains('TimelineLayerControlsRow('),
+      reason: 'x시트의 열 머리는 레일의 행 위젯이다',
+    );
+    expect(
+      grid,
+      isNot(contains('LayerMarkChip(')),
+      reason: '⛔x시트가 칩을 따로 세우면 행 위젯 밖에 두 번째 자리가 생긴 것이다',
+    );
+    final row = File(
+      'lib/src/ui/timeline/timeline_layer_controls_row.dart',
+    ).readAsStringSync();
+    expect(
+      row,
       contains('LayerMarkChip('),
-      reason: 'x시트도 레일과 같은 칩을 세운다',
+      reason: '칩을 세우는 곳은 행 위젯 하나',
+    );
+    expect(
+      row,
+      contains('axis: axis,'),
+      reason: '그 행이 자기 축을 칩에 넘긴다 — 두 표면이 한 코드로 갈린다',
     );
 
     // 그리고 그 칩이 축을 인자로 받는지 — 축이 없으면 두 표면은 갈릴 수밖에

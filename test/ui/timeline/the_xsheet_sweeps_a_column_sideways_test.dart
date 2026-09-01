@@ -132,7 +132,7 @@ void main() {
     final visible = await pumpSheet(tester);
     final eye = tester.getRect(eyeOf('draw-0'));
     final header = tester.getRect(
-      find.byKey(const ValueKey<String>('xsheet-layer-header-draw-0')),
+      find.byKey(const ValueKey<String>('xsheet-layer-row-draw-0')),
     );
     final from = Offset(eye.center.dx, header.top + 8);
     expect(

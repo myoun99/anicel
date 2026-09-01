@@ -186,7 +186,7 @@ void main() {
       addTearDown(rail.dispose);
       await tester.pumpWidget(_grid(railExtent: rail));
 
-      final headerKey = const ValueKey<String>('xsheet-layer-header-layer-1');
+      final headerKey = const ValueKey<String>('xsheet-layer-row-layer-1');
       final naturalHeader = tester.getSize(find.byKey(headerKey)).height;
 
       rail.resizeBy(
@@ -310,7 +310,7 @@ void main() {
           ) -
           layerSectionLabelSlotWidth;
       final header = tester.getRect(
-        find.byKey(const ValueKey<String>('xsheet-layer-header-layer-1')),
+        find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
       );
       expect(header.height, closeTo(expected, 0.01));
       expect(header.width, XSheetTimelineGrid.defaultMetrics.layerRowHeight);
@@ -368,7 +368,7 @@ void main() {
           // ladder's last rung, so a size alone proves nothing: a name
           // pushed past the clip still measures its forced extent.
           final header = tester.getRect(
-            find.byKey(const ValueKey<String>('xsheet-layer-header-layer-1')),
+            find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
           );
           expect(
             name.bottom,
@@ -441,7 +441,7 @@ void main() {
           .top;
       final headerTop = tester
           .getRect(
-            find.byKey(const ValueKey<String>('xsheet-layer-header-layer-1')),
+            find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
           )
           .top;
       // The header starts one band strip below the legend's own top.
@@ -672,7 +672,7 @@ void main() {
                   find
                       .descendant(
                         of: find.byKey(
-                          ValueKey<String>('xsheet-layer-header-$id'),
+                          ValueKey<String>('xsheet-layer-row-$id'),
                         ),
                         matching: find.byType(Container),
                       )

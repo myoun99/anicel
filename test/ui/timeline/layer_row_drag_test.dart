@@ -420,7 +420,7 @@ void main() {
     // is nearest, so from a grab in this column's middle it takes one and a
     // half columns to stand on the next one — the rail's rule transposed,
     // which is the whole point of the two surfaces sharing this drag.
-    final header = find.byKey(const ValueKey<String>('xsheet-layer-header-a'));
+    final header = find.byKey(const ValueKey<String>('xsheet-layer-row-a'));
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
     // ⑨: the sheet runs the other way, so its select nudge does too.

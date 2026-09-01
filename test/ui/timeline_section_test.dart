@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -392,12 +392,12 @@ void main() {
 
       final cameraLeft = tester
           .getTopLeft(
-            find.byKey(const ValueKey<String>('xsheet-layer-header-cam')),
+            find.byKey(const ValueKey<String>('xsheet-layer-row-cam')),
           )
           .dx;
       final drawingLeft = tester
           .getTopLeft(
-            find.byKey(const ValueKey<String>('xsheet-layer-header-b')),
+            find.byKey(const ValueKey<String>('xsheet-layer-row-b')),
           )
           .dx;
       expect(cameraLeft, greaterThan(drawingLeft));

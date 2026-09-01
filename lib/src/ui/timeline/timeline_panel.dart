@@ -695,6 +695,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       onLayerMarkSelected: widget.onLayerMarkSelected,
                       layerFxStateOf: widget.layerFxStateOf,
                       onToggleLayerFx: widget.onToggleLayerFx,
+                      layerIsLinkedOf: widget.layerIsLinkedOf,
+                      layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
                       commaDrag: widget.commaDrag,
                       rangeHooks: widget.rangeHooks,
                       laneRange: widget.laneRange,

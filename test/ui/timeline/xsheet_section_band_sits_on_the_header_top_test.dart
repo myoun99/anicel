@@ -92,7 +92,7 @@ void main() {
         const ValueKey<String>('xsheet-section-band-row'),
       );
       final headers = find.byKey(
-        const ValueKey<String>('xsheet-layer-header-draw-0'),
+        const ValueKey<String>('xsheet-layer-row-draw-0'),
       );
       expect(band, findsOneWidget, reason: 'at width $width');
       expect(headers, findsOneWidget, reason: 'at width $width');
@@ -166,7 +166,7 @@ void main() {
       await pumpSheet(tester, width: width);
 
       final header = find.byKey(
-        const ValueKey<String>('xsheet-layer-header-draw-0'),
+        const ValueKey<String>('xsheet-layer-row-draw-0'),
       );
       final cells = find.byKey(
         const ValueKey<String>('xsheet-column-draw-0-cells'),

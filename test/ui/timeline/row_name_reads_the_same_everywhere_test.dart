@@ -87,7 +87,7 @@ void main() {
 
     await pressAndHold(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-header-beta')),
+      find.byKey(const ValueKey<String>('xsheet-layer-row-beta')),
     );
 
     expect(

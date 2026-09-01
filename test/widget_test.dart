@@ -1689,21 +1689,21 @@ Line 8''';
     final layerALeft = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('xsheet-layer-header-default-layer-1'),
+            const ValueKey<String>('xsheet-layer-row-default-layer-1'),
           ),
         )
         .dx;
     final layerBLeft = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('xsheet-layer-header-default-layer-2'),
+            const ValueKey<String>('xsheet-layer-row-default-layer-2'),
           ),
         )
         .dx;
     final layerCLeft = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('xsheet-layer-header-default-layer-3'),
+            const ValueKey<String>('xsheet-layer-row-default-layer-3'),
           ),
         )
         .dx;

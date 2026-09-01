@@ -72,7 +72,7 @@ void main() {
     expect(band, findsWidgets, reason: '⛔밴드를 못 찾았다 — 빈 것을 쟀다');
 
     final header = tester.getRect(
-      find.byKey(const ValueKey<String>('xsheet-layer-header-B')),
+      find.byKey(const ValueKey<String>('xsheet-layer-row-B')),
     );
     final bandRect = tester.getRect(band.first);
 

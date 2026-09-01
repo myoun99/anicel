@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -186,14 +186,14 @@ void main() {
       expect(
         tester
             .getTopLeft(
-              find.byKey(const ValueKey<String>('xsheet-layer-header-layer-a')),
+              find.byKey(const ValueKey<String>('xsheet-layer-row-layer-a')),
             )
             .dx,
         lessThan(
           tester
               .getTopLeft(
                 find.byKey(
-                  const ValueKey<String>('xsheet-layer-header-layer-c'),
+                  const ValueKey<String>('xsheet-layer-row-layer-c'),
                 ),
               )
               .dx,
