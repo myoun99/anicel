@@ -17,6 +17,8 @@ import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
+import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
+import 'property_lane_model.dart' show TimelineDisplayRow;
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
 /// EXACTLY the same — the rail memo's gate.
@@ -751,4 +753,40 @@ class TimelineLayerControlsRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One fold twirl, answered ONCE (UI-R20 #9): a folder folds its members, an
+/// attach base folds its attach rows — the base-row twirl shows only when the
+/// layer carries attach rows.
+///
+/// Three answers — is there a twirl, is it open, what does it toggle — and
+/// both grids' headers derived all three inline, each with its own
+/// `row.isFolder ? … : …`, until the x-sheet's copy was found with the
+/// comment "the rail's rule verbatim" on it. Verbatim is a copy; this is the
+/// rule. `one_fold_twirl_test` keeps it the only one.
+typedef TimelineGroupFold = ({
+  bool has,
+  bool expanded,
+  ValueChanged<LayerId>? onToggle,
+});
+
+TimelineGroupFold timelineGroupFoldFor({
+  required TimelineDisplayRow row,
+  required List<Layer> layers,
+  required Set<LayerId> collapsedAttachBaseIds,
+  required ValueChanged<LayerId>? onToggleLayerCollapsed,
+  required ValueChanged<LayerId>? onToggleAttachGroup,
+}) {
+  if (row.isFolder) {
+    return (
+      has: true,
+      expanded: !row.layer.collapsed,
+      onToggle: onToggleLayerCollapsed,
+    );
+  }
+  return (
+    has: attachedLayersOf(row.layer.id, layers).isNotEmpty,
+    expanded: !collapsedAttachBaseIds.contains(row.layer.id),
+    onToggle: onToggleAttachGroup,
+  );
 }

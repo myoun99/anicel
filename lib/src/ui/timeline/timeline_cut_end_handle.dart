@@ -71,6 +71,24 @@ int timelineDrawnEndPreviewFrameCount({
   return handle <= 0 ? cutEnd : cutEnd + handle;
 }
 
+/// [timelineDrawnEndPreviewFrameCount] in content pixels along the frame
+/// axis. The body stack's wash edge and blue line and the x-sheet rail's
+/// drawn-end mark read this ONE product — no surface multiplies on its own.
+double timelineDrawnEndOffset({
+  required TimelineDragPreview? preview,
+  required CutId? cutId,
+  required int playbackFrameCount,
+  required int? drawnFrameCount,
+  required double frameCellExtent,
+}) =>
+    timelineDrawnEndPreviewFrameCount(
+      preview: preview,
+      cutId: cutId,
+      playbackFrameCount: playbackFrameCount,
+      drawnFrameCount: drawnFrameCount,
+    ) *
+    frameCellExtent;
+
 /// The draggable layer over a cut-end boundary line (UI-R18 #14): a
 /// 12px grip strip centered on the line, axis-aware (vertical line in
 /// the horizontal timeline, horizontal line in the X-sheet). Hosts mount

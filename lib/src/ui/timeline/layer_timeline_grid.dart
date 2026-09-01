@@ -478,8 +478,8 @@ typedef _RailRowMemoInputs = ({
   bool hasLanes,
   bool lanesExpanded,
   int depth,
-  bool hasAttachGroup,
-  bool attachGroupExpanded,
+  bool hasGroupFold,
+  bool groupFoldExpanded,
   LayerFxState fxState,
   bool onionSkinEnabled,
   bool isLinked,
@@ -1257,6 +1257,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (row.isLane) {
       return _effectDraggable(row, _railRow(row));
     }
+    final fold = _groupFoldFor(row);
     final inputs = (
       layer: row.layer,
       active: _layerRowIsActive(row.layer),
@@ -1264,10 +1265,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       depth: row.depth,
-      hasAttachGroup: row.isFolder || _hasAttachGroup(row.layer),
-      attachGroupExpanded: !widget.collapsedAttachBaseIds.contains(
-        row.layer.id,
-      ),
+      hasGroupFold: fold.has,
+      groupFoldExpanded: fold.expanded,
       fxState: widget.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
@@ -1503,8 +1502,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.hasLanes == b.hasLanes &&
         a.lanesExpanded == b.lanesExpanded &&
         a.depth == b.depth &&
-        a.hasAttachGroup == b.hasAttachGroup &&
-        a.attachGroupExpanded == b.attachGroupExpanded &&
+        a.hasGroupFold == b.hasGroupFold &&
+        a.groupFoldExpanded == b.groupFoldExpanded &&
         a.fxState == b.fxState &&
         a.onionSkinEnabled == b.onionSkinEnabled &&
         a.isLinked == b.isLinked &&
@@ -1632,6 +1631,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         ),
       );
     }
+    final fold = _groupFoldFor(row);
     return TimelineLayerControlsRow(
       layer: row.layer,
       wearsBaseComposite: attachRowWearsBaseComposite(row.layer, widget.layers),
@@ -1662,14 +1662,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleLanes: widget.onToggleLayerLanes,
       depth: row.depth,
       // One fold twirl: a folder folds its members, an attach base folds
-      // its attach rows.
-      hasGroupFold: row.isFolder || _hasAttachGroup(row.layer),
-      groupFoldExpanded: row.isFolder
-          ? !row.layer.collapsed
-          : !widget.collapsedAttachBaseIds.contains(row.layer.id),
-      onToggleGroupFold: row.isFolder
-          ? widget.onToggleLayerCollapsed
-          : widget.onToggleAttachGroup,
+      // its attach rows — the one answer both grids ask for.
+      hasGroupFold: fold.has,
+      groupFoldExpanded: fold.expanded,
+      onToggleGroupFold: fold.onToggle,
       opacityDragPreview: widget.opacityDragPreview,
       isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
@@ -1678,10 +1674,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
-  /// Whether [layer] carries attach rows — the base-row twirl shows only
-  /// then (UI-R20 #9).
-  bool _hasAttachGroup(Layer layer) =>
-      widget.layers.any((other) => other.attachedToLayerId == layer.id);
+  /// The row's fold twirl — [timelineGroupFoldFor] bound to this grid's hooks.
+  TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
+      timelineGroupFoldFor(
+        row: row,
+        layers: widget.layers,
+        collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+        onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
+        onToggleAttachGroup: widget.onToggleAttachGroup,
+      );
 
   /// The section ZONES over the rail rows' reserved band slots (UI-R7 #2):
   /// one tinted zone per section run — the pre-R5 gutter bracket inside
@@ -2247,18 +2248,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   /// The beat lines under the cells — the grid ground D43-2 states once.
   Widget _buildBeatLines(ColorScheme colorScheme) {
-    return RepaintBoundary(
-      child: CustomPaint(
-        key: const ValueKey<String>('timeline-beat-lines'),
-        painter: TimelineBeatLinesPainter(
-          frameCellExtent: _metrics.frameCellWidth,
-          framesPerSecond: _countingFps,
-          colorScheme: colorScheme,
-          // D43: the panel's own Material colour — see
-          // TimelineBeatLinesPainter.ground.
-          ground: colorScheme.surfaceContainerHighest,
-          crossCellExtent: _metrics.layerRowHeight,
-        ),
+    return CustomPaint(
+      key: const ValueKey<String>('timeline-beat-lines'),
+      painter: TimelineBeatLinesPainter(
+        frameCellExtent: _metrics.frameCellWidth,
+        framesPerSecond: _countingFps,
+        colorScheme: colorScheme,
+        // D43: the panel's own Material colour — see
+        // TimelineBeatLinesPainter.ground.
+        ground: colorScheme.surfaceContainerHighest,
+        crossCellExtent: _metrics.layerRowHeight,
       ),
     );
   }
@@ -2369,10 +2368,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   // EVERY row now, one
                   // grid-wide overlay.
                   beatLines: _buildBeatLines(colorScheme),
-                  cutEndBoundaryLeft: timelineCutEndBoundaryX(
-                    playbackFrameCount: widget.playbackFrameCount,
-                    metrics: _metrics,
-                  ),
                   // UI-R18 #14: the end
                   // line grows a trim
                   // grip and follows the
@@ -2392,8 +2387,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   // the slot itself is static
                   // so ticks rebuild nothing
                   // here.
-                  showPlayhead: true,
-                  playheadWidth: totalFrameContentWidth,
+                  playheadExtent: totalFrameContentWidth,
                   playhead: _buildPlayhead(
                     rows,
                     rangeHooks,
