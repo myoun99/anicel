@@ -450,6 +450,11 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
             ),
           ),
           child: Scrollbar(
+            // ⛔A scrollbar in this app never fades out. CLAUDE.md: 「스크롤바를
+            // 자동으로 숨기지 않는다」 — Material's default is to show the
+            // thumb only while the list is moving, which is exactly the
+            // behaviour that rule forbids.
+            thumbVisibility: true,
             controller: _scroll,
             child: ListView.builder(
               controller: _scroll,

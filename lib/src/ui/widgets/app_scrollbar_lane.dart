@@ -21,3 +21,26 @@ abstract final class AppScrollbarLane {
   /// this number is pointer reach rather than layout.
   static const double narrow = 12;
 }
+
+/// How short a scrollbar thumb is allowed to get.
+///
+/// 🚨★★★THE LANE HAD A VOCABULARY AND THE THUMB DID NOT, so the number was
+/// written out wherever it was needed: `32` three times, as three private
+/// constants in `layer_rail_window.dart`,
+/// `timeline_horizontal_scrollbar_rail.dart` and
+/// `timeline_vertical_scrollbar_rail.dart`. Three copies of one law agree
+/// until the day somebody changes one.
+///
+/// It is load-bearing beyond the scrollbar itself: `editor_workspace.dart`
+/// sizes the x-sheet's floor around it — 「a 31px window — under the
+/// scrollbar's own 32px thumb minimum, so nothing scrolls and nothing is
+/// readable」 — and `timeline_panel.dart` and `storyboard_panel.dart` reason
+/// from it too. A layout that computes against a number the scrollbar no
+/// longer uses is a layout that is wrong and still compiles.
+///
+/// ⚠️Free of widget imports for the same reason as [AppScrollbarLane]: the
+/// grid metrics that reason about it are calculation-only files.
+abstract final class AppScrollbarThumb {
+  /// CLAUDE.md: 「레인 16px, **썸 최소 32px**」.
+  static const double minimum = 32;
+}

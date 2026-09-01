@@ -591,7 +591,6 @@ class LayerRailScrollbar extends StatelessWidget {
   /// Addresses the surface: 'timeline' | 'xsheet' | 'storyboard'.
   final String keyPrefix;
 
-  static const double _minimumThumbExtent = 32;
 
   @override
   Widget build(BuildContext context) {
@@ -624,7 +623,7 @@ class LayerRailScrollbar extends StatelessWidget {
           ),
           viewportExtent: windowExtent,
           contentExtent: content,
-          minThumbExtent: _minimumThumbExtent,
+          minThumbExtent: AppScrollbarThumb.minimum,
           laneKey: ValueKey<String>('$keyPrefix-rail-scrollbar-track'),
           thumbKey: ValueKey<String>('$keyPrefix-rail-scrollbar-thumb'),
           onOffsetChanged: (next) => rail.pushTo(

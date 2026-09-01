@@ -14,7 +14,6 @@ class TimelineHorizontalScrollbarRail extends StatelessWidget {
     required this.height,
   });
 
-  static const double _minimumThumbWidth = 32;
 
   final ScrollController controller;
   final double viewportWidth;
@@ -35,7 +34,7 @@ class TimelineHorizontalScrollbarRail extends StatelessWidget {
       child: AppControllerScrollbar(
         controller: controller,
         axis: Axis.horizontal,
-        minThumbExtent: _minimumThumbWidth,
+        minThumbExtent: AppScrollbarThumb.minimum,
         fallbackViewportExtent: viewportWidth,
         fallbackContentExtent: contentWidth,
         laneKey: const ValueKey<String>('timeline-horizontal-scrollbar-track'),
