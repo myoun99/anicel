@@ -75,6 +75,20 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # `tool/code_map.dart` parses `lib/` to answer the audit's structural
+  # questions — how long is this function, how many ways are there through it,
+  # how many files would notice if it moved. A line-based grep answered the
+  # same questions and was measurably wrong: it counted 1,596 types where the
+  # parser counts 1,631, missing every `abstract final class` (31) and
+  # `abstract interface class` (4) because its pattern allowed one modifier.
+  # The whole audit ranks by these numbers, so it inherits whatever error is
+  # in them.
+  #
+  # ⚠️dev only — nothing under `lib/` may import it and the app does not ship
+  # it. ⚠️analyzer 13 renamed parts of the AST (`ClassDeclaration.namePart`,
+  # `.body.members`); read the package before writing against it.
+  analyzer: ^13.0.0
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
