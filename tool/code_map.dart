@@ -30,6 +30,11 @@
 //   - PARTS ARE PARSED ON THEIR OWN. A `part` file's declarations are counted
 //     under its own path, not folded into the library. There are none in
 //     `lib/` today; if that changes, this comment is where to look.
+//   - A METHOD'S `startLine` IS ITS FIRST TOKEN — which for an `@override`
+//     method is the annotation, one line ABOVE the signature. 🧪Two
+//     extraction scripts asserted `Widget build(` at the reported line and
+//     both refused before writing; the line count (`lines`) is right either
+//     way, the anchor is just where the declaration begins.
 //
 // ## Usage
 //
