@@ -23,6 +23,15 @@
 //   - COMPLEXITY IS A COUNT OF DECISION POINTS, not a judgement. A 400-line
 //     function of straight-line code scores 1. That is not a bug in the
 //     number, it is the number's meaning — read `lines` beside it.
+//   - COGNITIVE COMPLEXITY IS THE OTHER NUMBER, and the one the ratchet
+//     reads (유저 2026-09-02: 「스위치문이 부당하게 늘어나니까 인지복잡도」).
+//     SonarSource's rules: +1 for each if / else-if / else / ?: / switch (the
+//     WHOLE switch, not each case) / loop / catch / collection-if / -for, +1
+//     per run of `&&` or `||`, and + the nesting depth for each of those that
+//     nests — a lambda body nests too. 🧪Measured the day it was added: of
+//     1,214 functions McCabe put over 6, 310 were switch-driven and read at
+//     6 or under; 167 deeply nested ones McCabe put UNDER 6 read over it.
+//     McCabe stays in the map for what it is good at — a path count.
 //   - FAN-IN COUNTS IMPORT EDGES, not calls. A file imported for one constant
 //     ranks as high as one imported for a god object. It answers 「how many
 //     files would notice if this moved」, which is the question a boundary
@@ -64,8 +73,10 @@ void main(List<String> args) {
   // ⛔UNREADABLE FILES FIRST, ALWAYS. See the header: a silent hole makes
   // every other number on this page too small.
   if (map.unreadable.isNotEmpty) {
-    stderr.writeln('⛔${map.unreadable.length} FILE(S) DID NOT PARSE — every '
-        'count below is missing them:');
+    stderr.writeln(
+      '⛔${map.unreadable.length} FILE(S) DID NOT PARSE — every '
+      'count below is missing them:',
+    );
     for (final entry in map.unreadable.entries) {
       stderr.writeln('  ${entry.key}: ${entry.value}');
     }
@@ -98,6 +109,7 @@ class FunctionFact {
     required this.startLine,
     required this.endLine,
     required this.complexity,
+    required this.cognitive,
     required this.parameters,
     required this.isPrivate,
   });
@@ -115,6 +127,10 @@ class FunctionFact {
 
   /// McCabe: 1 + decision points. See the header for what it does NOT say.
   final int complexity;
+
+  /// Cognitive complexity (SonarSource) — how hard the body is to READ. The
+  /// ratchet's number; see the header for the rules.
+  final int cognitive;
   final int parameters;
   final bool isPrivate;
 
@@ -124,17 +140,18 @@ class FunctionFact {
   String get qualified => owner == null ? name : '$owner.$name';
 
   Map<String, dynamic> toJson() => {
-        'file': file,
-        if (owner != null) 'owner': owner,
-        'name': name,
-        'kind': kind,
-        'startLine': startLine,
-        'endLine': endLine,
-        'lines': lines,
-        'complexity': complexity,
-        'parameters': parameters,
-        'isPrivate': isPrivate,
-      };
+    'file': file,
+    if (owner != null) 'owner': owner,
+    'name': name,
+    'kind': kind,
+    'startLine': startLine,
+    'endLine': endLine,
+    'lines': lines,
+    'complexity': complexity,
+    'cognitive': cognitive,
+    'parameters': parameters,
+    'isPrivate': isPrivate,
+  };
 }
 
 /// One class, mixin, enum, extension or typedef.
@@ -178,26 +195,22 @@ class TypeFact {
   int get lines => endLine - startLine + 1;
 
   Map<String, dynamic> toJson() => {
-        'file': file,
-        'name': name,
-        'kind': kind,
-        'startLine': startLine,
-        'endLine': endLine,
-        'lines': lines,
-        'fields': fields,
-        'methods': methods,
-        'publicMembers': publicMembers,
-        'constants': constants,
-      };
+    'file': file,
+    'name': name,
+    'kind': kind,
+    'startLine': startLine,
+    'endLine': endLine,
+    'lines': lines,
+    'fields': fields,
+    'methods': methods,
+    'publicMembers': publicMembers,
+    'constants': constants,
+  };
 }
 
 /// One file in the walked tree.
 class FileFact {
-  FileFact({
-    required this.path,
-    required this.lines,
-    required this.imports,
-  });
+  FileFact({required this.path, required this.lines, required this.imports});
 
   final String path;
   final int lines;
@@ -229,12 +242,12 @@ class FileFact {
   }
 
   Map<String, dynamic> toJson() => {
-        'path': path,
-        'lines': lines,
-        'layer': layer,
-        'fanIn': fanIn,
-        'imports': imports,
-      };
+    'path': path,
+    'lines': lines,
+    'layer': layer,
+    'fanIn': fanIn,
+    'imports': imports,
+  };
 }
 
 /// Every fact the walk collected, plus what it could not read.
@@ -331,7 +344,6 @@ class CodeMap {
     parsed.unit.accept(_DeclarationVisitor(this, path, lineOf));
   }
 
-
   void _fillFanIn() {
     for (final file in files.values) {
       for (final target in file.imports) {
@@ -341,19 +353,19 @@ class CodeMap {
   }
 
   Map<String, dynamic> toJson() => {
-        'files': [
-          for (final path in files.keys.toList()..sort()) files[path]!.toJson(),
-        ],
-        'types': [for (final t in types) t.toJson()],
-        'functions': [for (final f in functions) f.toJson()],
-        'unreadable': unreadable,
-        'totals': {
-          'files': files.length,
-          'types': types.length,
-          'functions': functions.length,
-          'lines': files.values.fold<int>(0, (a, f) => a + f.lines),
-        },
-      };
+    'files': [
+      for (final path in files.keys.toList()..sort()) files[path]!.toJson(),
+    ],
+    'types': [for (final t in types) t.toJson()],
+    'functions': [for (final f in functions) f.toJson()],
+    'unreadable': unreadable,
+    'totals': {
+      'files': files.length,
+      'types': types.length,
+      'functions': functions.length,
+      'lines': files.values.fold<int>(0, (a, f) => a + f.lines),
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -405,17 +417,19 @@ class _DeclarationVisitor extends RecursiveAstVisitor<void> {
         if (!(member.name?.lexeme ?? '').startsWith('_')) public += 1;
       }
     }
-    map.types.add(TypeFact(
-      file: path,
-      name: name,
-      kind: kind,
-      startLine: lineOf(node.offset),
-      endLine: lineOf(node.end),
-      fields: fields,
-      methods: methods,
-      publicMembers: public,
-      constants: constants,
-    ));
+    map.types.add(
+      TypeFact(
+        file: path,
+        name: name,
+        kind: kind,
+        startLine: lineOf(node.offset),
+        endLine: lineOf(node.end),
+        fields: fields,
+        methods: methods,
+        publicMembers: public,
+        constants: constants,
+      ),
+    );
   }
 
   void _addFunction(
@@ -425,17 +439,20 @@ class _DeclarationVisitor extends RecursiveAstVisitor<void> {
     FormalParameterList? params,
     AstNode? body,
   ) {
-    map.functions.add(FunctionFact(
-      file: path,
-      owner: _owner,
-      name: name,
-      kind: kind,
-      startLine: lineOf(node.offset),
-      endLine: lineOf(node.end),
-      complexity: _complexityOf(body),
-      parameters: params?.parameters.length ?? 0,
-      isPrivate: name.startsWith('_'),
-    ));
+    map.functions.add(
+      FunctionFact(
+        file: path,
+        owner: _owner,
+        name: name,
+        kind: kind,
+        startLine: lineOf(node.offset),
+        endLine: lineOf(node.end),
+        complexity: _complexityOf(body),
+        cognitive: _cognitiveOf(body),
+        parameters: params?.parameters.length ?? 0,
+        isPrivate: name.startsWith('_'),
+      ),
+    );
   }
 
   // ⚠️analyzer 13 spells the name and the member list DIFFERENTLY per
@@ -496,8 +513,8 @@ class _DeclarationVisitor extends RecursiveAstVisitor<void> {
         node.isGetter
             ? 'getter'
             : node.isSetter
-                ? 'setter'
-                : 'function',
+            ? 'setter'
+            : 'function',
         node,
         node.functionExpression.parameters,
         node.functionExpression.body,
@@ -513,8 +530,8 @@ class _DeclarationVisitor extends RecursiveAstVisitor<void> {
       node.isGetter
           ? 'getter'
           : node.isSetter
-              ? 'setter'
-              : 'method',
+          ? 'setter'
+          : 'method',
       node,
       node.parameters,
       node.body,
@@ -624,6 +641,139 @@ class _ComplexityVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
+/// Cognitive complexity (SonarSource, 2017) of one body — see the header.
+int _cognitiveOf(AstNode? body) {
+  if (body == null) return 0;
+  final counter = _CognitiveVisitor();
+  body.accept(counter);
+  return counter.score;
+}
+
+class _CognitiveVisitor extends RecursiveAstVisitor<void> {
+  int score = 0;
+  int _nesting = 0;
+
+  void _nested(void Function() body) {
+    _nesting++;
+    body();
+    _nesting--;
+  }
+
+  /// A structure that nests: +1, plus the depth it sits at.
+  void _structure() => score += 1 + _nesting;
+
+  @override
+  void visitIfStatement(IfStatement node) {
+    _structure();
+    node.expression.accept(this);
+    _nested(() => node.thenStatement.accept(this));
+    _else(node.elseStatement);
+  }
+
+  /// `else if` and `else` are +1 each WITHOUT the nesting add-on — the
+  /// reader is already inside the if.
+  void _else(Statement? elseStatement) {
+    if (elseStatement == null) return;
+    score += 1;
+    if (elseStatement is IfStatement) {
+      elseStatement.expression.accept(this);
+      _nested(() => elseStatement.thenStatement.accept(this));
+      _else(elseStatement.elseStatement);
+      return;
+    }
+    _nested(() => elseStatement.accept(this));
+  }
+
+  @override
+  void visitConditionalExpression(ConditionalExpression node) {
+    _structure();
+    node.condition.accept(this);
+    _nested(() {
+      node.thenExpression.accept(this);
+      node.elseExpression.accept(this);
+    });
+  }
+
+  @override
+  void visitSwitchStatement(SwitchStatement node) {
+    _structure();
+    node.expression.accept(this);
+    _nested(() => node.members.accept(this));
+  }
+
+  @override
+  void visitSwitchExpression(SwitchExpression node) {
+    _structure();
+    node.expression.accept(this);
+    _nested(() => node.cases.accept(this));
+  }
+
+  @override
+  void visitForStatement(ForStatement node) {
+    _structure();
+    node.forLoopParts.accept(this);
+    _nested(() => node.body.accept(this));
+  }
+
+  @override
+  void visitWhileStatement(WhileStatement node) {
+    _structure();
+    node.condition.accept(this);
+    _nested(() => node.body.accept(this));
+  }
+
+  @override
+  void visitDoStatement(DoStatement node) {
+    _structure();
+    node.condition.accept(this);
+    _nested(() => node.body.accept(this));
+  }
+
+  @override
+  void visitCatchClause(CatchClause node) {
+    _structure();
+    _nested(() => node.body.accept(this));
+  }
+
+  @override
+  void visitIfElement(IfElement node) {
+    _structure();
+    node.expression.accept(this);
+    _nested(() {
+      node.thenElement.accept(this);
+      node.elseElement?.accept(this);
+    });
+  }
+
+  @override
+  void visitForElement(ForElement node) {
+    _structure();
+    node.forLoopParts.accept(this);
+    _nested(() => node.body.accept(this));
+  }
+
+  /// A run of the same boolean operator is one increment; `a && b && c` is
+  /// one thought, `a && b || c` is two.
+  @override
+  void visitBinaryExpression(BinaryExpression node) {
+    final op = node.operator.lexeme;
+    if (op == '&&' || op == '||') {
+      final parent = node.parent;
+      final continuesRun =
+          parent is BinaryExpression && parent.operator.lexeme == op;
+      if (!continuesRun) score += 1;
+    }
+    super.visitBinaryExpression(node);
+  }
+
+  /// A lambda's body nests (a local function's too): what happens inside a
+  /// callback is one level further from the reader.
+  @override
+  void visitFunctionExpression(FunctionExpression node) {
+    _nested(() => super.visitFunctionExpression(node));
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Paths
 // ─────────────────────────────────────────────────────────────────────────
@@ -633,8 +783,6 @@ String _rel(String path) {
   final cwd = Directory.current.path.replaceAll(r'\', '/');
   return p.startsWith('$cwd/') ? p.substring(cwd.length + 1) : p;
 }
-
-
 
 // ─────────────────────────────────────────────────────────────────────────
 // The human report
@@ -657,16 +805,19 @@ void _report(CodeMap map, int top) {
   for (final layer in byLayer.keys.toList()..sort()) {
     final group = byLayer[layer]!;
     final lines = group.fold<int>(0, (a, f) => a + f.lines);
-    stdout.writeln('  ${layer.padRight(12)}'
-        '${group.length.toString().padLeft(5)} files'
-        '${lines.toString().padLeft(9)} lines');
+    stdout.writeln(
+      '  ${layer.padRight(12)}'
+      '${group.length.toString().padLeft(5)} files'
+      '${lines.toString().padLeft(9)} lines',
+    );
   }
   stdout.writeln('');
 
   _table(
     'BIGGEST TYPES (lines)',
     (map.types.toList()..sort((a, b) => b.lines.compareTo(a.lines))).take(top),
-    (t) => '${t.lines.toString().padLeft(6)}  '
+    (t) =>
+        '${t.lines.toString().padLeft(6)}  '
         '${t.fields.toString().padLeft(3)}f '
         '${t.methods.toString().padLeft(3)}m  '
         '${t.name}  (${t.file}:${t.startLine})',
@@ -674,9 +825,11 @@ void _report(CodeMap map, int top) {
 
   _table(
     'MOST STATE (fields) — a god object is its state first',
-    (map.types.toList()..sort((a, b) => b.fields.compareTo(a.fields)))
-        .take(top),
-    (t) => '${t.fields.toString().padLeft(6)}f '
+    (map.types.toList()..sort((a, b) => b.fields.compareTo(a.fields))).take(
+      top,
+    ),
+    (t) =>
+        '${t.fields.toString().padLeft(6)}f '
         '${t.methods.toString().padLeft(4)}m  '
         '${t.name}  (${t.file}:${t.startLine})',
   );
@@ -686,16 +839,29 @@ void _report(CodeMap map, int top) {
     (map.functions.toList()
           ..sort((a, b) => b.complexity.compareTo(a.complexity)))
         .take(top),
-    (f) => '${f.complexity.toString().padLeft(6)}  '
+    (f) =>
+        '${f.complexity.toString().padLeft(6)}  '
+        '${f.lines.toString().padLeft(5)}L  '
+        '${f.qualified}  (${f.file}:${f.startLine})',
+  );
+
+  _table(
+    'HARDEST TO READ (cognitive complexity — the ratchet\'s number)',
+    (map.functions.toList()..sort((a, b) => b.cognitive.compareTo(a.cognitive)))
+        .take(top),
+    (f) =>
+        '${f.cognitive.toString().padLeft(6)}  '
         '${f.lines.toString().padLeft(5)}L  '
         '${f.qualified}  (${f.file}:${f.startLine})',
   );
 
   _table(
     'LONGEST FUNCTIONS (lines)',
-    (map.functions.toList()..sort((a, b) => b.lines.compareTo(a.lines)))
-        .take(top),
-    (f) => '${f.lines.toString().padLeft(6)}L '
+    (map.functions.toList()..sort((a, b) => b.lines.compareTo(a.lines))).take(
+      top,
+    ),
+    (f) =>
+        '${f.lines.toString().padLeft(6)}L '
         '${f.complexity.toString().padLeft(5)}c  '
         '${f.qualified}  (${f.file}:${f.startLine})',
   );
@@ -704,7 +870,8 @@ void _report(CodeMap map, int top) {
     'MOST DEPENDED ON (fan-in)',
     (map.files.values.toList()..sort((a, b) => b.fanIn.compareTo(a.fanIn)))
         .take(top),
-    (f) => '${f.fanIn.toString().padLeft(6)}  '
+    (f) =>
+        '${f.fanIn.toString().padLeft(6)}  '
         '${f.lines.toString().padLeft(6)}L  ${f.path}',
   );
 }

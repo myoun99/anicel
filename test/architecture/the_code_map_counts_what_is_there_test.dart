@@ -80,8 +80,13 @@ class Other {
   group('the premise', () {
     test('the fixture is actually read — an empty walk proves nothing', () {
       final map = mapOf({'alpha.dart': alpha, 'beta.dart': beta});
-      expect(map.files, hasLength(2), reason: 'the walk found no files, so '
-          'every other expectation in this file would pass vacuously');
+      expect(
+        map.files,
+        hasLength(2),
+        reason:
+            'the walk found no files, so '
+            'every other expectation in this file would pass vacuously',
+      );
       expect(map.unreadable, isEmpty);
       expect(map.functions, isNotEmpty);
       expect(map.types, isNotEmpty);
@@ -102,7 +107,8 @@ class Other {
           'setter:Thing.sum',
           'method:Thing.doIt',
         },
-        reason: '⛔`helper` is a LOCAL function. Counting it as its own entry '
+        reason:
+            '⛔`helper` is a LOCAL function. Counting it as its own entry '
             'would double-count its body — once as itself and once inside '
             'topLevel, which is where its complexity already lands.',
       );
@@ -142,18 +148,15 @@ extension X on int { int get twice => this * 2; }
 typedef T = int Function(int);
 ''',
       });
-      expect(
-        map.types.map((t) => '${t.kind}:${t.name}').toSet(),
-        {
-          'class:A',
-          'class:B',
-          'class:C',
-          'mixin:M',
-          'enum:E',
-          'extension:X',
-          'typedef:T',
-        },
-      );
+      expect(map.types.map((t) => '${t.kind}:${t.name}').toSet(), {
+        'class:A',
+        'class:B',
+        'class:C',
+        'mixin:M',
+        'enum:E',
+        'extension:X',
+        'typedef:T',
+      });
     });
 
     test('an enum case is counted, and it is not counted as state', () {
@@ -167,9 +170,7 @@ typedef T = int Function(int);
       // `EnumConstantDeclaration` is not a `ClassMember`, so the compiler
       // already refused the mistake. A test that cannot fail is a comment
       // wearing a test's clothes.
-      final map = mapOf({
-        'e.dart': 'enum Big { a, b, c, d, e, f, g, h }',
-      });
+      final map = mapOf({'e.dart': 'enum Big { a, b, c, d, e, f, g, h }'});
       expect(map.types.single.fields, 0);
       expect(map.types.single.constants, 8);
     });
@@ -188,10 +189,9 @@ typedef T = int Function(int);
     test('every fork counts, including && || ??', () {
       // 1 + if + && + ?? = 4
       expect(
-        mapOf({'alpha.dart': alpha})
-            .functions
-            .singleWhere((f) => f.name == 'topLevel')
-            .complexity,
+        mapOf({
+          'alpha.dart': alpha,
+        }).functions.singleWhere((f) => f.name == 'topLevel').complexity,
         4,
       );
     });
@@ -199,7 +199,10 @@ typedef T = int Function(int);
     test('a boolean operator chain is not free', () {
       // ⛔A version counting only STATEMENTS scores this 1. The repo is full
       // of guard-heavy predicates whose whole complexity is in the condition.
-      expect(complexityOf('bool f(int a) => a > 0 && a < 5 || a == 9;', 'f'), 3);
+      expect(
+        complexityOf('bool f(int a) => a > 0 && a < 5 || a == 9;', 'f'),
+        3,
+      );
     });
 
     test('loops, switches and catches each fork', () {
@@ -223,11 +226,117 @@ int f(int a) {
     });
   });
 
+  group('cognitive complexity', () {
+    int cognitiveOf(String source, String name) {
+      final map = mapOf({'c.dart': source});
+      return map.functions.singleWhere((f) => f.name == name).cognitive;
+    }
+
+    test('straight-line code scores 0', () {
+      expect(cognitiveOf('int f() { return 1; }', 'f'), 0);
+    });
+
+    test('a switch is ONE thought however many cases it has', () {
+      // ⛔This is the case McCabe gets wrong for this repo: 310 functions
+      // scored over 6 for an enum switch that reads at 1.
+      expect(
+        cognitiveOf('''
+int f(int a) {
+  switch (a) {
+    case 1: return 1;
+    case 2: return 2;
+    case 3: return 3;
+    case 4: return 4;
+    case 5: return 5;
+  }
+  return 0;
+}
+''', 'f'),
+        1,
+      );
+    });
+
+    test('nesting is paid for: an if inside a for costs the depth', () {
+      // for = 1, if = 1 + 1 (depth) → 3
+      expect(
+        cognitiveOf('''
+int f(List<int> xs) {
+  var n = 0;
+  for (final x in xs) {
+    if (x > 0) n++;
+  }
+  return n;
+}
+''', 'f'),
+        3,
+      );
+    });
+
+    test('a run of one boolean operator is one increment', () {
+      // `a && b && c` = 1, `|| d` starts a second run = 2
+      expect(
+        cognitiveOf(
+          'bool f(int a) => a > 0 && a < 5 && a != 3 || a == 9;',
+          'f',
+        ),
+        2,
+      );
+    });
+
+    test('else-if and else add one each, without the depth', () {
+      expect(
+        cognitiveOf('''
+int f(int a) {
+  if (a > 0) {
+    return 1;
+  } else if (a < 0) {
+    return -1;
+  } else {
+    return 0;
+  }
+}
+''', 'f'),
+        3,
+      );
+    });
+
+    test('a lambda body is one level deeper', () {
+      // if inside the callback: 1 + 1 (the lambda's depth) → 2
+      expect(
+        cognitiveOf('''
+int f(List<int> xs) => xs.where((x) {
+  if (x > 0) return true;
+  return false;
+}).length;
+''', 'f'),
+        2,
+      );
+    });
+
+    test('a ternary inside an if costs the depth too', () {
+      expect(
+        cognitiveOf('''
+int f(int a) {
+  if (a > 0) {
+    return a > 5 ? 2 : 1;
+  }
+  return 0;
+}
+''', 'f'),
+        3,
+      );
+    });
+  });
+
   group('the import graph', () {
     test('a relative import is an edge and fan-in counts it', () {
       final map = mapOf({'alpha.dart': alpha, 'beta.dart': beta});
-      final a = map.files.values.singleWhere((f) => f.path.endsWith('alpha.dart'));
-      final b = map.files.values.singleWhere((f) => f.path.endsWith('beta.dart'));
+      final a = map.files.values.singleWhere(
+        (f) => f.path.endsWith('alpha.dart'),
+      );
+      final b = map.files.values.singleWhere(
+        (f) => f.path.endsWith('beta.dart'),
+      );
 
       expect(a.imports, hasLength(1));
       expect(a.imports.single, endsWith('beta.dart'));
@@ -240,7 +349,9 @@ int f(int a) {
       // as well. An edge to Flutter would out-rank every real file on the
       // fan-in table without answering anything the audit asks.
       final map = mapOf({'alpha.dart': alpha, 'beta.dart': beta});
-      final a = map.files.values.singleWhere((f) => f.path.endsWith('alpha.dart'));
+      final a = map.files.values.singleWhere(
+        (f) => f.path.endsWith('alpha.dart'),
+      );
       expect(a.imports.where((i) => i.contains('math')), isEmpty);
       expect(a.imports.where((i) => i.contains('material')), isEmpty);
     });

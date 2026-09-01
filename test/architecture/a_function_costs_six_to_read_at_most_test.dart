@@ -6,18 +6,33 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/code_map.dart';
 import 'complexity_baseline.dart';
 
-/// 🚨★★★A FUNCTION FORKS SIX WAYS AT MOST.
+/// 🚨★★★A FUNCTION COSTS SIX TO READ, AT MOST.
 ///
 /// 유저 (2026-09-02): 「내가 이상적으로 생각하는건 **사람은 3이고 AI는 6**이야.
 /// 그래서 6으로 하고싶은거고」. The earlier line in CLAUDE.md — 「복잡도 상한
 /// 숫자를 미리 정하지 않는다」 — was negotiated with an AI and was never the
 /// user's; it is reversed, and `reversed-decisions.md` says so.
 ///
+/// ## The number is COGNITIVE complexity, not McCabe
+///
+/// 유저 (2026-09-02, later that day): 「애초에 스위치문이 부당하게 늘어나니까
+/// 인지복잡도인가를 쓴다는데 어떻지?」. Measured before switching: of the 1,214
+/// functions McCabe put over 6, **310 were switch-driven and read at 6 or
+/// under** (`strokeBlendModeNativeId`: McCabe 15, cognitive 1); and **167
+/// deeply nested functions McCabe put UNDER 6 read over it**. The top of both
+/// lists is the same set, so the audit's order did not change — only what the
+/// gate refuses. Cognitive (SonarSource): +1 per if / else / ?: / whole switch
+/// / loop / catch / collection if-for, +1 per run of `&&` or `||`, plus the
+/// nesting depth for each structure that nests. `tool/code_map.dart` is the
+/// one place it is computed, and this reads that so the gate and the map
+/// cannot disagree.
+///
 /// ## Why a ratchet and not a wall
 ///
-/// 🧪Measured the day this was written: 10,515 functions, **1,222 of them
-/// above 6** (11.6%). A wall would turn every PR red for reasons the PR did
-/// not cause, and a gate nobody can pass is a gate somebody switches off —
+/// 🧪Measured the day this was written: 10,515 functions, 1,222 over 6 by
+/// McCabe; re-measured at the switch: 10,636 functions, 1,071 over 6 by
+/// cognitive. A wall would turn every PR red for reasons the PR did not
+/// cause, and a gate nobody can pass is a gate somebody switches off —
 /// CLAUDE.md: 「넷을 한 번에 켜려 하면 마지막 하나가 나머지를 영영 막는다」.
 ///
 /// So the debt is on a list, and three things are true of it from today:
@@ -39,14 +54,6 @@ import 'complexity_baseline.dart';
 /// A split that takes a function from 9 to 6 by handing its locals to a
 /// helper has lowered the number and raised nothing.
 ///
-/// ## Complexity, as this file counts it
-///
-/// McCabe over the AST: 1 + every `if`, loop, `case`, `catch`, `?:`, and
-/// every `&&` `||` `??` — `tool/code_map.dart` is the one place it is
-/// computed, and this reads that so the gate and the map cannot disagree.
-/// A widget tree's `?:` count as forks, and that is right: each one is a
-/// branch the reader has to hold.
-///
 /// ⚠️`test/architecture/` and not `test/tool/`: the pre-push hook treats
 /// `test/tool/` as board-only.
 void main() {
@@ -59,7 +66,7 @@ void main() {
     map = CodeMap.walk('lib');
     overCeiling = {
       for (final f in map.functions)
-        if (f.complexity > ceiling) '${f.file}::${f.qualified}': f.complexity,
+        if (f.cognitive > ceiling) '${f.file}::${f.qualified}': f.cognitive,
     };
   });
 
@@ -71,20 +78,22 @@ void main() {
     expect(overCeiling, isNotEmpty);
   });
 
-  test('no function outside the baseline forks more than six ways', () {
+  test('no function outside the baseline costs more than six to read', () {
     final fresh = [
       for (final e in overCeiling.entries)
-        if (!complexityBaseline.contains(e.key)) '${e.key}  (cx ${e.value})',
+        if (!complexityBaseline.contains(e.key))
+          '${e.key}  (cognitive ${e.value})',
     ]..sort();
     expect(
       fresh,
       isEmpty,
       reason:
           'These functions exceed the ceiling of $ceiling and are not on the '
-          'baseline. Split them along a seam that has a NAME — if the helper '
-          'would need a long parameter list, the missing name is the finding, '
-          'not the cut. Adding to `complexity_baseline.dart` is adding debt '
-          'and needs an argument in the commit.\n  ${fresh.join('\n  ')}',
+          'baseline. Flatten the nesting or split along a seam that has a '
+          'NAME — if the helper would need a long parameter list, the missing '
+          'name is the finding, not the cut. Adding to '
+          '`complexity_baseline.dart` is adding debt and needs an argument in '
+          'the commit.\n  ${fresh.join('\n  ')}',
     );
   });
 
@@ -105,11 +114,12 @@ void main() {
   });
 
   test('the baseline is the whole debt, counted', () {
-    // The number lives here so the diff shows it moving. 1,222 on
-    // 2026-09-02, the day the ratchet was switched on.
+    // The number lives here so the diff shows it moving. 1,222 by McCabe on
+    // 2026-09-02, the day the ratchet was switched on; 1077 by
+    // cognitive the same day, when the metric changed.
     expect(
       complexityBaseline.length,
-      1214,
+      1077,
       reason:
           'The baseline count changed. Going DOWN is the point — update this '
           'number and say so in the commit. Going UP needs an argument.',
