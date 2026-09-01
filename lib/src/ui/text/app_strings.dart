@@ -235,6 +235,9 @@ class AppStrings {
   String get commonPreview => _s('commonPreview');
 
   // --- The rename family (AppPromptDialog) ---
+  String get renameGuideTitle => _s('renameGuideTitle');
+  String get renameGuideField => _s('renameGuideField');
+  String get renameGuideEmpty => _s('renameGuideEmpty');
   String get renameLayerTitle => _s('renameLayerTitle');
   String get renameLayerField => _s('renameLayerField');
   String get renameLayerEmpty => _s('renameLayerEmpty');
@@ -1262,6 +1265,9 @@ class AppStrings {
     'commonRename': 'Rename',
     'commonLink': 'Link',
     'commonPreview': 'Preview',
+    'renameGuideTitle': 'Rename guide',
+    'renameGuideField': 'Guide name',
+    'renameGuideEmpty': 'Guide name cannot be empty.',
     'renameLayerTitle': 'Rename layer',
     'renameLayerField': 'Layer name',
     'renameLayerEmpty': 'Layer name cannot be empty.',
@@ -2112,6 +2118,9 @@ class AppStrings {
     'commonRename': '名前を変更',
     'commonLink': 'リンク',
     'commonPreview': 'プレビュー',
+    'renameGuideTitle': 'ガイド名の変更',
+    'renameGuideField': 'ガイド名',
+    'renameGuideEmpty': 'ガイド名を空にはできません。',
     'renameLayerTitle': 'レイヤー名の変更',
     'renameLayerField': 'レイヤー名',
     'renameLayerEmpty': 'レイヤー名を空にはできません。',
@@ -3064,6 +3073,9 @@ class AppStrings {
     'commonRename': '이름 변경',
     'commonLink': '링크',
     'commonPreview': '미리보기',
+    'renameGuideTitle': '자 이름 변경',
+    'renameGuideField': '자 이름',
+    'renameGuideEmpty': '자 이름은 비울 수 없습니다.',
     'renameLayerTitle': '레이어 이름 변경',
     'renameLayerField': '레이어 이름',
     'renameLayerEmpty': '레이어 이름은 비울 수 없습니다.',
@@ -4018,6 +4030,9 @@ class AppStrings {
     'commonRename': 'Renommer',
     'commonLink': 'Lier',
     'commonPreview': 'Aperçu',
+    'renameGuideTitle': 'Renommer le guide',
+    'renameGuideField': 'Nom du guide',
+    'renameGuideEmpty': 'Le nom du guide ne peut pas être vide.',
     'renameLayerTitle': 'Renommer le calque',
     'renameLayerField': 'Nom du calque',
     'renameLayerEmpty': 'Le nom du calque ne peut pas être vide.',
@@ -4989,6 +5004,9 @@ class AppStrings {
     'commonRename': '重命名',
     'commonLink': '链接',
     'commonPreview': '预览',
+    'renameGuideTitle': '重命名参考线',
+    'renameGuideField': '参考线名称',
+    'renameGuideEmpty': '参考线名称不能为空。',
     'renameLayerTitle': '重命名图层',
     'renameLayerField': '图层名称',
     'renameLayerEmpty': '图层名称不能为空。',

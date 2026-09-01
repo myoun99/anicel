@@ -1,4 +1,5 @@
 import '../timeline/layer_label_controls.dart' show LayerVisibilityToggleButton;
+import '../dialogs/rename_guide_dialog.dart';
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
@@ -161,6 +162,7 @@ class GuideLibraryList extends StatelessWidget {
             ),
             onVisibleChanged: (visible) =>
                 _replace(guide.copyWith(visible: visible)),
+            onRenamed: (name) => _replace(guide.copyWith(name: name)),
             onDelete: () => _delete(guide.id),
           ),
         const Divider(height: 12),
@@ -184,6 +186,7 @@ class GuideLibraryList extends StatelessWidget {
             ),
             onVisibleChanged: (visible) =>
                 _replace(guide.copyWith(visible: visible)),
+            onRenamed: (name) => _replace(guide.copyWith(name: name)),
             onDelete: () => _delete(guide.id),
           ),
         if (guides.isEmpty)
@@ -248,6 +251,7 @@ class _GuideRow extends StatelessWidget {
     required this.onSelected,
     required this.onActingChanged,
     required this.onVisibleChanged,
+    required this.onRenamed,
     required this.onDelete,
   });
 
@@ -257,6 +261,9 @@ class _GuideRow extends StatelessWidget {
   final VoidCallback onSelected;
   final ValueChanged<bool> onActingChanged;
   final ValueChanged<bool> onVisibleChanged;
+
+  /// The name a rename settled on — see the button in [build].
+  final ValueChanged<String> onRenamed;
   final VoidCallback onDelete;
 
   @override
@@ -287,6 +294,33 @@ class _GuideRow extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 🚨유저 (guide-sym): 「대칭/퍼스 버튼에서 **비지블버튼 왼쪽에
+            // 이름변경 버튼** 추가해서 **공통 이름변경ui창** 띄우도록. 이름은
+            // **중복이어도 상관없도록**」.
+            //
+            // ★The shared window is `AppPromptDialog`, reached the way the
+            // layer, the cut and the frame reach it — through a thin
+            // per-subject wrapper. ⛔Spelling the dialog out inline here
+            // would have been a fourth copy of its ten arguments, and the
+            // one that drifts is always the copy nobody re-reads.
+            //
+            // ✅Duplicates already work: a guide's name is a plain `String`
+            // with no uniqueness rule anywhere in the model, so 「중복이어도
+            // 상관없도록」 asked for nothing.
+            AppIconButton(
+              keyValue: 'guide-rename-${guide.id.value}',
+              tooltip: strings.renameGuideTitle,
+              icon: const Icon(Icons.drive_file_rename_outline),
+              onPressed: () async {
+                final name = await showDialog<String>(
+                  context: context,
+                  builder: (_) => RenameGuideDialog(initialName: guide.name),
+                );
+                if (name != null) {
+                  onRenamed(name);
+                }
+              },
+            ),
             // ⛔NOT a hand-rolled eye. 유저 (F-58): 「비지블버튼은
             // 다른곳에서도 쓰니까 공용화/통일화」 — and this was the last
             // copy, the one that dimmed its OFF state in a colour of its
