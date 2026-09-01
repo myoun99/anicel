@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -355,6 +357,161 @@ class CanvasSelectionRegion {
     return combined;
   }
 
+  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65).
+  ///
+  /// 유저: 「라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도 상관없는데,
+  /// **선택 커밋될떈 픽셀에 제대로 안착한 상태로**. 지금은 **변형되는 픽셀
+  /// 범위와 개미행렬 위치가 다르다**」.
+  ///
+  /// ⛔[pathIn] traces the POLYGON — where the drag went. Membership is by
+  /// pixel CENTRE ([maskFor] scans `y + 0.5`). The two agree about which
+  /// pixels are in and disagree about where the line is, and past 1:1 that
+  /// gap is the whole complaint. This walks the boundary of the pixels
+  /// themselves, so the ants sit on the edges of what will actually move.
+  ///
+  /// ★It reads [maskFor] rather than re-deriving the fold: 「어느 픽셀이
+  /// 들어오나」 already has an answer, and a second one written next to it
+  /// would be a rule that can drift. ⚠️That costs one byte per pixel of the
+  /// selected box for the length of this call — the same allocation a lift
+  /// makes — so callers cache the result rather than asking per frame.
+  ///
+  /// The contours are CLOSED and walk consistently, so a dash phase runs
+  /// around a whole component (and around a hole) exactly as it did around
+  /// [pathIn]'s contours.
+  ui.Path pixelOutlineIn(ui.Offset Function(CanvasPoint) map) {
+    final path = ui.Path();
+    for (final contour in _pixelContours) {
+      path.addPolygon([for (final point in contour) map(point)], true);
+    }
+    return path;
+  }
+
+  List<List<CanvasPoint>>? _pixelContoursCache;
+
+  /// The closed contours of [pixelOutlineIn], in CANVAS space.
+  ///
+  /// ⚠️Memoised, and that is not an optimisation but the condition of
+  /// calling it from a painter at all: the walk allocates a mask over the
+  /// selected box and reads every byte of it, while the ants repaint on
+  /// every animation tick. A region is immutable, so this can never go
+  /// stale — the same reasoning `layerContentBoundsAt` states for its own
+  /// memo, one field over.
+  ///
+  /// ⛔On the REGION rather than in the painter: the painter is rebuilt per
+  /// tick and there is more than one of them on screen (the selection layer
+  /// and the panel's idle outline), so a cache living there would either
+  /// vanish every frame or be a global two painters take turns evicting.
+  List<List<CanvasPoint>> get _pixelContours =>
+      _pixelContoursCache ??= _walkPixelContours();
+
+  /// The contours [pixelOutlineIn] draws, for the test that pins how many
+  /// POINTS they hold — the straight-run merge is invisible in the shape
+  /// and only shows up in the count, so nothing else can measure it.
+  @visibleForTesting
+  List<List<CanvasPoint>> get pixelOutlineContours => _pixelContours;
+
+  List<List<CanvasPoint>> _walkPixelContours() {
+    final contours = <List<CanvasPoint>>[];
+    final bounds = selectedBounds;
+    // The pixel box: every pixel whose CENTRE can be inside. A box smaller
+    // than that would clip the outline; a bigger one only costs bytes.
+    final left = (bounds.left - 0.5).floor();
+    final top = (bounds.top - 0.5).floor();
+    final width = (bounds.right + 0.5).ceil() - left;
+    final height = (bounds.bottom + 0.5).ceil() - top;
+    if (width <= 0 || height <= 0) {
+      return contours;
+    }
+    final mask = maskFor(left: left, top: top, width: width, height: height);
+    bool inside(int x, int y) =>
+        x >= 0 && y >= 0 && x < width && y < height && mask[y * width + x] != 0;
+
+    // Every boundary edge, wound so that the selected side is on the same
+    // hand throughout: a component runs one way and a hole the other, which
+    // is what makes the even-odd fill below carve rather than cover.
+    final edges = <int, List<int>>{};
+    int vertex(int x, int y) => y * (width + 1) + x;
+    void edge(int x0, int y0, int x1, int y1) {
+      edges.putIfAbsent(vertex(x0, y0), () => <int>[]).add(vertex(x1, y1));
+    }
+
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        if (!inside(x, y)) {
+          continue;
+        }
+        if (!inside(x, y - 1)) edge(x, y, x + 1, y);
+        if (!inside(x + 1, y)) edge(x + 1, y, x + 1, y + 1);
+        if (!inside(x, y + 1)) edge(x + 1, y + 1, x, y + 1);
+        if (!inside(x - 1, y)) edge(x, y + 1, x, y);
+      }
+    }
+
+    CanvasPoint at(int v) => CanvasPoint(
+      x: (left + v % (width + 1)).toDouble(),
+      y: (top + v ~/ (width + 1)).toDouble(),
+    );
+
+    while (edges.isNotEmpty) {
+      final start = edges.keys.first;
+      var current = start;
+      final contour = <CanvasPoint>[at(start)];
+      // ⚠️STRAIGHT RUNS COLLAPSE. The walk emits one vertex per pixel edge,
+      // so a plain rectangle would arrive as four thousand-point sides and
+      // be rebuilt into a `Path` on every animation tick. Merging while
+      // walking makes an axis-aligned outline four points again; a true
+      // staircase (a rotated or lassoed edge) keeps its steps, because
+      // those steps ARE the answer.
+      var lastDx = 0, lastDy = 0;
+      // ⚠️Bounded by the edge count rather than trusted to close: a
+      // malformed walk must end, not hang the paint thread.
+      var guard = edges.length * 4 + 8;
+      while (guard-- > 0) {
+        final outgoing = edges[current];
+        if (outgoing == null || outgoing.isEmpty) {
+          break;
+        }
+        final next = outgoing.removeLast();
+        if (outgoing.isEmpty) {
+          edges.remove(current);
+        }
+        if (next == start) {
+          break;
+        }
+        final dx = next % (width + 1) - current % (width + 1);
+        final dy = next ~/ (width + 1) - current ~/ (width + 1);
+        if (dx == lastDx && dy == lastDy && contour.length > 1) {
+          contour[contour.length - 1] = at(next);
+        } else {
+          contour.add(at(next));
+        }
+        lastDx = dx;
+        lastDy = dy;
+        current = next;
+      }
+      // ⚠️And once more AROUND the join. The walk starts wherever the edge
+      // map happened to hand it a vertex, which is usually the middle of a
+      // straight run, and the segment that closes the contour is implied
+      // rather than stepped — so the first and last points can each sit in
+      // the middle of a line the merge above never saw the two halves of.
+      // 🧪Without this a rectangle came back with five corners.
+      while (contour.length > 3 &&
+          _isStraight(
+            contour[contour.length - 2],
+            contour.last,
+            contour.first,
+          )) {
+        contour.removeLast();
+      }
+      while (contour.length > 3 &&
+          _isStraight(contour.last, contour.first, contour[1])) {
+        contour.removeAt(0);
+      }
+      contours.add(contour);
+    }
+    return contours;
+  }
+
   /// The hard coverage mask over the pixel box `[left, left+width) ×
   /// [top, top+height)`: 255 inside, 0 outside, by PIXEL CENTRE — the
   /// same even-odd rule as [containsPoint], so a lift never disagrees
@@ -393,6 +550,12 @@ class CanvasSelectionRegion {
     }
     return mask;
   }
+
+  /// Whether [b] sits on the straight line from [a] to [c] — the test the
+  /// contour merge asks at a join. Axis-aligned steps only, which is all a
+  /// pixel boundary ever has.
+  static bool _isStraight(CanvasPoint a, CanvasPoint b, CanvasPoint c) =>
+      (b.x - a.x) * (c.y - b.y) == (b.y - a.y) * (c.x - b.x);
 
   /// The row's inside spans for one step: the union of its copies, as a flat
   /// sorted `[start, end, …]` list with overlaps merged.
