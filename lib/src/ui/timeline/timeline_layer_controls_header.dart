@@ -273,22 +273,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget? _buildLaneToggle(LayerLegendCallbacks? legend, Color restColor) {
+    // The lane column's header: fold/unfold EVERY layer's lanes in one tap
+    // (R3 feedback #5). The toggle has ONE handler, named once.
+    final onToggle = anyLanesExpanded ? onCollapseAllLanes : onExpandAllLanes;
     return onExpandAllLanes != null && onCollapseAllLanes != null
-        // The lane column's header: fold/unfold EVERY
-        // layer's lanes in one tap (R3 feedback #5).
         ? Tooltip(
             message: anyLanesExpanded
                 ? 'Collapse all layers'
                 : 'Expand all layers',
             child: ControlPressClaim(
-              onPressed: anyLanesExpanded
-                  ? onCollapseAllLanes
-                  : onExpandAllLanes,
+              onPressed: onToggle,
               child: InkWell(
                 key: const ValueKey<String>('legend-lanes-toggle'),
-                onTap: silentPress(
-                  anyLanesExpanded ? onCollapseAllLanes : onExpandAllLanes,
-                ),
+                onTap: silentPress(onToggle),
                 child: Center(
                   child: Icon(
                     anyLanesExpanded ? Icons.unfold_less : Icons.unfold_more,
@@ -548,19 +545,18 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildMute(LayerLegendCallbacks? legend, Color restColor) {
+    // One handler for the toggle, named once — the press claim and the tap
+    // fire the same thing, and saying so twice was two more forks.
+    final toggle = legend == null
+        ? null
+        : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe);
     return Tooltip(
       message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
       child: ControlPressClaim(
-        onPressed: legend == null
-            ? null
-            : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe),
+        onPressed: toggle,
         child: InkWell(
           key: const ValueKey<String>('legend-mute'),
-          onTap: silentPress(
-            legend == null
-                ? null
-                : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe),
-          ),
+          onTap: silentPress(toggle),
           child: Center(
             child: _legendIcon(
               allSeMuted ? Icons.volume_off : Icons.volume_up_outlined,
