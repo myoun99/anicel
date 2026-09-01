@@ -13,6 +13,10 @@ import '../input/app_input_settings.dart';
 /// How far from a handle, in screen pixels, a press still grabs it.
 const double kGuideHandleGrabRadius = 14;
 
+/// Screen pixels between a guide's name and the point it names — clear of
+/// the handle that sits there, so the two never overlap.
+const double _nameGap = 12;
+
 /// Handle radius in screen pixels.
 const double _handleRadius = 5;
 
@@ -166,6 +170,7 @@ class GuideOverlayPainter extends CustomPainter {
     required this.canvasSize,
     required this.emphasized,
     required this.color,
+    required this.vanishingPointLabel,
     this.selectedGuideId,
   });
 
@@ -179,6 +184,21 @@ class GuideOverlayPainter extends CustomPainter {
   final bool emphasized;
 
   final Color color;
+
+  /// What a vanishing point is CALLED, without its number — 「소실점」.
+  ///
+  /// 유저 (guide-sym): 「퍼스자는 **퍼스자의 이름말고 소실점 이름**을 각 소실점
+  /// 위 중앙정렬로 표시」, and a vanishing point has no name of its own: the
+  /// panel calls it `${strings.guideVanishingPoint} ${index + 1}`. The
+  /// overlay says the SAME words, so 「소실점 2」 on the canvas is the row the
+  /// user is looking at in the panel.
+  ///
+  /// ⚠️Passed in rather than read from `AppText` here: a painter that
+  /// reaches for a global cannot say in [shouldRepaint] that the language
+  /// changed, and the names would sit in the old tongue until something
+  /// else moved.
+  final String vanishingPointLabel;
+
   final GuideId? selectedGuideId;
 
   Offset _toScreen(CanvasPoint point) {
@@ -210,8 +230,85 @@ class GuideOverlayPainter extends CustomPainter {
       }
       if (emphasized) {
         _paintHandles(canvas, guide, opacity);
+        // 🚨THE NAMES, and only while the guide tool is out (유저: 「이름표시는
+        // 가이드툴이 선택됬을때, 그리고 물론 결과적으로 비지블 on으로 했을때만
+        // 표시」). The `visible` half is the `continue` at the top of this
+        // loop, so both conditions are the loop's own.
+        _paintNames(canvas, bounds, guide, opacity);
       }
     }
+  }
+
+  /// The guide's name where the user can read it against the drawing.
+  ///
+  /// 유저 (guide-sym): 「대칭자같은건 **중앙포인트 위에 중앙정렬**로 해당 자의
+  /// 이름(대칭 2)표시. 퍼스자는 퍼스자의 이름말고 **소실점 이름**을 각 소실점
+  /// 위 중앙정렬로 표시」 — so a symmetry says ITS name once, and a
+  /// perspective says nothing about itself and names each point instead.
+  void _paintNames(Canvas canvas, Rect bounds, DrawingGuide guide, double a) {
+    switch (guide.shape) {
+      case SymmetryShape(:final axis):
+        _paintNameAbove(canvas, bounds, _toScreen(axis.origin), guide.name, a);
+      case PerspectiveShape(:final vanishingPoints):
+        for (var i = 0; i < vanishingPoints.length; i += 1) {
+          final at = vanishingPoints[i].resolve().position;
+          // ⛔A point at INFINITY has nowhere to be centred above — its
+          // family is a set of parallels with no meeting place on any
+          // screen. Skipped rather than parked at an edge, which would be a
+          // position I chose and the user did not.
+          if (at == null) {
+            continue;
+          }
+          _paintNameAbove(
+            canvas,
+            bounds,
+            _toScreen(at),
+            '$vanishingPointLabel ${i + 1}',
+            a,
+          );
+        }
+    }
+  }
+
+  /// One name, centred on [at] and sitting above it.
+  ///
+  /// ⚠️A SCREEN size, like [kGuideHandleGrabRadius] one file over: a name is
+  /// for reading, so it stays the same size zoomed in and out rather than
+  /// growing into the artwork.
+  void _paintNameAbove(
+    Canvas canvas,
+    Rect bounds,
+    Offset at,
+    String text,
+    double opacity,
+  ) {
+    if (text.isEmpty) {
+      return;
+    }
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color.withValues(alpha: opacity),
+          fontSize: 11,
+          height: 1.1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    final origin = Offset(
+      at.dx - painter.width / 2,
+      at.dy - painter.height - _nameGap,
+    );
+    // Off-screen names cost a raster and say nothing — a vanishing point
+    // usually sits well outside the paper.
+    if (!bounds.overlaps(origin & painter.size)) {
+      painter.dispose();
+      return;
+    }
+    painter.paint(canvas, origin);
+    painter.dispose();
   }
 
   void _paintSymmetry(
@@ -411,6 +508,7 @@ class GuideOverlayPainter extends CustomPainter {
       oldDelegate.canvasSize != canvasSize ||
       oldDelegate.emphasized != emphasized ||
       oldDelegate.color != color ||
+      oldDelegate.vanishingPointLabel != vanishingPointLabel ||
       oldDelegate.selectedGuideId != selectedGuideId;
 }
 
