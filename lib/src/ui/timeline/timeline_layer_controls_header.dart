@@ -219,47 +219,47 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     ];
   }
 
+  // R9 #22: the cell no longer carries its own width — the rail's shared
+  // column skeleton sizes it, so a legend icon cannot drift off the
+  // column it labels (its kind cell used to be 18 against the rows' 22).
+  Widget _cell({
+    required String keyValue,
+    required String tooltip,
+    required Widget child,
+    List<PanelFlyoutEntry> Function()? entriesBuilder,
+  }) {
+    final content = Center(child: child);
+    // The key stays on the cell whether or not it can open a flyout —
+    // it's the column's stable address (legend alignment tests).
+    if (entriesBuilder == null) {
+      return Tooltip(
+        key: ValueKey<String>(keyValue),
+        message: tooltip,
+        child: content,
+      );
+    }
+    return Builder(
+      builder: (anchorContext) => Tooltip(
+        message: tooltip,
+        child: ControlPressClaim(
+          onPressed: () =>
+              showPanelFlyout(anchorContext, entries: entriesBuilder()),
+          child: InkWell(
+            key: ValueKey<String>(keyValue),
+            onTap: silentPress(
+              () => showPanelFlyout(anchorContext, entries: entriesBuilder()),
+            ),
+            child: content,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final legend = this.legend;
-
-    // R9 #22: the cell no longer carries its own width — the rail's shared
-    // column skeleton sizes it, so a legend icon cannot drift off the
-    // column it labels (its kind cell used to be 18 against the rows' 22).
-    Widget cell({
-      required String keyValue,
-      required String tooltip,
-      required Widget child,
-      List<PanelFlyoutEntry> Function()? entriesBuilder,
-    }) {
-      final content = Center(child: child);
-      // The key stays on the cell whether or not it can open a flyout —
-      // it's the column's stable address (legend alignment tests).
-      if (entriesBuilder == null) {
-        return Tooltip(
-          key: ValueKey<String>(keyValue),
-          message: tooltip,
-          child: content,
-        );
-      }
-      return Builder(
-        builder: (anchorContext) => Tooltip(
-          message: tooltip,
-          child: ControlPressClaim(
-            onPressed: () =>
-                showPanelFlyout(anchorContext, entries: entriesBuilder()),
-            child: InkWell(
-              key: ValueKey<String>(keyValue),
-              onTap: silentPress(
-                () => showPanelFlyout(anchorContext, entries: entriesBuilder()),
-              ),
-              child: content,
-            ),
-          ),
-        ),
-      );
-    }
 
     // Legend icons read like the row toggles now (R3 feedback #2): GRAY at
     // rest, ACCENT while their column's display-solo/state is engaged.
@@ -330,7 +330,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     axis: axis,
                     // Over the rows' inline section band (UI-R5/R6 #5):
                     // the sections flyout.
-                    sectionBand: cell(
+                    sectionBand: _cell(
                       keyValue: 'legend-sections',
                       tooltip: AppText.strings.tlSections,
                       entriesBuilder: _sectionEntries,
@@ -374,7 +374,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             ),
                           )
                         : null,
-                    timesheet: cell(
+                    timesheet: _cell(
                       keyValue: 'legend-sheet',
                       tooltip: AppText.strings.tlColTimesheet,
                       entriesBuilder: legend == null
@@ -408,7 +408,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                         engaged: rowFilter.onTimesheetOnly,
                       ),
                     ),
-                    mark: cell(
+                    mark: _cell(
                       keyValue: 'legend-mark',
                       tooltip: AppText.strings.tlColMark,
                       entriesBuilder: legend == null
@@ -453,7 +453,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     ),
                     // Kind-solo flyout over the rows' TYPE BUTTON column
                     // (R4 #8): solo one layer TYPE like the mark colors.
-                    typeButton: cell(
+                    typeButton: _cell(
                       keyValue: 'legend-kind',
                       tooltip: AppText.strings.tlColLayerKind,
                       entriesBuilder:
@@ -515,7 +515,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ),
                   ...layerRailTrailingCells(
                     axis: axis,
-                    fillReference: cell(
+                    fillReference: _cell(
                       keyValue: 'legend-fill-ref',
                       tooltip: AppText.strings.tlColFillReference,
                       entriesBuilder: legend == null
@@ -544,7 +544,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                         engaged: rowFilter.fillReferenceOnly,
                       ),
                     ),
-                    fx: cell(
+                    fx: _cell(
                       keyValue: 'legend-fx',
                       tooltip: AppText.strings.tlColFx,
                       entriesBuilder: legend == null
@@ -592,7 +592,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // on that surface with no heading over it.
                     onion: !hasOnion
                         ? null
-                        : cell(
+                        : _cell(
                             keyValue: 'legend-onion',
                             tooltip: AppText.strings.tlColOnionSkin,
                             entriesBuilder:
@@ -623,7 +623,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               engaged: displayedOnionSkinOn,
                             ),
                           ),
-                    visibility: cell(
+                    visibility: _cell(
                       keyValue: 'legend-eye',
                       tooltip: AppText.strings.tlColVisibility,
                       entriesBuilder: legend == null
@@ -721,7 +721,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                                   ),
                             ),
                           )
-                        : cell(
+                        : _cell(
                             keyValue: 'legend-opacity',
                             tooltip: AppText.strings.tlColOpacity,
                             child: _columnHeading('OPAC', colorScheme, axis),
@@ -737,7 +737,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // callback — see the onion cell above.
                     blend: !hasBlend
                         ? null
-                        : cell(
+                        : _cell(
                             keyValue: 'legend-blend',
                             tooltip: AppText.strings.tlColBlendMode,
                             entriesBuilder:
