@@ -2164,6 +2164,105 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
+  /// The cells themselves: one row of frame cells per row the window
+  /// builds, scrolled with the rail beside it.
+  ///
+  /// One of the three slots `TimelineFrameGridStack` layers. It takes the
+  /// row window as one value and unpacks it under the names the tree below
+  /// already uses — see [_RowWindow].
+  Widget _buildFrameRowsBody(
+    List<TimelineDisplayRow> rows,
+    _RowWindow window,
+    TimelineRangeGestureCallbacks? rangeGesture,
+    TimelineLaneRangeCallbacks? laneRange,
+    double totalFrameContentWidth,
+    double viewportWidth,
+  ) {
+    final rowWindow = window.range;
+    final windowRows = window.rows;
+    final leadingRowSpacerHeight = window.leadingSpacerHeight;
+    final trailingRowSpacerHeight = window.trailingSpacerHeight;
+    final pinnedIndex = window.pinnedIndex;
+    final pinnedBefore = window.pinnedBefore;
+    final pinnedAfter = window.pinnedAfter;
+    return TimelineFrameRowsScrollBody(
+      // F-25: the lane bands light
+      // with their rail halves.
+      currentRow: widget.currentRowHooks?.currentRow,
+      rows: windowRows,
+      leadingLayerSpacerHeight: leadingRowSpacerHeight,
+      trailingLayerSpacerHeight: trailingRowSpacerHeight,
+      // A5/D42: the held row rides
+      // the CELLS window too — its
+      // gesture layer must survive a
+      // vertical auto-pan sliding
+      // the window past it.
+      pinnedLeadingRow: pinnedBefore ? rows[pinnedIndex] : null,
+      pinnedLeadingOffset: pinnedBefore
+          ? pinnedIndex * _metrics.layerRowHeight
+          : 0,
+      pinnedTrailingRow: pinnedAfter ? rows[pinnedIndex] : null,
+      pinnedTrailingOffset: pinnedAfter
+          ? (pinnedIndex - rowWindow.endIndexExclusive) *
+                _metrics.layerRowHeight
+          : 0,
+      dragPreview: widget.dragPreview,
+      activeLayerId: widget.activeLayerId,
+      playbackFrameCount: widget.playbackFrameCount,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: _renderedFrameCount,
+      leadingFrameSpacerWidth: 0,
+      trailingFrameSpacerWidth: 0,
+      totalFrameContentWidth: totalFrameContentWidth,
+      windowBucket: _frameWindowBucket,
+      viewportMainExtent: viewportWidth,
+      metrics: _metrics,
+      exposureStateForLayer: widget.exposureStateForLayer,
+      frameNameForLayer: widget.frameNameForLayer,
+      celContent: widget.celContent,
+      onSelectLayer: widget.onSelectLayer,
+      onSelectFrame: widget.onSelectFrame,
+      onSettledPress: widget.onSettledPress,
+      onActivateCell: widget.onActivateCell,
+      instructionDefById: widget.instructionDefById,
+      instructionCrossingTooltip: widget.instructionCrossingTooltip,
+      audioPeaksFor: widget.audioPeaksFor,
+      seClipMarkerTooltip: widget.seClipMarkerTooltip,
+      projectFrameRate: widget.projectFrameRate,
+      audioLane: widget.audioLane,
+      onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
+      showSeconds: widget.showSeconds,
+      commaDrag: widget.commaDrag,
+      rangeGesture: rangeGesture,
+      laneRange: laneRange,
+      lanesForLayer: _lanesFor,
+      unionLaneForLayer: widget.unionLaneForLayer,
+      runEdit: widget.runEdit,
+      laneEdit: widget.laneEdit,
+      seSpillInLayerIds: widget.seSpillInLayerIds,
+      memoAux: widget.memoAux,
+      substrateGeneration: widget.substrateGeneration,
+    );
+  }
+
+  /// The beat lines under the cells — the grid ground D43-2 states once.
+  Widget _buildBeatLines(ColorScheme colorScheme) {
+    return RepaintBoundary(
+      child: CustomPaint(
+        key: const ValueKey<String>('timeline-beat-lines'),
+        painter: TimelineBeatLinesPainter(
+          frameCellExtent: _metrics.frameCellWidth,
+          framesPerSecond: _countingFps,
+          colorScheme: colorScheme,
+          // D43: the panel's own Material colour — see
+          // TimelineBeatLinesPainter.ground.
+          ground: colorScheme.surfaceContainerHighest,
+          crossCellExtent: _metrics.layerRowHeight,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -2339,15 +2438,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       bodyViewportHeight,
                                       effectiveVerticalScrollOffset,
                                     );
-                                    final rowWindow = window.range;
-                                    final windowRows = window.rows;
-                                    final leadingRowSpacerHeight =
-                                        window.leadingSpacerHeight;
-                                    final trailingRowSpacerHeight =
-                                        window.trailingSpacerHeight;
-                                    final pinnedIndex = window.pinnedIndex;
-                                    final pinnedBefore = window.pinnedBefore;
-                                    final pinnedAfter = window.pinnedAfter;
                                     // I-1: the toggle columns a swipe may
                                     // paint down. Read once per pass — the
                                     // bands are geometry, and the swipe's
@@ -2786,136 +2876,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                         contentHeight:
                                                                             verticalContentHeight,
                                                                         child: TimelineFrameGridStack(
-                                                                          rowsBody: TimelineFrameRowsScrollBody(
-                                                                            // F-25: the lane bands light
-                                                                            // with their rail halves.
-                                                                            currentRow:
-                                                                                widget.currentRowHooks?.currentRow,
-                                                                            rows:
-                                                                                windowRows,
-                                                                            leadingLayerSpacerHeight:
-                                                                                leadingRowSpacerHeight,
-                                                                            trailingLayerSpacerHeight:
-                                                                                trailingRowSpacerHeight,
-                                                                            // A5/D42: the held row rides
-                                                                            // the CELLS window too — its
-                                                                            // gesture layer must survive a
-                                                                            // vertical auto-pan sliding
-                                                                            // the window past it.
-                                                                            pinnedLeadingRow:
-                                                                                pinnedBefore
-                                                                                ? rows[pinnedIndex]
-                                                                                : null,
-                                                                            pinnedLeadingOffset:
-                                                                                pinnedBefore
-                                                                                ? pinnedIndex *
-                                                                                      _metrics.layerRowHeight
-                                                                                : 0,
-                                                                            pinnedTrailingRow:
-                                                                                pinnedAfter
-                                                                                ? rows[pinnedIndex]
-                                                                                : null,
-                                                                            pinnedTrailingOffset:
-                                                                                pinnedAfter
-                                                                                ? (pinnedIndex -
-                                                                                          rowWindow.endIndexExclusive) *
-                                                                                      _metrics.layerRowHeight
-                                                                                : 0,
-                                                                            dragPreview:
-                                                                                widget.dragPreview,
-                                                                            activeLayerId:
-                                                                                widget.activeLayerId,
-                                                                            playbackFrameCount:
-                                                                                widget.playbackFrameCount,
-                                                                            frameStartIndex:
-                                                                                0,
-                                                                            frameEndIndexExclusive:
-                                                                                _renderedFrameCount,
-                                                                            leadingFrameSpacerWidth:
-                                                                                0,
-                                                                            trailingFrameSpacerWidth:
-                                                                                0,
-                                                                            totalFrameContentWidth:
-                                                                                totalFrameContentWidth,
-                                                                            windowBucket:
-                                                                                _frameWindowBucket,
-                                                                            viewportMainExtent:
-                                                                                viewportWidth,
-                                                                            metrics:
-                                                                                _metrics,
-                                                                            exposureStateForLayer:
-                                                                                widget.exposureStateForLayer,
-                                                                            frameNameForLayer:
-                                                                                widget.frameNameForLayer,
-                                                                            celContent:
-                                                                                widget.celContent,
-                                                                            onSelectLayer:
-                                                                                widget.onSelectLayer,
-                                                                            onSelectFrame:
-                                                                                widget.onSelectFrame,
-                                                                            onSettledPress:
-                                                                                widget.onSettledPress,
-                                                                            onActivateCell:
-                                                                                widget.onActivateCell,
-                                                                            instructionDefById:
-                                                                                widget.instructionDefById,
-                                                                            instructionCrossingTooltip:
-                                                                                widget.instructionCrossingTooltip,
-                                                                            audioPeaksFor:
-                                                                                widget.audioPeaksFor,
-                                                                            seClipMarkerTooltip:
-                                                                                widget.seClipMarkerTooltip,
-                                                                            projectFrameRate:
-                                                                                widget.projectFrameRate,
-                                                                            audioLane:
-                                                                                widget.audioLane,
-                                                                            onDropMediaAssetOnLayer:
-                                                                                widget.onDropMediaAssetOnLayer,
-                                                                            showSeconds:
-                                                                                widget.showSeconds,
-                                                                            commaDrag:
-                                                                                widget.commaDrag,
-                                                                            rangeGesture:
-                                                                                rangeGesture,
-                                                                            laneRange:
-                                                                                laneRange,
-                                                                            lanesForLayer:
-                                                                                _lanesFor,
-                                                                            unionLaneForLayer:
-                                                                                widget.unionLaneForLayer,
-                                                                            runEdit:
-                                                                                widget.runEdit,
-                                                                            laneEdit:
-                                                                                widget.laneEdit,
-                                                                            seSpillInLayerIds:
-                                                                                widget.seSpillInLayerIds,
-                                                                            memoAux:
-                                                                                widget.memoAux,
-                                                                            substrateGeneration:
-                                                                                widget.substrateGeneration,
+                                                                          rowsBody: _buildFrameRowsBody(
+                                                                            rows,
+                                                                            window,
+                                                                            rangeGesture,
+                                                                            laneRange,
+                                                                            totalFrameContentWidth,
+                                                                            viewportWidth,
                                                                           ),
                                                                           // UI-R13 #7: the
                                                                           // beat lines span
                                                                           // EVERY row now, one
                                                                           // grid-wide overlay.
-                                                                          beatLines: RepaintBoundary(
-                                                                            child: CustomPaint(
-                                                                              key:
-                                                                                  const ValueKey<
-                                                                                    String
-                                                                                  >(
-                                                                                    'timeline-beat-lines',
-                                                                                  ),
-                                                                              painter: TimelineBeatLinesPainter(
-                                                                                frameCellExtent: _metrics.frameCellWidth,
-                                                                                framesPerSecond: _countingFps,
-                                                                                colorScheme: colorScheme,
-                                                                                // D43: the panel's own Material colour — see
-                                                                                // TimelineBeatLinesPainter.ground.
-                                                                                ground: colorScheme.surfaceContainerHighest,
-                                                                                crossCellExtent: _metrics.layerRowHeight,
-                                                                              ),
-                                                                            ),
+                                                                          beatLines: _buildBeatLines(
+                                                                            colorScheme,
                                                                           ),
                                                                           cutEndBoundaryLeft: timelineCutEndBoundaryX(
                                                                             playbackFrameCount:
