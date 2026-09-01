@@ -40,12 +40,7 @@ import 'timeline_frame_window.dart';
 import 'layer_rail_window.dart';
 import 'rail_column_swipe.dart';
 import 'layer_label_controls.dart'
-    show
-        SectionBandZone,
-        layerKindEligibleForTimesheetToggle,
-        layerKindShowsFxToggle,
-        layerSectionLabelSlotWidth;
-import 'layer_rail_columns.dart' show layerRailEyeIsOn;
+    show SectionBandZone, layerSectionLabelSlotWidth;
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -68,6 +63,7 @@ import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart' show AppText;
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_swipe_columns.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -248,103 +244,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
-  /// What this rail can toggle, handed to the ONE construction every rail
-  /// shares ([railSwipeColumns]). Which columns exist and where their bands
-  /// fall is not decided here — 유저 2026-08-29: 「버튼이면 다 가능하도록」·
-  /// 「로직적으로 다른규칙 두지말고 통일」.
-  ///
-  /// 🚨THE SUBJECT IS THE ROW, NOT ITS LAYER, because this rail stacks two
-  /// kinds and they do not share one. A layer row's fx switch is the
-  /// LAYER's; a lane row's is that LANE GROUP's. Every other column belongs
-  /// to layer rows only and answers null on a lane, which is already what
-  /// [RailToggleColumn.valueOf]'s null means.
-  List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() {
-    final onToggleFx = widget.hooks.onToggleLayerFx;
-    final fxStateOf = widget.hooks.layerFxStateOf;
-    final onToggleOnion = widget.hooks.onToggleLayerOnionSkin;
-    final onionOf = widget.hooks.layerOnionSkinEnabledOf;
-    final onToggleLanes = widget.hooks.onToggleLayerLanes;
-    final onToggleLaneGroup = widget.hooks.onToggleLaneGroupEnabled;
-
-    return railSwipeColumns<TimelineDisplayRow>(
-      crossExtent:
-          _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
-      leadingOrigin: timelineLayerRowLeadingBorder,
-      hasOnionColumn: onToggleOnion != null,
-      hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
-      visibility: (
-        valueOf: (row) => row.isLane
-            ? null
-            : layerRailEyeIsOn(row.layer, live: widget.hooks.layerEyeOnOf),
-        toggle: (row) => widget.hooks.onToggleLayerVisibility(row.layer.id),
-      ),
-      onion: onToggleOnion == null || onionOf == null
-          ? null
-          : (
-              // Only brush-holding rows carry the button (the row builder's
-              // rule), and a swipe paints what a tap could.
-              valueOf: (row) =>
-                  !row.isLane && layerKindAcceptsBrushInput(row.layer.kind)
-                  ? onionOf(row.layer.id)
-                  : null,
-              toggle: (row) => onToggleOnion(row.layer.id),
-            ),
-      fx: (
-        // 🚨THE COLUMN WITH TWO VERBS. A layer row's fx is tri-state and the
-        // swipe paints the one thing a tap paints — on, or not on. A LANE
-        // row's is its group's own bypass switch, in the same column and
-        // painted by the same sweep (유저: 「버튼이면 다 가능하도록」).
-        valueOf: (row) {
-          final lane = row.lane;
-          if (lane != null) {
-            return onToggleLaneGroup == null
-                ? null
-                : (widget.hooks.laneGroupOnOf?.call(row.layer.id) ??
-                      lane.groupEnabled);
-          }
-          return onToggleFx == null ||
-                  fxStateOf == null ||
-                  !layerKindShowsFxToggle(row.layer.kind)
-              ? null
-              : fxStateOf(row.layer.id) == LayerFxState.on;
-        },
-        toggle: (row) {
-          final lane = row.lane;
-          if (lane != null) {
-            onToggleLaneGroup?.call(row.layer, lane);
-            return;
-          }
-          onToggleFx?.call(row.layer.id);
-        },
-      ),
-      // 🚨I-1 (유저 2026-08-24): 「**타임시트버튼이든 뭐 그런것들**」 — the
-      // report named this column, and it is the one the geometry was first
-      // written for.
-      //
-      // An ATTACH row is null rather than false: its sheet slot holds the
-      // placement arrow (R10 R3), so there is no toggle under the swipe.
-      timesheet: (
-        valueOf: (row) =>
-            !row.isLane &&
-                layerKindEligibleForTimesheetToggle(row.layer.kind) &&
-                row.layer.attachedToLayerId == null
-            ? row.layer.onTimesheet
-            : null,
-        toggle: (row) => widget.hooks.onToggleLayerTimesheet(row.layer.id),
-      ),
-      laneToggle: onToggleLanes == null
-          ? null
-          : (
-              // A row with no lanes draws no twirl — and its cell is what
-              // the nesting indent pushes, so this is also the column most
-              // likely to be crossed at two different depths in one drag.
-              valueOf: (row) => row.isLane || _lanesFor(row.layer).isEmpty
-                  ? null
-                  : widget.hooks.expandedLaneLayerIds.contains(row.layer.id),
-              toggle: (row) => onToggleLanes(row.layer.id),
-            ),
-    );
-  }
+  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
+  /// laid on this rail's own width.
+  List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
+      timelineSwipeColumns(
+        hooks: widget.hooks,
+        crossExtent:
+            _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
+        leadingOrigin: timelineLayerRowLeadingBorder,
+      );
 
   /// Resolves a rail-local vertical position to the row there — LANE ROWS
   /// INCLUDED. Spacer gaps and positions past the window return null.

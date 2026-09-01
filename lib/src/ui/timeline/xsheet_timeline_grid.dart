@@ -67,6 +67,7 @@ import 'timeline_frame_grid_stack.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_swipe_columns.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -250,7 +251,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// A LANE column answers null, exactly as the rail's lane rows do: it
   /// carries none of these toggles, so there is nothing for a sweep to
   /// paint on it.
-  RailSwipeRow<Layer>? _columnAtX(
+  RailSwipeRow<TimelineDisplayRow>? _columnAtX(
     double alongX,
     List<TimelineDisplayRow> entries,
   ) {
@@ -262,80 +263,19 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       return null;
     }
     final entry = entries[index];
-    return entry.isLane
-        ? null
-        : (row: entry.layer, depth: entry.depth, id: entry.layer.id);
+    return (row: entry, depth: entry.depth, id: entry.address);
   }
 
-  /// What this surface can toggle, handed to the ONE construction every
-  /// rail shares ([railSwipeColumns]).
-  ///
-  /// 유저 2026-08-29: 「버튼이면 다 가능하도록」·「로직적으로 다른규칙
-  /// 두지말고 통일」. This sheet mounted the same four toggles as the layer
-  /// rail and swept none of them, because the sweep only knew how to run
-  /// downwards.
-  ///
-  /// ⚠️[crossExtent] is the header's own extent, which is the rail's
-  /// "row width" turned on its side — the slot skeleton lays these cells
-  /// with `axis: Axis.vertical`, so a slot's WIDTH is its height here.
-  List<RailToggleColumn<Layer>> _swipeColumns() {
-    final onToggleFx = widget.hooks.onToggleLayerFx;
-    final fxStateOf = widget.hooks.layerFxStateOf;
-    final onToggleOnion = widget.hooks.onToggleLayerOnionSkin;
-    final onionOf = widget.hooks.layerOnionSkinEnabledOf;
-    final onToggleLanes = widget.hooks.onToggleLayerLanes;
-    final lanesForLayer = widget.hooks.lanesForLayer;
-
-    return railSwipeColumns<Layer>(
-      crossExtent: _naturalHeaderExtent,
-      leadingOrigin: 0,
-      hasOnionColumn: onToggleOnion != null,
-      hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
-      visibility: (
-        valueOf: (layer) =>
-            layerRailEyeIsOn(layer, live: widget.hooks.layerEyeOnOf),
-
-        toggle: (layer) => widget.hooks.onToggleLayerVisibility(layer.id),
-      ),
-      onion: onToggleOnion == null || onionOf == null
-          ? null
-          : (
-              valueOf: (layer) => layerKindAcceptsBrushInput(layer.kind)
-                  ? onionOf(layer.id)
-                  : null,
-              toggle: (layer) => onToggleOnion(layer.id),
-            ),
-      fx: onToggleFx == null || fxStateOf == null
-          ? null
-          : (
-              valueOf: (layer) => layerKindShowsFxToggle(layer.kind)
-                  ? fxStateOf(layer.id) == LayerFxState.on
-                  : null,
-              toggle: (layer) => onToggleFx(layer.id),
-            ),
-      // The sheet toggle column, exactly the rail's (I-1): a press-and-
-      // drag across the columns flips the sheets. The rail listed it;
-      // the sheet did not, so the pointer the shared row wears on that
-      // cell would have claimed drags for nothing here.
-      timesheet: (
-        valueOf: (layer) =>
-            layerKindEligibleForTimesheetToggle(layer.kind) &&
-                layer.attachedToLayerId == null
-            ? layer.onTimesheet
-            : null,
-        toggle: (layer) => widget.hooks.onToggleLayerTimesheet(layer.id),
-      ),
-      laneToggle: onToggleLanes == null || lanesForLayer == null
-          ? null
-          : (
-              valueOf: (layer) => lanesForLayer(layer).isEmpty
-                  ? null
-                  : (widget.hooks.laneOpenOf?.call(layer.id) ??
-                        widget.hooks.expandedLaneLayerIds.contains(layer.id)),
-              toggle: (layer) => onToggleLanes(layer.id),
-            ),
-    );
-  }
+  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
+  /// laid on the header's own extent: the rail's row width turned on its side
+  /// (the slot skeleton lays these cells with `axis: Axis.vertical`, so a
+  /// slot's WIDTH is its height here).
+  List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
+      timelineSwipeColumns(
+        hooks: widget.hooks,
+        crossExtent: _naturalHeaderExtent,
+        leadingOrigin: 0,
+      );
 
   TimelineFrameGeometry _baseFrameGeometry() => TimelineFrameGeometry(
     frameCellExtent: _metrics.frameCellWidth,
@@ -1472,7 +1412,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same widget, same
                         // columns; the x-sheet is the rail transposed, so the sweep runs
                         // ACROSS the layer columns instead of down the rows.
-                        RailColumnSwipe<Layer>(
+                        RailColumnSwipe<TimelineDisplayRow>(
                           axis: Axis.horizontal,
                           columns: _swipeColumns(),
                           rowAt: (along) => _columnAtX(along, entries),
