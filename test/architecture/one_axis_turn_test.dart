@@ -21,12 +21,9 @@ void main() {
   /// Files that still spell a turn by hand — a ternary on the axis whose
   /// next line opens a SizedBox or a Positioned. Only shrinks.
   const stillByHand = <String>{
-    'lib/src/ui/timeline/layer_label_controls.dart',
-    'lib/src/ui/timeline/se_audio_lane.dart',
-    'lib/src/ui/timeline/timeline_cut_end_handle.dart',
+    // Asymmetric: the vertical row boxes its cross extent, the horizontal
+    // row takes its height from the parent list — not a turn.
     'lib/src/ui/timeline/timeline_frame_cells_row.dart',
-    'lib/src/ui/timeline/timeline_se_row_visual.dart',
-    'lib/src/ui/timeline/timeline_selected_exposure_outline.dart',
   };
 
   final axisTest = RegExp(
@@ -95,6 +92,6 @@ void main() {
         if (handTurnsIn(File(path)).isEmpty) path,
     ];
     expect(paid, isEmpty, reason: 'delete these lines from stillByHand');
-    expect(stillByHand, hasLength(6));
+    expect(stillByHand, hasLength(1));
   });
 }

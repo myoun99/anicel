@@ -71,3 +71,26 @@ Positioned stripAcross(
         width: acrossExtent,
         child: child,
       );
+
+/// A stack child spanning the WHOLE cross axis at [along] — a grip line at
+/// a frame.
+Positioned stripAlong(
+  Axis axis, {
+  required double along,
+  required double alongExtent,
+  required Widget child,
+}) => axis == Axis.horizontal
+    ? Positioned(
+        top: 0,
+        bottom: 0,
+        left: along,
+        width: alongExtent,
+        child: child,
+      )
+    : Positioned(
+        left: 0,
+        right: 0,
+        top: along,
+        height: alongExtent,
+        child: child,
+      );

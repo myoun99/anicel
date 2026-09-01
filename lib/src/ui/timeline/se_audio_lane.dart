@@ -15,6 +15,7 @@ import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
+import 'axis_turn.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
 /// waveform editing strip where dragging a span's MIDDLE along the frame
@@ -278,21 +279,14 @@ class SeAudioLaneFrameRow extends StatelessWidget {
                   onSetClipFades!(span.clipIndex, fadeIn, fadeOut),
       );
       spans.add(
-        horizontal
-            ? Positioned(
-                left: startOffset,
-                top: 0,
-                width: mainExtent,
-                height: crossExtent,
-                child: content,
-              )
-            : Positioned(
-                top: startOffset,
-                left: 0,
-                height: mainExtent,
-                width: crossExtent,
-                child: content,
-              ),
+        placedAlong(
+          axis,
+          along: startOffset,
+          across: 0,
+          alongExtent: mainExtent,
+          acrossExtent: crossExtent,
+          child: content,
+        ),
       );
     }
 

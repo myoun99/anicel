@@ -21,6 +21,7 @@ import '../text/vertical_writing_text.dart';
 // The default paper: [LayerMark.none] IS it (⑲/⑳).
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
+import 'axis_turn.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -75,15 +76,11 @@ class LayerSectionBandCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return axis == Axis.horizontal
-        ? const SizedBox(
-            width: layerSectionLabelSlotWidth,
-            height: double.infinity,
-          )
-        : const SizedBox(
-            height: layerSectionLabelSlotWidth,
-            width: double.infinity,
-          );
+    return alongBox(
+      axis,
+      layerSectionLabelSlotWidth,
+      child: const SizedBox.expand(),
+    );
   }
 }
 

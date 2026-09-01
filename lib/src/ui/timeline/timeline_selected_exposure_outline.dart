@@ -8,6 +8,7 @@ import 'timeline_cell_style.dart'
         timelineRowSelectionBandDecoration,
         timelineSelectedFrameBorderColor;
 import 'timeline_frame_coordinate_policy.dart';
+import 'axis_turn.dart';
 
 /// THE ring that says "this is in the selection", wherever a selection is
 /// drawn — a selected frame run here, a selected rail row (㊴).
@@ -203,21 +204,14 @@ class TimelineRowSelectionBands extends StatelessWidget {
       final offset = leadingSpacer + runStart * rowExtent;
       final extent = (index - runStart) * rowExtent;
       bands.add(
-        axis == Axis.horizontal
-            ? Positioned(
-                top: offset,
-                left: 0,
-                height: extent,
-                width: crossExtent,
-                child: _band(runStart),
-              )
-            : Positioned(
-                left: offset,
-                top: 0,
-                width: extent,
-                height: crossExtent,
-                child: _band(runStart),
-              ),
+        placedAlong(
+          axis,
+          along: 0,
+          across: offset,
+          alongExtent: crossExtent,
+          acrossExtent: extent,
+          child: _band(runStart),
+        ),
       );
       runStart = -1;
     }

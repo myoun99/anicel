@@ -75,4 +75,28 @@ void main() {
       expect((p.right, p.height), (null, null));
     });
   });
+
+  group('stripAlong', () {
+    test('horizontal: spans top..bottom at a left and width', () {
+      final p = stripAlong(
+        Axis.horizontal,
+        along: 120,
+        alongExtent: 12,
+        child: child,
+      );
+      expect((p.top, p.bottom, p.left, p.width), (0, 0, 120, 12));
+      expect((p.right, p.height), (null, null));
+    });
+
+    test('vertical: spans left..right at a top and height', () {
+      final p = stripAlong(
+        Axis.vertical,
+        along: 120,
+        alongExtent: 12,
+        child: child,
+      );
+      expect((p.left, p.right, p.top, p.height), (0, 0, 120, 12));
+      expect((p.bottom, p.width), (null, null));
+    });
+  });
 }

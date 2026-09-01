@@ -6,6 +6,7 @@ import '../input/app_input_settings.dart' show AppInput;
 
 import '../../models/cut_id.dart';
 import 'timeline_drag_preview.dart';
+import 'axis_turn.dart';
 
 /// The timeline end-line drag's session hooks (UI-R18 #14): the red
 /// cut-end boundary line grows a grip that end-trims the ACTIVE cut —
@@ -190,9 +191,7 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
     final dragPreview = widget.dragPreview;
     Widget positioned(int frameCount) {
       final main = frameCount * widget.cellExtent - 5;
-      return horizontal
-          ? Positioned(top: 0, bottom: 0, left: main, width: 12, child: grip)
-          : Positioned(left: 0, right: 0, top: main, height: 12, child: grip);
+      return stripAlong(widget.axis, along: main, alongExtent: 12, child: grip);
     }
 
     if (dragPreview == null) {
