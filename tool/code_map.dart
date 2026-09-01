@@ -47,6 +47,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/diagnostic/diagnostic.dart';
 
+import 'import_graph.dart';
+
 void main(List<String> args) {
   final root = _flagValue(args, '--root') ?? 'lib';
   final top = int.tryParse(_flagValue(args, '--top') ?? '') ?? 25;
@@ -317,37 +319,13 @@ class CodeMap {
       // which was exactly the file count — the shape of an off-by-one-per-file
       // rather than of a real disagreement.
       lines: lineInfo.lineCount - (parsed.content.endsWith('\n') ? 1 : 0),
-      imports: _importsOf(path, parsed.unit),
+      // ⛔THE SHARED LAW, not a second opinion — see `import_graph.dart`.
+      imports: importsOf(path, content).toList()..sort(),
     );
 
     parsed.unit.accept(_DeclarationVisitor(this, path, lineOf));
   }
 
-  /// Repo-relative targets of this file's relative imports.
-  ///
-  /// ⚠️Deliberately the same shape as `tool/affected_tests.dart`'s edge —
-  /// that graph is what the merge gate already trusts to pick tests, and two
-  /// different answers to 「what does this import」 in one repo is the kind of
-  /// split this audit exists to remove.
-  List<String> _importsOf(String from, CompilationUnit unit) {
-    final out = <String>{};
-    for (final directive in unit.directives) {
-      if (directive is! ImportDirective && directive is! ExportDirective) {
-        continue;
-      }
-      final uri = (directive as UriBasedDirective).uri.stringValue;
-      if (uri == null || uri.startsWith('dart:')) continue;
-      if (uri.startsWith('package:')) {
-        // Only this package's own files are edges in this tree.
-        const self = 'package:anicel/';
-        if (!uri.startsWith(self)) continue;
-        out.add('lib/${uri.substring(self.length)}');
-        continue;
-      }
-      out.add(_normalise('${_dirOf(from)}/$uri'));
-    }
-    return out.toList()..sort();
-  }
 
   void _fillFanIn() {
     for (final file in files.values) {
@@ -651,24 +629,7 @@ String _rel(String path) {
   return p.startsWith('$cwd/') ? p.substring(cwd.length + 1) : p;
 }
 
-String _dirOf(String path) {
-  final i = path.lastIndexOf('/');
-  return i < 0 ? '.' : path.substring(0, i);
-}
 
-/// Collapses `a/b/../c` to `a/c` so two spellings of one file are one node.
-String _normalise(String path) {
-  final out = <String>[];
-  for (final part in path.split('/')) {
-    if (part == '.' || part.isEmpty) continue;
-    if (part == '..') {
-      if (out.isNotEmpty) out.removeLast();
-      continue;
-    }
-    out.add(part);
-  }
-  return out.join('/');
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // The human report

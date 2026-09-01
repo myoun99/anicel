@@ -27,6 +27,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'import_graph.dart';
+
 /// Changing one of these means the graph cannot answer, so we do not ask it.
 ///
 /// Dependencies and toolchain change what every file compiles to; the native
@@ -79,7 +81,7 @@ Future<void> main(List<String> args) async {
     exit(await _runTests(const [], listOnly: listOnly));
   }
 
-  final imports = _importGraph();
+  final imports = buildImportGraph();
   // The graph covers everything under test/ — helpers, fixtures and
   // flutter_test_config.dart included, because tests reach their changed
   // dependencies through those. Only files flutter test will actually run
@@ -100,7 +102,7 @@ Future<void> main(List<String> args) async {
 
   // Everything that can reach a changed file, however far away.
   for (final test in tests) {
-    if (_closure(test, imports).any(changedDart.contains)) selected.add(test);
+    if (closureOf(test, imports).any(changedDart.contains)) selected.add(test);
   }
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
@@ -154,82 +156,6 @@ List<String> _gitLines(List<String> args) {
 bool _forcesFullRun(String path) => _runEverything.any(
       (prefix) => prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
-
-/// file -> the repo-relative Dart files it imports directly.
-Map<String, Set<String>> _importGraph() {
-  final graph = <String, Set<String>>{};
-  for (final dir in ['lib', 'test']) {
-    final directory = Directory(dir);
-    if (!directory.existsSync()) continue;
-    for (final entity in directory.listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) continue;
-      final path = entity.path.replaceAll('\\', '/');
-      graph[path] = _importsOf(path, entity.readAsStringSync());
-    }
-  }
-  return graph;
-}
-
-final _directive = RegExp(
-  '''^\\s*(?:import|export|part)\\s+['"]([^'"]+)['"]''',
-  multiLine: true,
-);
-
-/// A few tests read a lib file off disk instead of importing it — they check
-/// its source text rather than its behaviour. There is no import edge to
-/// follow, but there is still a dependency, and the file they name is right
-/// there in the string. Treating that as an edge is exact: none of them
-/// scans a directory, they all name one file.
-final _sourceReference = RegExp('''['"](lib/[A-Za-z0-9_/.\\-]*\\.dart)['"]''');
-
-Set<String> _importsOf(String from, String source) {
-  final out = <String>{};
-  for (final match in _sourceReference.allMatches(source)) {
-    out.add(match.group(1)!);
-  }
-  for (final match in _directive.allMatches(source)) {
-    final target = match.group(1)!;
-    if (target.startsWith('dart:')) continue;
-    if (target.startsWith('package:anicel/')) {
-      out.add('lib/${target.substring('package:anicel/'.length)}');
-    } else if (target.startsWith('package:')) {
-      continue; // third-party: not ours to track
-    } else {
-      out.add(_normalise('${_dirOf(from)}/$target'));
-    }
-  }
-  return out;
-}
-
-String _dirOf(String path) {
-  final i = path.lastIndexOf('/');
-  return i < 0 ? '.' : path.substring(0, i);
-}
-
-String _normalise(String path) {
-  final parts = <String>[];
-  for (final part in path.split('/')) {
-    if (part == '.' || part.isEmpty) continue;
-    if (part == '..') {
-      if (parts.isNotEmpty) parts.removeLast();
-    } else {
-      parts.add(part);
-    }
-  }
-  return parts.join('/');
-}
-
-Set<String> _closure(String start, Map<String, Set<String>> graph) {
-  final seen = <String>{};
-  final queue = <String>[start];
-  while (queue.isNotEmpty) {
-    final current = queue.removeLast();
-    for (final next in graph[current] ?? const <String>{}) {
-      if (seen.add(next)) queue.add(next);
-    }
-  }
-  return seen;
-}
 
 
 /// How many characters of arguments one invocation may carry.
