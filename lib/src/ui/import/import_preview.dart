@@ -9,6 +9,7 @@ import '../../services/media/media_byte_source.dart';
 import '../../core/straight_rgba_image.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_video_decoder.dart';
+import '../../services/media/video_decode_worker.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../theme/app_theme.dart';
@@ -66,10 +67,13 @@ class _ImportPreviewState extends State<ImportPreview> {
   ui.Image? _pdfPage;
   int _pdfPageShown = -1;
 
-  /// A movie, once the reader has said what it is — the HANDLE, so the
-  /// viewer holding its own does not turn this one into a still picture.
-  /// See [QaVideoDecoder.frameOf].
-  QaVideoDocument? _video;
+  /// A movie, once the reader has said what it is.
+  ///
+  /// ⚠️A token from [videoDecodeBackend], not a decoder handle: the native
+  /// document lives on a worker isolate now, and TWO owners of one
+  /// process-global would make the handle bookkeeping track half the truth.
+  /// The viewer goes through the same door.
+  ({int token, QaVideoInfo info})? _video;
   ui.Image? _videoFrame;
   int _videoFrameShown = -1;
 
@@ -109,8 +113,9 @@ class _ImportPreviewState extends State<ImportPreview> {
     final video = _video;
     _video = null;
     if (video != null) {
-      // ⛔Only if it is still ours — see [QaVideoDecoder.closeDocument].
-      QaVideoDecoder.instance?.closeDocument(video);
+      // ⛔Only if it is still ours — the backend closes by token, and a
+      // token that is not the loaded document is a no-op.
+      unawaited(videoDecodeBackend.close(video.token));
     }
     final pdf = _pdf;
     _pdf = null;
@@ -133,10 +138,10 @@ class _ImportPreviewState extends State<ImportPreview> {
       setState(() {});
       return;
     }
-    final video = decoder.openDocument(path);
+    final video = await videoDecodeBackend.open(path);
     if (!mounted || _loadedPath != path) {
       if (video != null) {
-        decoder.closeDocument(video);
+        unawaited(videoDecodeBackend.close(video.token));
       }
       return;
     }
@@ -152,12 +157,11 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// the frame it landed on, not for the ones it passed over.
   Future<void> _renderVideoFrame(int index) async {
     final info = _video;
-    final decoder = QaVideoDecoder.instance;
-    if (info == null || decoder == null || index == _videoFrameShown) {
+    if (info == null || index == _videoFrameShown) {
       return;
     }
     _videoFrameShown = index;
-    final rgba = decoder.frameOf(info, index);
+    final rgba = await videoDecodeBackend.frame(info.token, index);
     if (rgba == null || !mounted || _video != info) {
       return;
     }

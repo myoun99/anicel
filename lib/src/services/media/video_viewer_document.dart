@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../core/straight_rgba_image.dart';
 import '../../native/qa_video_decoder.dart';
+import 'video_decode_worker.dart';
 import 'viewer_document.dart';
 
 /// A movie, as a [ViewerDocument]: one page per FRAME.
@@ -19,17 +19,15 @@ import 'viewer_document.dart';
 /// the whole reason [ViewerDocument] was worth extracting. Playing is then
 /// just turning pages on a timer — the viewer owns that, not this.
 ///
-/// ⚠️**ONE document at a time**, still — `QaVideoDecoder` holds a single
-/// native document by design (「스크럽하는 프리뷰가 주 용례고 그건 영화
-/// 하나를 본다」). 🪦What this paragraph used to say next was that opening
-/// here 「is also what closes the import preview's」, stated as a property to
-/// live with. It was a bug: the other consumer's movie went blank with no
-/// error, and so did this one when theirs opened. The decoder takes a
-/// HANDLE now and puts your movie back when somebody else's is loaded —
-/// see [QaVideoDecoder.frameOf].
+/// ⚠️**ONE document at a time**, still — the native side holds a single
+/// document by design (「스크럽하는 프리뷰가 주 용례고 그건 영화 하나를
+/// 본다」). 🪦What this paragraph used to say next was that opening here
+/// 「is also what closes the import preview's」, stated as a property to live
+/// with. It was a bug: the other consumer's movie went blank with no error.
+/// A handle says which movie is whose (#1458), and the DECODE now happens on
+/// a worker isolate ([videoDecodeBackend]) rather than on the thread that
+/// draws.
 final class VideoViewerDocument implements ViewerDocument {
-  VideoViewerDocument._(this._document);
-
   /// Opens [path]. Returns null when this build has **no reader at all**,
   /// and THROWS when there is a reader that could not read this file.
   ///
@@ -63,10 +61,14 @@ final class VideoViewerDocument implements ViewerDocument {
     String path, {
     ({int offset, int length})? range,
   }) async {
-    final decoder = QaVideoDecoder.instance;
-    final hasReader = decoder != null && decoder.isSupported;
-    final document = hasReader ? decoder.openDocument(path, range: range) : null;
-    switch (viewerOpenOutcome(hasReader: hasReader, opened: document != null)) {
+    // 🚨Through the decode BACKEND, never `QaVideoDecoder` directly: the
+    // frames arrive off the UI isolate, which is the difference between a
+    // reference movie playing beside a drawing and one that eats a third of
+    // every frame's budget. See [videoDecodeBackend].
+    final backend = videoDecodeBackend;
+    final hasReader = QaVideoDecoder.instance?.isSupported ?? false;
+    final opened = hasReader ? await backend.open(path, range: range) : null;
+    switch (viewerOpenOutcome(hasReader: hasReader, opened: opened != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:
         return null;
       case ViewerOpenOutcome.unreadable:
@@ -75,24 +77,20 @@ final class VideoViewerDocument implements ViewerDocument {
         // been documented as saying why since it was written. Nobody read
         // it. The export path already surfaces the encoder's twin
         // (`video_export_service.dart`), so this is the same move.
-        final reason = decoder!.lastError;
-        decoder.close();
+        final reason = await backend.lastError();
         throw ViewerDocumentException(
           reason.isEmpty ? 'that movie could not be read' : reason,
         );
       case ViewerOpenOutcome.opened:
-        return VideoViewerDocument._(document!);
+        return VideoViewerDocument._(backend, opened!.token, opened.info);
     }
   }
 
-  final QaVideoDocument _document;
+  VideoViewerDocument._(this._backend, this._token, this._info);
 
-  QaVideoInfo get _info => _document.info;
-
-  /// ONE buffer for the movie, not one per frame — see [QaVideoDecoder.frame].
-  /// ⚠️Safe only because every consumer copies it synchronously; holding it
-  /// across an await would read the next frame.
-  Uint8List? _frameBytes;
+  final VideoDecodeBackend _backend;
+  final int _token;
+  final QaVideoInfo _info;
 
   /// The movie's own frame rate. Null when the file does not state one —
   /// then it is a stack of frames a person turns, which is still useful
@@ -116,19 +114,15 @@ final class VideoViewerDocument implements ViewerDocument {
     required int width,
     required int height,
   }) async {
-    final decoder = QaVideoDecoder.instance;
     // ⚠️The native reader has no smaller ask: a frame comes out at the
-    // movie's size, so the shrink happens in the DECODE — the picture the
-    // cache keeps is the one on screen. The full-size buffer it arrives in
-    // is allocated ONCE for the document, not once per frame.
+    // movie's size, so the shrink happens on the way to the picture the
+    // cache keeps, which is the one on screen.
     //
-    // 🚨Through the DOCUMENT, so the import window scrubbing a different
-    // movie does not turn this one into a still picture with no error.
-    final rgba = decoder?.frameOf(
-      _document,
-      pageIndex,
-      into: _frameBytes ??= Uint8List(_info.width * _info.height * 4),
-    );
+    // 🚨The await is the point of the round: the decode happens on the
+    // worker, and this isolate is free while it does. A frame measured
+    // 14.97 ms at 1080p — more than a third of a 24fps budget — and it used
+    // to be spent right here, beside the brush.
+    final rgba = await _backend.frame(_token, pageIndex);
     if (rgba == null) {
       throw StateError('frame $pageIndex could not be read');
     }
@@ -148,6 +142,5 @@ final class VideoViewerDocument implements ViewerDocument {
   /// take the import preview's movie with it — the same bug as the silent
   /// replace, wearing the other hat.
   @override
-  Future<void> dispose() async =>
-      QaVideoDecoder.instance?.closeDocument(_document);
+  Future<void> dispose() => _backend.close(_token);
 }
