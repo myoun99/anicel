@@ -1351,6 +1351,148 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     );
   }
 
+  /// The cells-family drag callbacks for this pass, or null when the
+  /// host wired none — the transposed twin of the layer grid's. It also
+  /// loads `_rangeMoveResolver` with [entries], which is why it takes
+  /// them: both happen in the same pass or neither does.
+  TimelineRangeGestureCallbacks? _rangeGestureFor(
+    List<TimelineDisplayRow> entries,
+  ) {
+    final rangeHooks = widget.rangeHooks;
+    _rangeMoveResolver
+      ..rows = entries
+      ..session = rangeHooks?.move;
+    return rangeHooks == null
+        ? null
+        : TimelineRangeGestureCallbacks(
+            // The horizontal grid's twin, one law: a lane row
+            // answers with the layer it sits inside
+            // ([TimelineRowAddress.owningLayerId]).
+            isInSelection: (row, frameIndex) {
+              final selection = rangeHooks.selection.value;
+              final layerId = row.owningLayerId;
+              return layerId != null &&
+                  selection != null &&
+                  selection.coversLayer(layerId) &&
+                  selection.contains(frameIndex);
+            },
+            // Cross-row select (UI-R17 #8), transposed like the moves.
+            //
+            // 🚨[_dragRows] at CALL time, never the build-local
+            // list: the cells columns are memoized, and a memo
+            // hit serves an older build's gesture bundle — see
+            // the horizontal grid's twin for the stale-rows bug
+            // this closes.
+            onSelectUpdate: (row, anchorIndex, headIndex, headCrossOffset) {
+              final rowLayerId = row.owningLayerId;
+              if (rowLayerId == null) {
+                return;
+              }
+              // R9 #25: raw pixels in, resolved here — this
+              // axis's columns are one width.
+              final headRowDelta = uniformRowDeltaForCrossOffset(
+                crossOffset: headCrossOffset,
+                rowExtent: _metrics.layerRowHeight,
+              );
+              rangeHooks.onSelectUpdate(
+                rowLayerId,
+                anchorIndex,
+                headIndex,
+                headLayerId: headRowDelta == 0
+                    ? null
+                    : resolveBlockMoveTargetLayer(
+                        rows: _dragRows,
+                        sourceLayerId: rowLayerId,
+                        rowDelta: headRowDelta,
+                      ),
+              );
+            },
+            onTapClear: (_) => rangeHooks.onClear(),
+            onMoveBegin: (row, _) {
+              final layerId = row.owningLayerId;
+              return layerId != null && _rangeMoveResolver.begin(layerId);
+            },
+            onMoveUpdate: _rangeMoveResolver.update,
+            onMoveEnd: _rangeMoveResolver.end,
+            onMoveCancel: _rangeMoveResolver.cancel,
+          );
+  }
+
+  /// The lane-family drag callbacks for this pass, or null when the host
+  /// wired none. See the comment inside: one law, both axes.
+  TimelineLaneRangeCallbacks? _laneRangeFor(List<TimelineDisplayRow> entries) {
+    // 🚨B4-④, transposed: the lane-anchored drag joins the cells
+    // law the moment it leaves its own lane group — the same
+    // wrap the horizontal grid applies (one law, both axes).
+    final rangeHooks = widget.rangeHooks;
+    final hostLaneRange = widget.laneRange;
+    return hostLaneRange == null
+        ? null
+        : TimelineLaneRangeCallbacks(
+            selection: hostLaneRange.selection,
+            onSelectUpdate:
+                (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
+                  // R9 #25 on the lane family: raw pixels in,
+                  // resolved with THIS grid's uniform column
+                  // pitch.
+                  final headRowDelta = uniformRowDeltaForCrossOffset(
+                    crossOffset: headCrossOffset,
+                    rowExtent: widget.metrics.layerRowHeight,
+                  );
+                  final escalation = rangeHooks == null
+                      ? null
+                      : resolveLaneSpanEscalation(
+                          rows: _dragRows,
+                          layerId: layerId,
+                          laneId: laneId,
+                          rowDelta: headRowDelta,
+                        );
+                  if (escalation == null) {
+                    hostLaneRange.onSelectUpdate(
+                      layerId,
+                      laneId,
+                      anchorIndex,
+                      headIndex,
+                      resolveInGroupHeadLane(
+                        rows: [for (final row in _dragRows) row.address],
+                        layerId: layerId,
+                        laneId: laneId,
+                        rowDelta: headRowDelta,
+                      ),
+                      laneSpanOverDrawnRows(
+                        rows: [for (final row in _dragRows) row.address],
+                        layerId: layerId,
+                        laneId: laneId,
+                        headLaneId:
+                            resolveInGroupHeadLane(
+                              rows: [for (final row in _dragRows) row.address],
+                              layerId: layerId,
+                              laneId: laneId,
+                              rowDelta: headRowDelta,
+                            ) ??
+                            laneId,
+                      ),
+                    );
+                    return;
+                  }
+                  rangeHooks!.onSelectUpdate(
+                    layerId,
+                    anchorIndex,
+                    headIndex,
+                    headLayerId: escalation.headLayerId,
+                    headLaneId: escalation.headLaneId,
+                    spanRows: escalation.spanRows,
+                  );
+                },
+            onTapAt: hostLaneRange.onTapAt,
+            onTapClear: hostLaneRange.onTapClear,
+            onMoveBegin: hostLaneRange.onMoveBegin,
+            onMoveUpdate: hostLaneRange.onMoveUpdate,
+            onMoveEnd: hostLaneRange.onMoveEnd,
+            onMoveCancel: hostLaneRange.onMoveCancel,
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1459,150 +1601,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 // The row drag counts COLUMNS and lands on slots; only this
                 // list knows how many columns sit between two fx headers.
                 _dragRows = entries;
-                final rangeHooks = widget.rangeHooks;
-                _rangeMoveResolver
-                  ..rows = entries
-                  ..session = rangeHooks?.move;
-                _rangeGesture = rangeHooks == null
-                    ? null
-                    : TimelineRangeGestureCallbacks(
-                        // The horizontal grid's twin, one law: a lane row
-                        // answers with the layer it sits inside
-                        // ([TimelineRowAddress.owningLayerId]).
-                        isInSelection: (row, frameIndex) {
-                          final selection = rangeHooks.selection.value;
-                          final layerId = row.owningLayerId;
-                          return layerId != null &&
-                              selection != null &&
-                              selection.coversLayer(layerId) &&
-                              selection.contains(frameIndex);
-                        },
-                        // Cross-row select (UI-R17 #8), transposed like the moves.
-                        //
-                        // 🚨[_dragRows] at CALL time, never the build-local
-                        // list: the cells columns are memoized, and a memo
-                        // hit serves an older build's gesture bundle — see
-                        // the horizontal grid's twin for the stale-rows bug
-                        // this closes.
-                        onSelectUpdate:
-                            (row, anchorIndex, headIndex, headCrossOffset) {
-                              final rowLayerId = row.owningLayerId;
-                              if (rowLayerId == null) {
-                                return;
-                              }
-                              // R9 #25: raw pixels in, resolved here — this
-                              // axis's columns are one width.
-                              final headRowDelta =
-                                  uniformRowDeltaForCrossOffset(
-                                    crossOffset: headCrossOffset,
-                                    rowExtent: _metrics.layerRowHeight,
-                                  );
-                              rangeHooks.onSelectUpdate(
-                                rowLayerId,
-                                anchorIndex,
-                                headIndex,
-                                headLayerId: headRowDelta == 0
-                                    ? null
-                                    : resolveBlockMoveTargetLayer(
-                                        rows: _dragRows,
-                                        sourceLayerId: rowLayerId,
-                                        rowDelta: headRowDelta,
-                                      ),
-                              );
-                            },
-                        onTapClear: (_) => rangeHooks.onClear(),
-                        onMoveBegin: (row, _) {
-                          final layerId = row.owningLayerId;
-                          return layerId != null &&
-                              _rangeMoveResolver.begin(layerId);
-                        },
-                        onMoveUpdate: _rangeMoveResolver.update,
-                        onMoveEnd: _rangeMoveResolver.end,
-                        onMoveCancel: _rangeMoveResolver.cancel,
-                      );
-                // 🚨B4-④, transposed: the lane-anchored drag joins the cells
-                // law the moment it leaves its own lane group — the same
-                // wrap the horizontal grid applies (one law, both axes).
-                final hostLaneRange = widget.laneRange;
-                _laneRange = hostLaneRange == null
-                    ? null
-                    : TimelineLaneRangeCallbacks(
-                        selection: hostLaneRange.selection,
-                        onSelectUpdate:
-                            (
-                              layerId,
-                              laneId,
-                              anchorIndex,
-                              headIndex,
-                              headCrossOffset,
-                            ) {
-                              // R9 #25 on the lane family: raw pixels in,
-                              // resolved with THIS grid's uniform column
-                              // pitch.
-                              final headRowDelta =
-                                  uniformRowDeltaForCrossOffset(
-                                    crossOffset: headCrossOffset,
-                                    rowExtent: widget.metrics.layerRowHeight,
-                                  );
-                              final escalation = rangeHooks == null
-                                  ? null
-                                  : resolveLaneSpanEscalation(
-                                      rows: _dragRows,
-                                      layerId: layerId,
-                                      laneId: laneId,
-                                      rowDelta: headRowDelta,
-                                    );
-                              if (escalation == null) {
-                                hostLaneRange.onSelectUpdate(
-                                  layerId,
-                                  laneId,
-                                  anchorIndex,
-                                  headIndex,
-                                  resolveInGroupHeadLane(
-                                    rows: [
-                                      for (final row in _dragRows) row.address,
-                                    ],
-                                    layerId: layerId,
-                                    laneId: laneId,
-                                    rowDelta: headRowDelta,
-                                  ),
-                                  laneSpanOverDrawnRows(
-                                    rows: [
-                                      for (final row in _dragRows) row.address,
-                                    ],
-                                    layerId: layerId,
-                                    laneId: laneId,
-                                    headLaneId:
-                                        resolveInGroupHeadLane(
-                                          rows: [
-                                            for (final row in _dragRows)
-                                              row.address,
-                                          ],
-                                          layerId: layerId,
-                                          laneId: laneId,
-                                          rowDelta: headRowDelta,
-                                        ) ??
-                                        laneId,
-                                  ),
-                                );
-                                return;
-                              }
-                              rangeHooks!.onSelectUpdate(
-                                layerId,
-                                anchorIndex,
-                                headIndex,
-                                headLayerId: escalation.headLayerId,
-                                headLaneId: escalation.headLaneId,
-                                spanRows: escalation.spanRows,
-                              );
-                            },
-                        onTapAt: hostLaneRange.onTapAt,
-                        onTapClear: hostLaneRange.onTapClear,
-                        onMoveBegin: hostLaneRange.onMoveBegin,
-                        onMoveUpdate: hostLaneRange.onMoveUpdate,
-                        onMoveEnd: hostLaneRange.onMoveEnd,
-                        onMoveCancel: hostLaneRange.onMoveCancel,
-                      );
+                // The bundles are FIELDS here (the x-sheet reads them from more
+                // than one builder), so the assignment stays and only the
+                // construction moved.
+                _rangeGesture = _rangeGestureFor(entries);
+                _laneRange = _laneRangeFor(entries);
                 final sectionRuns = timelineSectionRuns(entries);
 
                 // The shared virtualization plan with the frame axis fed through the
