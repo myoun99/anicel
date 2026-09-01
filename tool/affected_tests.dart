@@ -212,11 +212,13 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   }
 
   var worst = 0;
+  var skipped = 0;
   final failed = <int>[];
   final neverRan = <int>[];
   for (var i = 0; i < batches.length; i++) {
     if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
     final result = await _flutterTest(batches[i]);
+    skipped += result.skipped;
     if (result.exitCode != 0) {
       failed.add(i + 1);
       if (!result.ranTests) neverRan.add(i + 1);
@@ -244,17 +246,59 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   // believed once.
   if (failed.isEmpty) {
     _report('PASSED (${batches.length} batch(es), exit 0)');
+    _reportSkips(skipped);
   } else {
     _report('FAILED — batch(es) ${failed.join(', ')} of ${batches.length}, '
         'exit $worst');
   }
+  _reportSkips(skipped);
   return worst;
 }
 
+/// Says out loud when tests were skipped, and what usually causes it here.
+void _reportSkips(int skipped) {
+  if (skipped == 0) return;
+  _report('⚠️$skipped test(s) SKIPPED — a skip is not a pass.');
+  _report('  The usual cause in this repo is a missing native engine: '
+      'every parity pin');
+  _report('  becomes an empty stub, so the C kernel is never compared with '
+      'the Dart one.');
+  _report('  cmake -S packages/qa_native/src -B build/native_standalone '
+      '-DCMAKE_BUILD_TYPE=Release');
+  _report('  cmake --build build/native_standalone --config Release');
+}
+
 class _BatchResult {
-  const _BatchResult(this.exitCode, this.ranTests);
+  const _BatchResult(this.exitCode, this.ranTests, this.skipped);
   final int exitCode;
   final bool ranTests;
+
+  /// How many tests the run SKIPPED. See [lastSkipCount].
+  final int skipped;
+}
+
+/// The skip count in `flutter test` output, or null if it says none.
+///
+/// 🚨★★★A SKIP IS NOT A PASS, AND THIS IS THE ONLY PLACE THAT SAYS SO.
+///
+/// `flutter test` prints `00:03 +42 ~2: All tests passed!` — the tilde is
+/// two tests that did not run, and the sentence beside it still says passed.
+/// The counter is cumulative, so the LAST tilde in a batch is that batch is
+/// total.
+///
+/// 🧪This exists because knowing was not enough. The memory file
+/// `affected-tests-not-full-suite.md` has said since 2026-08-28 that a
+/// missing native engine turns every parity pin into an empty stub, and told
+/// the reader to check the tilde. On 2026-09-01 I read that line, saw `~2`,
+/// wrote 「a known local condition」 and carried on — and the fix was one
+/// paragraph further down the same file. A note that has to be obeyed is not
+/// a rule; this is the mechanism.
+int? lastSkipCount(String text) {
+  int? found;
+  for (final m in RegExp(r'~(\d+)').allMatches(text)) {
+    found = int.parse(m.group(1)!);
+  }
+  return found;
 }
 
 /// `flutter test` writes its counter and its verdict in English whatever
@@ -277,18 +321,22 @@ Future<_BatchResult> _flutterTest(List<String> files) async {
     runInShell: true,
   );
   var ranTests = false;
+  var skipped = 0;
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
       // must not take the tool down with it.
-      if (!ranTests && _testOutput.hasMatch(latin1.decode(chunk))) {
+      final text = latin1.decode(chunk);
+      if (!ranTests && _testOutput.hasMatch(text)) {
         ranTests = true;
       }
+      final skips = lastSkipCount(text);
+      if (skips != null) skipped = skips;
       return chunk;
     }).forEach(stdout.add),
     process.stderr.forEach(stderr.add),
   ];
   final code = await process.exitCode;
   await Future.wait(pumped);
-  return _BatchResult(code, ranTests);
+  return _BatchResult(code, ranTests, skipped);
 }
