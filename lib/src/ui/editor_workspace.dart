@@ -2065,42 +2065,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                           children: [
                             // ★ THE FLOOR. Everything below this line is drawn on
                             // top of the drawing.
-                            Positioned.fill(
-                              child: CanvasFloorInsets(
-                                insets: floorCover,
-                                // ⑩: the collapsed row lies ON the artwork
-                                // just past the region's edge. It frames
-                                // nothing, so it is not in `insets` — but a
-                                // bar on the bottom edge would be under it.
-                                bottomOverlaySpan:
-                                    hasBottomDock &&
-                                        _bottomDockCollapsed &&
-                                        !onTop
-                                    ? _collapsedRows.collapsedRowHeight()
-                                    : 0,
-                                // WHERE each column actually is, not just how
-                                // wide it is. A rail panel is as tall as it was
-                                // left at, so a short one covers a band and not
-                                // an edge — and the scrollbar that stepped
-                                // aside for the whole edge read as floating for
-                                // no reason (유저, R3 #5).
-                                leftRailBand: _rail.railBand(
-                                  right: false,
-                                  stop: leftStop,
-                                  onTop: onTop,
-                                  height: constraints.maxHeight,
-                                  grid: grid,
-                                ),
-                                rightRailBand: _rail.railBand(
-                                  right: true,
-                                  stop: rightStop,
-                                  onTop: onTop,
-                                  height: constraints.maxHeight,
-                                  grid: grid,
-                                ),
-                                child: floor!,
-                              ),
-                            ),
+                            _floor(floorCover, hasBottomDock, onTop, leftStop, constraints, grid, rightStop, floor),
                             // ★ The rails FLOAT. A gap of pasteboard between
                             // the strip and the panel, another above the
                             // first panel, and each panel its own rounded
@@ -2108,51 +2073,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             // is, rather than a slab bolted to the strip.
                             // Their width grips ride their own inner edges
                             // inside the column.
-                            Positioned(
-                              left: 0,
-                              // ★These two widgets are what actually CARRY a
-                              // rail-docked canvas, so this is where the
-                              // chain lands on the grid or does not. The
-                              // right span especially: it is subtracted
-                              // from an on-grid right edge, so a raw width
-                              // here puts the column's LEFT edge — and
-                              // everything docked in it — between two
-                              // device pixels.
-                              top: grid.position(
-                                (onTop ? leftStop : 0) + _railGroupGap,
-                              ),
-                              bottom: onTop ? 0 : leftStop,
-                              // The gap is INSIDE the column's box now: the
-                              // rail's own scrollbar rides it. ⛔Take the
-                              // quantized span rather than re-adding the
-                              // gap: `floorCover`, `columnStop` and this
-                              // widget have to be one spelling of one
-                              // boundary, or the canvas is framed against
-                              // an edge the rail is not drawn at.
-                              width: hasLeftDock ? leftRailSpan : null,
-                              child: _rail.buildRailColumn(
-                                EditorPanelDockSide.left,
-                                width: leftWidth,
-                                hosts: leftRailHosts,
-                                // 결정 8: the same ceiling both sides read.
-                                dragCeiling: ceiling,
-                              ),
-                            ),
-                            Positioned(
-                              right: 0,
-                              top: grid.position(
-                                (onTop ? rightStop : 0) + _railGroupGap,
-                              ),
-                              bottom: onTop ? 0 : rightStop,
-                              width: hasRightDock ? rightRailSpan : null,
-                              child: _rail.buildRailColumn(
-                                EditorPanelDockSide.right,
-                                width: rightWidth,
-                                hosts: rightRailHosts,
-                                // 결정 8: the same ceiling both sides read.
-                                dragCeiling: ceiling,
-                              ),
-                            ),
+                            _leftRailColumn(grid, onTop, leftStop, hasLeftDock, leftRailSpan, leftWidth, leftRailHosts, ceiling),
+                            _rightRailColumn(grid, onTop, rightStop, hasRightDock, rightRailSpan, rightWidth, rightRailHosts, ceiling),
                             // ★The collapsed row, over the artwork and OUTSIDE
                             // the region's clip. It has to be a sibling: the
                             // region is inside a `SuperellipseClip`, so an
@@ -2162,153 +2084,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             // it, which is what keeps the row from spilling
                             // onto the sill when the two meet.
                             if (hasBottomDock && _bottomDockCollapsed)
-                              Positioned(
-                                left: bottomInset,
-                                right: bottomInset,
-                                top: onTop ? bottomHeight : null,
-                                bottom: onTop ? null : bottomHeight,
-                                height: _collapsedRows.collapsedRowHeight(),
-                                child: _collapsedRows.collapsedRowOverlay(),
-                              ),
-                            Positioned(
-                              left: bottomInset,
-                              right: bottomInset,
-                              top: onTop ? 0 : null,
-                              bottom: onTop ? null : 0,
-                              height: hasBottomDock ? bottomHeight : null,
-                              child: _docks.buildBottomDock(
-                                availableExtent: constraints.maxHeight,
-                                content: bottomContent,
-                                inset: bottomInset > 0,
-                                onTop: onTop,
-                                // Every grip the region has, laid on its own
-                                // edges inside its own clip.
-                                grips: !hasBottomDock
-                                    ? const []
-                                    : [
-                                        // ★NO HEIGHT GRIP WHILE COLLAPSED
-                                        // (유저 확정, 2026-08-10): folding is a
-                                        // state change, not a small size, so
-                                        // the handle that changes size does not
-                                        // appear and does not answer.
-                                        //
-                                        // ⛔It used to do the opposite —
-                                        // dragging it meant "give me it back"
-                                        // and unfolded the region. That was the
-                                        // right call while the fold had no
-                                        // representation of its own (a live
-                                        // grip that moved nothing would have
-                                        // been worse), and it is the wrong one
-                                        // now: the collapsed panel is a working
-                                        // surface, and a grip on its edge
-                                        // invites a resize it cannot do.
-                                        // ⇒ The sill's ⌃ is the only way in and
-                                        // the only way out. The SIDE grips stay
-                                        // live either way — width is not the
-                                        // axis the fold is about.
-                                        if (!_bottomDockCollapsed)
-                                          Positioned(
-                                            left: 0,
-                                            right: 0,
-                                            // 기하는 캔버스 향한 변에: the resize
-                                            // handle rides whichever edge faces
-                                            // the artwork, which flips with the
-                                            // region and needs no rule of its
-                                            // own.
-                                            top: onTop ? null : 0,
-                                            bottom: onTop ? 0 : null,
-                                            height: DockEdgeSplitter.thickness,
-                                            child: DockEdgeSplitter(
-                                              key: const ValueKey<String>(
-                                                'dock-resize-bottom',
-                                              ),
-                                              axis: Axis.horizontal,
-                                              onDragDelta: (delta) {
-                                                // What the edge used, back in
-                                                // POINTER units — the sign flip
-                                                // below has to be undone or the
-                                                // splitter would bank the debt
-                                                // the wrong way round.
-                                                final used = _layout.resizeDock(
-                                                  EditorWorkspace.bottomGroupId,
-                                                  // Toward the artwork GROWS the
-                                                  // region, on either edge: down
-                                                  // when it is on top, up when it
-                                                  // is on the bottom.
-                                                  onTop ? delta : -delta,
-                                                  fallback: EditorWorkspace
-                                                      .bottomPanelHeight,
-                                                  // The splitter stops where the
-                                                  // panels stop shrinking, and
-                                                  // never banks height past what
-                                                  // the window can show — a
-                                                  // surplus behind the ceiling is
-                                                  // spent before the edge moves
-                                                  // again, which reads as a
-                                                  // splitter that lags the cursor.
-                                                  minExtent: math.min(
-                                                    _verticalDockMinimumExtent(
-                                                      EditorWorkspace
-                                                          .bottomGroupId,
-                                                    ),
-                                                    _docks.bottomDockCeiling(
-                                                      constraints.maxHeight,
-                                                    ),
-                                                  ),
-                                                  // The model's own 640 still
-                                                  // applies here — the region
-                                                  // has always had it, and
-                                                  // lifting it is a separate
-                                                  // decision from fixing the
-                                                  // banking.
-                                                  // 결정 8: the HAND stops at
-                                                  // half the window.
-                                                  maxExtent: math.min(
-                                                    EditorPanelLayoutModel
-                                                        .maxDockExtent,
-                                                    _docks.bottomDockDragCeiling(
-                                                      constraints.maxHeight,
-                                                    ),
-                                                  ),
-                                                );
-                                                return onTop ? used : -used;
-                                              },
-                                            ),
-                                          ),
-                                        // The region's side grips. TWO of
-                                        // them and ONE number — pulling
-                                        // either edge in pulls the other in
-                                        // by the same amount, because the
-                                        // region stays centred on the window.
-                                        _bottomInsetGrip(
-                                          right: false,
-                                          inset: bottomInset,
-                                          onTop: onTop,
-                                          // RAW, to match the gate above.
-                                          railSpan: leftRailSpanRaw,
-                                          maxInset: math.max(
-                                            0.0,
-                                            (constraints.maxWidth -
-                                                    _minBottomRegionWidth) /
-                                                2,
-                                          ),
-                                        ),
-                                        _bottomInsetGrip(
-                                          right: true,
-                                          inset: bottomInset,
-                                          onTop: onTop,
-                                          // RAW, to match the gate above.
-                                          railSpan: rightRailSpanRaw,
-                                          maxInset: math.max(
-                                            0.0,
-                                            (constraints.maxWidth -
-                                                    _minBottomRegionWidth) /
-                                                2,
-                                          ),
-                                        ),
-                                      ],
-                              ),
-                            ),
+                              _collapsedRowOverlay(bottomInset, onTop, bottomHeight),
+                            _bottomDock(bottomInset, onTop, hasBottomDock, bottomHeight, constraints, bottomContent, leftRailSpanRaw, rightRailSpanRaw),
                           ],
                         );
                       },
@@ -2322,6 +2099,257 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           ],
         );
       },
+    );
+  }
+
+  Positioned _bottomDock(double bottomInset, bool onTop, bool hasBottomDock, double bottomHeight, BoxConstraints constraints, Widget? bottomContent, double leftRailSpanRaw, double rightRailSpanRaw) {
+    return Positioned(
+      left: bottomInset,
+      right: bottomInset,
+      top: onTop ? 0 : null,
+      bottom: onTop ? null : 0,
+      height: hasBottomDock ? bottomHeight : null,
+      child: _docks.buildBottomDock(
+        availableExtent: constraints.maxHeight,
+        content: bottomContent,
+        inset: bottomInset > 0,
+        onTop: onTop,
+        // Every grip the region has, laid on its own
+        // edges inside its own clip.
+        grips: !hasBottomDock
+            ? const []
+            : _bottomDockGrips(onTop, constraints, bottomInset, leftRailSpanRaw, rightRailSpanRaw),
+      ),
+    );
+  }
+
+  List<Widget> _bottomDockGrips(bool onTop, BoxConstraints constraints, double bottomInset, double leftRailSpanRaw, double rightRailSpanRaw) {
+    return [
+      // ★NO HEIGHT GRIP WHILE COLLAPSED
+      // (유저 확정, 2026-08-10): folding is a
+      // state change, not a small size, so
+      // the handle that changes size does not
+      // appear and does not answer.
+      //
+      // ⛔It used to do the opposite —
+      // dragging it meant "give me it back"
+      // and unfolded the region. That was the
+      // right call while the fold had no
+      // representation of its own (a live
+      // grip that moved nothing would have
+      // been worse), and it is the wrong one
+      // now: the collapsed panel is a working
+      // surface, and a grip on its edge
+      // invites a resize it cannot do.
+      // ⇒ The sill's ⌃ is the only way in and
+      // the only way out. The SIDE grips stay
+      // live either way — width is not the
+      // axis the fold is about.
+      if (!_bottomDockCollapsed)
+        _bottomHeightGrip(onTop, constraints),
+      // The region's side grips. TWO of
+      // them and ONE number — pulling
+      // either edge in pulls the other in
+      // by the same amount, because the
+      // region stays centred on the window.
+      _bottomInsetGrip(
+        right: false,
+        inset: bottomInset,
+        onTop: onTop,
+        // RAW, to match the gate above.
+        railSpan: leftRailSpanRaw,
+        maxInset: math.max(
+          0.0,
+          (constraints.maxWidth -
+                  _minBottomRegionWidth) /
+              2,
+        ),
+      ),
+      _bottomInsetGrip(
+        right: true,
+        inset: bottomInset,
+        onTop: onTop,
+        // RAW, to match the gate above.
+        railSpan: rightRailSpanRaw,
+        maxInset: math.max(
+          0.0,
+          (constraints.maxWidth -
+                  _minBottomRegionWidth) /
+              2,
+        ),
+      ),
+    ];
+  }
+
+  Positioned _collapsedRowOverlay(double bottomInset, bool onTop, double bottomHeight) {
+    return Positioned(
+      left: bottomInset,
+      right: bottomInset,
+      top: onTop ? bottomHeight : null,
+      bottom: onTop ? null : bottomHeight,
+      height: _collapsedRows.collapsedRowHeight(),
+      child: _collapsedRows.collapsedRowOverlay(),
+    );
+  }
+
+  Positioned _rightRailColumn(DeviceGrid grid, bool onTop, double rightStop, bool hasRightDock, double rightRailSpan, double rightWidth, Map<String, Widget> rightRailHosts, double ceiling) {
+    return Positioned(
+      right: 0,
+      top: grid.position(
+        (onTop ? rightStop : 0) + _railGroupGap,
+      ),
+      bottom: onTop ? 0 : rightStop,
+      width: hasRightDock ? rightRailSpan : null,
+      child: _rail.buildRailColumn(
+        EditorPanelDockSide.right,
+        width: rightWidth,
+        hosts: rightRailHosts,
+        // 결정 8: the same ceiling both sides read.
+        dragCeiling: ceiling,
+      ),
+    );
+  }
+
+  Positioned _leftRailColumn(DeviceGrid grid, bool onTop, double leftStop, bool hasLeftDock, double leftRailSpan, double leftWidth, Map<String, Widget> leftRailHosts, double ceiling) {
+    return Positioned(
+      left: 0,
+      // ★These two widgets are what actually CARRY a
+      // rail-docked canvas, so this is where the
+      // chain lands on the grid or does not. The
+      // right span especially: it is subtracted
+      // from an on-grid right edge, so a raw width
+      // here puts the column's LEFT edge — and
+      // everything docked in it — between two
+      // device pixels.
+      top: grid.position(
+        (onTop ? leftStop : 0) + _railGroupGap,
+      ),
+      bottom: onTop ? 0 : leftStop,
+      // The gap is INSIDE the column's box now: the
+      // rail's own scrollbar rides it. ⛔Take the
+      // quantized span rather than re-adding the
+      // gap: `floorCover`, `columnStop` and this
+      // widget have to be one spelling of one
+      // boundary, or the canvas is framed against
+      // an edge the rail is not drawn at.
+      width: hasLeftDock ? leftRailSpan : null,
+      child: _rail.buildRailColumn(
+        EditorPanelDockSide.left,
+        width: leftWidth,
+        hosts: leftRailHosts,
+        // 결정 8: the same ceiling both sides read.
+        dragCeiling: ceiling,
+      ),
+    );
+  }
+
+  Positioned _floor(EdgeInsets floorCover, bool hasBottomDock, bool onTop, double leftStop, BoxConstraints constraints, DeviceGrid grid, double rightStop, Widget? floor) {
+    return Positioned.fill(
+      child: CanvasFloorInsets(
+        insets: floorCover,
+        // ⑩: the collapsed row lies ON the artwork
+        // just past the region's edge. It frames
+        // nothing, so it is not in `insets` — but a
+        // bar on the bottom edge would be under it.
+        bottomOverlaySpan:
+            hasBottomDock &&
+                _bottomDockCollapsed &&
+                !onTop
+            ? _collapsedRows.collapsedRowHeight()
+            : 0,
+        // WHERE each column actually is, not just how
+        // wide it is. A rail panel is as tall as it was
+        // left at, so a short one covers a band and not
+        // an edge — and the scrollbar that stepped
+        // aside for the whole edge read as floating for
+        // no reason (유저, R3 #5).
+        leftRailBand: _rail.railBand(
+          right: false,
+          stop: leftStop,
+          onTop: onTop,
+          height: constraints.maxHeight,
+          grid: grid,
+        ),
+        rightRailBand: _rail.railBand(
+          right: true,
+          stop: rightStop,
+          onTop: onTop,
+          height: constraints.maxHeight,
+          grid: grid,
+        ),
+        child: floor!,
+      ),
+    );
+  }
+
+  Positioned _bottomHeightGrip(bool onTop, BoxConstraints constraints) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      // 기하는 캔버스 향한 변에: the resize
+      // handle rides whichever edge faces
+      // the artwork, which flips with the
+      // region and needs no rule of its
+      // own.
+      top: onTop ? null : 0,
+      bottom: onTop ? 0 : null,
+      height: DockEdgeSplitter.thickness,
+      child: DockEdgeSplitter(
+        key: const ValueKey<String>(
+          'dock-resize-bottom',
+        ),
+        axis: Axis.horizontal,
+        onDragDelta: (delta) {
+          // What the edge used, back in
+          // POINTER units — the sign flip
+          // below has to be undone or the
+          // splitter would bank the debt
+          // the wrong way round.
+          final used = _layout.resizeDock(
+            EditorWorkspace.bottomGroupId,
+            // Toward the artwork GROWS the
+            // region, on either edge: down
+            // when it is on top, up when it
+            // is on the bottom.
+            onTop ? delta : -delta,
+            fallback: EditorWorkspace
+                .bottomPanelHeight,
+            // The splitter stops where the
+            // panels stop shrinking, and
+            // never banks height past what
+            // the window can show — a
+            // surplus behind the ceiling is
+            // spent before the edge moves
+            // again, which reads as a
+            // splitter that lags the cursor.
+            minExtent: math.min(
+              _verticalDockMinimumExtent(
+                EditorWorkspace
+                    .bottomGroupId,
+              ),
+              _docks.bottomDockCeiling(
+                constraints.maxHeight,
+              ),
+            ),
+            // The model's own 640 still
+            // applies here — the region
+            // has always had it, and
+            // lifting it is a separate
+            // decision from fixing the
+            // banking.
+            // 결정 8: the HAND stops at
+            // half the window.
+            maxExtent: math.min(
+              EditorPanelLayoutModel
+                  .maxDockExtent,
+              _docks.bottomDockDragCeiling(
+                constraints.maxHeight,
+              ),
+            ),
+          );
+          return onTop ? used : -used;
+        },
+      ),
     );
   }
 }
