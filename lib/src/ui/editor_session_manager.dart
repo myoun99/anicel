@@ -286,6 +286,7 @@ part 'session/se_entries.dart';
 part 'session/drawing_block_move_drag.dart';
 part 'session/run_frames_add_drag.dart';
 part 'session/opacity_verbs.dart';
+part 'session/layer_marks.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -4343,19 +4344,20 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sets [layerId]'s organizational color mark. One undo step.
-  void setLayerMark(LayerId layerId, LayerMark mark) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.setLayerMark(
-      cutId: cutId,
-      layerId: layerId,
-      mark: mark,
-    );
-    notifyListeners();
-  }
+  // ── the layer marks: their own object, in their own file ────────────
+  //
+  // A collaborator (session/layer_marks.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _LayerMarks _marks = _LayerMarks(this);
+
+  void setLayerMark(LayerId layerId, LayerMark mark) =>
+      _marks.setLayerMark(layerId, mark);
+  void clearAllLayerMarks() => _marks.clearAllLayerMarks();
+  bool get canToggleMarkForSelection => _marks.canToggleMarkForSelection;
+  bool get canToggleMarkAtCurrentFrame => _marks.canToggleMarkAtCurrentFrame;
+  void toggleMarkAtCurrentFrame() => _marks.toggleMarkAtCurrentFrame();
+  bool hasMarkForLayer(Layer layer, int frameIndex) =>
+      _marks.hasMarkForLayer(layer, frameIndex);
 
   // --- Legend bulk commands (R-toolbar round) -----------------------------
   //
@@ -4424,36 +4426,6 @@ class EditorSessionManager extends ChangeNotifier {
         description: onTimesheet
             ? 'Add all layers to timesheet'
             : 'Remove all layers from timesheet',
-        commands: commands,
-      ),
-    );
-    notifyListeners();
-  }
-
-  /// Clears every layer mark of the active cut (track-owned SE rows
-  /// included, like the sheet sweep) — one undo.
-  void clearAllLayerMarks() {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in [...cut.layers, ...activeTrack.seLayers])
-        if (layer.mark != LayerMark.none)
-          UpdateLayerMarkCommand(
-            repository: _repository,
-            cutId: cutId,
-            layerId: layer.id,
-            mark: LayerMark.none,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    _historyManager.execute(
-      CompositeCommand(
-        description: 'Clear all layer marks',
         commands: commands,
       ),
     );
@@ -8380,99 +8352,6 @@ class EditorSessionManager extends ChangeNotifier {
     return false;
   }
 
-  /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE MARK LEARNED THE BAND.**
-  ///
-  /// > 「지우기 눌렀다고해서 **현재 행만 지우는게아니라 선택된 모든게
-  /// > 지워지는걸** 말하는거임. **복사든 뭐든 마찬가지**」
-  ///
-  /// The swept frames of the swept rows, or empty when no band is up. This
-  /// is the rung the ● did not have: it used to END the ladder at a live
-  /// band ([bandNamesRowsThisPressWouldMiss]) because dotting the active row
-  /// while the highlight sat elsewhere would edit something nobody swept.
-  /// Refusing was the honest answer for a verb that could only reach one
-  /// row; now that it can reach the band, serving it is.
-  ///
-  /// ⚠️SYNCED attach and non-drawing rows are filtered HERE rather than in
-  /// the controller, for the same reason the delete collector does it: the
-  /// button and the dispatch have to read one answer, and three downstream
-  /// copies of a filter is how they stop agreeing.
-  Map<LayerId, List<int>> _markableFramesForSelection() {
-    final selection = frameRangeSelection.value;
-    if (selection == null) {
-      return const {};
-    }
-    final ids = <LayerId>[];
-    for (final id in selection.spanLayerIds) {
-      final layer = _rangeLayerById(id);
-      if (layer == null ||
-          !layerKindHoldsDrawings(layer.kind) ||
-          isSyncedAttachedLayer(layer)) {
-        continue;
-      }
-      ids.add(id);
-    }
-    if (ids.isEmpty) {
-      return const {};
-    }
-    return _timelineController.markableFramesInBand(
-      layerIds: ids,
-      startIndex: selection.startIndex,
-      endIndexExclusive: selection.endIndexExclusive,
-    );
-  }
-
-  bool get canToggleMarkForSelection =>
-      _markableFramesForSelection().isNotEmpty;
-
-  bool get canToggleMarkAtCurrentFrame {
-    if (canToggleMarkForSelection) {
-      return true;
-    }
-    // ⛔A band that names rows this press would miss still ENDS the ladder.
-    // The band rung above is the whole of the new reach: a band holding
-    // nothing markable makes the press a no-op, never a redirect onto
-    // whatever row happens to be active (a cell drag never moves the active
-    // layer, so those are routinely different rows).
-    if (bandNamesRowsThisPressWouldMiss) {
-      return false;
-    }
-    final layer = activeLayer;
-    // SYNCED attach rows carry no cell marks (the base's sheet row
-    // does); free attach rows mark like normal (UI-R21 #3).
-    if (layer == null ||
-        !layerKindHoldsDrawings(layer.kind) ||
-        isSyncedAttachedLayer(layer)) {
-      return false;
-    }
-
-    return _timelineController.canToggleMarkAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
-
-  void toggleMarkAtCurrentFrame() {
-    final banded = _markableFramesForSelection();
-    if (banded.isNotEmpty) {
-      // SET the whole band one way, never toggle each frame: a mixed band
-      // would invert under the hand and hand back the complement of what
-      // was there. All marked → clear; anything unmarked → mark them all.
-      _timelineController.setMarksForFrames(
-        banded,
-        marked: !_timelineController.bandFramesAreAllMarked(banded),
-      );
-      notifyListeners();
-      return;
-    }
-    final layer = activeLayer;
-    if (layer == null || !canToggleMarkAtCurrentFrame) {
-      return;
-    }
-
-    _timelineController.toggleMarkForLayer(layerId: layer.id);
-    notifyListeners();
-  }
-
   bool get canRenameFrameAtCurrentFrame {
     final layer = activeLayer;
     if (layer == null) {
@@ -10691,13 +10570,6 @@ class EditorSessionManager extends ChangeNotifier {
   // answer, rebuilding only when that answer differs. The user's efficiency
   // instruction is kept exactly where it belongs: a crossed frame costs one
   // derivation and zero rebuilds unless something actually changed.
-
-  bool hasMarkForLayer(Layer layer, int frameIndex) {
-    if (!layerKindHoldsDrawings(layer.kind)) {
-      return false;
-    }
-    return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
-  }
 
   String? frameNameForLayer(Layer layer, int frameIndex) {
     if (layer.kind == LayerKind.camera) {
