@@ -26,6 +26,7 @@ export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 part 'document_painter/timesheet_instruction_pass.dart';
 part 'document_painter/timesheet_se_pass.dart';
+part 'document_painter/timesheet_bands_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
@@ -593,10 +594,10 @@ class TimesheetDocumentPainter extends CustomPainter {
         (resolvedViewport?.zoom ?? 1.0) * effectiveRatio >= _textZoomThreshold;
 
     if (layout.continuous) {
-      _paintPaper(canvas, 0);
-      _paintHeaderBand(canvas, 0, drawTexts: drawTexts);
+      _bands.paintPaper(canvas, 0);
+      _bands.paintHeaderBand(canvas, 0, drawTexts: drawTexts);
       if (_drawContent) {
-        _paintMemoBand(canvas, 0, drawTexts: drawTexts);
+        _bands.paintMemoBand(canvas, 0, drawTexts: drawTexts);
       }
       _paintHalf(
         canvas,
@@ -617,10 +618,10 @@ class TimesheetDocumentPainter extends CustomPainter {
         if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
           continue;
         }
-        _paintPaper(canvas, page.index);
-        _paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
+        _bands.paintPaper(canvas, page.index);
+        _bands.paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
         if (_drawContent) {
-          _paintMemoBand(canvas, page.index, drawTexts: drawTexts);
+          _bands.paintMemoBand(canvas, page.index, drawTexts: drawTexts);
         }
         for (var half = 0; half < 2; half += 1) {
           final rowCount = layout.halfRowCount(half);
@@ -640,7 +641,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
     }
     if (_drawContent) {
-      _paintCutEndLine(canvas);
+      _bands.paintCutEndLine(canvas);
       // A text glyph: it honors the same zoom threshold every per-cell
       // text does (the paper-overview zoom hides the writing).
       if (drawTexts) {
@@ -651,157 +652,16 @@ class TimesheetDocumentPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// The sheet of paper, and the printed edge around it — two strata that
-  /// used to be one call: the fill is PAPER, the border is FORM.
-  void _paintPaper(Canvas canvas, int pageIndex) {
-    final rect = layout.pageRect(pageIndex);
-    if (_drawPaper) {
-      canvas.drawRect(rect, Paint()..color = _paper);
-    }
-    if (_drawForm) {
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4
-          ..color = _gridBold,
-      );
-    }
-  }
+  // ── the bands: their own object, in their own file ──────────────────
+  //
+  // A collaborator (timesheet/document_painter/timesheet_bands_pass.dart, a part of this
+  // library). The painter keeps the passes its paint() calls.
+  late final _TimesheetBandsPass _bands = _TimesheetBandsPass(this);
 
-  /// The header band: labeled boxes like the paper form —
-  /// Ep.no | Title | Scene | Cut.no | Duration | Name | Page, minus hidden
-  /// boxes. Reference-sheet layout (R7-⑥): the small gray label centers at
-  /// the box top, the bold value centers underneath.
-  void _paintHeaderBand(
-    Canvas canvas,
-    int pageIndex, {
-    required bool drawTexts,
-  }) {
-    final band = layout.headerBandRect(pageIndex);
-    if (_drawForm) {
-      final boxPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1
-        ..color = _gridBold;
-      canvas.drawRect(band, boxPaint);
-      for (final box in layout.headerFieldBoxes(pageIndex)) {
-        canvas.drawRect(box.rect, boxPaint);
-      }
-    }
-    if (!drawTexts) {
-      return;
-    }
-    for (final box in layout.headerFieldBoxes(pageIndex)) {
-      // The printed labels belong to the FORM; the user's values are
-      // CONTENT (UI-R10 #9 — the PSD layer split, live).
-      if (_drawForm) {
-        _text(
-          canvas,
-          headerFieldLabel(box.field, notation),
-          Offset(box.rect.center.dx, box.rect.top + 5),
-          fontSize: 8,
-          color: _gridMedium,
-          centeredAtX: true,
-        );
-      }
-      if (_drawContent) {
-        _text(
-          canvas,
-          _headerFieldValue(box.field, pageIndex),
-          Offset(box.rect.center.dx, box.rect.top + 26),
-          fontSize: 14,
-          bold: true,
-          centeredAtX: true,
-          maxWidth: box.rect.width - 12,
-        );
-      }
-    }
-  }
-
-  /// The printed box label in the sheet's notation language (UI-R10 #7).
   static String headerFieldLabel(
     TimesheetHeaderField field, [
     TimesheetNotation notation = TimesheetNotation.english,
-  ]) {
-    return switch (field) {
-      TimesheetHeaderField.episode => notation.episode,
-      TimesheetHeaderField.title => notation.title,
-      TimesheetHeaderField.scene => notation.scene,
-      TimesheetHeaderField.cut => notation.cut,
-      TimesheetHeaderField.time => notation.duration,
-      TimesheetHeaderField.name => notation.name,
-      TimesheetHeaderField.sheet => notation.page,
-    };
-  }
-
-  String _headerFieldValue(TimesheetHeaderField field, int pageIndex) {
-    return switch (field) {
-      TimesheetHeaderField.episode => document.episode,
-      TimesheetHeaderField.title => document.title,
-      TimesheetHeaderField.scene => document.scene,
-      TimesheetHeaderField.cut => document.cutName,
-      // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
-      // reference forms; the model label stays compact for row labels.
-      TimesheetHeaderField.time => document.durationLabel.replaceAll(
-        '+',
-        ' + ',
-      ),
-      TimesheetHeaderField.name => document.artist,
-      TimesheetHeaderField.sheet => layout.pageLabel(pageIndex),
-    };
-  }
-
-  /// The Direction memo band under the header: COMPLETELY open handwriting
-  /// space, exactly like the reference forms (R7-⑥ — the band outline and
-  /// the top-right memo box frame are both retired). The cut's Direction
-  /// memo (cut note) types into its top left, spanning the full width.
-  void _paintMemoBand(Canvas canvas, int pageIndex, {required bool drawTexts}) {
-    if (!drawTexts) {
-      return;
-    }
-    final band = layout.memoBandRect(pageIndex);
-    if (document.memoText.isNotEmpty) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: document.memoText,
-          style: const TextStyle(color: _ink, fontSize: 11),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 8,
-        ellipsis: '…',
-      )..layout(maxWidth: band.width - 16);
-      painter.paint(canvas, Offset(band.left + 8, band.top + 6));
-    }
-    // NO derived instruction lines here anymore (R5-⑥): the shorthand
-    // ('A→B PAN …') writes itself INTO the cut note once when the
-    // instruction is created, so it prints above as ordinary — editable —
-    // note text.
-  }
-
-  /// The cut-end strikethrough at the bottom edge of the last playback
-  /// frame row — DATA rendering (S2-0), the same visual language as the
-  /// timeline's cut-end boundary, never ink.
-  void _paintCutEndLine(Canvas canvas) {
-    final frameCount = livePlaybackFrameCount;
-    if (frameCount < 1 || frameCount > document.rowCount) {
-      return;
-    }
-    final line = layout.cutEndLineFor(frameCount);
-    // In page view the cut may end on a page that isn't on screen (R26
-    // #41) — its row geometry belongs to another sheet, so nothing prints.
-    if (!layout.visiblePageIndexes.contains(line.page)) {
-      return;
-    }
-    final left = layout.halfLeft(line.page, line.half);
-    canvas.drawLine(
-      Offset(left, line.y),
-      Offset(left + layout.halfWidth, line.y),
-      Paint()
-        ..color = AppColors.danger
-        ..strokeWidth = 2.4,
-    );
-  }
+  ]) => _TimesheetBandsPass.headerFieldLabel(field, notation);
 
   // ── the SE pass: its own object, in its own file ────────────────────
   //
@@ -836,7 +696,7 @@ class TimesheetDocumentPainter extends CustomPainter {
 
     // Group titles + letter row (printed form).
     if (drawTexts && _drawForm) {
-      _paintGroupTitles(canvas, left, columnsTop);
+      _bands.paintGroupTitles(canvas, left, columnsTop);
       for (var column = 0; column < document.columns.length; column += 1) {
         // Unbacked slots print nothing — no placeholder letters.
         if (document.columns[column].label.isEmpty) {
@@ -1200,40 +1060,6 @@ class TimesheetDocumentPainter extends CustomPainter {
   // library). The painter keeps the passes its paint() calls.
   late final _TimesheetInstructionPass _instructions =
       _TimesheetInstructionPass(this);
-
-  void _paintGroupTitles(Canvas canvas, double halfLeft, double groupTop) {
-    // Contiguous kind runs become group headers (ACTION / SE / CELL / CAM).
-    var runStart = 0;
-    while (runStart < document.columns.length) {
-      final kind = document.columns[runStart].kind;
-      var runEnd = runStart;
-      while (runEnd + 1 < document.columns.length &&
-          document.columns[runEnd + 1].kind == kind) {
-        runEnd += 1;
-      }
-      final leftX = halfLeft + layout.columnLeftInHalf(runStart);
-      final rightX =
-          halfLeft +
-          layout.columnLeftInHalf(runEnd) +
-          layout.columnWidthFor(kind);
-      final title = switch (kind) {
-        TimesheetColumnKind.action => 'ACTION',
-        TimesheetColumnKind.se => 'SE',
-        TimesheetColumnKind.cel => 'CELL',
-        TimesheetColumnKind.camera => 'CAM',
-      };
-      _text(
-        canvas,
-        title,
-        Offset((leftX + rightX) / 2, groupTop + 2),
-        fontSize: 9,
-        bold: true,
-        color: _ink,
-        centeredAtX: true,
-      );
-      runStart = runEnd + 1;
-    }
-  }
 
   /// A notation word written VERTICALLY down a chain of rows (UI-R11
   /// #14/#15 — リ/ピ/ー/ト one per row): with fewer rows than characters
