@@ -1574,20 +1574,6 @@ class _LayerStackPainter extends CustomPainter {
       canvasSize.pasteboardRightExclusive.toDouble(),
       canvasSize.pasteboardBottomExclusive.toDouble(),
     );
-    // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED. This used
-    // to fall back to the whole pasteboard — 25× the canvas — so a
-    // collapsed panel or a parked-away viewport asked the engine for the
-    // largest buffers this painter can request, to draw pixels nobody can
-    // see. Nothing intersects the screen, so drawing nothing is
-    // pixel-identical on it.
-    // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
-    // law covers both ways off-screen happens — a degenerate view
-    // (collapsed panel: empty visibleRect, which used to substitute the
-    // WHOLE 25× pasteboard) and a parked-away viewport (huge visibleRect
-    // that misses the pasteboard entirely, which used to walk the full
-    // stack into a clip that discards every op). The intersection is
-    // empty in both, nothing intersects the screen, and drawing nothing
-    // is pixel-identical on it.
     // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
     // law covers both ways off-screen happens — a degenerate view
     // (collapsed panel: empty visibleRect, which used to substitute the
@@ -1668,14 +1654,11 @@ class _LayerStackPainter extends CustomPainter {
       return;
     }
     // A3: the recordings depend on this rect and the build-time key cannot
-    // carry it. Declared before any slot is consulted, so a changed extent
-    // re-records instead of replaying closures that captured the old one.
-    bake?.ensureExtent(contentExtent);
-    // A3: the recordings depend on this rect and the build-time key cannot
     // carry it (it is a layout fact). Declared HERE, before any slot is
     // consulted, so a resized panel re-records instead of replaying
     // closures that captured the old bounds — or worse, blitting the old
     // raster with a src rect computed from the new dimensions.
+    bake?.ensureExtent(contentExtent);
 
     // The geometry field probe — the numbers every buffer decision depends
     // on and nobody has ever measured on a device: the logical view, the
