@@ -24,7 +24,7 @@ class _LayerRowDrag {
       channel: _session.layerRowDrag,
       tracksNow: () => _session._repository.requireProject().tracks,
       effectChainOf: _session._effectsAndFx._effectChainOf,
-      trackSeAnywhere: _session._trackSeAnywhere,
+      trackSeAnywhere: _session._trackSe.trackSeAnywhere,
       activeCutOrNull: () => _session.activeCutOrNull,
       isTrackSeLayerId: _session.isTrackSeLayerId,
       rowSelectionCarriedBy: _session._rowSelection.rowSelectionCarriedBy,
