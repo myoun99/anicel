@@ -95,7 +95,7 @@ class _LayerGridRailRows {
 
   Widget _railRowMemoized(TimelineDisplayRow row) {
     if (row.isLane) {
-      return _state._effectDraggable(row, _railRow(row));
+      return _state._rowDrags._effectDraggable(row, _railRow(row));
     }
     final fold = _groupFoldFor(row);
     final inputs = (
@@ -136,11 +136,11 @@ class _LayerGridRailRows {
     );
     final cached = _state._railRowMemo[row.layer.id];
     if (cached != null && _railRowInputsMatch(cached.inputs, inputs)) {
-      return _state._draggable(row, cached.row);
+      return _state._rowDrags._draggable(row, cached.row);
     }
     final built = _railRow(row);
     _state._railRowMemo[row.layer.id] = (inputs: inputs, row: built);
-    return _state._draggable(row, built);
+    return _state._rowDrags._draggable(row, built);
   }
 
   /// The rail row's element key — ONE builder for the window loop and the
