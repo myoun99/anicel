@@ -310,7 +310,7 @@ class _Camera {
   /// drag live instead of jumping on release — and every reader moves in
   /// the same frame.
   TransformTrack? get activeCutCameraTrack =>
-      _session._cameraLaneTrackPreview ??
+      _session._laneMove._cameraLaneTrackPreview ??
       _cameraBlockPreviewTrack ??
       _session.activeCutOrNull?.camera.track;
 
