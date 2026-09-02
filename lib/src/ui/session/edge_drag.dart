@@ -1290,7 +1290,7 @@ class _EdgeDrag {
       _session._notifyChanged();
       return;
     }
-    switch (_session._storyboardCursorBlockOrNull()) {
+    switch (_session._storyboardCursor._storyboardCursorBlockOrNull()) {
       case null:
         return;
       case _StoryboardCursorCutBlock(:final cut):
