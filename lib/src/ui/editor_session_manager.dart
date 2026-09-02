@@ -262,6 +262,7 @@ part 'session/edge_drag.dart';
 part 'session/movie_end_drag.dart';
 part 'session/folder_bands.dart';
 part 'session/visibility_solo.dart';
+part 'session/text_cel_bakes.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -355,7 +356,7 @@ class EditorSessionManager extends ChangeNotifier {
     // Text cel projections follow the model through EVERY mutation path
     // (edit/undo/redo/paste/duplicate/link) — one history listener, the
     // sweep re-renders whatever went stale (R5).
-    _historyManager.addListener(_scheduleTextCelBakeSweep);
+    _historyManager.addListener(_textCelBakes.scheduleTextCelBakeSweep);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -2323,7 +2324,7 @@ class EditorSessionManager extends ChangeNotifier {
     // flag set when it resumes — it stops touching the stores and never
     // notifies a disposed ChangeNotifier.
     _disposed = true;
-    _textCelSweepDirty = false;
+    _textCelBakes._textCelSweepDirty = false;
     brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
     brushFrameStore.celPixelRevision.removeListener(_bumpCelTintRevision);
     brushInputActive.removeListener(_bumpCelTintRevision);
@@ -2339,7 +2340,7 @@ class EditorSessionManager extends ChangeNotifier {
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
     _historyManager.removeListener(_refreshLiveAudioSchedule);
-    _historyManager.removeListener(_scheduleTextCelBakeSweep);
+    _historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
     _voiceRecording.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
@@ -8126,164 +8127,19 @@ class EditorSessionManager extends ChangeNotifier {
   // funnels through the history manager, so ONE listener re-renders
   // whatever projection went stale. Self-healing, no per-command hooks.
 
-  /// Canonical cel key → the exact inputs its stored raster was rendered
-  /// from. The CONTENT itself, not a hash — equality gates skipping a
-  /// re-bake, and a ~29-bit hash collision would freeze a stale
-  /// projection silently. Entries whose cel stops being a text frame are
-  /// pruned, never clear-baked — a rasterized text layer KEEPS its
-  /// pixels.
-  final Map<BrushFrameKey, (TextCelContent?, CanvasSize)> _textCelBakedContent =
-      {};
-  bool _textCelSweepDirty = false;
-  Future<void>? _textCelSweep;
-  bool _disposed = false;
+  // ── the text-cel bakes: their own sweep, in their own file ─────────────
+  //
+  // A collaborator (session/text_cel_bakes.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _TextCelBakes _textCelBakes = _TextCelBakes(this);
 
-  /// Test hook: awaits the in-flight bake sweep (projection settles).
-  @visibleForTesting
-  Future<void> get debugTextCelSweepDone => _textCelSweep ?? Future.value();
-
-  void _scheduleTextCelBakeSweep() {
-    _textCelSweepDirty = true;
-    _textCelSweep ??= Future.microtask(_runTextCelBakeSweeps);
-  }
-
-  /// Saves snapshot the store synchronously, so an in-flight bake must
-  /// land first — otherwise the archive pairs NEW parameters with the OLD
-  /// raster, and the first-sight trust after reload cements the stale
-  /// picture forever.
-  Future<void> _flushTextCelBakes() async {
-    while (_textCelSweep != null) {
-      await _textCelSweep;
-    }
-  }
-
-  Future<void> _runTextCelBakeSweeps() async {
-    try {
-      while (_textCelSweepDirty && !_disposed) {
-        _textCelSweepDirty = false;
-        await _sweepTextCelBakesOnce();
-      }
-    } finally {
-      _textCelSweep = null;
-    }
-  }
-
-  Future<void> _sweepTextCelBakesOnce() async {
-    final project = _repository.currentProject;
-    if (project == null) {
-      _textCelBakedContent.clear();
-      return;
-    }
-    final registry = project.linkRegistry;
-    final seen = <BrushFrameKey>{};
-    var changed = false;
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        for (final layer in cut.layers) {
-          if (layer.kind != LayerKind.text) {
-            continue;
-          }
-          for (final frame in layer.frames) {
-            if (_disposed) {
-              return; // Mid-sweep dispose: stop touching the stores.
-            }
-            final raw = brushFrameKeyForCut(cut, layer.id, frame.id);
-            final key = registry.canonicalCelKey(raw);
-            if (!seen.add(key)) {
-              continue; // Linked banks share one physical projection.
-            }
-            final content = frame.textContent;
-            final baked = (content, cut.canvasSize);
-            final known = _textCelBakedContent[key];
-            if (known == baked) {
-              continue;
-            }
-            if (known == null &&
-                content != null &&
-                content.text.isNotEmpty &&
-                brushFrameStore.celHasRenderableContent(raw)) {
-              // First sight of a cel that already carries pixels (a loaded
-              // project): trust the stored projection instead of paying a
-              // full re-render on open (saves flush in-flight bakes, so an
-              // archive can never pair new params with an old raster). A
-              // pasted/duplicated cel arrives with an EMPTY store bank and
-              // falls through to the bake.
-              _textCelBakedContent[key] = baked;
-              continue;
-            }
-            if (content == null || content.text.isEmpty) {
-              // The parameters went (undo of a set, cleared text): the
-              // projection goes with them — the cel reads blank again.
-              // ONLY for cels this sweep itself baked: a drawn cel that
-              // arrives on a text row through a cross-row move has no
-              // entry here, and blank-baking it would destroy artwork
-              // undo cannot restore.
-              if (known != null) {
-                bakeCelSurface(
-                  brushFrameStore,
-                  raw,
-                  BitmapSurface(canvasSize: cut.canvasSize),
-                );
-                changed = true;
-              }
-            } else {
-              final rendered = await renderTextCelImage(
-                content: content,
-                canvas: cut.canvasSize,
-              );
-              try {
-                if (_disposed) {
-                  return;
-                }
-                final surface = await rasterizeImageToSurface(
-                  image: rendered.image,
-                  canvas: cut.canvasSize,
-                  fit: MediaFitMode.none,
-                  // The render already clipped to the pasteboard wall —
-                  // its own placement keeps off-canvas overflow alive,
-                  // like any oversized drop.
-                  placement: rendered.placement,
-                );
-                if (_disposed) {
-                  return;
-                }
-                bakeCelSurface(brushFrameStore, raw, surface);
-                changed = true;
-              } finally {
-                rendered.image.dispose();
-              }
-            }
-            _textCelBakedContent[key] = baked;
-          }
-        }
-      }
-    }
-    _textCelBakedContent.removeWhere((key, _) => !seen.contains(key));
-    if (changed && !_disposed) {
-      notifyListeners();
-    }
-  }
-
-  /// The active text cel's parameters (null on blank cells and non-text
-  /// rows) — the text editor dialog's read side.
+  Future<void> get debugTextCelSweepDone => _textCelBakes.debugTextCelSweepDone;
   TextCelContent? get selectedTextCelContent =>
-      activeLayer?.kind == LayerKind.text ? selectedFrame?.textContent : null;
+      _textCelBakes.selectedTextCelContent;
+  void setTextCelContentForSelectedFrame(TextCelContent content) =>
+      _textCelBakes.setTextCelContentForSelectedFrame(content);
 
-  /// Commits the text editor's result onto the selected cel: one undo,
-  /// linked-cut mirror, projection re-baked by the sweep.
-  void setTextCelContentForSelectedFrame(TextCelContent content) {
-    final layer = activeLayer;
-    final frame = selectedFrame;
-    if (layer == null || layer.kind != LayerKind.text || frame == null) {
-      return;
-    }
-    _timelineController.setTextContentForFrame(
-      layerId: layer.id,
-      frameId: frame.id,
-      textContent: content,
-    );
-    notifyListeners();
-  }
+  bool _disposed = false;
 
   // --- Voice recording, ADR, input meter, take preview ----------------------
   //
@@ -15040,7 +14896,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (_discardedUnsavedWork) {
       return;
     }
-    await _flushTextCelBakes();
+    await _textCelBakes.flushTextCelBakes();
     await _anicelFileService.writeRecoveryOverlay(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
@@ -15154,7 +15010,7 @@ class EditorSessionManager extends ChangeNotifier {
     String path, {
     void Function(double)? onProgress,
   }) async {
-    await _flushTextCelBakes();
+    await _textCelBakes.flushTextCelBakes();
     final mediaToStore = projectMediaSources(
       project: _repository.requireProject(),
       projectFilePath: _projectFilePath,
@@ -15294,7 +15150,7 @@ class EditorSessionManager extends ChangeNotifier {
     String filePath, {
     void Function(double)? onProgress,
   }) async {
-    await _flushTextCelBakes();
+    await _textCelBakes.flushTextCelBakes();
     // Captured BEFORE the save moves the project path: a Save As has to
     // retire the sidecars of the file it was saved FROM as well.
     final previousPath = _projectFilePath;
