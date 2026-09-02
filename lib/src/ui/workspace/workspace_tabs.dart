@@ -706,7 +706,7 @@ class _WorkspaceTabs {
               orientation: _state._timelineOrientation.value,
               onOrientationChanged: (orientation) {
                 _state._timelineOrientation.value = orientation;
-                _state._syncFlipAxisWithTimeline();
+                _state._flipHud.syncFlipAxisWithTimeline();
               },
               pixelsPerFrame: _state._timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,

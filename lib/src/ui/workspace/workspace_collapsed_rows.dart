@@ -133,7 +133,7 @@ class _WorkspaceCollapsedRows {
     final rail = _state._railExtents[LayerRailId.timeline];
     return CollapsedRowOverlay(
       height: collapsedRowHeight(),
-      snapshot: _state._flipHudSnapshot(FlipHudAxis.frame),
+      snapshot: _state._flipHud.flipHudSnapshot(FlipHudAxis.frame),
       // 유저 확정: 레일 폭은 가로 스플리터를 그대로 따라간다 — the same
       // stored window the panel's own rail lays out against, so narrowing
       // one narrows the other by construction rather than by agreement.
@@ -187,7 +187,7 @@ class _WorkspaceCollapsedRows {
       height: height,
       // The TRACK snapshot — the same one the flip window shows on this
       // axis, so the two summaries of "where am I" cannot disagree.
-      snapshot: _state._flipHudTrackSnapshot(session),
+      snapshot: _state._flipHud._flipHudTrackSnapshot(session),
       rail: _state._railExtents[LayerRailId.storyboard],
       naturalRailWidth: StoryboardTrackLabelRow.railWidth,
       pixelsPerFrame: pixelsPerFrame,
