@@ -135,6 +135,7 @@ import 'input/control_press_claim.dart';
 
 part 'workspace/workspace_collapsed_rows.dart';
 part 'workspace/workspace_docks.dart';
+part 'workspace/workspace_layout_persistence.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
 /// bottom dock, plus the slim edge docks that home the PS/CSP-style tool
@@ -636,29 +637,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// because the rail is not a tab bar: opening a second group stacks it
   /// under the first and they divide the rail's height. A group with no
   /// panels in it has no button and cannot be opened.
-  Set<String> _openRails = _defaultOpenRails();
+  Set<String> _openRails = _WorkspaceLayoutPersistence.defaultOpenRails();
 
-  /// ⚠️ONE group open per rail. The tool library and the tool settings are
-  /// the pair a stroke alternates between and it is tempting to open both,
-  /// but two saved heights plus their gap need 648px of rail and a 1000px
-  /// window has 589 — so the default would arrive already scrolling, which
-  /// is the one thing 「넘칠 때만 스크롤」 exists to avoid. The second button
-  /// is one press away and opens at the height it was left at.
-  static Set<String> _defaultOpenRails() => debugOpenEveryRail
-      ? <String>{
-          for (var slot = 1; slot <= EditorWorkspace.railSlots; slot += 1) ...[
-            EditorWorkspace.railGroupId(right: false, slot: slot),
-            EditorWorkspace.railGroupId(right: true, slot: slot),
-          ],
-          EditorWorkspace.leftGroupId,
-          EditorWorkspace.rightGroupId,
-          EditorWorkspace.toolLeftGroupId,
-          EditorWorkspace.toolRightGroupId,
-        }
-      : {
-          EditorWorkspace.leftGroupId,
-          EditorWorkspace.railGroupId(right: true, slot: 2),
-        };
+  // ── the workspace layout persistence: its own object ────────────────
+  //
+  // A collaborator (workspace/workspace_layout_persistence.dart, a part of this library). The
+  // State keeps the entry points its build tree calls as forwarders.
+  late final _WorkspaceLayoutPersistence _layoutPersistence =
+      _WorkspaceLayoutPersistence(this);
 
   /// Opens every rail group at startup, for tests only.
   ///
@@ -709,7 +695,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         _openRails.add(railId);
       }
     });
-    _scheduleLayoutSave();
+    _layoutPersistence.scheduleLayoutSave();
   }
 
   late final EditorPanelLayoutModel _layout = EditorPanelLayoutModel(
@@ -729,10 +715,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// Drag-locked tabs (the canvas by default: a stray drag must not undock
   /// the drawing surface — unlock via the lock glyph on its tab).
   Set<String> _lockedTabIds = {EditorWorkspace.canvasTabId};
-
-  /// Layout persistence: null in tests (see [EditorWorkspace.layoutStore]).
-  WorkspaceLayoutStore? _layoutStore;
-  Timer? _layoutSaveTimer;
 
   /// Keeps the canvas element (and its viewport state) alive when the
   /// canvas tab re-docks.
@@ -1474,26 +1456,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       render: _renderStoryboardThumbnail,
       invalidationHub: widget.session.cacheInvalidationHub,
     );
-    _layoutStore =
+    _layoutPersistence._layoutStore =
         widget.layoutStore ??
         (Platform.environment['FLUTTER_TEST'] == 'true'
             ? null
             : WorkspaceLayoutStore());
-    unawaited(_restoreLayout());
+    unawaited(_layoutPersistence.restoreLayout());
     _cutPieceSlot.addListener(_armStampOnFreshCut);
-    _layout.addListener(_scheduleLayoutSave);
+    _layout.addListener(_layoutPersistence.scheduleLayoutSave);
     // Sizes no longer come through the model's own notifier, but they are
     // still persisted — the save has to hear them separately or a resized
     // dock would come back at its old width.
-    _layout.extentRevision.addListener(_scheduleLayoutSave);
+    _layout.extentRevision.addListener(_layoutPersistence.scheduleLayoutSave);
     for (final extent in _railExtents.values) {
-      extent.addListener(_scheduleLayoutSave);
+      extent.addListener(_layoutPersistence.scheduleLayoutSave);
     }
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
       relay: _layout,
-      layoutReset: _resetWorkspaceLayout,
+      layoutReset: _layoutPersistence.resetWorkspaceLayout,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
       toolRailMover: _setToolRailOnRight,
@@ -1513,7 +1495,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           return;
         }
         setState(() => _regionOnTop = onTop);
-        _scheduleLayoutSave();
+        _layoutPersistence.scheduleLayoutSave();
       },
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
@@ -1725,35 +1707,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // house, and the way to obey it is to walk through the door rather than
     // to copy the sentence written on it.
     session.standOnRow(target);
-  }
-
-  /// 워크스페이스 초기화: EVERYTHING the workspace remembers, back to the
-  /// factory arrangement (the debounced save persists the reset like any
-  /// other edit).
-  ///
-  /// It used to reset the docks, the extents and the locks — which is most
-  /// of a layout but not a layout. Which rail groups were OPEN, which edge
-  /// the strips were on, how far the floating region was inset, whether it
-  /// was collapsed and which edge it sat on all survived the reset, so the
-  /// button could not get someone out of an arrangement they disliked.
-  /// Every field the save writes is reset here; that is the rule, and it is
-  /// why the two lists are worth reading side by side.
-  void _resetWorkspaceLayout() {
-    for (final extent in _railExtents.values) {
-      extent.reset();
-    }
-    setState(() {
-      _lockedTabIds = {EditorWorkspace.canvasTabId};
-      _openRails = _defaultOpenRails();
-      _bottomDockCollapsed = false;
-      _regionOnTop = false;
-    });
-    // Back to "nobody has said", which is the 2/3 default — not to 0,
-    // which is now an arrangement rather than the absence of one.
-    _bottomInsetOverride.value = null;
-    _mutatingLayout(() {
-      _layout.restore(docks: _defaultDocks());
-    });
   }
 
   /// Every known panel in default-dock order, with its live visibility.
@@ -1969,105 +1922,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _panelFlash.flash(tabId);
   }
 
-  Future<void> _restoreLayout() async {
-    final store = _layoutStore;
-    if (store == null) {
-      return;
-    }
-    final payload = await store.load();
-    if (payload == null || !mounted) {
-      return;
-    }
-    final restored = restoreWorkspaceLayout(
-      payload: payload,
-      defaults: _defaultDocks(),
-      // The two rail WIDTHS are extents that are not docks — they belong to
-      // the rail, which every group on it shares. Unnamed here they were
-      // dropped on every restore, so a widened rail was narrow again at the
-      // next launch.
-      extraExtentKeys: {
-        EditorWorkspace.railWidthKey(right: false),
-        EditorWorkspace.railWidthKey(right: true),
-      },
-    );
-    if (restored == null || !mounted) {
-      return;
-    }
-    final openRails = payload['openRails'];
-    setState(() {
-      _lockedTabIds = restored.lockedTabIds;
-      _bottomDockCollapsed = payload['bottomCollapsed'] == true;
-      _regionOnTop = payload['regionOnTop'] == true;
-      final savedInset = payload['bottomInset'];
-      if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
-        _bottomInsetOverride.value = savedInset.toDouble();
-      }
-      if (openRails is List) {
-        // Filtered against the POOL, not taken on trust: a file written by
-        // a build with a different pool size would otherwise leave open
-        // ids that name nothing.
-        final known = {
-          ..._railSlotIds(right: false),
-          ..._railSlotIds(right: true),
-        };
-        _openRails = {
-          for (final id in openRails)
-            if (id is String && known.contains(id)) id,
-        };
-      }
-      _layout.restore(docks: restored.docks, dockExtents: restored.dockExtents);
-    });
-    for (final entry in _railExtents.entries) {
-      entry.value.value = restored.railExtents[entry.key];
-    }
-  }
-
-  /// Debounced fire-and-forget save: layout changes come in bursts (drags,
-  /// splitter moves) and persistence must never block or crash the editor.
-  void _scheduleLayoutSave() {
-    final store = _layoutStore;
-    if (store == null) {
-      return;
-    }
-    _layoutSaveTimer?.cancel();
-    _layoutSaveTimer = Timer(const Duration(milliseconds: 800), () {
-      unawaited(
-        store
-            .save({
-              'layout': _layout.toJson(),
-              'lockedTabs': _lockedTabIds.toList(),
-              // Closed panels stay closed across restarts (restore only
-              // returns tabs missing WITHOUT this marker to their docks —
-              // i.e. panels added by an update).
-              'hiddenTabs': [
-                for (final entry in _panelMenuEntries())
-                  if (!entry.visible) entry.tabId,
-              ],
-              // A rail the user never dragged stays ABSENT rather than
-              // saving its current natural size — otherwise a later
-              // column change would be pinned to yesterday's geometry.
-              'railExtents': {
-                for (final entry in _railExtents.entries)
-                  if (entry.value.value != null) entry.key: entry.value.value,
-              },
-              // NEW keys rather than a new layout version: an older build
-              // reading this file simply does not see them, whereas bumping
-              // the version makes that build throw the whole arrangement
-              // away (there is no migration code, only a version check).
-              'bottomCollapsed': _bottomDockCollapsed,
-              // ABSENT while the default is in force, the same rule the
-              // rail extents follow: writing today's resolved pixels would
-              // pin tomorrow's window to this one's width.
-              if (_bottomInsetOverride.value != null)
-                'bottomInset': _bottomInsetOverride.value,
-              'openRails': _openRails.toList(),
-              'regionOnTop': _regionOnTop,
-            })
-            .catchError((Object _) {}),
-      );
-    });
-  }
-
   /// The one place that shows 「fx 가 사라집니다」, for every surface.
   ///
   /// ⚠️EVERY exit answers. A dialog dismissed by the barrier or by escape
@@ -2172,12 +2026,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     widget.layerNav?.unbind(this);
     widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
-    _layoutSaveTimer?.cancel();
-    _layout.removeListener(_scheduleLayoutSave);
-    _layout.extentRevision.removeListener(_scheduleLayoutSave);
+    _layoutPersistence._layoutSaveTimer?.cancel();
+    _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
+    _layout.extentRevision.removeListener(_layoutPersistence.scheduleLayoutSave);
     for (final extent in _railExtents.values) {
       extent
-        ..removeListener(_scheduleLayoutSave)
+        ..removeListener(_layoutPersistence.scheduleLayoutSave)
         ..dispose();
     }
     _layout.dispose();
@@ -2312,18 +2166,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
   }
 
-  /// Whether the storyboard tab is the active tab of any section (visible
-  /// on screen).
-  bool get _isStoryboardVisible =>
-      _layout.activeTabs.contains(EditorWorkspace.storyboardTabId);
-
   /// Runs a layout mutation and clamps the playhead when the storyboard
   /// just came on screen (over-end playheads on non-last cuts must land
   /// back on the counter frame — timeline parity).
   void _mutatingLayout(VoidCallback mutate) {
-    final wasVisible = _isStoryboardVisible;
+    final wasVisible = _layoutPersistence.isStoryboardVisible;
     mutate();
-    if (!wasVisible && _isStoryboardVisible) {
+    if (!wasVisible && _layoutPersistence.isStoryboardVisible) {
       clampPlayheadForStoryboard(widget.session);
     }
   }
@@ -3174,7 +3023,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       return;
     }
     setState(() => _openRails.add(dockId));
-    _scheduleLayoutSave();
+    _layoutPersistence.scheduleLayoutSave();
   }
 
   /// Moves the tool strip to the requested edge (the left-handed choice).
@@ -3258,7 +3107,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       );
     });
     setState(() => _openRails.add(railId));
-    _scheduleLayoutSave();
+    _layoutPersistence.scheduleLayoutSave();
   }
 
   /// One rail's COLUMN: every group the user has open on that side,
@@ -3881,7 +3730,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         // region is now 「화면의 2/3」 rather than "the whole window".
         onDoubleTap: () {
           _bottomInsetOverride.value = null;
-          _scheduleLayoutSave();
+          _layoutPersistence.scheduleLayoutSave();
         },
         onDragStart: () => _bottomInsetDragRaw = inset,
         onDragEnd: () => _bottomInsetDragRaw = null,
@@ -3894,7 +3743,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               .toDouble();
           _bottomInsetDragRaw = raw;
           _bottomInsetOverride.value = _detented(raw, railSpan);
-          _scheduleLayoutSave();
+          _layoutPersistence.scheduleLayoutSave();
           // The DETENT costs nothing — `_bottomInsetDragRaw` keeps the
           // un-snapped total (R3 #2), so the magnet can be left. The WALLS
           // at 0 and maxInset do cost, and that is what goes back to the

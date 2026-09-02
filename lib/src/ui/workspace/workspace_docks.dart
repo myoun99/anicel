@@ -30,7 +30,7 @@ class _WorkspaceDocks {
         _state._lockedTabIds.add(tabId);
       }
     });
-    _state._scheduleLayoutSave();
+    _state._layoutPersistence.scheduleLayoutSave();
   }
 
   bool _canDockAccept(String dockId, EditorPanelTabDragData data) {
@@ -507,7 +507,7 @@ class _WorkspaceDocks {
         _state._rebuild(
           () => _state._bottomDockCollapsed = !_state._bottomDockCollapsed,
         );
-        _state._scheduleLayoutSave();
+        _state._layoutPersistence.scheduleLayoutSave();
       },
       // The chevron points where the region would GO — toward the artwork
       // to open, toward the frame to collapse — so it flips with the edge
