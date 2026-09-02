@@ -7,6 +7,7 @@ import '../input/app_input_settings.dart' show AppInput;
 import '../../models/cut_id.dart';
 import 'timeline_drag_preview.dart';
 import 'axis_turn.dart';
+import '../widgets/axis_gesture_detector.dart';
 
 /// The timeline end-line drag's session hooks (UI-R18 #14): the red
 /// cut-end boundary line grows a grip that end-trims the ACTIVE cut —
@@ -166,25 +167,18 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
           : SystemMouseCursors.resizeRow,
-      child: GestureDetector(
+      child: AxisGestureDetector(
+        axis: widget.axis,
         behavior: HitTestBehavior.opaque,
         // Drag-only grip: touch follows the timeline input policy
         // (UI-R22F — when touch scrolls the timeline, a finger pan
         // starting on the end grip must scroll too, not trim).
         supportedDevices: AppInput.timelineEditPanDevices,
         dragStartBehavior: DragStartBehavior.down,
-        onHorizontalDragStart: horizontal ? (_) => _start() : null,
-        onHorizontalDragUpdate: horizontal
-            ? (details) => _update(details.delta.dx)
-            : null,
-        onHorizontalDragEnd: horizontal ? (_) => _end() : null,
-        onHorizontalDragCancel: horizontal ? _cancel : null,
-        onVerticalDragStart: horizontal ? null : (_) => _start(),
-        onVerticalDragUpdate: horizontal
-            ? null
-            : (details) => _update(details.delta.dy),
-        onVerticalDragEnd: horizontal ? null : (_) => _end(),
-        onVerticalDragCancel: horizontal ? null : _cancel,
+        onDragStart: (_) => _start(),
+        onDragUpdate: (details) => _update(details.primaryDelta!),
+        onDragEnd: (_) => _end(),
+        onDragCancel: _cancel,
       ),
     );
 

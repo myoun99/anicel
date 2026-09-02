@@ -11,6 +11,7 @@ import '../../models/timeline_coverage.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
+import '../widgets/axis_gesture_detector.dart';
 
 /// How a grip reads right now. The ONLY thing a state change moves is the
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
@@ -444,7 +445,8 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
         },
         onPointerUp: (_) => _releasePress(),
         onPointerCancel: (_) => _releasePress(),
-        child: GestureDetector(
+        child: AxisGestureDetector(
+          axis: widget.axis,
           behavior: HitTestBehavior.opaque,
           supportedDevices: widget.supportedDevices,
           // Drag from the DOWN position (R10): the slop the recognizer
@@ -454,18 +456,10 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
           // The timeline's other edit drags already read `down`, the
           // cut-end handle among them — and that one is an edge too.
           dragStartBehavior: DragStartBehavior.down,
-          onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
-          onHorizontalDragUpdate: horizontal
-              ? (details) => _updateDrag(details.delta.dx)
-              : null,
-          onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
-          onHorizontalDragCancel: horizontal ? _cancelDrag : null,
-          onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
-          onVerticalDragUpdate: horizontal
-              ? null
-              : (details) => _updateDrag(details.delta.dy),
-          onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
-          onVerticalDragCancel: horizontal ? null : _cancelDrag,
+          onDragStart: (_) => _startDrag(),
+          onDragUpdate: (details) => _updateDrag(details.primaryDelta!),
+          onDragEnd: (_) => _endDrag(),
+          onDragCancel: _cancelDrag,
           child: bar,
         ),
       ),

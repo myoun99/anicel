@@ -16,6 +16,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
+import '../widgets/axis_gesture_detector.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
 /// waveform editing strip where dragging a span's MIDDLE along the frame
@@ -615,27 +616,20 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
         ),
     ];
 
-    return GestureDetector(
+    return AxisGestureDetector(
+      axis: widget.axis,
       behavior: HitTestBehavior.opaque,
       // .down: the drag measures from the pointer-down origin, so the
       // recognizer's slop never eats into the slid amount.
       dragStartBehavior: DragStartBehavior.down,
-      onHorizontalDragStart: editable && horizontal
+      onDragStart: editable
           ? (details) => _startDrag(details.localPosition)
           : null,
-      onHorizontalDragUpdate: editable && horizontal
-          ? (details) => _updateDrag(details.delta.dx)
+      onDragUpdate: editable
+          ? (details) => _updateDrag(details.primaryDelta!)
           : null,
-      onHorizontalDragEnd: editable && horizontal ? (_) => _endDrag() : null,
-      onHorizontalDragCancel: editable && horizontal ? _cancelDrag : null,
-      onVerticalDragStart: editable && !horizontal
-          ? (details) => _startDrag(details.localPosition)
-          : null,
-      onVerticalDragUpdate: editable && !horizontal
-          ? (details) => _updateDrag(details.delta.dy)
-          : null,
-      onVerticalDragEnd: editable && !horizontal ? (_) => _endDrag() : null,
-      onVerticalDragCancel: editable && !horizontal ? _cancelDrag : null,
+      onDragEnd: editable ? (_) => _endDrag() : null,
+      onDragCancel: editable ? _cancelDrag : null,
       child: MouseRegion(
         cursor: editable
             ? (horizontal

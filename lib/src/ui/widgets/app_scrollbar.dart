@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'app_scrollbar_lane.dart';
+import 'axis_gesture_detector.dart';
 
 /// The lane vocabulary lives next door so calculation-only files can name
 /// a width without importing a widget; everyone who has the scrollbar has
@@ -207,7 +208,8 @@ class _AppScrollbarState extends State<AppScrollbar> {
           onPointerDown: (_) => _setPressed(true),
           onPointerUp: (_) => _setPressed(false),
           onPointerCancel: (_) => _setPressed(false),
-          child: GestureDetector(
+          child: AxisGestureDetector(
+            axis: widget.axis,
             behavior: HitTestBehavior.opaque,
             onTapDown: widget.lanePress == AppScrollbarLanePress.jumpToPointer
                 ? (details) => _lanePressed(
@@ -215,32 +217,12 @@ class _AppScrollbarState extends State<AppScrollbar> {
                     geometry,
                   )
                 : null,
-            onHorizontalDragStart: horizontal
-                ? (details) =>
-                      _dragStart(_axisPosition(details.localPosition), geometry)
-                : null,
-            onVerticalDragStart: horizontal
-                ? null
-                : (details) => _dragStart(
-                    _axisPosition(details.localPosition),
-                    geometry,
-                  ),
-            onHorizontalDragUpdate: horizontal
-                ? (details) => _dragUpdate(
-                    _axisPosition(details.localPosition),
-                    geometry,
-                  )
-                : null,
-            onVerticalDragUpdate: horizontal
-                ? null
-                : (details) => _dragUpdate(
-                    _axisPosition(details.localPosition),
-                    geometry,
-                  ),
-            onHorizontalDragEnd: horizontal ? (_) => _dragEnd() : null,
-            onVerticalDragEnd: horizontal ? null : (_) => _dragEnd(),
-            onHorizontalDragCancel: horizontal ? _dragEnd : null,
-            onVerticalDragCancel: horizontal ? null : _dragEnd,
+            onDragStart: (details) =>
+                _dragStart(_axisPosition(details.localPosition), geometry),
+            onDragUpdate: (details) =>
+                _dragUpdate(_axisPosition(details.localPosition), geometry),
+            onDragEnd: (_) => _dragEnd(),
+            onDragCancel: _dragEnd,
             child: MouseRegion(
               onEnter: (_) => setState(() => _hovered = true),
               onExit: (_) => setState(() => _hovered = false),

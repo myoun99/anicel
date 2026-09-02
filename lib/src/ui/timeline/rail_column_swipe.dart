@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
     show layerFxSlotWidth, layerOnionSlotWidth, layerVisibilitySlotWidth;
+import '../widgets/axis_gesture_detector.dart';
 
 /// A column a rail can SWIPE: where its band sits at a given row depth,
 /// what value a row shows there, and how to flip that row.
@@ -249,7 +250,6 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
 
   @override
   Widget build(BuildContext context) {
-    final vertical = widget.axis == Axis.vertical;
 
     void down(DragDownDetails details) {
       _pressedColumn = widget.columnAt(details.localPosition);
@@ -286,7 +286,8 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
       _engaged = false;
     }
 
-    return GestureDetector(
+    return AxisGestureDetector(
+      axis: widget.axis,
       behavior: HitTestBehavior.translucent,
       // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
       // 사양 통일」). The doc above claims the outer vertical scroll keeps
@@ -320,19 +321,14 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
       // apply to a gesture that moves nothing and only paints the rows it
       // passes.
       dragStartBehavior: DragStartBehavior.down,
-      // 🚨ONE recogniser family, chosen by the axis. A rail's sweep runs
-      // DOWN it and the x-sheet's runs ACROSS, and mounting both would put
-      // two recognisers in the arena where the host only has one gesture.
-      onVerticalDragDown: vertical ? down : null,
-      onVerticalDragStart: vertical ? start : null,
-      onVerticalDragUpdate: vertical ? update : null,
-      onVerticalDragEnd: vertical ? end : null,
-      onVerticalDragCancel: vertical ? cancel : null,
-      onHorizontalDragDown: vertical ? null : down,
-      onHorizontalDragStart: vertical ? null : start,
-      onHorizontalDragUpdate: vertical ? null : update,
-      onHorizontalDragEnd: vertical ? null : end,
-      onHorizontalDragCancel: vertical ? null : cancel,
+      // 🚨ONE recogniser family, chosen by the axis — the law this rail
+      // wrote down first; [AxisGestureDetector] is where it lives now, for
+      // every axis drag.
+      onDragDown: down,
+      onDragStart: start,
+      onDragUpdate: update,
+      onDragEnd: end,
+      onDragCancel: cancel,
       child: widget.child,
     );
   }
