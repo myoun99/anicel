@@ -83,6 +83,7 @@ import 'update_timesheet_info_command.dart';
 import 'update_exposure_memo_command.dart';
 
 part 'cut_commands/cut_commands.dart';
+part 'cut_commands/camera_commands.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -183,91 +184,38 @@ class CutCommandCoordinator {
     newName: newName,
   );
 
+  // ── the camera commands: their own object ───────────────────────────
+  //
+  // A collaborator (commands/cut_commands/camera_commands.dart, a part of this
+  // library). The coordinator keeps the public commands as forwarders.
+  _CameraCommands get _camera => _CameraCommands(this);
+
   void setCutCameraKeyframe({
     required CutId cutId,
     required int frameIndex,
     required CameraPose pose,
-  }) {
-    if (frameIndex < 0) {
-      throw ArgumentError.value(
-        frameIndex,
-        'frameIndex',
-        'Camera keyframe index must be non-negative.',
-      );
-    }
-
-    final cut = _requireCut(cutId);
-    if (cut.camera.keyframeAt(frameIndex) == pose) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutCameraCommand(
-        repository: repository,
-        cutId: cutId,
-        camera: cut.camera.withKeyframe(frameIndex, pose),
-        description: 'Set camera keyframe at frame ${frameIndex + 1}',
-      ),
-    );
-  }
-
+  }) => _camera.setCutCameraKeyframe(
+    cutId: cutId,
+    frameIndex: frameIndex,
+    pose: pose,
+  );
   void removeCutCameraKeyframe({
     required CutId cutId,
     required int frameIndex,
-  }) {
-    final cut = _requireCut(cutId);
-    if (cut.camera.keyframeAt(frameIndex) == null) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutCameraCommand(
-        repository: repository,
-        cutId: cutId,
-        camera: cut.camera.withoutKeyframe(frameIndex),
-        description: 'Remove camera keyframe at frame ${frameIndex + 1}',
-      ),
-    );
-  }
-
-  void clearCutCamera({required CutId cutId}) {
-    final cut = _requireCut(cutId);
-    if (cut.camera.isEmpty) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutCameraCommand(
-        repository: repository,
-        cutId: cutId,
-        camera: CutCamera.empty(),
-        description: 'Clear camera keyframes',
-      ),
-    );
-  }
-
-  /// Replaces the cut's whole camera track in one undo step — the property
-  /// lanes edit per-property keys (move/toggle/hold) that the pose-level
-  /// APIs above cannot express.
+  }) => _camera.removeCutCameraKeyframe(cutId: cutId, frameIndex: frameIndex);
+  void clearCutCamera({required CutId cutId}) =>
+      _camera.clearCutCamera(cutId: cutId);
   void updateCutCamera({
     required CutId cutId,
     required CutCamera camera,
     String description = 'Edit camera keyframes',
-  }) {
-    final cut = _requireCut(cutId);
-    if (cut.camera == camera) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutCameraCommand(
-        repository: repository,
-        cutId: cutId,
-        camera: camera,
-        description: description,
-      ),
-    );
-  }
+  }) => _camera.updateCutCamera(
+    cutId: cutId,
+    camera: camera,
+    description: description,
+  );
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) =>
+      _camera.updateCameraInstructionSet(instructionSet);
 
   // `updateTrackTransform` retired with the V row's transform. The fade it
   // wrote is F.I/F.O spans on the transition row now
@@ -1746,20 +1694,6 @@ class CutCommandCoordinator {
                 ];
         }(),
     ];
-  }
-
-  /// Replaces the project's instruction vocabulary; one undo step, no-op
-  /// when unchanged.
-  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
-    if (repository.requireProject().cameraInstructions == instructionSet) {
-      return;
-    }
-    historyManager.execute(
-      UpdateCameraInstructionSetCommand(
-        repository: repository,
-        instructionSet: instructionSet,
-      ),
-    );
   }
 
   /// Replaces the project's media pool (import/rename/remove); one undo
