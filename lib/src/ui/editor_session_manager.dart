@@ -278,6 +278,7 @@ part 'session/track_se_display.dart';
 part 'session/storyboard_cursor.dart';
 part 'session/storyboard_rows.dart';
 part 'session/frame_clipboard.dart';
+part 'session/playback_cache_budget.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -490,7 +491,7 @@ class EditorSessionManager extends ChangeNotifier {
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     _historyManager.respondToMemoryPressure();
-    _playbackCacheBudgetEnforcer.respondToMemoryPressure();
+    _playbackCache._playbackCacheBudgetEnforcer.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
     memoryPressureTicks.value += 1;
   }
@@ -568,11 +569,21 @@ class EditorSessionManager extends ChangeNotifier {
         frameKeyOf: brushFrameKeyForCut,
       );
 
-  late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
-      PlaybackCacheBudgetEnforcer(
-        layerImages: layerFrameImageCache,
-        composites: cutFrameCompositeCache,
-      );
+  // ── the playback cache budget: its own object ───────────────────────
+  //
+  // A collaborator (session/playback_cache_budget.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _PlaybackCacheBudget _playbackCache = _PlaybackCacheBudget(this);
+
+  int get playbackCacheByteBudget => _playbackCache.playbackCacheByteBudget;
+  void enforcePlaybackCacheBudget() =>
+      _playbackCache.enforcePlaybackCacheBudget();
+  List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
+      _playbackCache.debugPlaybackProtectedRanges();
+  bool isPlaybackFrameReady(int frameIndex) =>
+      _playbackCache.isPlaybackFrameReady(frameIndex);
+  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) =>
+      _playbackCache.isPlaybackFrameReadyForCut(cut, frameIndex);
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
@@ -592,74 +603,6 @@ class EditorSessionManager extends ChangeNotifier {
             : const Duration(milliseconds: 1200),
         afterFrameCached: enforcePlaybackCacheBudget,
       );
-
-  /// The composite-cache budget trim, runnable by every producer: the
-  /// warmer after each cached frame, and the parked track stack after each
-  /// on-demand build (its composites would otherwise grow the cache with
-  /// nothing trimming until the next warm run). LRU: what is on screen was
-  /// just touched, so it survives its own trim; held clones cover the rest.
-  /// A6: the reserve is MEASURED now — the bytes the editing canvas has
-  /// actually pinned — replacing an estimate that saturated at its clamp
-  /// around twenty layers and then reported the same number for a
-  /// hundred. The holders declare their clones to the cache (pins), so
-  /// "what the screen needs" stopped being a guess about a widget tree
-  /// and became a number the cache itself carries. While playing the
-  /// editing stack holds no pins, so the old "zero while playing" rule
-  /// falls out for free instead of being an `if`.
-  /// The playback caches' combined cap in force (diagnostics/tests) — it
-  /// is [playbackCacheBudgetBytes] until the OS warns.
-  int get playbackCacheByteBudget => _playbackCacheBudgetEnforcer.maxBytes;
-
-  void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
-    protect: _playbackProtectedRanges(),
-    reservedForDisplayBytes: layerFrameImageCache.pinnedBytes,
-  );
-
-  /// What budget eviction must never touch: the full PLAYING playlist while
-  /// playback is active (a looping pass must keep every cut warm so the
-  /// second pass plays fully cached), otherwise the active cut's range.
-  ///
-  /// B1: the non-playing range DERIVES from [cutWarmFrameCount] — the same
-  /// law the warm bakes over — because the two disagreeing was not
-  /// hypothetical: warming baked the runway past the end line while this
-  /// stopped AT the line, so every runway composite was evictable the
-  /// moment it landed, by the enforcer that runs after every baked frame.
-  /// The PLAYING branch stays on `entry.duration` on purpose: a playlist
-  /// plays exactly its duration, and protecting more than plays would
-  /// starve the budget during the one activity that needs it most.
-  List<PlaybackProtectedRange> _playbackProtectedRanges() {
-    if (playback.isActive) {
-      return [
-        for (final entry in playback.playlist)
-          PlaybackProtectedRange(
-            cutId: entry.cutId,
-            startFrame: 0,
-            endFrame: math.max(0, entry.duration - 1),
-            quality: playbackQuality,
-          ),
-      ];
-    }
-
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return const [];
-    }
-    return [
-      PlaybackProtectedRange(
-        cutId: cut.id,
-        startFrame: 0,
-        endFrame: cutWarmFrameCount(cut) - 1,
-        quality: playbackQuality,
-      ),
-    ];
-  }
-
-  /// [_playbackProtectedRanges], for the tests that pin the one-law
-  /// derivation (warm count == protected count) — the production reader
-  /// stays [enforcePlaybackCacheBudget].
-  @visibleForTesting
-  List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
-      _playbackProtectedRanges();
 
   /// Playback preview quality (Premiere/AE monitor resolution analogue).
   PlaybackQuality playbackQuality = defaultPlaybackQuality;
@@ -3431,45 +3374,6 @@ class EditorSessionManager extends ChangeNotifier {
           globalFrame:
               start + (frameIndex ?? _timelineController.currentFrameIndex),
         );
-  }
-
-  /// Whether [frameIndex] is READY to play at the current quality — the
-  /// timeline ruler's green bar.
-  bool isPlaybackFrameReady(int frameIndex) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return false;
-    }
-    return isPlaybackFrameReadyForCut(cut, frameIndex);
-  }
-
-  /// [isPlaybackFrameReady] for an arbitrary cut — the storyboard's green
-  /// bar spans every cut of the track.
-  ///
-  /// TWO kinds of frame, one bar (유저 2026-08-16, 「왜 콘텐츠끝너머가
-  /// 초록이되면 안되는거지? 재생가능한거잖아」):
-  ///  * a frame with something to compose is green when its composite is
-  ///    warmed — the bake IS its readiness;
-  ///  * a frame that composes to NOTHING (a hole between blocks, the
-  ///    runway past the drawings, hidden or faded-out layers) is not an
-  ///    exception the bar skips — it is ready BY DEFINITION. Playback at
-  ///    that frame draws exactly what its composite would hold: nothing.
-  ///
-  /// The empty answer reads the same shared visit the signature rides, so
-  /// it cannot disagree with what the compose loop would actually paint.
-  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
-    if (cutFrameCompositeCache.validCompositeOrNull(
-          cut: cut,
-          frameIndex: frameIndex,
-          quality: playbackQuality,
-        ) !=
-        null) {
-      return true;
-    }
-    return resolveCutFrameCompositeTree(
-      cut: cut,
-      frameIndex: frameIndex,
-    ).isEmpty;
   }
 
   /// The drawable artwork of one layer frame in the active cut; `null` when
