@@ -29,6 +29,7 @@ part 'timeline/timeline_paste.dart';
 part 'timeline/timeline_frame_names.dart';
 part 'timeline/timeline_drawing_frames.dart';
 part 'timeline/timeline_retime.dart';
+part 'timeline/timeline_delete.dart';
 
 /// Timeline queries and editing commands over the unified timeline model
 /// (drawing blocks with explicit lengths + inbetween marks; emptiness is
@@ -338,85 +339,25 @@ class TimelineController {
 
   // --- Cell deletion ----------------------------------------------------------
 
-  /// Standing ANYWHERE inside a real drawing block deletes it (UI-R17 #1)
-  /// — the old head-only rule made held cells feel dead.
-  bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
-    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    return block != null && !block.entry.ghost;
-  }
+  // ── deleting: its own object, in its own file ───────────────────────
+  //
+  // A collaborator (controllers/timeline/timeline_delete.dart, a part of this
+  // library). The controller keeps the public verbs as forwarders.
+  late final _TimelineDelete _delete = _TimelineDelete(this);
 
-  void deleteCellForLayer({required LayerId layerId}) {
-    final before = _requireLayer(layerId);
-    final frameIndex = _editFrameIndexFor(layerId);
-    if (!canDeleteCellAt(layer: before, frameIndex: frameIndex)) {
-      return;
-    }
-    deleteBlocksForLayer(
-      layerId: layerId,
-      blockStartIndexes: [
-        coveringDrawingBlockAt(before.timeline, frameIndex)!.startIndex,
-      ],
-    );
-  }
-
-  /// Deletes every block starting at [blockStartIndexes] in ONE undo step
-  /// (UI-R17 #2 — multi-selection delete). Ghost instances are skipped
-  /// (derived); frames no longer referenced anywhere are GC'd with them.
+  bool canDeleteCellAt({required Layer layer, required int frameIndex}) =>
+      _delete.canDeleteCellAt(layer: layer, frameIndex: frameIndex);
+  void deleteCellForLayer({required LayerId layerId}) =>
+      _delete.deleteCellForLayer(layerId: layerId);
   void deleteBlocksForLayer({
     required LayerId layerId,
     required List<int> blockStartIndexes,
-  }) {
-    deleteBlocksForLayers({layerId: blockStartIndexes});
-  }
-
-  /// The cross-layer form (UI-R17 #8): every layer's deletions compose
-  /// into ONE undo step.
-  void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) {
-    final commands = <Command>[];
-    for (final entry in blockStartsByLayer.entries) {
-      final before = _requireLayer(entry.key);
-      final after = _deletedBlocksLayer(before, entry.value);
-      if (after != null) {
-        commands.add(_layerEditCommand(before: before, after: after));
-      }
-    }
-    _executeCommands(commands, description: 'Delete selected cells');
-  }
-
-  Layer? _deletedBlocksLayer(Layer before, List<int> blockStartIndexes) {
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    );
-    final removedFrameIds = <FrameId>{};
-    for (final startIndex in blockStartIndexes) {
-      final entry = before.timeline[startIndex];
-      if (entry == null || !entry.isDrawing || entry.ghost) {
-        continue;
-      }
-      nextTimeline.remove(startIndex);
-      final frameId = entry.frameId;
-      if (frameId != null) {
-        removedFrameIds.add(frameId);
-      }
-    }
-    if (nextTimeline.length == before.timeline.length) {
-      return null;
-    }
-    var nextFrames = before.frames;
-    final unreferenced = removedFrameIds
-        .where((frameId) => !_timelineReferencesFrame(nextTimeline, frameId))
-        .toSet();
-    if (unreferenced.isNotEmpty) {
-      nextFrames = before.frames
-          .where((frame) => !unreferenced.contains(frame.id))
-          .toList(growable: false);
-    }
-    return before.copyWith(
-      frames: nextFrames,
-      timeline: nextTimeline,
-      audioClips: _audioClipsForFrames(before, nextFrames),
-    );
-  }
+  }) => _delete.deleteBlocksForLayer(
+    layerId: layerId,
+    blockStartIndexes: blockStartIndexes,
+  );
+  void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) =>
+      _delete.deleteBlocksForLayers(blockStartsByLayer);
 
   /// The layer's audio clips minus links to frames that are not in
   /// [nextFrames] (REC1-A). A frame that leaves the layer takes its
