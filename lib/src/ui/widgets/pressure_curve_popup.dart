@@ -392,8 +392,17 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     if (_points.length >= _maxPoints) {
       return;
     }
+    _insertPointAt(local);
+  }
+
+  /// Inserts a point at [local]'s x between its neighbours and starts
+  /// dragging it; nothing happens outside the endpoints or where the
+  /// neighbours leave no room ([_minXGap]).
+  ///
+  /// ONE law for the press that adds a point and the drag that brings a
+  /// removed point back in (the audit's clone scan, 2026-09-03).
+  void _insertPointAt(Offset local) {
     final unit = _toUnit(local);
-    // Insert keeping ascending x; refuse to crowd an existing x.
     var insertAt = _points.length;
     for (var i = 0; i < _points.length; i += 1) {
       if (unit.dx < _points[i].x) {
@@ -447,31 +456,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
       if (outside) {
         return;
       }
-      final unit = _toUnit(local);
-      var insertAt = _points.length;
-      for (var i = 0; i < _points.length; i += 1) {
-        if (unit.dx < _points[i].x) {
-          insertAt = i;
-          break;
-        }
-      }
-      if (insertAt == 0 || insertAt == _points.length) {
-        return;
-      }
-      final clampedX = unit.dx.clamp(
-        _points[insertAt - 1].x + _minXGap,
-        _points[insertAt].x - _minXGap,
-      );
-      if (clampedX <= _points[insertAt - 1].x ||
-          clampedX >= _points[insertAt].x) {
-        return;
-      }
-      setState(() {
-        _points.insert(insertAt, BrushCurvePoint(clampedX, unit.dy));
-        _dragIndex = insertAt;
-        _dragRemoved = false;
-      });
-      _commit();
+      _insertPointAt(local);
       return;
     }
     final unit = _toUnit(local);

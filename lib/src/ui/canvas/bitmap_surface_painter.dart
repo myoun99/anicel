@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../core/floor_math.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
@@ -380,10 +379,18 @@ class BitmapSurfacePainter extends CustomPainter {
     // measured at 82.7 ms per walk at the 1024 tiles the canvas dialog
     // allows, which is a cliff, not a smoothness question.
     final tileSize = surface.tileSize;
-    final firstTileX = floorDiv(visibleRect.left.floor(), tileSize);
-    final lastTileX = floorDiv(visibleRect.right.ceil() - 1, tileSize);
-    final firstTileY = floorDiv(visibleRect.top.floor(), tileSize);
-    final lastTileY = floorDiv(visibleRect.bottom.ceil() - 1, tileSize);
+    final (
+      firstX: firstTileX,
+      lastX: lastTileX,
+      firstY: firstTileY,
+      lastY: lastTileY,
+    ) = tileRangeCovering(
+      left: visibleRect.left,
+      top: visibleRect.top,
+      right: visibleRect.right,
+      bottom: visibleRect.bottom,
+      tileSize: tileSize,
+    );
     for (var tileY = firstTileY; tileY <= lastTileY; tileY += 1) {
       for (var tileX = firstTileX; tileX <= lastTileX; tileX += 1) {
         final tile = surface.tileAt(TileCoord(x: tileX, y: tileY));

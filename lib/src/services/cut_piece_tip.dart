@@ -34,38 +34,24 @@ BrushTipMask cutPieceToTipMask(CutPiece piece, {required String id}) {
     coverage[index] = source.rgba[index * 4 + 3];
   }
 
-  var maskWidth = width;
-  var maskHeight = height;
-  final longSide = math.max(width, height);
-  if (longSide > maxBrushTipMaskSide) {
-    final scale = maxBrushTipMaskSide / longSide;
-    final scaledWidth = math.max(1, (width * scale).round());
-    final scaledHeight = math.max(1, (height * scale).round());
+  final fit = brushTipMaskFitted(width, height);
+  if (fit.width != width || fit.height != height) {
     coverage = _boxResize(
       coverage,
       width: width,
       height: height,
-      newWidth: scaledWidth,
-      newHeight: scaledHeight,
+      newWidth: fit.width,
+      newHeight: fit.height,
     );
-    maskWidth = scaledWidth;
-    maskHeight = scaledHeight;
   }
 
   // Square, content centred — the mask contract.
-  final side = math.max(maskWidth, maskHeight);
-  final alpha = Uint8List(side * side);
-  final offsetX = (side - maskWidth) ~/ 2;
-  final offsetY = (side - maskHeight) ~/ 2;
-  for (var y = 0; y < maskHeight; y += 1) {
-    alpha.setRange(
-      (offsetY + y) * side + offsetX,
-      (offsetY + y) * side + offsetX + maskWidth,
-      coverage,
-      y * maskWidth,
-    );
-  }
-  return BrushTipMask(id: id, size: side, alpha: alpha);
+  return BrushTipMask.square(
+    id: id,
+    pixels: coverage,
+    width: fit.width,
+    height: fit.height,
+  );
 }
 
 /// Box average over the source footprint of each destination pixel.

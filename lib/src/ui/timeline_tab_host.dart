@@ -11,6 +11,7 @@ import '../models/layer_kind.dart';
 import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
+import 'session/session_legend_callbacks.dart';
 import '../models/transform_track.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
@@ -39,7 +40,6 @@ import 'timeline/timeline_run_end_handles.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
-import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
@@ -1021,47 +1021,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.
-            legend: LayerLegendCallbacks(
-              onShowAllLayers: () => _session.setAllLayersVisibility(true),
-              onHideAllLayers: () => _session.setAllLayersVisibility(false),
-              onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
-              // Onion legend (UI-R17 #5): displayed-layer bulk + the panel
-              // reveal (already open = flash-in-place).
+            legend: sessionLegendCallbacks(
+              _session,
+              rowFilter: widget.rowFilter,
+              onSetRowFilter: widget.onSetRowFilter,
               onToggleOnionSkinForDisplayed:
                   _session.toggleOnionSkinForDisplayedLayers,
               onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
-              onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
-              onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
-              onClearAllMarks: _session.clearAllLayerMarks,
-              onClearAllFillReferences: _session.clearAllFillReferences,
-              onMuteAllSe: () => _session.setAllSeLayersMuted(true),
-              onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
-              onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
-              onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
-              onToggleMarkFilter: (mark) => widget.onSetRowFilter?.call(
-                widget.rowFilter.toggledMark(mark),
-              ),
-              onToggleKindFilter: (kind) => widget.onSetRowFilter?.call(
-                widget.rowFilter.toggledKind(kind),
-              ),
-              onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
-                widget.rowFilter.copyWith(
-                  onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
-                ),
-              ),
-              onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
-                widget.rowFilter.copyWith(fxOnly: !widget.rowFilter.fxOnly),
-              ),
-              onToggleFillReferenceOnlyFilter: () =>
-                  widget.onSetRowFilter?.call(
-                    widget.rowFilter.copyWith(
-                      fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
-                    ),
-                  ),
-              // The legend master bar (R4 #6): preview per move, one commit.
-              onPreviewLayersOpacity: _session.previewLayersOpacity,
-              onCommitLayersOpacity: _session.commitLayersOpacity,
-              // R27 #6: the blend column's bulk pick, same displayed set.
               onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,

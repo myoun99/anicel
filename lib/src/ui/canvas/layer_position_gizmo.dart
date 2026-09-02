@@ -64,47 +64,19 @@ class _LayerPositionGizmoState extends State<LayerPositionGizmo> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final center = _screenCenter + _dragDelta;
-    return Stack(
-      children: [
-        Positioned(
-          left: center.dx - _handleSize / 2,
-          top: center.dy - _handleSize / 2,
-          width: _handleSize,
-          height: _handleSize,
-          child: GestureDetector(
-            key: const ValueKey<String>('layer-position-gizmo'),
-            behavior: HitTestBehavior.opaque,
-            // TS9's law, at the door a GestureDetector has: a finger only
-            // moves this while the one-finger slot says draw. Stated as
-            // supported DEVICES rather than checked in the handler, because
-            // by `onPanStart` the recognizer has already won the arena and
-            // returning would leave the gizmo dead and the flip undone.
-            supportedDevices: AppInput.toolPointerDevices,
-            onPanStart: (_) => setState(() => _dragging = true),
-            onPanUpdate: (details) =>
-                setState(() => _dragDelta += details.delta),
-            onPanEnd: (_) => _endDrag(),
-            onPanCancel: () => setState(() {
-              _dragging = false;
-              _dragDelta = Offset.zero;
-            }),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.move,
-              child: CustomPaint(
-                painter: _GizmoHandlePainter(
-                  color: AppColors.accent,
-                  active: _dragging,
-                ),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => _gizmoHandle(
+    key: const ValueKey<String>('layer-position-gizmo'),
+    center: _screenCenter + _dragDelta,
+    handleSize: _handleSize,
+    painter: _GizmoHandlePainter(color: AppColors.accent, active: _dragging),
+    onDragStart: () => setState(() => _dragging = true),
+    onDragDelta: (delta) => setState(() => _dragDelta += delta),
+    onDragEnd: _endDrag,
+    onDragCancel: () => setState(() {
+      _dragging = false;
+      _dragDelta = Offset.zero;
+    }),
+  );
 }
 
 /// The on-canvas ANCHOR POINT gizmo (R5 #10): AE's anchor glyph at the
@@ -169,47 +141,65 @@ class _LayerAnchorGizmoState extends State<LayerAnchorGizmo> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final center = _screenAnchor + _dragDelta;
-    return Stack(
-      children: [
-        Positioned(
-          left: center.dx - _handleSize / 2,
-          top: center.dy - _handleSize / 2,
-          width: _handleSize,
-          height: _handleSize,
-          child: GestureDetector(
-            key: const ValueKey<String>('layer-anchor-gizmo'),
-            behavior: HitTestBehavior.opaque,
-            supportedDevices: AppInput.toolPointerDevices,
-            onPanStart: (_) => setState(() => _dragging = true),
-            onPanUpdate: (details) =>
-                setState(() => _dragDelta += details.delta),
-            onPanEnd: (_) => _endDrag(),
-            onPanCancel: () => setState(() {
-              _dragging = false;
-              _dragDelta = Offset.zero;
-            }),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.move,
-              child: CustomPaint(
-                painter: _AnchorHandlePainter(
-                  color: AppColors.accent,
-                  active: _dragging,
-                ),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => _gizmoHandle(
+    key: const ValueKey<String>('layer-anchor-gizmo'),
+    center: _screenAnchor + _dragDelta,
+    handleSize: _handleSize,
+    painter: _AnchorHandlePainter(color: AppColors.accent, active: _dragging),
+    onDragStart: () => setState(() => _dragging = true),
+    onDragDelta: (delta) => setState(() => _dragDelta += delta),
+    onDragEnd: _endDrag,
+    onDragCancel: () => setState(() {
+      _dragging = false;
+      _dragDelta = Offset.zero;
+    }),
+  );
 }
 
 /// AE's anchor glyph: a small circle with the four quadrant ticks reaching
 /// THROUGH it, so it reads as a pivot rather than a move handle (which is
 /// what the position crosshair beside it means).
+/// The one drag handle both gizmos are: a square hit target at [center]
+/// that pans by delta and paints [painter] (the audit's clone scan,
+/// 2026-09-03).
+Widget _gizmoHandle({
+  required Key key,
+  required Offset center,
+  required double handleSize,
+  required CustomPainter painter,
+  required VoidCallback onDragStart,
+  required ValueChanged<Offset> onDragDelta,
+  required VoidCallback onDragEnd,
+  required VoidCallback onDragCancel,
+}) {
+  return Stack(
+    children: [
+      Positioned(
+        left: center.dx - handleSize / 2,
+        top: center.dy - handleSize / 2,
+        width: handleSize,
+        height: handleSize,
+        child: GestureDetector(
+          key: key,
+          behavior: HitTestBehavior.opaque,
+          supportedDevices: AppInput.toolPointerDevices,
+          onPanStart: (_) => onDragStart(),
+          onPanUpdate: (details) => onDragDelta(details.delta),
+          onPanEnd: (_) => onDragEnd(),
+          onPanCancel: onDragCancel,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.move,
+            child: CustomPaint(
+              painter: painter,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 class _AnchorHandlePainter extends CustomPainter {
   const _AnchorHandlePainter({required this.color, required this.active});
 

@@ -150,13 +150,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   final (:destStart, :pushes) = resolved;
 
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
-    final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
-    for (final push in pushes) {
-      timeline.remove(push.block.startIndex);
-    }
-    for (final push in pushes) {
-      timeline[push.newStart] = push.block.entry;
-    }
+    final timeline = _timelineWithPushes(targetBase, pushes);
     timeline[destStart] = entry;
     return timeline;
   }
@@ -314,13 +308,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   final (:destStart, :pushes) = resolved;
 
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
-    final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
-    for (final push in pushes) {
-      timeline.remove(push.block.startIndex);
-    }
-    for (final push in pushes) {
-      timeline[push.newStart] = push.block.entry;
-    }
+    final timeline = _timelineWithPushes(targetBase, pushes);
     for (final block in moved) {
       timeline[destStart + (block.startIndex - groupStart)] = block.entry;
     }
@@ -484,4 +472,21 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
     destStart += deficit;
   }
   return null;
+}
+
+/// [targetBase] with the pushed blocks re-glued at their new starts — the
+/// landing step both block plans share (the audit's clone scan,
+/// 2026-09-03); the caller then lays its moved entries in.
+SplayTreeMap<int, TimelineExposure> _timelineWithPushes(
+  Map<int, TimelineExposure> targetBase,
+  List<_Push> pushes,
+) {
+  final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
+  for (final push in pushes) {
+    timeline.remove(push.block.startIndex);
+  }
+  for (final push in pushes) {
+    timeline[push.newStart] = push.block.entry;
+  }
+  return timeline;
 }

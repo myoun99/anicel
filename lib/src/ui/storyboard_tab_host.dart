@@ -13,6 +13,7 @@ import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'editor_session_manager.dart';
+import 'session/session_legend_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
@@ -27,7 +28,6 @@ import 'timeline/layer_row_drag.dart'
     show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
-import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
@@ -898,55 +898,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // row solos stand down (the storyboard rail is track-global,
                     // no row filter here).
                     visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
-                    legend: LayerLegendCallbacks(
-                      onShowAllLayers: () =>
-                          _session.setAllLayersVisibility(true),
-                      onHideAllLayers: () =>
-                          _session.setAllLayersVisibility(false),
-                      onToggleVisibilitySolo:
-                          _session.toggleLayerVisibilitySolo,
-                      onSheetAllOn: () =>
-                          _session.setAllLayersOnTimesheet(true),
-                      onSheetAllOff: () =>
-                          _session.setAllLayersOnTimesheet(false),
-                      onClearAllMarks: _session.clearAllLayerMarks,
-                      onClearAllFillReferences: _session.clearAllFillReferences,
-                      onMuteAllSe: () => _session.setAllSeLayersMuted(true),
-                      onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
-                      onBypassAllFx: () =>
-                          _session.setAllLayersFxBypassed(true),
-                      onEnableAllFx: () =>
-                          _session.setAllLayersFxBypassed(false),
-                      // R5 #9: the chips are LIVE here now — same filter
-                      // object as the timeline's, so setting one on either
-                      // surface sets it on both.
-                      onToggleMarkFilter: (mark) => widget.onSetRowFilter?.call(
-                        widget.rowFilter.toggledMark(mark),
-                      ),
-                      onToggleKindFilter: (kind) => widget.onSetRowFilter?.call(
-                        widget.rowFilter.toggledKind(kind),
-                      ),
-                      onToggleSheetOnlyFilter: () =>
-                          widget.onSetRowFilter?.call(
-                            widget.rowFilter.copyWith(
-                              onTimesheetOnly:
-                                  !widget.rowFilter.onTimesheetOnly,
-                            ),
-                          ),
-                      onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
-                        widget.rowFilter.copyWith(
-                          fxOnly: !widget.rowFilter.fxOnly,
-                        ),
-                      ),
-                      onToggleFillReferenceOnlyFilter: () =>
-                          widget.onSetRowFilter?.call(
-                            widget.rowFilter.copyWith(
-                              fillReferenceOnly:
-                                  !widget.rowFilter.fillReferenceOnly,
-                            ),
-                          ),
-                      onPreviewLayersOpacity: _session.previewLayersOpacity,
-                      onCommitLayersOpacity: _session.commitLayersOpacity,
+                    legend: sessionLegendCallbacks(
+                      _session,
+                      rowFilter: widget.rowFilter,
+                      onSetRowFilter: widget.onSetRowFilter,
                     ),
                     // Master-bar drags (UI-R6 #2): S-row sliders follow the
                     // preview channel live; the bar rests on the last committed

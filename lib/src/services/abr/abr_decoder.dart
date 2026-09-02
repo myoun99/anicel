@@ -247,8 +247,8 @@ void _readSampledTips(
       final pixels = compressed
           ? decodePackBitsScanlines(reader, bytesPerRow: width, height: height)
           : Uint8List.fromList(reader.readBytes(width * height));
-      final mask = _squareMaskFromTipPixels(
-        key: key,
+      final mask = BrushTipMask.square(
+        id: 'abr-$key',
         pixels: pixels,
         width: width,
         height: height,
@@ -261,29 +261,6 @@ void _readSampledTips(
       reader.offset = nextEntry;
     }
   }
-}
-
-/// Pads a tip bitmap to a centered square, matching the engine's
-/// square-mask requirement.
-BrushTipMask _squareMaskFromTipPixels({
-  required String key,
-  required Uint8List pixels,
-  required int width,
-  required int height,
-}) {
-  final side = math.max(width, height);
-  final alpha = Uint8List(side * side);
-  final offsetX = (side - width) ~/ 2;
-  final offsetY = (side - height) ~/ 2;
-  for (var y = 0; y < height; y += 1) {
-    alpha.setRange(
-      (offsetY + y) * side + offsetX,
-      (offsetY + y) * side + offsetX + width,
-      pixels,
-      y * width,
-    );
-  }
-  return BrushTipMask(id: 'abr-$key', size: side, alpha: alpha);
 }
 
 List<Object?>? _brushListOf(PsDescriptor? descriptor) {

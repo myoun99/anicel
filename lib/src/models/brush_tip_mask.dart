@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 /// Longest mask side kept when an imported image becomes a mask; larger
@@ -6,6 +7,23 @@ import 'dart:typed_data';
 /// disk. It lives with the mask rather than with any one decoder, so the
 /// pure-Dart importers can honour it without dragging in `dart:ui`.
 const int maxBrushTipMaskSide = 256;
+
+/// [width] × [height] shrunk to fit [maxBrushTipMaskSide] on the long side,
+/// aspect kept, never below 1; unchanged when it already fits.
+///
+/// 🚨ONE fit for the image decoder and the cut-piece tip (the audit's clone
+/// scan, 2026-09-03); the resizers stay each source's own.
+({int width, int height}) brushTipMaskFitted(int width, int height) {
+  final longSide = math.max(width, height);
+  if (longSide <= maxBrushTipMaskSide) {
+    return (width: width, height: height);
+  }
+  final scale = maxBrushTipMaskSide / longSide;
+  return (
+    width: math.max(1, (width * scale).round()),
+    height: math.max(1, (height * scale).round()),
+  );
+}
 
 /// Applies a paper texture's invert, brightness and contrast to [mask].
 ///
@@ -108,6 +126,32 @@ class BrushTipMask {
     'size': size,
     'alpha': base64Encode(alpha),
   };
+
+  /// A mask of [width] × [height] coverage bytes padded to the centred
+  /// square the engine's samplers require.
+  ///
+  /// 🚨ONE padding for the image decoder, the cut-piece tip and the ABR
+  /// sampled tip (the audit's clone scan, 2026-09-03).
+  factory BrushTipMask.square({
+    required String id,
+    required Uint8List pixels,
+    required int width,
+    required int height,
+  }) {
+    final side = math.max(width, height);
+    final alpha = Uint8List(side * side);
+    final offsetX = (side - width) ~/ 2;
+    final offsetY = (side - height) ~/ 2;
+    for (var y = 0; y < height; y += 1) {
+      alpha.setRange(
+        (offsetY + y) * side + offsetX,
+        (offsetY + y) * side + offsetX + width,
+        pixels,
+        y * width,
+      );
+    }
+    return BrushTipMask(id: id, size: side, alpha: alpha);
+  }
 
   factory BrushTipMask.fromJson(Map<String, dynamic> json) {
     return BrushTipMask(

@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-import '../../core/floor_math.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
@@ -217,10 +216,13 @@ ProvisionalInkPainter inkFromSurface(
         local.bottom > floatPasteboard.bottom) {
       return false;
     }
-    final firstX = floorDiv(local.left.floor(), tileSize);
-    final lastX = floorDiv(local.right.ceil() - 1, tileSize);
-    final firstY = floorDiv(local.top.floor(), tileSize);
-    final lastY = floorDiv(local.bottom.ceil() - 1, tileSize);
+    final (:firstX, :lastX, :firstY, :lastY) = tileRangeCovering(
+      left: local.left,
+      top: local.top,
+      right: local.right,
+      bottom: local.bottom,
+      tileSize: tileSize,
+    );
     for (var y = firstY; y <= lastY; y += 1) {
       for (var x = firstX; x <= lastX; x += 1) {
         final tile = surface.tileAt(TileCoord(x: x, y: y));

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
 import '../text/app_strings.dart';
-import '../text/full_width_numerals.dart';
 import '../widgets/app_window.dart';
+import 'size_fields_row.dart';
 import 'canvas_size_dialog.dart' show CanvasSizeDialog;
 
 /// The project camera (shooting frame) size — W×H fields plus the common
@@ -95,41 +95,11 @@ class _CameraSizeDialogState extends State<_CameraSizeDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: AppWindowField(
-                  label: strings.canvasWidthLabel,
-                  emphasized: true,
-                  child: TextField(
-                    key: const ValueKey<String>('camera-size-width-field'),
-                    controller: _widthController,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: halfWidthDigitsOnly,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(8, 0, 8, 7),
-                child: Text('×'),
-              ),
-              Expanded(
-                child: AppWindowField(
-                  label: strings.canvasHeightLabel,
-                  emphasized: true,
-                  child: TextField(
-                    key: const ValueKey<String>('camera-size-height-field'),
-                    controller: _heightController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: halfWidthDigitsOnly,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ),
-            ],
+          SizeFieldsRow(
+            keyPrefix: 'camera-size',
+            widthController: _widthController,
+            heightController: _heightController,
+            onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
           Wrap(

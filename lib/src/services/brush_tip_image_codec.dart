@@ -61,37 +61,23 @@ Future<BrushTipMask> decodeBrushTipImage(
       }
     }
 
-    var maskWidth = width;
-    var maskHeight = height;
-    final longSide = math.max(width, height);
-    if (longSide > maxBrushTipMaskSide) {
-      final scale = maxBrushTipMaskSide / longSide;
-      final scaledWidth = math.max(1, (width * scale).round());
-      final scaledHeight = math.max(1, (height * scale).round());
+    final fit = brushTipMaskFitted(width, height);
+    if (fit.width != width || fit.height != height) {
       gray = _resizeGray(
         gray,
         width: width,
         height: height,
-        newWidth: scaledWidth,
-        newHeight: scaledHeight,
+        newWidth: fit.width,
+        newHeight: fit.height,
       );
-      maskWidth = scaledWidth;
-      maskHeight = scaledHeight;
     }
 
-    final side = math.max(maskWidth, maskHeight);
-    final alpha = Uint8List(side * side);
-    final offsetX = (side - maskWidth) ~/ 2;
-    final offsetY = (side - maskHeight) ~/ 2;
-    for (var y = 0; y < maskHeight; y += 1) {
-      alpha.setRange(
-        (offsetY + y) * side + offsetX,
-        (offsetY + y) * side + offsetX + maskWidth,
-        gray,
-        y * maskWidth,
-      );
-    }
-    return BrushTipMask(id: id, size: side, alpha: alpha);
+    return BrushTipMask.square(
+      id: id,
+      pixels: gray,
+      width: fit.width,
+      height: fit.height,
+    );
   } finally {
     image.dispose();
   }

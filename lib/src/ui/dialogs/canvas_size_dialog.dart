@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../text/full_width_numerals.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../widgets/app_window.dart';
+import 'size_fields_row.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
@@ -123,41 +123,11 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: AppWindowField(
-                  label: strings.canvasWidthLabel,
-                  emphasized: true,
-                  child: TextField(
-                    key: const ValueKey<String>('canvas-size-width-field'),
-                    controller: _widthController,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: halfWidthDigitsOnly,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(8, 0, 8, 7),
-                child: Text('×'),
-              ),
-              Expanded(
-                child: AppWindowField(
-                  label: strings.canvasHeightLabel,
-                  emphasized: true,
-                  child: TextField(
-                    key: const ValueKey<String>('canvas-size-height-field'),
-                    controller: _heightController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: halfWidthDigitsOnly,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ),
-            ],
+          SizeFieldsRow(
+            keyPrefix: 'canvas-size',
+            widthController: _widthController,
+            heightController: _heightController,
+            onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
           Wrap(

@@ -472,39 +472,13 @@ class _TimelineFrameRangeGestureLayerState
               widget.callbacks.onTapClear(widget.row);
             }
           },
-          child: RawGestureDetector(
-            // Translucent: the cells' pointer-down select keeps firing;
-            // only the pan recognizer competes in the arena. Touch joins
-            // per the input policy (UI-R22 #6): editing unless the timeline
-            // scroll owns touch. EAGER slop (UI-R22F #2): the edit pan
-            // accepts at the viewport recognizers' hit slop, so slow small
-            // pen drags select instead of losing the arena to the scroll.
-            behavior: HitTestBehavior.translucent,
-            gestures: <Type, GestureRecognizerFactory>{
-              EagerPanGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<
-                    EagerPanGestureRecognizer
-                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
-                    recognizer,
-                  ) {
-                    recognizer.supportedDevices =
-                        AppInput.timelineEditPanDevices;
-                    // PEN-11: RawGestureDetector does NOT inject the
-                    // device gesture settings (only GestureDetector
-                    // does) — without them this pan waits for kTouchSlop
-                    // 18 while the viewport accepts at the DEVICE hit
-                    // slop (~8 on Android): slow pen drags lost the
-                    // arena on tablets.
-                    recognizer.gestureSettings =
-                        MediaQuery.maybeGestureSettingsOf(context);
-                    recognizer.dragStartBehavior = DragStartBehavior.down;
-                    recognizer.onStart = (details) =>
-                        _startDrag(details.localPosition);
-                    recognizer.onUpdate = _updateDrag;
-                    recognizer.onEnd = (_) => _endDrag();
-                    recognizer.onCancel = _cancelDrag;
-                  }),
-            },
+          child: _eagerPanDetector(
+            context: context,
+            debugOwner: this,
+            onStart: _startDrag,
+            onUpdate: _updateDrag,
+            onEnd: _endDrag,
+            onCancel: _cancelDrag,
           ),
         ),
       ),
@@ -876,32 +850,49 @@ class _TimelineLaneRangeGestureLayerState
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTapUp: (_) => widget.callbacks.onTapClear(),
-          child: RawGestureDetector(
-            behavior: HitTestBehavior.translucent,
-            gestures: <Type, GestureRecognizerFactory>{
-              EagerPanGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<
-                    EagerPanGestureRecognizer
-                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
-                    recognizer,
-                  ) {
-                    recognizer.supportedDevices =
-                        AppInput.timelineEditPanDevices;
-                    // PEN-11: device gesture settings (RawGestureDetector
-                    // does not inject them — kTouchSlop 18 vs device ~8).
-                    recognizer.gestureSettings =
-                        MediaQuery.maybeGestureSettingsOf(context);
-                    recognizer.dragStartBehavior = DragStartBehavior.down;
-                    recognizer.onStart = (details) =>
-                        _startDrag(details.localPosition);
-                    recognizer.onUpdate = _updateDrag;
-                    recognizer.onEnd = (_) => _endDrag();
-                    recognizer.onCancel = _cancelDrag;
-                  }),
-            },
+          child: _eagerPanDetector(
+            context: context,
+            debugOwner: this,
+            onStart: _startDrag,
+            onUpdate: _updateDrag,
+            onEnd: _endDrag,
+            onCancel: _cancelDrag,
           ),
         ),
       ),
     );
   }
+}
+
+/// The eager pan that owns a range drag from its first pixel — one
+/// recogniser set-up for the cell layer and the lane layer (the audit's
+/// clone scan, 2026-09-03).
+Widget _eagerPanDetector({
+  required BuildContext context,
+  required Object debugOwner,
+  required void Function(Offset localPosition) onStart,
+  required GestureDragUpdateCallback onUpdate,
+  required VoidCallback onEnd,
+  required VoidCallback onCancel,
+}) {
+  return RawGestureDetector(
+    behavior: HitTestBehavior.translucent,
+    gestures: <Type, GestureRecognizerFactory>{
+      EagerPanGestureRecognizer:
+          GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+            () => EagerPanGestureRecognizer(debugOwner: debugOwner),
+            (recognizer) {
+              recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+              recognizer.gestureSettings = MediaQuery.maybeGestureSettingsOf(
+                context,
+              );
+              recognizer.dragStartBehavior = DragStartBehavior.down;
+              recognizer.onStart = (details) => onStart(details.localPosition);
+              recognizer.onUpdate = onUpdate;
+              recognizer.onEnd = (_) => onEnd();
+              recognizer.onCancel = onCancel;
+            },
+          ),
+    },
+  );
 }

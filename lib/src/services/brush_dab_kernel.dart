@@ -5,11 +5,11 @@ import 'dart:typed_data';
 import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
-import '../models/brush_tip_shape.dart';
 import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_dab_tip_geometry.dart';
 import 'brush_tip_mask_sampling.dart';
 
 /// THE geometric dab kernel — the one both raster routes run.
@@ -181,30 +181,17 @@ class BrushDabPlan {
       return null;
     }
 
-    final radius = dab.size / 2.0;
-    final hardRadius = radius * dab.hardness;
-    final isRound = dab.tipShape == BrushTipShape.round;
-    // Elliptical / rotated tips evaluate coverage in tip space: rotate the
-    // pixel offset onto the tip axes and stretch the minor axis by
-    // 1/roundness, turning the ellipse test back into the circle test. The
-    // classic circle (roundness == 1, rotation-invariant) and axis-aligned
-    // square keep their original code path so existing strokes stay
-    // byte-identical.
-    final tipMask = dab.tipMask;
-    final isEllipse = tipMask == null && isRound && dab.roundness < 1.0;
-    final isRotatedRect =
-        tipMask == null &&
-        !isRound &&
-        (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
-    var tipCos = 1.0;
-    var tipSin = 0.0;
-    var inverseRoundness = 1.0;
-    if (isEllipse || isRotatedRect || tipMask != null) {
-      final angleRadians = dab.angleDegrees * (math.pi / 180.0);
-      tipCos = math.cos(angleRadians);
-      tipSin = math.sin(angleRadians);
-      inverseRoundness = 1.0 / dab.roundness;
-    }
+    final (
+      :radius,
+      :hardRadius,
+      :isRound,
+      :tipMask,
+      :isEllipse,
+      :isRotatedRect,
+      :tipCos,
+      :tipSin,
+      :inverseRoundness,
+    ) = brushDabTipGeometry(dab);
     final centerX = dab.center.x;
     final centerY = dab.center.y;
 

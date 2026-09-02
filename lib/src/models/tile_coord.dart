@@ -55,3 +55,21 @@ void _validatePositive(int value, String fieldName) {
     );
   }
 }
+
+/// The tile coordinates a pixel-space rectangle touches, inclusive at both
+/// ends: every tile that overlaps [left]..[right) × [top]..[bottom).
+///
+/// 🚨ONE walk for the surface painter and the provisional ink pictures
+/// (the audit's clone scan, 2026-09-03).
+({int firstX, int lastX, int firstY, int lastY}) tileRangeCovering({
+  required double left,
+  required double top,
+  required double right,
+  required double bottom,
+  required int tileSize,
+}) => (
+  firstX: floorDiv(left.floor(), tileSize),
+  lastX: floorDiv(right.ceil() - 1, tileSize),
+  firstY: floorDiv(top.floor(), tileSize),
+  lastY: floorDiv(bottom.ceil() - 1, tileSize),
+);
