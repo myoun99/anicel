@@ -476,16 +476,6 @@ CanvasPoint? resolveAnchorTrackAt(
   );
 }
 
-/// Component-wise linear interpolation; rotation lerps as-is (no
-/// wrap-around), so keyframing 0 → 360 produces a full turn.
-TransformPose lerpTransformPose(TransformPose a, TransformPose b, double t) {
-  return TransformPose(
-    center: lerpCanvasPoint(a.center, b.center, t),
-    zoom: lerpDouble(a.zoom, b.zoom, t),
-    rotationDegrees: lerpDouble(a.rotationDegrees, b.rotationDegrees, t),
-  );
-}
-
 CanvasPoint lerpCanvasPoint(CanvasPoint a, CanvasPoint b, double t) =>
     CanvasPoint(x: lerpDouble(a.x, b.x, t), y: lerpDouble(a.y, b.y, t));
 

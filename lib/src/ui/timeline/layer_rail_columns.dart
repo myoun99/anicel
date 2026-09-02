@@ -34,19 +34,6 @@ import '../input/control_press_claim.dart';
 /// The gap between the reserved section band and the first control slot.
 const double layerRailSectionGap = 8;
 
-/// ONE CELL of folder nesting (R5 #18). A row inside a folder spends one of
-/// these per level of depth and then draws a single ↳ in one more, so the
-/// leading cluster reads as a COUNT of columns rather than as an amount of
-/// blank: `␣ ↳ …` one deep, `␣ ␣ ↳ …` two deep.
-///
-/// It used to be `depth * 12` added to [layerRailSectionGap] — a number
-/// that matched no column, so a nested row's controls sat three quarters of
-/// a cell out of step with every unnested one and the eye read that as
-/// misalignment rather than as nesting (user, 2026-08-09: "그냥 1칸만
-/// 띄도록"). The value is the twirl slot's, because that is the column the
-/// indent pushes.
-const double layerRailNestingSlotWidth = layerLaneToggleSlotWidth;
-
 /// The TYPE BUTTON's slot (UI-R24 #7) — the row's KIND icon, on every row
 /// kind including attach rows (R10 R3 moved their placement arrow to the
 /// sheet slot). A fixed column of its own, so attach rows align with every

@@ -3,25 +3,9 @@ import 'package:flutter/material.dart';
 import '../editor_session_manager.dart';
 import '../theme/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
-import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 import '../input/control_press_claim.dart';
-
-/// The two-accent settings dialog (UI-R22 #5): accent 1 (selection,
-/// playhead, active toggles) and accent 2 (the secondary highlight —
-/// repeat pattern spans, selected union diamonds). Accent 2 follows
-/// accent 1's COMPLEMENT automatically unless overridden; both apply and
-/// persist immediately.
-Future<void> showAccentSettingsDialog(
-  BuildContext context, {
-  required EditorSessionManager session,
-}) {
-  return showDialog<void>(
-    context: context,
-    builder: (context) => _AccentSettingsDialog(session: session),
-  );
-}
 
 /// A compact swatch palette (hue sweep + the historical teal first).
 const List<Color> _presetAccents = [
@@ -35,34 +19,12 @@ const List<Color> _presetAccents = [
   Color(0xFF4EBF7E),
 ];
 
-class _AccentSettingsDialog extends StatelessWidget {
-  const _AccentSettingsDialog({required this.session});
-
-  final EditorSessionManager session;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppWindow(
-      windowKey: const ValueKey<String>('accent-settings-dialog'),
-      title: AppText.strings.accentTitle,
-      titleIcon: Icons.palette_outlined,
-      onClose: () => Navigator.of(context).pop(),
-      width: 420,
-      body: AccentSettingsSection(session: session),
-      actions: [
-        AppWindowAction(
-          label: AppText.strings.commonClose,
-          actionKey: const ValueKey<String>('settings-accent-close'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
-    );
-  }
-}
-
-/// The accent-settings CONTENT, dialog-free (SAVE-1: the Preferences
-/// dialog embeds it as a section; the standalone dialog wraps it).
+/// The two-accent settings (UI-R22 #5): accent 1 (selection, playhead,
+/// active toggles) and accent 2 (the secondary highlight — repeat pattern
+/// spans, selected union diamonds). Accent 2 follows accent 1's COMPLEMENT
+/// automatically unless overridden; both apply and persist immediately.
+/// Dialog-free: SAVE-1 made the Preferences dialog its one home (the
+/// standalone dialog that wrapped it went with its caller).
 class AccentSettingsSection extends StatelessWidget {
   const AccentSettingsSection({super.key, required this.session});
 

@@ -139,26 +139,6 @@ Project? updateLayerAnywhere(
   return found ? project.copyWith(tracks: tracks) : null;
 }
 
-/// Replaces the frame matching [frameId] within [layer] via [update]. Returns
-/// `null` if the layer has no such frame.
-Layer? updateFrameInLayer(
-  Layer layer,
-  FrameId frameId,
-  Frame Function(Frame frame) update,
-) {
-  var found = false;
-  final frames = layer.frames
-      .map((frame) {
-        if (frame.id != frameId) {
-          return frame;
-        }
-        found = true;
-        return update(frame);
-      })
-      .toList(growable: false);
-  return found ? layer.copyWith(frames: frames) : null;
-}
-
 /// Replaces the first frame matching [frameId] — searching every layer,
 /// the tracks' SE rows included — via [update]. Returns `null` if no
 /// frame matched.

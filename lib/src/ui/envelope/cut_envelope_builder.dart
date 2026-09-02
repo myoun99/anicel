@@ -90,14 +90,3 @@ CutId cutEnvelopeInkOwner(Project project, CutId cutId) {
   return cutId;
 }
 
-/// The envelope for a cut id, or null when the cut is gone.
-CutEnvelopeSource? buildCutEnvelopeSourceById(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) {
-        return buildCutEnvelopeSource(project: project, cut: cut);
-      }
-    }
-  }
-  return null;
-}

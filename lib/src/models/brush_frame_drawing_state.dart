@@ -46,5 +46,3 @@ class BrushFrameDrawingState {
     );
   }
 }
-
-typedef BrushFrameDrawing = BrushFrameDrawingState;

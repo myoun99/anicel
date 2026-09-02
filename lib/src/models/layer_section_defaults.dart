@@ -11,11 +11,6 @@ import 'track_id.dart';
 /// files on load. Deletion floors (SE ≥ 2, instruction ≥ 1) live in the
 /// session and command guards.
 
-/// The legacy cut-scoped SE id (pre-track files); kept for the migration
-/// and its fixtures.
-LayerId seLayerIdForCut(CutId cutId, int slot) =>
-    LayerId('${cutId.value}-se-$slot');
-
 LayerId seLayerIdForTrack(TrackId trackId, int slot) =>
     LayerId('${trackId.value}-se-$slot');
 
@@ -80,16 +75,6 @@ Layer createTrackTransitionLayer(TrackId trackId) {
 
 LayerId instructionLayerIdForCut(CutId cutId) =>
     LayerId('${cutId.value}-instructions');
-
-Layer createSeLayer({required CutId cutId, required int slot}) {
-  return Layer(
-    id: seLayerIdForCut(cutId, slot),
-    name: 'S$slot',
-    frames: const [],
-    timeline: const {},
-    kind: LayerKind.se,
-  );
-}
 
 /// A direction row's name, spelled OUT (유저 2026-08-21, A4-2: 「이름
 /// 축약하지마. DIR가아니라 제대로 풀네임 Direction N이 되도록」).
