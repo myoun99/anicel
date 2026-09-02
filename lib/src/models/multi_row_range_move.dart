@@ -204,12 +204,7 @@ class _MultiRowRangeMovePlanner {
     final frames = <Frame>[];
     for (final frameId in frameIds) {
       Frame? found;
-      for (final frame in source.frames) {
-        if (frame.id == frameId) {
-          found = frame;
-          break;
-        }
-      }
+      found = source.frameById(frameId);
       if (found == null) {
         return null;
       }

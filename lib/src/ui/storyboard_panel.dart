@@ -3110,15 +3110,9 @@ class _StoryboardSeRow extends StatelessWidget {
       }
       // The sheet's writing on the paper blocks.
       for (final block in blocks) {
-        String? dialogue;
-        String? seName;
-        for (final frame in layer.frames) {
-          if (frame.id == block.frameId) {
-            dialogue = frame.name;
-            seName = frame.seName;
-            break;
-          }
-        }
+        final frame = layer.frameById(block.frameId);
+        final dialogue = frame?.name;
+        final seName = frame?.seName;
         spans.add(
           _dialogueSpan(block, layer, dialogue, seName),
         );

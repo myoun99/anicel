@@ -2,6 +2,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_link_join.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
@@ -112,37 +113,20 @@ class LinkDuplicateLayerCommand implements Command {
         if (layerKindGroupsLayers(member.kind)) {
           continue;
         }
-        final copyMember = LayerLinkMember(
-          trackId: track.id,
-          cutId: cutId,
-          layerId: _requireCopyId(member.id),
+        groups = linkGroupsJoined(
+          groups,
+          origin: LayerLinkMember(
+            trackId: track.id,
+            cutId: cutId,
+            layerId: member.id,
+          ),
+          joiner: LayerLinkMember(
+            trackId: track.id,
+            cutId: cutId,
+            layerId: _requireCopyId(member.id),
+          ),
+          plannedGroupId: newGroupIdBySource[member.id],
         );
-        final existingIndex = groups.indexWhere(
-          (group) => group.contains(cutId: cutId, layerId: member.id),
-        );
-        if (existingIndex != -1) {
-          final existing = groups[existingIndex];
-          groups[existingIndex] = existing.copyWith(
-            members: [...existing.members, copyMember],
-          );
-        } else {
-          groups.add(
-            LayerLinkGroup(
-              id: newGroupIdBySource[member.id] ??
-                  (throw StateError(
-                    'No planned group id for ${member.id}',
-                  )),
-              members: [
-                LayerLinkMember(
-                  trackId: track.id,
-                  cutId: cutId,
-                  layerId: member.id,
-                ),
-                copyMember,
-              ],
-            ),
-          );
-        }
       }
 
       return _projectWithCutLayers(

@@ -4,6 +4,7 @@ import '../../models/cut_id.dart';
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
 import '../../models/frame.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/project.dart';
 import '../../models/timeline_coverage.dart';
@@ -89,16 +90,11 @@ Frame? celGroupMemberFrame({
   if (identical(member, base) || member.id == base.id) {
     return baseFrame;
   }
-  Frame? byId(Layer layer, Object? id) {
+  Frame? byId(Layer layer, FrameId? id) {
     if (id == null) {
       return null;
     }
-    for (final frame in layer.frames) {
-      if (frame.id == id) {
-        return frame;
-      }
-    }
-    return null;
+    return layer.frameById(id);
   }
 
   if (isSyncedAttachedLayer(member)) {

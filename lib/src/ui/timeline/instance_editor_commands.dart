@@ -330,12 +330,7 @@ Future<void> editSeEntryInstance(
     return;
   }
   Frame? entry;
-  for (final frame in layer.frames) {
-    if (frame.id == block.frameId) {
-      entry = frame;
-      break;
-    }
-  }
+  entry = layer.frameById(block.frameId);
   if (entry == null) {
     return;
   }

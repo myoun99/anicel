@@ -1208,7 +1208,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
-  List<LayerId> deletableSelectedLayerIds() {
+  List<LayerId> deletableSelectedLayerIds() =>
+      _selectedLayerIdsWhere(canDeleteLayer);
+
+  /// The selected LAYER rows whose layer passes [keep], in selection order,
+  /// once each — the one walk behind [deletableSelectedLayerIds] and
+  /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
+  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) {
     final selection = rowSelection.value;
     if (selection.isEmpty) {
       return const [];
@@ -1220,7 +1226,7 @@ class EditorSessionManager extends ChangeNotifier {
         continue;
       }
       final layer = byId[row.layerId];
-      if (layer != null && !ids.contains(layer.id) && canDeleteLayer(layer)) {
+      if (layer != null && !ids.contains(layer.id) && keep(layer)) {
         ids.add(layer.id);
       }
     }
@@ -3430,26 +3436,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// Read-only-in-cut rows are the exception, and they are the same ones
   /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
   /// inside a cut is not this cut's to edit.
-  List<LayerId> renameableSelectedLayerIds() {
-    final selection = rowSelection.value;
-    if (selection.isEmpty) {
-      return const [];
-    }
-    final byId = {for (final layer in layers) layer.id: layer};
-    final ids = <LayerId>[];
-    for (final row in selection) {
-      if (row is! LayerRowAddress) {
-        continue;
-      }
-      final layer = byId[row.layerId];
-      if (layer != null &&
-          !ids.contains(layer.id) &&
-          !layerKindIsReadOnlyInCut(layer.kind)) {
-        ids.add(layer.id);
-      }
-    }
-    return ids;
-  }
+  List<LayerId> renameableSelectedLayerIds() => _selectedLayerIdsWhere(
+    (layer) => !layerKindIsReadOnlyInCut(layer.kind),
+  );
 
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {

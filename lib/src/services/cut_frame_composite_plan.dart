@@ -958,10 +958,5 @@ Frame? resolveExposedFrameAt(Layer layer, int frameIndex) {
     return null;
   }
 
-  for (final frame in layer.frames) {
-    if (frame.id == frameId) {
-      return frame;
-    }
-  }
-  return null;
+  return layer.frameById(frameId);
 }

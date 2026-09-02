@@ -44,15 +44,9 @@ List<Widget> timelineRowSeLabelOverlays({
         block.startIndex >= frameEndIndexExclusive) {
       continue;
     }
-    String? dialogue;
-    String? seName;
-    for (final frame in layer.frames) {
-      if (frame.id == block.frameId) {
-        dialogue = frame.name;
-        seName = frame.seName;
-        break;
-      }
-    }
+    final frame = layer.frameById(block.frameId);
+    final dialogue = frame?.name;
+    final seName = frame?.seName;
     overlays.add(
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(

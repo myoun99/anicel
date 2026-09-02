@@ -90,12 +90,7 @@ Frame? resolveAttachedFrameAt({
   if (frameId == null) {
     return null;
   }
-  for (final frame in attached.frames) {
-    if (frame.id == frameId) {
-      return frame;
-    }
-  }
-  return null;
+  return attached.frameById(frameId);
 }
 
 /// The attach layer's DERIVED timeline: the base's drawing blocks with each

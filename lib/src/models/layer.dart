@@ -213,6 +213,19 @@ class Layer {
   /// [TimelineRunBehavior].
   final List<TimelineRunBehavior> runBehaviors;
 
+  /// The cel with [id], or null.
+  ///
+  /// 🚨ONE lookup. Twelve call sites used to spell this loop themselves
+  /// (the audit's clone scan, 2026-09-03).
+  Frame? frameById(FrameId id) {
+    for (final frame in frames) {
+      if (frame.id == id) {
+        return frame;
+      }
+    }
+    return null;
+  }
+
   Layer copyWith({
     LayerId? id,
     String? name,

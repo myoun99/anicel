@@ -295,10 +295,9 @@ class CanvasController {
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
         for (final layer in cut.layers) {
-          for (final frame in layer.frames) {
-            if (frame.id == frameId) {
-              return frame;
-            }
+          final frame = layer.frameById(frameId);
+          if (frame != null) {
+            return frame;
           }
         }
       }

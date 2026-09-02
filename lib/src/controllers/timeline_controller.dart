@@ -764,13 +764,8 @@ class TimelineController {
   }
 
   Frame _requireFrameInLayer({required Layer layer, required FrameId frameId}) {
-    for (final frame in layer.frames) {
-      if (frame.id == frameId) {
-        return frame;
-      }
-    }
-
-    throw StateError('Frame not found in layer ${layer.id}: $frameId');
+    return layer.frameById(frameId) ??
+        (throw StateError('Frame not found in layer ${layer.id}: $frameId'));
   }
 
   /// THE run-behavior normalize choke point (UI-R8/R9): every timeline
@@ -854,11 +849,6 @@ class TimelineController {
   }
 
   Frame? _frameOrNull({required Layer layer, required FrameId frameId}) {
-    for (final frame in layer.frames) {
-      if (frame.id == frameId) {
-        return frame;
-      }
-    }
-    return null;
+    return layer.frameById(frameId);
   }
 }

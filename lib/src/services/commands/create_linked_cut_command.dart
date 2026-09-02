@@ -3,6 +3,7 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/layer_section_defaults.dart';
 import '../command.dart';
@@ -95,35 +96,20 @@ class CreateLinkedCutCommand implements Command {
         if (!layerIdMap.containsKey(layer.id)) {
           continue;
         }
-        final copyMember = LayerLinkMember(
-          trackId: track.id,
-          cutId: newCutId,
-          layerId: _requireCopyId(layer.id),
+        groups = linkGroupsJoined(
+          groups,
+          origin: LayerLinkMember(
+            trackId: track.id,
+            cutId: sourceCutId,
+            layerId: layer.id,
+          ),
+          joiner: LayerLinkMember(
+            trackId: track.id,
+            cutId: newCutId,
+            layerId: _requireCopyId(layer.id),
+          ),
+          plannedGroupId: newGroupIdBySource[layer.id],
         );
-        final existingIndex = groups.indexWhere(
-          (group) => group.contains(cutId: sourceCutId, layerId: layer.id),
-        );
-        if (existingIndex != -1) {
-          final existing = groups[existingIndex];
-          groups[existingIndex] = existing.copyWith(
-            members: [...existing.members, copyMember],
-          );
-        } else {
-          groups.add(
-            LayerLinkGroup(
-              id: newGroupIdBySource[layer.id] ??
-                  (throw StateError('No planned group id for ${layer.id}')),
-              members: [
-                LayerLinkMember(
-                  trackId: track.id,
-                  cutId: sourceCutId,
-                  layerId: layer.id,
-                ),
-                copyMember,
-              ],
-            ),
-          );
-        }
       }
 
       final sourceIndex = track.cuts.indexWhere(

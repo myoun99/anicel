@@ -4,6 +4,7 @@ import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
 import '../../models/project_id.dart';
@@ -133,14 +134,14 @@ class ConvertToLinkedCutCommand implements Command {
         },
       );
 
-      groups = _linkPair(
+      groups = linkGroupsJoined(
         groups,
-        origin: (
+        origin: LayerLinkMember(
           trackId: originTrack.id,
           cutId: originCutId,
           layerId: origin.id,
         ),
-        joiner: (
+        joiner: LayerLinkMember(
           trackId: targetTrack.id,
           cutId: targetCutId,
           layerId: target.id,
@@ -159,14 +160,14 @@ class ConvertToLinkedCutCommand implements Command {
       targetLayers.add(
         origin.copyWith(id: copyId, timeline: const {}, folderId: null),
       );
-      groups = _linkPair(
+      groups = linkGroupsJoined(
         groups,
-        origin: (
+        origin: LayerLinkMember(
           trackId: originTrack.id,
           cutId: originCutId,
           layerId: originLayerId,
         ),
-        joiner: (
+        joiner: LayerLinkMember(
           trackId: targetTrack.id,
           cutId: targetCutId,
           layerId: copyId,
@@ -182,16 +183,16 @@ class ConvertToLinkedCutCommand implements Command {
       originLayers.add(
         target.copyWith(id: copyId, timeline: const {}, folderId: null),
       );
-      groups = _linkPair(
+      groups = linkGroupsJoined(
         groups,
         // The TARGET side is canonical for a target-only layer (it holds
         // the pixels); the origin gets the copy.
-        origin: (
+        origin: LayerLinkMember(
           trackId: targetTrack.id,
           cutId: targetCutId,
           layerId: targetLayerId,
         ),
-        joiner: (
+        joiner: LayerLinkMember(
           trackId: originTrack.id,
           cutId: originCutId,
           layerId: copyId,
@@ -248,47 +249,6 @@ class ConvertToLinkedCutCommand implements Command {
     }
     final replacement = retargets[frameId];
     return replacement == null ? exposure : exposure.copyWith(frameId: replacement);
-  }
-
-  List<LayerLinkGroup> _linkPair(
-    List<LayerLinkGroup> groups, {
-    required ({TrackId trackId, CutId cutId, LayerId layerId}) origin,
-    required ({TrackId trackId, CutId cutId, LayerId layerId}) joiner,
-    required String? plannedGroupId,
-  }) {
-    final joinerMember = LayerLinkMember(
-      trackId: joiner.trackId,
-      cutId: joiner.cutId,
-      layerId: joiner.layerId,
-    );
-    final existingIndex = groups.indexWhere(
-      (group) => group.contains(cutId: origin.cutId, layerId: origin.layerId),
-    );
-    if (existingIndex != -1) {
-      final existing = groups[existingIndex];
-      return [
-        for (var i = 0; i < groups.length; i += 1)
-          if (i == existingIndex)
-            existing.copyWith(members: [...existing.members, joinerMember])
-          else
-            groups[i],
-      ];
-    }
-    return [
-      ...groups,
-      LayerLinkGroup(
-        id: plannedGroupId ??
-            (throw StateError('No planned group id for ${origin.layerId}')),
-        members: [
-          LayerLinkMember(
-            trackId: origin.trackId,
-            cutId: origin.cutId,
-            layerId: origin.layerId,
-          ),
-          joinerMember,
-        ],
-      ),
-    ];
   }
 
   BrushFrameKey _celKey(

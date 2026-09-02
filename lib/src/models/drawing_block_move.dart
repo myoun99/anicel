@@ -129,12 +129,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
       return null;
     }
   }
-  for (final frame in source.frames) {
-    if (frame.id == frameId) {
-      movedFrame = frame;
-      break;
-    }
-  }
+  movedFrame = source.frameById(frameId);
   if (movedFrame == null) {
     return null;
   }
@@ -298,12 +293,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   }
   for (final frameId in frameIds) {
     Frame? frame;
-    for (final candidate in source.frames) {
-      if (candidate.id == frameId) {
-        frame = candidate;
-        break;
-      }
-    }
+    frame = source.frameById(frameId);
     if (frame == null) {
       return null;
     }
