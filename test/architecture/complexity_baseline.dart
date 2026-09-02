@@ -906,7 +906,6 @@ const complexityBaseline = <String>{
   'lib/src/ui/timeline/layer_drop_policy.dart::layerDragRun',
   'lib/src/ui/timeline/layer_drop_policy.dart::modelInsertionForSlot',
   'lib/src/ui/timeline/layer_drop_policy.dart::resolveEffectDrop',
-  'lib/src/ui/timeline/layer_drop_policy.dart::resolveLayerDrop',
   'lib/src/ui/timeline/layer_drop_policy.dart::resolveLayerDropOnRow',
   'lib/src/ui/timeline/layer_label_controls.dart::LayerBlendModeChip.build',
   'lib/src/ui/timeline/layer_label_controls.dart::LayerMarkChip._markTrigger',

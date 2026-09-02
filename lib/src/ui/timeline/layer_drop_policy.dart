@@ -317,67 +317,16 @@ LayerDropPlan? resolveLayerDrop({
   /// pointer (the menu moves, the tests), and the closed interval stands.
   LayerId? pointerInRow,
 }) {
-  final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
-  if (run == null || insertAt < 0 || insertAt > stack.length) {
-    return null;
-  }
-  if (insertAt > run.start && insertAt < run.endExclusive) {
-    return null; // Inside itself.
-  }
-  // ④ (user, 2026-08-12): 「드래그 시작 시 자기 행 위에 뜨는 강조선 삭제 —
-  // 위치가 실제로 바뀌는 상황에서만 뜬다」.
-  //
-  // A run owns the gaps at BOTH its ends, and lifting it out to put it back
-  // there is not a landing. It used to resolve to a plan whose order was
-  // the order it started with, so the caret was drawn the instant a drag
-  // began — announcing a move nobody had made yet.
-  //
-  // The forced intents are exempt: dropping ON a row says something a gap
-  // cannot ("ride this base", "go inside this folder"), and that intent is
-  // real even when the row lands exactly where it already sat.
-  if (forceJoinFolderId == null &&
-      forceMountBaseId == null &&
-      (insertAt == run.start || insertAt == run.endExclusive)) {
-    return null;
-  }
-  final moving = stack.firstWhere((layer) => layer.id == movingId);
-  final movingSection = timelineSectionForLayerKind(moving.kind);
-  final movingRank = timelineCameraSectionRank(moving.kind);
-
-  final carried = stack.sublist(run.start, run.endExclusive);
-  final rest = [
-    for (var i = 0; i < stack.length; i += 1)
-      if (i < run.start || i >= run.endExclusive) stack[i],
-  ];
-  // The insertion point, restated against the list the run was lifted out
-  // of: everything above the run slid down by its length.
-  final restInsertAt = insertAt <= run.start
-      ? insertAt
-      : insertAt - carried.length;
-
-  // SECTIONS: the row below the slot decides which one we are in (the
-  // bottom of the stack is the first section by construction).
-  final below = restInsertAt > 0 ? rest[restInsertAt - 1] : null;
-  final above = restInsertAt < rest.length ? rest[restInsertAt] : null;
-  final neighbour = below ?? above;
-  // 🚨A5-4: the RANK travels with the section. Inside the camera section the
-  // three kinds have a fixed order (camera on top, then transition, then
-  // direction), so 「디렉션 = 디렉션끼리만」 is the same sentence as "may not
-  // cross a section", one level down.
-  //
-  // ⚠️This is also what made the move IRREVERSIBLE. The section is read off
-  // the row BELOW the slot, so one gap answers differently depending on
-  // which side is asked — a Direction row could climb past the camera and
-  // then find the single gap that would put it back refused, because that
-  // gap's `below` is a drawing row. Comparing the rank refuses the climb
-  // itself, and the pair stops being asymmetric because neither direction
-  // is legal.
-  if (neighbour != null &&
-      (timelineSectionForLayerKind(neighbour.kind) != movingSection ||
-          timelineCameraSectionRank(neighbour.kind) != movingRank)) {
-    return null;
-  }
-
+  final forced = forceJoinFolderId != null || forceMountBaseId != null;
+  final lift = _liftIfLanding(
+    stack,
+    movingId,
+    insertAt,
+    alsoMoving: alsoMoving,
+    pointerInRow: pointerInRow,
+    forced: forced,
+  );
+  if (lift == null) return null;
   // MEMBERSHIP: the folder the slot sits inside is the folder of the row
   // BELOW it — a member names its own folder, and a folder row (whose run
   // has just ended) names its parent. One formula covers both, and the
@@ -387,178 +336,339 @@ LayerDropPlan? resolveLayerDrop({
   // with no members, "inside it" and "outside, below it" are the SAME
   // slot. Landing in one takes an explicit intent — the caret hovering the
   // folder ROW — which is the drag's business, not the order's.
-  final joinedFolderId = forceJoinFolderId ?? below?.folderId;
-  final carriedIds = {for (final layer in carried) layer.id};
-  final folderIds = <LayerId, LayerId?>{
-    for (final layer in carried)
-      // Rows whose parent travels WITH them keep pointing at it; only the
-      // run's own top-level rows change hands.
-      if (layer.folderId == null || !carriedIds.contains(layer.folderId))
-        if (layer.folderId != joinedFolderId) layer.id: joinedFolderId,
-  };
-
-  // ATTACH (P3): the run's OWN group first — a row already inside one keeps
-  // its base while the landing still KEEPS the group (F-31②: at the
-  // boundary that is the half the pointer is in), which is what makes
-  // re-ordering within a group an ordinary move. An ORGANIZER folder answers
-  // its base here too, so a 공정 folder can be repositioned inside its group.
-  //
-  // ⚠️Passing the pointer here changes no OUTCOME today, and that is a
-  // proof rather than an oversight: a slot that touches this group cannot
-  // be strictly inside another one (the neighbour that puts it in this
-  // group is not in that one), so [_slotInsideGroup] is null either way
-  // and the run detaches instead of mounting. It is asked with the pointer
-  // anyway because it is the same question as the detach test, and two
-  // spellings of one question is how they drift apart.
-  final runGroupBase =
-      moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, stack);
-  final keepsOwnGroup =
-      runGroupBase != null &&
-      _slotKeepsGroup(rest, restInsertAt, runGroupBase, pointerInRow);
-  // Then the group the slot is strictly INSIDE, which can only be another
-  // one (a slot touching this run's own group answered above).
-  final insideGroup = keepsOwnGroup
-      ? null
-      : _slotInsideGroup(rest, restInsertAt, ownBase: runGroupBase);
-
-  // Staying in the group still has a DIRECTION: crossing the base's picture
-  // turns an above row into a below one (the same rule an organizer folder
-  // reads off the stack). Nothing else about the attachment moves.
-  ({LayerId layerId, AttachedPlacement placement})? sideChange;
-  if (keepsOwnGroup && moving.attachedToLayerId == runGroupBase) {
-    final side = _slotSideOfBase(rest, restInsertAt, runGroupBase);
-    if (side != null && side != moving.attachedPlacement) {
-      sideChange = (layerId: moving.id, placement: side);
-    }
-  }
-
-  // R5 #15: dropping ON a drawing row names the base outright. It reads the
-  // same as landing inside an existing group — the checks below are the
-  // ones that matter — but it reaches the case a gap cannot: a base whose
-  // group is still empty.
-  final target =
-      insideGroup ??
-      (forceMountBaseId == null
-          ? null
-          : (baseId: forceMountBaseId, placement: forceMountPlacement));
-
-  var mounts =
-      const <
-        ({LayerId layerId, LayerId baseId, AttachedPlacement placement})
-      >[];
-  if (target != null) {
-    final insideGroup = target;
-    final base = stack.firstWhere((layer) => layer.id == insideGroup.baseId);
-    // ⑦ (user, 2026-08-12): 「폴더도 드래그 드롭으로 어태치 장착 가능(동일
-    // 규칙). 불가능한 경우는 「어태치 폴더 안에 폴더」 구조뿐이고 그때는
-    // 안내문을 낸다」.
-    //
-    // A folder never becomes a rider itself — an organizer folder IS its
-    // members riding one base ([attachOrganizerBaseOf]) — so a folder run
-    // mounts the rows it carries and the folder follows by derivation. That
-    // is why this asks for a LIST of riders rather than "the moved row".
-    final riders = layerKindGroupsLayers(moving.kind)
-        ? [
-            for (final layer in carried)
-              if (!layerKindGroupsLayers(layer.kind)) layer,
-          ]
-        : (run.endExclusive - run.start == 1 ? [moving] : const <Layer>[]);
-    // 🪦⑦ used to exclude one more shape here — a folder carrying a folder,
-    // because «an organizer folder is FLAT». That ban lived in the model
-    // (`attachOrganizerBaseOf` read DIRECT members, so a nested folder made
-    // an organizer impure) and 유저 2026-08-29 lifted it: nothing about
-    // drawing required it, and plain folders already nest. The walk reads
-    // the subtree's leaves now, so a carried folder is just structure and
-    // its leaves are the riders.
-    //
-    // ⛔What did NOT change: every leaf must still be an attach of the SAME
-    // base — 「a레이어 어태치 안에 있는 모든거는 a에 대한 어태치여야해」.
-    // `canMountLayerOnBase` below is where each rider answers for itself.
-    //
-    // No chaining: a row that carries attaches of its own is a base, and a
-    // base inside another group would make the relation chain.
-    final carriesAttaches = stack.any(
-      (other) => carriedIds.contains(other.attachedToLayerId),
-    );
-    if (riders.isEmpty ||
-        carriesAttaches ||
-        riders.any((row) => !canMountLayerOnBase(row: row, base: base))) {
-      // The slice cannot join this group, and letting it land there anyway
-      // would split a group that is unsplittable (R26 #36). The edges of the
-      // group are still open, so "next to it" stays reachable.
-      return null;
-    }
-    mounts = [
-      for (final row in riders)
-        (
-          layerId: row.id,
-          baseId: insideGroup.baseId,
-          placement: insideGroup.placement,
-        ),
-    ];
-  }
-
-  // DETACH is the same question asked of every attach row that TRAVELS: its
-  // base did not come along, and the landing no longer touches its group
-  // (user 2026-08-07: dragging an attach row out detaches it rather than
-  // refusing the drag). One rule covers the row the pointer held and the
-  // rows carried inside an organizer folder.
-  final mountedIds = {for (final mount in mounts) mount.layerId};
-  final detachIds = <LayerId>{
-    for (final layer in carried)
-      if (layer.attachedToLayerId != null &&
-          !carriedIds.contains(layer.attachedToLayerId) &&
-          !mountedIds.contains(layer.id) &&
-          !_slotKeepsGroup(
-            rest,
-            restInsertAt,
-            layer.attachedToLayerId!,
-            pointerInRow,
-          ))
-        layer.id,
-  };
-
-  final attach = LayerAttachDrop(
-    mounts: mounts,
-    sideChange: sideChange,
-    detachIds: detachIds,
+  final joinedFolderId = forceJoinFolderId ?? lift.below?.folderId;
+  final folderIds = _folderChanges(lift, joinedFolderId);
+  final attach = _attachPlan(
+    lift,
+    forceMountBaseId: forceMountBaseId,
+    forceMountPlacement: forceMountPlacement,
   );
-  final mountById = {for (final mount in mounts) mount.layerId: mount};
-  Layer settled(Layer layer) {
-    var next = folderIds.containsKey(layer.id)
-        ? layer.copyWith(folderId: folderIds[layer.id])
-        : layer;
-    final mount = mountById[layer.id];
-    if (mount != null) {
-      next = next.copyWith(
-        attachedToLayerId: mount.baseId,
-        attachedPlacement: mount.placement,
-      );
-    } else if (sideChange != null && layer.id == sideChange.layerId) {
-      next = next.copyWith(attachedPlacement: sideChange.placement);
-    } else if (detachIds.contains(layer.id)) {
-      next = next.copyWith(attachedToLayerId: null);
-    }
-    return next;
-  }
-
-  final placed = [
-    ...rest.sublist(0, restInsertAt),
-    for (final layer in carried) settled(layer),
-    ...rest.sublist(restInsertAt),
-  ];
+  if (attach == null) return null;
+  final placed = _placed(lift, folderIds, attach);
   // Validated WITH the attach change applied: dropping a plain row among a
   // 공정 organizer's members is legal precisely because it becomes one of
   // that base's attach rows, and the validator has to see that to agree.
-  if (folderStructureProblem(placed) != null) {
-    return null;
-  }
+  if (folderStructureProblem(placed) != null) return null;
   return LayerDropPlan(
     order: [for (final layer in placed) layer.id],
     folderIds: folderIds,
     joinedFolderId: joinedFolderId,
     attach: attach,
   );
+}
+
+/// The run lifted out of the stack, against the rest: everything a landing
+/// is judged against.
+class _Lift {
+  const _Lift({
+    required this.stack,
+    required this.moving,
+    required this.carried,
+    required this.carriedIds,
+    required this.rest,
+    required this.restInsertAt,
+    required this.pointerInRow,
+  });
+
+  factory _Lift.of(
+    List<Layer> stack,
+    LayerId movingId,
+    ({int start, int endExclusive}) run,
+    int insertAt,
+    LayerId? pointerInRow,
+  ) {
+    final carried = stack.sublist(run.start, run.endExclusive);
+    return _Lift(
+      stack: stack,
+      moving: stack.firstWhere((layer) => layer.id == movingId),
+      carried: carried,
+      carriedIds: {for (final layer in carried) layer.id},
+      rest: [
+        for (var i = 0; i < stack.length; i += 1)
+          if (i < run.start || i >= run.endExclusive) stack[i],
+      ],
+      // The insertion point, restated against the list the run was lifted
+      // out of: everything above the run slid down by its length.
+      restInsertAt: insertAt <= run.start
+          ? insertAt
+          : insertAt - carried.length,
+      pointerInRow: pointerInRow,
+    );
+  }
+
+  final List<Layer> stack;
+  final Layer moving;
+  final List<Layer> carried;
+  final Set<LayerId> carriedIds;
+  final List<Layer> rest;
+  final int restInsertAt;
+  final LayerId? pointerInRow;
+
+  /// SECTIONS: the row below the slot decides which one we are in (the
+  /// bottom of the stack is the first section by construction).
+  Layer? get below => restInsertAt > 0 ? rest[restInsertAt - 1] : null;
+  Layer? get above => restInsertAt < rest.length ? rest[restInsertAt] : null;
+}
+
+/// The lift, or null when the slot is no landing for this run or would
+/// take it out of its section.
+_Lift? _liftIfLanding(
+  List<Layer> stack,
+  LayerId movingId,
+  int insertAt, {
+  required Set<LayerId> alsoMoving,
+  required LayerId? pointerInRow,
+  required bool forced,
+}) {
+  final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
+  if (run == null ||
+      !_lands(run, insertAt, stackLength: stack.length, forced: forced)) {
+    return null;
+  }
+  final lift = _Lift.of(stack, movingId, run, insertAt, pointerInRow);
+  return _leavesSection(lift) ? null : lift;
+}
+
+/// Whether [insertAt] is a landing at all for [run].
+///
+/// ④ (user, 2026-08-12): 「드래그 시작 시 자기 행 위에 뜨는 강조선 삭제 —
+/// 위치가 실제로 바뀌는 상황에서만 뜬다」.
+///
+/// A run owns the gaps at BOTH its ends, and lifting it out to put it back
+/// there is not a landing. It used to resolve to a plan whose order was
+/// the order it started with, so the caret was drawn the instant a drag
+/// began — announcing a move nobody had made yet.
+///
+/// The forced intents are exempt: dropping ON a row says something a gap
+/// cannot ("ride this base", "go inside this folder"), and that intent is
+/// real even when the row lands exactly where it already sat.
+bool _lands(
+  ({int start, int endExclusive}) run,
+  int insertAt, {
+  required int stackLength,
+  required bool forced,
+}) {
+  if (insertAt < 0 || insertAt > stackLength) return false;
+  if (insertAt > run.start && insertAt < run.endExclusive) {
+    return false; // Inside itself.
+  }
+  return forced || (insertAt != run.start && insertAt != run.endExclusive);
+}
+
+/// 🚨A5-4: the RANK travels with the section. Inside the camera section the
+/// three kinds have a fixed order (camera on top, then transition, then
+/// direction), so 「디렉션 = 디렉션끼리만」 is the same sentence as "may not
+/// cross a section", one level down.
+///
+/// ⚠️This is also what made the move IRREVERSIBLE. The section is read off
+/// the row BELOW the slot, so one gap answers differently depending on
+/// which side is asked — a Direction row could climb past the camera and
+/// then find the single gap that would put it back refused, because that
+/// gap's `below` is a drawing row. Comparing the rank refuses the climb
+/// itself, and the pair stops being asymmetric because neither direction
+/// is legal.
+bool _leavesSection(_Lift lift) {
+  final neighbour = lift.below ?? lift.above;
+  if (neighbour == null) return false;
+  final moving = lift.moving;
+  return timelineSectionForLayerKind(neighbour.kind) !=
+          timelineSectionForLayerKind(moving.kind) ||
+      timelineCameraSectionRank(neighbour.kind) !=
+          timelineCameraSectionRank(moving.kind);
+}
+
+/// Rows whose parent travels WITH them keep pointing at it; only the run's
+/// own top-level rows change hands.
+Map<LayerId, LayerId?> _folderChanges(_Lift lift, LayerId? joinedFolderId) => {
+  for (final layer in lift.carried)
+    if (_changesFolder(lift, layer, joinedFolderId)) layer.id: joinedFolderId,
+};
+
+bool _changesFolder(_Lift lift, Layer layer, LayerId? joinedFolderId) {
+  final parent = layer.folderId;
+  final parentTravels = parent != null && lift.carriedIds.contains(parent);
+  return !parentTravels && parent != joinedFolderId;
+}
+
+typedef _Mount = ({
+  LayerId layerId,
+  LayerId baseId,
+  AttachedPlacement placement,
+});
+typedef _Target = ({LayerId baseId, AttachedPlacement placement});
+
+/// ATTACH (P3): the run's OWN group first — a row already inside one keeps
+/// its base while the landing still KEEPS the group (F-31②: at the
+/// boundary that is the half the pointer is in), which is what makes
+/// re-ordering within a group an ordinary move. An ORGANIZER folder answers
+/// its base here too, so a 공정 folder can be repositioned inside its group.
+///
+/// ⚠️Passing the pointer here changes no OUTCOME today, and that is a
+/// proof rather than an oversight: a slot that touches this group cannot
+/// be strictly inside another one (the neighbour that puts it in this
+/// group is not in that one), so [_slotInsideGroup] is null either way
+/// and the run detaches instead of mounting. It is asked with the pointer
+/// anyway because it is the same question as the detach test, and two
+/// spellings of one question is how they drift apart.
+///
+/// Then the group the slot is strictly INSIDE, which can only be another
+/// one (a slot touching this run's own group answered above). R5 #15:
+/// dropping ON a drawing row names the base outright. It reads the same as
+/// landing inside an existing group — the checks in [_mountsOn] are the
+/// ones that matter — but it reaches the case a gap cannot: a base whose
+/// group is still empty.
+LayerAttachDrop? _attachPlan(
+  _Lift lift, {
+  required LayerId? forceMountBaseId,
+  required AttachedPlacement forceMountPlacement,
+}) {
+  final moving = lift.moving;
+  final ownBase =
+      moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, lift.stack);
+  final keepsOwnGroup =
+      ownBase != null &&
+      _slotKeepsGroup(lift.rest, lift.restInsertAt, ownBase, lift.pointerInRow);
+  final _Target? target =
+      (keepsOwnGroup
+          ? null
+          : _slotInsideGroup(lift.rest, lift.restInsertAt, ownBase: ownBase)) ??
+      (forceMountBaseId == null
+          ? null
+          : (baseId: forceMountBaseId, placement: forceMountPlacement));
+  final mounts = target == null ? const <_Mount>[] : _mountsOn(lift, target);
+  if (mounts == null) return null;
+  return LayerAttachDrop(
+    mounts: mounts,
+    sideChange: keepsOwnGroup ? _sideChange(lift, ownBase) : null,
+    detachIds: _detachIds(lift, mounts),
+  );
+}
+
+/// Staying in the group still has a DIRECTION: crossing the base's picture
+/// turns an above row into a below one (the same rule an organizer folder
+/// reads off the stack). Nothing else about the attachment moves.
+({LayerId layerId, AttachedPlacement placement})? _sideChange(
+  _Lift lift,
+  LayerId ownBase,
+) {
+  final moving = lift.moving;
+  if (moving.attachedToLayerId != ownBase) return null;
+  final side = _slotSideOfBase(lift.rest, lift.restInsertAt, ownBase);
+  if (side == null || side == moving.attachedPlacement) return null;
+  return (layerId: moving.id, placement: side);
+}
+
+/// ⑦ (user, 2026-08-12): 「폴더도 드래그 드롭으로 어태치 장착 가능(동일
+/// 규칙). 불가능한 경우는 「어태치 폴더 안에 폴더」 구조뿐이고 그때는
+/// 안내문을 낸다」.
+///
+/// A folder never becomes a rider itself — an organizer folder IS its
+/// members riding one base ([attachOrganizerBaseOf]) — so a folder run
+/// mounts the rows it carries and the folder follows by derivation. That
+/// is why this is a LIST of riders rather than "the moved row".
+///
+/// 🪦⑦ used to exclude one more shape here — a folder carrying a folder,
+/// because «an organizer folder is FLAT». That ban lived in the model
+/// (`attachOrganizerBaseOf` read DIRECT members, so a nested folder made
+/// an organizer impure) and 유저 2026-08-29 lifted it: nothing about
+/// drawing required it, and plain folders already nest. The walk reads
+/// the subtree's leaves now, so a carried folder is just structure and
+/// its leaves are the riders.
+List<Layer> _ridersOf(_Lift lift) {
+  final moving = lift.moving;
+  if (!layerKindGroupsLayers(moving.kind)) {
+    return lift.carried.length == 1 ? [moving] : const <Layer>[];
+  }
+  return lift.carried
+      .where((layer) => !layerKindGroupsLayers(layer.kind))
+      .toList();
+}
+
+/// The mounts onto [target], or null when the slice cannot join that group
+/// — letting it land there anyway would split a group that is unsplittable
+/// (R26 #36). The edges of the group are still open, so "next to it" stays
+/// reachable.
+///
+/// ⛔What did NOT change with ⑦'s lift: every leaf must still be an attach
+/// of the SAME base — 「a레이어 어태치 안에 있는 모든거는 a에 대한
+/// 어태치여야해」. [canMountLayerOnBase] is where each rider answers for
+/// itself. No chaining: a row that carries attaches of its own is a base,
+/// and a base inside another group would make the relation chain.
+List<_Mount>? _mountsOn(_Lift lift, _Target target) {
+  final base = lift.stack.firstWhere((layer) => layer.id == target.baseId);
+  final riders = _ridersOf(lift);
+  final carriesAttaches = lift.stack.any(
+    (other) => lift.carriedIds.contains(other.attachedToLayerId),
+  );
+  if (riders.isEmpty ||
+      carriesAttaches ||
+      riders.any((row) => !canMountLayerOnBase(row: row, base: base))) {
+    return null;
+  }
+  return [
+    for (final row in riders)
+      (layerId: row.id, baseId: target.baseId, placement: target.placement),
+  ];
+}
+
+/// DETACH is the same question asked of every attach row that TRAVELS: its
+/// base did not come along, and the landing no longer touches its group
+/// (user 2026-08-07: dragging an attach row out detaches it rather than
+/// refusing the drag). One rule covers the row the pointer held and the
+/// rows carried inside an organizer folder.
+Set<LayerId> _detachIds(_Lift lift, List<_Mount> mounts) {
+  final mountedIds = {for (final mount in mounts) mount.layerId};
+  return {
+    for (final layer in lift.carried)
+      if (layer.attachedToLayerId != null &&
+          !lift.carriedIds.contains(layer.attachedToLayerId) &&
+          !mountedIds.contains(layer.id) &&
+          !_slotKeepsGroup(
+            lift.rest,
+            lift.restInsertAt,
+            layer.attachedToLayerId!,
+            lift.pointerInRow,
+          ))
+        layer.id,
+  };
+}
+
+/// The stack with the run put down in its slot, each carried row settled.
+List<Layer> _placed(
+  _Lift lift,
+  Map<LayerId, LayerId?> folderIds,
+  LayerAttachDrop attach,
+) {
+  final mountById = {for (final mount in attach.mounts) mount.layerId: mount};
+  return [
+    ...lift.rest.sublist(0, lift.restInsertAt),
+    for (final layer in lift.carried)
+      _settled(layer, folderIds, attach, mountById[layer.id]),
+    ...lift.rest.sublist(lift.restInsertAt),
+  ];
+}
+
+Layer _settled(
+  Layer layer,
+  Map<LayerId, LayerId?> folderIds,
+  LayerAttachDrop attach,
+  _Mount? mount,
+) {
+  var next = folderIds.containsKey(layer.id)
+      ? layer.copyWith(folderId: folderIds[layer.id])
+      : layer;
+  final sideChange = attach.sideChange;
+  if (mount != null) {
+    next = next.copyWith(
+      attachedToLayerId: mount.baseId,
+      attachedPlacement: mount.placement,
+    );
+  } else if (sideChange != null && layer.id == sideChange.layerId) {
+    next = next.copyWith(attachedPlacement: sideChange.placement);
+  } else if (attach.detachIds.contains(layer.id)) {
+    next = next.copyWith(attachedToLayerId: null);
+  }
+  return next;
 }
 
 /// Where a row has to LAND for a MENU detach — the placement half of "어태치

@@ -119,7 +119,7 @@ void main() {
     // cognitive the same day, when the metric changed.
     expect(
       complexityBaseline.length,
-      1077,
+      1076,
       reason:
           'The baseline count changed. Going DOWN is the point — update this '
           'number and say so in the commit. Going UP needs an argument.',
