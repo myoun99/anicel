@@ -266,6 +266,7 @@ part 'session/text_cel_bakes.dart';
 part 'session/transitions.dart';
 part 'session/camera.dart';
 part 'session/frame_scrub.dart';
+part 'session/row_selection.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -1115,11 +1116,20 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<List<TimelineRowAddress>> rowSelection =
       ValueNotifier<List<TimelineRowAddress>>(const []);
 
-  /// Where the live row-select drag started; null between drags.
-  TimelineRowAddress? _rowSelectionAnchor;
+  // ── the row selection: its own object, in its own file ──────────────
+  //
+  // A collaborator (session/row_selection.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _RowSelection _rowSelection = _RowSelection(this);
 
   bool rowIsSelected(TimelineRowAddress row) =>
-      rowSelection.value.contains(row);
+      _rowSelection.rowIsSelected(row);
+  void beginRowSelection(TimelineRowAddress anchor) =>
+      _rowSelection.beginRowSelection(anchor);
+  void updateRowSelection(List<TimelineDisplayRow> rows, int rowDelta) =>
+      _rowSelection.updateRowSelection(rows, rowDelta);
+  void endRowSelection() => _rowSelection.endRowSelection();
+  void clearRowSelection() => _rowSelection.clearRowSelection();
 
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
@@ -1195,36 +1205,6 @@ class EditorSessionManager extends ChangeNotifier {
     return false;
   }
 
-  /// A press that lands OUTSIDE the current selection starts a fresh one —
-  /// the cells' rule, transposed (their range gesture's `isInSelection`).
-  void beginRowSelection(TimelineRowAddress anchor) {
-    claimSelection(TimelineSelectionKind.rows);
-    _rowSelectionAnchor = anchor;
-    rowSelection.value = [anchor];
-  }
-
-  /// Grows the live selection to [rowDelta] rows from its anchor, through
-  /// the SAME law the cell span uses — the rail's own drawn row list, so a
-  /// row that is visible is selectable and a new row kind needs no wiring.
-  void updateRowSelection(List<TimelineDisplayRow> rows, int rowDelta) {
-    final anchor = _rowSelectionAnchor;
-    if (anchor == null) {
-      return;
-    }
-    final span = resolveSelectionSpanRows(
-      rows: rows,
-      anchor: anchor,
-      rowDelta: rowDelta,
-    );
-    if (span.isNotEmpty) {
-      rowSelection.value = span;
-    }
-  }
-
-  void endRowSelection() {
-    _rowSelectionAnchor = null;
-  }
-
   /// The selected rows that name a LAYER this cut may delete (⑨).
   ///
   /// A row's kind decides what the edit DOES, never whether the row could
@@ -1248,13 +1228,6 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     return ids;
-  }
-
-  void clearRowSelection() {
-    _rowSelectionAnchor = null;
-    if (rowSelection.value.isNotEmpty) {
-      rowSelection.value = const [];
-    }
   }
 
   /// 🚨A CLICK CLEARS (유저 확정 2026-08-12): 「어딘가 클릭하면 사라지도록.
@@ -1653,7 +1626,7 @@ class EditorSessionManager extends ChangeNotifier {
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
     final row = currentRow;
     if (laneId == null) {
-      _foldRowSelection(
+      _rowSelection.foldRowSelection(
         vanished: (address) =>
             address is LaneRowAddress && address.layerId == layerId,
         swallower: LayerRowAddress(layerId),
@@ -1663,50 +1636,13 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
-    _foldRowSelection(
+    _rowSelection.foldRowSelection(
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
       swallower: LaneRowAddress(layerId, laneId),
     );
     if (currentRowIsInsideGroup(row, layerId, laneId)) {
       selectRow(LaneRowAddress(layerId, laneId));
     }
-  }
-
-  /// 🚨H6 (유저 2026-08-21) — THE FOLD LAW'S OTHER HALF.
-  ///
-  /// > 「이 앱의 특징은 **행이 보이는 곳만 조작**한다는 점임. 지금 레이어의
-  /// > 프레임블록+fx행 선택범위하고 레이어 접고 펼치면 **fx행까지 선택한 게
-  /// > 남아있는데**, 접을 때 **선택범위 바꿔서 사라진 건 선택 안 하게**
-  /// > 되도록. 접고나서 이동할 때 fx행 반영 안 되는거 보니 **로직적으론 잘
-  /// > 되있는거같고 선택범위 UI만** 그에 맞춰 제대로」
-  ///
-  /// ⛔The law above already SAID this — 「what disappears never keeps the
-  /// selection」 — and only ever did it for the ONE standing row. The
-  /// selection BAND kept its folded rows, so the band drew over rows that
-  /// were no longer on screen while the verbs (correctly) ignored them:
-  /// the user's own reading, that the logic was right and the UI was not.
-  ///
-  /// The swallower takes their place rather than the selection emptying —
-  /// the same answer the standing row gets, for the same reason. A user
-  /// who had rows selected still has rows selected after a fold.
-  void _foldRowSelection({
-    required bool Function(TimelineRowAddress address) vanished,
-    required TimelineRowAddress swallower,
-  }) {
-    final selection = rowSelection.value;
-    if (selection.isEmpty) {
-      return;
-    }
-    final kept = [
-      for (final address in selection)
-        if (!vanished(address)) address,
-    ];
-    if (kept.length == selection.length) {
-      return;
-    }
-    rowSelection.value = kept.isEmpty
-        ? [swallower]
-        : (kept.contains(swallower) ? kept : [...kept, swallower]);
   }
 
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
@@ -5587,20 +5523,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// verbs are the session's unchanged face.
   RowOrderDrag? _rowOrderDrag;
 
-  /// ㊵: the rows a drag on [movingId] carries because they are SELECTED.
-  ///
-  /// Empty unless the pressed row is itself in the selection — a drag that
-  /// starts outside one is an ordinary single-row move, and ⑨ already made
-  /// that press a fresh SELECT rather than a move. Only layer rows count:
-  /// lanes and headers ride their layer, they do not re-order.
-  Set<LayerId> _rowSelectionCarriedBy(LayerId movingId) {
-    final ids = <LayerId>{
-      for (final row in rowSelection.value)
-        if (row is LayerRowAddress) row.layerId,
-    };
-    return ids.contains(movingId) ? ids : const <LayerId>{};
-  }
-
   void beginLayerRowDrag(LayerRowDragSubject subject) {
     _rowOrderDrag = RowOrderDrag(
       subject: subject,
@@ -5610,7 +5532,7 @@ class EditorSessionManager extends ChangeNotifier {
       trackSeAnywhere: _trackSeAnywhere,
       activeCutOrNull: () => activeCutOrNull,
       isTrackSeLayerId: isTrackSeLayerId,
-      rowSelectionCarriedBy: _rowSelectionCarriedBy,
+      rowSelectionCarriedBy: _rowSelection.rowSelectionCarriedBy,
       trackIdOfTransformLaneCarrier: trackIdOfTransformLaneCarrier,
       mountModeFor: _cutCommandCoordinator.mountModeFor,
       commitTrackReorder:
@@ -5823,7 +5745,7 @@ class EditorSessionManager extends ChangeNotifier {
       bool insideThisFolder(LayerId? id) =>
           id != null &&
           cut.layers.isInsideFolder(cut.layers.byId(id)?.folderId, layerId);
-      _foldRowSelection(
+      _rowSelection.foldRowSelection(
         vanished: (address) => switch (address) {
           LayerRowAddress(:final layerId) => insideThisFolder(layerId),
           LaneRowAddress(:final layerId) => insideThisFolder(layerId),
