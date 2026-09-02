@@ -82,6 +82,8 @@ import 'update_project_stage_colors_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_exposure_memo_command.dart';
 
+part 'cut_commands/cut_commands.dart';
+
 class CutCommandCoordinator {
   const CutCommandCoordinator({
     required this.repository,
@@ -98,6 +100,12 @@ class CutCommandCoordinator {
   /// translate the cut's strokes to honor the chosen anchor.
   final BrushFrameStore? brushFrameStore;
 
+  // ── the cut commands: their own object, in their own file ───────────
+  //
+  // A collaborator (commands/cut_commands/cut_commands.dart, a part of this
+  // library). The coordinator keeps the public commands as forwarders.
+  _CutCommands get _cuts => _CutCommands(this);
+
   void createCut({
     required TrackId trackId,
     String? name,
@@ -108,236 +116,72 @@ class CutCommandCoordinator {
     // length, the way the transition span's selection does). Null keeps
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
-  }) {
-    final project = repository.requireProject();
-    final plan = planCreateCutCommandInput(project);
-    final anchor = placement == null
-        ? _insertionAnchorFor(project, trackId)
-        : (
-            index: placement.index,
-            referenceName: _referenceNameAt(project, trackId, placement.index),
-          );
-
-    historyManager.execute(
-      CreateCutCommand(
-        repository: repository,
-        editingSession: editingSession,
-        trackId: trackId,
-        cutId: plan.cutId,
-        layerId: plan.layerId,
-        name: name ?? nextCutNameAfter(project, anchor.referenceName),
-        index: anchor.index,
-        leadingGapFrames: placement?.leadingGapFrames ?? 0,
-        duration: placement?.duration,
-        canvasSize: canvasSize ?? defaultCutCanvasSize,
-      ),
-    );
-  }
-
-  /// The name an EXPLICIT landing counts from: the cut in front of it —
-  /// the same "to the right of" reading the classic anchor gives.
-  String? _referenceNameAt(Project project, TrackId trackId, int? index) {
-    for (final track in project.tracks) {
-      if (track.id != trackId) {
-        continue;
-      }
-      if (track.cuts.isEmpty) {
-        return null;
-      }
-      if (index == null || index > track.cuts.length) {
-        return track.cuts.last.name;
-      }
-      return index == 0 ? null : track.cuts[index - 1].name;
-    }
-    return null;
-  }
-
-  /// Where a new cut lands on [trackId], and which name it counts from: to
-  /// the RIGHT of the active cut when the active cut is on this track (the
-  /// user's working position), the track's end otherwise.
-  ({int? index, String? referenceName}) _insertionAnchorFor(
-    Project project,
-    TrackId trackId,
-  ) {
-    for (final track in project.tracks) {
-      if (track.id != trackId) {
-        continue;
-      }
-      final activeIndex = track.cuts.indexWhere(
-        (cut) => cut.id == editingSession.activeCutId,
-      );
-      if (activeIndex != -1) {
-        return (
-          index: activeIndex + 1,
-          referenceName: track.cuts[activeIndex].name,
-        );
-      }
-      return (
-        index: null,
-        referenceName: track.cuts.isEmpty ? null : track.cuts.last.name,
-      );
-    }
-    return (index: null, referenceName: null);
-  }
-
-  /// The name a new cut takes when it lands after [referenceName].
-  ///
-  /// The cut NAME is the cut number (UI-R7 #3: bare numbers, the sheet
-  /// convention) — a free string the user may rename to anything, so this
-  /// never computes a number, it OFFERS candidates and takes the first one
-  /// nobody holds:
-  ///
-  /// 1. the reference's trailing digits, incremented (`39A` → `40`);
-  /// 2. failing that — which is exactly the moment a cut is being slipped
-  ///    BETWEEN two numbered ones — a letter suffix on the reference
-  ///    (`39` → `39A` → `39B`), the split-cut convention Japanese sheets
-  ///    use and Storyboard Pro's naming preferences generate;
-  /// 3. past `Z`, the suffix takes a number (`39Z` → `39A1`).
-  ///
-  /// Offering candidates rather than computing is what keeps hand-written
-  /// names (`39ハ`, `オープニング`) from breaking it: a name the rule cannot
-  /// read is simply not a candidate it would have proposed.
-  static String nextCutNameAfter(Project project, String? referenceName) {
-    final taken = <String>{
-      for (final track in project.tracks)
-        for (final cut in track.cuts) cut.name.trim(),
-    };
-
-    final reference = referenceName?.trim() ?? '';
-
-    // The number is the reference's FIRST digit run; whatever trails it is
-    // a split marker, not part of the count ('39A' counts as 39).
-    final number = RegExp(r'^(\D*)(\d+)').firstMatch(reference);
-    if (number != null) {
-      final candidate = '${number.group(1)!}${int.parse(number.group(2)!) + 1}';
-      if (!taken.contains(candidate)) {
-        return candidate;
-      }
-    }
-
-    if (reference.isEmpty) {
-      // Nothing to hang a suffix on (an empty track): count up from 1.
-      for (var next = 1; ; next += 1) {
-        final candidate = '$next';
-        if (!taken.contains(candidate)) {
-          return candidate;
-        }
-      }
-    }
-
-    // The number is spoken for, so this is a split: suffix the reference.
-    // A reference that already carries a single-letter suffix continues
-    // ITS series ('39A' → '39B') rather than growing a second one.
-    final suffixed = RegExp(r'^(.*?)([A-Za-z])$').firstMatch(reference);
-    final root = suffixed?.group(1) ?? reference;
-    final firstLetter = suffixed == null
-        ? 0
-        : suffixed.group(2)!.toUpperCase().codeUnitAt(0) - 64;
-
-    for (var letter = firstLetter; letter < 26; letter += 1) {
-      final candidate = '$root${String.fromCharCode(65 + letter)}';
-      if (!taken.contains(candidate)) {
-        return candidate;
-      }
-    }
-    // Past Z the suffix takes a number, the way Storyboard Pro's Auto
-    // suffix cycles into numbered variants.
-    for (var round = 1; ; round += 1) {
-      for (var letter = 0; letter < 26; letter += 1) {
-        final candidate = '$root${String.fromCharCode(65 + letter)}$round';
-        if (!taken.contains(candidate)) {
-          return candidate;
-        }
-      }
-    }
-  }
-
+  }) => _cuts.createCut(
+    trackId: trackId,
+    name: name,
+    canvasSize: canvasSize,
+    placement: placement,
+  );
+  static String nextCutNameAfter(Project project, String? referenceName) =>
+      _CutCommands.nextCutNameAfter(project, referenceName);
   void resizeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-  }) {
-    if (canvasSize.width <= 0 || canvasSize.height <= 0) {
-      throw ArgumentError.value(
-        canvasSize,
-        'canvasSize',
-        'Canvas size must be positive.',
-      );
-    }
-
-    final cut = _requireCut(cutId);
-    if (cut.canvasSize == canvasSize) {
-      return;
-    }
-
-    historyManager.execute(
-      ResizeCutCanvasCommand(
-        repository: repository,
-        cutId: cutId,
-        canvasSize: canvasSize,
-        anchor: anchor,
-        brushFrameStore: brushFrameStore,
-      ),
-    );
-  }
-
-  void renameCut({required CutId cutId, required String newName}) {
-    historyManager.execute(
-      RenameCutCommand(repository: repository, cutId: cutId, newName: newName),
-    );
-  }
-
-  /// Commits a storyboard edge drag as one undoable step: durations (end
-  /// trims) and leading gaps (start slides / gap consumption) together.
-  /// The fade re-anchor rewrites are gone (R4: fade keys are TRACK data
-  /// on the global axis — a trim moves none of them).
+  }) => _cuts.resizeCutCanvas(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    anchor: anchor,
+  );
+  void renameCut({required CutId cutId, required String newName}) =>
+      _cuts.renameCut(cutId: cutId, newName: newName);
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
     Map<CutId, int> beforeGaps = const {},
     Map<CutId, int> afterGaps = const {},
-  }) {
-    historyManager.execute(
-      UpdateCutDurationsCommand(
-        repository: repository,
-        before: beforeDurations,
-        after: afterDurations,
-        beforeGaps: beforeGaps,
-        afterGaps: afterGaps,
-      ),
-    );
-  }
-
-  void updateCutNote({required CutId cutId, required String note}) {
-    final cut = _requireCut(cutId);
-    if (cut.metadata.note == note) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
-    );
-  }
-
-  /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
-  /// first frame); one undo step.
+  }) => _cuts.commitCutDurationDrag(
+    beforeDurations: beforeDurations,
+    afterDurations: afterDurations,
+    beforeGaps: beforeGaps,
+    afterGaps: afterGaps,
+  );
+  void updateCutNote({required CutId cutId, required String note}) =>
+      _cuts.updateCutNote(cutId: cutId, note: note);
   void updateCutThumbnailFrame({
     required CutId cutId,
     required int? frameIndex,
-  }) {
-    final cut = _requireCut(cutId);
-    if (cut.metadata.thumbnailFrameIndex == frameIndex) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutThumbnailFrameCommand(
-        repository: repository,
-        cutId: cutId,
-        frameIndex: frameIndex,
-      ),
-    );
-  }
+  }) => _cuts.updateCutThumbnailFrame(cutId: cutId, frameIndex: frameIndex);
+  void reorderCut({
+    required TrackId trackId,
+    required CutId cutId,
+    required int newIndex,
+  }) => _cuts.reorderCut(trackId: trackId, cutId: cutId, newIndex: newIndex);
+  void setCutOrder({required TrackId trackId, required List<CutId> order}) =>
+      _cuts.setCutOrder(trackId: trackId, order: order);
+  void commitCutMoveReorder({
+    required TrackId trackId,
+    required List<CutId> order,
+    required Map<CutId, int> beforeGaps,
+    required Map<CutId, int> afterGaps,
+  }) => _cuts.commitCutMoveReorder(
+    trackId: trackId,
+    order: order,
+    beforeGaps: beforeGaps,
+    afterGaps: afterGaps,
+  );
+  void deleteCut({required CutId cutId}) => _cuts.deleteCut(cutId: cutId);
+  void deleteCuts({required List<CutId> cutIds}) =>
+      _cuts.deleteCuts(cutIds: cutIds);
+  void duplicateCut({
+    required CutId sourceCutId,
+    required TrackId targetTrackId,
+    String? newName,
+  }) => _cuts.duplicateCut(
+    sourceCutId: sourceCutId,
+    targetTrackId: targetTrackId,
+    newName: newName,
+  );
 
   void setCutCameraKeyframe({
     required CutId cutId,
@@ -2087,145 +1931,6 @@ class CutCommandCoordinator {
         layerId: layerId,
         blockStartIndex: blockStartIndex,
         memo: next,
-      ),
-    );
-  }
-
-  /// Moves ONE cut to [newIndex] — the left/right nudge buttons' form of
-  /// the order edit, stated as the resulting order so both forms share a
-  /// command.
-  void reorderCut({
-    required TrackId trackId,
-    required CutId cutId,
-    required int newIndex,
-  }) {
-    final cuts = [for (final cut in _requireTrack(trackId).cuts) cut.id];
-    final oldIndex = cuts.indexOf(cutId);
-    if (oldIndex == -1) {
-      throw StateError('Cut not found in track $trackId: $cutId');
-    }
-    cuts.insert(newIndex, cuts.removeAt(oldIndex));
-    setCutOrder(trackId: trackId, order: cuts);
-  }
-
-  /// Resequences a whole track — what a cut drag that reached into a
-  /// neighbour commits (a run may carry several cuts across at once).
-  void setCutOrder({required TrackId trackId, required List<CutId> order}) {
-    historyManager.execute(
-      SetCutOrderCommand(
-        repository: repository,
-        trackId: trackId,
-        order: order,
-      ),
-    );
-  }
-
-  /// Commits a move drag's REORDER as one undo step: the track's new
-  /// sequence plus the position gaps its cuts took over (the gaps stay
-  /// with the position, R5 #13 — each cut carries its own leading gap, so
-  /// a bare permutation would let the gaps travel with the cuts). On a
-  /// packed track the gaps map is empty and this stays a plain
-  /// [setCutOrder].
-  void commitCutMoveReorder({
-    required TrackId trackId,
-    required List<CutId> order,
-    required Map<CutId, int> beforeGaps,
-    required Map<CutId, int> afterGaps,
-  }) {
-    if (afterGaps.isEmpty) {
-      setCutOrder(trackId: trackId, order: order);
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: 'Move cut',
-        commands: [
-          SetCutOrderCommand(
-            repository: repository,
-            trackId: trackId,
-            order: order,
-          ),
-          UpdateCutDurationsCommand(
-            repository: repository,
-            before: const {},
-            after: const {},
-            beforeGaps: beforeGaps,
-            afterGaps: afterGaps,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// R28 #14: deleting the LAST cut leaves the track empty rather than
-  /// conjuring a replacement.
-  ///
-  /// "컷도 1개도 없는 상황 허용" — the empty track is the same state the
-  /// editor already shows over a storyboard GAP (no active cut): the
-  /// canvas paints its blank paper and every `requireActiveCut` consumer
-  /// is behind a guard. Auto-replacing meant a delete could not actually
-  /// clear the track, and the replacement was indistinguishable from a
-  /// real cut in the undo stack.
-  void deleteCut({required CutId cutId}) {
-    historyManager.execute(
-      DeleteCutCommand(
-        repository: repository,
-        editingSession: editingSession,
-        cutId: cutId,
-        brushFrameStore: brushFrameStore,
-      ),
-    );
-  }
-
-  /// Deletes a batch of cuts as ONE undo step; emptying the track is
-  /// allowed (R28 #14).
-  void deleteCuts({required List<CutId> cutIds}) {
-    if (cutIds.isEmpty) {
-      return;
-    }
-    if (cutIds.length == 1) {
-      deleteCut(cutId: cutIds.single);
-      return;
-    }
-
-    historyManager.execute(
-      CompositeCommand(
-        description: 'Delete cuts',
-        commands: [
-          for (final cutId in cutIds)
-            DeleteCutCommand(
-              repository: repository,
-              editingSession: editingSession,
-              cutId: cutId,
-              brushFrameStore: brushFrameStore,
-            ),
-        ],
-      ),
-    );
-  }
-
-  void duplicateCut({
-    required CutId sourceCutId,
-    required TrackId targetTrackId,
-    String? newName,
-  }) {
-    final project = repository.requireProject();
-    final sourceCut = _requireCut(sourceCutId);
-    final plan = planDuplicateCutCommandInput(
-      project: project,
-      sourceCut: sourceCut,
-    );
-
-    historyManager.execute(
-      DuplicateCutCommand(
-        repository: repository,
-        editingSession: editingSession,
-        sourceCutId: sourceCutId,
-        targetTrackId: targetTrackId,
-        newCutId: plan.newCutId,
-        newName: newName ?? '${sourceCut.name} Copy',
-        layerIdMap: plan.layerIdMap,
-        frameIdMap: plan.frameIdMap,
       ),
     );
   }
