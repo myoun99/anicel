@@ -267,6 +267,7 @@ part 'session/transitions.dart';
 part 'session/camera.dart';
 part 'session/frame_scrub.dart';
 part 'session/row_selection.dart';
+part 'session/layer_row_drag.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -5518,100 +5519,38 @@ class EditorSessionManager extends ChangeNotifier {
   /// Asks the rails to scroll whatever is selected back into view.
   void revealSelection() => revealSelectionTick.value += 1;
 
-  /// The in-flight row-order drag ([RowOrderDrag]), or null. The plans, the
-  /// caret labels and the four commit paths live on the drag class; these
-  /// verbs are the session's unchanged face.
-  RowOrderDrag? _rowOrderDrag;
+  // ── the layer row drag: its own object, in its own file ─────────────
+  //
+  // A collaborator (session/layer_row_drag.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _LayerRowDrag _layerRowDrag = _LayerRowDrag(this);
 
-  void beginLayerRowDrag(LayerRowDragSubject subject) {
-    _rowOrderDrag = RowOrderDrag(
-      subject: subject,
-      channel: layerRowDrag,
-      tracksNow: () => _repository.requireProject().tracks,
-      effectChainOf: _effectChainOf,
-      trackSeAnywhere: _trackSeAnywhere,
-      activeCutOrNull: () => activeCutOrNull,
-      isTrackSeLayerId: isTrackSeLayerId,
-      rowSelectionCarriedBy: _rowSelection.rowSelectionCarriedBy,
-      trackIdOfTransformLaneCarrier: trackIdOfTransformLaneCarrier,
-      mountModeFor: _cutCommandCoordinator.mountModeFor,
-      commitTrackReorder:
-          ({required fromIndex, required toIndex, required trackName}) {
-            _historyManager.execute(
-              ReorderTrackCommand(
-                repository: _repository,
-                fromIndex: fromIndex,
-                toIndex: toIndex,
-                trackName: trackName,
-              ),
-            );
-            notifyListeners();
-          },
-      commitTrackEffects: (trackId, effects) =>
-          updateTrackEffects(trackId, effects, description: 'Reorder effects'),
-      commitLayerEffects:
-          ({required cutId, required layerId, required effects}) {
-            _cutCommandCoordinator.updateLayerEffects(
-              cutId: cutId,
-              layerId: layerId,
-              effects: effects,
-              description: 'Reorder effects',
-            );
-            _refreshAfterCutCommand(preferredActiveLayerId: layerId);
-            notifyListeners();
-          },
-      commitSeOrder: ({required trackId, required order}) {
-        _cutCommandCoordinator.setTrackSeOrder(trackId: trackId, order: order);
-        notifyListeners();
-      },
-      commitPlacement:
-          ({
-            required cutId,
-            required plan,
-            required subjectLayerId,
-            required movedIds,
-          }) {
-            _cutCommandCoordinator.setLayerPlacement(
-              cutId: cutId,
-              order: plan.order,
-              folderIds: plan.folderIds,
-              movedIds: movedIds,
-              // What the caret promised: the move AND the attach change it
-              // named, as one undo step because it was one gesture.
-              attach: plan.attach,
-              description: 'Move layer',
-            );
-            _refreshAfterCutCommand(preferredActiveLayerId: subjectLayerId);
-            notifyListeners();
-          },
-    );
-  }
-
-  void updateTrackRowDrag(int slot) => _rowOrderDrag?.updateTrackRow(slot);
-
+  void beginLayerRowDrag(LayerRowDragSubject subject) =>
+      _layerRowDrag.beginLayerRowDrag(subject);
+  void updateTrackRowDrag(int slot) => _layerRowDrag.updateTrackRowDrag(slot);
   void updateEffectRowDrag(
     LayerId layerId,
     List<EffectId> displayEffects,
     int slot,
-  ) => _rowOrderDrag?.updateEffectRow(layerId, displayEffects, slot);
-
+  ) => _layerRowDrag.updateEffectRowDrag(layerId, displayEffects, slot);
   void updateLayerRowDrag(
     List<Layer> displayLayers,
     int slot, {
     String? noticeLabel,
     LayerId? pointerInRow,
-  }) => _rowOrderDrag?.updateLayerRow(
+  }) => _layerRowDrag.updateLayerRowDrag(
     displayLayers,
     slot,
     noticeLabel: noticeLabel,
     pointerInRow: pointerInRow,
   );
-
   void updateLayerRowDropOnRow(
     List<Layer> displayLayers,
     int slot,
     LayerId targetId,
-  ) => _rowOrderDrag?.updateLayerRowDropOnRow(displayLayers, slot, targetId);
+  ) => _layerRowDrag.updateLayerRowDropOnRow(displayLayers, slot, targetId);
+  void endLayerRowDrag() => _layerRowDrag.endLayerRowDrag();
+  void cancelLayerRowDrag() => _layerRowDrag.cancelLayerRowDrag();
 
   /// The channel the workspace listens on when a drop wants a yes/no.
   ///
@@ -5619,35 +5558,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// a dialog raised by whichever happened to be on screen is a second copy
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
-
-  void endLayerRowDrag() {
-    final drag = _rowOrderDrag;
-    if (drag == null) {
-      return;
-    }
-    // ⚠️Asked BEFORE the commit, because committing is what destroys the fx
-    // — and asked off the PLAN, so a drop that mounts nothing never opens a
-    // dialog no matter what the dragged rows carry.
-    final losing = drag.fxLostByThisDrop();
-    if (losing.isEmpty) {
-      _rowOrderDrag = null;
-      drag.commit();
-      return;
-    }
-    // The drag stays held until the answer arrives: nothing is committed and
-    // nothing is discarded while the question is on screen.
-    attachFxConfirm.ask(
-      rowNames: [for (final layer in losing) layer.name],
-      answer: (proceed) {
-        _rowOrderDrag = null;
-        if (proceed) {
-          drag.commit();
-        } else {
-          drag.cancel();
-        }
-      },
-    );
-  }
 
   /// The effect chain a lane/fx-header address names: a real layer's, or the
   /// V TRACK's through the carrier id (R4b). Null when neither exists.
@@ -5657,11 +5567,6 @@ class EditorSessionManager extends ChangeNotifier {
       return _trackById(trackId)?.effects;
     }
     return _layerById(layerId)?.effects;
-  }
-
-  void cancelLayerRowDrag() {
-    _rowOrderDrag?.cancel();
-    _rowOrderDrag = null;
   }
 
   bool get canGroupActiveLayerIntoFolder =>
