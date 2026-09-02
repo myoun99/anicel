@@ -120,36 +120,45 @@ class TimelineRunBehavior {
 
 typedef _Run = ({int startIndex, int endIndexExclusive, FrameId anchorFrameId});
 
-/// Re-derives every run behavior's ghost entries from the CURRENT base
-/// timeline — THE live-sync engine (UI-R8 repeat regions rebuilt as UI-R9
-/// edge properties). Pure: returns [layer] itself when nothing changes
-/// (identity matters for the grid's memo gates).
-///
-/// Pass order:
-/// 1. Strip every ghost entry (derived state, never authored).
-/// 2. Behaviors resolve to their LIVE glued run (anchor block's run;
-///    missing anchor drops the behavior) and dedupe per (run, side) — the
-///    LAST spec in list order wins (most recently set).
-/// 3. Application in run order, start side before end side. End side:
-///    hold = one ghost of the run's last frameId filling to the cut end;
-///    repeat = the pattern span cycling to the cut end. Start side is the
-///    mirror, ghosts FLUSH-aligned to the run start (a partial lead-in
-///    shows the pattern's tail). Ghosts clamp against authored entries and
-///    earlier behaviors' ghosts — derived frames never displace real ones.
-/// 4. A fully occluded behavior stays kept (spec survives until room
-///    opens up again).
-Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
-  final hasGhosts = layer.timeline.values.any((entry) => entry.ghost);
-  if (layer.runBehaviors.isEmpty && !hasGhosts) {
-    return layer;
-  }
+/// [rederiveRunBehaviors]'s working state — the authored base, the result
+/// being written, the behaviors resolved to their run edges — so every
+/// pass reads the same sheet and each is a named step. (The audit's
+/// 2026-09-03 restructure of one 300-line function; every rule and its
+/// comment moved verbatim.)
+class _RunBehaviorPass {
+  _RunBehaviorPass(this.base, {required this.cutFrameCount})
+    : result = SplayTreeMap<int, TimelineExposure>.of(base);
 
-  final base = SplayTreeMap<int, TimelineExposure>();
-  layer.timeline.forEach((index, entry) {
-    if (!entry.ghost) {
-      base[index] = entry;
-    }
-  });
+  final int cutFrameCount;
+
+  /// Pass 1's output: the authored entries alone.
+  final SplayTreeMap<int, TimelineExposure> base;
+
+  /// Pass 3's sheet: the base plus every ghost written so far.
+  final SplayTreeMap<int, TimelineExposure> result;
+
+  /// Pass 2's output: one behavior per (run, side), keyed by the run's
+  /// start — the LAST spec in list order wins (most recently set).
+  final byEdge =
+      <
+        (int, TimelineRunEdgeSide),
+        ({TimelineRunBehavior behavior, _Run run})
+      >{};
+
+  /// Pass 4's answer: the specs that survive (a fully occluded behavior
+  /// stays kept until room opens up again).
+  final kept = <TimelineRunBehavior>[];
+
+  /// Pass 1: strip every ghost entry (derived state, never authored).
+  static SplayTreeMap<int, TimelineExposure> stripGhosts(Layer layer) {
+    final base = SplayTreeMap<int, TimelineExposure>();
+    layer.timeline.forEach((index, entry) {
+      if (!entry.ghost) {
+        base[index] = entry;
+      }
+    });
+    return base;
+  }
 
   int? anchorStartOf(FrameId frameId) {
     for (final entry in base.entries) {
@@ -182,22 +191,20 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
     );
   }
 
-  // Resolve + dedupe: one behavior per (run, side), the LAST wins.
-  final byEdge =
-      <
-        (int, TimelineRunEdgeSide),
-        ({TimelineRunBehavior behavior, _Run run})
-      >{};
-  for (final behavior in layer.runBehaviors) {
-    final anchorStart = anchorStartOf(behavior.anchorFrameId);
-    if (anchorStart == null) {
-      continue; // Anchor vanished — the behavior drops (self-healing).
+  /// Pass 2: resolve + dedupe, then the application order.
+  List<({TimelineRunBehavior behavior, _Run run})> resolve(
+    List<TimelineRunBehavior> behaviors,
+  ) {
+    // Resolve + dedupe: one behavior per (run, side), the LAST wins.
+    for (final behavior in behaviors) {
+      final anchorStart = anchorStartOf(behavior.anchorFrameId);
+      if (anchorStart == null) {
+        continue; // Anchor vanished — the behavior drops (self-healing).
+      }
+      final run = runAt(anchorStart);
+      byEdge[(run.startIndex, behavior.side)] = (behavior: behavior, run: run);
     }
-    final run = runAt(anchorStart);
-    byEdge[(run.startIndex, behavior.side)] = (behavior: behavior, run: run);
-  }
-  final resolved = byEdge.values.toList()
-    ..sort((a, b) {
+    return byEdge.values.toList()..sort((a, b) {
       // HOLDS apply before REPEATS (UI-R13 #5): a repeat's default
       // pattern is the DISPLAYED run including the opposite edge's hold
       // ghosts, so every hold must sit in the result first. Within a
@@ -215,9 +222,7 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
       return (a.behavior.side == TimelineRunEdgeSide.start ? 0 : 1) -
           (b.behavior.side == TimelineRunEdgeSide.start ? 0 : 1);
     });
-
-  final result = SplayTreeMap<int, TimelineExposure>.of(base);
-  final kept = <TimelineRunBehavior>[];
+  }
 
   TimelineExposure ghostEntry({
     required FrameId frameId,
@@ -238,96 +243,109 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
     return ghost;
   }
 
-  for (final item in resolved) {
-    final behavior = item.behavior;
-    final run = item.run;
+  /// Pass 3, one behavior: its ghosts, clamped against authored entries
+  /// and earlier behaviors' ghosts — derived frames never displace real
+  /// ones.
+  void apply(TimelineRunBehavior behavior, _Run run) {
     kept.add(behavior);
-
     if (behavior.side == TimelineRunEdgeSide.end) {
-      final ghostStart = run.endIndexExclusive;
-      // Fill limit: the cut end, or the next occupied index (an authored
-      // entry or an earlier behavior's ghosts) — whichever comes first.
-      var limit = cutFrameCount;
-      final nextKey = result.firstKeyAfter(ghostStart - 1);
-      if (nextKey != null && nextKey < limit) {
-        limit = nextKey;
-      }
-      if (limit <= ghostStart) {
-        continue; // Occluded right now; the spec survives.
-      }
+      _fillAfter(behavior, run);
+    } else {
+      _fillBefore(behavior, run);
+    }
+  }
 
-      if (behavior.mode == TimelineRunEdgeMode.hold) {
-        final lastBlockKey = result.lastKeyBefore(ghostStart)!;
-        result[ghostStart] = ghostEntry(
-          frameId: result[lastBlockKey]!.frameId!,
-          length: limit - ghostStart,
-          ownerId: behavior.ghostOwnerId,
-        );
-        continue;
-      }
-
-      // Repeat: pattern span [patternStart, run end).
-      var patternStart = run.startIndex;
-      final patternAnchor = behavior.patternAnchorFrameId;
-      if (patternAnchor != null) {
-        final key = anchorStartOf(patternAnchor);
-        if (key != null &&
-            key >= run.startIndex &&
-            key < run.endIndexExclusive) {
-          patternStart = key;
-        }
-      } else {
-        // UI-R13 #5: the DEFAULT pattern is the DISPLAYED run — a
-        // front-hold lead-in abutting the run start joins the repeated
-        // unit (holds applied first, so its ghost already sits here).
-        final startEdge = byEdge[(run.startIndex, TimelineRunEdgeSide.start)];
-        if (startEdge != null &&
-            startEdge.behavior.mode == TimelineRunEdgeMode.hold) {
-          final leadKey = result.lastKeyBefore(run.startIndex);
-          if (leadKey != null) {
-            final lead = result[leadKey]!;
-            if (lead.ghost &&
-                lead.ghostOwnerId == startEdge.behavior.ghostOwnerId &&
-                leadKey + lead.length! == run.startIndex) {
-              patternStart = leadKey;
-            }
-          }
-        }
-      }
-      final span = run.endIndexExclusive - patternStart;
-      final parts = [
-        // From RESULT, not base: the pattern may include this run's own
-        // front-hold ghost (UI-R13 #5); inside the run the two agree.
-        for (final entry in result.entries)
-          if (entry.key >= patternStart && entry.key < run.endIndexExclusive)
-            (
-              offset: entry.key - patternStart,
-              frameId: entry.value.frameId!,
-              length: entry.value.length!,
-              dots: entry.value.breakdownOffsets,
-            ),
-      ];
-      for (
-        var cycleStart = ghostStart;
-        cycleStart < limit;
-        cycleStart += span
-      ) {
-        for (final part in parts) {
-          final start = cycleStart + part.offset;
-          if (start >= limit) {
-            break;
-          }
-          result[start] = ghostEntry(
-            frameId: part.frameId,
-            length: part.length.clamp(1, limit - start),
-            ownerId: behavior.ghostOwnerId,
-            dots: part.dots,
-          );
-        }
-      }
-      continue;
+  /// End side: hold = one ghost of the run's last frameId filling to the
+  /// cut end; repeat = the pattern span cycling to the cut end.
+  void _fillAfter(TimelineRunBehavior behavior, _Run run) {
+    final ghostStart = run.endIndexExclusive;
+    // Fill limit: the cut end, or the next occupied index (an authored
+    // entry or an earlier behavior's ghosts) — whichever comes first.
+    var limit = cutFrameCount;
+    final nextKey = result.firstKeyAfter(ghostStart - 1);
+    if (nextKey != null && nextKey < limit) {
+      limit = nextKey;
+    }
+    if (limit <= ghostStart) {
+      return; // Occluded right now; the spec survives.
     }
 
+    if (behavior.mode == TimelineRunEdgeMode.hold) {
+      final lastBlockKey = result.lastKeyBefore(ghostStart)!;
+      result[ghostStart] = ghostEntry(
+        frameId: result[lastBlockKey]!.frameId!,
+        length: limit - ghostStart,
+        ownerId: behavior.ghostOwnerId,
+      );
+      return;
+    }
+    _repeatAfter(behavior, run, ghostStart: ghostStart, limit: limit);
+  }
+
+  /// Repeat: pattern span [patternStart, run end), cycling to [limit].
+  void _repeatAfter(
+    TimelineRunBehavior behavior,
+    _Run run, {
+    required int ghostStart,
+    required int limit,
+  }) {
+    var patternStart = run.startIndex;
+    final patternAnchor = behavior.patternAnchorFrameId;
+    if (patternAnchor != null) {
+      final key = anchorStartOf(patternAnchor);
+      if (key != null && key >= run.startIndex && key < run.endIndexExclusive) {
+        patternStart = key;
+      }
+    } else {
+      // UI-R13 #5: the DEFAULT pattern is the DISPLAYED run — a
+      // front-hold lead-in abutting the run start joins the repeated
+      // unit (holds applied first, so its ghost already sits here).
+      final startEdge = byEdge[(run.startIndex, TimelineRunEdgeSide.start)];
+      if (startEdge != null &&
+          startEdge.behavior.mode == TimelineRunEdgeMode.hold) {
+        final leadKey = result.lastKeyBefore(run.startIndex);
+        if (leadKey != null) {
+          final lead = result[leadKey]!;
+          if (lead.ghost &&
+              lead.ghostOwnerId == startEdge.behavior.ghostOwnerId &&
+              leadKey + lead.length! == run.startIndex) {
+            patternStart = leadKey;
+          }
+        }
+      }
+    }
+    final span = run.endIndexExclusive - patternStart;
+    final parts = [
+      // From RESULT, not base: the pattern may include this run's own
+      // front-hold ghost (UI-R13 #5); inside the run the two agree.
+      for (final entry in result.entries)
+        if (entry.key >= patternStart && entry.key < run.endIndexExclusive)
+          (
+            offset: entry.key - patternStart,
+            frameId: entry.value.frameId!,
+            length: entry.value.length!,
+            dots: entry.value.breakdownOffsets,
+          ),
+    ];
+    for (var cycleStart = ghostStart; cycleStart < limit; cycleStart += span) {
+      for (final part in parts) {
+        final start = cycleStart + part.offset;
+        if (start >= limit) {
+          break;
+        }
+        result[start] = ghostEntry(
+          frameId: part.frameId,
+          length: part.length.clamp(1, limit - start),
+          ownerId: behavior.ghostOwnerId,
+          dots: part.dots,
+        );
+      }
+    }
+  }
+
+  /// Start side: the mirror, ghosts FLUSH-aligned to the run start (a
+  /// partial lead-in shows the pattern's tail).
+  void _fillBefore(TimelineRunBehavior behavior, _Run run) {
     // Start side: fill [limitStart, run start), flush-aligned to the run.
     final runStart = run.startIndex;
     var limitStart = 0;
@@ -336,7 +354,7 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
       limitStart = math.max(0, previousKey + result[previousKey]!.length!);
     }
     if (limitStart >= runStart) {
-      continue; // Occluded; the spec survives.
+      return; // Occluded; the spec survives.
     }
 
     if (behavior.mode == TimelineRunEdgeMode.hold) {
@@ -345,10 +363,19 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
         length: runStart - limitStart,
         ownerId: behavior.ghostOwnerId,
       );
-      continue;
+      return;
     }
+    _repeatBefore(behavior, run, runStart: runStart, limitStart: limitStart);
+  }
 
-    // Repeat: pattern span [run start, patternEnd).
+  /// Repeat: pattern span [run start, patternEnd), tiled leftward down to
+  /// [limitStart].
+  void _repeatBefore(
+    TimelineRunBehavior behavior,
+    _Run run, {
+    required int runStart,
+    required int limitStart,
+  }) {
     var patternEnd = run.endIndexExclusive;
     final patternAnchor = behavior.patternAnchorFrameId;
     if (patternAnchor != null) {
@@ -414,30 +441,67 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
     }
   }
 
-  final behaviorsUnchanged =
-      kept.length == layer.runBehaviors.length &&
-      () {
-        for (var i = 0; i < kept.length; i += 1) {
-          if (kept[i] != layer.runBehaviors[i]) {
-            return false;
+  /// Whether [layer] already shows exactly this pass's result — identity
+  /// matters for the grid's memo gates.
+  bool leavesUnchanged(Layer layer) {
+    final behaviorsUnchanged =
+        kept.length == layer.runBehaviors.length &&
+        () {
+          for (var i = 0; i < kept.length; i += 1) {
+            if (kept[i] != layer.runBehaviors[i]) {
+              return false;
+            }
           }
-        }
-        return true;
-      }();
-  final timelineUnchanged =
-      result.length == layer.timeline.length &&
-      () {
-        for (final entry in result.entries) {
-          if (layer.timeline[entry.key] != entry.value) {
-            return false;
+          return true;
+        }();
+    final timelineUnchanged =
+        result.length == layer.timeline.length &&
+        () {
+          for (final entry in result.entries) {
+            if (layer.timeline[entry.key] != entry.value) {
+              return false;
+            }
           }
-        }
-        return true;
-      }();
-  if (behaviorsUnchanged && timelineUnchanged) {
+          return true;
+        }();
+    return behaviorsUnchanged && timelineUnchanged;
+  }
+}
+
+/// Re-derives every run behavior's ghost entries from the CURRENT base
+/// timeline — THE live-sync engine (UI-R8 repeat regions rebuilt as UI-R9
+/// edge properties). Pure: returns [layer] itself when nothing changes
+/// (identity matters for the grid's memo gates).
+///
+/// Pass order:
+/// 1. Strip every ghost entry (derived state, never authored).
+/// 2. Behaviors resolve to their LIVE glued run (anchor block's run;
+///    missing anchor drops the behavior) and dedupe per (run, side) — the
+///    LAST spec in list order wins (most recently set).
+/// 3. Application in run order, start side before end side. End side:
+///    hold = one ghost of the run's last frameId filling to the cut end;
+///    repeat = the pattern span cycling to the cut end. Start side is the
+///    mirror, ghosts FLUSH-aligned to the run start (a partial lead-in
+///    shows the pattern's tail). Ghosts clamp against authored entries and
+///    earlier behaviors' ghosts — derived frames never displace real ones.
+/// 4. A fully occluded behavior stays kept (spec survives until room
+///    opens up again).
+Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
+  final hasGhosts = layer.timeline.values.any((entry) => entry.ghost);
+  if (layer.runBehaviors.isEmpty && !hasGhosts) {
     return layer;
   }
-  return layer.copyWith(timeline: result, runBehaviors: kept);
+  final pass = _RunBehaviorPass(
+    _RunBehaviorPass.stripGhosts(layer),
+    cutFrameCount: cutFrameCount,
+  );
+  for (final item in pass.resolve(layer.runBehaviors)) {
+    pass.apply(item.behavior, item.run);
+  }
+  if (pass.leavesUnchanged(layer)) {
+    return layer;
+  }
+  return layer.copyWith(timeline: pass.result, runBehaviors: pass.kept);
 }
 
 /// The contiguous GLUED run of non-ghost drawing blocks containing the
