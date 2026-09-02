@@ -2055,11 +2055,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         final leftStop = columnStop(leftRailSpanRaw);
                         final rightStop = columnStop(rightRailSpanRaw);
 
+                        final frame = _WorkspaceFrame(
+                          grid: grid,
+                          constraints: constraints,
+                          onTop: onTop,
+                          hasLeftDock: hasLeftDock,
+                          hasRightDock: hasRightDock,
+                          hasBottomDock: hasBottomDock,
+                          leftWidth: leftWidth,
+                          rightWidth: rightWidth,
+                          ceiling: ceiling,
+                          bottomHeight: bottomHeight,
+                          bottomInset: bottomInset,
+                          leftRailSpanRaw: leftRailSpanRaw,
+                          rightRailSpanRaw: rightRailSpanRaw,
+                          leftRailSpan: leftRailSpan,
+                          rightRailSpan: rightRailSpan,
+                          floorCover: floorCover,
+                          leftStop: leftStop,
+                          rightStop: rightStop,
+                        );
                         return Stack(
                           children: [
                             // ★ THE FLOOR. Everything below this line is drawn on
                             // top of the drawing.
-                            _floor(floorCover, hasBottomDock, onTop, leftStop, constraints, grid, rightStop, floor),
+                            _floor(frame, floor),
                             // ★ The rails FLOAT. A gap of pasteboard between
                             // the strip and the panel, another above the
                             // first panel, and each panel its own rounded
@@ -2067,8 +2087,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             // is, rather than a slab bolted to the strip.
                             // Their width grips ride their own inner edges
                             // inside the column.
-                            _leftRailColumn(grid, onTop, leftStop, hasLeftDock, leftRailSpan, leftWidth, leftRailHosts, ceiling),
-                            _rightRailColumn(grid, onTop, rightStop, hasRightDock, rightRailSpan, rightWidth, rightRailHosts, ceiling),
+                            _leftRailColumn(frame, leftRailHosts),
+                            _rightRailColumn(frame, rightRailHosts),
                             // ★The collapsed row, over the artwork and OUTSIDE
                             // the region's clip. It has to be a sibling: the
                             // region is inside a `SuperellipseClip`, so an
@@ -2078,8 +2098,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             // it, which is what keeps the row from spilling
                             // onto the sill when the two meet.
                             if (hasBottomDock && _bottomDockCollapsed)
-                              _collapsedRowOverlay(bottomInset, onTop, bottomHeight),
-                            _bottomDock(bottomInset, onTop, hasBottomDock, bottomHeight, constraints, bottomContent, leftRailSpanRaw, rightRailSpanRaw),
+                              _collapsedRowOverlay(frame),
+                            _bottomDock(frame, bottomContent),
                           ],
                         );
                       },
@@ -2096,28 +2116,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
   }
 
-  Positioned _bottomDock(double bottomInset, bool onTop, bool hasBottomDock, double bottomHeight, BoxConstraints constraints, Widget? bottomContent, double leftRailSpanRaw, double rightRailSpanRaw) {
+  Positioned _bottomDock(_WorkspaceFrame frame, Widget? bottomContent) {
     return Positioned(
-      left: bottomInset,
-      right: bottomInset,
-      top: onTop ? 0 : null,
-      bottom: onTop ? null : 0,
-      height: hasBottomDock ? bottomHeight : null,
+      left: frame.bottomInset,
+      right: frame.bottomInset,
+      top: frame.onTop ? 0 : null,
+      bottom: frame.onTop ? null : 0,
+      height: frame.hasBottomDock ? frame.bottomHeight : null,
       child: _docks.buildBottomDock(
-        availableExtent: constraints.maxHeight,
+        availableExtent: frame.constraints.maxHeight,
         content: bottomContent,
-        inset: bottomInset > 0,
-        onTop: onTop,
+        inset: frame.bottomInset > 0,
+        onTop: frame.onTop,
         // Every grip the region has, laid on its own
         // edges inside its own clip.
-        grips: !hasBottomDock
-            ? const []
-            : _bottomDockGrips(onTop, constraints, bottomInset, leftRailSpanRaw, rightRailSpanRaw),
+        grips: !frame.hasBottomDock ? const [] : _bottomDockGrips(frame),
       ),
     );
   }
 
-  List<Widget> _bottomDockGrips(bool onTop, BoxConstraints constraints, double bottomInset, double leftRailSpanRaw, double rightRailSpanRaw) {
+  List<Widget> _bottomDockGrips(_WorkspaceFrame frame) {
+    // The widest an inset may be: the region keeps at least
+    // `_minBottomRegionWidth` between its two grips.
+    final maxInset = math.max(
+      0.0,
+      (frame.constraints.maxWidth - _minBottomRegionWidth) / 2,
+    );
     return [
       // ★NO HEIGHT GRIP WHILE COLLAPSED
       // (유저 확정, 2026-08-10): folding is a
@@ -2140,7 +2164,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       // live either way — width is not the
       // axis the fold is about.
       if (!_bottomDockCollapsed)
-        _bottomHeightGrip(onTop, constraints),
+        _bottomHeightGrip(frame.onTop, frame.constraints),
       // The region's side grips. TWO of
       // them and ONE number — pulling
       // either edge in pulls the other in
@@ -2148,63 +2172,59 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       // region stays centred on the window.
       _bottomInsetGrip(
         right: false,
-        inset: bottomInset,
-        onTop: onTop,
+        inset: frame.bottomInset,
+        onTop: frame.onTop,
         // RAW, to match the gate above.
-        railSpan: leftRailSpanRaw,
-        maxInset: math.max(
-          0.0,
-          (constraints.maxWidth -
-                  _minBottomRegionWidth) /
-              2,
-        ),
+        railSpan: frame.leftRailSpanRaw,
+        maxInset: maxInset,
       ),
       _bottomInsetGrip(
         right: true,
-        inset: bottomInset,
-        onTop: onTop,
+        inset: frame.bottomInset,
+        onTop: frame.onTop,
         // RAW, to match the gate above.
-        railSpan: rightRailSpanRaw,
-        maxInset: math.max(
-          0.0,
-          (constraints.maxWidth -
-                  _minBottomRegionWidth) /
-              2,
-        ),
+        railSpan: frame.rightRailSpanRaw,
+        maxInset: maxInset,
       ),
     ];
   }
 
-  Positioned _collapsedRowOverlay(double bottomInset, bool onTop, double bottomHeight) {
+  Positioned _collapsedRowOverlay(_WorkspaceFrame frame) {
     return Positioned(
-      left: bottomInset,
-      right: bottomInset,
-      top: onTop ? bottomHeight : null,
-      bottom: onTop ? null : bottomHeight,
+      left: frame.bottomInset,
+      right: frame.bottomInset,
+      top: frame.onTop ? frame.bottomHeight : null,
+      bottom: frame.onTop ? null : frame.bottomHeight,
       height: _collapsedRows.collapsedRowHeight(),
       child: _collapsedRows.collapsedRowOverlay(),
     );
   }
 
-  Positioned _rightRailColumn(DeviceGrid grid, bool onTop, double rightStop, bool hasRightDock, double rightRailSpan, double rightWidth, Map<String, Widget> rightRailHosts, double ceiling) {
+  Positioned _rightRailColumn(
+    _WorkspaceFrame frame,
+    Map<String, Widget> rightRailHosts,
+  ) {
     return Positioned(
       right: 0,
-      top: grid.position(
-        (onTop ? rightStop : 0) + _railGroupGap,
+      top: frame.grid.position(
+        (frame.onTop ? frame.rightStop : 0) + _railGroupGap,
       ),
-      bottom: onTop ? 0 : rightStop,
-      width: hasRightDock ? rightRailSpan : null,
+      bottom: frame.onTop ? 0 : frame.rightStop,
+      width: frame.hasRightDock ? frame.rightRailSpan : null,
       child: _rail.buildRailColumn(
         EditorPanelDockSide.right,
-        width: rightWidth,
+        width: frame.rightWidth,
         hosts: rightRailHosts,
         // 결정 8: the same ceiling both sides read.
-        dragCeiling: ceiling,
+        dragCeiling: frame.ceiling,
       ),
     );
   }
 
-  Positioned _leftRailColumn(DeviceGrid grid, bool onTop, double leftStop, bool hasLeftDock, double leftRailSpan, double leftWidth, Map<String, Widget> leftRailHosts, double ceiling) {
+  Positioned _leftRailColumn(
+    _WorkspaceFrame frame,
+    Map<String, Widget> leftRailHosts,
+  ) {
     return Positioned(
       left: 0,
       // ★These two widgets are what actually CARRY a
@@ -2215,10 +2235,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       // here puts the column's LEFT edge — and
       // everything docked in it — between two
       // device pixels.
-      top: grid.position(
-        (onTop ? leftStop : 0) + _railGroupGap,
+      top: frame.grid.position(
+        (frame.onTop ? frame.leftStop : 0) + _railGroupGap,
       ),
-      bottom: onTop ? 0 : leftStop,
+      bottom: frame.onTop ? 0 : frame.leftStop,
       // The gap is INSIDE the column's box now: the
       // rail's own scrollbar rides it. ⛔Take the
       // quantized span rather than re-adding the
@@ -2226,29 +2246,27 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       // widget have to be one spelling of one
       // boundary, or the canvas is framed against
       // an edge the rail is not drawn at.
-      width: hasLeftDock ? leftRailSpan : null,
+      width: frame.hasLeftDock ? frame.leftRailSpan : null,
       child: _rail.buildRailColumn(
         EditorPanelDockSide.left,
-        width: leftWidth,
+        width: frame.leftWidth,
         hosts: leftRailHosts,
         // 결정 8: the same ceiling both sides read.
-        dragCeiling: ceiling,
+        dragCeiling: frame.ceiling,
       ),
     );
   }
 
-  Positioned _floor(EdgeInsets floorCover, bool hasBottomDock, bool onTop, double leftStop, BoxConstraints constraints, DeviceGrid grid, double rightStop, Widget? floor) {
+  Positioned _floor(_WorkspaceFrame frame, Widget? floor) {
     return Positioned.fill(
       child: CanvasFloorInsets(
-        insets: floorCover,
+        insets: frame.floorCover,
         // ⑩: the collapsed row lies ON the artwork
         // just past the region's edge. It frames
         // nothing, so it is not in `insets` — but a
         // bar on the bottom edge would be under it.
         bottomOverlaySpan:
-            hasBottomDock &&
-                _bottomDockCollapsed &&
-                !onTop
+            frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
             ? _collapsedRows.collapsedRowHeight()
             : 0,
         // WHERE each column actually is, not just how
@@ -2259,17 +2277,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         // no reason (유저, R3 #5).
         leftRailBand: _rail.railBand(
           right: false,
-          stop: leftStop,
-          onTop: onTop,
-          height: constraints.maxHeight,
-          grid: grid,
+          stop: frame.leftStop,
+          onTop: frame.onTop,
+          height: frame.constraints.maxHeight,
+          grid: frame.grid,
         ),
         rightRailBand: _rail.railBand(
           right: true,
-          stop: rightStop,
-          onTop: onTop,
-          height: constraints.maxHeight,
-          grid: grid,
+          stop: frame.rightStop,
+          onTop: frame.onTop,
+          height: frame.constraints.maxHeight,
+          grid: frame.grid,
         ),
         child: floor!,
       ),
@@ -2444,4 +2462,52 @@ class _RailGroupButton extends StatelessWidget {
       },
     );
   }
+}
+
+/// The workspace's resolved geometry for one layout pass — what the rail
+/// columns, the floor and the bottom region each need to know about where
+/// the others are. Computed once per build.
+///
+/// ONE object instead of the eight loose numbers each builder used to take
+/// (Round 0's extraction debt, repaid in Round 2 of the audit, 2026-09-03).
+class _WorkspaceFrame {
+  const _WorkspaceFrame({
+    required this.grid,
+    required this.constraints,
+    required this.onTop,
+    required this.hasLeftDock,
+    required this.hasRightDock,
+    required this.hasBottomDock,
+    required this.leftWidth,
+    required this.rightWidth,
+    required this.ceiling,
+    required this.bottomHeight,
+    required this.bottomInset,
+    required this.leftRailSpanRaw,
+    required this.rightRailSpanRaw,
+    required this.leftRailSpan,
+    required this.rightRailSpan,
+    required this.floorCover,
+    required this.leftStop,
+    required this.rightStop,
+  });
+
+  final DeviceGrid grid;
+  final BoxConstraints constraints;
+  final bool onTop;
+  final bool hasLeftDock;
+  final bool hasRightDock;
+  final bool hasBottomDock;
+  final double leftWidth;
+  final double rightWidth;
+  final double ceiling;
+  final double bottomHeight;
+  final double bottomInset;
+  final double leftRailSpanRaw;
+  final double rightRailSpanRaw;
+  final double leftRailSpan;
+  final double rightRailSpan;
+  final EdgeInsets floorCover;
+  final double leftStop;
+  final double rightStop;
 }

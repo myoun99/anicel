@@ -24,7 +24,7 @@ void main() {
         hits.length,
         lessThanOrEqualTo(ceiling),
         reason:
-            'a body was copied instead of shared — the longest new '
+            'a body was copied instead of shared — the longest candidates now '
             'candidates:\n'
             '${hits.take(12).map((h) => h.describe()).join('\n')}',
       );

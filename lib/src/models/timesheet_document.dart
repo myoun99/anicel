@@ -363,6 +363,16 @@ class TimesheetDocument {
     final transitionSlot = transitionLayer == null ? -1 : 1;
     final firstInstructionSlot = transitionLayer == null ? 1 : 2;
 
+    final cameraColumns = _CameraColumns(
+      transitionSlot: transitionSlot,
+      transitionLayer: transitionLayer,
+      firstInstructionSlot: firstInstructionSlot,
+      instructionLayers: instructionLayers,
+      cameraOnSheet: cameraOnSheet,
+      cut: cut,
+      rowCount: rowCount,
+      instructionDefById: instructionDefById,
+    );
     final columns = <TimesheetColumn>[
       // Animation layers fill the ACTION block in order, headed by their
       // real names; unbacked slots stay blank handwriting space.
@@ -383,7 +393,7 @@ class TimesheetDocument {
       // instruction rows (CAM 2 …) follow in layer order, growing the block
       // past the fixed count when a cut carries more.
       for (var slot = 0; slot < cameraSlotCount; slot += 1)
-        _cameraColumn(slot, transitionSlot, transitionLayer, firstInstructionSlot, instructionLayers, cameraOnSheet, cut, rowCount, instructionDefById),
+        cameraColumns.column(slot),
     ];
 
     return TimesheetDocument._(
@@ -409,60 +419,6 @@ class TimesheetDocument {
             frameCount: pageFrameCount,
           ),
       ]),
-    );
-  }
-
-  static TimesheetColumn _cameraColumn(int slot, int transitionSlot, Layer? transitionLayer, int firstInstructionSlot, List<Layer> instructionLayers, bool cameraOnSheet, Cut cut, int rowCount, CameraInstructionDef? Function(String instructionId)? instructionDefById) {
-    return TimesheetColumn(
-      kind: TimesheetColumnKind.camera,
-      label: '${slot + 1}',
-      layerName: slot == transitionSlot
-          ? transitionLayer!.name
-          : slot >= firstInstructionSlot &&
-                slot - firstInstructionSlot < instructionLayers.length
-          ? instructionLayers[slot - firstInstructionSlot].name
-          : null,
-      // Instruction slots carry their layer id so edge drags preview
-      // live on the sheet (UI-R18 #7), like action/SE columns.
-      layerId: slot == transitionSlot
-          ? transitionLayer!.id
-          : slot >= firstInstructionSlot &&
-                slot - firstInstructionSlot < instructionLayers.length
-          ? instructionLayers[slot - firstInstructionSlot].id
-          : null,
-      cells: slot == 0
-          ? (cameraOnSheet
-                ? _cameraCells(cut: cut, rowCount: rowCount)
-                : _blankCells(rowCount))
-          // D31: the transition's spans through the SAME instruction
-          // recipe — one mark vocabulary (bowtie/wedge, A→B, memo),
-          // no second printer. Its marks may legitimately run into
-          // the のりしろ rows. A5-4 moved it up to slot 1, directly
-          // under the camera, to match the rail.
-          : slot == transitionSlot
-          ? _instructionCells(
-              layer: transitionLayer!,
-              rowCount: rowCount,
-              defById: instructionDefById,
-            )
-          : slot >= firstInstructionSlot &&
-                slot - firstInstructionSlot < instructionLayers.length
-          ? _instructionCells(
-              layer: instructionLayers[slot - firstInstructionSlot],
-              rowCount: rowCount,
-              defById: instructionDefById,
-            )
-          : _blankCells(rowCount),
-      previewCellsBuilder:
-          slot == transitionSlot ||
-              (slot >= firstInstructionSlot &&
-                  slot - firstInstructionSlot < instructionLayers.length)
-          ? (layer) => _instructionCells(
-              layer: layer,
-              rowCount: rowCount,
-              defById: instructionDefById,
-            )
-          : null,
     );
   }
 
@@ -1107,5 +1063,73 @@ class _LayerCellsPass {
         inEmptyRun = true;
       }
     }
+  }
+}
+
+/// The camera-side columns of one sheet — the camera column, the transition
+/// column and the instruction columns — each addressed by its slot.
+///
+/// ONE object for what used to travel as eight loose arguments beside the
+/// slot (Round 0's extraction debt, repaid in Round 2 of the audit,
+/// 2026-09-03).
+class _CameraColumns {
+  const _CameraColumns({
+    required this.transitionSlot,
+    required this.transitionLayer,
+    required this.firstInstructionSlot,
+    required this.instructionLayers,
+    required this.cameraOnSheet,
+    required this.cut,
+    required this.rowCount,
+    required this.instructionDefById,
+  });
+
+  final int transitionSlot;
+  final Layer? transitionLayer;
+  final int firstInstructionSlot;
+  final List<Layer> instructionLayers;
+  final bool cameraOnSheet;
+  final Cut cut;
+  final int rowCount;
+  final CameraInstructionDef? Function(String instructionId)? instructionDefById;
+
+  /// The row whose instructions [slot] shows: the transition row on its
+  /// slot, an instruction row on the slots after it, nothing elsewhere.
+  Layer? _instructionLayerAt(int slot) {
+    if (slot == transitionSlot) {
+      return transitionLayer!;
+    }
+    final index = slot - firstInstructionSlot;
+    return index >= 0 && index < instructionLayers.length
+        ? instructionLayers[index]
+        : null;
+  }
+
+  TimesheetColumn column(int slot) {
+    final instructionLayer = _instructionLayerAt(slot);
+    return TimesheetColumn(
+      kind: TimesheetColumnKind.camera,
+      label: '${slot + 1}',
+      layerName: instructionLayer?.name,
+      layerId: instructionLayer?.id,
+      cells: slot == 0
+          ? (cameraOnSheet
+                ? TimesheetDocument._cameraCells(cut: cut, rowCount: rowCount)
+                : TimesheetDocument._blankCells(rowCount))
+          : instructionLayer != null
+          ? TimesheetDocument._instructionCells(
+              layer: instructionLayer,
+              rowCount: rowCount,
+              defById: instructionDefById,
+            )
+          : TimesheetDocument._blankCells(rowCount),
+      previewCellsBuilder: instructionLayer == null
+          ? null
+          : (layer) => TimesheetDocument._instructionCells(
+              layer: layer,
+              rowCount: rowCount,
+              defById: instructionDefById,
+            ),
+    );
   }
 }
