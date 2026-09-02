@@ -12,6 +12,8 @@ import 'widgets/app_window.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/canvas_shape_kind.dart';
 import '../models/project.dart';
+import '../services/brush_preset_file_service.dart';
+import '../services/brush_tip_library_service.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
@@ -39,6 +41,7 @@ import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
+import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_actuation_gate.dart';
@@ -64,10 +67,34 @@ import 'widgets/cursor_notice.dart';
 /// different files; the workspace only owns the dock layout and shared
 /// panel view state.
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
+  const HomePage({
+    super.key,
+    this.initialProject,
+    this.onRepositoryCreated,
+    this.layoutStore,
+    this.presetFileService,
+    this.tipLibraryService,
+  });
 
   final Project? initialProject;
   final void Function(ProjectRepository repository)? onRepositoryCreated;
+
+  /// Where the workspace saves its layout. Null lets the workspace decide —
+  /// its own store in the app, none under FLUTTER_TEST — so a test that
+  /// measures the save hands one in here (the only road to it: every
+  /// workspace test pumps HomePage).
+  final WorkspaceLayoutStore? layoutStore;
+
+  /// Where the workspace's preset library loads from. Null lets the
+  /// workspace decide — the app's own files, nothing under FLUTTER_TEST, so
+  /// the library is empty in tests — and a test that measures applying a
+  /// preset hands one in here, the same road as [layoutStore].
+  final BrushPresetFileService? presetFileService;
+
+  /// Where the workspace's tip library loads from — the presets reference
+  /// tips by id and load after them, so a test that seeds presets seeds
+  /// this too, on its own directory.
+  final BrushTipLibraryService? tipLibraryService;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -863,6 +890,9 @@ class _HomePageState extends State<HomePage> {
                               Expanded(
                                 child: EditorWorkspace(
                                   session: _session,
+                                  layoutStore: widget.layoutStore,
+                                  presetFileService: widget.presetFileService,
+                                  tipLibraryService: widget.tipLibraryService,
                                   panelsMenu: _panelsMenu,
                                   brushTool: _brushTool,
                                   colorBackground: _colorWheelBackground,
