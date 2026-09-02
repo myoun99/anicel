@@ -4151,78 +4151,19 @@ class _CanvasViewportBottomBar extends StatelessWidget {
           // onto the artwork, which is what a narrow rail did.
           final owed = leading.length * _leadingControlBudget;
 
-          // WHERE EACH GROUP STARTS. The floor lays them all out; every
-          // other panel starts where a floor pill ENDS UP once it has run
-          // out of room, and stays there however wide it gets.
-          var showColors = onFloor && colorsWidth > 0;
-          var showViewControls = onFloor && hasViewControls;
-          var showReset = onFloor;
-          var showHostVerbs = onFloor && hostVerbsCanUnfold;
-          var showZoomSteps = onFloor;
-
-          bool anythingFolded() =>
-              (colorsWidth > 0 && !showColors) ||
-              (hasViewControls && !showViewControls) ||
-              !showReset ||
-              (hostSettings.isNotEmpty && !showHostVerbs) ||
-              (onFloor && !showZoomSteps);
-
-          double pillWidth() {
-            final clusters = <double>[
-              if (leading.isNotEmpty || showHostVerbs)
-                owed + (showHostVerbs ? hostVerbs.length * _ownIconWidth : 0),
-              _ownIconWidth + // Fit, which never folds
-                  (showReset ? _ownIconWidth : 0) +
-                  (showZoomSteps ? 2 * _ownIconWidth : 0) +
-                  _zoomReadoutWidth,
-              if (showViewControls) viewControlsWidth,
-              if (showColors) colorsWidth,
-              if (anythingFolded()) _gearWidth,
-            ];
-            return _pillEnds +
-                clusters.fold<double>(0, (sum, width) => sum + width) +
-                _dividerWidth * (clusters.length - 1) +
-                _foldSlack;
-          }
-
-          // THE FOLD LADDER (유저 확정 2026-08-13), outside in: the colours
-          // are a choice you make once a project, and the zoom steps are
-          // the last thing to go because they are the last thing that is
-          // still about the view you are looking at right now.
-          //
-          // Re-asked after every fold rather than solved in one pass: the
-          // gear appears the moment the first group folds and costs the
-          // pill its own width, so the answer for the second group is not
-          // the answer the first one was given.
-          if (showColors && pillWidth() > room) {
-            showColors = false;
-          }
-          if (showViewControls && pillWidth() > room) {
-            showViewControls = false;
-          }
-          if (showReset && pillWidth() > room) {
-            showReset = false;
-          }
-          if (showHostVerbs && pillWidth() > room) {
-            showHostVerbs = false;
-          }
-          if (showZoomSteps && pillWidth() > room) {
-            showZoomSteps = false;
-          }
-
-          // Below this the readout goes as well, and below THAT the host's
-          // own controls do — the two thresholds that were already here,
-          // and the reason a folded floor pill lands on exactly the bar a
-          // rail panel wears. Everything foldable is forced down with them,
-          // so the two ends of the rule meet instead of overlapping.
-          final cramped = room < pillMinWidth + owed;
-          if (cramped) {
-            showColors = false;
-            showViewControls = false;
-            showReset = false;
-            showHostVerbs = false;
-            showZoomSteps = false;
-          }
+          // What is out at this width — the fold ladder, as a value.
+          final fold = _PillFold.fit(
+            room: room,
+            owed: owed,
+            onFloor: onFloor,
+            hasLeading: leading.isNotEmpty,
+            colorsWidth: colorsWidth,
+            hasViewControls: hasViewControls,
+            viewControlsWidth: viewControlsWidth,
+            hostVerbsCanUnfold: hostVerbsCanUnfold,
+            hostVerbCount: hostVerbs.length,
+            hostSettingsListed: hostSettings.isNotEmpty,
+          );
           // Last of all the host's controls go too — but Fit never does.
           // With the docked bar gone this is its only home, and a panel
           // narrow enough to lose it is exactly the panel that needs it.
@@ -4247,11 +4188,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
           final settingsEntries = <PanelFlyoutEntry>[
             // The host's own verbs first: they are about the DOCUMENT, and
             // everything below is about looking at it.
-            if (hostSettings.isNotEmpty && !showHostVerbs) ...[
+            if (hostSettings.isNotEmpty && !fold.showHostVerbs) ...[
               ...hostSettings,
               const PanelFlyoutDivider(),
             ],
-            if (!showReset)
+            if (!fold.showReset)
               PanelFlyoutItem(
                 keyValue: 'canvas-viewport-reset',
                 label: AppText.strings.viewResetView,
@@ -4262,7 +4203,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
             // the floor has no zoom steps at any width — they are the
             // floor's, and listing them here would hand every rail panel
             // two controls it never had.
-            if (onFloor && !showZoomSteps) ...[
+            if (onFloor && !fold.showZoomSteps) ...[
               PanelFlyoutItem(
                 keyValue: 'canvas-viewport-zoom-out',
                 label: AppText.strings.viewZoomOut,
@@ -4280,7 +4221,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
             // it: the row is six tooltipped buttons and this runs on every
             // bar build, so "is there anything to show" was costing a
             // throwaway widget list.
-            if (hasViewControls && !showViewControls) ...[
+            if (hasViewControls && !fold.showViewControls) ...[
               const PanelFlyoutDivider(),
               PanelFlyoutRow(
                 keyValue: 'canvas-settings-view-row',
@@ -4295,7 +4236,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 ),
               ),
             ],
-            if (colorControls.isNotEmpty && !showColors) ...[
+            if (colorControls.isNotEmpty && !fold.showColors) ...[
               const PanelFlyoutDivider(),
               PanelFlyoutRow(
                 keyValue: 'canvas-settings-color-row',
@@ -4314,16 +4255,16 @@ class _CanvasViewportBottomBar extends StatelessWidget {
               ...joined([
                 <Widget>[
                   if (!bare) ...leading,
-                  if (showHostVerbs) ...hostVerbButtons(),
+                  if (fold.showHostVerbs) ...hostVerbButtons(),
                 ],
                 <Widget>[
                   fitButton(),
-                  if (showReset) resetButton(),
-                  if (showZoomSteps) zoomOutButton(),
-                  if (!cramped) zoomReadout(),
-                  if (showZoomSteps) zoomInButton(),
+                  if (fold.showReset) resetButton(),
+                  if (fold.showZoomSteps) zoomOutButton(),
+                  if (!fold.cramped) zoomReadout(),
+                  if (fold.showZoomSteps) zoomInButton(),
                 ],
-                if (showViewControls)
+                if (fold.showViewControls)
                   <Widget>[
                     // INLINE, so it has to follow the view on its own. The
                     // memo token deliberately does not carry rotation — it
@@ -4352,13 +4293,13 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                       ),
                     ),
                   ],
-                if (showColors) colorControls,
+                if (fold.showColors) colorControls,
                 // The gear NEVER folds — it is the only way to what is
                 // inside it, so a width that dropped it would take the
                 // rotate, the flip and the surface colours with it and say
                 // nothing about where they went. It is simply not there
                 // when nothing has folded.
-                if (anythingFolded())
+                if (fold.anythingFolded)
                   <Widget>[
                     PanelFlyoutTrigger(
                       key: const ValueKey<String>('canvas-viewport-settings'),
@@ -4691,4 +4632,130 @@ class _StagePlanesPainter extends CustomPainter {
       oldDelegate.margin != margin ||
       oldDelegate.canvasSize != canvasSize ||
       oldDelegate.viewport != viewport;
+}
+
+/// Which of the pill's foldable groups are OUT at a given width — the fold
+/// ladder as a value the bar reads, instead of five flags mutated in the
+/// middle of its build. (The audit's 2026-09-03 restructure; the ladder
+/// and its comments moved verbatim from `_CanvasViewportBottomBar.build`.)
+class _PillFold {
+  const _PillFold({
+    required this.showColors,
+    required this.showViewControls,
+    required this.showReset,
+    required this.showHostVerbs,
+    required this.showZoomSteps,
+    required this.cramped,
+    required this.anythingFolded,
+  });
+
+  final bool showColors;
+  final bool showViewControls;
+  final bool showReset;
+  final bool showHostVerbs;
+  final bool showZoomSteps;
+
+  /// Below this the readout goes as well, and below THAT the host's
+  /// own controls do — the two thresholds that were already here,
+  /// and the reason a folded floor pill lands on exactly the bar a
+  /// rail panel wears. Everything foldable is forced down with them,
+  /// so the two ends of the rule meet instead of overlapping.
+  final bool cramped;
+
+  /// Whether the gear has anything to list.
+  final bool anythingFolded;
+
+  /// The ladder, run for [room] pixels of width.
+  static _PillFold fit({
+    required double room,
+    required double owed,
+    required bool onFloor,
+    required bool hasLeading,
+    required double colorsWidth,
+    required bool hasViewControls,
+    required double viewControlsWidth,
+    required bool hostVerbsCanUnfold,
+    required int hostVerbCount,
+    required bool hostSettingsListed,
+  }) {
+    // WHERE EACH GROUP STARTS. The floor lays them all out; every
+    // other panel starts where a floor pill ENDS UP once it has run
+    // out of room, and stays there however wide it gets.
+    var showColors = onFloor && colorsWidth > 0;
+    var showViewControls = onFloor && hasViewControls;
+    var showReset = onFloor;
+    var showHostVerbs = onFloor && hostVerbsCanUnfold;
+    var showZoomSteps = onFloor;
+
+    bool anythingFolded() =>
+        (colorsWidth > 0 && !showColors) ||
+        (hasViewControls && !showViewControls) ||
+        !showReset ||
+        (hostSettingsListed && !showHostVerbs) ||
+        (onFloor && !showZoomSteps);
+
+    double pillWidth() {
+      final clusters = <double>[
+        if (hasLeading || showHostVerbs)
+          owed +
+              (showHostVerbs
+                  ? hostVerbCount * _CanvasViewportBottomBar._ownIconWidth
+                  : 0),
+        _CanvasViewportBottomBar._ownIconWidth + // Fit, which never folds
+            (showReset ? _CanvasViewportBottomBar._ownIconWidth : 0) +
+            (showZoomSteps ? 2 * _CanvasViewportBottomBar._ownIconWidth : 0) +
+            _CanvasViewportBottomBar._zoomReadoutWidth,
+        if (showViewControls) viewControlsWidth,
+        if (showColors) colorsWidth,
+        if (anythingFolded()) _CanvasViewportBottomBar._gearWidth,
+      ];
+      return _CanvasViewportBottomBar._pillEnds +
+          clusters.fold<double>(0, (sum, width) => sum + width) +
+          _CanvasViewportBottomBar._dividerWidth * (clusters.length - 1) +
+          _CanvasViewportBottomBar._foldSlack;
+    }
+
+    // THE FOLD LADDER (유저 확정 2026-08-13), outside in: the colours
+    // are a choice you make once a project, and the zoom steps are
+    // the last thing to go because they are the last thing that is
+    // still about the view you are looking at right now.
+    //
+    // Re-asked after every fold rather than solved in one pass: the
+    // gear appears the moment the first group folds and costs the
+    // pill its own width, so the answer for the second group is not
+    // the answer the first one was given.
+    if (showColors && pillWidth() > room) {
+      showColors = false;
+    }
+    if (showViewControls && pillWidth() > room) {
+      showViewControls = false;
+    }
+    if (showReset && pillWidth() > room) {
+      showReset = false;
+    }
+    if (showHostVerbs && pillWidth() > room) {
+      showHostVerbs = false;
+    }
+    if (showZoomSteps && pillWidth() > room) {
+      showZoomSteps = false;
+    }
+
+    final cramped = room < _CanvasViewportBottomBar.pillMinWidth + owed;
+    if (cramped) {
+      showColors = false;
+      showViewControls = false;
+      showReset = false;
+      showHostVerbs = false;
+      showZoomSteps = false;
+    }
+    return _PillFold(
+      showColors: showColors,
+      showViewControls: showViewControls,
+      showReset: showReset,
+      showHostVerbs: showHostVerbs,
+      showZoomSteps: showZoomSteps,
+      cramped: cramped,
+      anythingFolded: anythingFolded(),
+    );
+  }
 }
