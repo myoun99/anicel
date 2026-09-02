@@ -1224,289 +1224,308 @@ class TimelineLaneFrameRow extends StatelessWidget {
 
   Widget _buildBand(BuildContext context, {required bool lit}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final cellExtent = metrics.frameCellWidth;
-    // Cross-axis extent: rail-row height in the timeline, column width in
-    // the X-sheet (the transposed metrics carry both as layerRowHeight).
-    final crossExtent = metrics.layerRowHeight;
-    final visibleExtent =
-        (frameEndIndexExclusive - frameStartIndex) * cellExtent;
-    // ONE metric law for every marker on this axis — see
-    // [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
-    // Build-time is correct HERE: the band rebuilds on zoom.
-    final markerSize = lane.isGroupHeader
-        ? timelineLaneUnionKeyMarkerSize(
-            crossExtent,
-            frameCellExtent: cellExtent,
-          )
-        : timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: cellExtent);
-    final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
-    final horizontal = axis == Axis.horizontal;
-
-    // R26 #3: the header row washes when the selection spans its WHOLE
-    // member group — the SAME predicate the gesture uses to decide
-    // move-vs-select, so what looks selected is what a drag grabs.
-    bool selectionCoversRow(TimelineLaneSelection? selection) =>
-        laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
-
-    List<Widget> markerChildren(TimelineLaneSelection? selection) => [
-      // R27 #14: the selection BAND is no longer painted here. It rides
-      // the cursor overlay with the cell selection's exact geometry and
-      // decoration, so a key span and a cell span read as one language.
-      // (The band is above the markers there; the key RING below still
-      // marks which keys are in the span.)
-      for (final frame in lane.keyedFrames)
-        if (frame >= frameStartIndex && frame < frameEndIndexExclusive)
-          Positioned(
-            left: horizontal
-                ? (frame - frameStartIndex) * cellExtent +
-                      cellExtent / 2 -
-                      hitSize / 2
-                : crossExtent / 2 - hitSize / 2,
-            top: horizontal
-                ? crossExtent / 2 - hitSize / 2
-                : (frame - frameStartIndex) * cellExtent +
-                      cellExtent / 2 -
-                      hitSize / 2,
-            width: hitSize,
-            height: hitSize,
-            child: TimelineLaneKeyMarker(
-              key: ValueKey<String>(
-                '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
-              ),
-              shape: lane.keyShapeAt(frame),
-              markerSize: markerSize,
-              // Selected markers ring in ACCENT 1 (UI-R23 #3/#4): the
-              // LANE selection owns the ring now — frame selection is a
-              // separate domain and never rings lane keys. Header union
-              // diamonds ring on a whole-group selection (R26 #3).
-              selected:
-                  selection != null &&
-                  selectionCoversRow(selection) &&
-                  selection.contains(frame),
-            ),
-          ),
-      // The key's NAME, at the diamond's upper right (user 2026-07-30) —
-      // "same name, same value" made visible where the link lives. Clipped
-      // to the room before the next key so two names cannot collide, and
-      // gone entirely once the cells are too narrow to read a word between
-      // two diamonds.
-      //
-      // Horizontal only: the X-sheet's lane is a COLUMN one cell wide, so
-      // there is no "right of the diamond" there to put a word in.
-      if (horizontal && cellExtent >= _laneKeyNameMinCellExtent)
-        for (final entry in lane.keyNames.entries)
-          if (entry.key >= frameStartIndex &&
-              entry.key < frameEndIndexExclusive)
-            // ㉗: EVERY key name sits in the middle of its cell. The two
-            // branches differ only in what they are printed ON.
-            //
-            // 🚨THE MEMBER USED TO SIT BESIDE ITS DIAMOND ON MY SAY-SO, not
-            // the user's. 유저 원문 ㉗ said 「**유니언 이름은** 오른쪽 위가
-            // 아니라 칸 중앙」 — the union only — and I extended it into a
-            // rule for members and wrote the reason here as if it were
-            // theirs. `F-17-Q1` put the real question to them on 08-26 and
-            // the answer was **B — 「마크는 그대로, 이름만 칸 중앙에」**,
-            // with the objection I had assumed waved off in one line:
-            // 「키가 있는건 글자로도 아니까 아무문제없어」.
-            //
-            // ⛔So the 6px mark stays 6px (that was option A, and it was not
-            // chosen), and the name moves to the centre over it. The word
-            // itself is what says a key is there.
-            if (lane.isGroupHeader)
-              Positioned(
-                left: (entry.key - frameStartIndex) * cellExtent,
-                top: 0,
-                width: cellExtent,
-                height: crossExtent,
-                child: IgnorePointer(
-                  child: _LaneKeyName(
-                    text: entry.value,
-                    // The frame blocks' own type rule, so a change there
-                    // reaches this too (유저: 「프레임블록 쪽 텍스트 디자인을
-                    // 바꾸면 한 번에 적용되도록」).
-                    fontSize: timelineFittedGlyphFontSize(
-                      _laneKeyNameFontSize,
-                      cellExtent,
-                      crossExtent: markerSize,
-                    ),
-                    // Printed ON the paper-white mark, so it takes the
-                    // paper's ink rather than the band's.
-                    color: timelineDrawingInkColor,
-                    alignment: Alignment.center,
-                  ),
-                ),
-              )
-            else
-              Positioned(
-                left: (entry.key - frameStartIndex) * cellExtent,
-                top: 0,
-                width: cellExtent,
-                height: crossExtent,
-                // Display only: the band's own gestures (stand, select,
-                // move) own this axis, and a label is not a second grammar.
-                child: IgnorePointer(
-                  child: _LaneKeyName(
-                    text: entry.value,
-                    // ⛔The BAND's ink and the band's own small type — a
-                    // member's mark is not paper, so nothing here borrows
-                    // the union's paper rules.
-                    alignment: Alignment.center,
-                  ),
-                ),
-              ),
-    ];
-
-    final selectionListenable = laneRange?.selection;
-    // 🚨D43-2 재개 c (유저 2026-08-22): 「**fx행쪽은 또 그리드선 다르고** 뭐
-    // 일을 이따구로한거지? 너 무조건 통일 안했지 이거」.
-    //
-    // ⛔THE OVERLAY SITS UNDER THE ROWS (D32), SO EVERY ROW OWES THE GRID A
-    // REDRAW. The frame rows do — `heldSeamLineFor`, the law's ink on their
-    // own paper. This band never did: it washes at 60% and let the buried
-    // overlay show THROUGH, which is a third composite of the same ink (the
-    // law resolved against the PANEL's ground, then 40% of that surviving
-    // under this wash). Same cadence, same ink, three different lines on
-    // one screen — which is exactly what the user could see.
-    //
-    // The band draws the law itself now, on the ground it actually makes:
-    // its wash composited onto the host's colour. The SAME painter class
-    // the panel overlay uses, so there is no copy here to drift.
-    final bandWash = AppColors.washDown.withValues(alpha: 0.6);
     final gridLaw = TimelineGridLaw.maybeOf(context);
-    // 🚨F-7 (유저 2026-08-24): 「스토리보드패널, fx열면 프레임영역의 선이
-    // 두꺼운데 선이 이중적용되고있는건가?」 — it was.
-    //
-    // ⛔THE OVERLAY SITS UNDER THE ROWS (D32), so a row that paints owes the
-    // grid a redraw. Every other row pays that debt with an OPAQUE ground:
-    // it covers the overlay, then draws the law itself, and one line lands.
-    // This band paid it with a 60% wash — which dims the overlay's lines
-    // instead of covering them — and then drew the law on top. Two lines,
-    // one boundary. ⇒ The band composites its wash onto the host's ground
-    // and paints THAT, so it occludes like every other row and its redraw
-    // is the only line. Same colour on screen, one line instead of two.
-    //
-    // ⚠️Null ground (a row lying over the ARTWORK) keeps the raw wash: there
-    // is nothing to composite against, and there is no overlay under it to
-    // double either.
-    final bandGround =
-        timelineGridGroundOver(under: gridLaw?.ground, painted: bandWash) ??
-        bandWash;
-    // F-25: the standing wash the LAYER row's frame half already wears
-    // ([TimelineRowCellsPainter]'s `rowGround`), composited the same way —
-    // over the band's own ground, so the band stays OPAQUE and keeps
-    // occluding the buried grid (F-7).
-    final litGround = lit
-        ? Color.alphaBlend(timelineActiveRowWashColor(colorScheme), bandGround)
-        : bandGround;
-    // The ROW SEAM, from the law — see the border below.
-    final seamInk = timelineGridRowSeamInk(colorScheme);
-    final bandSeam = BorderSide(
-      color: seamInk.color,
-      width: seamInk.strokeWidth,
-    );
+    final ground = _bandGround(colorScheme, gridLaw, lit: lit);
     final band = DecoratedBox(
-      decoration: BoxDecoration(
-        color: litGround,
-        // The divider faces the NEXT lane: below in the timeline, to the
-        // right in the X-sheet.
-        //
-        // 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 가로선 있는데
-        // 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」. THIS was the
-        // line that existed — a `BorderSide` written here in its own words
-        // (outlineVariant at HALF width), while the frame cells rows drew
-        // nothing at all and the overlay's seam wrote a third spelling. The
-        // value comes from the law now, so the row that just grew a seam
-        // and the row that always had one are the same line.
-        border: Border(
-          bottom: horizontal ? bandSeam : BorderSide.none,
-          right: horizontal ? BorderSide.none : bandSeam,
-        ),
-      ),
+      decoration: BoxDecoration(color: ground, border: _bandSeam(colorScheme)),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // THE GRID, first — under the gesture layer and the markers, the
-          // same place it sits on every other row.
-          if (gridLaw != null)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  key: ValueKey<String>(
-                    '$keyPrefix-lane-grid-${layer.id}-${lane.laneId}',
-                  ),
-                  painter: TimelineBeatLinesPainter(
-                    axis: axis,
-                    frameCellExtent: cellExtent,
-                    framesPerSecond: gridLaw.framesPerSecond,
-                    colorScheme: colorScheme,
-                    // The SAME composited colour the band actually paints
-                    // (F-7) — computed once above so the ink and the fill
-                    // cannot disagree about what is underneath.
-                    ground: litGround,
-                    // The band is ONE row: its own bottom border is the
-                    // cross seam, so the overlay must not draw a second.
-                    crossCellExtent: 0,
-                    // The band's canvas starts at the visible window, not
-                    // at frame 0 — the spacers are its siblings.
-                    frameStartIndex: frameStartIndex,
-                  ),
-                ),
-              ),
-            ),
-          // The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the
-          // markers: pans on the band select THIS lane; marker drags keep
-          // their arena priority above. The GROUP HEADER band selects too
-          // (R26 #3): its anchor spans the WHOLE member group — the
-          // "모두에 적용되는 그 행", collapsed state included.
-          if (laneRange != null)
-            TimelineLaneRangeGestureLayer(
-              key: ValueKey<String>(
-                '$keyPrefix-lane-range-gesture-${layer.id}-${lane.laneId}',
-              ),
-              layer: layer,
-              laneId: lane.laneId,
-              frameStartIndex: frameStartIndex,
-              leadingFrameSpacerWidth: 0,
-              frameCellExtent: cellExtent,
-              crossAxisExtent: crossExtent,
-              callbacks: laneRange!,
-              axis: axis,
-            ),
-          // Markers follow the LIVE lane selection (value-only — no row
-          // rebuild) so the accent-1 rings track drags per step.
-          if (selectionListenable == null)
-            ...markerChildren(null)
-          else
-            ValueListenableBuilder(
-              valueListenable: selectionListenable,
-              builder: (context, selection, _) => Stack(
-                clipBehavior: Clip.none,
-                children: markerChildren(selection),
-              ),
-            ),
+          ?_gridUnderlay(colorScheme, gridLaw, ground),
+          ?_gestureLayer(),
+          ..._liveMarkers(),
         ],
       ),
     );
+    return _withSpacers(band);
+  }
 
-    if (horizontal) {
-      return Row(
-        key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
-        children: [
-          SizedBox(width: leadingFrameSpacerWidth, height: crossExtent),
-          SizedBox(width: visibleExtent, height: crossExtent, child: band),
-          SizedBox(width: trailingFrameSpacerWidth, height: crossExtent),
-        ],
-      );
-    }
-    return Column(
-      key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
-      children: [
-        SizedBox(width: crossExtent, height: leadingFrameSpacerWidth),
-        SizedBox(width: crossExtent, height: visibleExtent, child: band),
-        SizedBox(width: crossExtent, height: trailingFrameSpacerWidth),
-      ],
+  bool get _horizontal => axis == Axis.horizontal;
+  double get _cellExtent => metrics.frameCellWidth;
+
+  /// Cross-axis extent: rail-row height in the timeline, column width in
+  /// the X-sheet (the transposed metrics carry both as layerRowHeight).
+  double get _crossExtent => metrics.layerRowHeight;
+  double get _visibleExtent =>
+      (frameEndIndexExclusive - frameStartIndex) * _cellExtent;
+
+  /// ONE metric law for every marker on this axis — see
+  /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
+  /// Build-time is correct HERE: the band rebuilds on zoom.
+  double get _markerSize => lane.isGroupHeader
+      ? timelineLaneUnionKeyMarkerSize(
+          _crossExtent,
+          frameCellExtent: _cellExtent,
+        )
+      : timelineLaneKeyMarkerSize(_crossExtent, frameCellExtent: _cellExtent);
+  double get _hitSize => (_markerSize + 8).clamp(14.0, _crossExtent).toDouble();
+
+  bool _inWindow(int frame) =>
+      frame >= frameStartIndex && frame < frameEndIndexExclusive;
+
+  /// R26 #3: the header row washes when the selection spans its WHOLE
+  /// member group — the SAME predicate the gesture uses to decide
+  /// move-vs-select, so what looks selected is what a drag grabs.
+  bool _selectionCoversRow(TimelineLaneSelection? selection) =>
+      laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
+
+  // ── the ground ────────────────────────────────────────────────────────
+
+  /// 🚨D43-2 재개 c (유저 2026-08-22): 「**fx행쪽은 또 그리드선 다르고** 뭐
+  /// 일을 이따구로한거지? 너 무조건 통일 안했지 이거」.
+  ///
+  /// ⛔THE OVERLAY SITS UNDER THE ROWS (D32), SO EVERY ROW OWES THE GRID A
+  /// REDRAW. The frame rows do — `heldSeamLineFor`, the law's ink on their
+  /// own paper. This band never did: it washes at 60% and let the buried
+  /// overlay show THROUGH, which is a third composite of the same ink (the
+  /// law resolved against the PANEL's ground, then 40% of that surviving
+  /// under this wash). Same cadence, same ink, three different lines on
+  /// one screen — which is exactly what the user could see. The band draws
+  /// the law itself now, on the ground it actually makes: its wash
+  /// composited onto the host's colour, through the SAME painter class the
+  /// panel overlay uses, so there is no copy here to drift.
+  ///
+  /// 🚨F-7 (유저 2026-08-24): 「스토리보드패널, fx열면 프레임영역의 선이
+  /// 두꺼운데 선이 이중적용되고있는건가?」 — it was. Every other row pays
+  /// the redraw debt with an OPAQUE ground: it covers the overlay, then
+  /// draws the law itself, and one line lands. This band paid it with a 60%
+  /// wash — which dims the overlay's lines instead of covering them — and
+  /// then drew the law on top. Two lines, one boundary. ⇒ The band
+  /// composites its wash onto the host's ground and paints THAT, so it
+  /// occludes like every other row and its redraw is the only line. ⚠️Null
+  /// ground (a row lying over the ARTWORK) keeps the raw wash: there is
+  /// nothing to composite against, and no overlay under it to double.
+  ///
+  /// F-25: the standing wash the LAYER row's frame half already wears
+  /// ([TimelineRowCellsPainter]'s `rowGround`), composited the same way —
+  /// over the band's own ground, so the band stays OPAQUE and keeps
+  /// occluding the buried grid (F-7).
+  Color _bandGround(
+    ColorScheme colorScheme,
+    TimelineGridLaw? gridLaw, {
+    required bool lit,
+  }) {
+    final wash = AppColors.washDown.withValues(alpha: 0.6);
+    final ground =
+        timelineGridGroundOver(under: gridLaw?.ground, painted: wash) ?? wash;
+    return lit
+        ? Color.alphaBlend(timelineActiveRowWashColor(colorScheme), ground)
+        : ground;
+  }
+
+  /// The divider faces the NEXT lane: below in the timeline, to the right
+  /// in the X-sheet. The ROW SEAM comes from the law.
+  ///
+  /// 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 가로선 있는데
+  /// 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」. THIS was the
+  /// line that existed — a `BorderSide` written here in its own words
+  /// (outlineVariant at HALF width), while the frame cells rows drew
+  /// nothing at all and the overlay's seam wrote a third spelling. The
+  /// value comes from the law now, so the row that just grew a seam and
+  /// the row that always had one are the same line.
+  Border _bandSeam(ColorScheme colorScheme) {
+    final ink = timelineGridRowSeamInk(colorScheme);
+    final seam = BorderSide(color: ink.color, width: ink.strokeWidth);
+    return Border(
+      bottom: _horizontal ? seam : BorderSide.none,
+      right: _horizontal ? BorderSide.none : seam,
     );
   }
+
+  // ── the layers of the band, bottom to top ─────────────────────────────
+
+  /// THE GRID, first — under the gesture layer and the markers, the same
+  /// place it sits on every other row. Painted in the SAME composited
+  /// colour the band actually paints (F-7), computed once, so the ink and
+  /// the fill cannot disagree about what is underneath.
+  Widget? _gridUnderlay(
+    ColorScheme colorScheme,
+    TimelineGridLaw? gridLaw,
+    Color ground,
+  ) {
+    if (gridLaw == null) return null;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          key: ValueKey<String>(
+            '$keyPrefix-lane-grid-${layer.id}-${lane.laneId}',
+          ),
+          painter: TimelineBeatLinesPainter(
+            axis: axis,
+            frameCellExtent: _cellExtent,
+            framesPerSecond: gridLaw.framesPerSecond,
+            colorScheme: colorScheme,
+            ground: ground,
+            // The band is ONE row: its own bottom border is the cross seam,
+            // so the overlay must not draw a second.
+            crossCellExtent: 0,
+            // The band's canvas starts at the visible window, not at frame
+            // 0 — the spacers are its siblings.
+            frameStartIndex: frameStartIndex,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the markers: pans
+  /// on the band select THIS lane; marker drags keep their arena priority
+  /// above. The GROUP HEADER band selects too (R26 #3): its anchor spans
+  /// the WHOLE member group — the "모두에 적용되는 그 행", collapsed state
+  /// included.
+  Widget? _gestureLayer() {
+    final range = laneRange;
+    if (range == null) return null;
+    return TimelineLaneRangeGestureLayer(
+      key: ValueKey<String>(
+        '$keyPrefix-lane-range-gesture-${layer.id}-${lane.laneId}',
+      ),
+      layer: layer,
+      laneId: lane.laneId,
+      frameStartIndex: frameStartIndex,
+      leadingFrameSpacerWidth: 0,
+      frameCellExtent: _cellExtent,
+      crossAxisExtent: _crossExtent,
+      callbacks: range,
+      axis: axis,
+    );
+  }
+
+  /// Markers follow the LIVE lane selection (value-only — no row rebuild)
+  /// so the accent-1 rings track drags per step.
+  List<Widget> _liveMarkers() {
+    final listenable = laneRange?.selection;
+    if (listenable == null) return _markers(null);
+    return [
+      ValueListenableBuilder(
+        valueListenable: listenable,
+        builder: (context, selection, _) =>
+            Stack(clipBehavior: Clip.none, children: _markers(selection)),
+      ),
+    ];
+  }
+
+  /// R27 #14: the selection BAND is no longer painted here. It rides the
+  /// cursor overlay with the cell selection's exact geometry and
+  /// decoration, so a key span and a cell span read as one language. (The
+  /// band is above the markers there; the key RING below still marks which
+  /// keys are in the span.)
+  List<Widget> _markers(TimelineLaneSelection? selection) => [
+    ..._keyMarkers(selection),
+    ..._keyNames(),
+  ];
+
+  List<Widget> _keyMarkers(TimelineLaneSelection? selection) => [
+    for (final frame in lane.keyedFrames)
+      if (_inWindow(frame)) _keyMarker(frame, selection),
+  ];
+
+  /// Selected markers ring in ACCENT 1 (UI-R23 #3/#4): the LANE selection
+  /// owns the ring now — frame selection is a separate domain and never
+  /// rings lane keys. Header union diamonds ring on a whole-group selection
+  /// (R26 #3).
+  Widget _keyMarker(int frame, TimelineLaneSelection? selection) {
+    final hit = _hitSize;
+    return placedAlong(
+      axis,
+      along:
+          (frame - frameStartIndex) * _cellExtent + _cellExtent / 2 - hit / 2,
+      across: _crossExtent / 2 - hit / 2,
+      alongExtent: hit,
+      acrossExtent: hit,
+      child: TimelineLaneKeyMarker(
+        key: ValueKey<String>(
+          '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
+        ),
+        shape: lane.keyShapeAt(frame),
+        markerSize: _markerSize,
+        selected:
+            selection != null &&
+            _selectionCoversRow(selection) &&
+            selection.contains(frame),
+      ),
+    );
+  }
+
+  /// The key's NAME, at the diamond's upper right (user 2026-07-30) — "same
+  /// name, same value" made visible where the link lives. Clipped to the
+  /// room before the next key so two names cannot collide, and gone
+  /// entirely once the cells are too narrow to read a word between two
+  /// diamonds.
+  ///
+  /// Horizontal only: the X-sheet's lane is a COLUMN one cell wide, so
+  /// there is no "right of the diamond" there to put a word in.
+  List<Widget> _keyNames() {
+    if (!_horizontal || _cellExtent < _laneKeyNameMinCellExtent) {
+      return const [];
+    }
+    return [
+      for (final entry in lane.keyNames.entries)
+        if (_inWindow(entry.key)) _keyName(entry.key, entry.value),
+    ];
+  }
+
+  /// ㉗: EVERY key name sits in the middle of its cell. The two branches
+  /// differ only in what they are printed ON.
+  ///
+  /// 🚨THE MEMBER USED TO SIT BESIDE ITS DIAMOND ON MY SAY-SO, not the
+  /// user's. 유저 원문 ㉗ said 「**유니언 이름은** 오른쪽 위가 아니라 칸 중앙」
+  /// — the union only — and I extended it into a rule for members and wrote
+  /// the reason here as if it were theirs. `F-17-Q1` put the real question
+  /// to them on 08-26 and the answer was **B — 「마크는 그대로, 이름만 칸
+  /// 중앙에」**, with the objection I had assumed waved off in one line:
+  /// 「키가 있는건 글자로도 아니까 아무문제없어」.
+  ///
+  /// ⛔So the 6px mark stays 6px (that was option A, and it was not chosen),
+  /// and the name moves to the centre over it. The word itself is what says
+  /// a key is there. Display only: the band's own gestures (stand, select,
+  /// move) own this axis, and a label is not a second grammar.
+  Widget _keyName(int frame, String text) {
+    return Positioned(
+      left: (frame - frameStartIndex) * _cellExtent,
+      top: 0,
+      width: _cellExtent,
+      height: _crossExtent,
+      child: IgnorePointer(
+        child: lane.isGroupHeader
+            ? _LaneKeyName(
+                text: text,
+                // The frame blocks' own type rule, so a change there reaches
+                // this too (유저: 「프레임블록 쪽 텍스트 디자인을 바꾸면 한 번에
+                // 적용되도록」).
+                fontSize: timelineFittedGlyphFontSize(
+                  _laneKeyNameFontSize,
+                  _cellExtent,
+                  crossExtent: _markerSize,
+                ),
+                // Printed ON the paper-white mark, so it takes the paper's
+                // ink rather than the band's.
+                color: timelineDrawingInkColor,
+                alignment: Alignment.center,
+              )
+            // ⛔The BAND's ink and the band's own small type — a member's
+            // mark is not paper, so nothing here borrows the union's paper
+            // rules.
+            : _LaneKeyName(text: text, alignment: Alignment.center),
+      ),
+    );
+  }
+
+  /// The band between its two spacers, along the axis.
+  Widget _withSpacers(Widget band) => Flex(
+    direction: axis,
+    key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
+    children: [
+      sizedAlong(axis, along: leadingFrameSpacerWidth, across: _crossExtent),
+      sizedAlong(
+        axis,
+        along: _visibleExtent,
+        across: _crossExtent,
+        child: band,
+      ),
+      sizedAlong(axis, along: trailingFrameSpacerWidth, across: _crossExtent),
+    ],
+  );
 }
 
 /// One key marker. A DRAWING, and nothing else.

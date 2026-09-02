@@ -116,4 +116,21 @@ void main() {
       expect(text.mainAlignment, 0);
     });
   });
+
+  group('sizedAlong', () {
+    test('horizontal: along is the width, across the height', () {
+      final b = sizedAlong(
+        Axis.horizontal,
+        along: 96,
+        across: 28,
+        child: child,
+      );
+      expect((b.width, b.height), (96, 28));
+    });
+
+    test('vertical: along is the height, across the width', () {
+      final b = sizedAlong(Axis.vertical, along: 96, across: 28, child: child);
+      expect((b.width, b.height), (28, 96));
+    });
+  });
 }

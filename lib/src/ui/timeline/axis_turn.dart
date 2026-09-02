@@ -115,3 +115,14 @@ Widget readableText(Axis axis, String text, {TextStyle? style}) =>
           style: style,
         ),
       );
+
+/// A box that states BOTH extents — [along] the axis and [across] it — a
+/// spacer, or a band cell.
+SizedBox sizedAlong(
+  Axis axis, {
+  required double along,
+  required double across,
+  Widget? child,
+}) => axis == Axis.horizontal
+    ? SizedBox(width: along, height: across, child: child)
+    : SizedBox(width: across, height: along, child: child);
