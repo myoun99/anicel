@@ -140,6 +140,7 @@ import 'text/app_strings.dart' show AppText;
 
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
+part 'storyboard/storyboard_scroll.dart';
 
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
@@ -980,7 +981,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// about the splitter.
   static const double _naturalRailWidth = StoryboardPanel._trackLabelWidth;
 
-  int _endlessTrailingFrames = 0;
+  // ── the horizontal scroll: its own object, in its own file ──────────
+  //
+  // A collaborator (storyboard/storyboard_scroll.dart, a part of this library). The
+  // State keeps the entry points its build tree calls.
+  late final _StoryboardScroll _scroll = _StoryboardScroll(this);
+
+  /// The door a collaborator rebuilds through - setState is protected,
+  /// and a collaborator is not a subclass.
+  void _rebuild(VoidCallback fn) => setState(fn);
 
   /// The live horizontal offset as a VALUE channel (UI-R15, the
   /// timeline's B1 pattern): scroll pixels update this notifier — the
@@ -1017,7 +1026,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void initState() {
     super.initState();
-    _horizontalController.addListener(_handleHorizontalScroll);
+    _horizontalController.addListener(_scroll.handleHorizontalScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
   }
 
@@ -1075,94 +1084,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
   }
 
-  void _handleHorizontalScroll() {
-    if (!_horizontalController.hasClients) {
-      return;
-    }
-    _watchHorizontalScrollActivity();
-    final offset = _horizontalController.offset;
-    final position = _horizontalController.position;
-    final next = endlessTrailingFrames(
-      baseFrameCount: _totalFrames(
-        widget.project,
-        buildStoryboardTimelineLayout(widget.project),
-      ),
-      currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: offset,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _scale.pixelsPerFrame,
-      // Past-content cells vanish once scrolled out of view (UI-R12 #16,
-      // the timeline's shrink rule): discrete moves may shrink right
-      // away, gesture pixels wait for the settle listener.
-      allowShrink: !position.isScrollingNotifier.value,
-    );
-    // Repaint-only scroll (UI-R15→R16): the offset rides the value
-    // channel (translate), the quantized bucket triggers the painters;
-    // widgets rebuild ONLY when the endless extent itself changes.
-    _horizontalScrollOffset.value = offset;
-    _horizontalWindowBucket.value = timelineFrameWindowBucketOf(
-      offset: offset,
-      cellExtent: _scale.pixelsPerFrame,
-    );
-    if (next != _endlessTrailingFrames) {
-      setState(() => _endlessTrailingFrames = next);
-    }
-  }
-
-  ScrollPosition? _watchedHorizontalPosition;
-
-  void _watchHorizontalScrollActivity() {
-    final position = _horizontalController.position;
-    if (identical(position, _watchedHorizontalPosition)) {
-      return;
-    }
-    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      _handleHorizontalScrollActivity,
-    );
-    _watchedHorizontalPosition = position;
-    position.isScrollingNotifier.addListener(_handleHorizontalScrollActivity);
-  }
-
-  /// Scroll settled: apply the lazy endless SHRINK (UI-R12 #16 — the
-  /// timeline's rule, unified): the extent contracts back toward the
-  /// cuts' end so the scrollbar thumb recovers, never mid-gesture.
-  void _handleHorizontalScrollActivity() {
-    final position = _watchedHorizontalPosition;
-    if (position == null || position.isScrollingNotifier.value) {
-      return;
-    }
-    final next = endlessTrailingFrames(
-      baseFrameCount: _totalFrames(
-        widget.project,
-        buildStoryboardTimelineLayout(widget.project),
-      ),
-      currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: position.pixels,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _scale.pixelsPerFrame,
-      allowShrink: true,
-    );
-    if (next != _endlessTrailingFrames && mounted) {
-      setState(() => _endlessTrailingFrames = next);
-    }
-  }
-
-  /// Ruler edge auto-pan (UI-R12 #16, the timeline's rule unified): a
-  /// scrub past the viewport edge pans the strip — rightward it
-  /// deliberately OVERSHOOTS the built extent, and the growth listener
-  /// materializes the frames the overshot view needs. The scrollbar and
-  /// scroll physics stay clamped at the built cells.
-  void _autoPanRulerEdge(double delta) {
-    if (!_horizontalController.hasClients) {
-      return;
-    }
-    final position = _horizontalController.position;
-    final target = math.max(0.0, position.pixels + delta);
-    if (target != position.pixels) {
-      _horizontalController.jumpTo(target);
-    }
-  }
-
   TimelineScale get _scale => TimelineScale(
     pixelsPerFrame: widget.pixelsPerFrame,
     minBlockWidth: StoryboardPanel._minBlockWidth,
@@ -1171,9 +1092,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void dispose() {
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
-    _horizontalController.removeListener(_handleHorizontalScroll);
-    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      _handleHorizontalScrollActivity,
+    _horizontalController.removeListener(_scroll.handleHorizontalScroll);
+    _scroll._watchedHorizontalPosition?.isScrollingNotifier.removeListener(
+      _scroll.handleHorizontalScrollActivity,
     );
     _verticalController.dispose();
     _horizontalController.dispose();
@@ -2818,7 +2739,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     widget.project,
                     buildStoryboardTimelineLayout(widget.project),
                   ) +
-                  _endlessTrailingFrames +
+                  _scroll._endlessTrailingFrames +
                   _viewportFillFrameCells,
             );
             // SE rows are built OUTSIDE the drag-preview builder from the RAW
@@ -2893,7 +2814,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// cells vanish once out of view and the scrollbar stops at the built
   /// cells. Only the ruler edge-drag overshoots and grows the extent.
   int _renderedFramesFor(int totalFrames) =>
-      math.max(totalFrames + _endlessTrailingFrames, _viewportFillFrameCells);
+      math.max(totalFrames + _scroll._endlessTrailingFrames, _viewportFillFrameCells);
 
   /// The scroll content's full width for [layoutEntries] (cuts + the
   /// endless runway). The rendered-cell term is EXACT (UI-R12 #16): any
@@ -3052,7 +2973,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   onScrubGlobalFrame: widget.onScrubGlobalFrame,
                                   onScrubEnd: widget.onScrubEnd,
                                   isFrameReady: widget.isFrameReady,
-                                  onEdgeAutoPan: _autoPanRulerEdge,
+                                  onEdgeAutoPan: _scroll.autoPanRulerEdge,
                                   framesPerSecond: _countingFps,
                                   showSeconds: widget.showSeconds,
                                 ),
