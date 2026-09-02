@@ -48,6 +48,7 @@ import 'brush_edit_canvas_view.dart';
 import 'canvas_touch_contacts.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
+part 'brush_edit/brush_edit_fill.dart';
 
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
@@ -578,7 +579,7 @@ class _InteractiveBrushEditCanvasViewState
         // first finger turned out to be the start of a pinch. Nothing was
         // drawn and nothing entered history, so this is a forget rather
         // than an undo — which is the whole point of making the fill wait.
-        _forgetFillTap();
+        _fill.forgetFillTap();
         // Discard only a SUB-SLOP touch stroke — the first finger turned
         // out to be the start of a pinch, not a stroke (both fingers
         // landed together). A stylus/mouse stroke keeps drawing: extra
@@ -736,7 +737,7 @@ class _InteractiveBrushEditCanvasViewState
         _fillTapSeed = canvasPosition;
         return;
       }
-      _runFillTap(canvasPosition);
+      _fill.runFillTap(canvasPosition);
       return;
     }
 
@@ -1006,7 +1007,7 @@ class _InteractiveBrushEditCanvasViewState
     // never becomes the drawing pointer, so that gate would drop it.
     final fillSeed = _fillTapSeed;
     if (event.pointer == _fillTapPointer && fillSeed != null) {
-      _runFillTap(fillSeed);
+      _fill.runFillTap(fillSeed);
       return;
     }
     if (event.pointer != _activeDrawingPointer) {
@@ -1054,7 +1055,7 @@ class _InteractiveBrushEditCanvasViewState
     }
     _lastContactButtons.remove(event.pointer);
     if (event.pointer == _fillTapPointer) {
-      _forgetFillTap();
+      _fill.forgetFillTap();
     }
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
@@ -1655,170 +1656,13 @@ class _InteractiveBrushEditCanvasViewState
   int? _fillTapPointer;
   CanvasPoint? _fillTapSeed;
 
-  /// The fill tap itself: flood at [seed], reveal, and queue the commit.
-  void _runFillTap(CanvasPoint seed) {
-    final fillDabAt = widget.fillDabAt;
-    // 🚨The busy check lives HERE rather than at each caller. It used to sit
-    // only in the pointer-down path, which was true while every fill ran
-    // from there — a touch fill now runs from the LIFT, so a pen fill and a
-    // resting finger's lift could each pass a gate the other had already
-    // walked through and land two commits for one intent.
-    if (fillDabAt == null || _pendingFillCommitDab != null) {
-      return;
-    }
-    // 🚨A fill going out RETIRES any armed tap, whoever armed it. A pen can
-    // fill while a finger rests on the glass — that finger armed a tap of
-    // its own on touchdown, and without this its lift would land a SECOND
-    // fill at wherever it happened to be resting. ⛔The busy check above
-    // cannot cover that: it clears in the post-frame callback, and a lift
-    // arrives frames later.
-    _forgetFillTap();
-    // The seed and the axis come from the same pair the STROKE path uses —
-    // this view's own position and its own guides, both already in the
-    // space the pointer is in. Reading the symmetry from the project
-    // instead would put the mirror where the pen is not under a pose.
-    final dab = fillDabAt(
-      seed,
-      widget.inputSettings.color,
-      widget.guides.actingSymmetry,
-    );
-    if (dab == null) {
-      return;
-    }
-    _handleFillDab(dab);
-  }
+  // ── the fill: its own object, in its own file ───────────────────────
+  //
+  // A collaborator (canvas/brush_edit/brush_edit_fill.dart, a part of this library).
+  // The State keeps the entry points its pointer handlers call.
+  late final _BrushEditFill _fill = _BrushEditFill(this);
 
-  /// The tap is not this fill's any more — a second finger joined, or the
-  /// gesture was cancelled. ⛔Nothing to undo, because nothing was drawn.
-  void _forgetFillTap() {
-    _fillTapPointer = null;
-    _fillTapSeed = null;
-  }
   int _fillOverlayToken = 0;
-
-  void _handleFillDab(BrushDab rawDab) {
-    final blend = widget.inputSettings.blendMode;
-    // ERASE is not carried by the blend mode at commit — it is a flag on
-    // the DAB, read per dab by the materializer. A fill arrives as one
-    // stamp dab built with no opinion about erasing, so handing the
-    // kernels `blendMode: erase` alone would take the plain path with the
-    // flag still false and PAINT the region instead of clearing it.
-    final dab = blend == BrushBlendMode.erase
-        ? rawDab.copyWith(erase: true)
-        : rawDab;
-    final stamp = dab.stamp;
-    _resetOverlay();
-    // The fill composites like anything else now (유저 확정: 버킷에도
-    // 블렌드를 깐다) — 뒤에 그리기 puts colour UNDER the line art already
-    // on the cel, which is the whole reason to want it.
-    //
-    // Preview and commit read the SAME value, one line apart: the overlay
-    // pre-blends with the commit's own kernels (R27 #4), so agreeing here
-    // is all it takes for what is shown to be what lands. Setting one and
-    // not the other is the way this goes wrong.
-    _overlayModel.erase = blend == BrushBlendMode.erase;
-    _overlayModel.blendMode = blend;
-    final surface = widget.sessionState.canvasState.currentSurface;
-    if (stamp != null) {
-      final stampLeft = (dab.center.x - stamp.width / 2).round();
-      final stampTop = (dab.center.y - stamp.height / 2).round();
-      _settlingBounds = DirtyRegion(
-        left: math.max(0, stampLeft),
-        top: math.max(0, stampTop),
-        rightExclusive: math.min(
-          surface.canvasSize.width,
-          stampLeft + stamp.width,
-        ),
-        bottomExclusive: math.min(
-          surface.canvasSize.height,
-          stampTop + stamp.height,
-        ),
-      );
-      // R26 #18: a fill previews as ONE stamp image, so it does not pass
-      // through the stroke pre-blend where the selection mask lives — the
-      // mask goes onto the stamp's own bytes instead, once, before the
-      // upload. The commit clips the same fill on its own buffer
-      // (clipStrokePixelsToSelection), and both read the SAME scanline
-      // mask, so the preview and the landed pixels agree at the boundary.
-      final stampRgba = _maskedStampRgba(
-        rgba: stamp.rgba,
-        left: stampLeft,
-        top: stampTop,
-        width: stamp.width,
-        height: stamp.height,
-        opacity: dab.opacity,
-      );
-      // The stamp is straight-alpha; the overlay pipeline (like the
-      // tile images) uploads premultiplied. The fused C kernel does
-      // 64MP in one pass — the same loop in Dart was seconds. The
-      // scratch buffer is fresh per fill; the decode callback frees it.
-      final engine = QaNativeEngine.instance;
-      final Uint8List premultiplied;
-      QaStampScratch? scratch;
-      if (engine != null) {
-        scratch = engine.premultipliedStampCopy(stampRgba);
-        premultiplied = scratch.view;
-      } else {
-        premultiplied = _premultipliedCopyDart(stampRgba);
-      }
-      final token = _fillOverlayToken;
-      ui.decodeImageFromPixels(
-        premultiplied,
-        stamp.width,
-        stamp.height,
-        ui.PixelFormat.rgba8888,
-        (image) {
-          scratch?.free();
-          if (!mounted || token != _fillOverlayToken) {
-            // The overlay was reset (settle handoff, frame switch, next
-            // fill) before this decode landed — never painted, safe to
-            // dispose directly.
-            image.dispose();
-            return;
-          }
-          _overlayModel.setStampOverlay(
-            image,
-            Offset(stampLeft.toDouble(), stampTop.toDouble()),
-          );
-        },
-      );
-    } else {
-      // A stampless fill dab (synthetic/test): no overlay preview —
-      // the deferred commit below still lands it identically.
-      _settlingBounds = null;
-    }
-    // Pin the pre-fill tiles NOW: until the stamp image decodes the
-    // canvas keeps showing the pre-fill picture (no flash), then the
-    // overlay pops in complete.
-    _overlayModel.holdPreStrokeTiles(
-      preStrokeHoldTiles(surface: surface, bounds: _settlingBounds),
-    );
-
-    // Commit AFTER the tap frame renders: unconditional (never gated on
-    // the decode callback — a fill must land even if the engine drops
-    // the image), so the reveal and the commit jank overlap instead of
-    // stacking.
-    _pendingFillCommitDab = dab;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _runPendingFillCommit();
-    });
-    SchedulerBinding.instance.ensureVisualUpdate();
-  }
-
-  void _runPendingFillCommit() {
-    final dab = _pendingFillCommitDab;
-    _pendingFillCommitDab = null;
-    if (dab == null || !mounted) {
-      return;
-    }
-    widget.onSourceStrokeCommitted(
-      BrushStrokeCommitData(
-        sourceDabs: [dab],
-        blendMode: widget.inputSettings.blendMode,
-      ),
-    );
-    _beginSettling();
-  }
 
   /// [rgba] with the live selection applied, or [rgba] itself when there
   /// is no selection (no copy, no scan).
