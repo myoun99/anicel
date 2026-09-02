@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets/app_icon_button.dart';
 import '../widgets/field_slider.dart';
-import 'timeline_panel.dart' show TimelinePanel;
+import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
 
@@ -66,8 +66,8 @@ class TimelineViewCluster extends StatelessWidget {
       next = zoomIn ? pixelsPerFrame + 1 : pixelsPerFrame - 1;
     }
     return next.clamp(
-      TimelinePanel.minPixelsPerFrame,
-      TimelinePanel.maxPixelsPerFrame,
+      TimelineZoomLimits.minPixelsPerFrame,
+      TimelineZoomLimits.maxPixelsPerFrame,
     );
   }
 
@@ -75,8 +75,8 @@ class TimelineViewCluster extends StatelessWidget {
   /// IconButton's own (no hand-mixed alpha), same as the canvas bar.
   Widget _zoomStepButton({required bool zoomIn}) {
     final atBound = zoomIn
-        ? pixelsPerFrame >= TimelinePanel.maxPixelsPerFrame
-        : pixelsPerFrame <= TimelinePanel.minPixelsPerFrame;
+        ? pixelsPerFrame >= TimelineZoomLimits.maxPixelsPerFrame
+        : pixelsPerFrame <= TimelineZoomLimits.minPixelsPerFrame;
     final enabled = onPixelsPerFrameChanged != null && !atBound;
     return AppIconButton(
       keyValue: zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
@@ -157,19 +157,19 @@ class TimelineViewCluster extends StatelessWidget {
           width: 140,
           child: FieldSlider(
             key: const ValueKey<String>('timeline-zoom-slider'),
-            min: TimelinePanel.minPixelsPerFrame,
-            max: TimelinePanel.maxPixelsPerFrame,
+            min: TimelineZoomLimits.minPixelsPerFrame,
+            max: TimelineZoomLimits.maxPixelsPerFrame,
             value: pixelsPerFrame.clamp(
-              TimelinePanel.minPixelsPerFrame,
-              TimelinePanel.maxPixelsPerFrame,
+              TimelineZoomLimits.minPixelsPerFrame,
+              TimelineZoomLimits.maxPixelsPerFrame,
             ),
             // Zoom reads as percent of the default frame width.
             valueText: sliderValueText(
-              pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100,
+              pixelsPerFrame / TimelineZoomLimits.defaultPixelsPerFrame * 100,
               unit: '%',
             ),
             valueTextBuilder: (value) => sliderValueText(
-              value / TimelinePanel.defaultPixelsPerFrame * 100,
+              value / TimelineZoomLimits.defaultPixelsPerFrame * 100,
               unit: '%',
             ),
             height: 18,

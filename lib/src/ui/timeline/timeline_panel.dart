@@ -39,6 +39,7 @@ import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
 import 'timeline_view_cluster.dart';
+import 'timeline_zoom_limits.dart';
 import 'timeline_orientation.dart';
 import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
@@ -332,11 +333,12 @@ class TimelinePanel extends StatefulWidget {
   /// same default.
   // 4 → 2.4 (UI-R18 #11): the shared zoom floor drops to 10% of the
   // default density across all three frame panels.
-  static const double minPixelsPerFrame = 2.4;
-  static const double maxPixelsPerFrame = 96;
+  static const double minPixelsPerFrame = TimelineZoomLimits.minPixelsPerFrame;
+  static const double maxPixelsPerFrame = TimelineZoomLimits.maxPixelsPerFrame;
   // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
   // CSP/TVPaint-density default.
-  static const double defaultPixelsPerFrame = 24;
+  static const double defaultPixelsPerFrame =
+      TimelineZoomLimits.defaultPixelsPerFrame;
 
   /// The shortest this panel is laid out at — the floor the dock splitter
   /// stops on and the tab shell's minimum content height.

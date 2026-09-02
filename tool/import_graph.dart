@@ -135,3 +135,53 @@ String normalisePath(String path) {
   }
   return parts.join('/');
 }
+
+/// Every set of files in [graph] that import each other around a loop: the
+/// strongly connected components with more than one member, each sorted,
+/// the list sorted by its first file.
+///
+/// The compiler links a loop without complaint, so nothing else reports
+/// this. What a loop costs is that none of its files can be read, tested or
+/// moved without the others — `test/architecture/no_import_cycles_test.dart`
+/// keeps the ledger of the loops that are allowed to exist and why.
+///
+/// Tarjan's algorithm; the recursion is one frame per file on the current
+/// path, which for a graph of ~900 shallow files is nowhere near the stack.
+List<List<String>> importCycles(Map<String, Set<String>> graph) {
+  var next = 0;
+  final index = <String, int>{};
+  final lowLink = <String, int>{};
+  final stack = <String>[];
+  final onStack = <String>{};
+  final loops = <List<String>>[];
+
+  void visit(String file) {
+    index[file] = next;
+    lowLink[file] = next;
+    next++;
+    stack.add(file);
+    onStack.add(file);
+    for (final target in graph[file] ?? const <String>{}) {
+      if (!index.containsKey(target)) {
+        visit(target);
+        if (lowLink[target]! < lowLink[file]!) lowLink[file] = lowLink[target]!;
+      } else if (onStack.contains(target) && index[target]! < lowLink[file]!) {
+        lowLink[file] = index[target]!;
+      }
+    }
+    if (lowLink[file] != index[file]) return;
+    final component = <String>[];
+    String popped;
+    do {
+      popped = stack.removeLast();
+      onStack.remove(popped);
+      component.add(popped);
+    } while (popped != file);
+    if (component.length > 1) loops.add(component..sort());
+  }
+
+  for (final file in graph.keys) {
+    if (!index.containsKey(file)) visit(file);
+  }
+  return loops..sort((a, b) => a.first.compareTo(b.first));
+}

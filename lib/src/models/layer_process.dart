@@ -12,8 +12,6 @@
 /// 뺄수있고**」.
 library;
 
-import 'layer_mark.dart';
-
 /// 공정 — 대분류(용지·콘티·미술)와 셀 안의 작업 단계를 한 벌로 둡니다.
 ///
 /// ⚠️미술은 BG와 BOOK을 **나누지 않습니다**(유저: 「BG랑 BOOK이랑 나누지말라고.
@@ -97,23 +95,6 @@ const List<LayerRevise> _drawingRevises = [
   LayerRevise.director,
   LayerRevise.chiefDirector,
   LayerRevise.actionAnimationDirector,
-];
-
-/// Every label a layer can wear, in the order the popover lists them —
-/// [LayerMark.none] first, then each stage followed by the corrections it
-/// references.
-///
-/// 🚨★★★ONE ENUMERATION. The flyout draws this list and the ink-contrast
-/// contract test walks it; building it twice would let a stage gain a
-/// correction that nothing ever checked the readability of. It lives beside
-/// [revisesFor] because it IS that reference, spelled out.
-List<LayerMark> everyLayerMark() => [
-  LayerMark.none,
-  for (final process in LayerProcess.values) ...[
-    LayerMark(process: process),
-    for (final revise in revisesFor(process))
-      LayerMark(process: process, revise: revise),
-  ],
 ];
 
 /// Which revises [process] offers — the REFERENCE, not a copy.

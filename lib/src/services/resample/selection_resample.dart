@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import '../../models/canvas_point.dart';
 import '../../native/qa_native_engine.dart';
-import '../canvas_selection.dart' show SelectionAffine;
+import '../selection_affine.dart';
 import 'resample_kernel.dart';
 
 /// The selection transform's door onto the shared resampler: the three

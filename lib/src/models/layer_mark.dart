@@ -157,3 +157,23 @@ class LayerMark {
   @override
   String toString() => isNone ? 'LayerMark.none' : 'LayerMark($displayName)';
 }
+
+/// Every label a layer can wear, in the order the popover lists them —
+/// [LayerMark.none] first, then each stage followed by the corrections it
+/// references.
+///
+/// 🚨★★★ONE ENUMERATION. The flyout draws this list and the ink-contrast
+/// contract test walks it; building it twice would let a stage gain a
+/// correction that nothing ever checked the readability of. It reads
+/// [revisesFor] rather than restating it, so the axis stays a reference —
+/// and it lives with [LayerMark], the type it enumerates, so the mark and
+/// the process no longer import each other (Round 4 of the audit,
+/// 2026-09-03).
+List<LayerMark> everyLayerMark() => [
+  LayerMark.none,
+  for (final process in LayerProcess.values) ...[
+    LayerMark(process: process),
+    for (final revise in revisesFor(process))
+      LayerMark(process: process, revise: revise),
+  ],
+];

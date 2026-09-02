@@ -1,6 +1,5 @@
 import 'dart:ui' show Offset;
 
-import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';

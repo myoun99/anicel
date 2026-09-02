@@ -6,7 +6,7 @@ import 'dart:ui' as ui;
 
 import '../models/app_language.dart';
 import '../models/canvas_point.dart';
-import 'canvas_selection.dart';
+import 'canvas_selection_shape.dart';
 
 /// How a freshly drawn marquee/lasso combines with the region already
 /// selected (R26 #16 — CSP's four selection modes; 유저 원문

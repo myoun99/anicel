@@ -18,7 +18,7 @@ import 'media_reference.dart';
 import 'se_name_tag.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
-import 'timeline_repeat.dart';
+import 'timeline_run_behavior.dart';
 import 'transform_track.dart';
 
 /// A cel layer. Its single [timeline] map records everything authored on
