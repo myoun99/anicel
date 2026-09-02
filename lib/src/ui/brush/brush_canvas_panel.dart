@@ -83,6 +83,8 @@ import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 
+part 'canvas_panel/canvas_panel_shell_bars.dart';
+
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
 /// whenever [token] changes between widget updates the panel reframes the
 /// viewport around [rect] (canvas space) — Fit-style when [panOnly] is
@@ -920,21 +922,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  void _readStageColors() {
-    final scope = CanvasStageColors.maybeOf(context);
-    _stageBackdropArgb =
-        widget.backdropArgb ??
-        scope?.backdropArgb ??
-        defaultProjectBackdropArgb;
-    _stagePasteboardArgb =
-        widget.pasteboardColor ??
-        scope?.pasteboardArgb ??
-        AppWorkspaceColors.defaultPasteboardArgb;
-    _stagePasteboardMargin =
-        widget.pasteboardMargin ??
-        scope?.pasteboardMargin ??
-        defaultProjectPasteboardMargin;
-  }
+  // ── the shell bars: their own object, in their own file ─────────────
+  //
+  // A collaborator (brush/canvas_panel/canvas_panel_shell_bars.dart, a part of this library).
+  // The State keeps the entry points its build tree calls.
+  late final _CanvasPanelShellBars _shellBars = _CanvasPanelShellBars(this);
+
+  /// The door a collaborator rebuilds through - setState is protected,
+  /// and a collaborator is not a subclass.
+  void _rebuild(VoidCallback fn) => setState(fn);
 
   @override
   void initState() {
@@ -1015,7 +1011,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _readStageColors();
+    _shellBars.readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
     // ⛔Nothing here answers a RATIO change any more, deliberately. Holding
     // the percentage across one used to take a remembered scale, a re-zoom
@@ -1727,7 +1723,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (oldWidget.backdropArgb != widget.backdropArgb ||
         oldWidget.pasteboardColor != widget.pasteboardColor ||
         oldWidget.pasteboardMargin != widget.pasteboardMargin) {
-      _readStageColors();
+      _shellBars.readStageColors();
     }
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
       oldWidget.viewCommands?.unbind(this);
@@ -1853,192 +1849,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     return _viewport.copyWith(panX: panX, panY: panY);
   }
 
-  /// R13-3 shell memo: the panbars/zoom-rotate bar are a Material button
-  /// forest that used to reconstruct on EVERY panel rebuild (each committed
-  /// seek, tool switch, drag-preview notify). Their inputs are only the
-  /// viewport geometry — memo by token, reuse the identical instances so
-  /// the element tree prunes the whole subtree.
-  /// ★TWO tokens, not one (유저, R3 #14: 프로그램 창 자체를 크기 조절하면 뭔가
-  /// 느린데). The panbars are geometry and DO depend on the viewport's size;
-  /// the pill does not read it at all. Sharing one token meant every frame
-  /// of a window resize rebuilt the pill — thirteen icon buttons with their
-  /// tooltips, overlay portals and gesture detectors — for a number it
-  /// ignores.
-  ({CanvasViewport viewport, Size viewportSize, CanvasSize canvasSize})?
-  _panbarsToken;
-  ({
-    double zoom,
-    CanvasSize canvasSize,
-    bool rotation,
-    bool floor,
-    int paper,
-    int pasteboard,
-    int backdrop,
-    Object? host,
-  })?
-  _pillToken;
-  Widget? _memoRightStripBar;
-  Widget? _memoHorizontalStripBar;
-  Widget? _memoBottomBar;
-
-  void _ensureShellBars() {
-    final viewportSize = _resolvedEditorViewportSize();
-    final panbarsToken = (
-      viewport: _viewport,
-      viewportSize: viewportSize,
-      canvasSize: widget.canvasSize,
-    );
-    final pillToken = (
-      // ⛔NOT the whole viewport — and since 2026-08-13 not "everything the
-      // pill shows" either, because most of what it showed now lives one
-      // tap away in the settings list. The rule that replaced it is
-      // narrower and holds in both places: THIS TOKEN CARRIES WHAT THE BAR
-      // CAPTURES, AND NOTHING IT READS THROUGH A SIGNAL.
-      //
-      // Rotation and the two flips left with the controls that lit them.
-      // Their row is a [PanelFlyoutRow] over `liveViewport`: it rebuilds on
-      // that notifier while the list is open, and reads `liveViewport.value`
-      // when the list opens. A copy here would be a slower way of asking
-      // the same object. (Measured: dragging the rotation readout inside
-      // the open list moves the angle with this token untouched.)
-      //
-      // The three surface colours did NOT follow them out, and the
-      // difference IS the rule. They arrive as widget fields, so the list's
-      // entries close over whatever they were when the bar was last built.
-      // Measured by mutation — drop `paper` from this token, change the
-      // paper while the list is CLOSED, and it opens on yesterday's colour.
-      // That is the same stale swatch, and the same picker seeded with the
-      // stale value, that put them in this token to begin with.
-      // ⚠️Neither does the token help while the list is OPEN: that is a
-      // `showMenu` route holding entries it already built. Also measured.
-      //
-      // ⚠️A pan moves nothing that is left, which is the point: `_setViewport`
-      // runs a panel `setState` per `PointerMove`, so carrying the whole
-      // viewport threw the pill away on every frame of every pan and rebuilt
-      // thirteen icon buttons with their tooltips, overlay portals, ink and
-      // gesture detectors (유저, R4 후속).
-      //
-      // ★This is the SAME defect the note below already records about the
-      // panel title, one field over: the cure had been applied to the field
-      // that got caught rather than to the rule.
-      //
-      // ⚠️So the bar can be handed a stale `viewport` object while the memo
-      // holds. That is safe only because `zoom` is now the ONLY thing it
-      // reads off it; a second read added without adding it here brings
-      // back a stale readout.
-      zoom: _viewport.zoom,
-      canvasSize: widget.canvasSize,
-      rotation: widget.allowViewRotation,
-      // WHICH BAR this is — flat on the floor, folded anywhere else. It
-      // cannot change without this panel being rebuilt, but a memo that
-      // did not carry it would be a memo that outlives the answer.
-      floor: _onFloor,
-      // The swatches the SETTINGS LIST carries (they were in the pill until
-      // 2026-08-13). They were missing from this token once, and the pill
-      // went on painting yesterday's paper colour until an unrelated pan or
-      // resize happened to invalidate the memo — and tapping the swatch
-      // opened the picker seeded with the stale value. Moving them behind
-      // the gear did not retire that lesson, it only moved where the stale
-      // value would show up.
-      paper: widget.paperColor,
-      pasteboard: _stagePasteboardArgb,
-      backdrop: _stageBackdropArgb,
-      host: widget.bottomBarHostToken,
-      // ⛔ The panel TITLE is deliberately absent — and now unreachable, so
-      // it cannot come back by accident (R2 #12 took the readout off every
-      // canvas panel). Keeping the history because the shape of the bug is
-      // worth recognising elsewhere: none of these bars showed the title,
-      // but it sat in this token and read
-      // "Project: … · Cut: … · Layer: … · Frame: <label>", so every step
-      // that changed the frame label threw the memo away and rebuilt the
-      // whole bar — 13 icon buttons with their tooltips, overlay portals,
-      // ink and gesture detectors. Measured at 391 widget rebuilds a step,
-      // against 24 for the panel's own spine.
-      //
-      // ⚠️ The dev fixture UNDERSTATES it. Two unnamed cels share a frame
-      // label, so it only bit when the playhead crossed "no cel ↔ cel";
-      // in a real cut every cel is named, and the label — so the bar —
-      // changed on EVERY flip step.
-    );
-    // A host contribution without a token can't be memoized (see
-    // [bottomBarHostToken]) — rebuild rather than serve a stale bar.
-    final memoizable =
-        (widget.bottomBarLeading.isEmpty && widget.bottomBarSettings.isEmpty) ||
-        widget.bottomBarHostToken != null;
-    if (panbarsToken != _panbarsToken || _memoRightStripBar == null) {
-      _panbarsToken = panbarsToken;
-      _memoRightStripBar = CanvasViewportVerticalScrollbar(
-        viewport: _viewport,
-        editorViewportSize: viewportSize,
-        canvasSize: widget.canvasSize,
-        onViewportChanged: _setViewportDuringPanbarDrag,
-        onViewportChangeEnd: _syncViewportParent,
-      );
-      _memoHorizontalStripBar = CanvasViewportHorizontalScrollbar(
-        viewport: _viewport,
-        editorViewportSize: viewportSize,
-        canvasSize: widget.canvasSize,
-        onViewportChanged: _setViewportDuringPanbarDrag,
-        onViewportChangeEnd: _syncViewportParent,
-      );
-    }
-    if (memoizable && pillToken == _pillToken && _memoBottomBar != null) {
-      return;
-    }
-    _pillToken = pillToken;
-    _memoBottomBar = _CanvasViewportBottomBar(
-      onFloor: _onFloor,
-      leading: widget.bottomBarLeading,
-      hostSettings: widget.bottomBarSettings,
-      viewport: _viewport,
-      liveViewport: _viewportNotifier,
-      canvasSize: widget.canvasSize,
-      paperColor: widget.paperColor,
-      onPaperColorChanged: widget.onPaperColorChanged,
-      pasteboardColor: _stagePasteboardArgb,
-      onPasteboardColorChanged: widget.onPasteboardColorChanged,
-      backdropColor: _stageBackdropArgb,
-      onBackdropColorChanged: widget.onBackdropColorChanged,
-      // Read when a picker opens, so the memoized bar does not have to be
-      // rebuilt every time the brush colour moves.
-      currentColorOf: () => widget.brushToolState.color,
-      onViewportChanged: _setViewportDuringPanbarDrag,
-      onViewportChangeEnd: _syncViewportParent,
-      onZoomSet: _setZoomFromLabel,
-      onZoomIn: _zoomInFromBar,
-      onZoomOut: _zoomOutFromBar,
-      onFit: _fitToView,
-      onReset: _resetView,
-      onRotateCcw: widget.allowViewRotation ? _rotateCcwFromBar : null,
-      onRotateCw: widget.allowViewRotation ? _rotateCwFromBar : null,
-      onRotateReset: widget.allowViewRotation ? _resetRotation : null,
-      onRotateByDrag: widget.allowViewRotation ? _rotateByDrag : null,
-      onFlipHorizontal: widget.allowViewRotation ? _toggleFlipHorizontal : null,
-      onFlipVertical: widget.allowViewRotation ? _toggleFlipVertical : null,
-    );
-  }
-
-  Widget _memoizedRightStripBar() {
-    _ensureShellBars();
-    return _memoRightStripBar!;
-  }
-
-  Widget _memoizedHorizontalStripBar() {
-    _ensureShellBars();
-    return _memoHorizontalStripBar!;
-  }
-
-  Widget _memoizedBottomBar() {
-    _ensureShellBars();
-    return _memoBottomBar!;
-  }
-
   // Named handlers (not closures) so the memoized bars capture stable
   // callbacks — a fresh closure per build would defeat nothing here, but
   // stale-capture bugs are impossible with tear-offs.
-  void _rotateCcwFromBar() => _rotateAroundCenter(-15);
-  void _rotateCwFromBar() => _rotateAroundCenter(15);
-
   @override
   Widget build(BuildContext context) {
     // 🚨The marker is an INPUT marker, and that is the whole fix.
@@ -2085,9 +1898,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
             width: boundedWidth,
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
-              rightStripBar: _memoizedRightStripBar(),
-              horizontalStripBar: _memoizedHorizontalStripBar(),
-              bottomBar: _memoizedBottomBar(),
+              rightStripBar: _shellBars.memoizedRightStripBar(),
+              horizontalStripBar: _shellBars.memoizedHorizontalStripBar(),
+              bottomBar: _shellBars.memoizedBottomBar(),
               pageStrip: widget.pageStrip,
               // The capsules float INSIDE what the panels left over.
               cover: widget.floorCover,
@@ -3085,10 +2898,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _syncViewportParent();
   }
 
-  void _setViewportDuringPanbarDrag(CanvasViewport viewport) {
-    setState(() => _viewport = viewport.clamped());
-  }
-
   /// Tells the owner the view moved, in DEVICE pixels.
   ///
   /// ⚠️Notification ONLY. The value is already in the owner's notifier by
@@ -3113,16 +2922,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// (유저 확정 2026-08-13: 줌 버튼도 살림).
   void _zoomAroundCenter(double factor) {
     _zoomToAroundCenter(_viewport.zoom * factor);
-  }
-
-  void _zoomInFromBar() => _zoomAroundCenter(1.25);
-  void _zoomOutFromBar() => _zoomAroundCenter(0.8);
-
-  /// Absolute-zoom twin of [_zoomAroundCenter] — the readout's drag is
-  /// 1%/px and its double-tap types a percent, and both of those are
-  /// absolute.
-  void _setZoomFromLabel(double zoom) {
-    _zoomToAroundCenter(zoom);
   }
 
   void _zoomToAroundCenter(double nextZoom) {
