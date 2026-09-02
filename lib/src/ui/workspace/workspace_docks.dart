@@ -60,7 +60,7 @@ class _WorkspaceDocks {
       collapsed: collapsed,
       layout: _state._layout,
       dockId: dockId,
-      tabResolver: _state._tabFor,
+      tabResolver: _state._tabs.tabFor,
       draggingTab: _state._draggingTab,
       compact: compact,
       canAcceptTab: (data) => _canDockAccept(dockId, data),
@@ -76,7 +76,7 @@ class _WorkspaceDocks {
       }),
       onTabDragChanged: (data) => _state._draggingTab.value = data,
       onToggleLock: _toggleTabLock,
-      onCloseTab: _state._closeTab,
+      onCloseTab: _state._tabs.closeTab,
       flash: _state._panelFlash,
     );
   }
@@ -156,8 +156,8 @@ class _WorkspaceDocks {
             if (hasTools)
               Flexible(
                 child: Builder(
-                  builder: (context) => _state
-                      ._tabFor(_state._layout.tabsIn(dockId).first)
+                  builder: (context) => _state._tabs
+                      .tabFor(_state._layout.tabsIn(dockId).first)
                       .builder(context),
                 ),
               ),
@@ -212,7 +212,7 @@ class _WorkspaceDocks {
                   open: _state._openRails.contains(railId),
                   tabs: [
                     for (final tabId in _state._layout.tabsIn(railId))
-                      _state._tabFor(tabId),
+                      _state._tabs.tabFor(tabId),
                   ],
                   // The COLOUR group's button is the swatch itself. The
                   // strip's swatch was the one place the two colours you
@@ -318,7 +318,9 @@ class _WorkspaceDocks {
   /// (유저 확정 for 콘티·뷰어).
   double _collapsedBottomHeight() {
     final tabId = _state._layout.activeTabIn(EditorWorkspace.bottomGroupId);
-    final extent = tabId == null ? 0.0 : _state._tabFor(tabId).collapsedExtent;
+    final extent = tabId == null
+        ? 0.0
+        : _state._tabs.tabFor(tabId).collapsedExtent;
     return EditorPanelTabs.stripHeight + math.max(0.0, extent);
   }
 
