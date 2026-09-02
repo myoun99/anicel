@@ -71,6 +71,7 @@ import 'timeline_swipe_columns.dart';
 
 part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
+part 'xsheet_grid/xsheet_grid_headers.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -234,17 +235,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   // library). The State keeps the entry points its build tree calls.
   late final _XSheetGridRailScrub _railScrub = _XSheetGridRailScrub(this);
 
-  /// The header block's NATURAL extent for this sheet — what the stood-up
-  /// rail costs laid out in full. The window never changes it.
-  double get _naturalHeaderBlockExtent =>
-      XSheetTimelineGrid.naturalHeaderBlockExtent(
-        hasOnionColumn: widget.hooks.onToggleLayerOnionSkin != null,
-        hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
-      );
-
-  /// Just the column headers — the band strip has its own row above.
-  double get _naturalHeaderExtent =>
-      _naturalHeaderBlockExtent - XSheetTimelineGrid._sectionBandHeight;
+  // ── the column headers: their own object ────────────────────────────
+  //
+  // A collaborator (timeline/xsheet_grid/xsheet_grid_headers.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _XSheetGridHeaders _headers = _XSheetGridHeaders(this);
 
   /// The layer column at a strip-local x — the x-sheet's answer to the
   /// rail's "which row is under the press".
@@ -279,7 +274,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
       timelineSwipeColumns(
         hooks: widget.hooks,
-        crossExtent: _naturalHeaderExtent,
+        crossExtent: _headers.naturalHeaderExtent,
         leadingOrigin: 0,
       );
 
@@ -468,173 +463,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The display entries of the pass in flight, for the drag's row → slot
   /// conversion (see [effectHeaderRowsOf]).
   List<TimelineDisplayRow> _dragRows = const [];
-
-  /// One column header, made draggable along the sheet's own axis. A layer
-  /// header moves the layer; an fx group header re-orders that layer's
-  /// chain; every other lane header passes through untouched (members do
-  /// not move — the user's rule).
-  ///
-  /// The sheet lists the stack RAW where the rail reverses it, and the
-  /// chain the other way round from the rail — neither is stated here.
-  /// Both are inferred by the policy from the lists themselves.
-  Widget _draggableHeader(TimelineDisplayRow entry, Widget child) {
-    final hooks = widget.hooks.rowDragHooks;
-    if (hooks == null) {
-      return child;
-    }
-    final lane = entry.lane;
-    if (lane == null) {
-      // A5-4 / F-16: **같은 함수**가 답한다 — x시트가 가로 레일의 모양을
-      // 베껴서 같은 버그를 갖고 있던 자리다.
-      final unmovable = unmovableRowSelectTarget(
-        kind: entry.layer.kind,
-        layerId: entry.layer.id,
-        rowExtent: _metrics.layerRowHeight,
-        axis: Axis.vertical,
-        hooks: hooks,
-        onSelectCrossed: (rowDelta) =>
-            widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
-        child: child,
-      );
-      if (unmovable != null) {
-        return unmovable;
-      }
-      // F-31, transposed: the sheet counts the COLUMNS on screen, through
-      // the same object the rail counts its rows with.
-      final caret = LayerRowCaret.of(_dragRows, entry.layer.id);
-      if (caret == null) {
-        return child;
-      }
-      return LayerRowDragTarget(
-        subject: LayerRowSubject(entry.layer.id),
-        slotBefore: caret.slot,
-        rowExtent: _metrics.layerRowHeight,
-        axis: Axis.vertical,
-        hooks: hooks,
-        isLastRow: caret.isLastRow,
-        // R5 #15: the sheet's columns take the ON-COLUMN drop the way the
-        // rail's rows do — the band is measured along whichever axis this
-        // surface runs, so the transposition costs nothing.
-        onCrossed: (steps, onRow, inRow) {
-          final slot = caret.slotFor(steps);
-          final target = caret.onRowLayer(onRow);
-          if (target != null) {
-            hooks.onRowTarget(caret.layers, slot, target.id);
-            return;
-          }
-          hooks.onUpdate(
-            caret.layers,
-            slot,
-            pointerInRow: caret.onRowLayer(inRow)?.id,
-          );
-        },
-        // ⑨: the SELECT half, counted in the sheet's own display columns.
-        onSelectCrossed: hooks.onSelectBegin == null
-            ? null
-            : (rowDelta) =>
-                  widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
-        child: child,
-      );
-    }
-    // 🚨B4-3: the same wiring the horizontal rail got. A lane row cannot be
-    // RE-ORDERED unless it heads a chain, but every row can be SELECTED —
-    // two questions, and only the first one ever needed an answer here.
-    Widget selectOnly() {
-      if (hooks.onSelectBegin == null ||
-          widget.hooks.onRowSelectionSpan == null) {
-        return child;
-      }
-      return LayerRowDragTarget(
-        subject: LaneRowSubject(entry.layer.id, lane.laneId),
-        slotBefore: entry.layerIndex,
-        rowExtent: _metrics.layerRowHeight,
-        axis: Axis.vertical,
-        hooks: hooks,
-        isLastRow: false,
-        onCrossed: (_, _, _) {},
-        onSelectCrossed: (rowDelta) =>
-            widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
-        child: child,
-      );
-    }
-
-    if (!lane.isGroupHeader) {
-      return selectOnly();
-    }
-    final parsed = parseEffectLaneId(lane.laneId);
-    if (parsed == null || parsed.parameterId != null) {
-      return selectOnly();
-    }
-    final headers = effectHeaderRowsOf(_dragRows, entry.layer.id);
-    final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
-    if (slot < 0) {
-      return selectOnly();
-    }
-    final myRowIndex = headers[slot].rowIndex;
-    return LayerRowDragTarget(
-      subject: EffectRowSubject(entry.layer.id, parsed.effectId),
-      slotBefore: slot,
-      rowExtent: _metrics.layerRowHeight,
-      axis: Axis.vertical,
-      hooks: hooks,
-      isLastRow: slot == headers.length - 1,
-      onCrossed: (steps, _, _) => hooks.onEffectUpdate(
-        entry.layer.id,
-        [for (final header in headers) header.effectId],
-        slotForSteps(
-          slot,
-          rowStepsBetween(
-            [for (final header in headers) header.rowIndex],
-            myRowIndex,
-            steps,
-          ),
-          headers.length,
-        ),
-      ),
-      // B4-3: the SELECT half, the same one every other row already had.
-      onSelectCrossed: hooks.onSelectBegin == null
-          ? null
-          : (rowDelta) =>
-                widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
-      child: child,
-    );
-  }
-
-  Widget _laneHeader(TimelineDisplayRow entry) {
-    return ValueListenableBuilder<int>(
-      valueListenable: widget.hooks.frameCursor,
-      builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
-        dragPreview: widget.hooks.dragPreview,
-        layer: entry.layer,
-        rowBuilder: (context, layer) => TimelineLaneControlsRow(
-          axis: Axis.vertical,
-          keyPrefix: 'xsheet',
-          layer: layer,
-          lane: previewedLaneRow(
-            row: entry,
-            previewLayer: layer,
-            lanesForLayer: _lanesFor,
-          ),
-          metrics: _metrics,
-          width: _metrics.layerRowHeight,
-          // Laid out at the natural extent like every other header; the
-          // rail window above is what cuts it.
-          height: _naturalHeaderExtent,
-          currentFrameIndex: cursorFrame,
-          onSelectFrame: widget.hooks.onSelectFrame,
-          laneEdit: widget.hooks.laneEdit,
-          onToggleLaneGroup: widget.hooks.onToggleLaneGroup,
-          onToggleLaneGroupEnabled: widget.hooks.onToggleLaneGroupEnabled,
-          onResetLaneGroup: widget.hooks.onResetLaneGroup,
-          currentRowHooks: widget.hooks.currentRowHooks,
-          // The SAME flags the layer's own column header passes, so a
-          // group header's fx lands in the sheet's fx row (R5 #7).
-          hasOnionColumn: widget.hooks.onToggleLayerOnionSkin != null,
-          hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
-        ),
-      ),
-    );
-  }
 
   Widget _gatedColumn(
     TimelineDisplayRow entry,
@@ -1068,57 +896,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     );
   }
 
-  /// The header column for one display row: a lane's, or the layer's.
-  Widget _headerFor(TimelineDisplayRow entry) =>
-      entry.isLane ? _laneHeader(entry) : _layerHeaderFor(entry);
-
-  /// The layer header, fed the row's live facts the same way the rail row
-  /// is (fx, onion, solo, arrow, lanes, fold).
-  Widget _layerHeaderFor(TimelineDisplayRow entry) {
-    final layer = entry.layer;
-    final fold = _groupFoldFor(entry);
-    return TimelineLayerControlsRow(
-      axis: Axis.vertical,
-      keyPrefix: 'xsheet',
-      mainExtent: _naturalHeaderExtent,
-      depth: entry.depth,
-      onSettledPress: widget.hooks.onSettledPress,
-      isLinked: widget.hooks.layerIsLinkedOf?.call(layer.id) ?? false,
-      opacityOverride: widget.hooks.layerOpacityOverrideOf?.call(layer.id),
-      onToggleLayerOnionSkin: widget.hooks.onToggleLayerOnionSkin,
-      onionSkinEnabled:
-          widget.hooks.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
-      onLayerBlendModeSelected: widget.hooks.onLayerBlendModeSelected,
-      blendLanguage: widget.hooks.blendLanguage,
-      wearsBaseComposite: attachRowWearsBaseComposite(layer, widget.layers),
-      layer: layer,
-      active: layer.id == widget.hooks.activeLayerId,
-      // ⑨ · T1
-      selected: widget.hooks.selectedRows.contains(LayerRowAddress(layer.id)),
-      metrics: _metrics,
-      onSelectLayer: widget.hooks.onSelectLayer,
-      onToggleLayerVisibility: widget.hooks.onToggleLayerVisibility,
-      onLayerOpacityChanged: widget.hooks.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: widget.hooks.onLayerOpacityChangeEnd,
-      opacityDragPreview: widget.hooks.opacityDragPreview,
-      onToggleLayerTimesheet: widget.hooks.onToggleLayerTimesheet,
-      fxState: widget.hooks.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
-      onToggleLayerFx: widget.hooks.onToggleLayerFx,
-      onLayerMarkSelected: widget.hooks.onLayerMarkSelected,
-      onToggleLayerFillReference: widget.hooks.onToggleLayerFillReference,
-      onOpenLayerMixer: widget.hooks.onOpenLayerMixer,
-      attachArrowPlacement: widget.hooks.attachArrowPlacementOf?.call(layer.id),
-      isLayerSoloed: widget.hooks.isLayerSoloed?.call(layer.id) ?? false,
-      hasLanes: _lanesFor(layer).isNotEmpty,
-      lanesExpanded: widget.hooks.expandedLaneLayerIds.contains(layer.id),
-      onToggleLanes: widget.hooks.onToggleLayerLanes,
-      // One fold twirl — the rail's rule, the rail's function.
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
-      onToggleGroupFold: fold.onToggle,
-    );
-  }
-
   Widget _buildLayerHorizontalViewport(
     ColorScheme colorScheme,
     List<TimelineDisplayRow> entries,
@@ -1193,9 +970,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 index < entries.length;
                                 index += 1
                               )
-                                _draggableHeader(
+                                _headers.draggableHeader(
                                   entries[index],
-                                  _headerFor(entries[index]),
+                                  _headers.headerFor(entries[index]),
                                 ),
                             ],
                           ),
@@ -1211,7 +988,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             ],
                             rowExtent: _metrics.layerRowHeight,
                             leadingSpacer: 0,
-                            crossExtent: _naturalHeaderExtent,
+                            crossExtent: _headers.naturalHeaderExtent,
                           ),
                         ),
                       ],
@@ -1470,7 +1247,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 // and R6a scaled the whole column — both are retired, and with
                 // them the arithmetic that had to guarantee the sheet a
                 // minimum reserve the header could not eat.
-                final naturalHeaderBlockExtent = _naturalHeaderBlockExtent;
+                final naturalHeaderBlockExtent = _headers._naturalHeaderBlockExtent;
                 // What the sheet can spare for the header block: everything
                 // but its own chrome and the frame area's two-row reserve.
                 // Computed ONCE and handed to every part of the rail —
