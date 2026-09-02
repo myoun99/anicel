@@ -49,6 +49,7 @@ import 'canvas_touch_contacts.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_fill.dart';
+part 'brush_edit/brush_edit_pressure.dart';
 
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
@@ -763,7 +764,7 @@ class _InteractiveBrushEditCanvasViewState
           )
         : widget.inputSettings;
     _activeStrokeInputSettings = strokeSettings;
-    _currentPressure = _normalizedPressure(event);
+    _currentPressure = _pressure.normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsidePasteboard;
@@ -821,7 +822,7 @@ class _InteractiveBrushEditCanvasViewState
     if (!startsInsidePasteboard) {
       return;
     }
-    final initialDabs = _withPressureDynamics(
+    final initialDabs = _pressure.withPressureDynamics(
       widget.dabInterpolator.interpolate(
         previous: null,
         nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
@@ -938,7 +939,7 @@ class _InteractiveBrushEditCanvasViewState
       _touchStrokeCommitted = true;
     }
 
-    _currentPressure = _normalizedPressure(event);
+    _currentPressure = _pressure.normalizedPressure(event);
     final penPosition = _canvasPositionFromLocal(event.localPosition);
     _lastPenPosition = penPosition;
     // The stabilizer smooths BEFORE clipping/interpolation, so every
@@ -1106,7 +1107,7 @@ class _InteractiveBrushEditCanvasViewState
   /// The buttons to BELIEVE for [event].
   ///
   /// A driver sidecar that speaks for this moment WINS — the same
-  /// contract [_normalizedPressure] already follows, and for the same
+  /// contract [_pressure.normalizedPressure] already follows, and for the same
   /// reason: the OS path can be lying about what the pen just did.
   ///
   /// The lie this catches: Windows Ink hands a Wacom barrel press to a
@@ -1335,7 +1336,7 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Builds a dab carrying the base tool size/opacity and the current input
   /// pressure. Pressure scaling is applied after interpolation (see
-  /// [_withPressureDynamics]) so each inserted dab scales by its own
+  /// [_pressure.withPressureDynamics]) so each inserted dab scales by its own
   /// interpolated pressure rather than the segment endpoint's.
   BrushDab _dabFromPosition(
     CanvasPoint localPosition, {
@@ -1387,54 +1388,11 @@ class _InteractiveBrushEditCanvasViewState
     return mixer.apply(dabs, sample: sampler);
   }
 
-  List<BrushDab> _withPressureDynamics(List<BrushDab> dabs) {
-    final settings = _activeStrokeInputSettings ?? widget.inputSettings;
-    if (!settings.hasPressureDynamics) {
-      return dabs;
-    }
-    return <BrushDab>[
-      for (final dab in dabs)
-        applyBrushPressureDynamics(
-          dab,
-          sizeCurve: settings.sizePressureCurve,
-          opacityCurve: settings.opacityPressureCurve,
-          flowCurve: settings.flowPressureCurve,
-          hardnessCurve: settings.hardnessPressureCurve,
-        ),
-    ];
-  }
-
-  /// Normalizes a pointer's pressure into 0..1.
-  ///
-  /// Only stylus devices report meaningful pressure. A mouse claims a 0..1
-  /// pressure range on some platforms while always reporting 0.0 — trusting
-  /// it made pressure-sized strokes invisible — and touch pressure is
-  /// unreliable across devices, so both paint at full pressure.
-  ///
-  /// Wintab sidecar (PEN-2): while the user has picked the Wintab tablet
-  /// service and the driver stream is LIVE, the driver's pressure wins for
-  /// EVERY kind — that is the point of the switch: a pen the OS pipeline
-  /// misreports (touch, or mouse with Ink unchecked) paints with real
-  /// pressure anyway. Stale/absent stream falls through unchanged.
-  double _normalizedPressure(PointerEvent event) {
-    // The response curve (PEN-3) shapes REAL pressure from either source
-    // — the full-pressure fallbacks stay 1.0 through any gamma.
-    final wintab = PenSidecars.freshContactPressure();
-    if (wintab != null) {
-      return AppInput.applyPressureCurve(wintab);
-    }
-    if (event.kind != PointerDeviceKind.stylus &&
-        event.kind != PointerDeviceKind.invertedStylus) {
-      return 1.0;
-    }
-    final range = event.pressureMax - event.pressureMin;
-    if (!range.isFinite || range <= 0.0) {
-      return 1.0;
-    }
-    return AppInput.applyPressureCurve(
-      ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0),
-    );
-  }
+  // ── pressure and the stamp: their own object ────────────────────────
+  //
+  // A collaborator (canvas/brush_edit/brush_edit_pressure.dart, a part of this library).
+  // The State keeps the entry points its pointer handlers call.
+  late final _BrushEditPressure _pressure = _BrushEditPressure(this);
 
   final math.Random _spacingRandom = math.Random();
 
@@ -1663,45 +1621,6 @@ class _InteractiveBrushEditCanvasViewState
   late final _BrushEditFill _fill = _BrushEditFill(this);
 
   int _fillOverlayToken = 0;
-
-  /// [rgba] with the live selection applied, or [rgba] itself when there
-  /// is no selection (no copy, no scan).
-  Uint8List _maskedStampRgba({
-    required Uint8List rgba,
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-    double opacity = 1.0,
-  }) {
-    final region = widget.selectionRegion;
-    if (region == null && opacity >= 1.0) {
-      return rgba;
-    }
-    final masked = Uint8List.fromList(rgba);
-    // TP1: the fill has an opacity now, and this preview does NOT go
-    // through the pre-blend kernel (see the caller) — so the multiply the
-    // commit will do has to be done here too, or a 50% fill previews at
-    // 100% and lands at 50%. The commit's own expression is
-    // `(stampA / 255) * dabOpacity`; scaling the alpha byte is that, in the
-    // one place this path has to say it.
-    if (opacity < 1.0) {
-      for (var offset = 3; offset < masked.length; offset += 4) {
-        masked[offset] = (masked[offset] * opacity).round().clamp(0, 255);
-      }
-    }
-    if (region == null) {
-      return masked;
-    }
-    // The same rule the pre-blend kernel and the commit's clip run — a
-    // fill only reaches a different function, never a different rule.
-    applySelectionMaskToStrokeAlpha(
-      pixels: masked,
-      mask: region.maskFor(left: left, top: top, width: width, height: height),
-      pixelCount: width * height,
-    );
-    return masked;
-  }
 
   /// Fallback premultiply (engine absent) — same bytes as the overlay
   /// tile path: mul-div-255 rounding, alpha 0 zeroes the color.

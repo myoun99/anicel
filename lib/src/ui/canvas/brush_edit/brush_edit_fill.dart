@@ -95,7 +95,7 @@ class _BrushEditFill {
       // upload. The commit clips the same fill on its own buffer
       // (clipStrokePixelsToSelection), and both read the SAME scanline
       // mask, so the preview and the landed pixels agree at the boundary.
-      final stampRgba = _state._maskedStampRgba(
+      final stampRgba = _state._pressure._maskedStampRgba(
         rgba: stamp.rgba,
         left: stampLeft,
         top: stampTop,

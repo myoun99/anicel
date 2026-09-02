@@ -58,7 +58,7 @@ class _BrushEditStroke {
         clippedSegment.startsNewVisibleSegment ||
             _state._breakCurrentVisibleSegment ||
             _state._previousBaseDab == null
-        ? _state._withPressureDynamics(
+        ? _state._pressure.withPressureDynamics(
             _state.widget.dabInterpolator.interpolate(
               previous: null,
               nextRaw: _state._dabFromPosition(
@@ -74,7 +74,7 @@ class _BrushEditStroke {
     final endPrevious = segmentStartDabs.isNotEmpty
         ? segmentStartDabs.last
         : previousDab;
-    final segmentEndDabs = _state._withPressureDynamics(
+    final segmentEndDabs = _state._pressure.withPressureDynamics(
       _state.widget.dabInterpolator.interpolate(
         previous: endPrevious,
         nextRaw: _state._dabFromPosition(
