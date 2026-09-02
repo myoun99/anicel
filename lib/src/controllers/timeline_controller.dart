@@ -26,6 +26,7 @@ part 'timeline/timeline_marks.dart';
 part 'timeline/timeline_exposure_edge.dart';
 part 'timeline/timeline_blank_spans.dart';
 part 'timeline/timeline_paste.dart';
+part 'timeline/timeline_frame_names.dart';
 
 /// Timeline queries and editing commands over the unified timeline model
 /// (drawing blocks with explicit lengths + inbetween marks; emptiness is
@@ -351,8 +352,8 @@ class TimelineController {
           id: frameId,
           duration: clampedLength,
           strokes: const [],
-          name: _normalizeFrameName(name),
-          seName: _normalizeFrameName(seName),
+          name: _names.normalizeFrameName(name),
+          seName: _names.normalizeFrameName(seName),
         ),
       ],
       timeline: nextTimeline,
@@ -548,7 +549,7 @@ class TimelineController {
             id: fill.frameId,
             duration: length,
             strokes: const [],
-            name: _normalizeFrameName(fill.name),
+            name: _names.normalizeFrameName(fill.name),
           ),
         );
       }
@@ -887,34 +888,23 @@ class TimelineController {
 
   // --- Frame rename / link -------------------------------------------------------
 
-  bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
-    // Ghost cells RESOLVE to their anchor cel deliberately (UI-R19b,
-    // user decision): renaming from a repeat instance renames the
-    // source — a feature, not a leak. Only DELETE stays refused on
-    // ghosts (they are derived; there is no block to remove).
-    return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
-  }
+  // ── the frame names: their own object ───────────────────────────────
+  //
+  // A collaborator (controllers/timeline/timeline_frame_names.dart, a part of this
+  // library). The controller keeps the public verbs as forwarders.
+  late final _TimelineFrameNames _names = _TimelineFrameNames(this);
 
+  bool canRenameFrameAt({required Layer layer, required int frameIndex}) =>
+      _names.canRenameFrameAt(layer: layer, frameIndex: frameIndex);
   FrameId? conflictingFrameIdForRename({
     required Layer layer,
     required FrameId frameId,
     required String? name,
-  }) {
-    _requireFrameInLayer(layer: layer, frameId: frameId);
-    final normalizedName = _normalizeFrameName(name);
-    if (normalizedName == null) {
-      return null;
-    }
-
-    for (final frame in layer.frames) {
-      if (frame.id != frameId && frame.name == normalizedName) {
-        return frame.id;
-      }
-    }
-
-    return null;
-  }
-
+  }) => _names.conflictingFrameIdForRename(
+    layer: layer,
+    frameId: frameId,
+    name: name,
+  );
   void renameFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
@@ -922,43 +912,14 @@ class TimelineController {
     bool allowDuplicateName = false,
     String? seName,
     bool updateSeName = false,
-  }) {
-    final before = _requireLayer(layerId);
-    _requireFrameInLayer(layer: before, frameId: frameId);
-    if (!allowDuplicateName) {
-      final conflictingFrameId = conflictingFrameIdForRename(
-        layer: before,
-        frameId: frameId,
-        name: name,
-      );
-      if (conflictingFrameId != null) {
-        return;
-      }
-    }
-
-    final normalizedName = _normalizeFrameName(name);
-    final normalizedSeName = _normalizeFrameName(seName);
-    final nextFrames = before.frames
-        .map(
-          (frame) => frame.id == frameId
-              ? (updateSeName
-                    // Name + SE speaker name land in the same edit — the SE
-                    // dialog commits both as ONE undo step.
-                    ? frame.copyWith(
-                        name: normalizedName,
-                        seName: normalizedSeName,
-                      )
-                    : frame.copyWith(name: normalizedName))
-              : frame,
-        )
-        .toList(growable: false);
-    final after = before.copyWith(frames: nextFrames);
-    if (after == before) {
-      return;
-    }
-
-    _applyLayerEdit(before: before, after: after);
-  }
+  }) => _names.renameFrameForLayer(
+    layerId: layerId,
+    frameId: frameId,
+    name: name,
+    allowDuplicateName: allowDuplicateName,
+    seName: seName,
+    updateSeName: updateSeName,
+  );
 
   /// Sets a TEXT cel's parameters (R5, §6-s) — the frame edit travels the
   /// same before/after layer command as a rename, so linked-cut mirroring
@@ -1160,14 +1121,6 @@ class TimelineController {
   }
 
   // --- Shared internals -------------------------------------------------------
-
-  String? _normalizeFrameName(String? name) {
-    final trimmed = name?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
 
   /// Whether an AUTHORED exposure still points at [frameId] — the question
   /// every cel-lifetime decision in this file is really asking.
