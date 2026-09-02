@@ -52,6 +52,14 @@ void main() {
         continue;
       }
       final lines = entity.readAsLinesSync();
+      // A `part of` an owner IS the owner — the same library, split by file
+      // (the session's first collaborator, session/frame_range_move_drag.dart,
+      // carries the verb's own calls that used to sit in the session file).
+      if (lines.isNotEmpty &&
+          lines.first.startsWith('part of ') &&
+          owners.any((o) => lines.first.contains(o.split('/').last))) {
+        continue;
+      }
       var hits = 0;
       final where = <String>[];
       for (var i = 0; i < lines.length; i += 1) {
