@@ -17,6 +17,7 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
 import '../widgets/axis_gesture_detector.dart';
+import 'timeline_beat_lines.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
 /// waveform editing strip where dragging a span's MIDDLE along the frame
@@ -234,26 +235,63 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final cellExtent = metrics.frameCellWidth;
-    final crossExtent = metrics.layerRowHeight;
-    final visibleExtent =
-        (frameEndIndexExclusive - frameStartIndex) * cellExtent;
-    final horizontal = axis == Axis.horizontal;
+    final band = DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.washDown.withValues(alpha: 0.6),
+        border: _bandSeam(colorScheme),
+      ),
+      child: Stack(clipBehavior: Clip.hardEdge, children: _spans()),
+    );
+    return _withSpacers(band);
+  }
 
-    final spans = <Widget>[];
-    for (final span in seAudioSpans(layer)) {
-      if (span.endFrameExclusive <= frameStartIndex ||
-          span.startFrame >= frameEndIndexExclusive) {
-        continue;
-      }
-      final startOffset = frameVisibleX(
-        frameIndex: span.startFrame,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: cellExtent,
-        leadingFrameSpacerWidth: 0,
-      );
-      final mainExtent = span.lengthFrames * cellExtent;
-      final content = _SeAudioLaneSpan(
+  double get _cellExtent => metrics.frameCellWidth;
+  double get _crossExtent => metrics.layerRowHeight;
+  double get _visibleExtent =>
+      (frameEndIndexExclusive - frameStartIndex) * _cellExtent;
+
+  /// The divider faces the NEXT lane: below in the timeline, to the right
+  /// in the X-sheet — and the ROW SEAM comes from the law, exactly as the
+  /// property lanes' band reads it (D43-2 d: 「fx행엔 그리드의 가로선 있는데
+  /// … 통일로 추가해주고」). This lane used to write its own — outlineVariant
+  /// at half width — the very drift that round named.
+  Border _bandSeam(ColorScheme colorScheme) {
+    final ink = timelineGridRowSeamInk(colorScheme);
+    final seam = BorderSide(color: ink.color, width: ink.strokeWidth);
+    final horizontal = axis == Axis.horizontal;
+    return Border(
+      bottom: horizontal ? seam : BorderSide.none,
+      right: horizontal ? BorderSide.none : seam,
+    );
+  }
+
+  /// One clip span per audio span inside the visible window.
+  List<Widget> _spans() => [
+    for (final span in seAudioSpans(layer))
+      if (_visible(span)) _spanWidget(span),
+  ];
+
+  bool _visible(SeAudioSpan span) =>
+      span.endFrameExclusive > frameStartIndex &&
+      span.startFrame < frameEndIndexExclusive;
+
+  Widget _spanWidget(SeAudioSpan span) {
+    final startOffset = frameVisibleX(
+      frameIndex: span.startFrame,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: _cellExtent,
+      leadingFrameSpacerWidth: 0,
+    );
+    final onSetOffset = onSetClipOffset;
+    final drag = offsetDrag;
+    final onSetFades = onSetClipFades;
+    return placedAlong(
+      axis,
+      along: startOffset,
+      across: 0,
+      alongExtent: span.lengthFrames * _cellExtent,
+      acrossExtent: _crossExtent,
+      child: _SeAudioLaneSpan(
         key: ValueKey<String>(
           '$keyPrefix-audio-lane-span-${layer.id}-${span.clipIndex}'
           '-b${span.startFrame}',
@@ -261,75 +299,41 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         span: span,
         peaks: audioPeaksFor?.call(span.clip.filePath),
         frameRate: frameRate,
-        frameCellExtent: cellExtent,
+        frameCellExtent: _cellExtent,
         axis: axis,
-        onSetOffset: onSetClipOffset == null
+        onSetOffset: onSetOffset == null
             ? null
-            : (offsetFrames) => onSetClipOffset!(span.clipIndex, offsetFrames),
-        liveOffsetDrag: offsetDrag == null
+            : (offsetFrames) => onSetOffset(span.clipIndex, offsetFrames),
+        liveOffsetDrag: drag == null
             ? null
             : _SpanLiveOffsetDrag(
-                begin: () => offsetDrag!.onBegin(layer.id, span.clipIndex),
-                update: offsetDrag!.onUpdate,
-                end: offsetDrag!.onEnd,
-                cancel: offsetDrag!.onCancel,
+                begin: () => drag.onBegin(layer.id, span.clipIndex),
+                update: drag.onUpdate,
+                end: drag.onEnd,
+                cancel: drag.onCancel,
               ),
-        onSetFades: onSetClipFades == null
+        onSetFades: onSetFades == null
             ? null
-            : (fadeIn, fadeOut) =>
-                  onSetClipFades!(span.clipIndex, fadeIn, fadeOut),
-      );
-      spans.add(
-        placedAlong(
-          axis,
-          along: startOffset,
-          across: 0,
-          alongExtent: mainExtent,
-          acrossExtent: crossExtent,
-          child: content,
-        ),
-      );
-    }
-
-    final band = DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.washDown.withValues(alpha: 0.6),
-        border: horizontal
-            ? Border(
-                bottom: BorderSide(
-                  color: colorScheme.outlineVariant,
-                  width: 0.5,
-                ),
-              )
-            : Border(
-                right: BorderSide(
-                  color: colorScheme.outlineVariant,
-                  width: 0.5,
-                ),
-              ),
+            : (fadeIn, fadeOut) => onSetFades(span.clipIndex, fadeIn, fadeOut),
       ),
-      child: Stack(clipBehavior: Clip.hardEdge, children: spans),
-    );
-
-    if (horizontal) {
-      return Row(
-        key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-$seAudioLaneId'),
-        children: [
-          SizedBox(width: leadingFrameSpacerWidth, height: crossExtent),
-          SizedBox(width: visibleExtent, height: crossExtent, child: band),
-          SizedBox(width: trailingFrameSpacerWidth, height: crossExtent),
-        ],
-      );
-    }
-    return Column(
-      key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-$seAudioLaneId'),
-      children: [
-        SizedBox(width: crossExtent, height: leadingFrameSpacerWidth),
-        SizedBox(width: crossExtent, height: visibleExtent, child: band),
-        SizedBox(width: crossExtent, height: trailingFrameSpacerWidth),
-      ],
     );
   }
+
+  /// The band between its two spacers, along the axis.
+  Widget _withSpacers(Widget band) => Flex(
+    direction: axis,
+    key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-$seAudioLaneId'),
+    children: [
+      sizedAlong(axis, along: leadingFrameSpacerWidth, across: _crossExtent),
+      sizedAlong(
+        axis,
+        along: _visibleExtent,
+        across: _crossExtent,
+        child: band,
+      ),
+      sizedAlong(axis, along: trailingFrameSpacerWidth, across: _crossExtent),
+    ],
+  );
 }
 
 /// What a drag on the span edits, decided by where it started: the edges
@@ -505,7 +509,6 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
 
   @override
   Widget build(BuildContext context) {
-    final horizontal = widget.axis == Axis.horizontal;
     final peaks = widget.peaks;
     final offset = _dragging && _mode == _SpanDragMode.slide
         ? _previewOffset
@@ -514,108 +517,6 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     final fadeOut = _previewFadeOut;
     final editable = _editable;
     final showFadeMarks = widget.onSetFades != null && peaks != null;
-
-    String dragHint() => switch (_mode) {
-      _SpanDragMode.slide => '-${offset}f',
-      _SpanDragMode.fadeIn => 'in ${fadeIn}f',
-      _SpanDragMode.fadeOut => 'out ${fadeOut}f',
-    };
-
-    Positioned fadeMark(int frames, {required bool leading}) {
-      final along = frames * widget.frameCellExtent;
-      final mark = IgnorePointer(
-        child: ColoredBox(color: AppColors.accent.withValues(alpha: 0.9)),
-      );
-      if (horizontal) {
-        return leading
-            ? Positioned(
-                left: along - 1,
-                top: 0,
-                bottom: 0,
-                width: 2,
-                child: mark,
-              )
-            : Positioned(
-                right: along - 1,
-                top: 0,
-                bottom: 0,
-                width: 2,
-                child: mark,
-              );
-      }
-      return leading
-          ? Positioned(
-              top: along - 1,
-              left: 0,
-              right: 0,
-              height: 2,
-              child: mark,
-            )
-          : Positioned(
-              bottom: along - 1,
-              left: 0,
-              right: 0,
-              height: 2,
-              child: mark,
-            );
-    }
-
-    final children = <Widget>[
-      // The block's paper backdrop so the lane reads as the block's own
-      // editing strip.
-      Positioned.fill(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: timelineDrawingHeldColor.withValues(alpha: 0.6),
-            borderRadius: const BorderRadius.all(Radius.circular(4)),
-            border: Border.all(color: timelineDrawingStartBorderColor),
-          ),
-        ),
-      ),
-      if (peaks != null)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: WaveformPainter(
-                peaks: peaks,
-                frameRate: widget.frameRate,
-                pixelsPerFrame: widget.frameCellExtent,
-                // Editing strip: stronger ink than the row's underlay.
-                color: timelineDrawingInkColor.withValues(alpha: 0.45),
-                axis: widget.axis,
-                leadingFrames: offset,
-                gain: widget.span.clip.gain,
-                fadeInFrames: fadeIn,
-                fadeOutFrames: fadeOut,
-              ),
-            ),
-          ),
-        ),
-      // Fade ramp ends: accent ticks the handle drags travel with.
-      if (showFadeMarks && fadeIn > 0) fadeMark(fadeIn, leading: true),
-      if (showFadeMarks && fadeOut > 0) fadeMark(fadeOut, leading: false),
-      if (_dragging)
-        Positioned(
-          left: 4,
-          top: 2,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                color: AppColors.accent.withValues(alpha: 0.85),
-                shape: AppShapes.container(3),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                child: Text(
-                  dragHint(),
-                  style: const TextStyle(fontSize: 9, color: Colors.black),
-                ),
-              ),
-            ),
-          ),
-        ),
-    ];
-
     return AxisGestureDetector(
       axis: widget.axis,
       behavior: HitTestBehavior.opaque,
@@ -631,12 +532,103 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       onDragEnd: editable ? (_) => _endDrag() : null,
       onDragCancel: editable ? _cancelDrag : null,
       child: MouseRegion(
-        cursor: editable
-            ? (horizontal
-                  ? SystemMouseCursors.resizeLeftRight
-                  : SystemMouseCursors.resizeUpDown)
-            : MouseCursor.defer,
-        child: Stack(clipBehavior: Clip.hardEdge, children: children),
+        cursor: editable ? _resizeCursor : MouseCursor.defer,
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            _backdrop(),
+            ?_waveform(peaks, offset, fadeIn: fadeIn, fadeOut: fadeOut),
+            // Fade ramp ends: accent ticks the handle drags travel with.
+            if (showFadeMarks && fadeIn > 0) _fadeMark(fadeIn, leading: true),
+            if (showFadeMarks && fadeOut > 0)
+              _fadeMark(fadeOut, leading: false),
+            ?_dragBadge(offset, fadeIn: fadeIn, fadeOut: fadeOut),
+          ],
+        ),
+      ),
+    );
+  }
+
+  MouseCursor get _resizeCursor => widget.axis == Axis.horizontal
+      ? SystemMouseCursors.resizeLeftRight
+      : SystemMouseCursors.resizeUpDown;
+
+  /// The block's paper backdrop so the lane reads as the block's own
+  /// editing strip.
+  Widget _backdrop() => Positioned.fill(
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: timelineDrawingHeldColor.withValues(alpha: 0.6),
+        borderRadius: const BorderRadius.all(Radius.circular(4)),
+        border: Border.all(color: timelineDrawingStartBorderColor),
+      ),
+    ),
+  );
+
+  Widget? _waveform(
+    AudioPeaks? peaks,
+    int offset, {
+    required int fadeIn,
+    required int fadeOut,
+  }) {
+    if (peaks == null) return null;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: WaveformPainter(
+            peaks: peaks,
+            frameRate: widget.frameRate,
+            pixelsPerFrame: widget.frameCellExtent,
+            // Editing strip: stronger ink than the row's underlay.
+            color: timelineDrawingInkColor.withValues(alpha: 0.45),
+            axis: widget.axis,
+            leadingFrames: offset,
+            gain: widget.span.clip.gain,
+            fadeInFrames: fadeIn,
+            fadeOutFrames: fadeOut,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// An accent tick [frames] in from the clip's start (leading) or its end.
+  Widget _fadeMark(int frames, {required bool leading}) => stripAlong(
+    widget.axis,
+    along: frames * widget.frameCellExtent - 1,
+    alongExtent: 2,
+    fromEnd: !leading,
+    child: IgnorePointer(
+      child: ColoredBox(color: AppColors.accent.withValues(alpha: 0.9)),
+    ),
+  );
+
+  String _dragHint(int offset, {required int fadeIn, required int fadeOut}) =>
+      switch (_mode) {
+        _SpanDragMode.slide => '-${offset}f',
+        _SpanDragMode.fadeIn => 'in ${fadeIn}f',
+        _SpanDragMode.fadeOut => 'out ${fadeOut}f',
+      };
+
+  Widget? _dragBadge(int offset, {required int fadeIn, required int fadeOut}) {
+    if (!_dragging) return null;
+    return Positioned(
+      left: 4,
+      top: 2,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: AppColors.accent.withValues(alpha: 0.85),
+            shape: AppShapes.container(3),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            child: Text(
+              _dragHint(offset, fadeIn: fadeIn, fadeOut: fadeOut),
+              style: const TextStyle(fontSize: 9, color: Colors.black),
+            ),
+          ),
+        ),
       ),
     );
   }

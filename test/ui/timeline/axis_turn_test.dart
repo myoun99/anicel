@@ -133,4 +133,30 @@ void main() {
       expect((b.width, b.height), (28, 96));
     });
   });
+
+  group('stripAlong from the far end', () {
+    test('horizontal: measured from the right', () {
+      final p = stripAlong(
+        Axis.horizontal,
+        along: 30,
+        alongExtent: 2,
+        fromEnd: true,
+        child: child,
+      );
+      expect((p.right, p.width, p.top, p.bottom), (30, 2, 0, 0));
+      expect((p.left, p.height), (null, null));
+    });
+
+    test('vertical: measured from the bottom', () {
+      final p = stripAlong(
+        Axis.vertical,
+        along: 30,
+        alongExtent: 2,
+        fromEnd: true,
+        child: child,
+      );
+      expect((p.bottom, p.height, p.left, p.right), (30, 2, 0, 0));
+      expect((p.top, p.width), (null, null));
+    });
+  });
 }

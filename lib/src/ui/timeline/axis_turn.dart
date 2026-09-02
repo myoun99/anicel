@@ -75,27 +75,26 @@ Positioned stripAcross(
       );
 
 /// A stack child spanning the WHOLE cross axis at [along] — a grip line at
-/// a frame.
+/// a frame. [fromEnd] measures [along] from the strip's far end instead
+/// (a fade-out mark sits that many frames before the clip ends).
 Positioned stripAlong(
   Axis axis, {
   required double along,
   required double alongExtent,
   required Widget child,
-}) => axis == Axis.horizontal
-    ? Positioned(
-        top: 0,
-        bottom: 0,
-        left: along,
-        width: alongExtent,
-        child: child,
-      )
-    : Positioned(
-        left: 0,
-        right: 0,
-        top: along,
-        height: alongExtent,
-        child: child,
-      );
+  bool fromEnd = false,
+}) {
+  final horizontal = axis == Axis.horizontal;
+  return Positioned(
+    top: horizontal ? 0 : (fromEnd ? null : along),
+    bottom: horizontal ? 0 : (fromEnd ? along : null),
+    left: horizontal ? (fromEnd ? null : along) : 0,
+    right: horizontal ? (fromEnd ? along : null) : 0,
+    width: horizontal ? alongExtent : null,
+    height: horizontal ? null : alongExtent,
+    child: child,
+  );
+}
 
 /// Text a person READS, turned by the axis: across the strip it is one line
 /// that ellipsises; down a column it STANDS UP — upright letters, the column
