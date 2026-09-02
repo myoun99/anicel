@@ -293,7 +293,7 @@ class _WorkspaceTabs {
                 slice: (state) => (
                   state.tool,
                   state.activeShapeKind,
-                  _state._activePresetByTool[state.tool],
+                  _state._brushPresets._activePresetByTool[state.tool],
                 ),
                 builder: (context, toolState) =>
                     KeyedKeepAliveStack<
@@ -313,7 +313,8 @@ class _WorkspaceTabs {
                       // worked, which is exactly what made it read as a
                       // UI-only lie.
                       stateOf: () => (
-                        _state._activePresetByTool[toolState.tool],
+                        _state._brushPresets._activePresetByTool[toolState
+                            .tool],
                         toolState.activeShapeKind,
                       ),
                       builder: (context) => ToolLibraryPanel(
@@ -333,25 +334,27 @@ class _WorkspaceTabs {
                           builder: (context, _) => BrushPresetPanel(
                             presets: _state._presetLibrary.presets,
                             groups: _state._presetLibrary.groups,
-                            selectedPresetId:
-                                _state._activePresetByTool[toolState.tool],
-                            onPresetApplied: _state._applyPreset,
+                            selectedPresetId: _state
+                                ._brushPresets
+                                ._activePresetByTool[toolState.tool],
+                            onPresetApplied: _state._brushPresets._applyPreset,
                             onPresetSaveRequested: () {
                               _state._presetLibrary.saveCurrent(
                                 _state._brushTool.value.toBrushSettings(),
                                 // A saved variant lands beside the brush it
                                 // came from rather than at the far end of
                                 // the list.
-                                groupId: _state._activePresetGroupId(
-                                  toolState.tool,
-                                ),
+                                groupId: _state._brushPresets
+                                    ._activePresetGroupId(toolState.tool),
                               );
                             },
                             onPresetDeleted: _state._presetLibrary.delete,
                             onPresetRenamed: _state._presetLibrary.rename,
                             onPresetsReordered: _state._presetLibrary.reorder,
                             onPresetImportRequested: () {
-                              unawaited(_state._importBrushFile());
+                              unawaited(
+                                _state._brushPresets._importBrushFile(),
+                              );
                             },
                             onGroupCreated: _state._presetLibrary.createGroup,
                             onGroupEdited: _state._presetLibrary.editGroup,
@@ -459,7 +462,10 @@ class _WorkspaceTabs {
                                               .setActiveCutGuides,
                                           tips: _state._tipLibrary.tips,
                                           onTipImportRequested: () {
-                                            unawaited(_state._importTipImage());
+                                            unawaited(
+                                              _state._brushPresets
+                                                  ._importTipImage(),
+                                            );
                                           },
                                           fillOptions: fillOptions,
                                           onFillOptionsChanged: (options) =>
@@ -494,10 +500,13 @@ class _WorkspaceTabs {
                                           onCutPasteAtOrigin: () => _state
                                               ._cutPieceSlot
                                               .pasteAtOrigin(),
-                                          onRegisterCutPieceAsTip:
-                                              _state._registerCutPieceAsTip,
-                                          onRenameTip: _state._renameTip,
-                                          onDeleteTip: _state._deleteTip,
+                                          onRegisterCutPieceAsTip: _state
+                                              ._brushPresets
+                                              ._registerCutPieceAsTip,
+                                          onRenameTip:
+                                              _state._brushPresets._renameTip,
+                                          onDeleteTip:
+                                              _state._brushPresets._deleteTip,
                                           language: _state
                                               .widget
                                               .session
