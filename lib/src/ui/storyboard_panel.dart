@@ -18,7 +18,11 @@ import '../models/project.dart';
 import '../models/project_frame_rate.dart';
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart'
-    show TimelineBlockEdge, coveringDrawingBlockAt, drawingBlocks;
+    show
+        TimelineBlockEdge,
+        TimelineDrawingBlock,
+        coveringDrawingBlockAt,
+        drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
@@ -3060,25 +3064,7 @@ class _StoryboardSeRow extends StatelessWidget {
       // writing on top.
       for (final block in blocks) {
         spans.add(
-          Positioned(
-            left: timelineScale.leftForFrame(block.startIndex),
-            top: 0,
-            bottom: 0,
-            width:
-                (block.endIndexExclusive - block.startIndex) *
-                timelineScale.pixelsPerFrame,
-            child: IgnorePointer(
-              key: ValueKey<String>(
-                'storyboard-se-paper-${layer.id}-${block.startIndex}',
-              ),
-              child: SePaperSpan(
-                axis: Axis.horizontal,
-                frameCellExtent: timelineScale.pixelsPerFrame,
-                // ⑲: the block is its layer's colour label.
-                paper: layerMarkColor(layer.mark),
-              ),
-            ),
-          ),
+          _paperSpan(block, layer),
         );
       }
       // Waveforms above the paper (painted UNDER the SE writing): sounds
@@ -3104,30 +3090,7 @@ class _StoryboardSeRow extends StatelessWidget {
             continue;
           }
           spans.add(
-            Positioned(
-              left: timelineScale.leftForFrame(span.startFrame),
-              top: 0,
-              bottom: 0,
-              width:
-                  (endExclusive - span.startFrame) *
-                  timelineScale.pixelsPerFrame,
-              child: IgnorePointer(
-                key: ValueKey<String>(
-                  'storyboard-audio-clip-${layer.id}'
-                  '-${span.clipIndex}-b${span.startFrame}',
-                ),
-                child: CustomPaint(
-                  painter: WaveformPainter(
-                    peaks: peaks,
-                    frameRate: projectFrameRate,
-                    pixelsPerFrame: timelineScale.pixelsPerFrame,
-                    // Ink on the paper spans, like the timeline SE rows.
-                    color: timelineDrawingInkColor.withValues(alpha: 0.22),
-                    leadingFrames: span.clip.offsetFrames,
-                  ),
-                ),
-              ),
-            ),
+            _waveformSpan(span, endExclusive, layer, peaks),
           );
         }
       }
@@ -3143,24 +3106,7 @@ class _StoryboardSeRow extends StatelessWidget {
           }
         }
         spans.add(
-          Positioned(
-            left: timelineScale.leftForFrame(block.startIndex),
-            top: 0,
-            bottom: 0,
-            width:
-                (block.endIndexExclusive - block.startIndex) *
-                timelineScale.pixelsPerFrame,
-            child: IgnorePointer(
-              key: ValueKey<String>(
-                'storyboard-se-span-${layer.id}-${block.startIndex}',
-              ),
-              child: SeSpanVisual(
-                axis: Axis.horizontal,
-                dialogue: dialogue ?? '',
-                seName: seName,
-              ),
-            ),
-          ),
+          _dialogueSpan(block, layer, dialogue, seName),
         );
       }
       // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
@@ -3179,38 +3125,7 @@ class _StoryboardSeRow extends StatelessWidget {
       final seSelect = this.seSelect;
       if (seSelect != null) {
         spans.add(
-          Positioned.fill(
-            key: ValueKey<String>('storyboard-se-selection-${layer.id}'),
-            child: IgnorePointer(
-              child: ValueListenableBuilder<TrackFrameRangeSelection?>(
-                valueListenable: seSelect.selectedRange,
-                builder: (context, selection, _) {
-                  if (selection == null ||
-                      !selection.coversRow(LayerRowAddress(layer.id)) ||
-                      timelineScale.pixelsPerFrame <= 0) {
-                    return const SizedBox.shrink();
-                  }
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: timelineScale.leftForFrame(selection.startFrame),
-                        top: 0,
-                        bottom: 0,
-                        width:
-                            selection.lengthFrames *
-                            timelineScale.pixelsPerFrame,
-                        child: ColoredBox(
-                          color: timelineSelectedFrameBorderColor.withValues(
-                            alpha: 0.12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
+          _selectionWash(layer, seSelect),
         );
       }
       if (onRowFramePress != null || onEditSeEntry != null) {
@@ -3219,52 +3134,7 @@ class _StoryboardSeRow extends StatelessWidget {
             ? null
             : (local.dx / timelineScale.pixelsPerFrame).floor();
         spans.add(
-          Positioned.fill(
-            key: ValueKey<String>('storyboard-se-press-${layer.id}'),
-            // B6 (2026-08-17): the SE editor's entrance is the frame
-            // blocks' — a double tap on the SAME cell (the shared gate),
-            // covered cells only, opening the same instance dialog the
-            // timeline's SE cells open. The transition row one class up
-            // mounts the identical pair.
-            //
-            // ⚠️NESTING IS LOAD-BEARING (the dense rows' order): press
-            // region OUTSIDE, double-tap detector INSIDE — innermost-first
-            // dispatch lets the recognizer consult the gate before the
-            // second press re-records.
-            //
-            // ㉟-b, the SE strip's half — same shared region, same reason.
-            child: InstantTapRegion(
-              behavior: HitTestBehavior.translucent,
-              pressSeeksFor: AppInput.timelineCellPressSeeks,
-              onPressDown: timelineCellDoubleTapRecord(
-                layerId: layer.id,
-                frameAt: frameAt,
-              ),
-              onTap: (localPosition) {
-                final frame = frameAt(localPosition);
-                if (frame == null) {
-                  return;
-                }
-                onRowFramePress?.call(LayerRowAddress(layer.id), frame);
-              },
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onDoubleTapDown: onEditSeEntry == null
-                    ? null
-                    : timelineCellDoubleTapActivation(
-                        layerId: layer.id,
-                        frameAt: frameAt,
-                        onActivate: (frame) {
-                          // 🚨★★★I-9: same as the transition strip one
-                          // class up — the coverage question belongs to
-                          // the host's fork, not to a copy here.
-                          onEditSeEntry(layer.id, frame);
-                        },
-                      ),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
+          _pressLayer(layer, frameAt, onEditSeEntry),
         );
       }
       // THE range gesture — the timeline's, the same one the cut row
@@ -3276,53 +3146,7 @@ class _StoryboardSeRow extends StatelessWidget {
       final geometry = frameGeometry;
       if (seSelect != null && geometry != null) {
         spans.add(
-          TimelineFrameRangeGestureLayer(
-            // The SLOT key (R12-③): the layer already positions itself, so
-            // it goes into the Stack bare — a Positioned around it would be
-            // a second ParentDataWidget on the same render object.
-            key: ValueKey<String>(
-              'storyboard-se-range-gesture-slot-${layer.id}',
-            ),
-            row: LayerRowAddress(layer.id),
-            geometry: geometry,
-            crossAxisExtent: _seRowHeight,
-            callbacks: TimelineRangeGestureCallbacks(
-              isInSelection: (_, frame) => _isSelectedAt(frame),
-              onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
-                  seSelect.onDrag(
-                    layerId: layer.id,
-                    anchorGlobalFrame: anchorIndex,
-                    headGlobalFrame: headIndex,
-                    headRow: railRowAt?.call(
-                      LayerRowAddress(layer.id),
-                      headCrossOffset,
-                    ),
-                  ),
-              // Standing is already this row's press verb (feedback #7: an
-              // SE press parks where you pressed), so the tap only drops
-              // the selection — R10's rule is satisfied upstream.
-              onTapClear: (_) => seSelect.onClear(),
-              // A drag that STARTS inside the selection slides the sounds,
-              // and may cross onto a sibling S row — the timeline's own
-              // row-change grammar, resolved by the timeline's own
-              // resolver over THIS rail's row order.
-              //
-              // The list it walks holds only this track's S rows, so the
-              // clamp is the kind guard: a drag cannot wander onto the cut
-              // row (or any other section) because no such row is in it.
-              onMoveBegin: (_, _) => seSelect.move?.onBegin(layer.id) ?? false,
-              onMoveUpdate: (frameDelta, rowDelta) => seSelect.move?.onUpdate(
-                frameDelta,
-                resolveBlockMoveTargetLayer(
-                  rows: seRowsInDisplayOrder,
-                  sourceLayerId: layer.id,
-                  rowDelta: rowDelta,
-                ),
-              ),
-              onMoveEnd: () => seSelect.move?.onEnd(),
-              onMoveCancel: () => seSelect.move?.onCancel(),
-            ),
-          ),
+          _rangeGestureLayer(layer, geometry, seSelect),
         );
       }
       // …and EVERY block carries the timeline's own comma edge grips
@@ -3339,44 +3163,13 @@ class _StoryboardSeRow extends StatelessWidget {
           ordinal += 1;
           for (final edge in TimelineBlockEdge.values) {
             grips.add(
-              TimelineFrameSpan(
-                placement: timelineBlockEdgeGripPlacement(
-                  edge: edge,
-                  startIndex: block.startIndex,
-                  endIndexExclusive: block.endIndexExclusive,
-                ),
-                child: TimelineBlockEdgeGrip(
-                  key: ValueKey<String>(
-                    'storyboard-se-grip-${layer.id}-$blockOrdinal'
-                    '-${edge.name}',
-                  ),
-                  layerId: layer.id,
-                  blockStartIndex: block.startIndex,
-                  blockOrdinal: blockOrdinal,
-                  edge: edge,
-                  resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
-                  callbacks: seCommaDrag,
-                ),
-              ),
+              _edgeGrip(edge, block, layer, blockOrdinal, seCommaDrag),
             );
           }
         }
         if (grips.isNotEmpty) {
           spans.add(
-            Positioned.fill(
-              child: TimelineFixedFrameSpanLayer(
-                geometry: TimelineFrameGeometry(
-                  frameCellExtent: timelineScale.pixelsPerFrame,
-                  frameStartIndex: 0,
-                  frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
-                      ? 0
-                      : (width / timelineScale.pixelsPerFrame).ceil(),
-                ),
-                crossAxisExtent: _seRowHeight,
-                axis: Axis.horizontal,
-                children: grips,
-              ),
-            ),
+            _gripLayer(grips),
           );
         }
       }
@@ -3387,6 +3180,253 @@ class _StoryboardSeRow extends StatelessWidget {
       width: width,
       height: _seRowHeight,
       child: Stack(children: spans),
+    );
+  }
+
+  Positioned _gripLayer(List<Widget> grips) {
+    return Positioned.fill(
+      child: TimelineFixedFrameSpanLayer(
+        geometry: TimelineFrameGeometry(
+          frameCellExtent: timelineScale.pixelsPerFrame,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
+              ? 0
+              : (width / timelineScale.pixelsPerFrame).ceil(),
+        ),
+        crossAxisExtent: _seRowHeight,
+        axis: Axis.horizontal,
+        children: grips,
+      ),
+    );
+  }
+
+  TimelineFrameSpan _edgeGrip(TimelineBlockEdge edge, TimelineDrawingBlock block, Layer layer, int blockOrdinal, TimelineCommaDragCallbacks seCommaDrag) {
+    return TimelineFrameSpan(
+      placement: timelineBlockEdgeGripPlacement(
+        edge: edge,
+        startIndex: block.startIndex,
+        endIndexExclusive: block.endIndexExclusive,
+      ),
+      child: TimelineBlockEdgeGrip(
+        key: ValueKey<String>(
+          'storyboard-se-grip-${layer.id}-$blockOrdinal'
+          '-${edge.name}',
+        ),
+        layerId: layer.id,
+        blockStartIndex: block.startIndex,
+        blockOrdinal: blockOrdinal,
+        edge: edge,
+        resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
+        callbacks: seCommaDrag,
+      ),
+    );
+  }
+
+  TimelineFrameRangeGestureLayer _rangeGestureLayer(Layer layer, TimelineFrameGeometryHandle geometry, StoryboardSeSelectCallbacks seSelect) {
+    return TimelineFrameRangeGestureLayer(
+      // The SLOT key (R12-③): the layer already positions itself, so
+      // it goes into the Stack bare — a Positioned around it would be
+      // a second ParentDataWidget on the same render object.
+      key: ValueKey<String>(
+        'storyboard-se-range-gesture-slot-${layer.id}',
+      ),
+      row: LayerRowAddress(layer.id),
+      geometry: geometry,
+      crossAxisExtent: _seRowHeight,
+      callbacks: TimelineRangeGestureCallbacks(
+        isInSelection: (_, frame) => _isSelectedAt(frame),
+        onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
+            seSelect.onDrag(
+              layerId: layer.id,
+              anchorGlobalFrame: anchorIndex,
+              headGlobalFrame: headIndex,
+              headRow: railRowAt?.call(
+                LayerRowAddress(layer.id),
+                headCrossOffset,
+              ),
+            ),
+        // Standing is already this row's press verb (feedback #7: an
+        // SE press parks where you pressed), so the tap only drops
+        // the selection — R10's rule is satisfied upstream.
+        onTapClear: (_) => seSelect.onClear(),
+        // A drag that STARTS inside the selection slides the sounds,
+        // and may cross onto a sibling S row — the timeline's own
+        // row-change grammar, resolved by the timeline's own
+        // resolver over THIS rail's row order.
+        //
+        // The list it walks holds only this track's S rows, so the
+        // clamp is the kind guard: a drag cannot wander onto the cut
+        // row (or any other section) because no such row is in it.
+        onMoveBegin: (_, _) => seSelect.move?.onBegin(layer.id) ?? false,
+        onMoveUpdate: (frameDelta, rowDelta) => seSelect.move?.onUpdate(
+          frameDelta,
+          resolveBlockMoveTargetLayer(
+            rows: seRowsInDisplayOrder,
+            sourceLayerId: layer.id,
+            rowDelta: rowDelta,
+          ),
+        ),
+        onMoveEnd: () => seSelect.move?.onEnd(),
+        onMoveCancel: () => seSelect.move?.onCancel(),
+      ),
+    );
+  }
+
+  Positioned _pressLayer(
+    Layer layer,
+    int? Function(Offset local) frameAt,
+    void Function(LayerId layerId, int globalFrame)? onEditSeEntry,
+  ) {
+    return Positioned.fill(
+      key: ValueKey<String>('storyboard-se-press-${layer.id}'),
+      // B6 (2026-08-17): the SE editor's entrance is the frame
+      // blocks' — a double tap on the SAME cell (the shared gate),
+      // covered cells only, opening the same instance dialog the
+      // timeline's SE cells open. The transition row one class up
+      // mounts the identical pair.
+      //
+      // ⚠️NESTING IS LOAD-BEARING (the dense rows' order): press
+      // region OUTSIDE, double-tap detector INSIDE — innermost-first
+      // dispatch lets the recognizer consult the gate before the
+      // second press re-records.
+      //
+      // ㉟-b, the SE strip's half — same shared region, same reason.
+      child: InstantTapRegion(
+        behavior: HitTestBehavior.translucent,
+        pressSeeksFor: AppInput.timelineCellPressSeeks,
+        onPressDown: timelineCellDoubleTapRecord(
+          layerId: layer.id,
+          frameAt: frameAt,
+        ),
+        onTap: (localPosition) {
+          final frame = frameAt(localPosition);
+          if (frame == null) {
+            return;
+          }
+          onRowFramePress?.call(LayerRowAddress(layer.id), frame);
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onDoubleTapDown: onEditSeEntry == null
+              ? null
+              : timelineCellDoubleTapActivation(
+                  layerId: layer.id,
+                  frameAt: frameAt,
+                  onActivate: (frame) {
+                    // 🚨★★★I-9: same as the transition strip one
+                    // class up — the coverage question belongs to
+                    // the host's fork, not to a copy here.
+                    onEditSeEntry(layer.id, frame);
+                  },
+                ),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+  }
+
+  Positioned _selectionWash(Layer layer, StoryboardSeSelectCallbacks seSelect) {
+    return Positioned.fill(
+      key: ValueKey<String>('storyboard-se-selection-${layer.id}'),
+      child: IgnorePointer(
+        child: ValueListenableBuilder<TrackFrameRangeSelection?>(
+          valueListenable: seSelect.selectedRange,
+          builder: (context, selection, _) {
+            if (selection == null ||
+                !selection.coversRow(LayerRowAddress(layer.id)) ||
+                timelineScale.pixelsPerFrame <= 0) {
+              return const SizedBox.shrink();
+            }
+            return Stack(
+              children: [
+                Positioned(
+                  left: timelineScale.leftForFrame(selection.startFrame),
+                  top: 0,
+                  bottom: 0,
+                  width:
+                      selection.lengthFrames *
+                      timelineScale.pixelsPerFrame,
+                  child: ColoredBox(
+                    color: timelineSelectedFrameBorderColor.withValues(
+                      alpha: 0.12,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Positioned _dialogueSpan(TimelineDrawingBlock block, Layer layer, String? dialogue, String? seName) {
+    return Positioned(
+      left: timelineScale.leftForFrame(block.startIndex),
+      top: 0,
+      bottom: 0,
+      width:
+          (block.endIndexExclusive - block.startIndex) *
+          timelineScale.pixelsPerFrame,
+      child: IgnorePointer(
+        key: ValueKey<String>(
+          'storyboard-se-span-${layer.id}-${block.startIndex}',
+        ),
+        child: SeSpanVisual(
+          axis: Axis.horizontal,
+          dialogue: dialogue ?? '',
+          seName: seName,
+        ),
+      ),
+    );
+  }
+
+  Positioned _waveformSpan(SeAudioSpan span, int endExclusive, Layer layer, AudioPeaks peaks) {
+    return Positioned(
+      left: timelineScale.leftForFrame(span.startFrame),
+      top: 0,
+      bottom: 0,
+      width:
+          (endExclusive - span.startFrame) *
+          timelineScale.pixelsPerFrame,
+      child: IgnorePointer(
+        key: ValueKey<String>(
+          'storyboard-audio-clip-${layer.id}'
+          '-${span.clipIndex}-b${span.startFrame}',
+        ),
+        child: CustomPaint(
+          painter: WaveformPainter(
+            peaks: peaks,
+            frameRate: projectFrameRate,
+            pixelsPerFrame: timelineScale.pixelsPerFrame,
+            // Ink on the paper spans, like the timeline SE rows.
+            color: timelineDrawingInkColor.withValues(alpha: 0.22),
+            leadingFrames: span.clip.offsetFrames,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Positioned _paperSpan(TimelineDrawingBlock block, Layer layer) {
+    return Positioned(
+      left: timelineScale.leftForFrame(block.startIndex),
+      top: 0,
+      bottom: 0,
+      width:
+          (block.endIndexExclusive - block.startIndex) *
+          timelineScale.pixelsPerFrame,
+      child: IgnorePointer(
+        key: ValueKey<String>(
+          'storyboard-se-paper-${layer.id}-${block.startIndex}',
+        ),
+        child: SePaperSpan(
+          axis: Axis.horizontal,
+          frameCellExtent: timelineScale.pixelsPerFrame,
+          // ⑲: the block is its layer's colour label.
+          paper: layerMarkColor(layer.mark),
+        ),
+      ),
     );
   }
 }
