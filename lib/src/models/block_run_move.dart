@@ -200,22 +200,7 @@ BlockRunMoveLayout planBlockRunMove({
   // before it. A single expression would need a tie-break, and that
   // tie-break IS the asymmetry — 10 frames to pass a 10-frame neighbour
   // going one way and 1 going the other, for the same pair.
-  var rank = originalRank;
-  if (wanted > runFrom) {
-    for (var next = originalRank + 1; next <= rest.length; next += 1) {
-      if (seatPassing(rest[next - 1].index, rightward: true) > wanted) {
-        break;
-      }
-      rank = next;
-    }
-  } else if (wanted < runFrom) {
-    for (var next = originalRank - 1; next >= 0; next -= 1) {
-      if (seatPassing(rest[next].index, rightward: false) < wanted) {
-        break;
-      }
-      rank = next;
-    }
-  }
+  int rank = _rankFor(originalRank, wanted, runFrom, rest, seatPassing);
 
   final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
   final others = [for (final other in rest) other.index];
@@ -278,30 +263,11 @@ BlockRunMoveLayout planBlockRunMove({
 
   // Where the run lands. The floor is the nearest UNCROSSED block behind it,
   // standing on its own anchor, plus room for everyone it did cross.
-  var floor = 0;
-  final lastWallBehind = runPosition - crossedBehind - 1;
-  if (lastWallBehind >= 0) {
-    final wall = order[lastWallBehind];
-    floor = anchorOf[wall]! + slots[wall].length;
-  }
-  for (var position = runPosition - crossedBehind; position < runPosition; position += 1) {
-    floor += slots[order[position]].length;
-  }
+  int floor = _floorFor(runPosition, crossedBehind, order, anchorOf, slots);
 
   // …and the ceiling is that same sentence read from the other end, never
   // past whatever end the axis itself declares.
-  int? ceiling = axisEndExclusive == null ? null : axisEndExclusive - runLength;
-  final firstWallAhead = afterRun + crossedAhead;
-  if (firstWallAhead < order.length) {
-    var wall = anchorOf[order[firstWallAhead]]!;
-    for (var position = afterRun; position < firstWallAhead; position += 1) {
-      wall -= slots[order[position]].length;
-    }
-    final contact = wall - runLength;
-    if (ceiling == null || contact < ceiling) {
-      ceiling = contact;
-    }
-  }
+  int? ceiling = _ceilingFor(axisEndExclusive, runLength, afterRun, crossedAhead, order, anchorOf, slots);
 
   var landed = wanted < floor ? floor : wanted;
   if (ceiling != null && landed > ceiling) {
@@ -310,11 +276,30 @@ BlockRunMoveLayout planBlockRunMove({
 
   // The run travels as ONE unit: every member keeps the distance it already
   // held from the run's head, internal gaps included.
+  List<int> placed = _placeAll(order, runPosition, afterRun, landed, starts, runFrom, slots, anchorOf, runLength);
+
+  // The layout speaks in leading gaps, so the absolute places become the
+  // distances between them.
+  List<int> gaps = _leadingGapsOf(order, placed, slots);
+  return BlockRunMoveLayout(slots: slots, order: order, leadingGaps: gaps);
+}
+
+List<int> _leadingGapsOf(List<int> order, List<int> placed, List<BlockMoveSlot> slots) {
+  final gaps = <int>[];
+  var previousEnd = 0;
+  for (var position = 0; position < order.length; position += 1) {
+    gaps.add(placed[position] - previousEnd);
+    previousEnd = placed[position] + slots[order[position]].length;
+  }
+  return gaps;
+}
+
+List<int> _placeAll(List<int> order, int runPosition, int afterRun, int landed, List<int> starts, int runFrom, List<BlockMoveSlot> slots, Map<int, int> anchorOf, int runLength) {
   final placed = List<int>.filled(order.length, 0);
   for (var position = runPosition; position < afterRun; position += 1) {
     placed[position] = landed + (starts[order[position]] - runFrom);
   }
-
+  
   // BEHIND the run, right to left: head for home and get as far along that
   // road as the block ahead of you (ultimately the run) leaves open. Frame 0
   // is the wall.
@@ -329,7 +314,7 @@ BlockRunMoveLayout planBlockRunMove({
     placed[position] = start;
     limit = start;
   }
-
+  
   // AHEAD of the run, left to right: the same sentence, mirrored.
   var ahead = landed + runLength;
   for (var position = afterRun; position < order.length; position += 1) {
@@ -338,14 +323,60 @@ BlockRunMoveLayout planBlockRunMove({
     placed[position] = start;
     ahead = start + slots[order[position]].length;
   }
+  return placed;
+}
 
-  // The layout speaks in leading gaps, so the absolute places become the
-  // distances between them.
-  final gaps = <int>[];
-  var previousEnd = 0;
-  for (var position = 0; position < order.length; position += 1) {
-    gaps.add(placed[position] - previousEnd);
-    previousEnd = placed[position] + slots[order[position]].length;
+int? _ceilingFor(int? axisEndExclusive, int runLength, int afterRun, int crossedAhead, List<int> order, Map<int, int> anchorOf, List<BlockMoveSlot> slots) {
+  int? ceiling = axisEndExclusive == null ? null : axisEndExclusive - runLength;
+  final firstWallAhead = afterRun + crossedAhead;
+  if (firstWallAhead < order.length) {
+    var wall = anchorOf[order[firstWallAhead]]!;
+    for (var position = afterRun; position < firstWallAhead; position += 1) {
+      wall -= slots[order[position]].length;
+    }
+    final contact = wall - runLength;
+    if (ceiling == null || contact < ceiling) {
+      ceiling = contact;
+    }
   }
-  return BlockRunMoveLayout(slots: slots, order: order, leadingGaps: gaps);
+  return ceiling;
+}
+
+int _floorFor(int runPosition, int crossedBehind, List<int> order, Map<int, int> anchorOf, List<BlockMoveSlot> slots) {
+  var floor = 0;
+  final lastWallBehind = runPosition - crossedBehind - 1;
+  if (lastWallBehind >= 0) {
+    final wall = order[lastWallBehind];
+    floor = anchorOf[wall]! + slots[wall].length;
+  }
+  for (var position = runPosition - crossedBehind; position < runPosition; position += 1) {
+    floor += slots[order[position]].length;
+  }
+  return floor;
+}
+
+int _rankFor(
+  int originalRank,
+  int wanted,
+  int runFrom,
+  List<({int endExclusive, int index, int start})> rest,
+  int Function(int block, {required bool rightward}) seatPassing,
+) {
+  var rank = originalRank;
+  if (wanted > runFrom) {
+    for (var next = originalRank + 1; next <= rest.length; next += 1) {
+      if (seatPassing(rest[next - 1].index, rightward: true) > wanted) {
+        break;
+      }
+      rank = next;
+    }
+  } else if (wanted < runFrom) {
+    for (var next = originalRank - 1; next >= 0; next -= 1) {
+      if (seatPassing(rest[next].index, rightward: false) < wanted) {
+        break;
+      }
+      rank = next;
+    }
+  }
+  return rank;
 }
