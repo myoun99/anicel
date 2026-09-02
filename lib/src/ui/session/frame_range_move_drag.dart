@@ -224,8 +224,8 @@ class _FrameRangeMoveDrag {
       if (rowLayerId == null || !seen.add(rowLayerId)) {
         continue;
       }
-      final transition = _session
-          ._trackTransitionOwner(rowLayerId)
+      final transition = _session._transitions
+          .trackTransitionOwner(rowLayerId)
           ?.transitionLayer;
       if (transition != null) {
         final hasSpan = transition.instructions.keys.any(
@@ -443,7 +443,7 @@ class _FrameRangeMoveDrag {
       _rangeMoveMultiPlans = null;
       _rangeMoveCameraShifted = null;
       _rangeMoveInstructionShifted = null;
-      _session._cameraKeysDragPreview = null;
+      _session._camera._cameraKeysDragPreview = null;
       final newStart = selection.startIndex + frameDelta;
       if (newStart >= 0) {
         _rangeMoveSelection = TimelineFrameRangeSelection(
@@ -628,7 +628,8 @@ class _FrameRangeMoveDrag {
     Cut? cut,
   ) => [
     for (final entry in instructionShifted.entries)
-      if (_session._trackTransitionOwner(entry.key) case final owner?)
+      if (_session._transitions.trackTransitionOwner(entry.key)
+          case final owner?)
         UpdateTrackTransitionLayerCommand(
           repository: _session._repository,
           trackId: owner.id,
@@ -840,7 +841,7 @@ class _FrameRangeMoveDrag {
     _rangeMoveInstructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
-    _session._cameraKeysDragPreview = cameraShifted;
+    _session._camera._cameraKeysDragPreview = cameraShifted;
     _session.dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
         if (plan != null)
@@ -860,7 +861,7 @@ class _FrameRangeMoveDrag {
         // global-keyed entry here would leak into the cut timeline's
         // read-only projection. It previews on its own channel below.
         for (final entry in instructionShifted.entries)
-          if (_session._trackTransitionOwner(entry.key) == null &&
+          if (_session._transitions.trackTransitionOwner(entry.key) == null &&
               _session._layerById(entry.key) != null)
             entry.key: _session
                 ._layerById(entry.key)!
@@ -992,7 +993,7 @@ class _FrameRangeMoveDrag {
     _rangeMoveMultiSeRowChanges = null;
     _rangeMoveCameraShifted = null;
     _rangeMoveInstructionShifted = null;
-    _session._cameraKeysDragPreview = null;
+    _session._camera._cameraKeysDragPreview = null;
     _session.dragPreview.value = null;
     _session.transitionEdgeDragPreview.value = null;
     final selection = _rangeMoveSelectionBefore;
@@ -1015,7 +1016,7 @@ class _FrameRangeMoveDrag {
   ) {
     Layer? preview;
     for (final entry in instructionShifted.entries) {
-      final owner = _session._trackTransitionOwner(entry.key);
+      final owner = _session._transitions.trackTransitionOwner(entry.key);
       if (owner != null) {
         preview = owner.transitionLayer.copyWith(
           instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
@@ -1140,7 +1141,7 @@ class _FrameRangeMoveDrag {
       _rangeMoveInstructionShifted = instructionShifted.isEmpty
           ? null
           : instructionShifted;
-      _session._cameraKeysDragPreview = cameraShifted;
+      _session._camera._cameraKeysDragPreview = cameraShifted;
       final cameraMarker = cameraShifted == null
           ? null
           : _session._layerById(_rangeMoveCameraLayerId!)?.copyWith();
@@ -1173,7 +1174,7 @@ class _FrameRangeMoveDrag {
       // would leak into the cut timeline's read-only projection. It
       // previews on its own channel below instead.
       for (final entry in instructionShifted.entries) {
-        if (_session._trackTransitionOwner(entry.key) != null) {
+        if (_session._transitions.trackTransitionOwner(entry.key) != null) {
           continue;
         }
         final layer = _session._layerById(entry.key);
@@ -1300,7 +1301,7 @@ class _FrameRangeMoveDrag {
     _rangeMoveInstructionShifted = null;
     _rangeMoveSeRowChange = null;
     _rangeMoveInstructionRowChange = null;
-    _session._cameraKeysDragPreview = null;
+    _session._camera._cameraKeysDragPreview = null;
     _session.dragPreview.value = null;
     _session.transitionEdgeDragPreview.value = null;
     // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
@@ -1545,7 +1546,7 @@ class _FrameRangeMoveDrag {
     _rangeMoveInstructionShifted = null;
     _rangeMoveSeRowChange = null;
     _rangeMoveInstructionRowChange = null;
-    _session._cameraKeysDragPreview = null;
+    _session._camera._cameraKeysDragPreview = null;
     _session.dragPreview.value = null;
     _session.transitionEdgeDragPreview.value = null;
     if (selection != null) {
