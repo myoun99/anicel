@@ -103,7 +103,7 @@ class _StoryboardRows {
     TimelineRowAddress? headRow,
   }) {
     final row = trackId ?? _session.selectedTrackId;
-    _session._updateTrackRangeSelection(
+    _session._rangeSelections._updateTrackRangeSelection(
       trackId: row,
       anchorRow: TrackRowAddress(row),
       anchorGlobalFrame: anchorGlobalFrame,

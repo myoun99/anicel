@@ -140,7 +140,7 @@ class _StoryboardCursor {
   /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live
   /// selection's blocks — either axis — else the block under the cursor.
   bool get canSetCommaForStoryboardCursor {
-    if (_session._selectionBlockStartsByLayer() != null) {
+    if (_session._rangeSelections.selectionBlockStartsByLayer() != null) {
       return true;
     }
     // Its own dispatch already stops at a live band ([setCommaForStoryboardCursor]

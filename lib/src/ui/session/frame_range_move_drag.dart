@@ -283,7 +283,7 @@ class _FrameRangeMoveDrag {
     _rangeMoveTrackSelectionBefore = null;
     final selection = _rangeMoveSelection;
     if (selection == null ||
-        !_session._rangeSelectionEligible(selection.layerId)) {
+        !_session._rangeSelections.rangeSelectionEligible(selection.layerId)) {
       return false;
     }
     _rangeMoveGrabLayerId = grabLayerId ?? selection.layerId;

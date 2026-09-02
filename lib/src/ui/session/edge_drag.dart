@@ -467,7 +467,7 @@ class _EdgeDrag {
       if (display == null || commit == null) {
         continue;
       }
-      final starts = _session._selectionBlockStarts(
+      final starts = _session._rangeSelections._selectionBlockStarts(
         display,
         selection.startIndex,
         selection.endIndexExclusive,
@@ -1270,7 +1270,8 @@ class _EdgeDrag {
     if (selection != null) {
       // Single-cel rows never appear in the collector, so a non-null map
       // IS a retimable one.
-      if (_session._cutLocalSelectionBlockStartsByLayer() != null) {
+      if (_session._rangeSelections._cutLocalSelectionBlockStartsByLayer() !=
+          null) {
         _session.setCommaForSelectionOrCurrent(comma);
       }
       return;
@@ -1278,7 +1279,8 @@ class _EdgeDrag {
     // The S rows' track-axis selection: the same retime, already in global
     // commit keys (the shared verb never had this rung — its selection
     // branch reads the cut-local notifier alone).
-    final trackTargets = _session._trackSelectionBlockStartsByLayer();
+    final trackTargets = _session._rangeSelections
+        ._trackSelectionBlockStartsByLayer();
     if (trackTargets != null) {
       // ⛔No active-cut guard: these starts are ALREADY global keys and the
       // retime applies no lens, so a gap changes nothing about them (H11).

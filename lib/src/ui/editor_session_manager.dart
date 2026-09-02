@@ -281,6 +281,7 @@ part 'session/frame_clipboard.dart';
 part 'session/playback_cache_budget.dart';
 part 'session/layer_verbs.dart';
 part 'session/cut_verbs.dart';
+part 'session/range_selections.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -1121,79 +1122,76 @@ class EditorSessionManager extends ChangeNotifier {
   void endRowSelection() => _rowSelection.endRowSelection();
   void clearRowSelection() => _rowSelection.clearRowSelection();
 
-  /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
-  /// is currently selected.
-  ///
-  /// The one question [standOnRow] asks before it clears. 유저 확정
-  /// 2026-08-14: 「탭다운 하면 **먼저 기존 선택된거 삭제**하게 하면, 바꾸면
-  /// 선택삭제고 거기서 이동하면 선택 새로 추가니까 문제없을거같은데」 — a
-  /// press clears when it moves you somewhere else, and holds when it is the
-  /// beginning of a MOVE of what is already selected.
-  ///
-  /// ★Asked HERE rather than threaded in from each surface. Handing every
-  /// surface the same predicate and trusting each to use it is the shape T5
-  /// and T13 spent a round deleting from the selection model — the next
-  /// surface forgets, and the bug is invisible until someone drags on it.
-  ///
-  /// ★Every KIND is asked, and 「선택한 상태라는건 한 종류만 존재하도록」
-  /// means at most one can answer yes anyway. A kind added later joins by
-  /// being named here, exactly like [claimSelection]'s switch.
-  ///
-  /// ⚠️A null [frameIndex] means "no cell is in question", so only the ROW
-  /// selection can answer. [standOnRow] does not pass null — it substitutes
-  /// the playhead, because standing on a row without naming a frame IS
-  /// standing there at the playhead.
+  // ── the range selections: their own object, in their own file ───────
+  //
+  // A collaborator (session/range_selections.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _RangeSelections _rangeSelections = _RangeSelections(this);
+
+  void updateFrameRangeSelectionDrag({
+    required LayerId layerId,
+    required int anchorIndex,
+    required int headIndex,
+    LayerId? headLayerId,
+    String? headLaneId,
+    List<TimelineRowAddress> spanRows = const [],
+  }) => _rangeSelections.updateFrameRangeSelectionDrag(
+    layerId: layerId,
+    anchorIndex: anchorIndex,
+    headIndex: headIndex,
+    headLayerId: headLayerId,
+    headLaneId: headLaneId,
+    spanRows: spanRows,
+  );
+  void clearFrameRangeSelection() =>
+      _rangeSelections.clearFrameRangeSelection();
+  void updateTrackRowRangeSelectionByFrame({
+    required LayerId layerId,
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+    TimelineRowAddress? headRow,
+    TimelineRowAddress? anchorRow,
+    List<TimelineRowAddress> spanRows = const [],
+  }) => _rangeSelections.updateTrackRowRangeSelectionByFrame(
+    layerId: layerId,
+    anchorGlobalFrame: anchorGlobalFrame,
+    headGlobalFrame: headGlobalFrame,
+    headRow: headRow,
+    anchorRow: anchorRow,
+    spanRows: spanRows,
+  );
+  void updateLaneRangeSelectionDrag({
+    required LayerId layerId,
+    required String laneId,
+    required int anchorIndex,
+    required int headIndex,
+    String? headLaneId,
+    required List<String> spanLaneIds,
+    bool framesAreGlobal = false,
+  }) => _rangeSelections.updateLaneRangeSelectionDrag(
+    layerId: layerId,
+    laneId: laneId,
+    anchorIndex: anchorIndex,
+    headIndex: headIndex,
+    headLaneId: headLaneId,
+    spanLaneIds: spanLaneIds,
+    framesAreGlobal: framesAreGlobal,
+  );
+  void clearLaneRangeSelection() => _rangeSelections.clearLaneRangeSelection();
   bool standingInsideSelection(
     TimelineRowAddress row, [
     int? frameIndex,
     bool frameIsGlobal = false,
-  ]) {
-    if (rowIsSelected(row)) {
-      return true;
-    }
-    final cells = frameRangeSelection.value;
-    if (cells != null &&
-        frameIndex != null &&
-        !frameIsGlobal &&
-        cells.coversRow(row) &&
-        frameIndex >= cells.startIndex &&
-        frameIndex < cells.endIndexExclusive) {
-      return true;
-    }
-    // ⚠️A lane selection has no `coversRow` — it names its rows by LANE
-    // (`coversLane`), which is why this arm reads differently from the one
-    // above rather than sharing it.
-    //
-    // C6 (2026-08-17): asked on the AXIS the span lives on. A track-SE
-    // row's lane span is stored GLOBAL ([updateLaneRangeSelectionDrag]'s
-    // own translation), while the cut panel presses in window frames — so
-    // a window frame converts exactly as the drag's did, or a press inside
-    // the very selection it made reads as outside and the standing clear
-    // (now on the DOWN) would wipe the move it was starting.
-    final lanes = laneRangeSelection.value;
-    if (lanes != null && frameIndex != null && row is LaneRowAddress) {
-      final laneAxisFrame = !frameIsGlobal && isTrackSeLayerId(row.layerId)
-          ? frameIndex + activeCutGlobalStartFrame
-          : frameIndex;
-      if (lanes.coversLane(row.layerId, row.laneId) &&
-          laneAxisFrame >= lanes.startIndex &&
-          laneAxisFrame < lanes.endIndexExclusive) {
-        return true;
-      }
-    }
-    // The TRACK-axis selection (the storyboard's rows) answers for the
-    // global-frame callers the same way the cut-local ones answer above.
-    final trackSpan = trackFrameRangeSelection.value;
-    if (trackSpan != null &&
-        frameIndex != null &&
-        frameIsGlobal &&
-        trackSpan.coversRow(row) &&
-        frameIndex >= trackSpan.startFrame &&
-        frameIndex < trackSpan.endFrameExclusive) {
-      return true;
-    }
-    return false;
-  }
+  ]) =>
+      _rangeSelections.standingInsideSelection(row, frameIndex, frameIsGlobal);
+  bool get hasAnySelection => _rangeSelections.hasAnySelection;
+  void clearAllSelections() => _rangeSelections.clearAllSelections();
+  void claimSelection(TimelineSelectionKind kind) =>
+      _rangeSelections.claimSelection(kind);
+  void revealSelection() => _rangeSelections.revealSelection();
+  void beginSelectionInteraction() =>
+      _rangeSelections.beginSelectionInteraction();
+  void endSelectionInteraction() => _rangeSelections.endSelectionInteraction();
 
   /// The selected rows that name a LAYER this cut may delete (⑨).
   ///
@@ -1219,44 +1217,6 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return ids;
   }
-
-  /// 🚨A CLICK CLEARS (유저 확정 2026-08-12): 「어딘가 클릭하면 사라지도록.
-  /// 프레임셀처럼 다른곳 클릭하거나. 다른레이어 클릭하거나. **근데 선택된 내
-  /// 물건 클릭해도 사라지도록** 하고싶어. 선택레이어로 ABC선택하고, C 클릭하면
-  /// 사라지도록. **프레임셀쪽도 마찬가지**」.
-  ///
-  /// ★TAP clears, DRAG does not — the whole distinction, and the reason
-  /// this hangs off the surfaces' SELECT callbacks rather than off
-  /// pointer-down: a press the pan recognizer claims never reaches them, so
-  /// a drag starting inside a selection still MOVES it (⑨'s second phase)
-  /// while a tap on that same row lets it go.
-  ///
-  /// Clicking INSIDE the selection clears it too. That is the user's own
-  /// call, and it is written out here because it is the surprising half —
-  /// the ordinary desktop idiom keeps a selection you click into.
-  /// Whether [clearAllSelections] has anything to clear — the deselect
-  /// button's gate, and its verb's own question (T25: one answer behind
-  /// both).
-  ///
-  /// 🚨deselect-button (유저): 「선택해제 버튼 — 태블릿엔 키보드가 없다」. Esc
-  /// is not reachable on a tablet, and every other way out of a selection is
-  /// a TAP somewhere, which also moves the playhead or the standing row. This
-  /// is the one that only lets go.
-  ///
-  /// ⚠️It asks all four TIMELINE kinds because the ONE-SELECTION LAW means at
-  /// most one of them is live — so "is anything selected" is one question
-  /// wherever it is asked from.
-  ///
-  /// 🚨AND THE FIFTH KIND: the marquee on the artwork. It is deliberately NOT
-  /// in [claimSelection]'s switch — space and time are different axes and the
-  /// pixel verbs need both at once — but 「지금 뭔가 선택됐나」 has to count it,
-  /// or a button saying 선택 해제 leaves a selection sitting on screen.
-  bool get hasAnySelection =>
-      frameRangeSelection.value != null ||
-      laneRangeSelection.value != null ||
-      trackFrameRangeSelection.value != null ||
-      rowSelection.value.isNotEmpty ||
-      (canvasHasSelection?.call() ?? false);
 
   /// Whether the artwork carries a marquee, published by whoever owns it.
   bool Function()? canvasHasSelection;
@@ -1455,19 +1415,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  void clearAllSelections() {
-    clearFrameRangeSelection();
-    clearLaneRangeSelection();
-    clearStoryboardCutSelection();
-    clearRowSelection();
-    // ⛔ALL of them, the marquee included. 유저 2026-08-27 found two buttons
-    // both called 선택 해제, both wearing `Icons.deselect`, each letting go of
-    // a different half — the rail's cleared the marquee, the timeline's
-    // cleared the timeline, and nothing on screen said which was which.
-    // 「Let go」 means let go.
-    clearCanvasSelection?.call();
-  }
-
   /// 🚨T4 — STANDING ON A ROW, as one verb.
   ///
   /// 유저 2026-08-13: 「선택된게 풀리는거, **어떤 행이든 액티브 바꾸면
@@ -1551,33 +1498,6 @@ class EditorSessionManager extends ChangeNotifier {
     }
     if (globalFrameIndex != null) {
       selectGlobalFrame(globalFrameIndex);
-    }
-  }
-
-  /// 🚨THE ONE-SELECTION LAW (유저 확정 2026-08-12): 「선택범위는 하나만
-  /// 작동하도록. 프레임셀 선택범위 작동시키고 레이어쪽 선택범위 작동하면
-  /// 기존 프레임셀쪽 사라지게. 반대도 마찬가지 (…) 즉 **선택한 상태라는건
-  /// 한 종류만 존재하도록**」.
-  ///
-  /// Whichever selection is STARTING, the others go.
-  ///
-  /// The rule already existed in pieces — the track axis cleared the
-  /// cut-local one, cells and lanes cleared each other — each stated at its
-  /// own call site with its own words. Three kinds is where pairwise still
-  /// reads; ⑨ made a fourth, and n² sentences is where it stops. Written
-  /// once, a fifth kind joins by being named in this switch.
-  void claimSelection(TimelineSelectionKind kind) {
-    if (kind != TimelineSelectionKind.cells) {
-      clearFrameRangeSelection();
-    }
-    if (kind != TimelineSelectionKind.lanes) {
-      clearLaneRangeSelection();
-    }
-    if (kind != TimelineSelectionKind.cuts) {
-      clearStoryboardCutSelection();
-    }
-    if (kind != TimelineSelectionKind.rows) {
-      clearRowSelection();
     }
   }
 
@@ -4207,9 +4127,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// the hand that put it there. It fires where the selection moves without
   /// the pointer: the arrow keys.
   final ValueNotifier<int> revealSelectionTick = ValueNotifier<int>(0);
-
-  /// Asks the rails to scroll whatever is selected back into view.
-  void revealSelection() => revealSelectionTick.value += 1;
 
   // ── the layer row drag: its own object, in its own file ─────────────
   //
@@ -7632,23 +7549,6 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TimelineDragPreview?> dragPreview =
       ValueNotifier<TimelineDragPreview?>(null);
 
-  /// A span's real (non-ghost) drawing-block start keys on [layer], in
-  /// order. Axis-free on purpose: the caller states the span in whichever
-  /// axis its layer is keyed by, which is what lets the cut-local and the
-  /// track-global selections share this.
-  List<int> _selectionBlockStarts(
-    Layer layer,
-    int startIndex,
-    int endIndexExclusive,
-  ) => [
-    for (final entry in layer.timeline.entries)
-      if (entry.key >= startIndex &&
-          entry.key < endIndexExclusive &&
-          entry.value.isDrawing &&
-          !entry.value.ghost)
-        entry.key,
-  ];
-
   // --- Storyboard cut-trim edge drags --------------------------------------
 
   // Fade durability (W4) retired by R4: the fade keys live on the TRACK's
@@ -7800,131 +7700,6 @@ class EditorSessionManager extends ChangeNotifier {
         // ("raw cells, no block snap"), so there is nothing to snap to.
         return null;
     }
-  }
-
-  /// THE track-axis select-drag step, whichever storyboard row started it.
-  ///
-  /// The span snaps against EVERY row it covers at once (the union snap):
-  /// reaching a cut row expands the range to whole cuts, reaching an SE row
-  /// expands it to whole sounds, and a drag across both gets the union —
-  /// which is what makes "the selection covers these rows" a single fact
-  /// rather than one per row.
-  void _updateTrackRangeSelection({
-    required TrackId trackId,
-    required TimelineRowAddress anchorRow,
-    required int anchorGlobalFrame,
-    required int headGlobalFrame,
-    required TimelineRowAddress? headRow,
-    List<TimelineRowAddress> spanRows = const [],
-  }) {
-    final railRows = _storyboardRows.storyboardRailRows(trackId);
-    final anchorIndex = railRows.indexOf(anchorRow);
-    final List<TimelineRowAddress> spanned;
-    if (spanRows.isNotEmpty) {
-      // C②: the escalated lane-anchor form — the span IS the display
-      // slice the panel handed over (lane rows included; the session's
-      // model-only rail list cannot name them, the same reason the
-      // timeline's spanRows channel exists).
-      spanned = spanRows;
-    } else if (anchorIndex < 0 || railRows.length < 2) {
-      spanned = [anchorRow];
-    } else {
-      // R9 #25: the head arrives as an ADDRESS, resolved by the panel
-      // against the heights it paints. It used to arrive as a row DELTA
-      // computed from one row's height, which under-counted every row that
-      // was a different size — the whole of the "V행에서 위로 끌면 S1에서
-      // 막힘" report. A row this rail does not hold (or none at all) simply
-      // leaves the anchor alone: what is not on the list is unreachable,
-      // which is the same guard the clamp used to be.
-      final headIndex = headRow == null
-          ? anchorIndex
-          : railRows.indexOf(headRow);
-      final resolvedHead = headIndex < 0 ? anchorIndex : headIndex;
-      final first = math.min(anchorIndex, resolvedHead);
-      final last = math.max(anchorIndex, resolvedHead);
-      spanned = railRows.sublist(first, last + 1);
-    }
-
-    final axis = _axisForTrack(trackId);
-    final lanes = <RangeBlock? Function(int)>[
-      for (final row in spanned) ?_trackRowSnapLane(row, axis),
-    ];
-    // 🚨No `lanes.isEmpty ? null` short-circuit. A span made only of LANE
-    // rows has no block lane to snap against — the lane domain's own rule
-    // is raw cells — and treating "nothing to snap to" as "nothing to
-    // select" made a selection that stayed inside one fx group vanish as
-    // it was drawn. [snapSpanToBlocks] with no lanes IS the raw span,
-    // which is exactly the right answer here.
-    final span = snapSpanToBlocks(
-      lanes: lanes,
-      anchorIndex: anchorGlobalFrame,
-      headIndex: headGlobalFrame,
-    );
-    // A span that only crosses a GAP still selects: these are frame-block
-    // rows like any other, and an empty cell is selectable on every one of
-    // them. It simply covers no blocks, so the verbs that act on them find
-    // nothing to act on — what an empty selection means everywhere else.
-    if (span == null) {
-      trackFrameRangeSelection.value = null;
-      return;
-    }
-    // THE ONE-SELECTION LAW — see [claimSelection].
-    claimSelection(TimelineSelectionKind.cuts);
-    trackFrameRangeSelection.value = TrackFrameRangeSelection(
-      trackId: trackId,
-      anchorRow: anchorRow,
-      // Single-row drags leave this empty, which is what `spanRows` reads
-      // as "the anchor alone" — no caller has to special-case the common
-      // case.
-      rows: spanned.length > 1 ? spanned : const [],
-      startFrame: span.startIndex,
-      endFrameExclusive: span.endIndexExclusive,
-    );
-  }
-
-  /// A select-drag step on a TRACK-OWNED rail row of the storyboard — an SE
-  /// lane or the transition row — stated on the track's GLOBAL frame axis.
-  ///
-  /// The SAME selection the cut row paints — one axis, several rows. It
-  /// cannot be the timeline's cut-local selection: the display clone the
-  /// timeline shows is WINDOWED to the active cut, so a sound two cuts away
-  /// has no cut-local address to be selected by. The snap runs on the
-  /// GLOBAL layer, which is also the layer any edit would commit against.
-  ///
-  /// 🚨The owner lookup asks [isTrackOwnedRailLayerId]'s question, not "is it
-  /// an SE row" — that substitution is what left the transition row the one row
-  /// of this rail a range drag could not touch (user 2026-08-11:
-  /// 「선택범위… 트랜지션레이어만 작동안하니까 공통 규칙 그대로」). Selecting is
-  /// reading; the read-only rule bites on the verbs that CHANGE a row, and the
-  /// transition row simply mounts no move half.
-  void updateTrackRowRangeSelectionByFrame({
-    required LayerId layerId,
-    required int anchorGlobalFrame,
-    required int headGlobalFrame,
-    TimelineRowAddress? headRow,
-    TimelineRowAddress? anchorRow,
-    List<TimelineRowAddress> spanRows = const [],
-  }) {
-    // The anchor row names its own track: gating on the ACTIVE track's row
-    // list (and stating the selection on [selectedTrackId]) killed every
-    // drag that anchored on an unselected track's row — the rail lookup
-    // missed, so a cross-row reach collapsed to the anchor alone.
-    final owner = _trackSe.trackOwnedRailOwner(layerId);
-    if (owner == null) {
-      return;
-    }
-    // The SAME path the cut row takes — one select-drag step for the rail,
-    // not one per row kind. [anchorRow]/[spanRows] are the escalated
-    // lane-anchor form (C②): the PANEL hands the sliced span of the rows
-    // it drew, exactly as the timeline's grids hand theirs.
-    _updateTrackRangeSelection(
-      trackId: owner.id,
-      anchorRow: anchorRow ?? LayerRowAddress(layerId),
-      anchorGlobalFrame: anchorGlobalFrame,
-      headGlobalFrame: headGlobalFrame,
-      headRow: headRow,
-      spanRows: spanRows,
-    );
   }
 
   /// The selection filtered to cuts that still EXIST — nothing to filter
@@ -8412,100 +8187,6 @@ class EditorSessionManager extends ChangeNotifier {
           );
   }
 
-  /// A lane-band select-drag step (raw cells — lane keys are points, no
-  /// block snap). Starting a lane selection clears the cell selection
-  /// (mutual exclusion, the F4 rule).
-  ///
-  /// R26 #3 — the cells' grammar on lane rows: [headLaneId] (the lane row
-  /// under the pointer) spans the selection across the layer's lane group
-  /// in display order; the group HEADER as anchor selects every member
-  /// lane. Starting on ANOTHER layer's lanes activates that layer
-  /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
-  /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
-  /// [framesAreGlobal] says which axis the surface counted in — the same
-  /// question [_shiftAnchorFor] asks for the frame-shift verbs. The
-  /// storyboard's strips ARE the track's global axis; a cut panel's are
-  /// its window, and a track-SE row's span is translated onto the global
-  /// axis on the way in, because that is where the selection lives.
-  void updateLaneRangeSelectionDrag({
-    required LayerId layerId,
-    required String laneId,
-    required int anchorIndex,
-    required int headIndex,
-    String? headLaneId,
-    required List<String> spanLaneIds,
-    bool framesAreGlobal = false,
-  }) {
-    final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
-    if (carrierTrackId != null) {
-      // The V track's lanes (R4b): the carrier id routes the selection
-      // onto the TRACK's lanes — global frame indexes, no layer to
-      // activate. Selecting the row keeps the rail's answer honest,
-      // without promoting a cut (the drag is about keys, not cuts).
-      if (_trackById(carrierTrackId) == null) {
-        return;
-      }
-      selectTrackRow(carrierTrackId);
-    } else {
-      if (_layerById(layerId) == null) {
-        // A REAL track row that just is not the ACTIVE track's (its lane
-        // law cannot hold the span here — the pre-existing gate): an
-        // escalated track-axis selection this drag painted must not
-        // FREEZE on the retreat, so the honest step still drops it (C②
-        // review; the same press-drops-selection rule as R5 #12).
-        if (_trackSe.trackSeAnywhere(layerId) != null) {
-          clearStoryboardCutSelection();
-        }
-        return;
-      }
-      if (activeLayerId != layerId) {
-        // selectLayer first: it drops the OLD selection (a different
-        // layer's), then the fresh span lands for the new active layer.
-        selectLayer(layerId);
-      }
-    }
-    // THE ONE-SELECTION LAW — see [claimSelection].
-    claimSelection(TimelineSelectionKind.lanes);
-    final toGlobal = !framesAreGlobal && isTrackSeLayerId(layerId)
-        ? activeCutGlobalStartFrame
-        : 0;
-    final start = math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
-    final endExclusive = math.max(anchorIndex, headIndex) + 1 + toGlobal;
-    if (endExclusive <= start) {
-      return;
-    }
-    // 🚨★★★THE SPAN COMES FROM THE RAIL, NOT FROM A FAMILY.
-    //
-    // 절대명령 2 (유저, 반복): 「**선택범위는 레이어 불문 자유롭게**. 행의
-    // 종류로 막지 않는다」.
-    //
-    // ⛔This used to try three per-family walks in a `??` chain —
-    // `effectLaneSpan`, then `seNameTagLaneSpan`, then `transformLaneSpan`.
-    // Each knew only its own order list, so a drag whose ends sat in
-    // DIFFERENT groups matched none and collapsed to the anchor alone: the
-    // selection stopped at a boundary the user never drew. They were also
-    // the same code three times (get an order, index both ends, slice).
-    //
-    // ⇒ The rail slices the span out of the rows it ACTUALLY DREW
-    // ([laneSpanOverDrawnRows]) and hands it here. A collapsed group draws
-    // no members so they cannot be swept, and a group opened between two
-    // others joins without this method learning its name.
-    final span = spanLaneIds;
-    laneRangeSelection.value = TimelineLaneSelection(
-      layerId: layerId,
-      laneId: laneId,
-      startIndex: start,
-      endIndexExclusive: endExclusive,
-      laneIds: span.length <= 1 ? const [] : span,
-    );
-  }
-
-  void clearLaneRangeSelection() {
-    if (laneRangeSelection.value != null) {
-      laneRangeSelection.value = null;
-    }
-  }
-
   // ── the lane range move drag: its own object, in its own file ───────
   //
   // A collaborator (session/lane_range_move_drag.dart, a part of this library). The
@@ -8517,20 +8198,6 @@ class EditorSessionManager extends ChangeNotifier {
       _laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta);
   void endLaneRangeMoveDrag() => _laneMove.endLaneRangeMoveDrag();
   void cancelLaneRangeMoveDrag() => _laneMove.cancelLaneRangeMoveDrag();
-
-  /// Whether [layerId] can take part in a RANGE selection (UI-R20 #2:
-  /// cells are cells — EVERY layer row selects, camera and instruction
-  /// included; what a selection can DO stays kind-gated at each op's
-  /// seam). Attach rows stand down until the ghost-snap rework lets
-  /// their all-ghost mirrors join (P3b).
-  bool _rangeSelectionEligible(LayerId layerId) {
-    // EVERY row selects now — synced attach mirrors included (P3b: the
-    // ghost snap covers them; their mirror snaps to the base's blocks).
-    if (isTrackSeLayerId(layerId)) {
-      return trackSeGlobalLayerById(layerId) != null;
-    }
-    return _layerById(layerId) != null;
-  }
 
   /// The layer a RANGE selection reads (cut-local DISPLAY indexes): cut
   /// layers as-is, track-SE rows as their display clones.
@@ -8630,7 +8297,7 @@ class EditorSessionManager extends ChangeNotifier {
       LaneRowAddress(:final layerId) => layerId,
       TrackRowAddress() => activeLayerId,
     };
-    if (rowLayerId == null || !_rangeSelectionEligible(rowLayerId)) {
+    if (rowLayerId == null || !_rangeSelections.rangeSelectionEligible(rowLayerId)) {
       return null;
     }
     final layer = _rangeLayerById(rowLayerId);
@@ -8665,192 +8332,6 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
     return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
-  }
-
-  /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
-  /// list ([resolveSelectionSpanRows]).
-  ///
-  /// The span used to be re-derived here, out of `cut.layers + seLayers`, and
-  /// three kinds of on-screen row are not in that walk: the track-owned
-  /// transition clone, lane rows, group headers. So an anchor on one of them
-  /// missed and the span collapsed to a single row, while crossing one
-  /// stepped over it. ⛔**Do not reintroduce a model walk here.** The surface
-  /// that DRAWS the rows is the only thing that knows what is on screen; if
-  /// this list is empty the caller had no rows in reach (the storyboard cut
-  /// axis), and the anchor row alone is the honest answer.
-  void updateFrameRangeSelectionDrag({
-    required LayerId layerId,
-    required int anchorIndex,
-    required int headIndex,
-    LayerId? headLayerId,
-    String? headLaneId,
-    List<TimelineRowAddress> spanRows = const [],
-  }) {
-    if (!_rangeSelectionEligible(layerId)) {
-      return;
-    }
-    final layer = _rangeLayerById(layerId);
-    if (layer == null) {
-      return;
-    }
-    // A lane TAIL only exists on the anchor layer's own group: the lane
-    // domain is one layer's keys (R26 #3), and a span reaching a further
-    // layer's lanes is that layer's cells being selected, not its keys.
-    final laneTail = headLaneId != null && (headLayerId ?? layerId) == layerId
-        ? headLaneId
-        : null;
-    // THE ONE-SELECTION LAW — see [claimSelection]. The lane clear is not
-    // final for THIS drag: a mixed span below re-sets it, which is the one
-    // case where a cell drag ends up owning lane state too.
-    claimSelection(TimelineSelectionKind.cells);
-    final base = snapFrameRangeToBlocks(
-      layer: layer,
-      anchorIndex: anchorIndex,
-      headIndex: headIndex,
-      aggregateRuns: _aggregateRunsForRow(layer),
-    );
-    if (base == null) {
-      frameRangeSelection.value = null;
-      return;
-    }
-    // The layer half of what was swept, in display order — derived from the
-    // rows rather than rebuilt, so the two can never disagree.
-    // Deduped in display order: a layer row and its own lane rows are
-    // several rows of ONE layer. Asking the ADDRESS which layer it belongs
-    // to (rather than testing its type) is what keeps a span that runs
-    // cell → lane → lane → cell from losing the rows in the middle.
-    final spanIds = spanRows.isEmpty
-        ? _selectionSpanLayerIds(layerId, headLayerId ?? layerId)
-        : <LayerId>[
-            ...{for (final row in spanRows) ?row.owningLayerId},
-          ];
-    if (spanIds.length <= 1) {
-      frameRangeSelection.value = spanRows.isEmpty
-          ? base
-          : TimelineFrameRangeSelection(
-              layerId: base.layerId,
-              startIndex: base.startIndex,
-              endIndexExclusive: base.endIndexExclusive,
-              rows: spanRows,
-            );
-      _applySelectionLaneTail(
-        layerId: layerId,
-        headLaneId: laneTail,
-        startIndex: base.startIndex,
-        endIndexExclusive: base.endIndexExclusive,
-      );
-      return;
-    }
-    // Union-snap: expand until no spanned layer's block is cut. Each pass
-    // can only grow the range, so the loop terminates.
-    var start = base.startIndex;
-    var end = base.endIndexExclusive;
-    var changed = true;
-    while (changed) {
-      changed = false;
-      for (final id in spanIds) {
-        final spanned = _rangeLayerById(id);
-        if (spanned == null) {
-          continue;
-        }
-        final snapped = snapFrameRangeToBlocks(
-          layer: spanned,
-          anchorIndex: start,
-          headIndex: end - 1,
-          aggregateRuns: _aggregateRunsForRow(spanned),
-        );
-        if (snapped == null) {
-          continue;
-        }
-        if (snapped.startIndex < start || snapped.endIndexExclusive > end) {
-          start = math.min(start, snapped.startIndex);
-          end = math.max(end, snapped.endIndexExclusive);
-          changed = true;
-        }
-      }
-    }
-    frameRangeSelection.value = TimelineFrameRangeSelection(
-      layerId: layerId,
-      startIndex: start,
-      endIndexExclusive: end,
-      layerIds: spanIds,
-      rows: spanRows,
-    );
-    _applySelectionLaneTail(
-      layerId: layerId,
-      headLaneId: laneTail,
-      startIndex: start,
-      endIndexExclusive: end,
-    );
-  }
-
-  /// R27 #14: publishes the LANE half of a mixed cell→lane drag — the
-  /// layer's lane group from its FIRST lane down to the hovered one, over
-  /// the same frame range the cells settled on, so the two halves read as
-  /// one rectangle. No-op (and no clear — the caller already cleared) when
-  /// the drag never reached a lane row.
-  ///
-  /// The active layer does NOT move here: a cell drag has never changed
-  /// it, and reaching into that layer's own lanes is the same gesture.
-  void _applySelectionLaneTail({
-    required LayerId layerId,
-    required String? headLaneId,
-    required int startIndex,
-    required int endIndexExclusive,
-  }) {
-    if (headLaneId == null) {
-      return;
-    }
-    // The tail always anchors on the FIRST transform lane, so only a
-    // transform row can be its head. A drag ending on some other lane kind
-    // — an SE audio lane, or (R6) an effect parameter lane — has no
-    // representable span from that anchor: [transformLaneSpan] falls back
-    // to the anchor alone, and publishing that would put the selection on
-    // Anchor Point, where the next Add would write keys the user never
-    // asked for. Nothing published, cell selection kept.
-    if (headLaneId != transformGroupHeaderLane.laneId &&
-        !transformLaneDisplayOrder.contains(headLaneId)) {
-      return;
-    }
-    final span = transformLaneSpan(transformLaneDisplayOrder.first, headLaneId);
-    laneRangeSelection.value = TimelineLaneSelection(
-      layerId: layerId,
-      laneId: transformLaneDisplayOrder.first,
-      startIndex: startIndex,
-      endIndexExclusive: endIndexExclusive,
-      laneIds: span.length <= 1 ? const [] : span,
-    );
-  }
-
-  /// The display-ordered ELIGIBLE layers between [anchor] and [head]
-  /// (inclusive) — the SECTIONED order the grids render (drawing rows,
-  /// then the SE section with the track rows, then camera/instruction),
-  /// so a cross-row drag spans exactly the rows it visually crosses.
-  /// Ineligible rows inside the span are skipped; cross-KIND moves stay
-  /// blocked at the move seam (UI-R18 #1 safety).
-  List<LayerId> _selectionSpanLayerIds(LayerId anchor, LayerId head) {
-    final ordered = sectionedLayerOrder([
-      ...activeCutOrNull?.layers ?? const <Layer>[],
-      ...activeTrack.seLayers,
-    ]);
-    final eligible = [
-      for (final layer in ordered)
-        if (_rangeSelectionEligible(layer.id)) layer.id,
-    ];
-    final anchorIndex = eligible.indexOf(anchor);
-    final headIndex = eligible.indexOf(head);
-    if (anchorIndex == -1 || headIndex == -1) {
-      return [anchor];
-    }
-    final low = math.min(anchorIndex, headIndex);
-    final high = math.max(anchorIndex, headIndex);
-    return eligible.sublist(low, high + 1);
-  }
-
-  void clearFrameRangeSelection() {
-    if (frameRangeSelection.value != null) {
-      frameRangeSelection.value = null;
-    }
   }
 
   /// Starts a whole-block move on the block starting at [blockStartIndex];
@@ -9401,7 +8882,7 @@ class EditorSessionManager extends ChangeNotifier {
       _laneVerbs.laneVerbRangeHasKeys ||
       // A live selection is deletable wherever the playhead stands (UI-R17
       // #2).
-      _selectionBlockStartsByLayer() != null;
+      _rangeSelections.selectionBlockStartsByLayer() != null;
 
   /// Whether a live CELL band owns the next cell-verb press.
   ///
@@ -9685,7 +9166,7 @@ class EditorSessionManager extends ChangeNotifier {
     // A live selection routes the delete to EVERY selected block on
     // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
     // leftover selection covers empty cells so it clears with the delete.
-    final selectionTargets = _selectionBlockStartsByLayer();
+    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
     if (selectionTargets != null) {
       _timelineController.deleteBlocksForLayers(selectionTargets);
       // Whichever axis answered: the leftover span covers empty cells now.
@@ -9708,91 +9189,6 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// THE selection resolved to real block starts per layer, in COMMIT
-  /// keys; null when neither selection holds real blocks anywhere.
-  ///
-  /// Whichever axis the live selection is in: the cut-local one maps its
-  /// display starts onto the global axis for track-SE rows (UI-R18 #1),
-  /// the track-global one is already stated in commit keys. The two are
-  /// mutually exclusive, so at most one answers.
-  Map<LayerId, List<int>>? _selectionBlockStartsByLayer() =>
-      _cutLocalSelectionBlockStartsByLayer() ??
-      _trackSelectionBlockStartsByLayer();
-
-  Map<LayerId, List<int>>? _cutLocalSelectionBlockStartsByLayer() {
-    final selection = frameRangeSelection.value;
-    if (selection == null) {
-      return null;
-    }
-    final byLayer = <LayerId, List<int>>{};
-    for (final id in selection.spanLayerIds) {
-      // SYNCED attach rows hold no editable blocks of their own — their
-      // mirror blocks are non-ghost now (the synced-block UI), so without
-      // this gate a mirror-only selection would light up delete/comma
-      // verbs that then no-op against the stored-empty row.
-      //
-      // SINGLE-CEL (image) rows are the same shape of answer (D22): their
-      // one block is pinned by the covering normalization, so no selection
-      // verb can edit it. Stating that HERE rather than in each verb is
-      // what keeps the button and the dispatch reading one answer — the
-      // three downstream copies of this filter used to leave every `can…`
-      // gate lighting up for a row nothing would touch.
-      if (_isSyncedAttachedLayerId(id) || _isSingleCelLayerId(id)) {
-        continue;
-      }
-      final layer = _rangeLayerById(id);
-      if (layer == null) {
-        continue;
-      }
-      final starts = _selectionBlockStarts(
-        layer,
-        selection.startIndex,
-        selection.endIndexExclusive,
-      );
-      if (starts.isNotEmpty) {
-        byLayer[id] = [
-          for (final start in starts) _commitBlockStart(id, start),
-        ];
-      }
-    }
-    return byLayer.isEmpty ? null : byLayer;
-  }
-
-  /// The storyboard's selection resolved the same way. Its LAYER rows are
-  /// the track-SE rows, whose global layer is the commit layer AND the one
-  /// the range is stated against — so there is nothing to translate here.
-  /// (Its track row's blocks are cuts; deleting those is
-  /// [deleteSelectedCuts]'s job, not a layer edit.)
-  Map<LayerId, List<int>>? _trackSelectionBlockStartsByLayer() {
-    final selection = trackFrameRangeSelection.value;
-    if (selection == null) {
-      return null;
-    }
-    final byLayer = <LayerId, List<int>>{};
-    for (final row in selection.spanRows) {
-      // The row's OWNING layer (C3-lane-move): a lane row is one of its
-      // layer's rows, and the map keys by layer anyway, so a repeat is a
-      // no-op rather than something to filter out by type.
-      final rowLayerId = row.owningLayerId;
-      if (rowLayerId == null) {
-        continue;
-      }
-      final layer = trackSeGlobalLayerById(rowLayerId);
-      if (layer == null) {
-        continue;
-      }
-      final starts = _selectionBlockStarts(
-        layer,
-        selection.startFrame,
-        selection.endFrameExclusive,
-      );
-      if (starts.isNotEmpty) {
-        byLayer[rowLayerId] = starts;
-      }
-    }
-    return byLayer.isEmpty ? null : byLayer;
-  }
-
   // --- Comma set (UI-R17 #7: the 1/2/3/4/N buttons) -------------------------
 
   /// Whether a comma set has a target: the selection's blocks, else the
@@ -9804,7 +9200,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
   /// read here too and the two stay one answer.
   bool get canSetCommaForSelectionOrCurrent =>
-      _selectionBlockStartsByLayer() != null ||
+      _rangeSelections.selectionBlockStartsByLayer() != null ||
       (!cellSelectionClaimsSubject && canDeleteCellAtCurrentFrame);
 
   /// Sets the exposure length of every selected block — or the covering
@@ -9820,7 +9216,7 @@ class EditorSessionManager extends ChangeNotifier {
     final selection = frameRangeSelection.value;
     // Single-cel rows are already absent — the shared collector states
     // that standdown once, so this verb and its `can…` gate agree.
-    final selectionTargets = _selectionBlockStartsByLayer();
+    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
     if (selection != null &&
         selectionTargets != null &&
         selectionTargets.isNotEmpty) {
@@ -9828,7 +9224,7 @@ class EditorSessionManager extends ChangeNotifier {
         for (final entry in selectionTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
-      _reselectRetimedSelection(selection, selectionTargets);
+      _rangeSelections.reselectRetimedSelection(selection, selectionTargets);
       _warmActiveCut();
       notifyListeners();
       return;
@@ -9859,44 +9255,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _warmActiveCut();
     notifyListeners();
-  }
-
-  /// Re-snaps the selection to the SAME cels after a retime: each layer's
-  /// first retimed block kept its start; the span now ends where the last
-  /// of its retimed blocks ends (max across layers).
-  void _reselectRetimedSelection(
-    TimelineFrameRangeSelection selection,
-    Map<LayerId, List<int>> startsByLayer,
-  ) {
-    int? end;
-    for (final entry in startsByLayer.entries) {
-      final layer = _layerById(entry.key);
-      if (layer == null) {
-        continue;
-      }
-      var remaining = entry.value.length;
-      for (final timelineEntry in layer.timeline.entries) {
-        if (timelineEntry.key < entry.value.first ||
-            !timelineEntry.value.isDrawing ||
-            timelineEntry.value.ghost) {
-          continue;
-        }
-        final blockEnd = timelineEntry.key + timelineEntry.value.length!;
-        end = end == null ? blockEnd : math.max(end, blockEnd);
-        remaining -= 1;
-        if (remaining == 0) {
-          break;
-        }
-      }
-    }
-    frameRangeSelection.value = end == null
-        ? null
-        : TimelineFrameRangeSelection(
-            layerId: selection.layerId,
-            startIndex: selection.startIndex,
-            endIndexExclusive: end,
-            layerIds: selection.layerIds,
-          );
   }
 
   // --- B8: the frame verbs, addressed by the STORYBOARD cursor --------------
@@ -9963,22 +9321,6 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<bool> selectionInteractionActive = ValueNotifier<bool>(
     false,
   );
-  int _selectionInteractionHolds = 0;
-
-  void beginSelectionInteraction() {
-    _selectionInteractionHolds += 1;
-    selectionInteractionActive.value = true;
-    prerenderScheduler.beginInputHold();
-  }
-
-  void endSelectionInteraction() {
-    if (_selectionInteractionHolds > 0) {
-      _selectionInteractionHolds -= 1;
-      prerenderScheduler.endInputHold();
-    }
-    selectionInteractionActive.value = _selectionInteractionHolds > 0;
-  }
-
   /// R15-⑤: any live editing interaction (brush stroke, selection drag)
   /// blocks frame seeks, scrubs and cut switches entirely — the playhead
   /// moves when the pen lifts, never under it.
