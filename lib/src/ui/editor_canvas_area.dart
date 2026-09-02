@@ -41,7 +41,7 @@ import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
-import '../models/layer.dart' show layerAcceptsBrushInput;
+import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../models/layer_kind.dart' show layerKindHasLayerTransform;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
@@ -591,23 +591,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // missing when it is needed. The visibility flag is the guard instead, so
     // a hidden inspector costs one bool read and never builds the string —
     // the same shape the pan recogniser's probes use.
-    if (InputInspector.visible.value) {
-      // The FRAME leads, and it is not decoration: without it "no new line"
-      // reads two ways — the four answers were the same, or this build never
-      // ran at all — and those point at opposite halves of the app. With the
-      // playhead in the string every move prints exactly once, so silence
-      // means the build did not happen and nothing else.
-      final probe =
-          'canvas f=${session.editingGlobalFrame}'
-          ' gap=$inGap'
-          ' cut=${session.activeCutOrNull?.id.value ?? '-'}'
-          ' nodes=${layerStack.nodes.length}'
-          ' paper=${!inGap}';
-      if (probe != _lastCanvasProbe) {
-        _lastCanvasProbe = probe;
-        InputInspector.note(probe);
-      }
-    }
+    _noteCanvasProbe(session, inGap, layerStack);
     final selection = inGap
         ? null
         : isCameraLayerActive
@@ -820,14 +804,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // otherwise say WHY at the cursor, which only the shell can
               // answer because the refusal is a SECTION question.
               onPressNeedsCel: () {
-                if (!canvasToolMarksCel(toolState.tool)) {
-                  return false;
-                }
-                if (session.beginAutoFrameForStroke()) {
-                  return true;
-                }
-                cursorNotices.show(_drawRefusalFor(session));
-                return false;
+                return _pressNeedsCel(toolState, session);
               },
               takeStrokePrefixCommand: session.takeAutoFrameForStroke,
               onAutoFrameSettled: session.flushAutoFrameForStroke,
@@ -900,22 +877,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               onInvokeAction: widget.onInvokeAction,
               onBrushSizeDragStart: () =>
                   _brushSizeDragStartSize = widget.brushToolState.value.size,
-              onBrushSizeDragUpdate: (upwardDelta, {required snap}) {
-                final start = _brushSizeDragStartSize;
-                if (start == null) {
-                  return;
-                }
-                var next = start * math.pow(2, upwardDelta / 120).toDouble();
-                if (snap) {
-                  next = AppInput.snapToList(
-                    next,
-                    AppInput.settings.value.brushSizeSnaps,
-                  );
-                }
-                widget.onBrushToolStateChanged?.call(
-                  widget.brushToolState.value.copyWith(size: next),
-                );
-              },
+              onBrushSizeDragUpdate: _dragBrushSize,
               onBrushSizeDragEnd: () => _brushSizeDragStartSize = null,
               flipHud: widget.flipHud,
               // P6 fill: the flood region as ONE mask dab; the panel commits it
@@ -1025,226 +987,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         // which are chrome about the shot rather than about
                         // the drawing.
                         if (session.activeCutGuides.isNotEmpty)
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: CustomPaint(
-                                painter: GuideOverlayPainter(
-                                  // The live drag value while a handle is
-                                  // moving, so the drawn guide follows the
-                                  // finger without a project write.
-                                  guides:
-                                      _liveGuides ?? session.activeCutGuides,
-                                  viewport: viewport,
-                                  canvasSize: canvasSize,
-                                  emphasized:
-                                      toolState.tool == CanvasTool.guide,
-                                  vanishingPointLabel:
-                                      AppText.strings.guideVanishingPoint,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  selectedGuideId: session.selectedGuideId,
-                                ),
-                              ),
-                            ),
-                          ),
+                          _guideOverlay(session, viewport, canvasSize, toolState, context),
                         // The handle layer mounts ONLY for the guide tool,
                         // so it never stands between the brush and the cel.
                         if (toolState.tool == CanvasTool.guide)
-                          Positioned.fill(
-                            child: GuideEditLayer(
-                              guides: _liveGuides ?? session.activeCutGuides,
-                              viewport: viewport,
-                              onGuideSelected: (id) =>
-                                  session.selectedGuideId = id,
-                              // Live while dragging: the project is not
-                              // touched, so a drag is one undo entry.
-                              onGuidesChanged: (guides) =>
-                                  setState(() => _liveGuides = guides),
-                              onGuidesCommitted: (guides) {
-                                setState(() => _liveGuides = null);
-                                session.setActiveCutGuides(guides);
-                              },
-                            ),
-                          ),
+                          _guideEditLayer(session, viewport),
                         if (seNameTags.isNotEmpty)
-                          Positioned.fill(
-                            // Rides the cut pose like the gizmo: the tag
-                            // annotates the posed picture, exactly as the
-                            // frame painter draws it inside the pose.
-                            child: IgnorePointer(
-                              child: CustomPaint(
-                                painter: _SeNameTagOverlayPainter(
-                                  viewport: viewport,
-                                  canvasSize: canvasSize,
-                                  tags: seNameTags,
-                                  devicePixelRatio:
-                                      EffectiveDevicePixelRatio.of(context),
-                                ),
-                              ),
-                            ),
-                          ),
+                          _seNameTagOverlay(viewport, canvasSize, seNameTags, context),
                         if (showFadeWash)
-                          Positioned.fill(
-                            // The cut fade on the EDITING canvas (R9-C →
-                            // R3b): the fade is transparency, and here the
-                            // whole viewport IS the cut's unit (pasteboard,
-                            // paper, pictures) over the backdrop — so a
-                            // backdrop-colored wash at (1 − fade) is
-                            // pixel-equal to thinning the unit, without
-                            // re-compositing the editing stack.
-                            child: IgnorePointer(
-                              child: CustomPaint(
-                                painter: _CutFadeWashPainter(
-                                  viewport: viewport,
-                                  canvasSize: canvasSize,
-                                  color:
-                                      Color(
-                                        session.repository
-                                            .requireProject()
-                                            .backdropArgb,
-                                      ).withValues(
-                                        alpha: (1 - cutFadeOpacity).clamp(
-                                          0.0,
-                                          1.0,
-                                        ),
-                                      ),
-                                  devicePixelRatio:
-                                      EffectiveDevicePixelRatio.of(context),
-                                ),
-                              ),
-                            ),
-                          ),
+                          _cutFadeWash(viewport, canvasSize, session, cutFadeOpacity, context),
                         if (cameraOverlayVisible)
-                          Positioned.fill(
-                            // The cursor subscription keeps the frame gliding
-                            // along its animated pose during scrubs (and after
-                            // committed seeks) without any wider rebuild.
-                            //
-                            // ㊲: the PARKING is the other half of "where am
-                            // I". A scrub that crosses a cut boundary moves
-                            // only that — the cursor stays put, by design —
-                            // so a pose read on the cursor alone stayed
-                            // frozen on the cut being left.
-                            child: ListenableBuilder(
-                              listenable: session.editingFrameCursor,
-                              builder: (context, _) =>
-                                  ValueListenableBuilder<int?>(
-                                    valueListenable:
-                                        session.gapParkingListenable,
-                                    builder: (context, _, _) {
-                                      final pose = session.displayedCameraPose;
-                                      // Nothing under the cursor to frame:
-                                      // the scrub is over a gap.
-                                      if (pose == null) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return CameraFrameOverlay(
-                                        pose: pose,
-                                        cameraFrameSize:
-                                            session.cameraFrameSize,
-                                        viewport: viewport,
-                                        // Dim belongs to camera-view mode;
-                                        // plain manipulation keeps the
-                                        // artwork undimmed.
-                                        dimOpacity:
-                                            widget.cameraViewEnabled.value
-                                            ? widget.cameraDimOpacity.value
-                                            : 0,
-                                        interactive: isCameraLayerActive,
-                                        onPoseCommitted: session
-                                            .setCameraKeyframeAtCurrentFrame,
-                                      );
-                                    },
-                                  ),
-                            ),
-                          ),
+                          _cameraOverlay(session, viewport, isCameraLayerActive),
                         if (showPositionGizmo && transformBoxBounds != null)
-                          Positioned.fill(
-                            // R5 #10: the box frames the PICTURE, and its
-                            // corners scale while its rotate handle turns —
-                            // one member per handle. No cut pose to ride any
-                            // more: the V row's transform is gone.
-                            child: LayerTransformBox(
-                              bounds: transformBoxBounds,
-                              pose: session.layerPoseAtFrame(
-                                activeLayer,
-                                session.currentFrameIndex,
-                              ),
-                              anchorPoint: session.layerAnchorPointAtFrame(
-                                activeLayer,
-                                session.currentFrameIndex,
-                              ),
-                              canvasSize: canvasSize,
-                              viewport: viewport,
-                              onScaleCommitted: (zoom) =>
-                                  session.updateLayerTransformTrack(
-                                    activeLayer.id,
-                                    transformTrackWithScaleDragged(
-                                      activeLayer.transformTrack,
-                                      frameIndex: session.currentFrameIndex,
-                                      zoom: zoom,
-                                    ),
-                                    description: 'Scale ${activeLayer.name}',
-                                  ),
-                              onRotationCommitted: (degrees) =>
-                                  session.updateLayerTransformTrack(
-                                    activeLayer.id,
-                                    transformTrackWithRotationDragged(
-                                      activeLayer.transformTrack,
-                                      frameIndex: session.currentFrameIndex,
-                                      rotationDegrees: degrees,
-                                    ),
-                                    description: 'Rotate ${activeLayer.name}',
-                                  ),
-                            ),
-                          ),
+                          _transformBox(transformBoxBounds, session, activeLayer, canvasSize, viewport),
                         if (showPositionGizmo)
-                          Positioned.fill(
-                            // No cut-pose wrap: the V row's transform is gone,
-                            // so the crosshair sits directly on the layer's own
-                            // canvas space and the committed Position needs no
-                            // un-posing.
-                            child: LayerPositionGizmo(
-                              pose: session.layerPoseAtFrame(
-                                activeLayer,
-                                session.currentFrameIndex,
-                              ),
-                              viewport: viewport,
-                              // ONE key at the playhead per drag (AE rule,
-                              // one undo).
-                              onPositionCommitted: (position) =>
-                                  session.updateLayerTransformTrack(
-                                    activeLayer.id,
-                                    transformTrackWithPositionDragged(
-                                      activeLayer.transformTrack,
-                                      frameIndex: session.currentFrameIndex,
-                                      position: position,
-                                    ),
-                                    description: 'Move ${activeLayer.name}',
-                                  ),
-                            ),
-                          ),
+                          _positionGizmo(session, activeLayer, viewport),
                         if (showAnchorGizmo)
-                          Positioned.fill(
-                            // Unwrapped like the position handle, for the same
-                            // reason.
-                            child: LayerAnchorGizmo(
-                              anchorPoint: session.layerAnchorPointAtFrame(
-                                activeLayer,
-                                session.currentFrameIndex,
-                              ),
-                              viewport: viewport,
-                              onAnchorCommitted: (anchorPoint) =>
-                                  session.updateLayerTransformTrack(
-                                    activeLayer.id,
-                                    transformTrackWithAnchorDragged(
-                                      activeLayer.transformTrack,
-                                      frameIndex: session.currentFrameIndex,
-                                      anchorPoint: anchorPoint,
-                                    ),
-                                    description: 'Anchor ${activeLayer.name}',
-                                  ),
-                            ),
-                          ),
+                          _anchorGizmo(session, activeLayer, viewport),
                       ],
                     )
                   : null,
@@ -1253,53 +1012,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   // scribe belongs over the projection, never in a side
                   // panel. Constant two-child Stack (the overlay shrinks
                   // itself) — the sibling-count rule.
-                  ? (context, viewport) => Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        CanvasPlaybackView(
-                          controller: session.playback,
-                          compositeCache: session.cutFrameCompositeCache,
-                          qualityOf: () => session.playbackQuality,
-                          prerenderProgress:
-                              session.prerenderScheduler.progress,
-                          cameraViewEnabled: widget.cameraViewEnabled.value,
-                          cameraFrameSize: session.cameraFrameSize,
-                          cameraPoseOf: session.cameraPoseForCut,
-                          seNameTagsOf: session.seNameTagsForCutFrame,
-                          cutFxEnabledOf: session.isCutFxEnabled,
-                          trackStaticOpacityOf:
-                              session.trackStaticOpacityForCut,
-                          cutPictureVisibleOf: session.isCutPictureVisible,
-                          viewport: viewport,
-                          background: session.projectBackground,
-                          pasteboardArgb: session.repository
-                              .requireProject()
-                              .pasteboardArgb,
-                          trackEffectsOf: session.trackEffectsForCut,
-                          trackGlobalFrameOf: session.trackGlobalFrameOf,
-                          // ALL-CUTS playback watches the whole stage: the
-                          // frame is the track stack on the clock's global
-                          // axis (R3a) — a selected-track gap shows what
-                          // the OTHER tracks hold there instead of the
-                          // void. Single-cut playback keeps its
-                          // single-cut frame (the editing context).
-                          trackStack:
-                              session.playback.scope == PlaybackScope.allCuts
-                              ? _buildTrackStackView(
-                                  session,
-                                  viewport,
-                                  globalFrame: session
-                                      .playback
-                                      .globalFrameIndexListenable,
-                                  // Playback is the one place the crop
-                                  // belongs, and there it answers the toggle.
-                                  cameraView: widget.cameraViewEnabled.value,
-                                )
-                              : null,
-                        ),
-                        RecordingStreamerOverlay(session: session),
-                      ],
-                    )
+                  ? (context, viewport) => _playbackContent(session, viewport)
                   // The parked state (no active cut): the multitrack
                   // display path — every covered track's composite stacks
                   // where the void used to be, in its own CANVAS space (the
@@ -1311,6 +1024,339 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   : null,
             );
           },
+        ),
+      ),
+    );
+  }
+
+  void _noteCanvasProbe(EditorSessionManager session, bool inGap, ({double activeLayerOpacity, List<ResolvedLayerEffect> activeSourceEffects, List<CanvasLayerStackNode> nodes}) layerStack) {
+    if (InputInspector.visible.value) {
+      // The FRAME leads, and it is not decoration: without it "no new line"
+      // reads two ways — the four answers were the same, or this build never
+      // ran at all — and those point at opposite halves of the app. With the
+      // playhead in the string every move prints exactly once, so silence
+      // means the build did not happen and nothing else.
+      final probe =
+          'canvas f=${session.editingGlobalFrame}'
+          ' gap=$inGap'
+          ' cut=${session.activeCutOrNull?.id.value ?? '-'}'
+          ' nodes=${layerStack.nodes.length}'
+          ' paper=${!inGap}';
+      if (probe != _lastCanvasProbe) {
+        _lastCanvasProbe = probe;
+        InputInspector.note(probe);
+      }
+    }
+  }
+
+  void _dragBrushSize(double upwardDelta, {required bool snap}) {
+    final start = _brushSizeDragStartSize;
+    if (start == null) {
+      return;
+    }
+    var next = start * math.pow(2, upwardDelta / 120).toDouble();
+    if (snap) {
+      next = AppInput.snapToList(
+        next,
+        AppInput.settings.value.brushSizeSnaps,
+      );
+    }
+    widget.onBrushToolStateChanged?.call(
+      widget.brushToolState.value.copyWith(size: next),
+    );
+  }
+
+  Stack _playbackContent(EditorSessionManager session, CanvasViewport viewport) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CanvasPlaybackView(
+          controller: session.playback,
+          compositeCache: session.cutFrameCompositeCache,
+          qualityOf: () => session.playbackQuality,
+          prerenderProgress:
+              session.prerenderScheduler.progress,
+          cameraViewEnabled: widget.cameraViewEnabled.value,
+          cameraFrameSize: session.cameraFrameSize,
+          cameraPoseOf: session.cameraPoseForCut,
+          seNameTagsOf: session.seNameTagsForCutFrame,
+          cutFxEnabledOf: session.isCutFxEnabled,
+          trackStaticOpacityOf:
+              session.trackStaticOpacityForCut,
+          cutPictureVisibleOf: session.isCutPictureVisible,
+          viewport: viewport,
+          background: session.projectBackground,
+          pasteboardArgb: session.repository
+              .requireProject()
+              .pasteboardArgb,
+          trackEffectsOf: session.trackEffectsForCut,
+          trackGlobalFrameOf: session.trackGlobalFrameOf,
+          // ALL-CUTS playback watches the whole stage: the
+          // frame is the track stack on the clock's global
+          // axis (R3a) — a selected-track gap shows what
+          // the OTHER tracks hold there instead of the
+          // void. Single-cut playback keeps its
+          // single-cut frame (the editing context).
+          trackStack:
+              session.playback.scope == PlaybackScope.allCuts
+              ? _buildTrackStackView(
+                  session,
+                  viewport,
+                  globalFrame: session
+                      .playback
+                      .globalFrameIndexListenable,
+                  // Playback is the one place the crop
+                  // belongs, and there it answers the toggle.
+                  cameraView: widget.cameraViewEnabled.value,
+                )
+              : null,
+        ),
+        RecordingStreamerOverlay(session: session),
+      ],
+    );
+  }
+
+  bool _pressNeedsCel(BrushToolState toolState, EditorSessionManager session) {
+    if (!canvasToolMarksCel(toolState.tool)) {
+      return false;
+    }
+    if (session.beginAutoFrameForStroke()) {
+      return true;
+    }
+    cursorNotices.show(_drawRefusalFor(session));
+    return false;
+  }
+
+  Positioned _anchorGizmo(EditorSessionManager session, Layer activeLayer, CanvasViewport viewport) {
+    return Positioned.fill(
+      // Unwrapped like the position handle, for the same
+      // reason.
+      child: LayerAnchorGizmo(
+        anchorPoint: session.layerAnchorPointAtFrame(
+          activeLayer,
+          session.currentFrameIndex,
+        ),
+        viewport: viewport,
+        onAnchorCommitted: (anchorPoint) =>
+            session.updateLayerTransformTrack(
+              activeLayer.id,
+              transformTrackWithAnchorDragged(
+                activeLayer.transformTrack,
+                frameIndex: session.currentFrameIndex,
+                anchorPoint: anchorPoint,
+              ),
+              description: 'Anchor ${activeLayer.name}',
+            ),
+      ),
+    );
+  }
+
+  Positioned _positionGizmo(EditorSessionManager session, Layer activeLayer, CanvasViewport viewport) {
+    return Positioned.fill(
+      // No cut-pose wrap: the V row's transform is gone,
+      // so the crosshair sits directly on the layer's own
+      // canvas space and the committed Position needs no
+      // un-posing.
+      child: LayerPositionGizmo(
+        pose: session.layerPoseAtFrame(
+          activeLayer,
+          session.currentFrameIndex,
+        ),
+        viewport: viewport,
+        // ONE key at the playhead per drag (AE rule,
+        // one undo).
+        onPositionCommitted: (position) =>
+            session.updateLayerTransformTrack(
+              activeLayer.id,
+              transformTrackWithPositionDragged(
+                activeLayer.transformTrack,
+                frameIndex: session.currentFrameIndex,
+                position: position,
+              ),
+              description: 'Move ${activeLayer.name}',
+            ),
+      ),
+    );
+  }
+
+  Positioned _transformBox(Rect transformBoxBounds, EditorSessionManager session, Layer activeLayer, CanvasSize canvasSize, CanvasViewport viewport) {
+    return Positioned.fill(
+      // R5 #10: the box frames the PICTURE, and its
+      // corners scale while its rotate handle turns —
+      // one member per handle. No cut pose to ride any
+      // more: the V row's transform is gone.
+      child: LayerTransformBox(
+        bounds: transformBoxBounds,
+        pose: session.layerPoseAtFrame(
+          activeLayer,
+          session.currentFrameIndex,
+        ),
+        anchorPoint: session.layerAnchorPointAtFrame(
+          activeLayer,
+          session.currentFrameIndex,
+        ),
+        canvasSize: canvasSize,
+        viewport: viewport,
+        onScaleCommitted: (zoom) =>
+            session.updateLayerTransformTrack(
+              activeLayer.id,
+              transformTrackWithScaleDragged(
+                activeLayer.transformTrack,
+                frameIndex: session.currentFrameIndex,
+                zoom: zoom,
+              ),
+              description: 'Scale ${activeLayer.name}',
+            ),
+        onRotationCommitted: (degrees) =>
+            session.updateLayerTransformTrack(
+              activeLayer.id,
+              transformTrackWithRotationDragged(
+                activeLayer.transformTrack,
+                frameIndex: session.currentFrameIndex,
+                rotationDegrees: degrees,
+              ),
+              description: 'Rotate ${activeLayer.name}',
+            ),
+      ),
+    );
+  }
+
+  Positioned _cameraOverlay(EditorSessionManager session, CanvasViewport viewport, bool isCameraLayerActive) {
+    return Positioned.fill(
+      // The cursor subscription keeps the frame gliding
+      // along its animated pose during scrubs (and after
+      // committed seeks) without any wider rebuild.
+      //
+      // ㊲: the PARKING is the other half of "where am
+      // I". A scrub that crosses a cut boundary moves
+      // only that — the cursor stays put, by design —
+      // so a pose read on the cursor alone stayed
+      // frozen on the cut being left.
+      child: ListenableBuilder(
+        listenable: session.editingFrameCursor,
+        builder: (context, _) =>
+            ValueListenableBuilder<int?>(
+              valueListenable:
+                  session.gapParkingListenable,
+              builder: (context, _, _) {
+                final pose = session.displayedCameraPose;
+                // Nothing under the cursor to frame:
+                // the scrub is over a gap.
+                if (pose == null) {
+                  return const SizedBox.shrink();
+                }
+                return CameraFrameOverlay(
+                  pose: pose,
+                  cameraFrameSize:
+                      session.cameraFrameSize,
+                  viewport: viewport,
+                  // Dim belongs to camera-view mode;
+                  // plain manipulation keeps the
+                  // artwork undimmed.
+                  dimOpacity:
+                      widget.cameraViewEnabled.value
+                      ? widget.cameraDimOpacity.value
+                      : 0,
+                  interactive: isCameraLayerActive,
+                  onPoseCommitted: session
+                      .setCameraKeyframeAtCurrentFrame,
+                );
+              },
+            ),
+      ),
+    );
+  }
+
+  Positioned _cutFadeWash(CanvasViewport viewport, CanvasSize canvasSize, EditorSessionManager session, double cutFadeOpacity, BuildContext context) {
+    return Positioned.fill(
+      // The cut fade on the EDITING canvas (R9-C →
+      // R3b): the fade is transparency, and here the
+      // whole viewport IS the cut's unit (pasteboard,
+      // paper, pictures) over the backdrop — so a
+      // backdrop-colored wash at (1 − fade) is
+      // pixel-equal to thinning the unit, without
+      // re-compositing the editing stack.
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: _CutFadeWashPainter(
+            viewport: viewport,
+            canvasSize: canvasSize,
+            color:
+                Color(
+                  session.repository
+                      .requireProject()
+                      .backdropArgb,
+                ).withValues(
+                  alpha: (1 - cutFadeOpacity).clamp(
+                    0.0,
+                    1.0,
+                  ),
+                ),
+            devicePixelRatio:
+                EffectiveDevicePixelRatio.of(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Positioned _seNameTagOverlay(CanvasViewport viewport, CanvasSize canvasSize, List<ResolvedSeNameTag> seNameTags, BuildContext context) {
+    return Positioned.fill(
+      // Rides the cut pose like the gizmo: the tag
+      // annotates the posed picture, exactly as the
+      // frame painter draws it inside the pose.
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: _SeNameTagOverlayPainter(
+            viewport: viewport,
+            canvasSize: canvasSize,
+            tags: seNameTags,
+            devicePixelRatio:
+                EffectiveDevicePixelRatio.of(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Positioned _guideEditLayer(EditorSessionManager session, CanvasViewport viewport) {
+    return Positioned.fill(
+      child: GuideEditLayer(
+        guides: _liveGuides ?? session.activeCutGuides,
+        viewport: viewport,
+        onGuideSelected: (id) =>
+            session.selectedGuideId = id,
+        // Live while dragging: the project is not
+        // touched, so a drag is one undo entry.
+        onGuidesChanged: (guides) =>
+            setState(() => _liveGuides = guides),
+        onGuidesCommitted: (guides) {
+          setState(() => _liveGuides = null);
+          session.setActiveCutGuides(guides);
+        },
+      ),
+    );
+  }
+
+  Positioned _guideOverlay(EditorSessionManager session, CanvasViewport viewport, CanvasSize canvasSize, BrushToolState toolState, BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: GuideOverlayPainter(
+            // The live drag value while a handle is
+            // moving, so the drawn guide follows the
+            // finger without a project write.
+            guides:
+                _liveGuides ?? session.activeCutGuides,
+            viewport: viewport,
+            canvasSize: canvasSize,
+            emphasized:
+                toolState.tool == CanvasTool.guide,
+            vanishingPointLabel:
+                AppText.strings.guideVanishingPoint,
+            color: Theme.of(context).colorScheme.primary,
+            selectedGuideId: session.selectedGuideId,
+          ),
         ),
       ),
     );
