@@ -2756,109 +2756,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (transform != null) {
       // The open box is modal: only the box's handles/inside react;
       // clicks elsewhere are inert until Enter/Escape closes the session.
-      final openTransform = transform;
-      // 메쉬: the control points ARE the handles. Nothing else on the box
-      // has a grid meaning, so a press is either a point or inside.
-      final meshPlaced = _placedMeshPoints;
-      if (meshPlaced != null) {
-        final pointIndex = _hitTestPlacedPoint(event.localPosition, meshPlaced);
-        if (pointIndex == null &&
-            !CanvasSelectionShape(
-              _meshBoundary(meshPlaced),
-            ).containsPoint(canvasPoint)) {
-          return;
-        }
-        _activePointer = event.pointer;
-        setState(() {
-          _dragMode = _DragMode.transform;
-          // ⚠️NULL IS REACHABLE and means something: the press landed
-          // INSIDE the mesh boundary but not on a point. It carried no
-          // point before this field became a list, and it still carries
-          // none — `[null]` would make the update move offset 0.
-          _warpDragPoints = pointIndex == null ? null : [pointIndex];
-          _warpDragStartOffsets = List.of(_meshOffsets ?? const []);
-          _transformDragStartPointer = canvasPoint;
-        });
-        _notifyDragActive(true);
-        return;
-      }
-      // 퍼스: the four corners move freely — no modifier, because the MODE
-      // is the door now (the Ctrl+corner gesture this replaces could not
-      // be reached at all on a tablet). The edge handles and the rotate
-      // knob keep their affine meaning underneath, which is where
-      // non-uniform scaling lives.
-      final cornersPlaced = _placedCorners;
-      if (cornersPlaced != null) {
-        final cornerIndex = _hitTestPlacedPoint(
-          event.localPosition,
-          cornersPlaced,
-        );
-        if (cornerIndex != null) {
-          _activePointer = event.pointer;
-          setState(() {
-            _dragMode = _DragMode.transform;
-            _warpDragPoints = [cornerIndex];
-            _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
-            _transformDragStartPointer = canvasPoint;
-          });
-          _notifyDragActive(true);
-          return;
-        }
-        // A warped quad's inside is the quad, not the affine box the edge
-        // handles frame — a press in the gap between them is a miss.
-        if (!_offsetsAreZero(_cornerOffsets) &&
-            !CanvasSelectionShape(cornersPlaced).containsPoint(canvasPoint) &&
-            _hitTestTransformHandle(event.localPosition, openTransform) ==
-                _TransformHandle.inside) {
-          return;
-        }
-      }
-      final handle = _hitTestTransformHandle(
-        event.localPosition,
-        openTransform,
-      );
-      if (handle == null) {
-        return;
-      }
-      // 🚨F-42 (유저 2026-08-29): 「오른쪽 중앙 조절시 **상하가 안바뀌게
-      // 스냅되있는데 스냅해제. 자유롭게 바뀌게**」.
-      //
-      // ⛔IT WAS NEVER A SNAP — it was geometry. The edge handle drove an
-      // affine one-axis SCALE, and a scale cannot move a point along the
-      // axis it does not scale, so dragging the right handle up did
-      // nothing however far the hand went. 유저 chose (F-42-Q1) to make the
-      // handle carry the edge's two QUAD corners instead: in 퍼스 the box
-      // is a quad and its edge is a pair of points, so this is the handle
-      // finally meaning what the mode does.
-      //
-      // ⚠️The accepted cost: 「stretch one axis」 is no longer this handle's
-      // job in 퍼스. It is two corners dragged together, which is the same
-      // move with the same result and one more gesture.
-      final edgePair = _mode == TransformMode.perspective
-          ? _edgeCornerPair(handle)
-          : null;
-      if (edgePair != null && cornersPlaced != null) {
-        _activePointer = event.pointer;
-        setState(() {
-          _dragMode = _DragMode.transform;
-          _warpDragPoints = edgePair;
-          _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
-          _transformDragStartPointer = canvasPoint;
-        });
-        _notifyDragActive(true);
-        return;
-      }
-      _activePointer = event.pointer;
-      setState(() {
-        _dragMode = _DragMode.transform;
-        _transformDragHandle = handle;
-        _transformDragStart = openTransform;
-        _transformDragStartPointer = canvasPoint;
-        if (handle == _TransformHandle.rotate) {
-          _transformLastAngle = _pointerAngleAbout(canvasPoint, openTransform);
-        }
-      });
-      _notifyDragActive(true);
+      _beginTransformDrag(transform, event, canvasPoint);
       return;
     }
     final region = _region;
@@ -2949,6 +2847,113 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _notifyDragActive(true);
     _syncAnts();
+  }
+
+  void _beginTransformDrag(SelectionAffine transform, PointerDownEvent event, CanvasPoint canvasPoint) {
+    final openTransform = transform;
+    // 메쉬: the control points ARE the handles. Nothing else on the box
+    // has a grid meaning, so a press is either a point or inside.
+    final meshPlaced = _placedMeshPoints;
+    if (meshPlaced != null) {
+      final pointIndex = _hitTestPlacedPoint(event.localPosition, meshPlaced);
+      if (pointIndex == null &&
+          !CanvasSelectionShape(
+            _meshBoundary(meshPlaced),
+          ).containsPoint(canvasPoint)) {
+        return;
+      }
+      _activePointer = event.pointer;
+      setState(() {
+        _dragMode = _DragMode.transform;
+        // ⚠️NULL IS REACHABLE and means something: the press landed
+        // INSIDE the mesh boundary but not on a point. It carried no
+        // point before this field became a list, and it still carries
+        // none — `[null]` would make the update move offset 0.
+        _warpDragPoints = pointIndex == null ? null : [pointIndex];
+        _warpDragStartOffsets = List.of(_meshOffsets ?? const []);
+        _transformDragStartPointer = canvasPoint;
+      });
+      _notifyDragActive(true);
+      return;
+    }
+    // 퍼스: the four corners move freely — no modifier, because the MODE
+    // is the door now (the Ctrl+corner gesture this replaces could not
+    // be reached at all on a tablet). The edge handles and the rotate
+    // knob keep their affine meaning underneath, which is where
+    // non-uniform scaling lives.
+    final cornersPlaced = _placedCorners;
+    if (cornersPlaced != null) {
+      final cornerIndex = _hitTestPlacedPoint(
+        event.localPosition,
+        cornersPlaced,
+      );
+      if (cornerIndex != null) {
+        _activePointer = event.pointer;
+        setState(() {
+          _dragMode = _DragMode.transform;
+          _warpDragPoints = [cornerIndex];
+          _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
+          _transformDragStartPointer = canvasPoint;
+        });
+        _notifyDragActive(true);
+        return;
+      }
+      // A warped quad's inside is the quad, not the affine box the edge
+      // handles frame — a press in the gap between them is a miss.
+      if (!_offsetsAreZero(_cornerOffsets) &&
+          !CanvasSelectionShape(cornersPlaced).containsPoint(canvasPoint) &&
+          _hitTestTransformHandle(event.localPosition, openTransform) ==
+              _TransformHandle.inside) {
+        return;
+      }
+    }
+    final handle = _hitTestTransformHandle(
+      event.localPosition,
+      openTransform,
+    );
+    if (handle == null) {
+      return;
+    }
+    // 🚨F-42 (유저 2026-08-29): 「오른쪽 중앙 조절시 **상하가 안바뀌게
+    // 스냅되있는데 스냅해제. 자유롭게 바뀌게**」.
+    //
+    // ⛔IT WAS NEVER A SNAP — it was geometry. The edge handle drove an
+    // affine one-axis SCALE, and a scale cannot move a point along the
+    // axis it does not scale, so dragging the right handle up did
+    // nothing however far the hand went. 유저 chose (F-42-Q1) to make the
+    // handle carry the edge's two QUAD corners instead: in 퍼스 the box
+    // is a quad and its edge is a pair of points, so this is the handle
+    // finally meaning what the mode does.
+    //
+    // ⚠️The accepted cost: 「stretch one axis」 is no longer this handle's
+    // job in 퍼스. It is two corners dragged together, which is the same
+    // move with the same result and one more gesture.
+    final edgePair = _mode == TransformMode.perspective
+        ? _edgeCornerPair(handle)
+        : null;
+    if (edgePair != null && cornersPlaced != null) {
+      _activePointer = event.pointer;
+      setState(() {
+        _dragMode = _DragMode.transform;
+        _warpDragPoints = edgePair;
+        _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
+        _transformDragStartPointer = canvasPoint;
+      });
+      _notifyDragActive(true);
+      return;
+    }
+    _activePointer = event.pointer;
+    setState(() {
+      _dragMode = _DragMode.transform;
+      _transformDragHandle = handle;
+      _transformDragStart = openTransform;
+      _transformDragStartPointer = canvasPoint;
+      if (handle == _TransformHandle.rotate) {
+        _transformLastAngle = _pointerAngleAbout(canvasPoint, openTransform);
+      }
+    });
+    _notifyDragActive(true);
+    return;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -3783,23 +3788,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
-    var displayShape = transform != null && region != null
-        ? region.mapped(transform.apply)
-        : region;
-    if (warpCorners != null && region != null) {
-      final base = _stampRectCorners();
-      final h = base == null ? null : solveHomography(base, warpCorners);
-      displayShape = h == null
-          ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
-          : region.mapped((point) => _applyHomography(h, point));
-    }
-    final meshPoints = _meshPoints;
-    if (meshPoints != null) {
-      // Mesh session: the ants trace the grid's warped boundary.
-      displayShape = CanvasSelectionRegion.shape(
-        CanvasSelectionShape(_meshBoundary(meshPoints)),
-      );
-    }
+    CanvasSelectionRegion? displayShape = _displayShape(transform, region, warpCorners);
     // R17-U 핸들 상시: with the Move tool a selection shows its box
     // chrome even before any session opens (identity affine around the
     // shape bounds; grabbing a handle opens the session at that moment).
@@ -3829,6 +3818,198 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // appearing only once the first offset makes the warp real.
     final placedMesh = _placedMeshPoints;
     final placedCorners = _placedCorners;
+    ({List<ui.Offset> box, List<ui.Offset> handles, ui.Offset? knob})? chrome = _transformChrome(placedMesh, placedCorners, chromeAffine, chromeWidth, chromeHeight);
+    // While a hold is up, whichever float is drawn is drawn ONLY over the
+    // tiles the base cannot paint yet — screen space, because it wraps
+    // the painters rather than living inside one of them, and both
+    // painters apply the viewport themselves.
+    // TS1: one description of what is floating, published for the composite
+    // and used by the fallback painter below. Built here because this is
+    // where every piece of it is already in scope.
+    final floatPaint = _floatPaint(
+      resampledImage: resampledImage,
+      resampledDab: resampledDab,
+      floatSurface: floatSurface,
+      transform: transform,
+    );
+    _publishFloat(floatPaint);
+    return Listener(
+      key: const ValueKey<String>('canvas-selection-layer'),
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) {
+        _cursor.value = event.localPosition;
+        _handlePointerDown(event);
+      },
+      // TS6: hover feeds the rubber band. It is the ONLY thing hover does
+      // here, and it writes a notifier rather than state — see [_cursor].
+      onPointerHover: (event) => _cursor.value = event.localPosition,
+      onPointerMove: (event) {
+        _cursor.value = event.localPosition;
+        _handlePointerMove(event);
+      },
+      onPointerUp: _handlePointerUp,
+      onPointerCancel: _handlePointerCancel,
+      child: Stack(
+        children: [
+          // 🚨TS1: the float's PIXELS are not in this Stack any more. They
+          // are published to [SelectionFloatOverlay] and drawn by whoever
+          // draws the active layer, at that layer's depth — so the layers
+          // above it occlude the preview exactly as they occlude the
+          // committed result, which is what a live stroke has always got.
+          // Everything below here is CHROME and stays on top.
+          //
+          // The fallback for hosts with no composite (the conte, the
+          // timesheet, the cut envelope, and the tests that mount this
+          // layer alone) is the same description drawn here instead —
+          // one painting code path, two mount points.
+          if (widget.floatOverlay == null && !floatPaint.isEmpty)
+            _floatPreview(floatPaint, context),
+          _antsLayer(displayShape, region, chrome),
+          // R16-①: the CONFIRM button — floats at the selection's top
+          // right while a move session is pending.
+          if (_movePending && displayShape != null)
+            _confirmButton(displayShape),
+        ],
+      ),
+    );
+  }
+
+  Positioned _confirmButton(CanvasSelectionRegion displayShape) {
+    return Positioned(
+      left: _confirmButtonOffset(displayShape).dx,
+      top: _confirmButtonOffset(displayShape).dy,
+      child: Material(
+        key: const ValueKey<String>('selection-move-confirm'),
+        color: AppColors.selectionSession(changed: _sessionHasChanges),
+        shape: const CircleBorder(),
+        elevation: 2,
+        child: ControlPressClaim(
+          onPressed: () {
+            if (_transform != null) {
+              _commitTransform();
+            }
+            if (_movePending) {
+              _confirmMoveSession();
+            }
+          },
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            // The button is offered while a transform box is OPEN —
+            // its visibility test is `_movePending`, which says
+            // nothing about `_transform`. Wired straight to
+            // `_confirmMoveSession` it landed the unwarped lift: the
+            // artwork committed at its PRE-transform position and
+            // size, the warped preview kept painting on top until
+            // something closed the box, and the wrong landing went
+            // into history. Enter has branched on this since R16-①;
+            // the button never did.
+            //
+            // Both `if`s, not Enter's single branch. `_commitTransform`
+            // on an identity affine only closes the box and leaves
+            // the session pending, so Enter's form would make one tap
+            // of a button labelled "confirm" into two. With both, a
+            // warped box commits warped (the inner confirm fires and
+            // the outer no-ops on a null pending stamp) and an
+            // untouched box closes and confirms in one tap.
+            onTap: silentPress(() {
+              if (_transform != null) {
+                _commitTransform();
+              }
+              if (_movePending) {
+                _confirmMoveSession();
+              }
+            }),
+            child: const Padding(
+              padding: EdgeInsets.all(6),
+              child: Icon(Icons.check, size: 18, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, ({List<ui.Offset> box, List<ui.Offset> handles, ui.Offset? knob})? chrome) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: SelectionAntsPainter(
+            repaint: _ants,
+            viewport: widget.viewport,
+            committedRegion: displayShape,
+            // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
+            // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
+            //
+            // ★`identical` says exactly that, and says it without a
+            // second opinion to keep in sync: every session that is
+            // still moving the selection (transform, warp, mesh) hands
+            // `displayShape` a NEW region above, and nothing else
+            // does. When the outline has settled the two ARE the same
+            // object.
+            outlineIsLive: !identical(displayShape, region),
+            // TP5: the ants step with the PIXELS, not with the
+            // pointer — the outline has to be around the thing that
+            // will land, or the confirm looks like it moved.
+            screenOffset: _dragMode == _DragMode.move
+                ? _moveChromeOffset
+                : Offset.zero,
+            marqueeShapes: _dragMode == _DragMode.marquee
+                ? _symmetryCopies(_marqueeShape())
+                : const [],
+            openTrail: _tapsVertices
+                ? (widget.selectionCommands?.polygonPoints ?? const [])
+                : _dragMode == _DragMode.marquee && _tracesPointerPath
+                ? _lassoPoints
+                : const [],
+            // TS6: from the FIRST vertex, not from the third. It used
+            // to wait for `canClosePolygon` so the ring never offered
+            // a tap that would do nothing — and the answer to that was
+            // not to hide it but to make the tap always mean
+            // something (see [_placeVertex]): close if it can, drop
+            // the trace if it cannot. Until this, the first point drew
+            // nothing at all and there was no way to tell whether it
+            // had landed.
+            closeTarget:
+                _tapsVertices &&
+                    (widget.selectionCommands?.hasOpenPolygon ?? false)
+                ? widget.selectionCommands!.polygonPoints.first
+                : null,
+            closeTargetArmed:
+                widget.selectionCommands?.canClosePolygon ?? false,
+            // The rubber band: the segment the next tap would lay.
+            // Fed by a notifier the painter reads, NOT by setState —
+            // a rebuild per pointer move on this layer is the R4 #3
+            // hazard (it re-records the whole canvas picture), and the
+            // ants painter is already repainting for its dashes.
+            cursor: _tapsVertices ? _cursor : null,
+            transformChrome: chrome,
+            sessionHasChanges: _movePending && _sessionHasChanges,
+          ),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+  }
+
+  Positioned _floatPreview(SelectionFloatPaint floatPaint, BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          key: const ValueKey<String>('transform-resample-preview'),
+          painter: SelectionFloatPainter(
+            float: floatPaint,
+            viewport: widget.viewport,
+            // The pan-phase snap's device grid — same source the
+            // ink view behind this fallback reads.
+            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+          ),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+  }
+
+  ({List<ui.Offset> box, List<ui.Offset> handles, ui.Offset? knob})? _transformChrome(List<CanvasPoint>? placedMesh, List<CanvasPoint>? placedCorners, SelectionAffine? chromeAffine, double chromeWidth, double chromeHeight) {
     final chrome = placedMesh != null
         ? (
             box: [
@@ -3877,182 +4058,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ],
             knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
           );
-    // While a hold is up, whichever float is drawn is drawn ONLY over the
-    // tiles the base cannot paint yet — screen space, because it wraps
-    // the painters rather than living inside one of them, and both
-    // painters apply the viewport themselves.
-    // TS1: one description of what is floating, published for the composite
-    // and used by the fallback painter below. Built here because this is
-    // where every piece of it is already in scope.
-    final floatPaint = _floatPaint(
-      resampledImage: resampledImage,
-      resampledDab: resampledDab,
-      floatSurface: floatSurface,
-      transform: transform,
-    );
-    _publishFloat(floatPaint);
-    return Listener(
-      key: const ValueKey<String>('canvas-selection-layer'),
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: (event) {
-        _cursor.value = event.localPosition;
-        _handlePointerDown(event);
-      },
-      // TS6: hover feeds the rubber band. It is the ONLY thing hover does
-      // here, and it writes a notifier rather than state — see [_cursor].
-      onPointerHover: (event) => _cursor.value = event.localPosition,
-      onPointerMove: (event) {
-        _cursor.value = event.localPosition;
-        _handlePointerMove(event);
-      },
-      onPointerUp: _handlePointerUp,
-      onPointerCancel: _handlePointerCancel,
-      child: Stack(
-        children: [
-          // 🚨TS1: the float's PIXELS are not in this Stack any more. They
-          // are published to [SelectionFloatOverlay] and drawn by whoever
-          // draws the active layer, at that layer's depth — so the layers
-          // above it occlude the preview exactly as they occlude the
-          // committed result, which is what a live stroke has always got.
-          // Everything below here is CHROME and stays on top.
-          //
-          // The fallback for hosts with no composite (the conte, the
-          // timesheet, the cut envelope, and the tests that mount this
-          // layer alone) is the same description drawn here instead —
-          // one painting code path, two mount points.
-          if (widget.floatOverlay == null && !floatPaint.isEmpty)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  key: const ValueKey<String>('transform-resample-preview'),
-                  painter: SelectionFloatPainter(
-                    float: floatPaint,
-                    viewport: widget.viewport,
-                    // The pan-phase snap's device grid — same source the
-                    // ink view behind this fallback reads.
-                    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-                  ),
-                  child: const SizedBox.expand(),
-                ),
-              ),
-            ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: SelectionAntsPainter(
-                  repaint: _ants,
-                  viewport: widget.viewport,
-                  committedRegion: displayShape,
-                  // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
-                  // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
-                  //
-                  // ★`identical` says exactly that, and says it without a
-                  // second opinion to keep in sync: every session that is
-                  // still moving the selection (transform, warp, mesh) hands
-                  // `displayShape` a NEW region above, and nothing else
-                  // does. When the outline has settled the two ARE the same
-                  // object.
-                  outlineIsLive: !identical(displayShape, region),
-                  // TP5: the ants step with the PIXELS, not with the
-                  // pointer — the outline has to be around the thing that
-                  // will land, or the confirm looks like it moved.
-                  screenOffset: _dragMode == _DragMode.move
-                      ? _moveChromeOffset
-                      : Offset.zero,
-                  marqueeShapes: _dragMode == _DragMode.marquee
-                      ? _symmetryCopies(_marqueeShape())
-                      : const [],
-                  openTrail: _tapsVertices
-                      ? (widget.selectionCommands?.polygonPoints ?? const [])
-                      : _dragMode == _DragMode.marquee && _tracesPointerPath
-                      ? _lassoPoints
-                      : const [],
-                  // TS6: from the FIRST vertex, not from the third. It used
-                  // to wait for `canClosePolygon` so the ring never offered
-                  // a tap that would do nothing — and the answer to that was
-                  // not to hide it but to make the tap always mean
-                  // something (see [_placeVertex]): close if it can, drop
-                  // the trace if it cannot. Until this, the first point drew
-                  // nothing at all and there was no way to tell whether it
-                  // had landed.
-                  closeTarget:
-                      _tapsVertices &&
-                          (widget.selectionCommands?.hasOpenPolygon ?? false)
-                      ? widget.selectionCommands!.polygonPoints.first
-                      : null,
-                  closeTargetArmed:
-                      widget.selectionCommands?.canClosePolygon ?? false,
-                  // The rubber band: the segment the next tap would lay.
-                  // Fed by a notifier the painter reads, NOT by setState —
-                  // a rebuild per pointer move on this layer is the R4 #3
-                  // hazard (it re-records the whole canvas picture), and the
-                  // ants painter is already repainting for its dashes.
-                  cursor: _tapsVertices ? _cursor : null,
-                  transformChrome: chrome,
-                  sessionHasChanges: _movePending && _sessionHasChanges,
-                ),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-          // R16-①: the CONFIRM button — floats at the selection's top
-          // right while a move session is pending.
-          if (_movePending && displayShape != null)
-            Positioned(
-              left: _confirmButtonOffset(displayShape).dx,
-              top: _confirmButtonOffset(displayShape).dy,
-              child: Material(
-                key: const ValueKey<String>('selection-move-confirm'),
-                color: AppColors.selectionSession(changed: _sessionHasChanges),
-                shape: const CircleBorder(),
-                elevation: 2,
-                child: ControlPressClaim(
-                  onPressed: () {
-                    if (_transform != null) {
-                      _commitTransform();
-                    }
-                    if (_movePending) {
-                      _confirmMoveSession();
-                    }
-                  },
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    // The button is offered while a transform box is OPEN —
-                    // its visibility test is `_movePending`, which says
-                    // nothing about `_transform`. Wired straight to
-                    // `_confirmMoveSession` it landed the unwarped lift: the
-                    // artwork committed at its PRE-transform position and
-                    // size, the warped preview kept painting on top until
-                    // something closed the box, and the wrong landing went
-                    // into history. Enter has branched on this since R16-①;
-                    // the button never did.
-                    //
-                    // Both `if`s, not Enter's single branch. `_commitTransform`
-                    // on an identity affine only closes the box and leaves
-                    // the session pending, so Enter's form would make one tap
-                    // of a button labelled "confirm" into two. With both, a
-                    // warped box commits warped (the inner confirm fires and
-                    // the outer no-ops on a null pending stamp) and an
-                    // untouched box closes and confirms in one tap.
-                    onTap: silentPress(() {
-                      if (_transform != null) {
-                        _commitTransform();
-                      }
-                      if (_movePending) {
-                        _confirmMoveSession();
-                      }
-                    }),
-                    child: const Padding(
-                      padding: EdgeInsets.all(6),
-                      child: Icon(Icons.check, size: 18, color: Colors.white),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
+    return chrome;
+  }
+
+  CanvasSelectionRegion? _displayShape(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners) {
+    var displayShape = transform != null && region != null
+        ? region.mapped(transform.apply)
+        : region;
+    if (warpCorners != null && region != null) {
+      final base = _stampRectCorners();
+      final h = base == null ? null : solveHomography(base, warpCorners);
+      displayShape = h == null
+          ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
+          : region.mapped((point) => _applyHomography(h, point));
+    }
+    final meshPoints = _meshPoints;
+    if (meshPoints != null) {
+      // Mesh session: the ants trace the grid's warped boundary.
+      displayShape = CanvasSelectionRegion.shape(
+        CanvasSelectionShape(_meshBoundary(meshPoints)),
+      );
+    }
+    return displayShape;
   }
 
   /// Confirm button anchor: just outside the selection bbox's top-right,
