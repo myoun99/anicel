@@ -398,113 +398,17 @@ class _ConteTabHostState extends State<ConteTabHost> {
               ),
             ),
             if (page != null)
-              Positioned.fill(
-                // The sheet page is the timesheet's answer applied to its
-                // sibling. A `RepaintBoundary` here stopped the page being
-                // re-RECORDED, which was never the cost — the raster thread
-                // still replayed the whole display list every frame the app
-                // produced, for any reason, including the pen moving over
-                // the canvas in another panel.
-                //
-                // `StaticRaster` is itself a repaint boundary, so the
-                // isolation this had is kept and the bake is added on top.
-                // The surrounding `Stack` already clips `Clip.hardEdge`, so
-                // the bake's own clip is a no-op and the pixels do not move.
-                //
-                // ⚠️ It stands down while the pen is down: capturing costs a
-                // full paint PLUS a full-page copy, and a stroke dirties the
-                // page on every sample.
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _inkStrokeActive,
-                  builder: (context, stroking, child) => StaticRaster(
-                    debugLabel: 'conte-page',
-                    enabled: !stroking,
-                    child: child!,
-                  ),
-                  child: CustomPaint(
-                    key: const ValueKey<String>('conte-page'),
-                    painter: ContePagePainter(
-                      page: page,
-                      source: source,
-                      selectedCell: _selected,
-                      pictureFor: _pictureFor,
-                      viewport: viewport,
-                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                      // Saved sheet ink shows whatever the ink mode says
-                      // (R5); a live input window's key stands down so
-                      // translucent ink never composites twice.
-                      inkImageFor: inkController == null
-                          ? null
-                          : (key) => inkController.displayImageFor(
-                              key.layerId == conteInkRowLayerId
-                                  ? ConteInkPlane.row
-                                  : ConteInkPlane.page,
-                              key,
-                            ),
-                      liveInkKeys: !widget.inkEnabled || inkController == null
-                          ? const {}
-                          : {
-                              for (final window in conteInkWindows(page))
-                                window.key,
-                            },
-                      repaint: inkController == null
-                          ? widget.thumbnailRepaint
-                          : Listenable.merge([
-                              if (widget.thumbnailRepaint != null)
-                                widget.thumbnailRepaint!,
-                              inkController,
-                            ]),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-              ),
+              _pageLayer(page, source, viewport, context, inkController),
             // Under the ink window: reachable exactly when ink is blocked
             // (the toggle doubles as the edit-mode switch, the timesheet's
             // header-edit rule).
             if (page != null)
-              Positioned.fill(
-                child: GestureDetector(
-                  key: const ValueKey<String>('conte-cell-tap-layer'),
-                  behavior: HitTestBehavior.translucent,
-                  onTapUp: (details) {
-                    final canvasPoint = viewport.viewportToCanvas(
-                      ViewportPoint(
-                        x: details.localPosition.dx,
-                        y: details.localPosition.dy,
-                      ),
-                    );
-                    final point = Offset(canvasPoint.x, canvasPoint.y);
-                    for (final cell in page.cells) {
-                      if (cell.pictureRect.contains(point)) {
-                        _selectCell(cell);
-                        return;
-                      }
-                    }
-                  },
-                ),
-              ),
+              _cellTapLayer(viewport, page),
             if (page != null &&
                 inkController != null &&
                 brushToolState != null &&
                 widget.inkEnabled)
-              Positioned.fill(
-                // The tool-state boundary (R18 UI-3): only this overlay
-                // follows the brush/eraser.
-                child: ValueListenableBuilder<BrushToolState>(
-                  valueListenable: brushToolState,
-                  builder: (context, toolState, _) => ConteInkLayer(
-                    key: const ValueKey<String>('conte-ink-layer'),
-                    controller: inkController,
-                    page: page,
-                    brushToolState: toolState,
-                    historyManager: _session.historyManager,
-                    viewport: viewport,
-                    strokeActive: _inkStrokeActive,
-                    cacheInvalidationSink: _cacheInvalidationSink,
-                  ),
-                ),
-              ),
+              _inkLayer(brushToolState, inkController, page, viewport),
           ],
         );
       },
@@ -519,6 +423,114 @@ class _ConteTabHostState extends State<ConteTabHost> {
           Expanded(child: panel),
           if (_selected != null) _actionEditor(context),
         ],
+      ),
+    );
+  }
+
+  Positioned _inkLayer(ValueListenable<BrushToolState> brushToolState, ConteInkController inkController, ContePageLayout page, CanvasViewport viewport) {
+    return Positioned.fill(
+      // The tool-state boundary (R18 UI-3): only this overlay
+      // follows the brush/eraser.
+      child: ValueListenableBuilder<BrushToolState>(
+        valueListenable: brushToolState,
+        builder: (context, toolState, _) => ConteInkLayer(
+          key: const ValueKey<String>('conte-ink-layer'),
+          controller: inkController,
+          page: page,
+          brushToolState: toolState,
+          historyManager: _session.historyManager,
+          viewport: viewport,
+          strokeActive: _inkStrokeActive,
+          cacheInvalidationSink: _cacheInvalidationSink,
+        ),
+      ),
+    );
+  }
+
+  Positioned _cellTapLayer(CanvasViewport viewport, ContePageLayout page) {
+    return Positioned.fill(
+      child: GestureDetector(
+        key: const ValueKey<String>('conte-cell-tap-layer'),
+        behavior: HitTestBehavior.translucent,
+        onTapUp: (details) {
+          final canvasPoint = viewport.viewportToCanvas(
+            ViewportPoint(
+              x: details.localPosition.dx,
+              y: details.localPosition.dy,
+            ),
+          );
+          final point = Offset(canvasPoint.x, canvasPoint.y);
+          for (final cell in page.cells) {
+            if (cell.pictureRect.contains(point)) {
+              _selectCell(cell);
+              return;
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  Positioned _pageLayer(ContePageLayout page, ConteSheetSource source, CanvasViewport viewport, BuildContext context, ConteInkController? inkController) {
+    return Positioned.fill(
+      // The sheet page is the timesheet's answer applied to its
+      // sibling. A `RepaintBoundary` here stopped the page being
+      // re-RECORDED, which was never the cost — the raster thread
+      // still replayed the whole display list every frame the app
+      // produced, for any reason, including the pen moving over
+      // the canvas in another panel.
+      //
+      // `StaticRaster` is itself a repaint boundary, so the
+      // isolation this had is kept and the bake is added on top.
+      // The surrounding `Stack` already clips `Clip.hardEdge`, so
+      // the bake's own clip is a no-op and the pixels do not move.
+      //
+      // ⚠️ It stands down while the pen is down: capturing costs a
+      // full paint PLUS a full-page copy, and a stroke dirties the
+      // page on every sample.
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _inkStrokeActive,
+        builder: (context, stroking, child) => StaticRaster(
+          debugLabel: 'conte-page',
+          enabled: !stroking,
+          child: child!,
+        ),
+        child: CustomPaint(
+          key: const ValueKey<String>('conte-page'),
+          painter: ContePagePainter(
+            page: page,
+            source: source,
+            selectedCell: _selected,
+            pictureFor: _pictureFor,
+            viewport: viewport,
+            effectiveRatio: EffectiveDevicePixelRatio.of(context),
+            // Saved sheet ink shows whatever the ink mode says
+            // (R5); a live input window's key stands down so
+            // translucent ink never composites twice.
+            inkImageFor: inkController == null
+                ? null
+                : (key) => inkController.displayImageFor(
+                    key.layerId == conteInkRowLayerId
+                        ? ConteInkPlane.row
+                        : ConteInkPlane.page,
+                    key,
+                  ),
+            liveInkKeys: !widget.inkEnabled || inkController == null
+                ? const {}
+                : {
+                    for (final window in conteInkWindows(page))
+                      window.key,
+                  },
+            repaint: inkController == null
+                ? widget.thumbnailRepaint
+                : Listenable.merge([
+                    if (widget.thumbnailRepaint != null)
+                      widget.thumbnailRepaint!,
+                    inkController,
+                  ]),
+          ),
+          child: const SizedBox.expand(),
+        ),
       ),
     );
   }
