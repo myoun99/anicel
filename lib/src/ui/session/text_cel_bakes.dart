@@ -79,68 +79,13 @@ class _TextCelBakes {
             if (!seen.add(key)) {
               continue; // Linked banks share one physical projection.
             }
-            final content = frame.textContent;
-            final baked = (content, cut.canvasSize);
-            final known = _textCelBakedContent[key];
-            if (known == baked) {
-              continue;
+            final baked = await _catchUpTextCel(cut, frame, raw: raw, key: key);
+            if (baked == null) {
+              return; // Disposed mid-bake: stop touching the stores.
             }
-            if (known == null &&
-                content != null &&
-                content.text.isNotEmpty &&
-                _session.brushFrameStore.celHasRenderableContent(raw)) {
-              // First sight of a cel that already carries pixels (a loaded
-              // project): trust the stored projection instead of paying a
-              // full re-render on open (saves flush in-flight bakes, so an
-              // archive can never pair new params with an old raster). A
-              // pasted/duplicated cel arrives with an EMPTY store bank and
-              // falls through to the bake.
-              _textCelBakedContent[key] = baked;
-              continue;
+            if (baked) {
+              changed = true;
             }
-            if (content == null || content.text.isEmpty) {
-              // The parameters went (undo of a set, cleared text): the
-              // projection goes with them — the cel reads blank again.
-              // ONLY for cels this sweep itself baked: a drawn cel that
-              // arrives on a text row through a cross-row move has no
-              // entry here, and blank-baking it would destroy artwork
-              // undo cannot restore.
-              if (known != null) {
-                bakeCelSurface(
-                  _session.brushFrameStore,
-                  raw,
-                  BitmapSurface(canvasSize: cut.canvasSize),
-                );
-                changed = true;
-              }
-            } else {
-              final rendered = await renderTextCelImage(
-                content: content,
-                canvas: cut.canvasSize,
-              );
-              try {
-                if (_session._disposed) {
-                  return;
-                }
-                final surface = await rasterizeImageToSurface(
-                  image: rendered.image,
-                  canvas: cut.canvasSize,
-                  fit: MediaFitMode.none,
-                  // The render already clipped to the pasteboard wall —
-                  // its own placement keeps off-canvas overflow alive,
-                  // like any oversized drop.
-                  placement: rendered.placement,
-                );
-                if (_session._disposed) {
-                  return;
-                }
-                bakeCelSurface(_session.brushFrameStore, raw, surface);
-                changed = true;
-              } finally {
-                rendered.image.dispose();
-              }
-            }
-            _textCelBakedContent[key] = baked;
           }
         }
       }
@@ -149,6 +94,81 @@ class _TextCelBakes {
     if (changed && !_session._disposed) {
       _session._notifyChanged();
     }
+  }
+
+  /// One text cel caught up to its parameters: true when the store's
+  /// pixels changed, false when they already matched (or were trusted on
+  /// first sight), null when the session disposed mid-bake.
+  Future<bool?> _catchUpTextCel(
+    Cut cut,
+    Frame frame, {
+    required BrushFrameKey raw,
+    required BrushFrameKey key,
+  }) async {
+    final content = frame.textContent;
+    final baked = (content, cut.canvasSize);
+    final known = _textCelBakedContent[key];
+    if (known == baked) {
+      return false;
+    }
+    if (known == null &&
+        content != null &&
+        content.text.isNotEmpty &&
+        _session.brushFrameStore.celHasRenderableContent(raw)) {
+      // First sight of a cel that already carries pixels (a loaded
+      // project): trust the stored projection instead of paying a
+      // full re-render on open (saves flush in-flight bakes, so an
+      // archive can never pair new params with an old raster). A
+      // pasted/duplicated cel arrives with an EMPTY store bank and
+      // falls through to the bake.
+      _textCelBakedContent[key] = baked;
+      return false;
+    }
+    var changed = false;
+    if (content == null || content.text.isEmpty) {
+      // The parameters went (undo of a set, cleared text): the
+      // projection goes with them — the cel reads blank again.
+      // ONLY for cels this sweep itself baked: a drawn cel that
+      // arrives on a text row through a cross-row move has no
+      // entry here, and blank-baking it would destroy artwork
+      // undo cannot restore.
+      if (known != null) {
+        bakeCelSurface(
+          _session.brushFrameStore,
+          raw,
+          BitmapSurface(canvasSize: cut.canvasSize),
+        );
+        changed = true;
+      }
+    } else {
+      final rendered = await renderTextCelImage(
+        content: content,
+        canvas: cut.canvasSize,
+      );
+      try {
+        if (_session._disposed) {
+          return null;
+        }
+        final surface = await rasterizeImageToSurface(
+          image: rendered.image,
+          canvas: cut.canvasSize,
+          fit: MediaFitMode.none,
+          // The render already clipped to the pasteboard wall —
+          // its own placement keeps off-canvas overflow alive,
+          // like any oversized drop.
+          placement: rendered.placement,
+        );
+        if (_session._disposed) {
+          return null;
+        }
+        bakeCelSurface(_session.brushFrameStore, raw, surface);
+        changed = true;
+      } finally {
+        rendered.image.dispose();
+      }
+    }
+    _textCelBakedContent[key] = baked;
+    return changed;
   }
 
   /// The active text cel's parameters (null on blank cells and non-text
