@@ -66,6 +66,7 @@ import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
 
 part 'layer_grid/layer_grid_rail_rows.dart';
+part 'layer_grid/layer_grid_scroll.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -262,8 +263,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // coasting fling stops hiding the cells from hit-testing.
     _horizontalScrollController = PenFriendlyScrollController();
     _verticalScrollController = PenFriendlyScrollController();
-    _horizontalScrollController.addListener(_handleHorizontalScroll);
-    _verticalScrollController.addListener(_handleVerticalScroll);
+    _horizontalScrollController.addListener(_scroll.handleHorizontalScroll);
+    _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
   }
 
@@ -310,13 +311,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   void dispose() {
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      _handleHorizontalScrollActivity,
+      _scroll.handleHorizontalScrollActivity,
     );
     _horizontalScrollController
-      ..removeListener(_handleHorizontalScroll)
+      ..removeListener(_scroll.handleHorizontalScroll)
       ..dispose();
     _verticalScrollController
-      ..removeListener(_handleVerticalScroll)
+      ..removeListener(_scroll.handleVerticalScroll)
       ..dispose();
     _frameAxisOffset.dispose();
     _frameWindowBucket.dispose();
@@ -333,121 +334,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return positions.length == 1 ? positions.first : null;
   }
 
-  /// Re-read the layer-axis offset from the position itself.
-  ///
-  /// 🚨The position's pixels move WITHOUT notifying: when the rows shrink
-  /// out from under it, `ScrollPosition` silently `correctPixels` back into
-  /// range during layout, and [_handleVerticalScroll] never runs. An offset
-  /// cached from notifications alone therefore freezes at the pre-collapse
-  /// value — and (UI-R5 #3) comes back to life the moment the rows grow
-  /// again, because the clamp below is applied to a COPY. Expanding an
-  /// attach group then scrolled the view down by exactly the rows that had
-  /// been folded, cancelling the insertion the user had just asked to see.
-  void _readVerticalScrollOffset() {
-    final position = _verticalPosition;
-    if (position != null && position.hasPixels) {
-      _verticalScrollOffset = position.pixels;
-    }
-  }
+  // ── the scroll: its own object, in its own file ─────────────────────
+  //
+  // A collaborator (timeline/layer_grid/layer_grid_scroll.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _LayerGridScroll _scroll = _LayerGridScroll(this);
 
-  /// Layer-axis virtualization: re-plan only when the scroll crosses a
-  /// row boundary (the ≥2-row overscan absorbs sub-row movement).
-  ///
-  /// ⛔The crossing publishes a TOKEN; it does not `setState`. See
-  /// [_rowWindowBucket] for what the `setState` was costing — and note that
-  /// the saving is not the widgets, it is the row MODEL above them.
-  void _handleVerticalScroll() {
-    final offset = _verticalScrollController.hasClients
-        ? _verticalScrollController.offset
-        : 0.0;
-    if (offset == _verticalScrollOffset) {
-      return;
-    }
-    final rowExtent = _metrics.layerRowHeight;
-    final newBucket = (offset / rowExtent).floor();
-    _verticalScrollOffset = offset;
-    // ⚠️Compared against the NOTIFIER, not against a bucket recomputed from
-    // the old offset. They agree while nothing else moves, but a row-height
-    // change or a collapse moves the boundary under a stationary scroll —
-    // and then the "old" bucket is a number nobody ever rendered.
-    if (newBucket != _rowWindowBucket.value) {
-      _rowWindowBucket.value = newBucket;
-    }
-  }
-
-  /// Frame-axis scroll (UI-R9 #12a): NO setState per pixel. The offset
-  /// notifier drives the ruler translate; the window bucket drives the
-  /// re-windowing; only an ENDLESS-extent growth (a real relayout, rare)
-  /// still rebuilds the grid.
-  void _handleHorizontalScroll() {
-    if (!_horizontalScrollController.hasClients) {
-      return;
-    }
-    _watchHorizontalScrollActivity();
-    final offset = _horizontalScrollController.offset;
-    if (offset == _frameAxisOffset.value) {
-      return;
-    }
-    _frameAxisOffset.value = offset;
-    // Quantized span buckets (UI-R16): the bucket notifier — the
-    // painters' repaint trigger — fires once per span crossing, so the
-    // frames between crossings are pure translation.
-    final bucket = timelineFrameWindowBucketOf(
-      offset: offset,
-      cellExtent: _metrics.frameCellWidth,
-    );
-    if (bucket != _frameWindowBucket.value) {
-      _frameWindowBucket.value = bucket;
-    }
-    final position = _horizontalScrollController.position;
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _visibleFrameCount,
-      currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: offset,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _metrics.frameCellWidth,
-      // Discrete moves (wheel ticks, programmatic jumps) may shrink right
-      // away; gesture pixels never rescale the extent mid-drag (the
-      // settle listener below applies the release).
-      allowShrink: !position.isScrollingNotifier.value,
-    );
-    if (nextTrailingFrames != _endlessTrailingFrames) {
-      setState(() => _endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
-  void _watchHorizontalScrollActivity() {
-    final position = _horizontalScrollController.position;
-    if (identical(position, _watchedHorizontalPosition)) {
-      return;
-    }
-    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      _handleHorizontalScrollActivity,
-    );
-    _watchedHorizontalPosition = position;
-    position.isScrollingNotifier.addListener(_handleHorizontalScrollActivity);
-  }
-
-  /// Scroll settled: apply the lazy endless SHRINK (UI-R9 #11) — the
-  /// extent contracts back toward the base + runway so the scrollbar
-  /// thumb recovers, never mid-gesture.
-  void _handleHorizontalScrollActivity() {
-    final position = _watchedHorizontalPosition;
-    if (position == null || position.isScrollingNotifier.value) {
-      return;
-    }
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _visibleFrameCount,
-      currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: position.pixels,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _metrics.frameCellWidth,
-      allowShrink: true,
-    );
-    if (nextTrailingFrames != _endlessTrailingFrames && mounted) {
-      setState(() => _endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
+  /// The door a collaborator rebuilds through - setState is protected,
+  /// and a collaborator is not a subclass.
+  void _rebuild(VoidCallback fn) => setState(fn);
 
   TimelineFrameRange get _frameRangePolicy =>
       TimelineFrameRange.fromPlaybackDuration(
@@ -471,88 +366,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _visibleFrameCount + _endlessTrailingFrames,
     _viewportFillFrameCells,
   );
-
-  double _effectiveHorizontalScrollOffset({
-    required double requestedOffset,
-    required double viewportWidth,
-  }) {
-    final totalFrameContentWidth =
-        _renderedFrameCount * _metrics.frameCellWidth;
-
-    return resolveTimelineHorizontalOffset(
-      requestedOffset: requestedOffset,
-      totalContentWidth: totalFrameContentWidth,
-      viewportWidth: viewportWidth,
-    ).effectiveOffset;
-  }
-
-  void _synchronizeHorizontalScrollController(double effectiveOffset) {
-    if (!_horizontalScrollController.hasClients ||
-        _horizontalScrollController.offset == effectiveOffset ||
-        _scheduledHorizontalOffsetCorrection == effectiveOffset) {
-      return;
-    }
-
-    _scheduledHorizontalOffsetCorrection = effectiveOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_horizontalScrollController.hasClients) {
-        _scheduledHorizontalOffsetCorrection = null;
-        return;
-      }
-
-      final maxScrollExtent =
-          _horizontalScrollController.position.maxScrollExtent;
-      final targetOffset = effectiveOffset
-          .clamp(0.0, maxScrollExtent)
-          .toDouble();
-
-      _scheduledHorizontalOffsetCorrection = null;
-      if (_horizontalScrollController.offset != targetOffset) {
-        _horizontalScrollController.jumpTo(targetOffset);
-      }
-    });
-  }
-
-  /// The vertical mirror of the horizontal clamp machinery (UI-R9 #9):
-  /// collapsing transform lanes SHRINKS the row content, but the scroll
-  /// controller's pixels don't move on their own — windowing from the
-  /// stale, now-out-of-range offset inflated the leading spacer and pushed
-  /// every section downward (top alignment broke).
-  double _effectiveVerticalScrollOffset({
-    required double requestedOffset,
-    required double viewportHeight,
-    required double contentHeight,
-  }) {
-    final maxOffset = math.max(0.0, contentHeight - viewportHeight);
-    return requestedOffset.clamp(0.0, maxOffset).toDouble();
-  }
-
-  void _synchronizeVerticalScrollController(double effectiveOffset) {
-    if (!_verticalScrollController.hasClients ||
-        _verticalScrollController.offset == effectiveOffset ||
-        _scheduledVerticalOffsetCorrection == effectiveOffset) {
-      return;
-    }
-
-    _scheduledVerticalOffsetCorrection = effectiveOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_verticalScrollController.hasClients) {
-        _scheduledVerticalOffsetCorrection = null;
-        return;
-      }
-
-      final maxScrollExtent =
-          _verticalScrollController.position.maxScrollExtent;
-      final targetOffset = effectiveOffset
-          .clamp(0.0, maxScrollExtent)
-          .toDouble();
-
-      _scheduledVerticalOffsetCorrection = null;
-      if (_verticalScrollController.offset != targetOffset) {
-        _verticalScrollController.jumpTo(targetOffset);
-      }
-    });
-  }
 
   int? _frameIndexForRulerLocalX(double localX) {
     return frameIndexFromLocalX(
@@ -1422,8 +1235,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   ? constraints.maxWidth
                   : 0.0;
               _lastEffectiveHorizontalScrollOffset = _frameAxisOffset.value;
-              _synchronizeHorizontalScrollController(
-                _effectiveHorizontalScrollOffset(
+              _scroll.synchronizeHorizontalScrollController(
+                _scroll.effectiveHorizontalScrollOffset(
                   requestedOffset: _frameAxisOffset.value,
                   viewportWidth: viewportWidth,
                 ),
@@ -1656,15 +1469,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                     // The clamp is read fresh off the position every build
                                     // so it can never outlive the shrink that caused it
                                     // (UI-R5 #3 — see [_readVerticalScrollOffset]).
-                                    _readVerticalScrollOffset();
+                                    _scroll.readVerticalScrollOffset();
                                     final effectiveVerticalScrollOffset =
-                                        _effectiveVerticalScrollOffset(
+                                        _scroll._effectiveVerticalScrollOffset(
                                           requestedOffset:
                                               _verticalScrollOffset,
                                           viewportHeight: bodyViewportHeight,
                                           contentHeight: verticalContentHeight,
                                         );
-                                    _synchronizeVerticalScrollController(
+                                    _scroll.synchronizeVerticalScrollController(
                                       effectiveVerticalScrollOffset,
                                     );
                                     final window = _rowWindowFor(
@@ -1749,8 +1562,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       _lastEffectiveHorizontalScrollOffset =
                                                           _frameAxisOffset
                                                               .value;
-                                                      _synchronizeHorizontalScrollController(
-                                                        _effectiveHorizontalScrollOffset(
+                                                      _scroll.synchronizeHorizontalScrollController(
+                                                        _scroll.effectiveHorizontalScrollOffset(
                                                           requestedOffset:
                                                               _frameAxisOffset
                                                                   .value,
