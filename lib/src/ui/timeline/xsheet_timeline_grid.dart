@@ -70,6 +70,7 @@ import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
 
 part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
+part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -282,42 +283,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         leadingOrigin: 0,
       );
 
-  TimelineFrameGeometry _baseFrameGeometry() => TimelineFrameGeometry(
-    frameCellExtent: _metrics.frameCellWidth,
-    frameStartIndex: 0,
-    frameEndIndexExclusive: _renderedFrameCount,
-  );
+  // ── the frame scroll: its own object, in its own file ───────────────
+  //
+  // A collaborator (timeline/xsheet_grid/xsheet_grid_frame_scroll.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _XSheetGridFrameScroll _frameScroll = _XSheetGridFrameScroll(this);
 
-  TimelineFrameGeometry _windowedFrameGeometryValue() {
-    final base = _baseFrameGeometry();
-    final cellExtent = base.frameCellExtent;
-    if (_frameViewportExtent <= 0 || cellExtent <= 0) {
-      return base;
-    }
-    final spanPx = timelineFrameWindowSpanFor(cellExtent) * cellExtent;
-    return base.windowed(
-      originPx: math.max(
-        0.0,
-        _frameWindowBucket.value * spanPx - timelineFrameWindowMarginPx,
-      ),
-      extentPx: _frameViewportExtent + 2 * timelineFrameWindowMarginPx,
-    );
-  }
-
-  void _handleFrameWindowBucket() {
-    _windowedFrameGeometry.value = _windowedFrameGeometryValue();
-  }
-
-  /// The handle every column follows (see [_windowedFrameGeometry]).
-  ///
-  /// EVERY kind takes the windowed one now: the sparse columns' span
-  /// overlays are placed by [TimelineFrameSpanLayout] at layout time, so a
-  /// window sliding under them carries them along.
-  ValueNotifier<TimelineFrameGeometry> _publishFrameGeometry(LayerKind kind) {
-    _frameGeometry.value = _baseFrameGeometry();
-    _windowedFrameGeometry.value = _windowedFrameGeometryValue();
-    return _windowedFrameGeometry;
-  }
+  /// The door a collaborator rebuilds through - setState is protected,
+  /// and a collaborator is not a subclass.
+  void _rebuild(VoidCallback fn) => setState(fn);
 
   /// The per-build gesture bundle (rebuilt in [build], consumed by the
   /// column builder).
@@ -354,8 +328,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // coasting fling stops hiding the cells from hit-testing.
     _frameScrollController = PenFriendlyScrollController();
     _layerScrollController = PenFriendlyScrollController();
-    _frameScrollController.addListener(_handleFrameScroll);
-    _frameWindowBucket.addListener(_handleFrameWindowBucket);
+    _frameScrollController.addListener(_frameScroll.handleFrameScroll);
+    _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
   }
 
@@ -443,13 +417,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   void dispose() {
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     _watchedFramePosition?.isScrollingNotifier.removeListener(
-      _handleFrameScrollActivity,
+      _frameScroll.handleFrameScrollActivity,
     );
     _frameScrollController
-      ..removeListener(_handleFrameScroll)
+      ..removeListener(_frameScroll.handleFrameScroll)
       ..dispose();
     _layerScrollController.dispose();
-    _frameWindowBucket.removeListener(_handleFrameWindowBucket);
+    _frameWindowBucket.removeListener(_frameScroll.handleFrameWindowBucket);
     _frameGeometry.dispose();
     _windowedFrameGeometry.dispose();
     _frameAxisOffset.dispose();
@@ -458,135 +432,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     super.dispose();
   }
 
-  /// Frame-axis scroll (UI-R9 #12a): NO setState per pixel — only an
-  /// endless-extent growth (a real relayout, rare) rebuilds the grid.
-  void _handleFrameScroll() {
-    if (!_frameScrollController.hasClients) {
-      return;
-    }
-    _watchFrameScrollActivity();
-    final offset = _frameScrollController.offset;
-    if (offset == _frameAxisOffset.value) {
-      return;
-    }
-    _frameAxisOffset.value = offset;
-    // Quantized span buckets (UI-R16): repaint once per span crossing.
-    final bucket = timelineFrameWindowBucketOf(
-      offset: offset,
-      cellExtent: _metrics.frameCellWidth,
-    );
-    if (bucket != _frameWindowBucket.value) {
-      _frameWindowBucket.value = bucket;
-    }
-    final position = _frameScrollController.position;
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _visibleFrameCount,
-      currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: offset,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _metrics.frameCellWidth,
-      // Discrete moves (wheel ticks, programmatic jumps) may shrink right
-      // away; gesture pixels never rescale mid-drag (the settle listener
-      // applies the release).
-      allowShrink: !position.isScrollingNotifier.value,
-    );
-    if (nextTrailingFrames != _endlessTrailingFrames) {
-      setState(() => _endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
-  void _watchFrameScrollActivity() {
-    final position = _frameScrollController.position;
-    if (identical(position, _watchedFramePosition)) {
-      return;
-    }
-    _watchedFramePosition?.isScrollingNotifier.removeListener(
-      _handleFrameScrollActivity,
-    );
-    _watchedFramePosition = position;
-    position.isScrollingNotifier.addListener(_handleFrameScrollActivity);
-  }
-
-  /// Scroll settled: the lazy endless SHRINK (UI-R9 #11).
-  void _handleFrameScrollActivity() {
-    final position = _watchedFramePosition;
-    if (position == null || position.isScrollingNotifier.value) {
-      return;
-    }
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _visibleFrameCount,
-      currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: position.pixels,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _metrics.frameCellWidth,
-      allowShrink: true,
-    );
-    if (nextTrailingFrames != _endlessTrailingFrames && mounted) {
-      setState(() => _endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
   TimelineFrameRange get _frameRangePolicy =>
       TimelineFrameRange.fromPlaybackDuration(
         playbackFrameCount: widget.hooks.playbackFrameCount,
         minimumVisibleFrameCells: _metrics.minimumVisibleFrameCells,
       );
 
-  int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
-
   /// Frame cells the current viewport needs to be fully papered (UI-R12
   /// #16) — recorded by build's outer LayoutBuilder. Zero until layout.
   int _viewportFillFrameCells = 0;
-
-  /// Render extent (UI-R12 #16 contract): the cells scrolled into
-  /// existence PLUS the viewport fill — no runway beyond. Scroll physics
-  /// and the rail clamp here; the frame-rail edge-drag overshoots and the
-  /// growth listener materializes what the overshot view needs.
-  int get _renderedFrameCount => math.max(
-    _visibleFrameCount + _endlessTrailingFrames,
-    _viewportFillFrameCells,
-  );
-
-  double get _totalFrameContentHeight =>
-      _renderedFrameCount * _metrics.frameCellWidth;
-
-  double _effectiveFrameScrollOffset({
-    required double requestedOffset,
-    required double viewportExtent,
-  }) {
-    // Same offset policy as the horizontal grid, transposed to y.
-    return resolveTimelineHorizontalOffset(
-      requestedOffset: requestedOffset,
-      totalContentWidth: _totalFrameContentHeight,
-      viewportWidth: viewportExtent,
-    ).effectiveOffset;
-  }
-
-  void _synchronizeFrameScrollController(double effectiveOffset) {
-    if (!_frameScrollController.hasClients ||
-        _frameScrollController.offset == effectiveOffset ||
-        _scheduledFrameOffsetCorrection == effectiveOffset) {
-      return;
-    }
-
-    _scheduledFrameOffsetCorrection = effectiveOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_frameScrollController.hasClients) {
-        _scheduledFrameOffsetCorrection = null;
-        return;
-      }
-
-      final maxScrollExtent = _frameScrollController.position.maxScrollExtent;
-      final targetOffset = effectiveOffset
-          .clamp(0.0, maxScrollExtent)
-          .toDouble();
-
-      _scheduledFrameOffsetCorrection = null;
-      if (_frameScrollController.offset != targetOffset) {
-        _frameScrollController.jumpTo(targetOffset);
-      }
-    });
-  }
 
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
       widget.hooks.lanesForLayer?.call(layer) ?? const [];
@@ -891,7 +745,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       baseLayer: entry.layer,
       active: entry.layer.id == widget.hooks.activeLayerId,
       playbackFrameCount: widget.hooks.playbackFrameCount,
-      geometry: _publishFrameGeometry(layer.kind),
+      geometry: _frameScroll.publishFrameGeometry(layer.kind),
       crossAxisExtent: _metrics.layerRowHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportExtent,
@@ -1071,7 +925,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     double bodyViewportHeight,
     List<TimelineDisplayRow> entries,
   ) => calculateTimelineVirtualizationPlan(
-    horizontalScrollOffset: _effectiveFrameScrollOffset(
+    horizontalScrollOffset: _frameScroll.effectiveFrameScrollOffset(
       requestedOffset: _frameAxisOffset.value,
       viewportExtent: bodyViewportHeight,
     ),
@@ -1080,7 +934,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     viewportHeight: 0,
     frameCellWidth: _metrics.frameCellWidth,
     layerRowHeight: _metrics.layerRowHeight,
-    frameCount: _renderedFrameCount,
+    frameCount: _frameScroll.renderedFrameCount,
     layerCount: entries.length,
   );
 
@@ -1412,7 +1266,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       repaintSignal: widget.hooks.frameReadySignal,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: bodyViewportHeight,
-      renderedFrames: _renderedFrameCount,
+      renderedFrames: _frameScroll.renderedFrameCount,
       cellWidth: _metrics.frameCellWidth,
       isFrameReady: widget.hooks.isFrameReady,
     );
@@ -1477,7 +1331,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         RepaintBoundary(
                           child: _XSheetFrameNumberRail(
                             frameStartIndex: 0,
-                            frameEndIndexExclusive: _renderedFrameCount,
+                            frameEndIndexExclusive: _frameScroll.renderedFrameCount,
                             // The tint lives in the
                             // overlay now.
                             currentFrameIndex: -1,
@@ -1664,8 +1518,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   frameCellExtent: _metrics.frameCellWidth,
                 );
                 _lastEffectiveFrameScrollOffset = _frameAxisOffset.value;
-                _synchronizeFrameScrollController(
-                  _effectiveFrameScrollOffset(
+                _frameScroll.synchronizeFrameScrollController(
+                  _frameScroll.effectiveFrameScrollOffset(
                     requestedOffset: _frameAxisOffset.value,
                     viewportExtent: bodyViewportHeight,
                   ),
@@ -1705,7 +1559,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 // "horizontal" inputs (the axes are swapped in this grid). Computed
                 // INSIDE the window-bucket subscribers (UI-R9 #12a): scroll pixels
                 // re-window nothing.
-                final totalFrameContentHeight = _totalFrameContentHeight;
+                final totalFrameContentHeight = _frameScroll._totalFrameContentHeight;
                 // Every column is ONE width (`timelineDisplayRowExtent` returns
                 // `layerRowHeight` unconditionally). The old note here claimed
                 // collapsed sections folded to a slim strip; they never did, and

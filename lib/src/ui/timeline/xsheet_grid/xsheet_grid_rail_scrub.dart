@@ -22,7 +22,7 @@ class _XSheetGridRailScrub {
       localX: localY,
       horizontalScrollOffset: _state._lastEffectiveFrameScrollOffset,
       frameCellWidth: _state._metrics.frameCellWidth,
-      visibleFrameCount: _state._renderedFrameCount,
+      visibleFrameCount: _state._frameScroll.renderedFrameCount,
     );
   }
 
@@ -31,7 +31,7 @@ class _XSheetGridRailScrub {
     // the fixed safety frames): clamp against the BUILT extent.
     final clampedFrameIndex = clampFrameIndex(
       frameIndex: frameIndex,
-      visibleFrameCount: _state._renderedFrameCount,
+      visibleFrameCount: _state._frameScroll.renderedFrameCount,
     );
     if (clampedFrameIndex == null ||
         clampedFrameIndex == _state._lastRailScrubbedFrameIndex) {
