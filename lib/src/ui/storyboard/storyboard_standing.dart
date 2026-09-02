@@ -284,7 +284,7 @@ class _StoryboardStanding {
     TimelineRowAddress row,
   ) {
     var y = 0.0;
-    for (final slot in _state._trackGroupRowGeometry(track)) {
+    for (final slot in _state._railRows._trackGroupRowGeometry(track)) {
       if (slot.row == row || slot.laneRow == row) {
         return (top: y, height: slot.height);
       }

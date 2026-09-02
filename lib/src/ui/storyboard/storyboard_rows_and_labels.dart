@@ -20,7 +20,7 @@ class _StoryboardRowsAndLabels {
   /// way the timeline's rail does it.
   List<Widget> draggableTrackEffectRows(Track track, List<Widget> rows) {
     final hooks = _state.widget.rowDragHooks;
-    final lanes = _state._trackEffectLanes(track);
+    final lanes = _state._railRows._trackEffectLanes(track);
     if (hooks == null || lanes.length != rows.length) {
       return rows;
     }
@@ -70,7 +70,7 @@ class _StoryboardRowsAndLabels {
   }
 
   /// Transform-lane rail label rows on the shared substrate ([lanes] from
-  /// [_cutTransformLanes]/[_state._seTransformLanes]): the group header row plus
+  /// [_cutTransformLanes]/[_state._railRows._seTransformLanes]): the group header row plus
   /// the twirled-open member lanes, storyboard-prefixed. [active] gates
   /// the navigator's frame jumps and value edits to the active cut.
   List<Widget> transformLaneLabels({
@@ -179,11 +179,12 @@ class _StoryboardRowsAndLabels {
       onEditSpan: _state.widget.onEditTransitionSpan,
       // The SE rows' selection bundle, unchanged: one rail, one range verb.
       select: _state.widget.seSelect,
-      railRowAt: (anchorRow, crossOffset) => _state._railRowAtCrossOffset(
-        track: track,
-        anchorRow: anchorRow,
-        crossOffset: crossOffset,
-      ),
+      railRowAt: (anchorRow, crossOffset) =>
+          _state._railRows._railRowAtCrossOffset(
+            track: track,
+            anchorRow: anchorRow,
+            crossOffset: crossOffset,
+          ),
     );
     final preview = _state.widget.transitionPreview;
     if (preview == null) {
@@ -216,7 +217,7 @@ class _StoryboardRowsAndLabels {
     return LayerRowDragTarget(
       subject: LayerRowSubject(trackLayer.id),
       slotBefore: displayIndex,
-      rowExtent: _state._seRowGroupExtent(track, slot),
+      rowExtent: _state._railRows._seRowGroupExtent(track, slot),
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: displayIndex == displayRows.length - 1,
@@ -235,7 +236,7 @@ class _StoryboardRowsAndLabels {
       onSelectCrossed: _state.widget.onSeRowSelectionSpan == null
           ? null
           : (rowDelta) => _state.widget.onSeRowSelectionSpan!(
-              _state._seRowsInDisplayOrder(track),
+              _state._railRows._seRowsInDisplayOrder(track),
               rowDelta,
             ),
       child: row,
@@ -292,10 +293,10 @@ class _StoryboardRowsAndLabels {
     return LayerRowDragTarget(
       subject: TrackRowSubject(track.id),
       slotBefore: index,
-      rowExtent: _state._trackGroupExtent(track),
+      rowExtent: _state._railRows._trackGroupExtent(track),
       // ④: the handle is the V row, the pitch is the whole group — so the
       // drag is told how far into the group the handle starts.
-      grabOffsetWithinRun: _state._trackGroupExtentAboveVRow(track),
+      grabOffsetWithinRun: _state._railRows._trackGroupExtentAboveVRow(track),
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: index == trackCount - 1,
