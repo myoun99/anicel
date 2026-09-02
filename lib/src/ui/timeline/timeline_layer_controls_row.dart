@@ -14,6 +14,7 @@ import '../input/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
 import 'layer_label_controls.dart';
+import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import '../text/app_strings.dart' show AppText;
@@ -866,44 +867,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// like every other control in a column: the fader fills upward and its
   /// readout writes downward (`RotatedBox` was not an option — see
   /// [FieldSlider.axis]).
-  Widget _opacityField() {
-    Widget slider(double value) => FieldSlider.opacity(
-      key: ValueKey<String>('$keyPrefix-layer-opacity-${layer.id}'),
-      axis: axis,
-      value: value,
-      valueText: sliderValueText(value * 100, unit: '%'),
-      height: 18,
-      onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
-      onChangeEnd: onLayerOpacityChangeEnd == null
-          ? null
-          : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
-    );
-
-    // R27 #9: a row whose opacity IS a view notifier (the camera row)
-    // reads it here — the slider follows the drag by itself, no host
-    // rebuild in the loop.
-    final override = opacityOverride;
-    if (override != null) {
-      return ValueListenableBuilder<double>(
-        valueListenable: override,
-        builder: (context, value, _) => slider(value.clamp(0.0, 1.0)),
-      );
-    }
-
-    final preview = opacityDragPreview;
-    final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
-    if (preview == null) {
-      return slider(resting);
-    }
-    return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
-      valueListenable: preview,
-      builder: (context, dragging, _) => slider(
-        dragging != null && dragging.layerIds.contains(layer.id)
-            ? dragging.opacity
-            : resting,
-      ),
-    );
-  }
+  Widget _opacityField() => layerOpacityField(
+    layer: layer,
+    keyPrefix: keyPrefix,
+    axis: axis,
+    override: opacityOverride,
+    dragPreview: opacityDragPreview,
+    onChanged: onLayerOpacityChanged,
+    onChangeEnd: onLayerOpacityChangeEnd,
+  );
 }
 
 /// One fold twirl, answered ONCE (UI-R20 #9): a folder folds its members, an

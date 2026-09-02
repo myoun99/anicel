@@ -37,6 +37,7 @@ import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
+import 'timeline/layer_opacity_field.dart';
 import 'timeline/timeline_cut_end_handle.dart' show movieEndPreviewTotalFrames;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/rail_column_swipe.dart';
@@ -2209,6 +2210,76 @@ Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
 /// SE slot rows in the rail: the same bordered-row language as the track
 /// row above them, compact like the timeline's SE rows — with the timeline
 /// rows' controls and a lane chevron (twirl-down waveform strip).
+/// The chrome every storyboard rail label sits in: the select target, the
+/// fixed-width cell with its border and active tint, and the row's
+/// semantics node.
+///
+/// 🚨ONE shell for the SE label, the transition label and the track label
+/// row — three hand-copied heads (the audit's clone scan, 2026-09-03).
+/// [chromeless] is the track row's own switch: a lane strip under it
+/// draws no border and no tint.
+class _StoryboardLabelShell extends StatelessWidget {
+  const _StoryboardLabelShell({
+    required this.selectKey,
+    this.rowKey,
+    required this.onTap,
+    required this.height,
+    required this.active,
+    this.chromeless = false,
+    required this.semanticsLabel,
+    required this.child,
+  });
+
+  final Key selectKey;
+  final Key? rowKey;
+  final VoidCallback? onTap;
+  final double height;
+  final bool active;
+  final bool chromeless;
+  final String semanticsLabel;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      // The row BODY, not a control: 'storyboard-se-label-',
+      // 'storyboard-transition-label-' and 'storyboard-track-select-' are
+      // decided in every_button_claims_its_press_test (a drag from here is
+      // the row's reorder, not a scroll).
+      key: selectKey,
+      onTap: onTap,
+      child: Container(
+        key: rowKey,
+        width: StoryboardPanel._trackLabelWidth,
+        height: height,
+        padding: const EdgeInsets.only(right: 8),
+        decoration: chromeless
+            ? null
+            : BoxDecoration(
+                color: active
+                    ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+                    : colorScheme.surface,
+                border: Border(
+                  left: BorderSide(color: colorScheme.outlineVariant),
+                  right: BorderSide(color: colorScheme.outlineVariant),
+                  bottom: BorderSide(color: colorScheme.outlineVariant),
+                ),
+              ),
+        child: Semantics(
+          key: active
+              ? const ValueKey<String>('storyboard-selected-row')
+              : null,
+          label: semanticsLabel,
+          container: true,
+          explicitChildNodes: true,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({
     required this.track,
@@ -2286,48 +2357,19 @@ class _StoryboardSeLabel extends StatelessWidget {
     final onSelect = onSelectLayer;
     // Rows stack FLUSH like the timeline rail — no inter-row padding
     // (R7-⑤); the 1px borders carry the separation.
-    return InkWell(
-      key: ValueKey<String>(
+    return _StoryboardLabelShell(
+      selectKey: ValueKey<String>(
         'storyboard-se-label-${track.id.value}-${slot + 1}',
       ),
       onTap: trackLayer == null || onSelect == null
           ? null
           : () => onSelect(trackLayer.id),
-      child: Container(
-        width: StoryboardPanel._trackLabelWidth,
-        height: _seRowHeight,
-        // Right-only pad: the section band hugs the left edge (UI-R6 #5);
-        // slot columns still line up with the legend header.
-        padding: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          // The timeline row's active treatment verbatim (S-row selection,
-          // W4): secondaryContainer fill; the accent border is GONE
-          // (UI-R18 #5 — selection speaks through the background alone).
-          color: active
-              ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
-              : colorScheme.surface,
-          border: Border(
-            left: BorderSide(color: colorScheme.outlineVariant),
-            right: BorderSide(color: colorScheme.outlineVariant),
-            bottom: BorderSide(color: colorScheme.outlineVariant),
-          ),
-        ),
-        child: Semantics(
-          // The rail's ONE selection marker — the V rows carry the same
-          // key, so "exactly one row is selected" is one assertion.
-          key: active
-              ? const ValueKey<String>('storyboard-selected-row')
-              : null,
-          label: active
-              ? AppText.strings.semSelectedLayer
-              : AppText.strings.semLayer,
-          container: true,
-          explicitChildNodes: true,
-          // The timeline rail's slot grid VERBATIM (UI-R5 unification):
-          // [section tag][chevron][sheet][mark][name][waveform-in-fill-
-          // slot][fx][eye][mute][opacity] — the legend header lines up
-          // over these exact columns.
-          child: Row(
+      height: _seRowHeight,
+      active: active,
+      semanticsLabel: active
+          ? AppText.strings.semSelectedLayer
+          : AppText.strings.semLayer,
+      child: Row(
             children: [
               // The rail's shared column skeleton (R9 #22) — this row used
               // to hand-list its slots and put the kind icon INSIDE the
@@ -2459,39 +2501,18 @@ class _StoryboardSeLabel extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
   /// The row's opacity slider, live-following the session's drag preview
   /// when it targets this layer (the master bar sweep, UI-R6 #2).
-  Widget _opacityField(Layer layer) {
-    Widget slider(double value) => FieldSlider.opacity(
-      key: ValueKey<String>('storyboard-layer-opacity-${layer.id}'),
-      value: value,
-      valueText: sliderValueText(value * 100, unit: '%'),
-      height: 18,
-      onChanged: (opacity) => onLayerOpacityChanged!(layer.id, opacity),
-      onChangeEnd: onLayerOpacityChangeEnd == null
-          ? null
-          : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
-    );
-
-    final preview = opacityDragPreview;
-    final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
-    if (preview == null) {
-      return slider(resting);
-    }
-    return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
-      valueListenable: preview,
-      builder: (context, dragging, _) => slider(
-        dragging != null && dragging.layerIds.contains(layer.id)
-            ? dragging.opacity
-            : resting,
-      ),
-    );
-  }
+  Widget _opacityField(Layer layer) => layerOpacityField(
+    layer: layer,
+    keyPrefix: 'storyboard',
+    dragPreview: opacityDragPreview,
+    onChanged: onLayerOpacityChanged!,
+    onChangeEnd: onLayerOpacityChangeEnd,
+  );
 }
 
 /// The TRANSITION row's rail label — the track's O.L / F.I / F.O row.
@@ -2540,35 +2561,17 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final onSelect = onSelectLayer;
-    return InkWell(
-      key: ValueKey<String>('storyboard-transition-label-${track.id.value}'),
+    return _StoryboardLabelShell(
+      selectKey: ValueKey<String>(
+        'storyboard-transition-label-${track.id.value}',
+      ),
       onTap: onSelect == null ? null : () => onSelect(layer.id),
-      child: Container(
-        width: StoryboardPanel._trackLabelWidth,
-        height: _transitionRowHeight,
-        padding: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          color: active
-              ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
-              : colorScheme.surface,
-          border: Border(
-            left: BorderSide(color: colorScheme.outlineVariant),
-            right: BorderSide(color: colorScheme.outlineVariant),
-            bottom: BorderSide(color: colorScheme.outlineVariant),
-          ),
-        ),
-        child: Semantics(
-          // The rail's ONE selection marker — every row carries this key, so
-          // "exactly one row is selected" stays one assertion.
-          key: active
-              ? const ValueKey<String>('storyboard-selected-row')
-              : null,
-          label: active
-              ? AppText.strings.semSelectedLayer
-              : AppText.strings.semLayer,
-          container: true,
-          explicitChildNodes: true,
-          child: Row(
+      height: _transitionRowHeight,
+      active: active,
+      semanticsLabel: active
+          ? AppText.strings.semSelectedLayer
+          : AppText.strings.semLayer,
+      child: Row(
             children: [
               ...layerRailLeadingCells(
                 // B5③: the timeline row's sheet toggle and mark chip in
@@ -2635,8 +2638,6 @@ class _StoryboardTransitionLabel extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 }
@@ -2703,6 +2704,104 @@ class _StoryboardLaneLabel extends StatelessWidget {
 /// span, [timelineRowInstructionOverlays] for the marks and
 /// [TimelineBlockEdgeGrip] for the edges. Nothing about a mark is re-drawn
 /// for this row.
+/// Whether the live [selection] covers [row] at [frame] — the storyboard's
+/// one range test, for the SE row, the transition row and the cut row
+/// (the audit's clone scan, 2026-09-03).
+bool _storyboardRangeCovers(
+  TrackFrameRangeSelection? selection,
+  TimelineRowAddress row,
+  int frame,
+) =>
+    selection != null && selection.coversRow(row) && selection.contains(frame);
+
+/// A storyboard row's press layer: a tap seeks the pressed frame through
+/// [onRowFramePress], a double-tap hands the frame to [onEdit].
+///
+/// 🚨ONE layer for the SE row and the transition row (the audit's clone
+/// scan, 2026-09-03). 🚨★★★I-9: same as the transition strip one class
+/// up — the coverage question belongs to the host's fork, not to a copy
+/// here.
+Positioned _storyboardRowPressLayer({
+  required Key key,
+  required Layer layer,
+  required int? Function(Offset local) frameAt,
+  required StoryboardRowFramePress? onRowFramePress,
+  required void Function(int frame)? onEdit,
+}) {
+  return Positioned.fill(
+    key: key,
+    child: InstantTapRegion(
+      behavior: HitTestBehavior.translucent,
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      onPressDown: timelineCellDoubleTapRecord(
+        layerId: layer.id,
+        frameAt: frameAt,
+      ),
+      onTap: (localPosition) {
+        final frame = frameAt(localPosition);
+        if (frame == null) {
+          return;
+        }
+        onRowFramePress?.call(LayerRowAddress(layer.id), frame);
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onDoubleTapDown: onEdit == null
+            ? null
+            : timelineCellDoubleTapActivation(
+                layerId: layer.id,
+                frameAt: frameAt,
+                onActivate: onEdit,
+              ),
+        child: const SizedBox.expand(),
+      ),
+    ),
+  );
+}
+
+/// A storyboard row's range-select layer, wired to [select]; [rows] are
+/// the rows a block move from this row may land on.
+TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
+  required Key key,
+  required Layer layer,
+  required TimelineFrameGeometryHandle geometry,
+  required double crossAxisExtent,
+  required StoryboardSeSelectCallbacks select,
+  required TimelineRowAddress? Function(TimelineRowAddress, double)? railRowAt,
+  required List<TimelineDisplayRow> rows,
+}) {
+  final row = LayerRowAddress(layer.id);
+  return TimelineFrameRangeGestureLayer(
+    key: key,
+    row: row,
+    geometry: geometry,
+    crossAxisExtent: crossAxisExtent,
+    callbacks: TimelineRangeGestureCallbacks(
+      isInSelection: (_, frame) =>
+          _storyboardRangeCovers(select.selectedRange.value, row, frame),
+      onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
+          select.onDrag(
+            layerId: layer.id,
+            anchorGlobalFrame: anchorIndex,
+            headGlobalFrame: headIndex,
+            headRow: railRowAt?.call(row, headCrossOffset),
+          ),
+      onTapClear: (_) => select.onClear(),
+      onMoveBegin: (_, _) => select.move?.onBegin(layer.id) ?? false,
+      onMoveUpdate: (frameDelta, rowDelta) => select.move?.onUpdate(
+        frameDelta,
+        resolveBlockMoveTargetLayer(
+          rows: rows,
+          sourceLayerId: layer.id,
+          rowDelta: rowDelta,
+        ),
+      ),
+      onMoveEnd: () => select.move?.onEnd(),
+      onMoveCancel: () => select.move?.onCancel(),
+    ),
+  );
+}
+
 class _StoryboardTransitionRow extends StatelessWidget {
   const _StoryboardTransitionRow({
     required this.track,
@@ -2741,14 +2840,6 @@ class _StoryboardTransitionRow extends StatelessWidget {
   /// The rail's row lookup, so a select-drag can reach across rows exactly as
   /// the S rows' does.
   final TimelineRowAddress? Function(TimelineRowAddress, double)? railRowAt;
-
-  bool _isSelectedAt(StoryboardSeSelectCallbacks select, int frame) {
-    final selection = select.selectedRange.value;
-    return selection != null &&
-        selection.coversRow(LayerRowAddress(layer.id)) &&
-        frame >= selection.startFrame &&
-        frame < selection.endFrameExclusive;
-  }
 
   /// The visible frame window this strip covers — the whole content width,
   /// like the SE grips' own geometry.
@@ -2840,53 +2931,12 @@ class _StoryboardTransitionRow extends StatelessWidget {
           ? null
           : (local.dx / timelineScale.pixelsPerFrame).floor();
       spans.add(
-        Positioned.fill(
+        _storyboardRowPressLayer(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
-          // ⚠️NESTING IS LOAD-BEARING, the dense rows' exact order: the
-          // press region OUTSIDE, the double-tap detector INSIDE. The hit
-          // path runs innermost-first, so the recognizer consults the gate
-          // against the FIRST tap's record before the second press
-          // re-records — swapped, the second down records itself and the
-          // gate compares a cell to itself.
-          //
-          // ㉟-b: the strip PICKS ON THE RELEASE, like every other cell in
-          // the app (유저 08-12: 「스토리보드 띠도 탭으로 맞춰줘」). It used
-          // to be a raw pointer-down of its own — the third hand-written
-          // copy of a policy the timeline had already named — so it takes
-          // the shared region instead of a fourth.
-          child: InstantTapRegion(
-            behavior: HitTestBehavior.translucent,
-            pressSeeksFor: AppInput.timelineCellPressSeeks,
-            onPressDown: timelineCellDoubleTapRecord(
-              layerId: layer.id,
-              frameAt: frameAt,
-            ),
-            onTap: (localPosition) {
-              final frame = frameAt(localPosition);
-              if (frame == null) {
-                return;
-              }
-              onRowFramePress?.call(LayerRowAddress(layer.id), frame);
-            },
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onDoubleTapDown: onEditSpan == null
-                  ? null
-                  : timelineCellDoubleTapActivation(
-                      layerId: layer.id,
-                      frameAt: frameAt,
-                      onActivate: (frame) {
-                        // 🚨★★★I-9: the strip does NOT test coverage. It
-                        // used to, and returned in silence on an empty
-                        // cell — a third copy of that question, in the
-                        // widget layer, answering nothing. The host forks
-                        // edit-vs-create beside the session now.
-                        onEditSpan(frame);
-                      },
-                    ),
-              child: const SizedBox.expand(),
-            ),
-          ),
+          layer: layer,
+          frameAt: frameAt,
+          onRowFramePress: onRowFramePress,
+          onEdit: onEditSpan,
         ),
       );
     }
@@ -2913,42 +2963,17 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // frames and never changes rows (the SE rows' own clamp construction).
     final select = this.select;
     if (select != null && _frameEndExclusive > 0) {
-      final ownRow = <TimelineDisplayRow>[
-        TimelineDisplayRow.layer(layer, layerIndex: 0),
-      ];
       spans.add(
-        TimelineFrameRangeGestureLayer(
+        _storyboardRowRangeGestureLayer(
           key: ValueKey<String>(
             'storyboard-transition-range-gesture-slot-${layer.id}',
           ),
-          row: LayerRowAddress(layer.id),
+          layer: layer,
           geometry: TimelineFrameGeometryHandle(_geometry),
           crossAxisExtent: _transitionRowHeight,
-          callbacks: TimelineRangeGestureCallbacks(
-            isInSelection: (_, frame) => _isSelectedAt(select, frame),
-            onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
-                select.onDrag(
-                  layerId: layer.id,
-                  anchorGlobalFrame: anchorIndex,
-                  headGlobalFrame: headIndex,
-                  headRow: railRowAt?.call(
-                    LayerRowAddress(layer.id),
-                    headCrossOffset,
-                  ),
-                ),
-            onTapClear: (_) => select.onClear(),
-            onMoveBegin: (_, _) => select.move?.onBegin(layer.id) ?? false,
-            onMoveUpdate: (frameDelta, rowDelta) => select.move?.onUpdate(
-              frameDelta,
-              resolveBlockMoveTargetLayer(
-                rows: ownRow,
-                sourceLayerId: layer.id,
-                rowDelta: rowDelta,
-              ),
-            ),
-            onMoveEnd: () => select.move?.onEnd(),
-            onMoveCancel: () => select.move?.onCancel(),
-          ),
+          select: select,
+          railRowAt: railRowAt,
+          rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
         ),
       );
     }
@@ -3057,14 +3082,6 @@ class _StoryboardSeRow extends StatelessWidget {
   final TimelineFrameGeometryHandle? frameGeometry;
 
   /// Whether the live selection covers this row at [globalFrame].
-  bool _isSelectedAt(int globalFrame) {
-    final layer = this.layer;
-    final selection = seSelect?.selectedRange.value;
-    return layer != null &&
-        selection != null &&
-        selection.coversRow(LayerRowAddress(layer.id)) &&
-        selection.contains(globalFrame);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3230,108 +3247,33 @@ class _StoryboardSeRow extends StatelessWidget {
     );
   }
 
-  TimelineFrameRangeGestureLayer _rangeGestureLayer(Layer layer, TimelineFrameGeometryHandle geometry, StoryboardSeSelectCallbacks seSelect) {
-    return TimelineFrameRangeGestureLayer(
-      // The SLOT key (R12-③): the layer already positions itself, so
-      // it goes into the Stack bare — a Positioned around it would be
-      // a second ParentDataWidget on the same render object.
-      key: ValueKey<String>(
-        'storyboard-se-range-gesture-slot-${layer.id}',
-      ),
-      row: LayerRowAddress(layer.id),
-      geometry: geometry,
-      crossAxisExtent: _seRowHeight,
-      callbacks: TimelineRangeGestureCallbacks(
-        isInSelection: (_, frame) => _isSelectedAt(frame),
-        onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
-            seSelect.onDrag(
-              layerId: layer.id,
-              anchorGlobalFrame: anchorIndex,
-              headGlobalFrame: headIndex,
-              headRow: railRowAt?.call(
-                LayerRowAddress(layer.id),
-                headCrossOffset,
-              ),
-            ),
-        // Standing is already this row's press verb (feedback #7: an
-        // SE press parks where you pressed), so the tap only drops
-        // the selection — R10's rule is satisfied upstream.
-        onTapClear: (_) => seSelect.onClear(),
-        // A drag that STARTS inside the selection slides the sounds,
-        // and may cross onto a sibling S row — the timeline's own
-        // row-change grammar, resolved by the timeline's own
-        // resolver over THIS rail's row order.
-        //
-        // The list it walks holds only this track's S rows, so the
-        // clamp is the kind guard: a drag cannot wander onto the cut
-        // row (or any other section) because no such row is in it.
-        onMoveBegin: (_, _) => seSelect.move?.onBegin(layer.id) ?? false,
-        onMoveUpdate: (frameDelta, rowDelta) => seSelect.move?.onUpdate(
-          frameDelta,
-          resolveBlockMoveTargetLayer(
-            rows: seRowsInDisplayOrder,
-            sourceLayerId: layer.id,
-            rowDelta: rowDelta,
-          ),
-        ),
-        onMoveEnd: () => seSelect.move?.onEnd(),
-        onMoveCancel: () => seSelect.move?.onCancel(),
-      ),
-    );
-  }
+  TimelineFrameRangeGestureLayer _rangeGestureLayer(
+    Layer layer,
+    TimelineFrameGeometryHandle geometry,
+    StoryboardSeSelectCallbacks seSelect,
+  ) => _storyboardRowRangeGestureLayer(
+    key: ValueKey<String>('storyboard-se-range-gesture-slot-${layer.id}'),
+    layer: layer,
+    geometry: geometry,
+    crossAxisExtent: _seRowHeight,
+    select: seSelect,
+    railRowAt: railRowAt,
+    rows: seRowsInDisplayOrder,
+  );
 
   Positioned _pressLayer(
     Layer layer,
     int? Function(Offset local) frameAt,
     void Function(LayerId layerId, int globalFrame)? onEditSeEntry,
-  ) {
-    return Positioned.fill(
-      key: ValueKey<String>('storyboard-se-press-${layer.id}'),
-      // B6 (2026-08-17): the SE editor's entrance is the frame
-      // blocks' — a double tap on the SAME cell (the shared gate),
-      // covered cells only, opening the same instance dialog the
-      // timeline's SE cells open. The transition row one class up
-      // mounts the identical pair.
-      //
-      // ⚠️NESTING IS LOAD-BEARING (the dense rows' order): press
-      // region OUTSIDE, double-tap detector INSIDE — innermost-first
-      // dispatch lets the recognizer consult the gate before the
-      // second press re-records.
-      //
-      // ㉟-b, the SE strip's half — same shared region, same reason.
-      child: InstantTapRegion(
-        behavior: HitTestBehavior.translucent,
-        pressSeeksFor: AppInput.timelineCellPressSeeks,
-        onPressDown: timelineCellDoubleTapRecord(
-          layerId: layer.id,
-          frameAt: frameAt,
-        ),
-        onTap: (localPosition) {
-          final frame = frameAt(localPosition);
-          if (frame == null) {
-            return;
-          }
-          onRowFramePress?.call(LayerRowAddress(layer.id), frame);
-        },
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onDoubleTapDown: onEditSeEntry == null
-              ? null
-              : timelineCellDoubleTapActivation(
-                  layerId: layer.id,
-                  frameAt: frameAt,
-                  onActivate: (frame) {
-                    // 🚨★★★I-9: same as the transition strip one
-                    // class up — the coverage question belongs to
-                    // the host's fork, not to a copy here.
-                    onEditSeEntry(layer.id, frame);
-                  },
-                ),
-          child: const SizedBox.expand(),
-        ),
-      ),
-    );
-  }
+  ) => _storyboardRowPressLayer(
+    key: ValueKey<String>('storyboard-se-press-${layer.id}'),
+    layer: layer,
+    frameAt: frameAt,
+    onRowFramePress: onRowFramePress,
+    onEdit: onEditSeEntry == null
+        ? null
+        : (frame) => onEditSeEntry(layer.id, frame),
+  );
 
   Positioned _selectionWash(Layer layer, StoryboardSeSelectCallbacks seSelect) {
     return Positioned.fill(
@@ -3721,40 +3663,17 @@ class StoryboardTrackLabelRow extends StatelessWidget {
     // V-track selection (UI-R18 #6): the S-row tap/highlight language on
     // the V row — tap selects the TRACK, the active treatment speaks
     // through the background alone.
-    return InkWell(
-      key: ValueKey<String>('storyboard-track-select-${track.id.value}'),
+    return _StoryboardLabelShell(
+      selectKey: ValueKey<String>('storyboard-track-select-${track.id.value}'),
+      rowKey: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
       onTap: onSelectTrack,
-      child: Container(
-        key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
-        width: StoryboardPanel._trackLabelWidth,
-        height: laneHeight,
-        padding: const EdgeInsets.only(right: 8),
-        decoration: chromeless
-            ? null
-            : BoxDecoration(
-                color: active
-                    ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
-                    : colorScheme.surface,
-                // Side/bottom borders only (UI-R10 #20): stacked rail rows
-                // keep single-pixel seams, like the timeline rail.
-                border: Border(
-                  left: BorderSide(color: colorScheme.outlineVariant),
-                  right: BorderSide(color: colorScheme.outlineVariant),
-                  bottom: BorderSide(color: colorScheme.outlineVariant),
-                ),
-              ),
-        child: Semantics(
-          // The rail's ONE selection marker, shared with the S rows: a V
-          // row is a row like any other, so both kinds answer here.
-          key: active
-              ? const ValueKey<String>('storyboard-selected-row')
-              : null,
-          label: active
-              ? AppText.strings.semSelectedTrack
-              : AppText.strings.semTrack,
-          container: true,
-          explicitChildNodes: true,
-          child: Row(
+      height: laneHeight,
+      active: active,
+      chromeless: chromeless,
+      semanticsLabel: active
+          ? AppText.strings.semSelectedTrack
+          : AppText.strings.semTrack,
+      child: Row(
             children: [
               // R9 #22 — THE 44px. This row hand-listed its leading slots
               // and skipped the sheet and mark columns entirely, drawing an
@@ -3906,8 +3825,6 @@ class StoryboardTrackLabelRow extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 }
@@ -4258,12 +4175,11 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   /// Whether [frame] sits in the live selection — a plain range test now
   /// that the selection IS a range on this row's own axis.
-  bool _isSelectedAt(int frame) {
-    final selection = cutSelect?.selectedRange.value;
-    return selection != null &&
-        selection.coversRow(TrackRowAddress(track.id)) &&
-        selection.contains(frame);
-  }
+  bool _isSelectedAt(int frame) => _storyboardRangeCovers(
+    cutSelect?.selectedRange.value,
+    TrackRowAddress(track.id),
+    frame,
+  );
 
   /// The cut row's half of the shared range gesture: SELECT paints a cut
   /// run through the session's frame-stated entry point, MOVE slides the

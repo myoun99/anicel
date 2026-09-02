@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/brush_history_policy.dart';
+import '../../models/canvas_size.dart';
+import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_stroke_commit_data.dart';
@@ -145,4 +148,31 @@ abstract class SheetInkController<P> extends ChangeNotifier {
     _display.clear();
     super.dispose();
   }
+}
+
+/// [coordinator] resized to [canvasSize], or a fresh one over [store] when
+/// the plane has none yet — the sync every ink plane runs once its own
+/// geometry rule has picked the size.
+///
+/// 🚨ONE law for the conte, envelope and timesheet inks (the audit's clone
+/// scan, 2026-09-03); each keeps only its initial frame key.
+BrushFrameEditingCoordinator inkCoordinatorSynced(
+  BrushFrameEditingCoordinator? coordinator, {
+  required BrushFrameStore store,
+  required CanvasSize canvasSize,
+  required BrushFrameKey initialFrameKey,
+}) {
+  if (coordinator != null) {
+    coordinator.resizeCanvasAllCuts(canvasSize);
+    return coordinator;
+  }
+  return BrushFrameEditingCoordinator(
+    initialFrameKey: initialFrameKey,
+    frameStore: store,
+    sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
+    historyPolicy: const BrushHistoryPolicy(
+      userUndoLimit: 24,
+      deferredBakeRatio: 0,
+    ),
+  );
 }

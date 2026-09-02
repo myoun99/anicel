@@ -2,20 +2,19 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
-import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
+import '../sheet/sheet_ink_controller.dart';
 import 'timesheet_document_painter.dart';
 
 /// Which sheet ink plane a stroke lands on.
@@ -119,30 +118,18 @@ class TimesheetInkController extends ChangeNotifier {
     BrushFrameEditingCoordinator? coordinator,
     BrushFrameStore store,
     CanvasSize canvasSize,
-  ) {
-    if (coordinator != null) {
-      // Dedicated single-canvas ink store: every band/page plane shares
-      // one geometry, so the whole-store resize is the right one here.
-      coordinator.resizeCanvasAllCuts(canvasSize);
-      return coordinator;
-    }
-    return BrushFrameEditingCoordinator(
-      // A sentinel key; every real access selects its own band/page key.
-      initialFrameKey: BrushFrameKey(
-        projectId: inkProjectId,
-        trackId: inkTrackId,
-        cutId: const CutId('timesheet-ink-init'),
-        layerId: stripLayerId,
-        frameId: const FrameId('timesheet-ink-init'),
-      ),
-      frameStore: store,
-      sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 24,
-        deferredBakeRatio: 0,
-      ),
-    );
-  }
+  ) => inkCoordinatorSynced(
+    coordinator,
+    store: store,
+    canvasSize: canvasSize,
+    initialFrameKey: BrushFrameKey(
+      projectId: inkProjectId,
+      trackId: inkTrackId,
+      cutId: const CutId('timesheet-ink-init'),
+      layerId: stripLayerId,
+      frameId: const FrameId('timesheet-ink-init'),
+    ),
+  );
 
   BrushFrameEditingCoordinator _coordinatorFor(TimesheetInkPlane plane) {
     final coordinator = plane == TimesheetInkPlane.strip ? _strip : _page;

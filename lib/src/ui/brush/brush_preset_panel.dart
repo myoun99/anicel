@@ -454,23 +454,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             ? 'Delete the empty group "${group.name}"?'
             : 'Delete "${group.name}" and the $memberCount '
                   '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
-        actions: [
-          AppWindowAction(
-            label: AppText.strings.commonCancel,
-            actionKey: const ValueKey<String>(
-              'brush-preset-group-delete-cancel-button',
-            ),
-            onPressed: () => Navigator.of(context).pop(false),
+        actions: confirmActions(
+          context,
+          declineLabel: AppText.strings.commonCancel,
+          declineKey: const ValueKey<String>(
+            'brush-preset-group-delete-cancel-button',
           ),
-          AppWindowAction(
-            label: AppText.strings.commonDelete,
-            actionKey: const ValueKey<String>(
-              'brush-preset-group-delete-confirm-button',
-            ),
-            emphasis: AppWindowActionEmphasis.primary,
-            onPressed: () => Navigator.of(context).pop(true),
+          acceptLabel: AppText.strings.commonDelete,
+          acceptKey: const ValueKey<String>(
+            'brush-preset-group-delete-confirm-button',
           ),
-        ],
+        ),
       ),
     );
     if (!mounted || confirmed != true) {
@@ -491,23 +485,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         title: AppText.strings.brResetLibrary,
         titleIcon: Icons.restart_alt,
         message: AppText.strings.brResetLibraryBody,
-        actions: [
-          AppWindowAction(
-            label: AppText.strings.commonCancel,
-            actionKey: const ValueKey<String>(
-              'brush-preset-reset-cancel-button',
-            ),
-            onPressed: () => Navigator.of(context).pop(false),
+        actions: confirmActions(
+          context,
+          declineLabel: AppText.strings.commonCancel,
+          declineKey: const ValueKey<String>(
+            'brush-preset-reset-cancel-button',
           ),
-          AppWindowAction(
-            label: AppText.strings.commonReset,
-            actionKey: const ValueKey<String>(
-              'brush-preset-reset-confirm-button',
-            ),
-            emphasis: AppWindowActionEmphasis.primary,
-            onPressed: () => Navigator.of(context).pop(true),
+          acceptLabel: AppText.strings.commonReset,
+          acceptKey: const ValueKey<String>(
+            'brush-preset-reset-confirm-button',
           ),
-        ],
+        ),
       ),
     );
     if (!mounted || confirmed != true) {

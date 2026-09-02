@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
-import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cache_invalidation_executor.dart';
@@ -102,30 +100,18 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
     BrushFrameEditingCoordinator? coordinator,
     BrushFrameStore store,
     CanvasSize canvasSize,
-  ) {
-    if (coordinator != null) {
-      // Dedicated single-canvas ink store: every surface in the plane
-      // shares one geometry, so the whole-store resize is the right one.
-      coordinator.resizeCanvasAllCuts(canvasSize);
-      return coordinator;
-    }
-    return BrushFrameEditingCoordinator(
-      // A sentinel key; every real access selects its own window key.
-      initialFrameKey: BrushFrameKey(
-        projectId: conteInkProjectId,
-        trackId: conteInkTrackId,
-        cutId: const CutId('conte-ink-init'),
-        layerId: conteInkPageLayerId,
-        frameId: const FrameId('conte-ink-init'),
-      ),
-      frameStore: store,
-      sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 24,
-        deferredBakeRatio: 0,
-      ),
-    );
-  }
+  ) => inkCoordinatorSynced(
+    coordinator,
+    store: store,
+    canvasSize: canvasSize,
+    initialFrameKey: BrushFrameKey(
+      projectId: conteInkProjectId,
+      trackId: conteInkTrackId,
+      cutId: const CutId('conte-ink-init'),
+      layerId: conteInkPageLayerId,
+      frameId: const FrameId('conte-ink-init'),
+    ),
+  );
 
   @override
   BrushFrameEditingCoordinator coordinatorFor(ConteInkPlane plane) {

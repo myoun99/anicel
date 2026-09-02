@@ -374,19 +374,14 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
           '{n}',
           '${_selected.length}',
         ),
-        actions: [
-          AppWindowAction(
-            label: strings.commonCancel,
-            actionKey: const ValueKey<String>('recovery-delete-cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          AppWindowAction(
-            label: strings.commonDelete,
-            actionKey: const ValueKey<String>('recovery-delete-confirm'),
-            emphasis: AppWindowActionEmphasis.danger,
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
+        actions: confirmActions(
+          context,
+          declineLabel: strings.commonCancel,
+          declineKey: const ValueKey<String>('recovery-delete-cancel'),
+          acceptLabel: strings.commonDelete,
+          acceptKey: const ValueKey<String>('recovery-delete-confirm'),
+          acceptEmphasis: AppWindowActionEmphasis.danger,
+        ),
       ),
     );
     if (proceed != true || !mounted) {

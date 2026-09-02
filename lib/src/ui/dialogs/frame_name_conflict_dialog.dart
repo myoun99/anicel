@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
-import '../widgets/app_window.dart';
 import 'app_confirm_dialog.dart';
 
 /// Asks whether to link to an existing frame that already uses the entered
@@ -17,21 +16,13 @@ class FrameNameConflictDialog extends StatelessWidget {
       title: strings.frameNameConflictTitle,
       titleIcon: Icons.link_outlined,
       message: strings.frameNameConflictBody,
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>(
-            'frame-name-conflict-cancel-button',
-          ),
-          onPressed: () => Navigator.of(context).pop(false),
-        ),
-        AppWindowAction(
-          label: strings.commonLink,
-          actionKey: const ValueKey<String>('frame-name-conflict-link-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () => Navigator.of(context).pop(true),
-        ),
-      ],
+      actions: confirmActions(
+        context,
+        declineLabel: strings.commonCancel,
+        declineKey: const ValueKey<String>('frame-name-conflict-cancel-button'),
+        acceptLabel: strings.commonLink,
+        acceptKey: const ValueKey<String>('frame-name-conflict-link-button'),
+      ),
     );
   }
 }

@@ -186,3 +186,33 @@ Future<void> showAppNotice(
     ),
   );
 }
+
+/// The two ways out of a yes/no window: the decline action pops `false`,
+/// the accept action pops `true`.
+///
+/// 🚨ONE law for every two-button confirm (the audit's clone scan,
+/// 2026-09-03) — ten sites used to type both pops themselves.
+List<AppWindowAction> confirmActions(
+  BuildContext context, {
+  required String declineLabel,
+  required Key declineKey,
+  AppWindowActionEmphasis declineEmphasis = AppWindowActionEmphasis.quiet,
+  String? declineTooltip,
+  required String acceptLabel,
+  required Key acceptKey,
+  AppWindowActionEmphasis acceptEmphasis = AppWindowActionEmphasis.primary,
+}) => [
+  AppWindowAction(
+    label: declineLabel,
+    actionKey: declineKey,
+    emphasis: declineEmphasis,
+    tooltip: declineTooltip,
+    onPressed: () => Navigator.of(context).pop(false),
+  ),
+  AppWindowAction(
+    label: acceptLabel,
+    actionKey: acceptKey,
+    emphasis: acceptEmphasis,
+    onPressed: () => Navigator.of(context).pop(true),
+  ),
+];

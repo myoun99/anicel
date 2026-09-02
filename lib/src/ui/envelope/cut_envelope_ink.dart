@@ -1,14 +1,12 @@
 import 'dart:ui' show Rect, Size;
 
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/frame_id.dart';
-import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/history_manager.dart';
@@ -68,30 +66,18 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
   BrushFrameEditingCoordinator _syncCoordinator(
     BrushFrameEditingCoordinator? coordinator,
     CanvasSize canvasSize,
-  ) {
-    if (coordinator != null) {
-      // Dedicated single-canvas ink store: every box surface shares one
-      // geometry, so the whole-store resize is the right one here.
-      coordinator.resizeCanvasAllCuts(canvasSize);
-      return coordinator;
-    }
-    return BrushFrameEditingCoordinator(
-      // A sentinel key; every real access selects its own box key.
-      initialFrameKey: const BrushFrameKey(
-        projectId: envelopeInkProjectId,
-        trackId: envelopeInkTrackId,
-        cutId: CutId('envelope-ink-init'),
-        layerId: envelopeInkLayerId,
-        frameId: FrameId('envelope-ink-init'),
-      ),
-      frameStore: _store,
-      sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 24,
-        deferredBakeRatio: 0,
-      ),
-    );
-  }
+  ) => inkCoordinatorSynced(
+    coordinator,
+    store: _store,
+    canvasSize: canvasSize,
+    initialFrameKey: const BrushFrameKey(
+      projectId: envelopeInkProjectId,
+      trackId: envelopeInkTrackId,
+      cutId: CutId('envelope-ink-init'),
+      layerId: envelopeInkLayerId,
+      frameId: FrameId('envelope-ink-init'),
+    ),
+  );
 
   @override
   BrushFrameEditingCoordinator coordinatorFor(Null plane) {

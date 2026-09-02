@@ -22,7 +22,6 @@ import '../../native/qa_native_engine.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../input/app_input_settings.dart';
 import '../text/app_strings.dart';
-import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
@@ -850,19 +849,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           title: strings.selectionMoveConfirmTitle,
           titleIcon: Icons.open_with_outlined,
           message: strings.selectionMoveConfirmBody,
-          actions: [
-            AppWindowAction(
-              label: strings.selectionMoveRevert,
-              actionKey: const ValueKey<String>('selection-move-revert-button'),
-              onPressed: () => Navigator.of(context).pop(false),
-            ),
-            AppWindowAction(
-              label: strings.selectionMoveApply,
-              actionKey: const ValueKey<String>('selection-move-apply-button'),
-              emphasis: AppWindowActionEmphasis.primary,
-              onPressed: () => Navigator.of(context).pop(true),
-            ),
-          ],
+          actions: confirmActions(
+            context,
+            declineLabel: strings.selectionMoveRevert,
+            declineKey: const ValueKey<String>('selection-move-revert-button'),
+            acceptLabel: strings.selectionMoveApply,
+            acceptKey: const ValueKey<String>('selection-move-apply-button'),
+          ),
         );
       },
     );

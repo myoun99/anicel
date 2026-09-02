@@ -64,11 +64,11 @@ import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
-import 'widgets/app_window.dart' show AppWindowAction, AppWindowActionEmphasis;
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/folder_pick_flow.dart';
-import 'dialogs/app_confirm_dialog.dart' show AppConfirmDialog, showAppNotice;
+import 'dialogs/app_confirm_dialog.dart'
+    show AppConfirmDialog, confirmActions, showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -1341,19 +1341,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         windowKey: const ValueKey<String>('attach-drops-fx-dialog'),
         title: strings.tlAttachDropsFxTitle,
         message: strings.tlAttachDropsFxBody,
-        actions: [
-          AppWindowAction(
-            label: strings.commonCancel,
-            actionKey: const ValueKey<String>('attach-drops-fx-cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          AppWindowAction(
-            label: strings.commonApply,
-            actionKey: const ValueKey<String>('attach-drops-fx-confirm'),
-            emphasis: AppWindowActionEmphasis.primary,
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
+        actions: confirmActions(
+          context,
+          declineLabel: strings.commonCancel,
+          declineKey: const ValueKey<String>('attach-drops-fx-cancel'),
+          acceptLabel: strings.commonApply,
+          acceptKey: const ValueKey<String>('attach-drops-fx-confirm'),
+        ),
       ),
     );
     request.answer(proceed ?? false);

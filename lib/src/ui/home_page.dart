@@ -8,7 +8,6 @@ import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
-import 'widgets/app_window.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/canvas_shape_kind.dart';
 import '../models/project.dart';
@@ -976,19 +975,13 @@ class _HomePageState extends State<HomePage> {
         title: AppText.strings.unsavedAutosaveTitle,
         titleIcon: Icons.save_outlined,
         message: AppText.strings.unsavedAutosaveBody,
-        actions: [
-          AppWindowAction(
-            label: AppText.strings.commonNotNow,
-            actionKey: const ValueKey<String>('unsaved-autosave-later'),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          AppWindowAction(
-            label: AppText.strings.commonSaveAs,
-            actionKey: const ValueKey<String>('unsaved-autosave-save'),
-            emphasis: AppWindowActionEmphasis.primary,
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
+        actions: confirmActions(
+          context,
+          declineLabel: AppText.strings.commonNotNow,
+          declineKey: const ValueKey<String>('unsaved-autosave-later'),
+          acceptLabel: AppText.strings.commonSaveAs,
+          acceptKey: const ValueKey<String>('unsaved-autosave-save'),
+        ),
       ),
     );
     if ((save ?? false) && mounted) {
