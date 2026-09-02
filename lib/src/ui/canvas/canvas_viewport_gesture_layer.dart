@@ -638,53 +638,9 @@ class _CanvasViewportGestureLayerState
       if (first != null && second != null) {
         final distance = (second - first).distance;
         if (startDistance > 0 && distance > 0) {
-          var nextZoom = startViewport.zoom * (distance / startDistance);
-          if (modifier) {
-            // Constrain: zoom snaps to the user's percent list.
-            nextZoom =
-                AppInput.snapToList(nextZoom * 100, settings.zoomSnapPercents) /
-                100;
-          }
-          next = next.zoomedAround(nextZoom: nextZoom, anchor: focalAnchor);
+          next = _pinchZoomed(startViewport, distance, startDistance, modifier, settings, next, focalAnchor);
         }
-        final rotationOn =
-            widget.rotationEnabled && settings.navigationRotationEnabled;
-        final startAngle = rotationOn ? _navStartAngle : null;
-        if (startAngle != null) {
-          final rawDelta = _wrapDegrees(
-            _touchAngleDegrees(first, second) - startAngle,
-          );
-          if (_navRotationCompensation == null &&
-              rawDelta.abs() >= rotationDeadzoneDegrees) {
-            _navRotationCompensation = rawDelta.sign * rotationDeadzoneDegrees;
-          }
-          final compensation = _navRotationCompensation;
-          if (compensation != null) {
-            var nextRotation =
-                startViewport.rotationDegrees + rawDelta - compensation;
-            if (modifier) {
-              final lockAngle = _navModifierLockRotation;
-              if (settings.navigationModifierRotationLock &&
-                  lockAngle != null) {
-                // Constrain: rotation LOCKED at the modifier-engage angle
-                // (pure pan + snapped zoom).
-                nextRotation = lockAngle;
-              } else {
-                // Constrain: rotation snaps to the degree grid.
-                final snap = settings.rotationSnapDegrees;
-                if (snap > 0) {
-                  nextRotation = (nextRotation / snap).round() * snap;
-                }
-              }
-            } else {
-              nextRotation = _snappedRotation(nextRotation);
-            }
-            next = next.rotatedAround(
-              nextRotationDegrees: nextRotation,
-              anchor: focalAnchor,
-            );
-          }
-        }
+        next = _twistRotated(settings, first, second, startViewport, modifier, next, focalAnchor);
       }
     }
     _emit(
@@ -693,6 +649,60 @@ class _CanvasViewportGestureLayerState
         dy: focal.dy - startFocal.dy,
       ),
     );
+  }
+
+  CanvasViewport _twistRotated(AppInputSettings settings, Offset first, Offset second, CanvasViewport startViewport, bool modifier, CanvasViewport next, ViewportPoint focalAnchor) {
+    final rotationOn =
+        widget.rotationEnabled && settings.navigationRotationEnabled;
+    final startAngle = rotationOn ? _navStartAngle : null;
+    if (startAngle != null) {
+      final rawDelta = _wrapDegrees(
+        _touchAngleDegrees(first, second) - startAngle,
+      );
+      if (_navRotationCompensation == null &&
+          rawDelta.abs() >= rotationDeadzoneDegrees) {
+        _navRotationCompensation = rawDelta.sign * rotationDeadzoneDegrees;
+      }
+      final compensation = _navRotationCompensation;
+      if (compensation != null) {
+        var nextRotation =
+            startViewport.rotationDegrees + rawDelta - compensation;
+        if (modifier) {
+          final lockAngle = _navModifierLockRotation;
+          if (settings.navigationModifierRotationLock &&
+              lockAngle != null) {
+            // Constrain: rotation LOCKED at the modifier-engage angle
+            // (pure pan + snapped zoom).
+            nextRotation = lockAngle;
+          } else {
+            // Constrain: rotation snaps to the degree grid.
+            final snap = settings.rotationSnapDegrees;
+            if (snap > 0) {
+              nextRotation = (nextRotation / snap).round() * snap;
+            }
+          }
+        } else {
+          nextRotation = _snappedRotation(nextRotation);
+        }
+        next = next.rotatedAround(
+          nextRotationDegrees: nextRotation,
+          anchor: focalAnchor,
+        );
+      }
+    }
+    return next;
+  }
+
+  CanvasViewport _pinchZoomed(CanvasViewport startViewport, double distance, double startDistance, bool modifier, AppInputSettings settings, CanvasViewport next, ViewportPoint focalAnchor) {
+    var nextZoom = startViewport.zoom * (distance / startDistance);
+    if (modifier) {
+      // Constrain: zoom snaps to the user's percent list.
+      nextZoom =
+          AppInput.snapToList(nextZoom * 100, settings.zoomSnapPercents) /
+          100;
+    }
+    next = next.zoomedAround(nextZoom: nextZoom, anchor: focalAnchor);
+    return next;
   }
 
   void _updateBrushSize() {
