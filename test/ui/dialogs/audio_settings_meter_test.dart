@@ -44,7 +44,7 @@ void main() {
     );
     // Arming a take (fake recorder) must not fight the meter.
     manager.selectLayer(manager.activeTrack.seLayers.first.id);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder();
+    manager.debugVoiceRecorderFactory = _FakeRecorder.new;
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(monitor.isRunning, isFalse, reason: 'the recorder owns the mic');
     await manager.stopVoiceRecordingAndPlace();

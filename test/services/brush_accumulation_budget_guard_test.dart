@@ -185,7 +185,7 @@ void main() {
       }
     }
 
-    final scopeCount = BitmapTileImageCache.retainedScopeLimit + 3;
+    const scopeCount = BitmapTileImageCache.retainedScopeLimit + 3;
     for (var scope = 0; scope < scopeCount; scope += 1) {
       await decodeInScope('scope-$scope');
     }

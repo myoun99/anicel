@@ -124,7 +124,7 @@ void main() {
       final layer = fixture.layer;
       expect(
         layer.timeline[4],
-        TimelineExposure.drawing(const FrameId('new'), length: 1),
+        const TimelineExposure.drawing(FrameId('new'), length: 1),
       );
       expect(
         layer.frames.map((frame) => frame.id),
@@ -253,8 +253,8 @@ void main() {
     test('keeps a frame that is still linked elsewhere', () {
       final fixture = _fixture(
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('a'), length: 2),
-          4: TimelineExposure.drawing(const FrameId('a'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('a'), length: 2),
+          4: const TimelineExposure.drawing(FrameId('a'), length: 1),
         },
         frames: [Frame(id: const FrameId('a'), duration: 1, strokes: const [])],
       );
@@ -316,11 +316,11 @@ void main() {
       final layer = fixture.layer;
       expect(
         layer.timeline[0],
-        TimelineExposure.drawing(const FrameId('b'), length: 1),
+        const TimelineExposure.drawing(FrameId('b'), length: 1),
       );
       expect(
         layer.timeline[1],
-        TimelineExposure.drawing(const FrameId('a'), length: 3),
+        const TimelineExposure.drawing(FrameId('a'), length: 3),
         reason: 'a moved over by the clip length; the old rule ate it',
       );
       expect(
@@ -344,11 +344,11 @@ void main() {
       expect(layer.timeline[0]!.length, 1);
       expect(
         layer.timeline[1],
-        TimelineExposure.drawing(const FrameId('b'), length: 1),
+        const TimelineExposure.drawing(FrameId('b'), length: 1),
       );
       expect(
         layer.timeline[2],
-        TimelineExposure.drawing(const FrameId('a'), length: 2),
+        const TimelineExposure.drawing(FrameId('a'), length: 2),
         reason: 'the rest of a is still a',
       );
     });
@@ -365,12 +365,12 @@ void main() {
 
       expect(
         fixture.layer.timeline[3],
-        TimelineExposure.drawing(const FrameId('a'), length: 1),
+        const TimelineExposure.drawing(FrameId('a'), length: 1),
         reason: 'the old rule stretched it to 3, reaching b at 6',
       );
       expect(
         fixture.layer.timeline[7],
-        TimelineExposure.drawing(const FrameId('b'), length: 2),
+        const TimelineExposure.drawing(FrameId('b'), length: 2),
         reason: 'b moved aside even though there was room',
       );
     });
@@ -483,8 +483,8 @@ class _Fixture {
       timeline:
           timeline ??
           {
-            0: TimelineExposure.drawing(const FrameId('a'), length: 3),
-            6: TimelineExposure.drawing(const FrameId('b'), length: 2),
+            0: const TimelineExposure.drawing(FrameId('a'), length: 3),
+            6: const TimelineExposure.drawing(FrameId('b'), length: 2),
           },
     );
     repository = ProjectRepository(

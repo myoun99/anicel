@@ -54,7 +54,7 @@ void main() {
         expect(CanvasZoomScale(bad).ratio, 1.0);
       }
       // `==` stays reflexive — a NaN kept raw would break it.
-      expect(CanvasZoomScale(double.nan), CanvasZoomScale(double.nan));
+      expect(const CanvasZoomScale(double.nan), const CanvasZoomScale(double.nan));
     });
 
     test('device units round-trip, and the device identity is a bare one', () {

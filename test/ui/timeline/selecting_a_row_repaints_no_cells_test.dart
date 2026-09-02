@@ -70,7 +70,7 @@ layers: layers,
       .widgetList<CustomPaint>(find.byWidgetPredicate((w) =>
           w is CustomPaint &&
           w.key is ValueKey<String> &&
-          (w.key as ValueKey<String>)
+          (w.key! as ValueKey<String>)
               .value
               .startsWith('timeline-row-cells-')))
       .toList();

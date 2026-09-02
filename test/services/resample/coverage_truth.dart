@@ -62,7 +62,8 @@ Uint8List coverageTruth({
         final py = y + (sy + 0.5) / samples;
         for (var sx = 0; sx < samples; sx += 1) {
           final px = x + (sx + 0.5) / samples;
-          double u, v;
+          double u;
+          double v;
           if (t.isAffine) {
             u = t.a * px + t.b * py + t.c - 0.5;
             v = t.d * px + t.e * py + t.f - 0.5;

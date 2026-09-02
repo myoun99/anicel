@@ -766,7 +766,7 @@ class RenderStaticRaster extends RenderProxyBox {
   /// Deliberately off, disabled or parked draws nothing: those are
   /// decisions, and colouring them would put noise next to the signal.
   void _paintStandDownBadge(PaintingContext context, Offset offset) {
-    final Color? color = switch (_standDown) {
+    final color = switch (_standDown) {
       StandDownReason.nested ||
       StandDownReason.unlocatable ||
       StandDownReason.captureFailed => const Color(0xCCFF1744),
@@ -937,21 +937,21 @@ class RenderStaticRaster extends RenderProxyBox {
     } catch (_) {
       return null;
     }
-    final double? uniformScale = _uniformScaleOf(toGlobal);
+    final uniformScale = _uniformScaleOf(toGlobal);
     if (uniformScale == null) {
       return null;
     }
     // One of OUR logical units, in device pixels: the ancestors' scale
     // takes it to global logical units and the view's ratio from there.
-    final double scale = uniformScale * ratio;
+    final scale = uniformScale * ratio;
     if (!scale.isFinite || scale <= 0) {
       return null;
     }
     // `origin` is already in global logical units, so it needs the view's
     // ratio and not the ancestors' scale a second time.
-    final Offset origin = MatrixUtils.transformPoint(toGlobal, Offset.zero);
-    final double left = origin.dx * ratio;
-    final double top = origin.dy * ratio;
+    final origin = MatrixUtils.transformPoint(toGlobal, Offset.zero);
+    final left = origin.dx * ratio;
+    final top = origin.dy * ratio;
     if (!left.isFinite || !top.isFinite) {
       return null;
     }
@@ -970,8 +970,8 @@ class RenderStaticRaster extends RenderProxyBox {
   /// baked, but not as a pixel-for-pixel copy, so the surface paints
   /// through instead of quietly resampling itself.
   static double? _uniformScaleOf(Matrix4 transform) {
-    final Float64List m = transform.storage;
-    const double epsilon = 1e-6;
+    final m = transform.storage;
+    const epsilon = 1e-6;
     bool zero(double value) => value.abs() < epsilon;
     if (!zero(m[1]) ||
         !zero(m[2]) ||
@@ -985,8 +985,8 @@ class RenderStaticRaster extends RenderProxyBox {
         (m[15] - 1).abs() > epsilon) {
       return null;
     }
-    final double sx = m[0];
-    final double sy = m[5];
+    final sx = m[0];
+    final sy = m[5];
     if (sx <= 0 || (sx - sy).abs() > epsilon) {
       return null;
     }

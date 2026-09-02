@@ -337,7 +337,7 @@ void main() {
       // 288: one authored key on frame 1 arrived as keys on frames 1
       // AND 96, because the track simplifier keeps both endpoints of
       // whatever it walks.
-      final pose = TvpCameraPose(
+      const pose = TvpCameraPose(
         frame: 1,
         x: 100,
         y: 80,

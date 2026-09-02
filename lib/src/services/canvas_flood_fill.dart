@@ -679,7 +679,10 @@ FloodFillRegion? floodFillRegion({
   final filled = Uint8List(width * height);
   final stack = <int>[seedY * width + seedX];
   filled[seedY * width + seedX] = 255;
-  var minX = seedX, maxX = seedX, minY = seedY, maxY = seedY;
+  var minX = seedX;
+  var maxX = seedX;
+  var minY = seedY;
+  var maxY = seedY;
 
   while (stack.isNotEmpty) {
     final index = stack.removeLast();
@@ -948,7 +951,10 @@ FloodFillRegion? _gapCloseFloodRegion({
     height: height,
     infinity: infinity,
   );
-  var minX = width, maxX = -1, minY = height, maxY = -1;
+  var minX = width;
+  var maxX = -1;
+  var minY = height;
+  var maxY = -1;
   for (var index = 0; index < pixelCount; index += 1) {
     if (fillable[index] != 0 && growDist[index] <= erodeThreshold) {
       filled[index] = 255;

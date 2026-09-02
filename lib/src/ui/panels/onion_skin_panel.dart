@@ -408,7 +408,7 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
     required bool hovered,
     required String? label,
   }) {
-    final barHeight = (opacity.clamp(0.0, 1.0) * _graphHeight);
+    final barHeight = opacity.clamp(0.0, 1.0) * _graphHeight;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: hovered ? AppColors.surfaceHigh : sideWash,

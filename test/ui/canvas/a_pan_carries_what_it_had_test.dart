@@ -47,9 +47,9 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// matters is bytes: a carried buffer must draw what a cold composite draws.
 void main() {
   const canvasSize = CanvasSize(width: 32, height: 32);
-  final projectId = ProjectId('p');
-  final cutId = CutId('c');
-  final trackId = TrackId('t');
+  const projectId = ProjectId('p');
+  const cutId = CutId('c');
+  const trackId = TrackId('t');
 
   BrushFrameKey keyFor(String id) => BrushFrameKey(
     projectId: projectId,
@@ -308,7 +308,7 @@ void main() {
     // canvas px a side, so a carry that composites near 400 has carried
     // nothing in practice.
     expect(
-      area!,
+      area,
       lessThan(20 * 20 * 0.75),
       reason: 'a carry that composites nearly the whole rect is a carry in '
           'name only',

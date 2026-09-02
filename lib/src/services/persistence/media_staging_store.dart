@@ -304,7 +304,7 @@ class MediaStagingStore {
     for (final unit in normalized.codeUnits) {
       hash = ((hash ^ unit) * 0x01000193) & 0xFFFFFFFF;
     }
-    final safe = base.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final safe = base.replaceAll(RegExp('[^A-Za-z0-9._-]'), '_');
     return '${hash.toRadixString(16).padLeft(8, '0')}-$safe';
   }
 }

@@ -64,8 +64,8 @@ void main() {
   final onScreen = <RegExp>[
     RegExp(r"""Text\(\s*(?:const\s+)?'([^'$]*)'"""),
     RegExp(
-      r"""(?:label|help|title|tooltip|hintText|message|labelText"""
-      r"""|semanticLabel|fieldLabel|confirmLabel|actionLabel"""
+      '''(?:label|help|title|tooltip|hintText|message|labelText'''
+      '''|semanticLabel|fieldLabel|confirmLabel|actionLabel'''
       // ⚠️THE LIST GREW ONCE ALREADY, and the miss was silent. The brush
       // preset panel names its dialogs through `fieldLabel:` and
       // `confirmLabel:`, so eight strings sat outside a scan that had read
@@ -76,7 +76,7 @@ void main() {
   ];
 
   test('a settings dialog reads its words from AppStrings', () {
-    final hasLetter = RegExp(r'[A-Za-z]');
+    final hasLetter = RegExp('[A-Za-z]');
     final offenders = <String>[];
     for (final file in Directory(
       'lib/src/ui/dialogs',
@@ -157,7 +157,7 @@ void main() {
   const untranslatedElsewhere = 134;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
-    final hasLetter = RegExp(r'[A-Za-z]');
+    final hasLetter = RegExp('[A-Za-z]');
     var found = 0;
     final worst = <String, int>{};
     for (final file in Directory('lib/src/ui').listSync(recursive: true)) {

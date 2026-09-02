@@ -213,7 +213,7 @@ class _LiveBar extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 width: width * wholeFraction,
-                child: ColoredBox(color: AppColors.hairline),
+                child: const ColoredBox(color: AppColors.hairline),
               ),
               Positioned(
                 left: 0,

@@ -99,4 +99,3 @@ String timelineSectionLabel(TimelineSection section) {
     TimelineSection.camera => 'CAM',
   };
 }
-

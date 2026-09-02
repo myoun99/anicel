@@ -24,7 +24,7 @@ void main() {
   group('BitmapSurfacePainter', () {
     test('repaints when surface or transparent background setting changes', () {
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 2, height: 2),
+        canvasSize: const CanvasSize(width: 2, height: 2),
       );
       final same = BitmapSurfacePainter(surface: surface);
 
@@ -49,7 +49,7 @@ void main() {
 
     test('does not depend on active stroke path or overlay state', () {
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 2, height: 2),
+        canvasSize: const CanvasSize(width: 2, height: 2),
       );
       final painter = BitmapSurfacePainter(surface: surface);
 
@@ -74,7 +74,7 @@ void main() {
         colors: {const _Point(0, 1): RgbaColor(r: 0, g: 0, b: 255, a: 255)},
       );
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 4, height: 2),
+        canvasSize: const CanvasSize(width: 4, height: 2),
         tileSize: 2,
         tiles: {firstTile.coord: firstTile, secondTile.coord: secondTile},
       );
@@ -118,7 +118,7 @@ void main() {
         );
       }
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
         tileSize: tileSize,
         tiles: tiles,
       );
@@ -171,7 +171,7 @@ void main() {
         );
       }
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
         tileSize: tileSize,
         tiles: tiles,
       );
@@ -226,7 +226,7 @@ void main() {
 
     test('draws deterministic neutral background when enabled', () async {
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 1, height: 1),
+        canvasSize: const CanvasSize(width: 1, height: 1),
       );
 
       final pixels = await _paintPixels(
@@ -261,7 +261,7 @@ void main() {
         colors: {const _Point(0, 1): blue},
       );
       return BitmapSurface(
-        canvasSize: CanvasSize(width: 4, height: 2),
+        canvasSize: const CanvasSize(width: 4, height: 2),
         tileSize: 2,
         tiles: {newTile.coord: newTile, sideTile.coord: sideTile},
       );
@@ -332,7 +332,7 @@ void main() {
         }
       }
       return BitmapSurface(
-        canvasSize: CanvasSize(width: 20, height: 16),
+        canvasSize: const CanvasSize(width: 20, height: 16),
         tileSize: 2,
         tiles: tiles,
       );
@@ -471,7 +471,7 @@ void main() {
         tiles[tile.coord] = tile;
       }
       return BitmapSurface(
-        canvasSize: CanvasSize(width: 16, height: 4),
+        canvasSize: const CanvasSize(width: 16, height: 4),
         tileSize: tileSize,
         tiles: tiles,
       );
@@ -643,7 +643,7 @@ void main() {
         colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
       );
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 2, height: 2),
+        canvasSize: const CanvasSize(width: 2, height: 2),
         tileSize: 2,
         tiles: {tile.coord: tile},
       );
@@ -751,7 +751,7 @@ void main() {
       final pixels = await _paintPixels(
         BitmapSurfacePainter(
           surface: BitmapSurface(
-            canvasSize: CanvasSize(width: 2, height: 2),
+            canvasSize: const CanvasSize(width: 2, height: 2),
             tileSize: 2,
             tiles: {committed.coord: committed},
           ),
@@ -798,7 +798,7 @@ void main() {
       final pixels = await _paintPixels(
         BitmapSurfacePainter(
           surface: BitmapSurface(
-            canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+            canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
             tileSize: tileSize,
             tiles: tiles,
           ),
@@ -911,7 +911,7 @@ void main() {
       final pixels = await _paintPixels(
         BitmapSurfacePainter(
           surface: BitmapSurface(
-            canvasSize: CanvasSize(width: 2, height: 2),
+            canvasSize: const CanvasSize(width: 2, height: 2),
             tileSize: 2,
             tiles: {committed.coord: committed},
           ),
@@ -959,7 +959,7 @@ void main() {
       final pixels = await _paintPixels(
         BitmapSurfacePainter(
           surface: BitmapSurface(
-            canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+            canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
             tileSize: tileSize,
             tiles: tiles,
           ),
@@ -1013,7 +1013,7 @@ void main() {
         );
       }
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
         tileSize: tileSize,
         tiles: tiles,
       );

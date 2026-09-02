@@ -239,7 +239,7 @@ void main() {
       final sizeBand = band(seNameTagSizeLaneId);
       expect(sizeBand, findsOneWidget);
       final start =
-          tester.getTopLeft(sizeBand) + Offset(2.5 * 24, rowHeight / 2);
+          tester.getTopLeft(sizeBand) + const Offset(2.5 * 24, rowHeight / 2);
       final gesture = await tester.startGesture(
         start,
         kind: PointerDeviceKind.mouse,
@@ -270,7 +270,7 @@ void main() {
 
       final sizeBand = band(seNameTagSizeLaneId);
       final start =
-          tester.getTopLeft(sizeBand) + Offset(2.5 * 24, rowHeight / 2);
+          tester.getTopLeft(sizeBand) + const Offset(2.5 * 24, rowHeight / 2);
       final gesture = await tester.startGesture(
         start,
         kind: PointerDeviceKind.mouse,
@@ -314,7 +314,7 @@ void main() {
         ValueKey<String>('timeline-range-gesture-${seLayerId.value}'),
       );
       final start =
-          tester.getTopLeft(gestureLayer) + Offset(2.5 * 24, rowHeight / 2);
+          tester.getTopLeft(gestureLayer) + const Offset(2.5 * 24, rowHeight / 2);
       final gesture = await tester.startGesture(
         start,
         kind: PointerDeviceKind.mouse,

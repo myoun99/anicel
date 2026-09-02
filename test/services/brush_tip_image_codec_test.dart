@@ -10,7 +10,7 @@ BrushTipMask _sampleMask({int size = 8, String id = 'test-tip'}) {
   final alpha = Uint8List(size * size);
   for (var y = 0; y < size; y += 1) {
     for (var x = 0; x < size; x += 1) {
-      alpha[y * size + x] = ((x * 255) ~/ (size - 1));
+      alpha[y * size + x] = (x * 255) ~/ (size - 1);
     }
   }
   alpha[0] = 0;

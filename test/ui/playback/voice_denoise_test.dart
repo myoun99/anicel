@@ -154,8 +154,8 @@ void main() {
       isTrue,
     );
     expect(calls, 1);
-    var clip = manager.activeTrack.seLayers.first.audioClips.single;
-    var decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+    final clip = manager.activeTrack.seLayers.first.audioClips.single;
+    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
     expect(decoded.samples.first, closeTo(0.25, 1e-3));
 
     expect(

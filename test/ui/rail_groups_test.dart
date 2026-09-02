@@ -139,7 +139,7 @@ void main() {
 
       expect(
         find.byKey(
-          ValueKey<String>(
+          const ValueKey<String>(
             'rail-grip-rail-group-${EditorWorkspace.leftGroupId}',
           ),
         ),

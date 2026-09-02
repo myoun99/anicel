@@ -111,7 +111,7 @@ void main() {
     // the conte and timesheet shells) build this command with no selection
     // channel at all, and a null there must not take the undo down with it.
     command.execute();
-    expect(() => command.undo(), returnsNormally);
+    expect(command.undo, returnsNormally);
     expect(
       coordinator.currentSurfaceOf(coordinator.activeFrameKey).tiles.length,
       pre.tiles.length,

@@ -10,19 +10,68 @@
 include: package:flutter_lints/flutter.yaml
 
 linter:
-  # The lint rules applied to this project can be customized in the
-  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
-  # included above or to enable additional rules. A list of all available lints
-  # and their documentation is published at https://dart.dev/lints.
-  #
-  # Instead of disabling a lint rule for the entire project in the
-  # section below, it can also be suppressed for a single line of code
-  # or a specific dart file by using the `// ignore: name_of_lint` and
-  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
-  # producing the lint.
+  # Round 2 of the audit (2026-09-03) measured every well-known lint outside
+  # the Flutter set and turned on the ones that guard a decision rather than
+  # a style: each rule below was either already clean or was fixed first,
+  # so `flutter analyze` — already the merge gate — graduates it. Rules left
+  # off on purpose: directives_ordering, cascade_invocations,
+  # prefer_expression_function_bodies, sort_constructors_first,
+  # prefer_int_literals, avoid_escaping_inner_quotes,
+  # avoid_redundant_argument_values (style churn across thousands of lines,
+  # no decision guarded), prefer_foreach (the opposite of this codebase's
+  # loop style), avoid_slow_async_io and avoid_classes_with_only_static_members
+  # (design choices made elsewhere).
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    - avoid_annotating_with_dynamic
+    - avoid_bool_literals_in_conditional_expressions
+    - avoid_field_initializers_in_const_classes
+    - avoid_implementing_value_types
+    - avoid_multiple_declarations_per_line
+    - avoid_setters_without_getters
+    - avoid_unused_constructor_parameters
+    - avoid_void_async
+    - cast_nullable_to_non_nullable
+    - combinators_ordering
+    - dangling_library_doc_comments
+    - deprecated_consistency
+    - eol_at_end_of_file
+    - implicit_call_tearoffs
+    - join_return_with_assignment
+    - leading_newlines_in_multiline_strings
+    - library_annotations
+    - no_default_cases
+    - no_runtimeType_toString
+    - no_self_assignments
+    - omit_local_variable_types
+    - only_throw_errors
+    - prefer_asserts_in_initializer_lists
+    - prefer_const_constructors
+    - prefer_const_constructors_in_immutables
+    - prefer_const_declarations
+    - prefer_final_in_for_each
+    - prefer_final_locals
+    - prefer_if_elements_to_conditional_expressions
+    - prefer_mixin
+    - prefer_null_aware_method_calls
+    - prefer_single_quotes
+    - sized_box_shrink_expand
+    - sort_unnamed_constructors_first
+    - tighten_type_of_initializing_formals
+    - type_annotate_public_apis
+    - unawaited_futures
+    - unnecessary_await_in_return
+    - unnecessary_breaks
+    - unnecessary_lambdas
+    - unnecessary_null_aware_operator_on_extension_on_nullable
+    - unnecessary_null_checks
+    - unnecessary_parenthesis
+    - unnecessary_raw_strings
+    - unnecessary_to_list_in_spreads
+    - use_colored_box
+    - use_decorated_box
+    - use_enums
+    - use_string_buffers
+    - use_super_parameters
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

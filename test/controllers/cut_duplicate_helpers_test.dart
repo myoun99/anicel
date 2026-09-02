@@ -31,13 +31,13 @@ void main() {
         newCutId: const CutId('cut-copy'),
         newName: 'Cut Copy',
         layerIdMap: {
-          LayerId('layer-a'): LayerId('layer-copy-a'),
-          LayerId('layer-b'): LayerId('layer-copy-b'),
+          const LayerId('layer-a'): const LayerId('layer-copy-a'),
+          const LayerId('layer-b'): const LayerId('layer-copy-b'),
         },
         frameIdMap: {
-          FrameId('frame-a'): FrameId('frame-copy-a'),
-          FrameId('frame-b'): FrameId('frame-copy-b'),
-          FrameId('frame-c'): FrameId('frame-copy-c'),
+          const FrameId('frame-a'): const FrameId('frame-copy-a'),
+          const FrameId('frame-b'): const FrameId('frame-copy-b'),
+          const FrameId('frame-c'): const FrameId('frame-copy-c'),
         },
       );
 
@@ -82,28 +82,28 @@ void main() {
       expect(duplicate.layers[0].timeline.keys, orderedEquals([0, 5, 7]));
       expect(
         duplicate.layers[0].timeline[0],
-        TimelineExposure.drawing(
-          const FrameId('frame-copy-a'),
+        const TimelineExposure.drawing(
+          FrameId('frame-copy-a'),
           length: 3,
-          breakdownOffsets: const [1],
+          breakdownOffsets: [1],
         ),
       );
       expect(
         duplicate.layers[0].timeline[5],
-        TimelineExposure.drawing(const FrameId('frame-copy-b'), length: 2),
+        const TimelineExposure.drawing(FrameId('frame-copy-b'), length: 2),
       );
       expect(
         duplicate.layers[0].timeline[7],
-        TimelineExposure.drawing(const FrameId('frame-copy-a'), length: 1),
+        const TimelineExposure.drawing(FrameId('frame-copy-a'), length: 1),
       );
       expect(duplicate.layers[1].timeline.keys, orderedEquals([2]));
       expect(
         duplicate.layers[1].timeline[2],
-        TimelineExposure.drawing(
-          const FrameId('frame-copy-c'),
+        const TimelineExposure.drawing(
+          FrameId('frame-copy-c'),
           length: 1,
           // The block's memo is copied with it (see the memo test below).
-          memo: const ExposureMemo(
+          memo: ExposureMemo(
             actionMemo: 'Character points at the horizon.',
             note: 'Use as conte panel note.',
           ),
@@ -121,13 +121,13 @@ void main() {
         newCutId: const CutId('cut-copy'),
         newName: 'Cut Copy',
         layerIdMap: {
-          LayerId('layer-a'): LayerId('layer-copy-a'),
-          LayerId('layer-b'): LayerId('layer-copy-b'),
+          const LayerId('layer-a'): const LayerId('layer-copy-a'),
+          const LayerId('layer-b'): const LayerId('layer-copy-b'),
         },
         frameIdMap: {
-          FrameId('frame-a'): FrameId('frame-copy-a'),
-          FrameId('frame-b'): FrameId('frame-copy-b'),
-          FrameId('frame-c'): FrameId('frame-copy-c'),
+          const FrameId('frame-a'): const FrameId('frame-copy-a'),
+          const FrameId('frame-b'): const FrameId('frame-copy-b'),
+          const FrameId('frame-c'): const FrameId('frame-copy-c'),
         },
       );
 
@@ -144,13 +144,13 @@ void main() {
         newCutId: const CutId('cut-copy'),
         newName: 'Cut Copy',
         layerIdMap: {
-          LayerId('layer-a'): LayerId('layer-copy-a'),
-          LayerId('layer-b'): LayerId('layer-copy-b'),
+          const LayerId('layer-a'): const LayerId('layer-copy-a'),
+          const LayerId('layer-b'): const LayerId('layer-copy-b'),
         },
         frameIdMap: {
-          FrameId('frame-a'): FrameId('frame-copy-a'),
-          FrameId('frame-b'): FrameId('frame-copy-b'),
-          FrameId('frame-c'): FrameId('frame-copy-c'),
+          const FrameId('frame-a'): const FrameId('frame-copy-a'),
+          const FrameId('frame-b'): const FrameId('frame-copy-b'),
+          const FrameId('frame-c'): const FrameId('frame-copy-c'),
         },
       );
 
@@ -184,8 +184,8 @@ void main() {
                 ),
               ],
               timeline: {
-                0: TimelineExposure.drawing(
-                  const FrameId('frame-a'),
+                0: const TimelineExposure.drawing(
+                  FrameId('frame-a'),
                   length: 1,
                 ),
               },
@@ -259,13 +259,13 @@ void main() {
         newCutId: const CutId('cut-copy'),
         newName: 'Cut Copy',
         layerIdMap: {
-          LayerId('layer-a'): LayerId('layer-copy-a'),
-          LayerId('layer-b'): LayerId('layer-copy-b'),
+          const LayerId('layer-a'): const LayerId('layer-copy-a'),
+          const LayerId('layer-b'): const LayerId('layer-copy-b'),
         },
         frameIdMap: {
-          FrameId('frame-a'): FrameId('frame-copy-a'),
-          FrameId('frame-b'): FrameId('frame-copy-b'),
-          FrameId('frame-c'): FrameId('frame-copy-c'),
+          const FrameId('frame-a'): const FrameId('frame-copy-a'),
+          const FrameId('frame-b'): const FrameId('frame-copy-b'),
+          const FrameId('frame-c'): const FrameId('frame-copy-c'),
         },
       );
 
@@ -292,13 +292,13 @@ void main() {
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
           layerIdMap: {
-            LayerId('layer-a'): LayerId('layer-copy-a'),
-            LayerId('layer-b'): LayerId('layer-copy-b'),
+            const LayerId('layer-a'): const LayerId('layer-copy-a'),
+            const LayerId('layer-b'): const LayerId('layer-copy-b'),
           },
           frameIdMap: {
-            FrameId('frame-a'): FrameId('frame-copy-a'),
-            FrameId('frame-b'): FrameId('frame-copy-b'),
-            FrameId('frame-c'): FrameId('frame-copy-c'),
+            const FrameId('frame-a'): const FrameId('frame-copy-a'),
+            const FrameId('frame-b'): const FrameId('frame-copy-b'),
+            const FrameId('frame-c'): const FrameId('frame-copy-c'),
           },
         );
 
@@ -347,11 +347,11 @@ void main() {
           source: _sourceCut(),
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
-          layerIdMap: {LayerId('layer-a'): LayerId('layer-copy-a')},
+          layerIdMap: {const LayerId('layer-a'): const LayerId('layer-copy-a')},
           frameIdMap: {
-            FrameId('frame-a'): FrameId('frame-copy-a'),
-            FrameId('frame-b'): FrameId('frame-copy-b'),
-            FrameId('frame-c'): FrameId('frame-copy-c'),
+            const FrameId('frame-a'): const FrameId('frame-copy-a'),
+            const FrameId('frame-b'): const FrameId('frame-copy-b'),
+            const FrameId('frame-c'): const FrameId('frame-copy-c'),
           },
         ),
         throwsArgumentError,
@@ -365,12 +365,12 @@ void main() {
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
           layerIdMap: {
-            LayerId('layer-a'): LayerId('layer-copy-a'),
-            LayerId('layer-b'): LayerId('layer-copy-b'),
+            const LayerId('layer-a'): const LayerId('layer-copy-a'),
+            const LayerId('layer-b'): const LayerId('layer-copy-b'),
           },
           frameIdMap: {
-            FrameId('frame-a'): FrameId('frame-copy-a'),
-            FrameId('frame-c'): FrameId('frame-copy-c'),
+            const FrameId('frame-a'): const FrameId('frame-copy-a'),
+            const FrameId('frame-c'): const FrameId('frame-copy-c'),
           },
         ),
         throwsArgumentError,
@@ -395,8 +395,8 @@ void main() {
               ),
             ],
             timeline: {
-              0: TimelineExposure.drawing(
-                const FrameId('missing-frame'),
+              0: const TimelineExposure.drawing(
+                FrameId('missing-frame'),
                 length: 1,
               ),
             },
@@ -409,8 +409,8 @@ void main() {
           source: source,
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
-          layerIdMap: {LayerId('layer-a'): LayerId('layer-copy-a')},
-          frameIdMap: {FrameId('frame-a'): FrameId('frame-copy-a')},
+          layerIdMap: {const LayerId('layer-a'): const LayerId('layer-copy-a')},
+          frameIdMap: {const FrameId('frame-a'): const FrameId('frame-copy-a')},
         ),
         throwsArgumentError,
       );
@@ -438,13 +438,13 @@ Cut _sourceCut() {
           Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(
-            const FrameId('frame-a'),
+          0: const TimelineExposure.drawing(
+            FrameId('frame-a'),
             length: 3,
-            breakdownOffsets: const [1],
+            breakdownOffsets: [1],
           ),
-          5: TimelineExposure.drawing(const FrameId('frame-b'), length: 2),
-          7: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+          5: const TimelineExposure.drawing(FrameId('frame-b'), length: 2),
+          7: const TimelineExposure.drawing(FrameId('frame-a'), length: 1),
         },
         isVisible: false,
         opacity: 0.5,
@@ -461,10 +461,10 @@ Cut _sourceCut() {
           ),
         ],
         timeline: {
-          2: TimelineExposure.drawing(
-            const FrameId('frame-c'),
+          2: const TimelineExposure.drawing(
+            FrameId('frame-c'),
             length: 1,
-            memo: const ExposureMemo(
+            memo: ExposureMemo(
               actionMemo: 'Character points at the horizon.',
               note: 'Use as conte panel note.',
             ),

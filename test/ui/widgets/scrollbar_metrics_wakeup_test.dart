@@ -32,7 +32,7 @@ void main() {
                 controller: controller,
                 itemCount: rows,
                 itemExtent: 20,
-                itemBuilder: (context, index) => SizedBox(height: 20),
+                itemBuilder: (context, index) => const SizedBox(height: 20),
               ),
             ),
             SizedBox(

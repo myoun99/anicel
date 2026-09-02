@@ -190,7 +190,7 @@ void main() {
     final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
     expect(
       panel.cutSelect!.selectedRange.value!.anchorRow,
-      TrackRowAddress(_trackId),
+      const TrackRowAddress(_trackId),
     );
 
     await _dragSeRow(tester, fromFrame: 3, toFrame: 4);
@@ -203,7 +203,7 @@ void main() {
         .selectedRange
         .value!;
     expect(after.anchorRow, const LayerRowAddress(_seLayerId));
-    expect(after.coversRow(TrackRowAddress(_trackId)), isFalse);
+    expect(after.coversRow(const TrackRowAddress(_trackId)), isFalse);
   });
 
   testWidgets('a plain tap clears it', (tester) async {

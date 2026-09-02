@@ -226,10 +226,10 @@ Layer _layer(
       Frame(id: _frameBId, duration: 1, strokes: const [], name: '$name-2'),
     ],
     timeline: {
-      0: TimelineExposure.drawing(
+      0: const TimelineExposure.drawing(
         _frameAId,
         length: 2,
-        memo: const ExposureMemo(actionMemo: 'action', note: 'note'),
+        memo: ExposureMemo(actionMemo: 'action', note: 'note'),
       ),
     },
   );

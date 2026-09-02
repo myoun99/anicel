@@ -82,7 +82,7 @@ class BrushSettingsPanel extends StatelessWidget {
           // mark on the canvas, and this panel scrolls; the strip is always
           // where it was. Keeping a second copy here would be two places
           // showing one number.
-          _GroupHeader('Ink', first: true),
+          const _GroupHeader('Ink', first: true),
           _PanelSlider(
             label: AppText.strings.brFlow,
             valueLabel: flowLabel,
@@ -96,7 +96,7 @@ class BrushSettingsPanel extends StatelessWidget {
               AppText.strings.brFlow,
             ),
           ),
-          _GroupHeader('Brush tip'),
+          const _GroupHeader('Brush tip'),
           if (tips.isNotEmpty)
             BrushTipPickerRow(
               label: AppText.strings.brBrushTip,
@@ -158,7 +158,7 @@ class BrushSettingsPanel extends StatelessWidget {
           // P20 shipped placement dynamics into the engine and left them
           // unreachable: only a preset or an import could set them. These
           // are those knobs.
-          _GroupHeader('Randomness'),
+          const _GroupHeader('Randomness'),
           _PanelSlider(
             label: AppText.strings.brSizeJitter,
             valueLabel: '${(state.sizeJitter * 100).round()}%',
@@ -207,7 +207,7 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) =>
                 onChanged(state.copyWith(spacingJitter: value)),
           ),
-          _GroupHeader('Mixing'),
+          const _GroupHeader('Mixing'),
           _PanelSwitch(
             label: AppText.strings.brMixing,
             value: state.mixesGroundColor,
@@ -247,7 +247,7 @@ class BrushSettingsPanel extends StatelessWidget {
                   onChanged(state.copyWith(colorStretch: value)),
             ),
           ],
-          _GroupHeader('Scattering'),
+          const _GroupHeader('Scattering'),
           _PanelSlider(
             // A ratio of the brush size, so scatter keeps its character as
             // the brush grows.
@@ -280,7 +280,7 @@ class BrushSettingsPanel extends StatelessWidget {
                 onChanged(state.copyWith(scatterBothAxes: value)),
           ),
           if (tips.isNotEmpty) ...[
-            _GroupHeader('Texture'),
+            const _GroupHeader('Texture'),
             BrushTipPickerRow(
               label: AppText.strings.brDualTip,
               role: BrushTipRole.dual,
@@ -339,7 +339,7 @@ class BrushSettingsPanel extends StatelessWidget {
               ),
             ],
           ],
-          _GroupHeader('Correction'),
+          const _GroupHeader('Correction'),
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
           // of brush presets on purpose.
           _PanelSlider(

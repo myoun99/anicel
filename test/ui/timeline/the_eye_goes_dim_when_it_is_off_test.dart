@@ -56,9 +56,9 @@ void main() {
       off.color!.a,
       closeTo(layerRailOffAlpha, 0.001),
       reason:
-          "⛔and in the rail OWN off language — the alpha the onion "
-          "and fx icons already wear, so a hidden row reads as off in one "
-          "language rather than in three",
+          '⛔and in the rail OWN off language — the alpha the onion '
+          'and fx icons already wear, so a hidden row reads as off in one '
+          'language rather than in three',
     );
     // ★The premise this rests on: the two states really do differ, so the
     // assertion above is not describing a colour both of them have.

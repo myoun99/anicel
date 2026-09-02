@@ -828,7 +828,7 @@ void main() {
     // fails, rather than arithmetic.
     final source = File('lib/src/ui/text/app_strings.dart').readAsStringSync();
     final declared = RegExp(
-      r'^  String get ([A-Za-z0-9_]+)',
+      '^  String get ([A-Za-z0-9_]+)',
       multiLine: true,
     ).allMatches(source).map((match) => match.group(1)!).toSet();
     // If the scan ever returns nothing the assertions below pass vacuously,

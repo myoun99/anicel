@@ -82,7 +82,7 @@ void main() {
           ),
         ],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('ink-frame'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('ink-frame'), length: 1),
         },
       ),
     ],
@@ -165,7 +165,7 @@ void main() {
       symmetry: mirrorDownTheMiddle(),
     )!.stamp!;
 
-    final at = ((3 - 3) * 10 + (11 - 3)) * 4;
+    const at = ((3 - 3) * 10 + (11 - 3)) * 4;
     expect(stamp.rgba.sublist(at, at + 4), [0x33, 0x66, 0xCC, 255]);
   });
 

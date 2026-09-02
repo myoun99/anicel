@@ -367,9 +367,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Center(
-          child: SizedBox(
-            width: 0,
-            height: 0,
+          child: SizedBox.shrink(
             child: StaticRaster(
               debugLabel: 'test',
               child: CustomPaint(painter: _CountingPainter(counter: counter)),

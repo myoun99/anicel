@@ -330,7 +330,7 @@ void main() {
         bottomExclusive: 11,
       ),
     );
-    await tester.runAsync(() => overlay.waitForPendingDecodes());
+    await tester.runAsync(overlay.waitForPendingDecodes);
     report('first-dab(patch)', await paintBytes(tester, painter1));
 
     // 4. pen-up: commit lands (tile 0,0 replaced by an identical-bytes new

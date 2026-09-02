@@ -13,7 +13,7 @@ import 'package:anicel/src/models/track_id.dart';
 /// The TRANSITION row: one per track, on the track's global frame axis, made
 /// of the same instruction events the cut's direction row carries.
 void main() {
-  final trackId = TrackId('t1');
+  const trackId = TrackId('t1');
 
   Cut cut(String id, int duration) => Cut(
     id: CutId(id),

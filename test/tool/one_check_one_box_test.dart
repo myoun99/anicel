@@ -95,7 +95,7 @@ void main() {
     // box posted an empty id and went nowhere. Cards are the ones named
     // `c-<id>`; the handler asks for that now.
     final html = page([check]);
-    expect(html, contains(r"""closest('details[id^="c-"]')"""));
+    expect(html, contains("""closest('details[id^="c-"]')"""));
     expect(
       html,
       isNot(contains("ta.closest('details');")),

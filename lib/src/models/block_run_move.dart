@@ -200,7 +200,7 @@ BlockRunMoveLayout planBlockRunMove({
   // before it. A single expression would need a tie-break, and that
   // tie-break IS the asymmetry — 10 frames to pass a 10-frame neighbour
   // going one way and 1 going the other, for the same pair.
-  int rank = _rankFor(originalRank, wanted, runFrom, rest, seatPassing);
+  final rank = _rankFor(originalRank, wanted, runFrom, rest, seatPassing);
 
   final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
   final others = [for (final other in rest) other.index];
@@ -263,11 +263,11 @@ BlockRunMoveLayout planBlockRunMove({
 
   // Where the run lands. The floor is the nearest UNCROSSED block behind it,
   // standing on its own anchor, plus room for everyone it did cross.
-  int floor = _floorFor(runPosition, crossedBehind, order, anchorOf, slots);
+  final floor = _floorFor(runPosition, crossedBehind, order, anchorOf, slots);
 
   // …and the ceiling is that same sentence read from the other end, never
   // past whatever end the axis itself declares.
-  int? ceiling = _ceilingFor(axisEndExclusive, runLength, afterRun, crossedAhead, order, anchorOf, slots);
+  final ceiling = _ceilingFor(axisEndExclusive, runLength, afterRun, crossedAhead, order, anchorOf, slots);
 
   var landed = wanted < floor ? floor : wanted;
   if (ceiling != null && landed > ceiling) {
@@ -276,11 +276,11 @@ BlockRunMoveLayout planBlockRunMove({
 
   // The run travels as ONE unit: every member keeps the distance it already
   // held from the run's head, internal gaps included.
-  List<int> placed = _placeAll(order, runPosition, afterRun, landed, starts, runFrom, slots, anchorOf, runLength);
+  final placed = _placeAll(order, runPosition, afterRun, landed, starts, runFrom, slots, anchorOf, runLength);
 
   // The layout speaks in leading gaps, so the absolute places become the
   // distances between them.
-  List<int> gaps = _leadingGapsOf(order, placed, slots);
+  final gaps = _leadingGapsOf(order, placed, slots);
   return BlockRunMoveLayout(slots: slots, order: order, leadingGaps: gaps);
 }
 
@@ -327,7 +327,7 @@ List<int> _placeAll(List<int> order, int runPosition, int afterRun, int landed, 
 }
 
 int? _ceilingFor(int? axisEndExclusive, int runLength, int afterRun, int crossedAhead, List<int> order, Map<int, int> anchorOf, List<BlockMoveSlot> slots) {
-  int? ceiling = axisEndExclusive == null ? null : axisEndExclusive - runLength;
+  var ceiling = axisEndExclusive == null ? null : axisEndExclusive - runLength;
   final firstWallAhead = afterRun + crossedAhead;
   if (firstWallAhead < order.length) {
     var wall = anchorOf[order[firstWallAhead]]!;

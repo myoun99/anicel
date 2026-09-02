@@ -15,7 +15,7 @@ void main() {
     BitmapSurface surface({bool withTile = false}) {
       final coord = TileCoord(x: 0, y: 0);
       return BitmapSurface(
-        canvasSize: CanvasSize(width: 4, height: 4),
+        canvasSize: const CanvasSize(width: 4, height: 4),
         tileSize: 2,
         tiles: withTile
             ? {coord: BitmapTile.blank(coord: coord, size: 2)}

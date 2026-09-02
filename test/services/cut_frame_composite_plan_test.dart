@@ -63,7 +63,7 @@ void main() {
       name: 'A',
       frames: [frame('frame-1')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+        0: const TimelineExposure.drawing(FrameId('frame-1'), length: 1),
       },
       folderId: LayerId(folder),
     );
@@ -200,7 +200,7 @@ void main() {
           name: 'A',
           frames: [frame('frame-1')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-1'), length: 1),
           },
         ),
         Layer(
@@ -208,7 +208,7 @@ void main() {
           name: 'B',
           frames: [frame('frame-2')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-2'), length: 1),
           },
         ),
       ]),
@@ -227,7 +227,7 @@ void main() {
           name: 'A',
           frames: [frame('frame-1')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-1'), length: 1),
           },
         ),
         Layer(
@@ -235,7 +235,7 @@ void main() {
           name: 'B',
           frames: [frame('frame-2')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-2'), length: 1),
           },
           isVisible: false,
         ),
@@ -244,7 +244,7 @@ void main() {
           name: 'C',
           frames: [frame('frame-3')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-3'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-3'), length: 1),
           },
           opacity: 0,
         ),
@@ -269,8 +269,8 @@ void main() {
       name: 'A',
       frames: [frame('frame-1'), frame('frame-2')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 6),
-        6: TimelineExposure.drawing(const FrameId('frame-2'), length: 4),
+        0: const TimelineExposure.drawing(FrameId('frame-1'), length: 6),
+        6: const TimelineExposure.drawing(FrameId('frame-2'), length: 4),
       },
     );
 
@@ -296,7 +296,7 @@ void main() {
           name: 'A',
           frames: [frame('frame-1')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 2),
+            0: const TimelineExposure.drawing(FrameId('frame-1'), length: 2),
           },
         ),
         Layer(
@@ -304,7 +304,7 @@ void main() {
           name: 'B',
           frames: [frame('frame-x')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-x'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-x'), length: 1),
           },
         ),
       ]),
@@ -323,7 +323,7 @@ void main() {
           name: 'A',
           frames: [frame('frame-1')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('frame-1'), length: 1),
           },
           opacity: 0.25,
         ),
@@ -342,7 +342,7 @@ void main() {
       name: 'A',
       frames: [frame('frame-1')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 12),
+        0: const TimelineExposure.drawing(FrameId('frame-1'), length: 12),
       },
       transformTrack: track,
     );
@@ -388,7 +388,7 @@ void main() {
     name: 'A',
     frames: [frame('frame-1')],
     timeline: {
-      0: TimelineExposure.drawing(const FrameId('frame-1'), length: 12),
+      0: const TimelineExposure.drawing(FrameId('frame-1'), length: 12),
     },
     transformTrack: track,
     opacity: opacity,
@@ -484,7 +484,7 @@ void main() {
       name: 'A',
       frames: [frame('frame-1')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 4),
+        0: const TimelineExposure.drawing(FrameId('frame-1'), length: 4),
       },
       transformTrack: track,
       isVisible: isVisible,
@@ -515,7 +515,7 @@ void main() {
         // Own exposure PAST the base's block — a synced row could never
         // show here.
         timeline: {
-          5: TimelineExposure.drawing(const FrameId('frame-9'), length: 2),
+          5: const TimelineExposure.drawing(FrameId('frame-9'), length: 2),
         },
         attachedToLayerId: const LayerId('base'),
         attachedMode: AttachedMode.free,

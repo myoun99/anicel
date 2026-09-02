@@ -203,8 +203,8 @@ void main() {
           .getCenter(find.byKey(const ValueKey<String>('canvas-viewport-fit')))
           .dx;
 
-      expect(xs[_dataModeKey]!, lessThan(xs[_pageModeKey]!));
-      expect(xs[_pageModeKey]!, lessThan(fitX));
+      expect(xs[_dataModeKey], lessThan(xs[_pageModeKey]!));
+      expect(xs[_pageModeKey], lessThan(fitX));
 
       // The page cluster reads DOWNWARD in its own capsule, and the whole
       // capsule sits left of the pill it left.
@@ -212,8 +212,8 @@ void main() {
         for (final key in [_prevKey, _pageLabelKey, _nextKey])
           key: tester.getCenter(find.byKey(key)).dy,
       };
-      expect(ys[_prevKey]!, lessThan(ys[_pageLabelKey]!));
-      expect(ys[_pageLabelKey]!, lessThan(ys[_nextKey]!));
+      expect(ys[_prevKey], lessThan(ys[_pageLabelKey]!));
+      expect(ys[_pageLabelKey], lessThan(ys[_nextKey]!));
       expect(
         tester.getRect(find.byKey(const ValueKey<String>('canvas-page-strip'))).right,
         lessThan(

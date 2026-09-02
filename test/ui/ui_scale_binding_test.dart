@@ -1,4 +1,4 @@
-import 'dart:ui' as ui show PointerData, PointerDataPacket, PointerChange;
+import 'dart:ui' as ui show PointerChange, PointerData, PointerDataPacket;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';

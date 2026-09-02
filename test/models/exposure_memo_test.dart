@@ -29,8 +29,8 @@ void main() {
   });
 
   group('TimelineExposure.memo', () {
-    final block = TimelineExposure.drawing(
-      const FrameId('frame-a'),
+    const block = TimelineExposure.drawing(
+      FrameId('frame-a'),
       length: 4,
       memo: memo,
     );
@@ -59,8 +59,8 @@ void main() {
     });
 
     test('a block without a memo writes no memo key', () {
-      final plain = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const plain = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 2,
       );
 
@@ -69,15 +69,15 @@ void main() {
     });
 
     test('two exposures of the SAME drawing hold their own memos', () {
-      final first = TimelineExposure.drawing(
-        const FrameId('shared'),
+      const first = TimelineExposure.drawing(
+        FrameId('shared'),
         length: 2,
-        memo: const ExposureMemo(actionMemo: 'first time'),
+        memo: ExposureMemo(actionMemo: 'first time'),
       );
-      final second = TimelineExposure.drawing(
-        const FrameId('shared'),
+      const second = TimelineExposure.drawing(
+        FrameId('shared'),
         length: 2,
-        memo: const ExposureMemo(actionMemo: 'and again, differently'),
+        memo: ExposureMemo(actionMemo: 'and again, differently'),
       );
 
       expect(first.frameId, second.frameId);
@@ -85,8 +85,8 @@ void main() {
     });
 
     test('the memo takes part in equality', () {
-      final plain = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const plain = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 4,
       );
 
@@ -103,8 +103,8 @@ void main() {
           Frame(id: const FrameId('a1'), duration: 1, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(
-            const FrameId('a1'),
+          0: const TimelineExposure.drawing(
+            FrameId('a1'),
             length: 3,
             memo: memo,
           ),

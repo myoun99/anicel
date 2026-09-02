@@ -478,8 +478,8 @@ void main() {
                 height: 150,
                 child: CanvasLayerStackView(
                   nodes: [
-                    CanvasLayerGroupNode(
-                      children: const [CanvasActiveLayerNode(opacity: 1)],
+                    const CanvasLayerGroupNode(
+                      children: [CanvasActiveLayerNode(opacity: 1)],
                       opacity: 1,
                       blendMode: LayerBlendMode.multiply,
                     ),

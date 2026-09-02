@@ -337,7 +337,15 @@ class ResampleTransform {
     );
   }
 
-  final double a, b, c, d, e, f, g, h, i;
+  final double a;
+  final double b;
+  final double c;
+  final double d;
+  final double e;
+  final double f;
+  final double g;
+  final double h;
+  final double i;
   final bool isAffine;
 
   /// True when the map is a whole-pixel translation, which every mode must
@@ -576,7 +584,8 @@ void resampleRgbaReferenceInto({
       final absoluteX = x + clipX;
       final centreOfX = absoluteX + 0.5;
 
-      double u, v;
+      double u;
+      double v;
       if (t.isAffine) {
         u = t.a * centreOfX + t.b * centreOfY + t.c - 0.5;
         v = t.d * centreOfX + t.e * centreOfY + t.f - 0.5;
@@ -664,7 +673,8 @@ void resampleRgbaReferenceInto({
       // disagrees with the thing it stands in for is how the previous
       // design elected a colour by a loop bound.
       var runFlat = true;
-      int flatRadX, flatRadY;
+      int flatRadX;
+      int flatRadY;
       if (pickExact) {
         flatRadX = exactRadX;
         flatRadY = exactRadY;
@@ -861,7 +871,8 @@ void resampleRgbaReferenceInto({
             final sampleY = absoluteY + offsets[baseY + sy];
             for (var sx = 0; sx < nx; sx += 1) {
               final sampleX = absoluteX + offsets[baseX + sx];
-              double sampleU, sampleV;
+              double sampleU;
+              double sampleV;
               if (t.isAffine) {
                 sampleU = t.a * sampleX + t.b * sampleY + t.c - 0.5;
                 sampleV = t.d * sampleX + t.e * sampleY + t.f - 0.5;

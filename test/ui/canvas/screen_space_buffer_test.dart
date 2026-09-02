@@ -210,7 +210,7 @@ void main() {
     // nearest inside the buffer diverges at the ink's hard edge.
     final reference = await tester.runAsync(() async {
       const zoom = 0.025;
-      final visible = Rect.fromLTWH(0, 0, 300 / zoom, 8 / zoom);
+      const visible = Rect.fromLTWH(0, 0, 300 / zoom, 8 / zoom);
       // 🚨THE REFERENCE CARRIES THE BOUND LAW TOO, so it moves with it. The
       // buffer is CONTENT ∩ view now, not `pasteboard ∩ view`: the page is
       // 12000×256 and the view pulls back 12000×320, so the rect is the

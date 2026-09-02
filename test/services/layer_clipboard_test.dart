@@ -186,5 +186,5 @@ Layer _layer({
       name: 'A1',
     ),
   ],
-  timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
+  timeline: {0: const TimelineExposure.drawing(FrameId('frame-1'), length: 1)},
 );

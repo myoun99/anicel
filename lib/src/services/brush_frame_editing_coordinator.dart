@@ -1,5 +1,11 @@
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/frame_composite_cache_key.dart';
+
+import 'package:anicel/src/models/layer_tile_cache_key.dart';
+
+import 'package:anicel/src/models/playback_preview_cache_key.dart';
+
 import '../ui/dev_profile.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -273,9 +279,9 @@ class _NoopCacheInvalidationSink implements CacheInvalidationSink {
   void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
 
   @override
-  void invalidateFrameComposite(key) {}
+  void invalidateFrameComposite(FrameCompositeCacheKey key) {}
   @override
-  void invalidateLayerTile(key) {}
+  void invalidateLayerTile(LayerTileCacheKey key) {}
   @override
-  void invalidatePlaybackPreview(key) {}
+  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {}
 }

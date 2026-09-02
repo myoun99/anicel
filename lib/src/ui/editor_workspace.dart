@@ -2406,7 +2406,7 @@ class _RailGroupButton extends StatelessWidget {
     final tooltip = tabs.isEmpty
         ? AppText.strings.panelNewGroup
         : [for (final tab in tabs) tab.label].join(' · ');
-    final Widget button = face == null
+    final button = face == null
         ? RailButton(
             keyValue: 'rail-group-$railId',
             tooltip: tooltip,

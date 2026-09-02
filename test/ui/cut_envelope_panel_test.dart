@@ -300,7 +300,7 @@ void main() {
                   .widget<CustomPaint>(
                     find.byKey(const ValueKey<String>('cut-envelope-page')),
                   )
-                  .painter
+                  .painter!
               as CutEnvelopePainter;
       expect(painter.layout.form.id, CutEnvelopePresets.digitalId);
     });

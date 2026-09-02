@@ -65,8 +65,8 @@ void main() {
                     ),
                   ],
                   timeline: {
-                    0: TimelineExposure.drawing(frameA, length: 1),
-                    1: TimelineExposure.drawing(frameB, length: 1),
+                    0: const TimelineExposure.drawing(frameA, length: 1),
+                    1: const TimelineExposure.drawing(frameB, length: 1),
                   },
                 ),
               ],

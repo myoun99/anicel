@@ -269,7 +269,7 @@ void main() {
     s.createCut();
     drawOnCurrentFrame(s);
 
-    await AnicelFileService().writeRecoveryOverlay(
+    await const AnicelFileService().writeRecoveryOverlay(
       project: s.repository.requireProject(),
       brushFrameStore: s.brushFrameStore,
       filePath: overlayPath,

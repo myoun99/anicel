@@ -25,7 +25,7 @@ void main() {
   /// name-tag group, and an effect's lanes. The old chain could name a span
   /// inside any ONE of these and nothing across two.
   final drawn = <TimelineRowAddress?>[
-    LayerRowAddress(layer),
+    const LayerRowAddress(layer),
     lane('transform-group'),
     lane('position'),
     lane('scale'),
@@ -118,7 +118,7 @@ void main() {
     // The rows carry the owner, and a rail can draw two layers at once.
     final mixed = <TimelineRowAddress?>[
       lane('position'),
-      LaneRowAddress(const LayerId('OTHER'), 'scale'),
+      const LaneRowAddress(LayerId('OTHER'), 'scale'),
       lane('scale'),
     ];
     expect(

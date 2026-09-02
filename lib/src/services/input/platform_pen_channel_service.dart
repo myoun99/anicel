@@ -85,7 +85,7 @@ class PlatformPenChannelService {
     _lastSampleAt = DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  void _onMessage(dynamic message) {
+  void _onMessage(Object? message) {
     if (message is! Map) {
       return;
     }

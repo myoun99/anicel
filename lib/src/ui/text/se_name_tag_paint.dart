@@ -119,4 +119,3 @@ ui.Rect seNameTagBoxBounds(
     height: ink.height,
   );
 }
-

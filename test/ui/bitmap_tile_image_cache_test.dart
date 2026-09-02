@@ -85,7 +85,7 @@ void main() {
       () async {
         final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
         final surface = BitmapSurface(
-          canvasSize: CanvasSize(width: 4, height: 4),
+          canvasSize: const CanvasSize(width: 4, height: 4),
           tileSize: 4,
           tiles: {tile.coord: tile},
         );

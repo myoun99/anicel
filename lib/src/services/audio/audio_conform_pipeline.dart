@@ -563,13 +563,12 @@ class AudioConformPipeline {
     // very devices where a big allocation gets the app killed.
     if (settingsMatch &&
         stat != null &&
-        existing.sourceStat?.matches(
+        (existing.sourceStat?.matches(
               ConformSourceStat(
                 sourceLength: stat.lengthBytes,
                 sourceModifiedMicros: stat.modifiedMicros,
               ),
-            ) ==
-            true) {
+            ) ?? false)) {
       return _reuse(existing, reusableAt);
     }
 

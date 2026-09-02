@@ -1,4 +1,4 @@
-﻿import 'dart:math';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -275,10 +275,10 @@ void main() {
           BrushDab(
             center: randomCenter(),
             color:
-                (0xFF000000 |
+                0xFF000000 |
                 (random.nextInt(256) << 16) |
                 (random.nextInt(256) << 8) |
-                random.nextInt(256)),
+                random.nextInt(256),
             size: 2.0 + random.nextDouble() * 48.0,
             opacity: i == 0 ? 1.0 : random.nextDouble(),
             flow: i == 1 ? 0.5 : 0.05 + random.nextDouble() * 0.95,

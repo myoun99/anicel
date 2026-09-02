@@ -491,14 +491,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                           : 'Apply onion to displayed layers',
                       icon: Icons.filter_none,
                       checked: displayedOnionSkinOn,
-                      onSelected: legend!.onToggleOnionSkinForDisplayed!,
+                      onSelected: legend!.onToggleOnionSkinForDisplayed,
                     ),
                     if (legend.onRevealOnionSkinPanel != null)
                       PanelFlyoutItem(
                         keyValue: 'legend-onion-open-panel',
                         label: AppText.strings.tlOpenOnionPanel,
                         icon: Icons.open_in_new,
-                        onSelected: legend.onRevealOnionSkinPanel!,
+                        onSelected: legend.onRevealOnionSkinPanel,
                       ),
                   ],
             child: _legendIcon(
@@ -653,9 +653,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     // legend has to SIZE itself from the same answer it lays out from — a
     // Column has no `Expanded` slack to hide a disagreement in, unlike the
     // horizontal rail where the LAYER heading absorbs it.
-    final bool hasOnion =
+    final hasOnion =
         hasOnionColumn ?? legend?.onToggleOnionSkinForDisplayed != null;
-    final bool hasBlend =
+    final hasBlend =
         hasBlendColumn ??
         (legend?.onSetBlendModeForDisplayed != null &&
             displayedLayerIds != null);
@@ -664,14 +664,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     // row across it. Stood up, the two swap — and the rail's extent is the
     // TIMELINE'S, because the x-sheet's own `layerControlsWidth` means its
     // frame-number rail, a different thing entirely.
-    final double railExtent =
+    final railExtent =
         this.railExtent ??
         (isVertical
             ? timelineLayerControlsWidth -
                   (hasOnion ? 0 : layerOnionSlotWidth) -
                   (hasBlend ? 0 : layerBlendSlotWidth)
             : metrics.layerControlsWidth);
-    final double crossExtent = isVertical
+    final crossExtent = isVertical
         ? metrics.layerControlsWidth
         : metrics.layerRowHeight;
 

@@ -1,4 +1,4 @@
-﻿import 'dart:ui' as ui;
+import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
@@ -118,8 +118,8 @@ class ExportFrameRenderer {
   /// Canvas-space composites for the stack bake: TRANSPARENT backing, so
   /// an upper track's frame never blanks the tracks below — the paper
   /// belongs to the bottom covered track and the assembler paints it.
-  late final CameraFrameRenderService _stackRenderService =
-      CameraFrameRenderService(background: const ui.Color(0x00000000));
+  static const CameraFrameRenderService _stackRenderService =
+      CameraFrameRenderService(background: ui.Color(0x00000000));
 
   /// The multi-track layout, built once per export run (the project is
   /// frozen while a run streams).

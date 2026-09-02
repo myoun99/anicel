@@ -71,7 +71,7 @@ void main() {
     test('tolerance gates which neighbors join the region', () {
       // A near-white pixel 40/channel away from the white seed.
       final rgb = rasterWithInk(const {});
-      final base = (3 * 8 + 4) * 4;
+      const base = (3 * 8 + 4) * 4;
       rgb[base] = 215;
       rgb[base + 1] = 215;
       rgb[base + 2] = 215;
@@ -154,7 +154,7 @@ void main() {
       name: 'Ink',
       frames: [frame('ink-frame')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('ink-frame'), length: 1),
+        0: const TimelineExposure.drawing(FrameId('ink-frame'), length: 1),
       },
     );
 
@@ -260,7 +260,7 @@ void main() {
         name: 'Paint',
         frames: [frame('paint-frame')],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('paint-frame'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('paint-frame'), length: 1),
         },
       );
       BitmapSurface? resolve(Layer layer, Frame _) =>
@@ -421,12 +421,12 @@ void main() {
         )!;
 
         final coordinator = BrushFrameEditingCoordinator(
-          initialFrameKey: BrushFrameKey(
-            projectId: const ProjectId('project'),
-            trackId: const TrackId('track'),
-            cutId: const CutId('cut'),
-            layerId: const LayerId('fill'),
-            frameId: const FrameId('fill-frame'),
+          initialFrameKey: const BrushFrameKey(
+            projectId: ProjectId('project'),
+            trackId: TrackId('track'),
+            cutId: CutId('cut'),
+            layerId: LayerId('fill'),
+            frameId: FrameId('fill-frame'),
           ),
           frameStore: BrushFrameStore(),
           sessionStore: BrushFrameEditSessionStore(

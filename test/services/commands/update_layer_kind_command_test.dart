@@ -152,8 +152,8 @@ void main() {
           _frame(id: 'frame-animation', strokes: [_stroke('stroke')]),
         ],
         timeline: {
-          0: TimelineExposure.drawing(
-            const FrameId('frame-animation'),
+          0: const TimelineExposure.drawing(
+            FrameId('frame-animation'),
             length: 1,
           ),
         },
@@ -295,5 +295,3 @@ Stroke _stroke(String id) => Stroke(
   points: const [StrokePoint(x: 1, y: 2)],
   brushSettings: BrushSettings(),
 );
-
-

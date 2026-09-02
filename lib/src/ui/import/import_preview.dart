@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -241,9 +240,9 @@ class _ImportPreviewState extends State<ImportPreview> {
       await _renderPdfPage(0);
       return;
     }
-    List<ui.Image> frames = const [];
+    var frames = const <ui.Image>[];
     try {
-      final Uint8List bytes = await MediaFileBytes(path).read();
+      final bytes = await MediaFileBytes(path).read();
       frames = [
         for (final frame in await decodeImageFrames(bytes)) frame.image,
       ];

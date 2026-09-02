@@ -308,7 +308,7 @@ void main() {
             _paintedSessionState(const [255, 255, 255, 255]),
             results.add,
             inputSettings: BrushEditCanvasInputSettings.fromShape(
-              BrushShape(
+              const BrushShape(
                 size: 4,
                 color: 0xFF000000,
                 mixesGroundColor: true,
@@ -344,7 +344,7 @@ void main() {
             _paintedSessionState(const [255, 255, 255, 255]),
             results.add,
             inputSettings: BrushEditCanvasInputSettings.fromShape(
-              BrushShape(size: 4, color: 0xFF000000),
+              const BrushShape(size: 4, color: 0xFF000000),
             ),
           ),
         ),
@@ -705,22 +705,18 @@ void main() {
     testWidgets('repeated tap strokes produce repeated operation results', (
       tester,
     ) async {
-      var sessionState = _sessionState();
+      final sessionState = _sessionState();
       final results = <List<BrushDab>>[];
 
       await tester.pumpWidget(
         _app(
-          _view(sessionState, (result) {
-            results.add(result);
-          }),
+          _view(sessionState, results.add),
         ),
       );
       await tapCanvas(tester, const Offset(1.5, 1.5));
       await tester.pumpWidget(
         _app(
-          _view(sessionState, (result) {
-            results.add(result);
-          }),
+          _view(sessionState, results.add),
         ),
       );
       await tapCanvas(tester, const Offset(2.5, 1.5));

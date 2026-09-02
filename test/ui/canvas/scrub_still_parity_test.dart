@@ -106,7 +106,7 @@ void main() {
         frames: [
           Frame(id: frameId, duration: 1, strokes: const []),
         ],
-        timeline: {0: TimelineExposure.drawing(frameId, length: 4)},
+        timeline: {0: const TimelineExposure.drawing(frameId, length: 4)},
         folderId: inFolder ? folderLayerId : null,
       ),
       if (inFolder)

@@ -85,7 +85,7 @@ Set<String> filesAlreadyDone(File out) {
     if (t.isEmpty) continue;
     // ⛔Read the field rather than decoding: a truncated last line — which is
     // exactly what an interrupt leaves — must not take the whole resume down.
-    final m = RegExp(r'"file":"([^"]+)"').firstMatch(t);
+    final m = RegExp('"file":"([^"]+)"').firstMatch(t);
     if (m != null) done.add(m.group(1)!);
   }
   return done;
@@ -202,7 +202,10 @@ Future<void> main(List<String> args) async {
           mode: FileMode.append,
         );
 
-  var killed = 0, survived = 0, unbuilt = 0, timedOut = 0;
+  var killed = 0;
+  var survived = 0;
+  var unbuilt = 0;
+  var timedOut = 0;
   try {
     for (final target in targets) {
       final namers = (namersOf[target] ?? const <String>[]).toList()..sort();

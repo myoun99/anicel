@@ -153,7 +153,7 @@ TvppClipConversion convertTvppClip(
   final layers = <TvpLayer>[];
   for (var i = count - 1; i >= 0; i--) {
     final marker = topFirstParentLayerId[i];
-    int parentBottom = -1;
+    var parentBottom = -1;
     if (marker <= -2) {
       parentBottom = bottomIndexOf(-2 - marker);
     } else if (marker != 0) {

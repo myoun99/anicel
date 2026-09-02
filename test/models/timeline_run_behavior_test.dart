@@ -249,10 +249,10 @@ void main() {
       'length', () {
     final layer = _layer(
       timeline: {
-        0: TimelineExposure.drawing(
-          const FrameId('a'),
+        0: const TimelineExposure.drawing(
+          FrameId('a'),
           length: 3,
-          breakdownOffsets: const [1, 2],
+          breakdownOffsets: [1, 2],
         ),
       },
       behaviors: const [_endRepeat],

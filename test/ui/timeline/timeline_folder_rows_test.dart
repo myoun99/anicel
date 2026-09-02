@@ -135,14 +135,14 @@ void main() {
       layer(
         'a',
         folder: 'f',
-        timeline: {0: TimelineExposure.drawing(const FrameId('x'), length: 3)},
+        timeline: {0: const TimelineExposure.drawing(FrameId('x'), length: 3)},
       ),
       layer(
         'b',
         folder: 'f',
         timeline: {
-          2: TimelineExposure.drawing(const FrameId('y'), length: 2),
-          8: TimelineExposure.drawing(const FrameId('z'), length: 1),
+          2: const TimelineExposure.drawing(FrameId('y'), length: 2),
+          8: const TimelineExposure.drawing(FrameId('z'), length: 1),
         },
       ),
     ]);

@@ -59,7 +59,7 @@ void _listen() {
       return;
     }
     if (msg['event'] == 'server.status') {
-      final params = msg['params'] as Map<String, Object?>;
+      final params = msg['params']! as Map<String, Object?>;
       final analysis = params['analysis'] as Map<String, Object?>?;
       if (analysis != null) _status.add(analysis['isAnalyzing'] == true);
     }
@@ -124,11 +124,11 @@ bool _hasError(Map<String, Object?> result) {
 
 Future<bool> _runJob(String root, Map<String, Object?> job) async {
   if (job['lambdaBody'] == true) return _liftLambdaBody(root, job);
-  final rel = job['file'] as String;
+  final rel = job['file']! as String;
   final path = '$root/$rel'.replaceAll('\\', '/');
   final file = File(path);
   var src = file.readAsStringSync();
-  final name = job['name'] as String;
+  final name = job['name']! as String;
 
   final srcBefore = src;
   final (start, end) = _selection(src, job);
@@ -154,7 +154,7 @@ Future<bool> _runJob(String root, Map<String, Object?> job) async {
     stdout.writeln('  tail: ${_show(src.substring(end - 70 < start ? start : end - 70, end))}');
     return false;
   }
-  final feedback = probeResult['feedback'] as Map<String, Object?>;
+  final feedback = probeResult['feedback']! as Map<String, Object?>;
   final options = {
     'returnType': feedback['returnType'],
     'createGetter': false,
@@ -184,18 +184,18 @@ Future<bool> _runJob(String root, Map<String, Object?> job) async {
     stdout.writeln('REFUSED $name: no change');
     return false;
   }
-  final fileEdits = change['edits'] as List;
+  final fileEdits = change['edits']! as List;
   for (final fe in fileEdits) {
     final m = fe as Map<String, Object?>;
-    final editedPath = (m['file'] as String).replaceAll('\\', '/');
+    final editedPath = (m['file']! as String).replaceAll('\\', '/');
     if (editedPath.toLowerCase() != path.toLowerCase()) {
       stdout.writeln('REFUSED $name: edit outside the file: $editedPath');
       return false;
     }
-    final edits = (m['edits'] as List)
+    final edits = (m['edits']! as List)
         .map((e) => e as Map<String, Object?>)
         .toList()
-      ..sort((a, b) => (b['offset'] as int).compareTo(a['offset'] as int));
+      ..sort((a, b) => (b['offset']! as int).compareTo(a['offset']! as int));
     // A void block whose every path ended in `return;` extracts cleanly,
     // but the analyzer leaves a bare call behind: the caller must still
     // leave. Put the `return;` back after the call.
@@ -203,9 +203,9 @@ Future<bool> _runJob(String root, Map<String, Object?> job) async {
         feedback['returnType'] == 'void' &&
         srcBefore.substring(start, end).trimRight().endsWith('return;');
     for (final e in edits) {
-      final offset = e['offset'] as int;
-      final len = e['length'] as int;
-      var replacement = e['replacement'] as String;
+      final offset = e['offset']! as int;
+      final len = e['length']! as int;
+      var replacement = e['replacement']! as String;
       if (leaves && offset == start) {
         final eol = src.contains('\r\n') ? '\r\n' : '\n';
         replacement += '$eol${' ' * _column(srcBefore, start)}return;';
@@ -303,7 +303,7 @@ int _lineExact(String src, String lineText, int from) {
 (int, int) _selection(String src, Map<String, Object?> job) {
   final expr = job['expr'] == true;
   final balanced = job['balanced'] == true;
-  final startText = job['startText'] as String;
+  final startText = job['startText']! as String;
   final endText = job['endText'] as String?;
   final near = job['near'] as String?;
   int startHit;
@@ -438,7 +438,7 @@ String _leadingComment(String src, Map<String, Object?> job) {
 }
 
 int _anchorHit(String src, Map<String, Object?> job) {
-  final startText = job['startText'] as String;
+  final startText = job['startText']! as String;
   final near = job['near'] as String?;
   if (near != null) {
     final nearHit = _offsetOf(src, near, 1, 'near');
@@ -606,17 +606,17 @@ String _tearOffs(String src, String name) {
 ///    "near": "...", "nearAfter": true, "paramType": "PointerDownEvent",
 ///    "name": "_toolTapDown"}
 Future<bool> _liftLambdaBody(String root, Map<String, Object?> job) async {
-  final rel = job['file'] as String;
+  final rel = job['file']! as String;
   final path = '$root/$rel'.replaceAll('\\', '/');
   final file = File(path);
   var src = file.readAsStringSync();
-  final name = job['name'] as String;
+  final name = job['name']! as String;
   // One positional parameter is typed by `paramType`; anything richer is
   // spelled whole by `paramList` (e.g. "double delta, {required bool snap}").
   final paramType = job['paramType'] as String?;
   final paramList = job['paramList'] as String?;
   final anchor = _anchorHit(src, job);
-  final startText = job['startText'] as String;
+  final startText = job['startText']! as String;
   final lambdaAt = src.indexOf('(', anchor + startText.indexOf('('));
   final paramClose = src.indexOf(')', lambdaAt);
   final param = src.substring(lambdaAt + 1, paramClose).trim();

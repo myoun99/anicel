@@ -20,12 +20,12 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 /// service's rebuild path is a reference reseed (no replay exists).
 void main() {
   const canvasSize = CanvasSize(width: 16, height: 16);
-  final key = BrushFrameKey(
-    projectId: const ProjectId('project'),
-    trackId: const TrackId('track'),
-    cutId: const CutId('cut'),
-    layerId: const LayerId('layer'),
-    frameId: const FrameId('frame'),
+  const key = BrushFrameKey(
+    projectId: ProjectId('project'),
+    trackId: TrackId('track'),
+    cutId: CutId('cut'),
+    layerId: LayerId('layer'),
+    frameId: FrameId('frame'),
   );
 
   BrushFrameEditingCoordinator coordinator() {

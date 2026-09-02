@@ -293,7 +293,8 @@ Uint8List srawRecord(
   final total = cols * rows;
 
   List<List<int>> tileRows(int t) {
-    final tr = t ~/ cols, tc = t % cols;
+    final tr = t ~/ cols;
+    final tc = t % cols;
     final tw = tc == cols - 1 ? width - tc * tile : tile;
     final th = tr == rows - 1 ? height - tr * tile : tile;
     return [

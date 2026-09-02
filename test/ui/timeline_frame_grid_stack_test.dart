@@ -83,7 +83,7 @@ void main() {
                           w.painter is TimelineOutsideCutWashPainter,
                     ),
                   )
-                  .painter
+                  .painter!
               as TimelineOutsideCutWashPainter;
       expect(wash.axis, Axis.vertical);
       expect(
@@ -136,7 +136,7 @@ void main() {
       // of its own above the stack.
       final stack = tester.widget<Stack>(find.byType(Stack));
       final slot = (stack.children[0] as Positioned).child as IgnorePointer;
-      final boundary = slot.child as RepaintBoundary;
+      final boundary = slot.child! as RepaintBoundary;
       expect(boundary.child!.key, beatLinesKey);
     });
 

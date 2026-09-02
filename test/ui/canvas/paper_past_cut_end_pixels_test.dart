@@ -131,7 +131,7 @@ void main() {
           )
           .first,
     );
-    final image = (await tester.runAsync(() => boundary.toImage()))!;
+    final image = (await tester.runAsync(boundary.toImage))!;
     final bytes = (await tester.runAsync(
       () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
     ))!;

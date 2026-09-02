@@ -112,7 +112,7 @@ void main() {
     );
     // And the right corner really is covered — the assertion above cannot
     // be vacuous against an all-transparent pair.
-    final corner = ((4 * 16) + 15) * 4;
+    const corner = ((4 * 16) + 15) * 4;
     expect(fresh[corner + 3], 255, reason: 'the wide record reaches x=15');
   });
 
@@ -124,12 +124,12 @@ void main() {
     // a clipped stale blit of a solid colour reproduces the fresh render
     // by accident, and the wiring mutation stays green. Measured.
     const canvasSize = CanvasSize(width: 16, height: 8);
-    final frameKey = BrushFrameKey(
-      projectId: const ProjectId('p'),
-      trackId: const TrackId('t'),
-      cutId: const CutId('c'),
-      layerId: const LayerId('l'),
-      frameId: const FrameId('f'),
+    const frameKey = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('l'),
+      frameId: FrameId('f'),
     );
 
     LayerFrameImageCache cacheWithRightDab() {
@@ -194,7 +194,7 @@ void main() {
                     // this test would pass with `ensureExtent` deleted.
                     // The raster is the mechanism whose extent this pins.
                     for (var i = 0; i < 7; i += 1)
-                      CanvasLayerImageNode(
+                      const CanvasLayerImageNode(
                         CanvasLayerImageRequest(
                           frameKey: frameKey,
                           opacity: 1,

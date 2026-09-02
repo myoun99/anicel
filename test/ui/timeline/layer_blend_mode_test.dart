@@ -83,7 +83,7 @@ void main() {
   testWidgets('R27 #6: the blend dropdown lives in the LAYER LABEL — it '
       'reads the row\'s own mode, commits a pick, speaks CSP Japanese in '
       'ja, and the toolbar no longer carries one', (tester) async {
-    var committed = <(LayerId, LayerBlendMode)>[];
+    final committed = <(LayerId, LayerBlendMode)>[];
     Widget rowHost(Layer layer, AppLanguage language) => MaterialApp(
       home: Material(
         child: TimelineLayerControlsRow(

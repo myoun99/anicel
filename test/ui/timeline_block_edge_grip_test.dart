@@ -322,8 +322,8 @@ class _DragLog {
   final bool acceptBegin;
   final begins = <(LayerId, int, TimelineBlockEdge)>[];
   final updates = <int>[];
-  var ends = 0;
-  var cancels = 0;
+  int ends = 0;
+  int cancels = 0;
 
   late final callbacks = TimelineCommaDragCallbacks(
     onBegin: (layerId, blockStartIndex, edge) {
@@ -347,8 +347,8 @@ Layer _twoBlockLayer({LayerKind kind = LayerKind.animation}) {
       Frame(id: const FrameId('f2'), duration: 1, strokes: const []),
     ],
     timeline: {
-      0: TimelineExposure.drawing(const FrameId('f1'), length: 2),
-      4: TimelineExposure.drawing(const FrameId('f2'), length: 2),
+      0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
+      4: const TimelineExposure.drawing(FrameId('f2'), length: 2),
     },
   );
 }

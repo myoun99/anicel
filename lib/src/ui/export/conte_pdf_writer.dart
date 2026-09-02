@@ -152,13 +152,13 @@ class _ContePdfPageWriter {
   final Map<(String, int), PdfImage> pictures;
   final Map<BrushFrameKey, PdfImage> inkPictures;
 
-  static final PdfColor _ink = PdfColor.fromInt(0xFF101010);
-  static final PdfColor _rule = PdfColor.fromInt(0xFF404040);
-  static final PdfColor _paper = PdfColor.fromInt(0xFFFFFFFF);
+  static const PdfColor _ink = PdfColor.fromInt(0xFF101010);
+  static const PdfColor _rule = PdfColor.fromInt(0xFF404040);
+  static const PdfColor _paper = PdfColor.fromInt(0xFFFFFFFF);
 
   /// The tone inside a printed picture frame (the painter's `_pictureWell`
   /// — the two renderers print the same sheet).
-  static final PdfColor _pictureWell = PdfColor.fromInt(0xFFEDEDED);
+  static const PdfColor _pictureWell = PdfColor.fromInt(0xFFEDEDED);
 
   /// The painter's line height (TextStyle height: 1.25).
   static const double _lineHeight = 1.25;

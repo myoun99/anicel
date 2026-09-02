@@ -111,12 +111,12 @@ class SeNameTagTrack {
   factory SeNameTagTrack.fromJson(Map<String, dynamic> json) {
     PropertyTrack<double> number(String key) => PropertyTrack.fromJson(
       json[key] as List?,
-      (v) => (v as num).toDouble(),
+      (v) => (v! as num).toDouble(),
     );
     PropertyTrack<int> argb(String key) =>
-        PropertyTrack.fromJson(json[key] as List?, (v) => (v as num).toInt());
+        PropertyTrack.fromJson(json[key] as List?, (v) => (v! as num).toInt());
     PropertyTrack<bool> flag(String key) =>
-        PropertyTrack.fromJson(json[key] as List?, (v) => v as bool);
+        PropertyTrack.fromJson(json[key] as List?, (v) => v! as bool);
     return SeNameTagTrack(
       fontSize: number('fontSize'),
       letterSpacing: number('letterSpacing'),
@@ -358,4 +358,3 @@ double seNameTagWidthBudget({
   final shot = shotRectIn(canvas: canvas, cameraFrame: cameraFrame);
   return shot.width * 0.88;
 }
-

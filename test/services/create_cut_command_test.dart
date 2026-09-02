@@ -261,7 +261,7 @@ void main() {
     test('a gap big enough to hold the cut absorbs all of it — the follower '
         'does not move at all', () {
       final roomy = _cut(id: 'cut-b', name: 'Cut B', leadingGap: 1000);
-      final before = 1000; // cut-a is 24 long and starts at 0.
+      const before = 1000; // cut-a is 24 long and starts at 0.
       final made = createBefore(roomy);
 
       expect(

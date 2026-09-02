@@ -56,7 +56,7 @@ void main() {
     test('names round-trip through JSON', () {
       final restored = PropertyTrack.fromJson<double>(
         track({0: (1, 'A'), 3: (2, null)}).toJson((value) => value),
-        (value) => (value as num).toDouble(),
+        (value) => (value! as num).toDouble(),
       );
 
       expect(restored.keyAt(0)!.name, 'A');
@@ -111,7 +111,7 @@ void main() {
       expect(
         namedEffectKeyValue(
           effects,
-          effectId: EffectId('e1'),
+          effectId: const EffectId('e1'),
           parameterId: radiusId,
           name: 'A',
         ),
@@ -120,7 +120,7 @@ void main() {
       expect(
         namedEffectKeyValue(
           effects,
-          effectId: EffectId('e2'),
+          effectId: const EffectId('e2'),
           parameterId: radiusId,
           name: 'A',
         ),

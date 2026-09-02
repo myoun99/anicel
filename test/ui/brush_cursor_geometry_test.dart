@@ -98,7 +98,7 @@ void main() {
         angleDegrees: 30,
       )!;
 
-      final radians = 30 * math.pi / 180;
+      const radians = 30 * math.pi / 180;
       final expected = screenDelta(
         viewport,
         20 * math.cos(radians),

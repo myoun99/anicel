@@ -97,9 +97,9 @@ void main() {
           Frame(id: const FrameId('a'), duration: 2, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('a'), length: 2),
-          2: TimelineExposure.drawing(
-            const FrameId('a'),
+          0: const TimelineExposure.drawing(FrameId('a'), length: 2),
+          2: const TimelineExposure.drawing(
+            FrameId('a'),
             length: 2,
             ghost: true,
             ghostOwnerId: 'a:end',
@@ -187,7 +187,7 @@ Layer _markedTestLayer() {
     id: const LayerId('layer'),
     name: 'Layer',
     frames: [Frame(id: const FrameId('a'), duration: 3, strokes: const [])],
-    timeline: {0: TimelineExposure.drawing(const FrameId('a'), length: 3)},
+    timeline: {0: const TimelineExposure.drawing(FrameId('a'), length: 3)},
   );
 }
 

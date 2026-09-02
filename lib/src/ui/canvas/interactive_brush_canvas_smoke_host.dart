@@ -39,7 +39,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     bool showTransparentBackground = true,
     ValueChanged<BrushStrokeCommitData>? onSourceStrokeCommitted,
   }) {
-    final resolvedCanvasSize = canvasSize ?? CanvasSize(width: 64, height: 64);
+    final resolvedCanvasSize = canvasSize ?? const CanvasSize(width: 64, height: 64);
     final sessionStore = BrushFrameEditSessionStore(
       canvasSize: resolvedCanvasSize,
       tileSize: tileSize,

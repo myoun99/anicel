@@ -162,7 +162,7 @@ void main() {
 
     // Group root: no variant -> skipped.
     database.execute(
-      "INSERT INTO Node(_PW_ID, NodeUuid, NodeName, NodeVariantID) "
+      'INSERT INTO Node(_PW_ID, NodeUuid, NodeName, NodeVariantID) '
       "VALUES (1, x'00', '', NULL)",
     );
     // Sampled brush.
@@ -194,13 +194,13 @@ void main() {
         ),
         effector(0x00),
         effector(flowEffectorFlags, minimumPercent: flowEffectorMinimum),
-        texturePng == null ? null : patternArray(textureCatalogPath),
+        if (texturePng == null) null else patternArray(textureCatalogPath),
         brushSizeUnit,
         rotationEffector,
         rotationRandomScale,
-        dualPng == null ? 0 : 1,
-        dualPng == null ? 0 : 1,
-        dualPng == null ? null : patternArray(dualCatalogPath),
+        if (dualPng == null) 0 else 1,
+        if (dualPng == null) 0 else 1,
+        if (dualPng == null) null else patternArray(dualCatalogPath),
         dualSize,
         syncDualBrushSize,
         useWaterColor,

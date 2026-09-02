@@ -174,7 +174,7 @@ class _RunBehaviorPass {
       for (final entry in base.entries)
         (start: entry.key, endExclusive: entry.key + entry.value.length!),
     ];
-    var index = blocks.indexWhere((block) => block.start == blockStartIndex);
+    final index = blocks.indexWhere((block) => block.start == blockStartIndex);
     var first = index;
     while (first > 0 && blocks[first - 1].endExclusive == blocks[first].start) {
       first -= 1;

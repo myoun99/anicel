@@ -139,7 +139,7 @@ void main() {
 
   test('folding ONE GROUP takes its members and leaves the header', () {
     final s = session();
-    final member = LaneRowAddress(const LayerId('a'), 'scale');
+    const member = LaneRowAddress(LayerId('a'), 'scale');
     s.beginRowSelection(layerA);
     s.rowSelection.value = [layerA, member];
 

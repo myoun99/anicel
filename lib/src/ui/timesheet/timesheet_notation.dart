@@ -4,7 +4,65 @@ import '../../models/app_language.dart';
 /// the header box labels and the sheet vocabulary (the repeat word,
 /// UI-R10 #6). Independent of the program language: submissions follow
 /// the studio's paper convention (default Japanese).
-class TimesheetNotation {
+enum TimesheetNotation {
+  /// The pre-UI-R10 wording (the reference forms' English, R7-⑥) — the
+  /// painter's default so focused tests stay wording-stable.
+  english._(
+    episode: 'Ep.no',
+    title: 'Title',
+    scene: 'Scene',
+    cut: 'Cut.no',
+    duration: 'Duration',
+    name: 'Name',
+    page: 'Page',
+    repeat: 'REPEAT',
+    hold: 'HOLD',
+  ),
+  _ja._(
+    episode: '話数',
+    title: 'タイトル',
+    scene: 'シーン',
+    cut: 'カット',
+    duration: 'タイム',
+    name: '原画',
+    page: 'シート',
+    repeat: 'リピート',
+    hold: '止め',
+  ),
+  _ko._(
+    episode: '화수',
+    title: '제목',
+    scene: '씬',
+    cut: '컷',
+    duration: '타임',
+    name: '원화',
+    page: '시트',
+    repeat: '리피트',
+    hold: '홀드',
+  ),
+  _fr._(
+    episode: 'Ép.',
+    title: 'Titre',
+    scene: 'Scène',
+    cut: 'Plan',
+    duration: 'Durée',
+    name: 'Animateur',
+    page: 'Feuille',
+    repeat: 'RÉPÉT.',
+    hold: 'FIXE',
+  ),
+  _zhHans._(
+    episode: '话数',
+    title: '标题',
+    scene: '场景',
+    cut: '镜头',
+    duration: '时间',
+    name: '原画',
+    page: '摄影表',
+    repeat: '重复',
+    hold: '停格',
+  );
+
   const TimesheetNotation._({
     required this.episode,
     required this.title,
@@ -43,69 +101,4 @@ class TimesheetNotation {
     AppLanguage.fr => _fr,
     AppLanguage.zhHans => _zhHans,
   };
-
-  /// The pre-UI-R10 wording (the reference forms' English, R7-⑥) — the
-  /// painter's default so focused tests stay wording-stable.
-  static const TimesheetNotation english = TimesheetNotation._(
-    episode: 'Ep.no',
-    title: 'Title',
-    scene: 'Scene',
-    cut: 'Cut.no',
-    duration: 'Duration',
-    name: 'Name',
-    page: 'Page',
-    repeat: 'REPEAT',
-    hold: 'HOLD',
-  );
-
-  // The real reference forms' wording (UI-R11 #4 — user's studio
-  // convention): タイトル / タイム / 原画 (the key animator signs here) /
-  // シート.
-  static const TimesheetNotation _ja = TimesheetNotation._(
-    episode: '話数',
-    title: 'タイトル',
-    scene: 'シーン',
-    cut: 'カット',
-    duration: 'タイム',
-    name: '原画',
-    page: 'シート',
-    repeat: 'リピート',
-    hold: '止め',
-  );
-
-  static const TimesheetNotation _ko = TimesheetNotation._(
-    episode: '화수',
-    title: '제목',
-    scene: '씬',
-    cut: '컷',
-    duration: '타임',
-    name: '원화',
-    page: '시트',
-    repeat: '리피트',
-    hold: '홀드',
-  );
-
-  static const TimesheetNotation _fr = TimesheetNotation._(
-    episode: 'Ép.',
-    title: 'Titre',
-    scene: 'Scène',
-    cut: 'Plan',
-    duration: 'Durée',
-    name: 'Animateur',
-    page: 'Feuille',
-    repeat: 'RÉPÉT.',
-    hold: 'FIXE',
-  );
-
-  static const TimesheetNotation _zhHans = TimesheetNotation._(
-    episode: '话数',
-    title: '标题',
-    scene: '场景',
-    cut: '镜头',
-    duration: '时间',
-    name: '原画',
-    page: '摄影表',
-    repeat: '重复',
-    hold: '停格',
-  );
 }

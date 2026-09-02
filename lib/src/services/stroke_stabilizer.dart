@@ -30,7 +30,9 @@ class StrokeStabilizer {
       return _brush;
     }
     final travel = (distance - ropeLength) / distance;
-    _brush = CanvasPoint(x: _brush.x + dx * travel, y: _brush.y + dy * travel);
-    return _brush;
+    return _brush = CanvasPoint(
+      x: _brush.x + dx * travel,
+      y: _brush.y + dy * travel,
+    );
   }
 }

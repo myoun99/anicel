@@ -58,7 +58,7 @@ void main() {
       if (!block.toLowerCase().contains('ffmpeg')) {
         continue;
       }
-      final named = RegExp(r"subsystem: '([^']+)'").firstMatch(block);
+      final named = RegExp("subsystem: '([^']+)'").firstMatch(block);
       expect(
         named?.group(1),
         'Video export encoder',

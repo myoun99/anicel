@@ -194,7 +194,7 @@ void main() {
               'on it',
         );
         expect(
-          RegExp(r'onSelectCrossed:').allMatches(text).length,
+          RegExp('onSelectCrossed:').allMatches(text).length,
           greaterThanOrEqualTo(2),
           reason:
               'the fx CHAIN HEADER and the select-only lane each need their '
@@ -225,7 +225,7 @@ void main() {
           text.indexOf('Widget layerRowDragWrapper('),
         );
         expect(
-          RegExp(r'onSelectCrossed:').allMatches(wrapper).length,
+          RegExp('onSelectCrossed:').allMatches(wrapper).length,
           greaterThanOrEqualTo(2),
           reason:
               'the unmovable row\'s select-only target and the movable row\'s '

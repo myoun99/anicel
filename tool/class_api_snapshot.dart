@@ -168,7 +168,7 @@ List<String> _members(List<String> lines, String className) {
 
 /// The member name a declaration introduces, or null when nothing parses.
 String? _nameOf(String declaration) {
-  var text = declaration.replaceAll(RegExp(r'^@\w+\s+'), '');
+  final text = declaration.replaceAll(RegExp(r'^@\w+\s+'), '');
   final accessor = RegExp(
     r'\b(get|set)\s+([A-Za-z_][A-Za-z0-9_]*)',
   ).firstMatch(text);
@@ -182,7 +182,7 @@ String? _nameOf(String declaration) {
     if (i >= 0 && i < cut) cut = i;
   }
   final ids = RegExp(
-    r'[A-Za-z_][A-Za-z0-9_]*',
+    '[A-Za-z_][A-Za-z0-9_]*',
   ).allMatches(text.substring(0, cut)).toList();
   return ids.isEmpty ? null : ids.last.group(0);
 }

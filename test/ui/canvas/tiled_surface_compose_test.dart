@@ -158,7 +158,7 @@ void main() {
         // World (-256, -256) → image (0, 0).
         expect(bytes.sublist(0, 4), [255, 0, 0, 255]);
         // World (0, 0) (canvas origin) → image (256, 256): empty here.
-        final canvasOrigin = (256 * 556 + 256) * 4;
+        const canvasOrigin = (256 * 556 + 256) * 4;
         expect(bytes.sublist(canvasOrigin, canvasOrigin + 4), [0, 0, 0, 0]);
       });
     });

@@ -75,9 +75,9 @@ void main() {
       final authored = _row('row', blocks: [(0, 1, 'a')]);
       final withTail = authored.copyWith(
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('a'), length: 1),
-          1: TimelineExposure.drawing(
-            const FrameId('a'),
+          0: const TimelineExposure.drawing(FrameId('a'), length: 1),
+          1: const TimelineExposure.drawing(
+            FrameId('a'),
             length: 1,
             ghost: true,
             ghostOwnerId: 'a:end',

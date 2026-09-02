@@ -50,9 +50,9 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// the same picture, so pixels cannot tell them apart.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  final projectId = ProjectId('p');
-  final cutId = CutId('c');
-  final trackId = TrackId('t');
+  const projectId = ProjectId('p');
+  const cutId = CutId('c');
+  const trackId = TrackId('t');
 
   BrushFrameKey keyFor(String id) => BrushFrameKey(
     projectId: projectId,
@@ -216,8 +216,8 @@ void main() {
     // has content that key cannot see. It is not baked, and must not be.
     final cache = cacheWithStroke('unused');
     final tree = [
-      CanvasLayerGroupNode(
-        children: const [CanvasActiveLayerNode(opacity: 1)],
+      const CanvasLayerGroupNode(
+        children: [CanvasActiveLayerNode(opacity: 1)],
         opacity: 0.5,
         blendMode: LayerBlendMode.multiply,
       ),

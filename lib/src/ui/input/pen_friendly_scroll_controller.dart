@@ -50,6 +50,8 @@ class PenFriendlyScrollPosition extends ScrollPositionWithSingleContext {
   /// Marked by [StylusGlideStop] on stylus hover/down (cleared shortly
   /// after the pen's last event): while set, coasting activities stop
   /// hiding the viewport's children from hit-testing.
+  bool get penNearby => _penNearby;
+
   set penNearby(bool value) {
     if (_penNearby == value) {
       return;

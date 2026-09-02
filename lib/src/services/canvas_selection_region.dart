@@ -238,8 +238,10 @@ class CanvasSelectionRegion {
   /// fold then zeroes what is outside). What the user SEES asks the other
   /// question — [selectedBounds].
   ({double left, double top, double right, double bottom}) get coverageBounds {
-    var minX = double.infinity, minY = double.infinity;
-    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
     for (final step in steps) {
       if (step.mode == SelectionCombineMode.subtract ||
           step.mode == SelectionCombineMode.intersect) {
@@ -462,7 +464,8 @@ class CanvasSelectionRegion {
       // walking makes an axis-aligned outline four points again; a true
       // staircase (a rotated or lassoed edge) keeps its steps, because
       // those steps ARE the answer.
-      var lastDx = 0, lastDy = 0;
+      var lastDx = 0;
+      var lastDy = 0;
       // ⚠️Bounded by the edge count rather than trusted to close: a
       // malformed walk must end, not hang the paint thread.
       var guard = edges.length * 4 + 8;
@@ -588,7 +591,8 @@ class CanvasSelectionRegion {
       return;
     }
     final merged = <double>[];
-    var a = 0, b = 0;
+    var a = 0;
+    var b = 0;
     while (a < into.length || b < extra.length) {
       final takeA =
           b >= extra.length || (a < into.length && into[a] <= extra[b]);

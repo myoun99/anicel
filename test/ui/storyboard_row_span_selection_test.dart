@@ -266,14 +266,14 @@ void main() {
       layerId: otherSe.id,
       anchorGlobalFrame: 2,
       headGlobalFrame: 5,
-      headRow: TrackRowAddress(otherTrackId),
+      headRow: const TrackRowAddress(otherTrackId),
     );
 
     selection = session.trackFrameRangeSelection.value!;
     expect(selection.trackId, otherTrackId);
     expect(selection.spanRows, [
       LayerRowAddress(otherSe.id),
-      TrackRowAddress(otherTrackId),
+      const TrackRowAddress(otherTrackId),
     ]);
   });
 }

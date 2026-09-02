@@ -811,8 +811,8 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// same style/geometry, so the two paths cannot drift).
   void _paintCellSubstrate(Canvas canvas, int frameIndex) {
     final style = resolvedCellStyleFor(frameIndex);
-    var background = style.background;
-    var borderColor = style.border;
+    final background = style.background;
+    final borderColor = style.border;
 
     if (chromeless) {
       // Empty paper simply is not there — that is what 「바탕색은 싹 없애고」

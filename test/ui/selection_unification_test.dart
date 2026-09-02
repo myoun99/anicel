@@ -410,7 +410,7 @@ void main() {
       ).combinedWith(
         CanvasSelectionShape.rect(left: 36, top: 20, right: 46, bottom: 60),
         SelectionCombineMode.subtract,
-      )!,
+      ),
     );
     await env.setTool(CanvasTool.move);
     await tester.pump();

@@ -857,7 +857,7 @@ class ExportCelNamingModule extends StatelessWidget {
       if (naming.layerFolder) 'layer/',
     ];
     return [
-      parts.isEmpty ? 'frame' : parts.join('_'),
+      if (parts.isEmpty) 'frame' else parts.join('_'),
       if (naming.frameDigits > 0) '${naming.frameDigits}d',
       if (folders.isNotEmpty) folders.join(''),
     ].join(' · ');

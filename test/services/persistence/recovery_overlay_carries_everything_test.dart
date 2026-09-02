@@ -13,7 +13,6 @@ import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
@@ -213,7 +212,7 @@ void main() {
 
     // Graft a real storyboard block so the row-plane key survives the
     // open's "ink dies with the drawing" prune.
-    Project project = createDefaultProject();
+    var project = createDefaultProject();
     final track = project.tracks.first;
     final baseCut = track.cuts.first;
     project = project.copyWith(

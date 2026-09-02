@@ -464,13 +464,11 @@ class _FieldSliderState extends State<FieldSlider> {
                     style: labelStyle,
                   ),
           ),
-          _vertical
-              ? VerticalWritingText(
+          if (_vertical) VerticalWritingText(
                   text: valueText,
                   tateChuYokoDigits: 3,
                   style: valueStyle,
-                )
-              : Text(valueText, maxLines: 1, style: valueStyle),
+                ) else Text(valueText, maxLines: 1, style: valueStyle),
         ],
       );
     }

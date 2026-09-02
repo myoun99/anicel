@@ -567,8 +567,8 @@ Project _projectWithActiveFrame() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(
-                    const FrameId('editor-frame-1'),
+                  0: const TimelineExposure.drawing(
+                    FrameId('editor-frame-1'),
                     length: 1,
                   ),
                 },

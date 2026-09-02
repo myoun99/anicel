@@ -249,7 +249,7 @@ void main() {
     expect(store.dirtyCelKeysSinceSave, {k});
 
     store.adoptSavedFile({
-      k: AnicelCelFileRef(
+      k: const AnicelCelFileRef(
         filePath: 'unused.anicel',
         dataOffset: 0,
         length: 1,
@@ -301,7 +301,7 @@ void main() {
     final midSaveInk = inkSurface(seed: 3);
     store.storeBakedSurface(edited, midSaveInk);
 
-    AnicelCelFileRef ref() => AnicelCelFileRef(
+    AnicelCelFileRef ref() => const AnicelCelFileRef(
       filePath: 'unused.anicel',
       dataOffset: 0,
       length: 1,
@@ -567,12 +567,12 @@ void main() {
   test('R27 DATA-LOSS PIN: resize is CUT-SCOPED — another cut\'s cels '
       'are never clipped by a differently-sized active cut', () {
     final store = BrushFrameStore();
-    final otherCutKey = BrushFrameKey(
-      projectId: const ProjectId('p'),
-      trackId: const TrackId('t'),
-      cutId: const CutId('other-8k-cut'),
-      layerId: const LayerId('l'),
-      frameId: const FrameId('f'),
+    const otherCutKey = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('other-8k-cut'),
+      layerId: LayerId('l'),
+      frameId: FrameId('f'),
     );
     // A cel with content BEYOND a smaller canvas (tile at (1,1) of a
     // 32px canvas — outside a 16px one).
@@ -593,11 +593,11 @@ void main() {
     );
     store.storeBakedSurface(otherCutKey, big);
     store.adoptSavedFile({
-      otherCutKey: AnicelCelFileRef(
+      otherCutKey: const AnicelCelFileRef(
         filePath: 'unused.anicel',
         dataOffset: 0,
         length: 1,
-        canvasSize: const CanvasSize(width: 32, height: 32),
+        canvasSize: CanvasSize(width: 32, height: 32),
         tileSize: 8,
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);

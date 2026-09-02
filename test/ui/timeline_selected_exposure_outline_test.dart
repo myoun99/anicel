@@ -24,7 +24,7 @@ void main() {
       visibleEndFrameIndexExclusive: 13,
     );
 
-    await tester.pumpWidget(_TestStack(displayRange: displayRange));
+    await tester.pumpWidget(const _TestStack(displayRange: displayRange));
 
     expect(find.byKey(outlineKey), findsNothing);
   });
@@ -43,7 +43,7 @@ void main() {
         visibleEndFrameIndexExclusive: 13,
       );
 
-      await tester.pumpWidget(_TestStack(displayRange: displayRange));
+      await tester.pumpWidget(const _TestStack(displayRange: displayRange));
 
       final outlineFinder = find.byKey(outlineKey);
       expect(outlineFinder, findsOneWidget);
@@ -71,7 +71,7 @@ void main() {
       visibleEndFrameIndexExclusive: 13,
     );
 
-    await tester.pumpWidget(_TestStack(displayRange: displayRange));
+    await tester.pumpWidget(const _TestStack(displayRange: displayRange));
 
     final outlineFinder = find.byKey(outlineKey);
     expect(tester.getTopLeft(outlineFinder), const Offset(192, 0));

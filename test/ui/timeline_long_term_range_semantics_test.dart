@@ -74,7 +74,7 @@ void main() {
           cutDuration: 3,
           layer: _layer(
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('head'), length: 1),
+              0: const TimelineExposure.drawing(FrameId('head'), length: 1),
             },
           ),
         );
@@ -157,8 +157,8 @@ Layer _layer({Map<int, TimelineExposure>? timeline}) {
     timeline:
         timeline ??
         {
-          0: TimelineExposure.drawing(const FrameId('head'), length: 1),
-          10: TimelineExposure.drawing(const FrameId('late'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('head'), length: 1),
+          10: const TimelineExposure.drawing(FrameId('late'), length: 1),
         },
   );
 }

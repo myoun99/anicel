@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
@@ -27,13 +27,13 @@ void main() {
       var notified = 0;
       store.addListener(() => notified += 1);
 
-      final invalidation = BrushFrameCacheInvalidation(
+      const invalidation = BrushFrameCacheInvalidation(
         frameKey: BrushFrameKey(
-          projectId: const ProjectId('p'),
-          trackId: const TrackId('t'),
-          cutId: const CutId('c'),
-          layerId: const LayerId('l'),
-          frameId: const FrameId('f'),
+          projectId: ProjectId('p'),
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('l'),
+          frameId: FrameId('f'),
         ),
       );
       // One stroke commit fires several hub events - one notify covers all.

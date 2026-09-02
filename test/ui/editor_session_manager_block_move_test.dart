@@ -47,7 +47,7 @@ void main() {
 
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
-    final previewLayer = (preview as BlockMoveDragPreview).previewLayers[a.id]!;
+    final previewLayer = (preview! as BlockMoveDragPreview).previewLayers[a.id]!;
     expect(previewLayer.timeline[0], isNull);
     expect(previewLayer.timeline[2], isNotNull);
     // Repository untouched, no session notify per step.

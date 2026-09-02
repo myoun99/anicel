@@ -13,7 +13,7 @@ import 'package:anicel/src/models/track_id.dart';
 /// cache-dirty bookkeeping) — command lists retired with the raster
 /// truth model.
 void main() {
-  final key = BrushFrameKey(
+  const key = BrushFrameKey(
     projectId: ProjectId('p'),
     trackId: TrackId('t'),
     cutId: CutId('c'),
@@ -45,7 +45,7 @@ void main() {
       inactivePreviewDirty: true,
     );
     final moved = state.copyWithKey(
-      BrushFrameKey(
+      const BrushFrameKey(
         projectId: ProjectId('p'),
         trackId: TrackId('t'),
         cutId: CutId('c'),
@@ -54,7 +54,7 @@ void main() {
       ),
     );
 
-    expect(moved.key.layerId, LayerId('other-layer'));
+    expect(moved.key.layerId, const LayerId('other-layer'));
     expect(moved.sourceRevision, 7);
     expect(moved.inactivePreviewDirty, isTrue);
   });

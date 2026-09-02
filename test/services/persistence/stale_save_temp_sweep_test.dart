@@ -51,11 +51,11 @@ void main() {
     final store = BrushFrameStore();
     final pixels = Uint8List(8 * 8 * 4);
     store.storeBakedSurface(
-      BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: const CutId('c'),
-        layerId: const LayerId('l'),
+      const BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('c'),
+        layerId: LayerId('l'),
         frameId: FrameId('f1'),
       ),
       BitmapSurface(

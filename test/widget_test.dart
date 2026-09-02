@@ -21,7 +21,7 @@ import 'ui/timeline/timeline_row_chrome_probe.dart';
 import 'ui/timeline/timeline_ruler_probe.dart';
 
 import 'ui/flyout_test_helpers.dart'
-    show readCommandEnabled, flyoutOwnerByItemKey;
+    show flyoutOwnerByItemKey, readCommandEnabled;
 
 Future<void> _tapToolbarButton(
   WidgetTester tester,
@@ -385,7 +385,7 @@ String? _selectedCellStateLabel(WidgetTester tester) {
   final paintedRows = find.byWidgetPredicate(
     (widget) =>
         widget.key is ValueKey<String> &&
-        (widget.key as ValueKey<String>).value.startsWith(
+        (widget.key! as ValueKey<String>).value.startsWith(
           'timeline-row-cells-',
         ),
   );
@@ -409,7 +409,7 @@ String? _selectedCellStateLabel(WidgetTester tester) {
   final cells = find.byWidgetPredicate(
     (widget) =>
         widget.key is ValueKey<String> &&
-        (widget.key as ValueKey<String>).value.startsWith('timeline-cell-'),
+        (widget.key! as ValueKey<String>).value.startsWith('timeline-cell-'),
   );
   for (final element in cells.evaluate()) {
     final cellFinder = find.byKey(element.widget.key!);
@@ -1161,7 +1161,8 @@ void main() {
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    const longNote = '''Line 1
+    const longNote = '''
+Line 1
 Line 2
 Line 3
 Line 4

@@ -836,7 +836,7 @@ class _FrameRangeMoveDrag {
     // The outline rides the rigid shift to the target rows (rows that
     // carried nothing — off the lattice or shifted off it — drop out of
     // the outline; only the moved frames' landings read selected).
-    List<LayerId> landedLayerIds = _landedLayerIds(lattice, seLattice, selection, rowDelta);
+    final landedLayerIds = _landedLayerIds(lattice, seLattice, selection, rowDelta);
     final newStart = selection.startIndex + frameDelta;
     if (newStart >= 0) {
       _rangeMoveSelection = TimelineFrameRangeSelection(
@@ -1637,12 +1637,12 @@ class _FrameRangeMoveDrag {
       return false;
     }
 
-    FrameId? patternAnchor = _repeatPatternAnchor(mode, scopeToSelection, layerId, side, run, before);
+    final patternAnchor = _repeatPatternAnchor(mode, scopeToSelection, layerId, side, run, before);
 
     // The behavior anchors to its EDGE block (UI-R10 #4): the end side to
     // the run's LAST block, the start side to the FIRST — splitting the
     // run keeps the property with the fragment that owns that edge.
-    FrameId edgeAnchor = _edgeAnchorOf(run, side, before);
+    final edgeAnchor = _edgeAnchorOf(run, side, before);
     final behaviors = [
       for (final behavior in before.runBehaviors)
         if (!ownsThisEdge(behavior)) behavior,

@@ -769,7 +769,7 @@ class _TabDropRegionState extends State<_TabDropRegion> {
   bool? _hoverAfter;
 
   bool _isAfter(Offset globalOffset) {
-    final box = context.findRenderObject() as RenderBox;
+    final box = context.findRenderObject()! as RenderBox;
     return box.globalToLocal(globalOffset).dx > box.size.width / 2;
   }
 

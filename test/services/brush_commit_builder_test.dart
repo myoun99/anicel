@@ -17,7 +17,7 @@ void main() {
     const frameId = FrameId('frame-a');
 
     BitmapSurface surface() =>
-        BitmapSurface(canvasSize: CanvasSize(width: 4, height: 4), tileSize: 2);
+        BitmapSurface(canvasSize: const CanvasSize(width: 4, height: 4), tileSize: 2);
 
     BrushDab onePixelDab({required double globalX, required double globalY}) {
       return BrushDab(

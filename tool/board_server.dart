@@ -158,7 +158,8 @@ void _findOwnSource() {
 /// holds. A hash would work too but needs a package; the build already keeps
 /// the copy, so comparing it is exact and costs nothing to maintain.
 bool _sourceMoved() {
-  final was = _builtFrom, now = _liveSources;
+  final was = _builtFrom;
+  final now = _liveSources;
   if (was == null || now == null) return false;
   try {
     final a = was.readAsBytesSync();
@@ -671,7 +672,7 @@ String _nextId(String prefix) {
 /// index -- there is no second place that can disagree about which shots an
 /// item has, and deleting the file is deleting the attachment.
 void _saveShot(Map<String, dynamic> body) {
-  final id = '${body['id']}'.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
+  final id = '${body['id']}'.replaceAll(RegExp('[^A-Za-z0-9_.-]'), '_');
   final data = '${body['data']}';
   final comma = data.indexOf(',');
   if (comma < 0) return;
@@ -2024,7 +2025,7 @@ String _story(BoardCard e) {
 /// box on the page gets it -- including ones added later. A screenshot is the
 /// cheapest thing a person can give and the most expensive thing to describe
 /// in words, so it should never be the box that does not take one.
-String _js() => r'''
+String _js() => '''
 var queued = [];
 function stateOf(el){ return el.querySelector('.state'); }
 

@@ -228,10 +228,10 @@ void main() {
           id: const FrameId('t-1'),
           duration: 1,
           strokes: const [],
-          textContent: TextCelContent(
+          textContent: const TextCelContent(
             text: 'hi',
-            style: const TextCelStyle(),
-            position: const Offset(500, 400),
+            style: TextCelStyle(),
+            position: Offset(500, 400),
           ),
         ),
       ],

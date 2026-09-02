@@ -42,7 +42,7 @@ void main() {
       final paint = tester.widget<CustomPaint>(
         find.byKey(const ValueKey<String>('timesheet-document-paint')),
       );
-      return (paint.painter as TimesheetDocumentPainter).document;
+      return (paint.painter! as TimesheetDocumentPainter).document;
     }
 
     final before = documentNow();

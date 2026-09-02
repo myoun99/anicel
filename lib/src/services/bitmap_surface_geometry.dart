@@ -31,8 +31,10 @@ import '../native/qa_native_engine.dart';
 ({int left, int top, int rightExclusive, int bottomExclusive})?
 bitmapSurfaceContentBounds(BitmapSurface surface) {
   final tileSize = surface.tileSize;
-  var minX = 0x7fffffff, minY = 0x7fffffff;
-  var maxX = -0x7fffffff, maxY = -0x7fffffff;
+  var minX = 0x7fffffff;
+  var minY = 0x7fffffff;
+  var maxX = -0x7fffffff;
+  var maxY = -0x7fffffff;
   // BB-N1 (ABI 22): with the engine loaded, every tile's word scan runs
   // in C, fanned across the worker pool — the Dart loop below stays as
   // the reference and the fallback (integer logic, so parity is

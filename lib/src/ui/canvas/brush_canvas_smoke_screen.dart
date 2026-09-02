@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/brush_stroke_commit_data.dart';
@@ -174,7 +175,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   CanvasSize get _resolvedCanvasSize =>
-      widget.canvasSize ?? CanvasSize(width: 64, height: 64);
+      widget.canvasSize ?? const CanvasSize(width: 64, height: 64);
 
   BrushFrameEditingCoordinator _createCoordinator() {
     final frameKey = BrushFrameKey(
@@ -269,7 +270,7 @@ class _RecordingCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
   final frameComposites = <FrameCompositeCacheKey>[];
   final playbackPreviews = <PlaybackPreviewCacheKey>[];
-  var brushFrames = 0;
+  int brushFrames = 0;
 
   int get totalCalls =>
       brushFrames +
@@ -283,7 +284,7 @@ class _RecordingCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateBrushFrame(invalidation) {
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {
     // R19 P3b: undo/redo restore surface snapshots and invalidate the
     // whole frame — counted so the debug status shows them working.
     brushFrames += 1;

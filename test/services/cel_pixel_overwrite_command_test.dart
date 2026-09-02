@@ -41,7 +41,7 @@ void main() {
       canvasSize: canvasSize,
       tileSize: tileSize,
     ),
-    historyPolicy: BrushHistoryPolicy(
+    historyPolicy: const BrushHistoryPolicy(
       userUndoLimit: 8,
       deferredBakeRatio: 0,
       retainedSessionLimit: 4,

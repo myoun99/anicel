@@ -12,8 +12,8 @@ void main() {
     });
 
     test('round-trips drawing JSON', () {
-      final exposure = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const exposure = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 3,
       );
 
@@ -21,10 +21,10 @@ void main() {
     });
 
     test('round-trips breakdown offsets through JSON', () {
-      final exposure = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const exposure = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 4,
-        breakdownOffsets: const [1, 3],
+        breakdownOffsets: [1, 3],
       );
 
       expect(exposure.toJson()['breakdown'], const [1, 3]);
@@ -32,8 +32,8 @@ void main() {
     });
 
     test('omits the breakdown JSON key when there are no dots', () {
-      final exposure = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const exposure = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 3,
       );
 
@@ -71,26 +71,26 @@ void main() {
     });
 
     test('copyWith relinks and resizes drawings', () {
-      final drawing = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const drawing = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 2,
       );
 
       expect(
         drawing.copyWith(frameId: const FrameId('frame-b')),
-        TimelineExposure.drawing(const FrameId('frame-b'), length: 2),
+        const TimelineExposure.drawing(FrameId('frame-b'), length: 2),
       );
       expect(
         drawing.copyWith(length: 5),
-        TimelineExposure.drawing(const FrameId('frame-a'), length: 5),
+        const TimelineExposure.drawing(FrameId('frame-a'), length: 5),
       );
     });
 
     test('copyWith length shrink drops the offsets it cut off', () {
-      final drawing = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const drawing = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 6,
-        breakdownOffsets: const [1, 3, 5],
+        breakdownOffsets: [1, 3, 5],
       );
 
       expect(drawing.copyWith(length: 4).breakdownOffsets, const [1, 3]);
@@ -100,10 +100,10 @@ void main() {
     });
 
     test('hasBreakdownAt reads the offsets', () {
-      final drawing = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const drawing = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 4,
-        breakdownOffsets: const [2],
+        breakdownOffsets: [2],
       );
 
       expect(drawing.hasBreakdownAt(2), isTrue);
@@ -112,14 +112,14 @@ void main() {
     });
 
     test('implements equality and hashCode', () {
-      final a = TimelineExposure.drawing(const FrameId('frame-a'), length: 1);
-      final b = TimelineExposure.drawing(const FrameId('frame-a'), length: 1);
-      final c = TimelineExposure.drawing(const FrameId('frame-b'), length: 1);
-      final d = TimelineExposure.drawing(const FrameId('frame-a'), length: 2);
-      final e = TimelineExposure.drawing(
-        const FrameId('frame-a'),
+      const a = TimelineExposure.drawing(FrameId('frame-a'), length: 1);
+      const b = TimelineExposure.drawing(FrameId('frame-a'), length: 1);
+      const c = TimelineExposure.drawing(FrameId('frame-b'), length: 1);
+      const d = TimelineExposure.drawing(FrameId('frame-a'), length: 2);
+      const e = TimelineExposure.drawing(
+        FrameId('frame-a'),
         length: 2,
-        breakdownOffsets: const [1],
+        breakdownOffsets: [1],
       );
 
       expect(a, b);
@@ -129,10 +129,10 @@ void main() {
       expect(d, isNot(e));
       expect(
         e,
-        TimelineExposure.drawing(
-          const FrameId('frame-a'),
+        const TimelineExposure.drawing(
+          FrameId('frame-a'),
           length: 2,
-          breakdownOffsets: const [1],
+          breakdownOffsets: [1],
         ),
       );
     });

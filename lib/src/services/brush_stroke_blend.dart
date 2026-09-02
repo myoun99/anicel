@@ -434,7 +434,8 @@ Uint8List blendStrokeRegionPixels({
         continue;
       }
       // destination-over on straight alpha.
-      final as_ = sa / 255.0, ad = da / 255.0;
+      final as_ = sa / 255.0;
+      final ad = da / 255.0;
       final ao = ad + as_ * (1 - ad);
       for (var c = 0; c < 3; c += 1) {
         result[o + c] = _clampByte(
@@ -451,7 +452,8 @@ Uint8List blendStrokeRegionPixels({
       result[o + 3] = sa;
       continue;
     }
-    final as_ = sa / 255.0, ad = da / 255.0;
+    final as_ = sa / 255.0;
+    final ad = da / 255.0;
     if (mode == BrushBlendMode.add) {
       // Skia plus: saturating premultiplied add.
       final ao = math.min(1.0, as_ + ad);
@@ -467,7 +469,8 @@ Uint8List blendStrokeRegionPixels({
     }
     final ao = as_ + ad * (1 - as_);
     for (var c = 0; c < 3; c += 1) {
-      final cs = src[o + c] / 255.0, cd = dst[o + c] / 255.0;
+      final cs = src[o + c] / 255.0;
+      final cd = dst[o + c] / 255.0;
       final b = _blendChannel(mode, cs, cd);
       result[o + c] = _clampByte(
         (as_ * (1 - ad) * cs + ad * (1 - as_) * cd + as_ * ad * b) / ao,

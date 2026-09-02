@@ -37,4 +37,3 @@ TrackId? trackIdOfCut(Project project, CutId? cutId) {
 
   return null;
 }
-

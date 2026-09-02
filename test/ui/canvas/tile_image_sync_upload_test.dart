@@ -25,17 +25,16 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// "we shipped an untested path" looks like from the inside.
 void main() {
   BitmapTile inkedTile() {
-    var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
+    final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
     // Partial alpha on purpose: the bytes handed to the uploader must be
     // PREMULTIPLIED, and at alpha 255 premultiplied and straight agree,
     // so an opaque fixture could not tell the two apart.
-    tile = writeRgbaColorToBitmapTile(
+    return writeRgbaColorToBitmapTile(
       tile: tile,
       x: 0,
       y: 0,
       color: RgbaColor(r: 200, g: 100, b: 50, a: 128),
     );
-    return tile;
   }
 
   ui.Image aSolidImage() {
@@ -160,7 +159,9 @@ void main() {
       calls += 1;
       // Skia throws a bare String — not an Exception, which is why the
       // catch in the cache is unqualified.
-      throw 'Image::decodeImageFromPixelsSync is not implemented';
+      throw UnimplementedError(
+        'Image::decodeImageFromPixelsSync is not implemented',
+      );
     };
 
     expect(cache.adoptSyncUpload(inkedTile()), isNull);

@@ -2077,7 +2077,7 @@ void main() {
       const BorderRadius.horizontal(right: Radius.circular(6)),
     );
     final startBorder =
-        _cellDecoration(tester, 'timeline-cell-layer-1-4').border as Border;
+        _cellDecoration(tester, 'timeline-cell-layer-1-4').border! as Border;
     expect(startBorder.top.color, startBorder.right.color);
     expect(startBorder.top.color, startBorder.bottom.color);
     expect(startBorder.top.color, startBorder.left.color);

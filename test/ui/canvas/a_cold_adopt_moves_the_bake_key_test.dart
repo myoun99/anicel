@@ -239,4 +239,3 @@ class _ColdThenWarm extends LayerFrameImageCache {
         )
       : Future<LayerFrameImage?>.value(null);
 }
-

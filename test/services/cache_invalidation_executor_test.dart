@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cache_invalidation_plan.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -23,7 +24,7 @@ class FakeCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateBrushFrame(invalidation) {}
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
 
   @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) {

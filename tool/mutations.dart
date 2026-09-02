@@ -97,7 +97,7 @@ class Mutation {
   String toString() => 'L$line $kind 「$was」→「$replacement」';
 }
 
-final _wordChar = RegExp(r'[A-Za-z0-9_]');
+final _wordChar = RegExp('[A-Za-z0-9_]');
 
 /// The whole token starting at [offset] — an operator run or a word.
 ///

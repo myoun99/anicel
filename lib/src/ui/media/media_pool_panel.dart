@@ -479,8 +479,7 @@ class MediaPoolPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
-          exists
-              ? Icon(
+          if (exists) Icon(
                   switch (asset.kind) {
                     MediaAssetKind.audio => Icons.music_note_outlined,
                     MediaAssetKind.image => Icons.image_outlined,
@@ -489,8 +488,7 @@ class MediaPoolPanel extends StatelessWidget {
                   },
                   size: 16,
                   color: colorScheme.onSurfaceVariant,
-                )
-              : Tooltip(
+                ) else Tooltip(
                   message: 'File missing — relink it',
                   child: Icon(
                     key: ValueKey<String>('media-asset-missing-${asset.path}'),

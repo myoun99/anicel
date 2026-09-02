@@ -655,7 +655,7 @@ class _ImportDialogState extends State<ImportDialog> {
         AppWindowAction(
           label: 'Import',
           actionKey: const ValueKey<String>('import-run-button'),
-          onPressed: _canImport ? () => _runImport() : null,
+          onPressed: _canImport ? _runImport : null,
         ),
       ],
       body: Column(

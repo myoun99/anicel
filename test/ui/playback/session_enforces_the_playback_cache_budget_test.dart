@@ -73,7 +73,7 @@ void main() {
     );
     addTearDown(s.dispose);
     // Before the first cache use — the enforcer reads it once, when built.
-    s.debugPlaybackCacheBudgetBytes = fullImageBytes;
+    s.debugSetPlaybackCacheBudgetBytes(fullImageBytes);
     return s;
   }
 

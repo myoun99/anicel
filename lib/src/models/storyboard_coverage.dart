@@ -317,4 +317,3 @@ int storyboardCellPictureFrame(
 }) => pinnedFrameIndex != null && cell.covers(pinnedFrameIndex)
     ? pinnedFrameIndex
     : cell.startIndex;
-

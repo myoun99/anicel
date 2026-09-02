@@ -43,7 +43,7 @@ void main() {
       pixels[i] = (i * 37) & 0xFF;
     }
     final surface = BitmapSurface(
-      canvasSize: CanvasSize(width: 16, height: 16),
+      canvasSize: const CanvasSize(width: 16, height: 16),
       tileSize: 8,
       tiles: {
         TileCoord(x: 1, y: 0): BitmapTile(
@@ -100,7 +100,7 @@ void main() {
       pixels[i] = (i * 11) & 0xFF;
     }
     final surface = BitmapSurface(
-      canvasSize: CanvasSize(width: 16, height: 16),
+      canvasSize: const CanvasSize(width: 16, height: 16),
       tileSize: 8,
       tiles: {
         TileCoord(x: -1, y: -2): BitmapTile(

@@ -104,12 +104,12 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
     coordinator,
     store: store,
     canvasSize: canvasSize,
-    initialFrameKey: BrushFrameKey(
+    initialFrameKey: const BrushFrameKey(
       projectId: conteInkProjectId,
       trackId: conteInkTrackId,
-      cutId: const CutId('conte-ink-init'),
+      cutId: CutId('conte-ink-init'),
       layerId: conteInkPageLayerId,
-      frameId: const FrameId('conte-ink-init'),
+      frameId: FrameId('conte-ink-init'),
     ),
   );
 

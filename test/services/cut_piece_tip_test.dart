@@ -71,7 +71,7 @@ void main() {
   });
 
   test('an oversized piece is reduced to the library limit', () {
-    final side = maxBrushTipMaskSide * 2;
+    const side = maxBrushTipMaskSide * 2;
     final mask = cutPieceToTipMask(
       _brightOnTransparent(width: side, height: side),
       id: 't',

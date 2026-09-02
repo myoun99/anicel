@@ -1111,8 +1111,8 @@ class EditorVoiceRecording {
       // The shelf is also somewhere a person can look: on desktop it is a
       // folder they chose, and losing a take to a `.assets` directory
       // nobody opens is not a thing to keep.
-      final directory = (_voiceRecordShelfDirectory ??=
-          appRecordingsDirectory());
+      final directory = _voiceRecordShelfDirectory ??=
+          appRecordingsDirectory();
       Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
         final file = File(

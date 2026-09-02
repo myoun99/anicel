@@ -93,7 +93,7 @@ List<EnvelopeBox> _approval(
 /// One CUT line: `C` printed at the left, the number beside it, then
 /// seconds `+` frames inside a single cell.
 List<EnvelopeBox> _cutLine(int index, double top) {
-  final height = 52.5;
+  const height = 52.5;
   return [
     EnvelopeBox(
       id: 'cut-$index-number',
@@ -416,7 +416,7 @@ List<EnvelopeBox> _digitalCheck({
   const double headHeight = 10;
   const double stampHeight = 62;
   const double rowHeight = 21;
-  const List<String> corrections = ['シート修正', 'セル修正', '原図修正', 'frame修正'];
+  const corrections = <String>['シート修正', 'セル修正', '原図修正', 'frame修正'];
   return [
     for (var index = 0; index < columns.length; index += 1) ...[
       EnvelopeBox(

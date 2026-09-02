@@ -71,7 +71,7 @@ void main() {
       samples: Float32List.fromList([0.5, 0.5, 0.5, 0.5]),
       channels: 1,
     );
-    final clip = AudioMixClip(
+    const clip = AudioMixClip(
       sourceIndex: 0,
       startSample: 0,
       endSample: 4,
@@ -100,12 +100,12 @@ void main() {
   });
 
   test('the envelope multiplies with gain and fades in the clip volume', () {
-    final clip = AudioMixClip(
+    const clip = AudioMixClip(
       sourceIndex: 0,
       startSample: 0,
       endSample: 100,
       gain: 2.0,
-      envelope: const [
+      envelope: [
         AudioEnvelopePoint(sample: 0, gain: 1.0),
         AudioEnvelopePoint(sample: 100, gain: 0.0),
       ],
@@ -123,7 +123,7 @@ void main() {
       frames: [
         Frame(id: const FrameId('f'), duration: 1, strokes: const []),
       ],
-      timeline: {0: TimelineExposure.drawing(const FrameId('f'), length: 4)},
+      timeline: {0: const TimelineExposure.drawing(FrameId('f'), length: 4)},
       audioClips: const [
         AudioClip(
           filePath: 'a.wav',

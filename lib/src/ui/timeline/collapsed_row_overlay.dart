@@ -344,7 +344,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.clip,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 11.5,
                 color: AppColors.text,
                 shadows: shadows,
@@ -358,7 +358,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.clip,
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 10,
                 color: AppColors.textDim,

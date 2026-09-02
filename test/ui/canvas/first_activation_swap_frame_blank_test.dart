@@ -263,7 +263,7 @@ void main() {
       'while zero tile images are decoded, and hands off seamlessly once the '
       'decodes land', (tester) async {
     const tileCount = 6;
-    final canvasSize = CanvasSize(
+    const canvasSize = CanvasSize(
       width: tileCount * tileSize,
       height: tileSize,
     );
@@ -412,7 +412,7 @@ void main() {
       reason: 'the fixture must not fit the pre-probe decode-start rounds, '
           'or the partial state this test exists for never occurs',
     );
-    final canvasSize = CanvasSize(
+    const canvasSize = CanvasSize(
       width: tileCount * tileSize,
       height: tileSize,
     );
@@ -527,7 +527,7 @@ void main() {
             .where((tile) => tileCache.imageFor(tile) != null)
             .length;
         final starts = promoted.tiles.values
-            .where((tile) => tileCache.needsDecodeStart(tile))
+            .where(tileCache.needsDecodeStart)
             .length;
         fail(
           'timed out converging the decodes under the hold '
@@ -555,7 +555,7 @@ void main() {
       'present (an edited coordinate, decoded), the walk draws — the edit '
       'shows and the stand-in does not', (tester) async {
     const tileCount = 6;
-    final canvasSize = CanvasSize(
+    const canvasSize = CanvasSize(
       width: tileCount * tileSize,
       height: tileSize,
     );
@@ -657,7 +657,7 @@ void main() {
     expect(syncImageUploadSupported, isTrue);
 
     const tileCount = 40; // > 32 + 4: an 8K-era cel at fit zoom
-    final canvasSize = CanvasSize(
+    const canvasSize = CanvasSize(
       width: tileCount * tileSize,
       height: tileSize,
     );

@@ -42,7 +42,7 @@ void main() {
     // **아무 말 없이** 플랫폼 폰트로 그린다 — 화면은 예전과 똑같고, 4.5MB 를
     // 번들한 채로 아무 효과가 없다.
     final pubspec = File('pubspec.yaml').readAsStringSync();
-    final declared = RegExp(r'- family: (.+)')
+    final declared = RegExp('- family: (.+)')
         .allMatches(pubspec)
         .map((m) => m.group(1)!.trim())
         .toSet();

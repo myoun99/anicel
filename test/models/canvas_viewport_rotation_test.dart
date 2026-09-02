@@ -94,7 +94,8 @@ void main() {
 
   test('viewportDeltaToCanvasDelta matches the point mapping difference', () {
     for (final viewport in assortedViewports) {
-      const dx = 13.0, dy = -7.5;
+      const dx = 13.0;
+      const dy = -7.5;
       final base = viewport.canvasToViewport(CanvasPoint(x: 5, y: 6));
       final moved = viewport.viewportToCanvas(
         ViewportPoint(x: base.x + dx, y: base.y + dy),

@@ -72,8 +72,8 @@ void main() {
               child: CanvasLayerStackView(
                 nodes: inFolder
                     ? [
-                        CanvasLayerGroupNode(
-                          children: const [CanvasActiveLayerNode(opacity: 1)],
+                        const CanvasLayerGroupNode(
+                          children: [CanvasActiveLayerNode(opacity: 1)],
                           opacity: 1,
                           blendMode: LayerBlendMode.multiply,
                         ),

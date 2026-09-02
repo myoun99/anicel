@@ -535,7 +535,7 @@ void main() {
           ),
           // ⚠️:  goes through the engine
           // and never completes inside the test's fake-async zone.
-          image: (await tester.runAsync(_decodedSquare))!,
+          image: await tester.runAsync(_decodedSquare),
           canvasRect: const Rect.fromLTWH(8, 8, 4, 4),
           opacity: 1,
         ),

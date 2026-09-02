@@ -39,12 +39,12 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// body, so choosing the picture can never change the pixels.
 void main() {
   const canvasSize = CanvasSize(width: 16, height: 8);
-  final frameKey = BrushFrameKey(
-    projectId: const ProjectId('p'),
-    trackId: const TrackId('t'),
-    cutId: const CutId('c'),
-    layerId: const LayerId('l'),
-    frameId: const FrameId('f'),
+  const frameKey = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('l'),
+    frameId: FrameId('f'),
   );
 
   LayerFrameImageCache cacheWithDab() {
@@ -106,7 +106,7 @@ void main() {
               child: CanvasLayerStackView(
                 nodes: [
                   for (var i = 0; i < imageNodesBelow; i += 1)
-                    CanvasLayerImageNode(
+                    const CanvasLayerImageNode(
                       CanvasLayerImageRequest(frameKey: frameKey, opacity: 1),
                     ),
                   const CanvasActiveLayerNode(opacity: 1),

@@ -14,7 +14,8 @@ import '../../models/import/tvpp_test_builder.dart';
 /// 2px wide and the bottom row 6px tall — the truncated-edge-tile rules
 /// that broke three times during the format work.
 void main() {
-  const w = 130, h = 70;
+  const w = 130;
+  const h = 70;
 
   /// A recognisable image: transparent canvas, one opaque red block in
   /// tile (1,0), a half-alpha green line crossing tiles, nothing in
@@ -186,7 +187,8 @@ void main() {
       // right offsets, and the region past the 300×70 canvas must stay
       // zero-padded. This is the parity that lets the import skip the
       // full-canvas ui.Image detour.
-      const tw = 300, th = 70;
+      const tw = 300;
+      const th = 70;
       final px = List<int>.filled(tw * th, 0);
       for (var y = 10; y < 20; y++) {
         for (var x = 280; x < 295; x++) {

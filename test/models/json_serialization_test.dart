@@ -115,10 +115,10 @@ void main() {
         Frame(id: const FrameId('frame-a'), duration: 2, strokes: const []),
       ],
       timeline: {
-        0: TimelineExposure.drawing(
-          const FrameId('frame-a'),
+        0: const TimelineExposure.drawing(
+          FrameId('frame-a'),
           length: 6,
-          breakdownOffsets: const [2, 4],
+          breakdownOffsets: [2, 4],
         ),
       },
     );
@@ -155,11 +155,11 @@ void main() {
 
       expect(
         layer.timeline[0],
-        TimelineExposure.drawing(const FrameId('a'), length: 3),
+        const TimelineExposure.drawing(FrameId('a'), length: 3),
       );
       expect(
         layer.timeline[3],
-        TimelineExposure.drawing(const FrameId('b'), length: 2),
+        const TimelineExposure.drawing(FrameId('b'), length: 2),
       );
     },
   );

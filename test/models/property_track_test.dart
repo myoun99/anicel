@@ -68,7 +68,7 @@ void main() {
 
       final restored = PropertyTrack.fromJson<double>(
         track.toJson((value) => value),
-        (value) => (value as num).toDouble(),
+        (value) => (value! as num).toDouble(),
       );
 
       expect(restored, track);
@@ -80,7 +80,7 @@ void main() {
         () => PropertyTrack.fromJson<double>([
           {'index': 2, 'value': 1},
           {'index': 2, 'value': 2},
-        ], (value) => (value as num).toDouble()),
+        ], (value) => (value! as num).toDouble()),
         throwsFormatException,
       );
     });

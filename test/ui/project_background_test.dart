@@ -96,7 +96,7 @@ void main() {
       find.byKey(const ValueKey<String>('background-apply-button')),
     );
     await tester.pumpAndSettle();
-    expect(s.projectBackground, ProjectBackground.color(0xFF3366CC));
+    expect(s.projectBackground, const ProjectBackground.color(0xFF3366CC));
 
     await openDialog();
     await tester.tap(

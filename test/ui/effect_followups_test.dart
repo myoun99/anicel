@@ -53,7 +53,7 @@ void main() {
             Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
           ],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('f1'), length: 2),
+            0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
           },
           blendMode: LayerBlendMode.multiply,
           mark: const LayerMark(process: LayerProcess.layout),
@@ -89,7 +89,7 @@ void main() {
         frames: [
           Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
         ],
-        timeline: {0: TimelineExposure.drawing(const FrameId('f1'), length: 2)},
+        timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 2)},
         blendMode: LayerBlendMode.screen,
         effects: [brightness(25)],
         runBehaviors: const [
@@ -309,7 +309,7 @@ void main() {
       id: const LayerId('a'),
       name: 'A',
       frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
-      timeline: {0: TimelineExposure.drawing(const FrameId('f1'), length: 4)},
+      timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 4)},
       effects: effects,
     );
 
@@ -391,8 +391,8 @@ void main() {
       // paper, so the answer sits between them — never below the ink's own
       // graded value.
       final half = sample([drawing(), darken], ink: 0x80808080);
-      final gradedInk = 0x80 - 102 < 0 ? 0 : 0x80 - 102;
-      final paperR = (canvasPaperColor >> 16) & 0xFF;
+      const gradedInk = 0x80 - 102 < 0 ? 0 : 0x80 - 102;
+      const paperR = (canvasPaperColor >> 16) & 0xFF;
       final expected = (gradedInk * 0.5 + paperR * 0.5).round();
       expect((half >> 16) & 0xFF, closeTo(expected, 2));
     });

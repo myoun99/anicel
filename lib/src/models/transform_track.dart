@@ -195,23 +195,23 @@ class TransformTrack {
     return TransformTrack.properties(
       anchorPoint: PropertyTrack.fromJson(
         json['anchorPoint'] as List?,
-        (value) => CanvasPoint.fromJson(value as Map<String, dynamic>),
+        (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
       ),
       position: PropertyTrack.fromJson(
         json['position'] as List?,
-        (value) => CanvasPoint.fromJson(value as Map<String, dynamic>),
+        (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
       ),
       scale: PropertyTrack.fromJson(
         json['scale'] as List?,
-        (value) => (value as num).toDouble(),
+        (value) => (value! as num).toDouble(),
       ),
       rotation: PropertyTrack.fromJson(
         json['rotation'] as List?,
-        (value) => (value as num).toDouble(),
+        (value) => (value! as num).toDouble(),
       ),
       opacity: PropertyTrack.fromJson(
         json['opacity'] as List?,
-        (value) => (value as num).toDouble(),
+        (value) => (value! as num).toDouble(),
       ),
     );
   }

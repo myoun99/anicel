@@ -185,7 +185,7 @@ void main() {
       addTearDown(rail.dispose);
       await tester.pumpWidget(_grid(railExtent: rail));
 
-      final headerKey = const ValueKey<String>('xsheet-layer-row-layer-1');
+      const headerKey = ValueKey<String>('xsheet-layer-row-layer-1');
       final naturalHeader = tester.getSize(find.byKey(headerKey)).height;
 
       rail.resizeBy(

@@ -173,13 +173,13 @@ void main() {
   ) async {
     await pump(
       tester,
-      cells: TimelineFrameRangeSelection(
-        layerId: const LayerId('a'),
+      cells: const TimelineFrameRangeSelection(
+        layerId: LayerId('a'),
         startIndex: 2,
         endIndexExclusive: 5,
         rows: [
-          const LayerRowAddress(LayerId('a')),
-          const LaneRowAddress(LayerId('a'), 'position'),
+          LayerRowAddress(LayerId('a')),
+          LaneRowAddress(LayerId('a'), 'position'),
         ],
       ),
     );

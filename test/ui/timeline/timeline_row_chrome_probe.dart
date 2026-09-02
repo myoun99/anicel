@@ -27,7 +27,7 @@ TimelineRowEditChromePainter? timelineRowChromePainter(
   if (finder.evaluate().isEmpty) {
     return null;
   }
-  return tester.widget<CustomPaint>(finder).painter
+  return tester.widget<CustomPaint>(finder).painter!
       as TimelineRowEditChromePainter;
 }
 

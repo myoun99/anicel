@@ -96,7 +96,7 @@ void main() {
         layers: [
           _layer(id: 'base', frames: [_frame(id: 'frame-a')]).copyWith(
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+              0: const TimelineExposure.drawing(FrameId('frame-a'), length: 1),
             },
           ),
           _layer(id: 'color').copyWith(
@@ -438,7 +438,7 @@ void main() {
         fixture.repository.replaceLayer(
           layer: member.copyWith(
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('frame-a'), length: 2),
+              0: const TimelineExposure.drawing(FrameId('frame-a'), length: 2),
             },
           ),
         );
@@ -573,8 +573,8 @@ void main() {
                 .copyWith(
                   name: 'cel',
                   timeline: {
-                    0: TimelineExposure.drawing(
-                      const FrameId('f-o1'),
+                    0: const TimelineExposure.drawing(
+                      FrameId('f-o1'),
                       length: 1,
                     ),
                   },
@@ -594,8 +594,8 @@ void main() {
             ).copyWith(
               name: 'cel',
               timeline: {
-                0: TimelineExposure.drawing(const FrameId('f-t1'), length: 1),
-                3: TimelineExposure.drawing(const FrameId('f-t2'), length: 1),
+                0: const TimelineExposure.drawing(FrameId('f-t1'), length: 1),
+                3: const TimelineExposure.drawing(FrameId('f-t2'), length: 1),
               },
             ),
             _layer(id: 't-only').copyWith(name: 'only-t'),
@@ -2506,6 +2506,3 @@ Layer _layer({
 Frame _frame({required String id, String? name}) {
   return Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 }
-
-
-

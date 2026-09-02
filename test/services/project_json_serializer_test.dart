@@ -184,10 +184,10 @@ Layer _sampleLayer() {
     frames: [_sampleFrame()],
     opacity: 0.75,
     timeline: {
-      0: TimelineExposure.drawing(
-        const FrameId('frame-1'),
+      0: const TimelineExposure.drawing(
+        FrameId('frame-1'),
         length: 2,
-        breakdownOffsets: const [1],
+        breakdownOffsets: [1],
       ),
     },
   );

@@ -232,7 +232,7 @@ void main() {
       bytes = data!.buffer.asUint8List();
     });
     image.dispose();
-    final i = (2 * 900 + 2) * 4;
+    const i = (2 * 900 + 2) * 4;
     expect(
       (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2],
       own & 0xFFFFFF,

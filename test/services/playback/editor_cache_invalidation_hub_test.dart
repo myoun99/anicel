@@ -17,8 +17,8 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/editor_cache_invalidation_hub.dart';
 
 void main() {
-  BrushFrameCacheInvalidation invalidation() => BrushFrameCacheInvalidation(
-    frameKey: const BrushFrameKey(
+  BrushFrameCacheInvalidation invalidation() => const BrushFrameCacheInvalidation(
+    frameKey: BrushFrameKey(
       projectId: ProjectId('project'),
       trackId: TrackId('track'),
       cutId: CutId('cut'),

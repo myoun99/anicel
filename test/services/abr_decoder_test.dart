@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -685,9 +685,9 @@ void main() {
       final reader = PhotoshopByteReader(_descPayload(sampledUuid: 'u'));
       final descriptor = readVersionedDescriptor(reader);
 
-      final brushes = descriptor['Brsh'] as List;
+      final brushes = descriptor['Brsh']! as List;
       expect(brushes, hasLength(2));
-      final sampled = (brushes.first as PsDescriptor);
+      final sampled = brushes.first as PsDescriptor;
       expect(sampled.textValue('Nm  '), 'Fancy Chalk');
       final tip = sampled.childDescriptor('Brsh')!;
       expect(tip.classId, 'sampledBrush');

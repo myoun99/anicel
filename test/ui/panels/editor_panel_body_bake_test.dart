@@ -63,9 +63,9 @@ void main() {
     // assertion that would have caught that.
     await tester.pumpWidget(
       _host(
-        EditorPanelBody(
+        const EditorPanelBody(
           debugLabel: 'probe',
-          child: const SizedBox(height: 100),
+          child: SizedBox(height: 100),
         ),
       ),
     );

@@ -103,7 +103,7 @@ void main() {
       preview.value = ExposureEdgeDragPreview(
         previewLayer: layerA.copyWith(
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('layer-a-f1'), length: 4),
+            0: const TimelineExposure.drawing(FrameId('layer-a-f1'), length: 4),
           },
         ),
       );
@@ -170,7 +170,7 @@ void main() {
       preview.value = ExposureEdgeDragPreview(
         previewLayer: layerA.copyWith(
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('layer-a-f1'), length: 4),
+            0: const TimelineExposure.drawing(FrameId('layer-a-f1'), length: 4),
           },
         ),
       );
@@ -213,7 +213,7 @@ void main() {
       final preview = s.dragPreview.value;
       expect(preview, isA<ExposureEdgeDragPreview>());
       expect(
-        (preview as ExposureEdgeDragPreview).previewLayer.timeline[0]!.length,
+        (preview! as ExposureEdgeDragPreview).previewLayer.timeline[0]!.length,
         baseTimeline[0]!.length! + 3,
       );
       expect(s.activeLayer!.timeline[0]!.length, baseTimeline[0]!.length);
@@ -347,7 +347,7 @@ void main() {
       // A commit-style rebuild: layer A's identity changes, B's does not.
       layerA = layerA.copyWith(
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('layer-a-f1'), length: 4),
+          0: const TimelineExposure.drawing(FrameId('layer-a-f1'), length: 4),
         },
       );
       rebuild(() {});

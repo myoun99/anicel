@@ -27,7 +27,7 @@ void main() {
             id: 'layer-a',
             frames: [_frame(id: 'frame-a')],
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+              0: const TimelineExposure.drawing(FrameId('frame-a'), length: 1),
             },
           ),
         ],

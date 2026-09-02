@@ -31,6 +31,7 @@ import '../src/ui/brush/brush_tool_state.dart';
 import '../src/ui/canvas/bitmap_tile_image_cache.dart';
 import '../src/ui/canvas/brush_edit_canvas_view.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import '../src/ui/editor_session_manager.dart';
 import '../src/ui/editor_workspace.dart';
 import '../src/ui/effective_device_pixel_ratio.dart';
 import '../src/ui/home_page.dart';
@@ -319,7 +320,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     const labCanvas = int.fromEnvironment('BRUSH_LAB_CANVAS');
     if (labCanvas > 0) {
       session.resizeActiveCutCanvas(
-        CanvasSize(width: labCanvas, height: labCanvas),
+        const CanvasSize(width: labCanvas, height: labCanvas),
         anchor: CanvasResizeAnchor.topLeft,
       );
       await _settleFrames(6);
@@ -486,7 +487,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   /// wall time prints per tap; the [labProbe]s inside buildFillDab print
   /// the decomposition.
   Future<void> _runFillTaps(
-    dynamic session,
+    EditorSessionManager session,
     ValueNotifier<BrushToolState>? brushTool,
   ) async {
     session.selectFrameIndex(7);
@@ -550,7 +551,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   /// chunks. Coverage samples every 500ms show whether convergence
   /// completes or stalls (the reported top-left-only display).
   Future<void> _runFillCutRoundTrip(
-    dynamic session,
+    EditorSessionManager session,
     ValueNotifier<BrushToolState>? brushTool,
   ) async {
     session.selectFrameIndex(7);

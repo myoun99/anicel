@@ -55,7 +55,7 @@ void main() {
     stored.reset();
 
     // A 100-byte window in the MIDDLE block.
-    final at = mediaBlockBytes + 12345;
+    const at = mediaBlockBytes + 12345;
     final window = Uint8List(100);
     expect(framed.readIntoSync(window, at, window.length), 100);
     expect(window, Uint8List.sublistView(source, at, at + 100));
@@ -87,7 +87,7 @@ void main() {
     final index = framed.header;
     stored.reset();
 
-    final at = mediaBlockBytes - 50;
+    const at = mediaBlockBytes - 50;
     final window = Uint8List(100);
     expect(framed.readIntoSync(window, at, window.length), 100);
     expect(window, Uint8List.sublistView(source, at, at + 100));
@@ -170,7 +170,7 @@ void main() {
     final cut = Uint8List.sublistView(entry, 0, entry.length - 100);
     final framed = _framed(_CountingBytes(cut));
     expect(
-      () => framed.readSync(),
+      framed.readSync,
       throwsA(isA<FormatException>()),
       reason: 'a short block is a broken file, not an empty one',
     );
@@ -205,7 +205,7 @@ void main() {
 
     // Deep inside the LAST full block — the offset the current constant
     // would place in block 16.
-    final at = wasBlockBytes + 4096;
+    const at = wasBlockBytes + 4096;
     final window = Uint8List(256);
     expect(framed.readIntoSync(window, at, window.length), window.length);
     expect(window, Uint8List.sublistView(source, at, at + window.length));

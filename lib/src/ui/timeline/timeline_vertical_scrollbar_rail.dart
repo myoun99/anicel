@@ -40,7 +40,7 @@ class TimelineVerticalScrollbarRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
+    return DecoratedBox(
       // The rail's side hairlines are GONE (UI-R18 #3) — the lane color
       // alone separates it from the rows, so with one chrome fill it has to
       // be the level BELOW the rows: a lane is a groove, not a panel.

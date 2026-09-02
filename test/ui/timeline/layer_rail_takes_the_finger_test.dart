@@ -106,7 +106,7 @@ void main() {
       reason: 'fixture premise: there is somewhere to scroll to',
     );
 
-    await fingerDrag(tester, railRow("l13"), const Offset(0, -120));
+    await fingerDrag(tester, railRow('l13'), const Offset(0, -120));
 
     expect(
       controller.offset,
@@ -158,7 +158,7 @@ void main() {
       reason: 'nothing selected yet',
     );
 
-    await fingerDrag(tester, railRow("l13"), const Offset(0, -120));
+    await fingerDrag(tester, railRow('l13'), const Offset(0, -120));
 
     expect(
       session.rowSelection.value.length,

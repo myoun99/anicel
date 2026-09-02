@@ -72,7 +72,7 @@ void main() {
       }
       // 200 independent floors would lose up to 200 device pixels. The run
       // is allowed to lose less than one.
-      final exact = extent * 200 * 1.125;
+      const exact = extent * 200 * 1.125;
       expect(exact - run.position * 1.125, lessThan(1.0));
       expect(grid.isOnGrid(run.position), isTrue);
     });
@@ -114,7 +114,7 @@ void main() {
       // constant lands a few ulps below a whole device pixel and a bare
       // floor drops it by a whole one.
       const product = 1.0 * 1.15;
-      final grid = DeviceGrid(product);
+      const grid = DeviceGrid(product);
       for (final logical in <double>[180, 200, 220, 360, 400]) {
         final device = logical * product;
         expect(
@@ -225,7 +225,7 @@ void main() {
       // whole device pixel.
       const ratio = 1.5 * 0.7;
       expect(20 * ratio, lessThan(21.0), reason: 'the deficit is real');
-      expect(DeviceGrid(ratio).position(20), closeTo(20.0, 1e-12));
+      expect(const DeviceGrid(ratio).position(20), closeTo(20.0, 1e-12));
     });
 
     /// Coordinates whose DEVICE position sits a hair BELOW a whole pixel —
@@ -320,13 +320,13 @@ void main() {
         expect(grid.isActive, isFalse, reason: 'ratio $ratio');
         expect(grid.ratio.isNaN, isFalse, reason: 'ratio $ratio');
       }
-      expect(DeviceGrid(double.nan), DeviceGrid(double.infinity));
+      expect(const DeviceGrid(double.nan), const DeviceGrid(double.infinity));
     });
 
     test('isOnGrid is vacuously true on an inactive grid', () {
       // Which is why an audit has to ask isActive first, or it reports a
       // perfect grid on a broken ratio.
-      final grid = DeviceGrid(0);
+      const grid = DeviceGrid(0);
       expect(grid.isOnGrid(37.3), isTrue);
       expect(grid.isActive, isFalse);
     });
@@ -335,7 +335,7 @@ void main() {
       // Measured on the first draft: [120, infinity, 40, 40] returned
       // [120, Infinity, NaN, NaN] and never recovered. take(maxWidth)
       // under an unbounded parent is an ordinary spelling.
-      final run = DeviceGrid(1.25).run();
+      final run = const DeviceGrid(1.25).run();
       expect(run.take(120), closeTo(120.0, 1e-9));
       expect(
         () => run.take(double.infinity),
@@ -353,7 +353,7 @@ void main() {
       // the result rather than the argument: every extent here is finite,
       // so nothing trips in debug, and a guard on the argument would let
       // the run go to infinity and then to NaN for ever after.
-      final run = DeviceGrid(1.25).run();
+      final run = const DeviceGrid(1.25).run();
       expect(run.take(1e308), closeTo(1e308, 1e300));
       expect(run.take(1e308), 0.0, reason: 'the overflowing take gets no ground');
       // The property is that the run stays a NUMBER. It is saturated at an

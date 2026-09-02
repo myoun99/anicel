@@ -76,9 +76,7 @@ void main() {
   }
 
   group('resampler byte parity', () {
-    test('the entry points bind', () {
-      requireNative();
-    }, skip: skip);
+    test('the entry points bind', requireNative, skip: skip);
 
     test('every standard rate pair agrees bit for bit', () {
       final native = requireNative();

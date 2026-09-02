@@ -3056,7 +3056,7 @@ class ExportDialogState extends State<ExportDialog> {
               : (value) =>
                     _updateSpec(spec.copyWith(includeInstructionLayers: value)),
         ),
-        Tooltip(
+        const Tooltip(
           message: '용지 레이어 타입이 도입되면 여기서 합류합니다.',
           child: ExportToggleRow(label: '용지', value: false, onChanged: null),
         ),

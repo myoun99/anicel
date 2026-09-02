@@ -142,7 +142,7 @@ void main() {
 
     expect(
       linkMirrorTargets(project, cutId: _cut1, layerId: const LayerId('solo')),
-      [(cutId: _cut1, layerId: LayerId('solo'))],
+      [(cutId: _cut1, layerId: const LayerId('solo'))],
     );
   });
 }

@@ -48,7 +48,7 @@ void main() {
       expect(host.showTransparentBackground, isTrue);
       expect(
         host.initialSessionState.canvasState.currentSurface.canvasSize,
-        CanvasSize(width: 64, height: 64),
+        const CanvasSize(width: 64, height: 64),
       );
       expect(host.initialSessionState.canvasState.currentSurface.tileSize, 16);
     });
@@ -59,7 +59,7 @@ void main() {
       const layerId = LayerId('custom-layer');
       const frameId = FrameId('custom-frame');
       final inputSettings = BrushEditCanvasInputSettings(color: 0xFFFF00FF);
-      final canvasSize = CanvasSize(width: 8, height: 8);
+      const canvasSize = CanvasSize(width: 8, height: 8);
 
       await tester.pumpWidget(
         _app(
@@ -120,7 +120,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          BrushCanvasSmokeScreen(
+          const BrushCanvasSmokeScreen(
             canvasSize: CanvasSize(width: 8, height: 8),
             tileSize: 2,
           ),
@@ -141,7 +141,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          BrushCanvasSmokeScreen(
+          const BrushCanvasSmokeScreen(
             canvasSize: CanvasSize(width: 8, height: 8),
             tileSize: 2,
           ),
@@ -184,13 +184,13 @@ void main() {
     testWidgets(
       'changing frame target resets session before future brush operations',
       (tester) async {
-        final canvasSize = CanvasSize(width: 8, height: 8);
+        const canvasSize = CanvasSize(width: 8, height: 8);
 
         await tester.pumpWidget(
           _app(
-            BrushCanvasSmokeScreen(
-              layerId: const LayerId('layer-a'),
-              frameId: const FrameId('frame-a'),
+            const BrushCanvasSmokeScreen(
+              layerId: LayerId('layer-a'),
+              frameId: FrameId('frame-a'),
               canvasSize: canvasSize,
               tileSize: 2,
             ),
@@ -202,9 +202,9 @@ void main() {
 
         await tester.pumpWidget(
           _app(
-            BrushCanvasSmokeScreen(
-              layerId: const LayerId('layer-b'),
-              frameId: const FrameId('frame-b'),
+            const BrushCanvasSmokeScreen(
+              layerId: LayerId('layer-b'),
+              frameId: FrameId('frame-b'),
               canvasSize: canvasSize,
               tileSize: 2,
             ),
@@ -233,7 +233,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          BrushCanvasSmokeScreen(
+          const BrushCanvasSmokeScreen(
             canvasSize: CanvasSize(width: 8, height: 8),
             tileSize: 2,
           ),
@@ -514,7 +514,7 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
 }
 
 BrushCanvasSmokeScreen _smallScreen() {
-  return BrushCanvasSmokeScreen(
+  return const BrushCanvasSmokeScreen(
     canvasSize: CanvasSize(width: 8, height: 8),
     tileSize: 2,
   );

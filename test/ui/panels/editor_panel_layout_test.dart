@@ -172,16 +172,16 @@ void main() {
       final json = model.toJson();
 
       final other = _model();
-      final docksJson = (json['docks'] as Map).cast<String, Object?>();
+      final docksJson = (json['docks']! as Map).cast<String, Object?>();
       other.restore(
         docks: {
           for (final entry in docksJson.entries)
             entry.key: DockGroup(
-              tabs: ((entry.value as Map)['tabs'] as List).cast<String>(),
-              activeTabId: (entry.value as Map)['active'] as String,
+              tabs: ((entry.value! as Map)['tabs'] as List).cast<String>(),
+              activeTabId: (entry.value! as Map)['active'] as String,
             ),
         },
-        dockExtents: (json['extents'] as Map).cast<String, double>(),
+        dockExtents: (json['extents']! as Map).cast<String, double>(),
       );
 
       expect(other.tabsIn('left'), ['tools', 'brushes']);
@@ -192,7 +192,7 @@ void main() {
     test('an emptied dock is not written out, and restore keeps its id', () {
       final model = _model();
       final json = model.toJson();
-      expect((json['docks'] as Map).containsKey('right'), isFalse);
+      expect((json['docks']! as Map).containsKey('right'), isFalse);
     });
   });
 }

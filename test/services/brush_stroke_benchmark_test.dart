@@ -68,7 +68,7 @@ void main() {
   }
 
   void bench(String label, List<BrushDab> dabs) {
-    final canvas = const CanvasSize(width: 1280, height: 720);
+    const canvas = CanvasSize(width: 1280, height: 720);
     // Warm up JIT.
     BrushLiveStrokeRasterizer(canvasSize: canvas).blendFrom(dabs);
     final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvas);

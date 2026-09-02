@@ -68,13 +68,13 @@ void main() {
     });
 
     test('fx-only reads the session fxEnabled parameter', () {
-      final filter = TimelineRowFilter(fxOnly: true);
+      const filter = TimelineRowFilter(fxOnly: true);
       expect(filter.allows(_layer('a'), fxEnabled: true), isTrue);
       expect(filter.allows(_layer('a'), fxEnabled: false), isFalse);
     });
 
     test('toggledMark flips membership', () {
-      final filter = TimelineRowFilter();
+      const filter = TimelineRowFilter();
       final withRed = filter.toggledMark(const LayerMark(process: LayerProcess.layout));
       expect(withRed.markColors, {const LayerMark(process: LayerProcess.layout)});
       expect(withRed.toggledMark(const LayerMark(process: LayerProcess.layout)).markColors, isEmpty);
@@ -82,7 +82,7 @@ void main() {
 
     test('kind set passes only matching kinds and ANDs with the rest '
         '(R4 #8)', () {
-      final filter = TimelineRowFilter(kinds: {LayerKind.se});
+      const filter = TimelineRowFilter(kinds: {LayerKind.se});
       expect(filter.isActive, isTrue);
       expect(
         filter.allows(_layer('s', kind: LayerKind.se), fxEnabled: true),
@@ -108,7 +108,7 @@ void main() {
     });
 
     test('toggledKind flips membership', () {
-      final filter = TimelineRowFilter();
+      const filter = TimelineRowFilter();
       final withSe = filter.toggledKind(LayerKind.se);
       expect(withSe.kinds, {LayerKind.se});
       expect(withSe.toggledKind(LayerKind.se).kinds, isEmpty);

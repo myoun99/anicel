@@ -114,7 +114,7 @@ void main() {
     // A [GestureDetector] is only a BUTTON when it has an `onTap` — the
     // other twenty-odd are pans, scales and long-presses whose drag IS the
     /// verb, and a claim over one of those is the brush row's bug again.
-    final tappable = RegExp(r'onTap:');
+    final tappable = RegExp('onTap:');
     // ⚠️[DragVerbClaim] counts as well, and it is not a loophole: a widget
     // that says 「the drag from here is MY verb」 mounts its own recogniser
     // for it, which is deeper than any ancestor scroller and therefore

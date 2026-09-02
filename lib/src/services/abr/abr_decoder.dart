@@ -166,7 +166,7 @@ AbrImportResult decodeAbrBrushFile(
         id: uniquePresetId('abr-$key'),
         name: '$sourceName tip $unnamedIndex',
         settings: _settingsForTip(
-          tipsByKey[key]!,
+          tipsByKey[key],
           diameterPixels: tipsByKey[key]!.size.toDouble(),
           spacingRatio: 0.25,
           angleDegrees: 0,

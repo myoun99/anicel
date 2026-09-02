@@ -265,7 +265,7 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
     switch (request.op) {
       case _opOpen:
         final args =
-            request.args as ({String path, int offset, int length});
+            request.args! as ({String path, int offset, int length});
         final document = decoder == null || !decoder.isSupported
             ? null
             : decoder.openDocument(
@@ -288,7 +288,7 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
           fpsDenominator: document.info.fpsDenominator,
         ));
       case _opFrame:
-        final args = request.args as ({int token, int index});
+        final args = request.args! as ({int token, int index});
         final document = documentAt(args.token);
         final rgba = document == null
             ? null

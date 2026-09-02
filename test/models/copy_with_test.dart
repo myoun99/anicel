@@ -42,10 +42,10 @@ void main() {
       frames: const [],
     );
     final dotted = <int, TimelineExposure>{
-      3: TimelineExposure.drawing(
-        const FrameId('f-3'),
+      3: const TimelineExposure.drawing(
+        FrameId('f-3'),
         length: 2,
-        breakdownOffsets: const [1],
+        breakdownOffsets: [1],
       ),
     };
     final markedLayer = layer.copyWith(timeline: dotted);
@@ -70,7 +70,7 @@ void main() {
           name: 'Layer',
           frames: const [],
           timeline: {
-            3: TimelineExposure.drawing(const FrameId('f-3'), length: 2),
+            3: const TimelineExposure.drawing(FrameId('f-3'), length: 2),
           },
         ),
       ),

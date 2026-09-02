@@ -61,9 +61,9 @@ void main() {
     name: 'A',
     frames: [Frame(id: celId, duration: 1, strokes: const [])],
     timeline: {
-      0: TimelineExposure.drawing(celId, length: 1),
-      1: TimelineExposure.drawing(celId, length: 1, ghost: true),
-      2: TimelineExposure.drawing(celId, length: 1, ghost: true),
+      0: const TimelineExposure.drawing(celId, length: 1),
+      1: const TimelineExposure.drawing(celId, length: 1, ghost: true),
+      2: const TimelineExposure.drawing(celId, length: 1, ghost: true),
     },
   );
 
@@ -106,8 +106,8 @@ void main() {
         name: 'A',
         frames: [Frame(id: celId, duration: 1, strokes: const [])],
         timeline: {
-          0: TimelineExposure.drawing(celId, length: 1),
-          4: TimelineExposure.drawing(celId, length: 1),
+          0: const TimelineExposure.drawing(celId, length: 1),
+          4: const TimelineExposure.drawing(celId, length: 1),
         },
       ),
     );

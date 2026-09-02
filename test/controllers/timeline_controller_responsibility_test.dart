@@ -177,15 +177,15 @@ List<Layer> _defaultLayers() => [
       Frame(id: const FrameId('a-2'), duration: 2, strokes: const []),
     ],
     timeline: {
-      0: TimelineExposure.drawing(const FrameId('a-1'), length: 7),
-      7: TimelineExposure.drawing(const FrameId('a-2'), length: 2),
+      0: const TimelineExposure.drawing(FrameId('a-1'), length: 7),
+      7: const TimelineExposure.drawing(FrameId('a-2'), length: 2),
     },
   ),
   Layer(
     id: const LayerId('animation-b'),
     name: 'Animation B',
     frames: [Frame(id: const FrameId('b-1'), duration: 3, strokes: const [])],
-    timeline: {10: TimelineExposure.drawing(const FrameId('b-1'), length: 3)},
+    timeline: {10: const TimelineExposure.drawing(FrameId('b-1'), length: 3)},
   ),
   Layer(
     id: const LayerId('empty-layer'),

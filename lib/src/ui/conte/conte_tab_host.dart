@@ -10,7 +10,6 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/project.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/viewport_point.dart';
 import '../brush/brush_canvas_panel.dart';
@@ -177,7 +176,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   }
 
   (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
-    final Project project = _session.repository.requireProject();
+    final project = _session.repository.requireProject();
     final aspect = _session.cameraFrameAspect;
     if (_source == null ||
         !identical(project, _sourceProject) ||

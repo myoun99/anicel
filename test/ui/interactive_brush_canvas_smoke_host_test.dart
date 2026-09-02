@@ -158,7 +158,7 @@ void main() {
         expect(identical(_view(tester).sessionState, secondState), isTrue);
         expect(
           _view(tester).sessionState.canvasState.currentSurface.canvasSize,
-          CanvasSize(width: 10, height: 10),
+          const CanvasSize(width: 10, height: 10),
         );
       },
     );
@@ -264,7 +264,7 @@ void main() {
               frameId: frameId,
               inputSettings: inputSettings,
               cacheInvalidationSink: sink,
-              canvasSize: CanvasSize(width: 8, height: 8),
+              canvasSize: const CanvasSize(width: 8, height: 8),
               tileSize: 2,
             ),
           ),
@@ -281,7 +281,7 @@ void main() {
               frameId: frameId,
               inputSettings: inputSettings,
               cacheInvalidationSink: sink,
-              canvasSize: CanvasSize(width: 8, height: 8),
+              canvasSize: const CanvasSize(width: 8, height: 8),
               tileSize: 2,
             ),
           ),
@@ -369,7 +369,7 @@ void main() {
         );
         expect(
           _view(tester).sessionState.canvasState.currentSurface.canvasSize,
-          CanvasSize(width: 10, height: 10),
+          const CanvasSize(width: 10, height: 10),
         );
       },
     );

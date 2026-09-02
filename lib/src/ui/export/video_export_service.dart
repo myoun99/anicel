@@ -134,12 +134,10 @@ class VideoExportService {
         '-vendor',
         'apl0',
         '-pix_fmt',
-        codec == ExportVideoCodec.prores4444
-            ? (keepAlpha ? 'yuva444p10le' : 'yuv444p10le')
-            : 'yuv422p10le',
+        if (codec == ExportVideoCodec.prores4444) keepAlpha ? 'yuva444p10le' : 'yuv444p10le' else 'yuv422p10le',
       ] else ...[
         '-c:v',
-        codec == ExportVideoCodec.h265 ? 'libx265' : 'libx264',
+        if (codec == ExportVideoCodec.h265) 'libx265' else 'libx264',
         '-pix_fmt',
         'yuv420p',
         if (bitrateBps > 0) ...[
@@ -147,7 +145,7 @@ class VideoExportService {
           '$bitrateBps',
         ] else ...[
           '-crf',
-          codec == ExportVideoCodec.h265 ? '20' : '18',
+          if (codec == ExportVideoCodec.h265) '20' else '18',
         ],
       ],
       '-vf',

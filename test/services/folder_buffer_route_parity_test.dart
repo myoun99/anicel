@@ -96,7 +96,7 @@ void main() {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.drawImage(backdrop, Offset.zero, Paint());
-    final bounds = const Rect.fromLTWH(0, 0, 8, 8);
+    const bounds = Rect.fromLTWH(0, 0, 8, 8);
     if (buffered) {
       canvas.saveLayer(
         bounds,

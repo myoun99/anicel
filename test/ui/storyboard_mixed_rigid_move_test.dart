@@ -326,7 +326,7 @@ void main() {
     final preview = session.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
     expect(
-      (preview as BlockMoveDragPreview).previewLayers.containsKey(
+      (preview! as BlockMoveDragPreview).previewLayers.containsKey(
         transitionId(),
       ),
       isFalse,

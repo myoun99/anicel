@@ -59,8 +59,8 @@ Project _project({bool withSound = true}) => Project(
               ),
             ],
             timeline: {
-              0: TimelineExposure.drawing(
-                const FrameId('se-frame'),
+              0: const TimelineExposure.drawing(
+                FrameId('se-frame'),
                 length: 10,
               ),
             },

@@ -55,7 +55,7 @@ void main() {
 
     expect(
       layer.timeline[0],
-      TimelineExposure.drawing(const FrameId('f1'), length: 3),
+      const TimelineExposure.drawing(FrameId('f1'), length: 3),
     );
     expect(exposedFrameIdAt(layer.timeline, 2), const FrameId('f1'));
   });
@@ -69,7 +69,7 @@ void main() {
     );
 
     expect(Map<int, TimelineExposure>.from(layer.timeline), {
-      0: TimelineExposure.drawing(const FrameId('f1'), length: 2),
+      0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
     });
     expect(exposedFrameIdAt(layer.timeline, 2), isNull);
   });
@@ -84,7 +84,7 @@ void main() {
 
     expect(
       layer.timeline[0],
-      TimelineExposure.drawing(const FrameId('f1'), length: 4),
+      const TimelineExposure.drawing(FrameId('f1'), length: 4),
     );
   });
 
@@ -112,10 +112,10 @@ void main() {
     );
 
     expect(Map<int, TimelineExposure>.from(layer.timeline), {
-      0: TimelineExposure.drawing(
-        const FrameId('f1'),
+      0: const TimelineExposure.drawing(
+        FrameId('f1'),
         length: 3,
-        breakdownOffsets: const [1],
+        breakdownOffsets: [1],
       ),
     });
   });
@@ -142,10 +142,10 @@ void main() {
     // The mark at 2 never terminated the legacy hold (the blank at 3 does);
     // it folds into the block. The mark at 6 sits on empty space and drops.
     expect(Map<int, TimelineExposure>.from(layer.timeline), {
-      0: TimelineExposure.drawing(
-        const FrameId('f1'),
+      0: const TimelineExposure.drawing(
+        FrameId('f1'),
         length: 3,
-        breakdownOffsets: const [2],
+        breakdownOffsets: [2],
       ),
     });
   });
@@ -156,10 +156,10 @@ void main() {
       name: 'A',
       frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
       timeline: {
-        0: TimelineExposure.drawing(
-          const FrameId('f1'),
+        0: const TimelineExposure.drawing(
+          FrameId('f1'),
           length: 3,
-          breakdownOffsets: const [1, 2],
+          breakdownOffsets: [1, 2],
         ),
       },
     );

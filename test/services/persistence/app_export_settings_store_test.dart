@@ -36,15 +36,15 @@ void main() {
     final store = AppExportSettingsStore(filePath: pathIn('roundtrip'));
     final settings = AppExportSettings(
       presets: [
-        ExportPreset(
-          id: const ExportPresetId('p1'),
+        const ExportPreset(
+          id: ExportPresetId('p1'),
           name: '러시 체크 MP4',
-          spec: const SequenceExportSpec(applyLayerFx: false),
+          spec: SequenceExportSpec(applyLayerFx: false),
         ),
-        ExportPreset(
-          id: const ExportPresetId('p2'),
+        const ExportPreset(
+          id: ExportPresetId('p2'),
           name: '납품 셀',
-          spec: const CelsExportSpec(onTimesheetOnly: true),
+          spec: CelsExportSpec(onTimesheetOnly: true),
         ),
       ],
       lastSpecs: const ExportTabSpecs().withSpec(

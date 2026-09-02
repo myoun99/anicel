@@ -331,7 +331,7 @@ void main() {
         id: const LayerId('a'),
         name: 'a',
         frames: [frame('a-frame')],
-        timeline: {0: TimelineExposure.drawing(const FrameId('a-frame'), length: 1)},
+        timeline: {0: const TimelineExposure.drawing(FrameId('a-frame'), length: 1)},
         effects: [brighten()],
       );
       final sampled = sampleCompositeColor(
@@ -357,7 +357,7 @@ void main() {
         id: const LayerId('a'),
         name: 'a',
         frames: [frame('a-frame')],
-        timeline: {0: TimelineExposure.drawing(const FrameId('a-frame'), length: 1)},
+        timeline: {0: const TimelineExposure.drawing(FrameId('a-frame'), length: 1)},
         effects: [deleteBlack()],
       );
       for (final source in CanvasColorSampleSource.values) {

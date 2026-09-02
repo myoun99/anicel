@@ -163,8 +163,12 @@ const int _tieBudget = 128;
 ) {
   final x = a.buffer.asUint8List();
   final y = b.buffer.asUint8List();
-  var worst = 0, over = 0;
-  var left = 1 << 30, top = 1 << 30, right = -1, bottom = -1;
+  var worst = 0;
+  var over = 0;
+  var left = 1 << 30;
+  var top = 1 << 30;
+  var right = -1;
+  var bottom = -1;
   final samples = <String>[];
   for (var i = 0; i < x.length; i += 4) {
     var pixel = 0;
@@ -182,7 +186,8 @@ const int _tieBudget = 128;
     }
     over += 1;
     final index = i ~/ 4;
-    final px = index % width, py = index ~/ width;
+    final px = index % width;
+    final py = index ~/ width;
     if (px < left) left = px;
     if (px > right) right = px;
     if (py < top) top = py;

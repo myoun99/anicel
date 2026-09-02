@@ -164,7 +164,7 @@ class CelColorKey {
     blue.toDouble(),
     tolerance.toDouble(),
     amount,
-    keepsMatches ? 1 : 0,
+    if (keepsMatches) 1 else 0,
   ];
 
   static int _byte(double value) => value.round().clamp(0, 255);

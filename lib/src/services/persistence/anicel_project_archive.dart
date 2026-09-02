@@ -280,7 +280,7 @@ String _anicelPoolEntryName(
     hash = (hash * 0x01000193) & 0xFFFFFFFF;
   }
   final base = normalized.split('/').last;
-  final safe = base.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  final safe = base.replaceAll(RegExp('[^A-Za-z0-9._-]'), '_');
   return '$prefix${hash.toRadixString(16).padLeft(8, '0')}'
       '${infix.isEmpty ? '' : '-$infix'}'
       '-$safe${framed ? mediaFramedEntrySuffix : ''}';

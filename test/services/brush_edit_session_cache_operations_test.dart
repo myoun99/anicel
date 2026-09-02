@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -33,7 +34,7 @@ class FakeCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateBrushFrame(invalidation) {}
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
 
   @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) {
@@ -52,7 +53,7 @@ void main() {
     const frameId = FrameId('frame-a');
 
     BitmapSurface surface() =>
-        BitmapSurface(canvasSize: CanvasSize(width: 4, height: 4), tileSize: 2);
+        BitmapSurface(canvasSize: const CanvasSize(width: 4, height: 4), tileSize: 2);
 
     BrushEditSessionState emptySession() => BrushEditSessionState(
       canvasState: CanvasSurfaceState(currentSurface: surface()),

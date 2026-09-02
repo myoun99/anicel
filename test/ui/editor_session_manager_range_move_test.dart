@@ -155,7 +155,7 @@ void main() {
 
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
-    final previewLayer = (preview as BlockMoveDragPreview).previewLayers[a.id]!;
+    final previewLayer = (preview! as BlockMoveDragPreview).previewLayers[a.id]!;
     expect(previewLayer.timeline[0], isNull);
     expect(previewLayer.timeline[2], isNotNull);
     expect(previewLayer.timeline[5], isNotNull, reason: 'gap preserved');
@@ -312,7 +312,7 @@ void main() {
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
     final previewLayer =
-        (preview as BlockMoveDragPreview).previewLayers[instruction.id];
+        (preview! as BlockMoveDragPreview).previewLayers[instruction.id];
     expect(previewLayer!.instructions.containsKey(5), isTrue);
 
     s.endFrameRangeMoveDrag();
@@ -670,7 +670,7 @@ void main() {
     // Hold fills [1, cutEnd) as ONE multi-frame ghost — the case where the
     // old block-snap would have swallowed the whole derived span.
     expect(layer.timeline[1]!.ghost, isTrue);
-    expect(layer.timeline[1]!.length!, greaterThan(1));
+    expect(layer.timeline[1]!.length, greaterThan(1));
 
     s.updateFrameRangeSelectionDrag(
       layerId: layerId,

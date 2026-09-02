@@ -492,7 +492,7 @@ void main() {
 }
 
 Widget _header() {
-  return MaterialApp(
+  return const MaterialApp(
     home: Material(
       child: TimelineLayerControlsHeader(metrics: TimelineGridMetrics.defaults),
     ),

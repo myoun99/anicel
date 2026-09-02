@@ -71,7 +71,7 @@ void main() {
     test('saturation -100 leaves the Rec.709 luminance in every channel', () {
       final matrix = saturationMatrix(-100);
       final out = apply(matrix, [255, 0, 0, 255]);
-      final luminance = 255 * luminanceR;
+      const luminance = 255 * luminanceR;
       expect(out[0], closeTo(luminance, 0.01));
       expect(out[1], closeTo(luminance, 0.01));
       expect(out[2], closeTo(luminance, 0.01));

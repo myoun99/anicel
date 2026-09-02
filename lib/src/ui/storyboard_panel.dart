@@ -47,8 +47,8 @@ import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, PropertyLaneRow, TimelineDisplayRow;
 import 'timeline/timeline_row_span_resolver.dart'
     show
-        resolveBlockMoveTargetLayer,
         laneSpanOverDrawnRows,
+        resolveBlockMoveTargetLayer,
         resolveInGroupHeadLane,
         resolveLaneSpanEscalationOverAddresses;
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow, seAudioLanesFor;
@@ -4168,8 +4168,8 @@ class _StoryboardTrackRow extends StatelessWidget {
       // row, so there is nowhere sideways to land.
       onMoveUpdate: (frameDelta, _) =>
           stripSelect.move?.onUpdate(frameDelta, null),
-      onMoveEnd: () => stripSelect.move?.onEnd(),
-      onMoveCancel: () => stripSelect.move?.onCancel(),
+      onMoveEnd: stripSelect.move?.onEnd ?? _noMove,
+      onMoveCancel: stripSelect.move?.onCancel ?? _noMove,
     );
   }
 
@@ -4217,8 +4217,8 @@ class _StoryboardTrackRow extends StatelessWidget {
         return entry != null && (cutMove?.onBegin(entry.cutId) ?? false);
       },
       onMoveUpdate: (frameDelta, _) => cutMove?.onUpdate(frameDelta),
-      onMoveEnd: () => cutMove?.onEnd(),
-      onMoveCancel: () => cutMove?.onCancel(),
+      onMoveEnd: cutMove?.onEnd ?? _noMove,
+      onMoveCancel: cutMove?.onCancel ?? _noMove,
     );
   }
 
@@ -4656,3 +4656,6 @@ class _RenderFrameHitGate extends RenderProxyBox {
 /// hands none. Cheaper than branching the builder, and it can never notify.
 final ValueNotifier<TimelineDragPreview?> _noDragPreview =
     ValueNotifier<TimelineDragPreview?>(null);
+
+/// A row with no move hooks ends and cancels a move by doing nothing.
+void _noMove() {}

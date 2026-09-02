@@ -186,7 +186,8 @@ class TvppCameraProfile {
     final p2x = b.x + b.bezierBeforeX;
     final p2y = b.y + b.bezierBeforeY;
 
-    var lo = 0.0, hi = 1.0;
+    var lo = 0.0;
+    var hi = 1.0;
     for (var step = 0; step < 32; step++) {
       final mid = (lo + hi) / 2;
       if (_bez(mid, a.x, p1x, p2x, b.x) < t) {
@@ -389,7 +390,8 @@ double _scalarAt(
     }
   }
   final target = s * lens[steps];
-  var lo = 0, hi = steps;
+  var lo = 0;
+  var hi = steps;
   while (lo + 1 < hi) {
     final mid = (lo + hi) ~/ 2;
     if (lens[mid] < target) {

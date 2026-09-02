@@ -135,7 +135,7 @@ Project _projectWithLayer({
                     ],
                   ),
                 ],
-                timeline: {0: TimelineExposure.drawing(_frameId, length: 1)},
+                timeline: {0: const TimelineExposure.drawing(_frameId, length: 1)},
               ),
             ],
           ),

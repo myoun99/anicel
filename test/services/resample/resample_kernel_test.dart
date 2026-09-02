@@ -97,7 +97,8 @@ Uint8List _nearest(
     for (var x = 0; x < dstWidth; x += 1) {
       final u = t.a * (x + 0.5) + t.b * (y + 0.5) + t.c - 0.5;
       final v = t.d * (x + 0.5) + t.e * (y + 0.5) + t.f - 0.5;
-      final sx = u.round(), sy = v.round();
+      final sx = u.round();
+      final sy = v.round();
       dstWords[y * dstWidth +
           x] = (sx < 0 || sy < 0 || sx >= srcWidth || sy >= srcHeight)
           ? kResampleOutsideToken
@@ -148,7 +149,8 @@ int _isolatedPixels(Uint8List bytes, int width, int height) {
 
 ResampleTransform _rotationAbout(double degrees, double cx, double cy) {
   final theta = -degrees * math.pi / 180; // inverse rotation
-  final cos = math.cos(theta), sin = math.sin(theta);
+  final cos = math.cos(theta);
+  final sin = math.sin(theta);
   return ResampleTransform(
     a: cos,
     b: -sin,
@@ -170,7 +172,8 @@ ResampleTransform _rotateScaleAbout(
   double cy,
 ) {
   final r = degrees * math.pi / 180;
-  final cos = math.cos(r), sin = math.sin(r);
+  final cos = math.cos(r);
+  final sin = math.sin(r);
   return ResampleTransform(
     a: cos / sx,
     b: sin / sx,
@@ -1048,13 +1051,20 @@ void main() {
         for (var x = 0; x < width; x += 1) {
           final u = (x + 0.5) / scale - 0.5;
           final v = (y + 0.5) / scale - 0.5;
-          final cx = u.round(), cy = v.round();
+          final cx = u.round();
+          final cy = v.round();
           final radius = (1 / scale).ceil() + 1;
-          var minR = 255, maxR = 0, minG = 255, maxG = 0, minB = 255, maxB = 0;
+          var minR = 255;
+          var maxR = 0;
+          var minG = 255;
+          var maxG = 0;
+          var minB = 255;
+          var maxB = 0;
           var sawAny = false;
           for (var dy = -radius; dy <= radius; dy += 1) {
             for (var dx = -radius; dx <= radius; dx += 1) {
-              final sx = cx + dx, sy = cy + dy;
+              final sx = cx + dx;
+              final sy = cy + dy;
               if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
               final token = srcWords[sy * width + sx];
               final r = token & 0xff;
@@ -1118,7 +1128,8 @@ void main() {
         );
         for (var y = 0; y < height; y += 1) {
           for (var x = 0; x < width; x += 1) {
-            final sx = x - 7, sy = y + 5;
+            final sx = x - 7;
+            final sy = y + 5;
             final expected = (sx < 0 || sy < 0 || sx >= width || sy >= height)
                 ? kResampleOutsideToken
                 : _tokenAt(source, width, sx, sy);

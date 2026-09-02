@@ -223,7 +223,7 @@ void main() {
       const tile = 256;
       final pixels = Uint8List(tile * tile * 4);
       final offset = (4 * cut.canvasSize.width + 4) * 4;
-      final tileOffset = (4 * tile + 4) * 4;
+      const tileOffset = (4 * tile + 4) * 4;
       pixels[tileOffset] = 0x80;
       pixels[tileOffset + 1] = 0x80;
       pixels[tileOffset + 2] = 0x80;

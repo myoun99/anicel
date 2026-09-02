@@ -9,7 +9,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -29,7 +28,7 @@ void main() {
       pixels[i] = (i * seed * 13 + seed) & 0xFF;
     }
     return BitmapSurface(
-      canvasSize: CanvasSize(width: 16, height: 16),
+      canvasSize: const CanvasSize(width: 16, height: 16),
       tileSize: 8,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
@@ -50,7 +49,7 @@ void main() {
 
     // Default layers carry no frames until drawn — graft one real block
     // (Frame + timeline exposure) so the load-prune has a live id.
-    Project project = createDefaultProject();
+    var project = createDefaultProject();
     final track = project.tracks.first;
     final baseCut = track.cuts.first;
     final grafted = baseCut.layers.first.copyWith(

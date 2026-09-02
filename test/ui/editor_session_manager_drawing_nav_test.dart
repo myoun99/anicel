@@ -34,7 +34,7 @@ void main() {
           Frame(id: const FrameId('nav-f1'), duration: 1, strokes: const []),
         ],
         timeline: {
-          2: TimelineExposure.drawing(const FrameId('nav-f1'), length: 3),
+          2: const TimelineExposure.drawing(FrameId('nav-f1'), length: 3),
         },
       ),
     );

@@ -252,9 +252,9 @@ const _cutId = CutId('cut');
 /// [markIndex] (folded into the covering block's breakdownOffsets).
 Layer _editingLayer({int? markIndex}) {
   final timeline = <int, TimelineExposure>{
-    0: TimelineExposure.drawing(const FrameId('a'), length: 3),
-    5: TimelineExposure.drawing(const FrameId('b'), length: 4),
-    9: TimelineExposure.drawing(const FrameId('a'), length: 3),
+    0: const TimelineExposure.drawing(FrameId('a'), length: 3),
+    5: const TimelineExposure.drawing(FrameId('b'), length: 4),
+    9: const TimelineExposure.drawing(FrameId('a'), length: 3),
   };
   if (markIndex != null) {
     final start = timeline.keys.lastWhere((key) => key <= markIndex);

@@ -25,7 +25,7 @@ void main() {
     String frame = 'f',
   }) => BrushFrameKey(
     projectId: ProjectId(project),
-    trackId: TrackId('t'),
+    trackId: const TrackId('t'),
     cutId: CutId(cut),
     layerId: LayerId(layer),
     frameId: FrameId(frame),
@@ -231,11 +231,11 @@ void main() {
       'crossing; the everyday save of a still-hot cel is not', () {
     final store = BrushFrameStore();
     final k = key();
-    final ref = AnicelCelFileRef(
+    const ref = AnicelCelFileRef(
       filePath: 'unused.anicel',
       dataOffset: 0,
       length: 1,
-      canvasSize: const CanvasSize(width: 4, height: 4),
+      canvasSize: CanvasSize(width: 4, height: 4),
       tileSize: 4,
     );
 

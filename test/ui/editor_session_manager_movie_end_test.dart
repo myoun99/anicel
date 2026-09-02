@@ -17,7 +17,7 @@ void main() {
     s.updateMovieEndDrag(6);
     // The preview rides the channel; the repository stays untouched.
     expect(
-      (s.dragPreview.value as MovieEndDragPreview).trailingFrames,
+      (s.dragPreview.value! as MovieEndDragPreview).trailingFrames,
       6,
     );
     expect(s.repository.requireProject().trailingFrames, 0);

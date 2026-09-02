@@ -75,9 +75,9 @@ void main() {
         'gave it', (tester) async {
       await tester.pumpWidget(
         host(
-          child: SingleChildScrollView(
+          child: const SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: const SizedBox(width: 900, height: 40),
+            child: SizedBox(width: 900, height: 40),
           ),
         ),
       );
@@ -95,10 +95,10 @@ void main() {
       // the bottom third of every target in it.
       await tester.pumpWidget(
         host(
-          child: UnbarredScrollable(
+          child: const UnbarredScrollable(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: const SizedBox(width: 900, height: 40),
+              child: SizedBox(width: 900, height: 40),
             ),
           ),
         ),

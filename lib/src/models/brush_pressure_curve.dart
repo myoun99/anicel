@@ -93,7 +93,7 @@ class BrushPressureCurve {
   factory BrushPressureCurve.linearFrom(double minimum) =>
       BrushPressureCurve([
         BrushCurvePoint(0.0, minimum.clamp(0.0, 1.0).toDouble()),
-        BrushCurvePoint(1.0, 1.0),
+        const BrushCurvePoint(1.0, 1.0),
       ]);
 
   /// Ascending-x control points; first at x=0, last at x=1.

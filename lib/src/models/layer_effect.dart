@@ -332,7 +332,7 @@ class EffectParameter {
       value: (json['value'] as num?)?.toDouble() ?? 0,
       track: PropertyTrack.fromJson(
         json['keys'] as List?,
-        (value) => (value as num).toDouble(),
+        (value) => (value! as num).toDouble(),
       ),
     );
   }

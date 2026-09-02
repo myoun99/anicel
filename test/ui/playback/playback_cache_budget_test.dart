@@ -49,7 +49,7 @@ void main() {
           Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('frame-a'), length: 1),
         },
       ),
     ],

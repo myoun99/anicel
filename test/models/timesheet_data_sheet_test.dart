@@ -15,7 +15,7 @@ import 'package:anicel/src/models/timesheet_document.dart';
 /// of the notation shorthand; holds stay holds (labels never tile down
 /// held rows).
 Layer _repeatLayer() {
-  var layer = Layer(
+  final layer = Layer(
     id: const LayerId('a'),
     name: 'A',
     frames: [
@@ -34,8 +34,7 @@ Layer _repeatLayer() {
       ),
     ],
   );
-  layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
-  return layer;
+  return rederiveRunBehaviors(layer, cutFrameCount: 12);
 }
 
 TimesheetDocument _document(Layer layer, {required bool dataSheet}) {

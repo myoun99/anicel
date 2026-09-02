@@ -80,10 +80,10 @@ void main() {
         .byWidgetPredicate(
           (widget) =>
               widget.key is ValueKey<String> &&
-              (widget.key as ValueKey<String>).value.contains('-instruction-'),
+              (widget.key! as ValueKey<String>).value.contains('-instruction-'),
         )
         .evaluate())
-      ((element.widget.key) as ValueKey<String>).value,
+      (element.widget.key! as ValueKey<String>).value,
   ];
 
   testWidgets('⑦ the row DRAWS its span in the cut — the mark the design says '
@@ -186,10 +186,10 @@ void main() {
           .byWidgetPredicate(
             (widget) =>
                 widget.key is ValueKey<String> &&
-                (widget.key as ValueKey<String>).value.contains('edge-grip'),
+                (widget.key! as ValueKey<String>).value.contains('edge-grip'),
           )
           .evaluate())
-        ((element.widget.key) as ValueKey<String>).value,
+        (element.widget.key! as ValueKey<String>).value,
     ];
     expect(
       gripKeys.where((key) => key.contains(transitionLayerId)),

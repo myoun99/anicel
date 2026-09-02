@@ -184,7 +184,7 @@ bool _isAddressable(String binding) {
   final empty = CutEnvelopeSource(
     cuts: [
       for (var i = 0; i < 32; i += 1)
-        CutEnvelopeCutLine(name: 'x', durationFrames: 1, fps: 24),
+        const CutEnvelopeCutLine(name: 'x', durationFrames: 1, fps: 24),
     ],
     cels: [
       for (var i = 0; i < 32; i += 1)

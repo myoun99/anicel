@@ -440,7 +440,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   CanvasSelectionShape _wholeCanvasShape() {
     final width = widget.canvasSize.width.toDouble();
     final height = widget.canvasSize.height.toDouble();
-    var left = 0.0, top = 0.0, right = width, bottom = height;
+    var left = 0.0;
+    var top = 0.0;
+    var right = width;
+    var bottom = height;
     final content = widget.contentBoundsProvider?.call();
     if (content != null) {
       final wallLeft = widget.canvasSize.pasteboardLeft.toDouble();
@@ -1326,7 +1329,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (base == null) {
       return null;
     }
-    final left = base[0].x, top = base[0].y;
+    final left = base[0].x;
+    final top = base[0].y;
     final width = base[1].x - base[0].x;
     final height = base[3].y - base[0].y;
     return [
@@ -1558,8 +1562,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (size.isEmpty) {
       return null;
     }
-    var minX = double.infinity, minY = double.infinity;
-    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
     for (final corner in <ViewportPoint>[
       ViewportPoint(x: 0, y: 0),
       ViewportPoint(x: size.width, y: 0),
@@ -3058,7 +3064,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             rotationDegrees: current.rotationDegrees + delta,
           );
         });
-      default:
+      case _TransformHandle.topLeft:
+      case _TransformHandle.topRight:
+      case _TransformHandle.bottomRight:
+      case _TransformHandle.bottomLeft:
+      case _TransformHandle.topEdge:
+      case _TransformHandle.rightEdge:
+      case _TransformHandle.bottomEdge:
+      case _TransformHandle.leftEdge:
         setState(() => _transform = _solveScaleDrag(start, handle, pointer));
     }
   }
@@ -3781,7 +3794,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
-    CanvasSelectionRegion? displayShape = _displayShape(transform, region, warpCorners);
+    final displayShape = _displayShape(transform, region, warpCorners);
     // R17-U 핸들 상시: with the Move tool a selection shows its box
     // chrome even before any session opens (identity affine around the
     // shape bounds; grabbing a handle opens the session at that moment).
@@ -3811,7 +3824,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // appearing only once the first offset makes the warp real.
     final placedMesh = _placedMeshPoints;
     final placedCorners = _placedCorners;
-    ({List<ui.Offset> box, List<ui.Offset> handles, ui.Offset? knob})? chrome = _transformChrome(placedMesh, placedCorners, chromeAffine, chromeWidth, chromeHeight);
+    final chrome = _transformChrome(placedMesh, placedCorners, chromeAffine, chromeWidth, chromeHeight);
     // While a hold is up, whichever float is drawn is drawn ONLY over the
     // tiles the base cannot paint yet — screen space, because it wraps
     // the painters rather than living inside one of them, and both

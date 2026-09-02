@@ -176,7 +176,7 @@ void main() {
     test('🚨kKinds covers every kind any tool compares against', () {
       final kinds = <String>{};
       for (final f in ['board_model.dart', 'board_server.dart']) {
-        kinds.addAll(RegExp(r"""kind (?:!=|==) '([a-zA-Z]+)'""")
+        kinds.addAll(RegExp("""kind (?:!=|==) '([a-zA-Z]+)'""")
             .allMatches(source(f))
             .map((m) => m.group(1)!));
       }

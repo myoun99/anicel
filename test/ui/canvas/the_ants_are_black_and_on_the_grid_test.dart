@@ -78,8 +78,10 @@ void main() {
     int width,
     int height,
   ) {
-    var left = double.infinity, top = double.infinity;
-    var right = double.negativeInfinity, bottom = double.negativeInfinity;
+    var left = double.infinity;
+    var top = double.infinity;
+    var right = double.negativeInfinity;
+    var bottom = double.negativeInfinity;
     for (var y = 0; y < height; y += 1) {
       for (var x = 0; x < width; x += 1) {
         if (bytes.getUint8((y * width + x) * 4 + 3) == 0) {

@@ -409,9 +409,7 @@ class Layer {
       kind: json.containsKey('kind')
           ? LayerKind.fromJson(json['kind'])
           : LayerKind.animation,
-      onTimesheet: json.containsKey('onTimesheet')
-          ? json['onTimesheet'] as bool
-          : true,
+      onTimesheet: !json.containsKey('onTimesheet') || json['onTimesheet'] as bool,
       mark: json.containsKey('mark')
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,

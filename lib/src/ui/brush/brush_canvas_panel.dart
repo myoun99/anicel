@@ -1415,8 +1415,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     var panX = _viewport.panX;
     var panY = _viewport.panY;
     final unpanned = _viewport.copyWith(panX: 0, panY: 0);
-    var minX = double.infinity, minY = double.infinity;
-    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
     for (final corner in [
       rect.topLeft,
       rect.topRight,
@@ -2448,7 +2450,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // matrix, so the active layer draws posed and pointers inverse-map to
     // artwork coordinates in lockstep (R3 ⑩ — always-applied transforms).
     final pose = widget.interactiveContentPose;
-    final Widget posedView = pose == null
+    final posedView = pose == null
         ? interactiveView
         : Transform(
             transform: layerPoseViewportWrapMatrix(
@@ -2967,7 +2969,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // instead of clearing it. This is what makes 사각형/올가미 지우개
         // out of the erase entry in the blend list.
         sourceDabs: [
-          blend == BrushBlendMode.erase ? dab.copyWith(erase: true) : dab,
+          if (blend == BrushBlendMode.erase) dab.copyWith(erase: true) else dab,
         ],
         blendMode: blend,
       ),

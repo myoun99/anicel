@@ -122,7 +122,7 @@ void main() {
         SeNameTag(
           track: SeNameTagTrack(
             fontSize: PropertyTrack(
-              keys: {2: PropertyKey(20.0), 3: PropertyKey(24.0)},
+              keys: {2: const PropertyKey(20.0), 3: const PropertyKey(24.0)},
             ),
           ),
         ),
@@ -163,8 +163,8 @@ void main() {
         se.id,
         SeNameTag(
           track: SeNameTagTrack(
-            fontSize: PropertyTrack(keys: {2: PropertyKey(20.0)}),
-            bold: PropertyTrack(keys: {3: PropertyKey(true)}),
+            fontSize: PropertyTrack(keys: {2: const PropertyKey(20.0)}),
+            bold: PropertyTrack(keys: {3: const PropertyKey(true)}),
           ),
         ),
       );
@@ -216,9 +216,9 @@ void main() {
           track: SeNameTagTrack(
             fontSize: PropertyTrack(
               keys: {
-                2: PropertyKey(20.0),
-                3: PropertyKey(24.0),
-                9: PropertyKey(30.0),
+                2: const PropertyKey(20.0),
+                3: const PropertyKey(24.0),
+                9: const PropertyKey(30.0),
               },
             ),
           ),
@@ -273,7 +273,7 @@ void main() {
         SeNameTag(
           track: SeNameTagTrack(
             fontSize: PropertyTrack(
-              keys: {2: PropertyKey(20.0), 3: PropertyKey(24.0)},
+              keys: {2: const PropertyKey(20.0), 3: const PropertyKey(24.0)},
             ),
           ),
         ),
@@ -302,14 +302,15 @@ void main() {
       // non-first cut. The global form rides previewGlobalLayers.
       final preview = session.dragPreview.value;
       expect(preview, isA<BlockMoveDragPreview>());
-      final layers = (preview as BlockMoveDragPreview).previewLayers;
+      final blockPreview = preview! as BlockMoveDragPreview;
+      final layers = blockPreview.previewLayers;
       expect(
         layers[se.id]!.seNameTag!.track!.fontSize.keys.keys.toList(),
         [7, 8],
         reason: 'cut-local: the active cut starts at $firstDuration',
       );
       expect(
-        preview.previewGlobalLayers[se.id]!.seNameTag!.track!.fontSize.keys
+        blockPreview.previewGlobalLayers[se.id]!.seNameTag!.track!.fontSize.keys
             .keys
             .toList(),
         [firstDuration + 7, firstDuration + 8],

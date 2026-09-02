@@ -64,7 +64,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   // the raster thread and intermittently flashed the tile as a black square
   // for one frame.
   static final Finalizer<ui.Image> _imageFinalizer = Finalizer<ui.Image>(
-    (image) => DeferredImageDisposer.instance.retire(image),
+    DeferredImageDisposer.instance.retire,
   );
 
   /// Latest decoded tile per (scope, coordinate), held strongly so its image
@@ -113,7 +113,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// Detached explicitly when the real decode replaces a stand-in, so the
   /// image is retired exactly once.
   static final Finalizer<ui.Image> _provisionalFinalizer = Finalizer<ui.Image>(
-    (image) => DeferredImageDisposer.instance.retire(image),
+    DeferredImageDisposer.instance.retire,
   );
 
   /// The decoded image for [tile], or `null` while the decode is pending.

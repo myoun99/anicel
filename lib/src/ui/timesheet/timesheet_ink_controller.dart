@@ -122,12 +122,12 @@ class TimesheetInkController extends ChangeNotifier {
     coordinator,
     store: store,
     canvasSize: canvasSize,
-    initialFrameKey: BrushFrameKey(
+    initialFrameKey: const BrushFrameKey(
       projectId: inkProjectId,
       trackId: inkTrackId,
-      cutId: const CutId('timesheet-ink-init'),
+      cutId: CutId('timesheet-ink-init'),
       layerId: stripLayerId,
-      frameId: const FrameId('timesheet-ink-init'),
+      frameId: FrameId('timesheet-ink-init'),
     ),
   );
 

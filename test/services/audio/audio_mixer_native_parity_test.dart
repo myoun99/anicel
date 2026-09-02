@@ -65,13 +65,7 @@ void main() {
   }
 
   group('native mixer byte parity', () {
-    test('the struct layouts agree on both sides', () {
-      // The loader returns null on any sizeof disagreement, so simply
-      // binding is the assertion — a silent layout drift would make every
-      // field read garbage, and garbage in an audio buffer is a loud noise
-      // in someone's headphones.
-      requireNative();
-    }, skip: available ? false : nativeEngineMissingSkipReason);
+    test('the struct layouts agree on both sides', requireNative, skip: available ? false : nativeEngineMissingSkipReason);
 
     test('randomized clip layouts stay bit-identical', () {
       final native = requireNative();

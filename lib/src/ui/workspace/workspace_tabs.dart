@@ -497,9 +497,8 @@ class _WorkspaceTabs {
                                           // the BLEND's answer, so
                                           // the button no longer
                                           // carries one.
-                                          onCutPasteAtOrigin: () => _state
-                                              ._cutPieceSlot
-                                              .pasteAtOrigin(),
+                                          onCutPasteAtOrigin: _state
+                                              ._cutPieceSlot.pasteAtOrigin,
                                           onRegisterCutPieceAsTip: _state
                                               ._brushPresets
                                               ._registerCutPieceAsTip,

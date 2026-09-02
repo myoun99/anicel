@@ -76,8 +76,8 @@ void main() {
     write('board_model.dart', '1');
     final entry = write(
       'board_server.dart',
-      "// a comment first\n"
-      "\n"
+      '// a comment first\n'
+      '\n'
       "import 'board_model.dart';\n"
       'void main() {}\n',
     );

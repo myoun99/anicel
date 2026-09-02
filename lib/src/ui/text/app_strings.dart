@@ -26,7 +26,13 @@ abstract final class AppText {
 /// PROGRAM-language strings (UI-R10 #7): what the app chrome reads in.
 /// Coverage rolls out incrementally — panels adopt entries as they get
 /// touched; untabled strings simply stay English in the widgets.
-class AppStrings {
+enum AppStrings {
+  _en._(_enValues),
+  _ja._(_jaValues),
+  _ko._(_koValues),
+  _fr._(_frValues),
+  _zhHans._(_zhHansValues);
+
   const AppStrings._(this._values);
 
   /// This language's OWN entries. A key absent here falls back to English,
@@ -1166,12 +1172,6 @@ class AppStrings {
     AppLanguage.fr => _fr,
     AppLanguage.zhHans => _zhHans,
   };
-
-  static const _en = AppStrings._(_enValues);
-  static const _ja = AppStrings._(_jaValues);
-  static const _ko = AppStrings._(_koValues);
-  static const _fr = AppStrings._(_frValues);
-  static const _zhHans = AppStrings._(_zhHansValues);
 
   static const _enValues = <String, String>{
     'languageSettingsTitle': 'Language Settings',
@@ -4034,7 +4034,7 @@ class AppStrings {
     'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
-        "Ce nom est déjà utilisé par une autre image de ce calque. Lier à "
+        'Ce nom est déjà utilisé par une autre image de ce calque. Lier à '
         "l'image existante pour que le même nom partage le même dessin ?",
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
@@ -4215,7 +4215,7 @@ class AppStrings {
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
     'canvasAnchorHelpTemplate':
-        "Ancrage : le dessin existant reste fixé ici. Les traits rognés sont "
+        'Ancrage : le dessin existant reste fixé ici. Les traits rognés sont '
         'conservés et réapparaissent si le canevas est agrandi. '
         '({min}–{max} px)',
     'canvasPresetDefault': 'Par défaut',
@@ -4447,8 +4447,8 @@ class AppStrings {
     'mediaReferencedState': 'Lié',
     'projectLegacyAssetsFolder':
         "Ce projet a encore un dossier {name} à côté de lui. Plus rien n'y "
-        "est écrit — enregistrez une fois et ses médias passent dans le "
-        "fichier de projet, ensuite le dossier peut être supprimé.",
+        'est écrit — enregistrez une fois et ses médias passent dans le '
+        'fichier de projet, ensuite le dossier peut être supprimé.',
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty':

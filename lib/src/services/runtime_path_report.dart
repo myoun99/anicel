@@ -137,10 +137,10 @@ List<RuntimePathEntry> collectRuntimePathReport() {
   entries.add(
     RuntimePathEntry(
       subsystem: 'PDF renderer',
-      active: pdfAvailable == true
+      active: pdfAvailable ?? false
           ? 'PDFium (pdfrx, chromium prebuilt)'
           : 'Not loaded — PDF import and viewing are disabled',
-      isPrimary: pdfAvailable == true,
+      isPrimary: pdfAvailable ?? false,
       detail:
           'PDF pages rasterize through PDFium (Chromium\'s PDF engine), '
           'bundled at build time. There is no substitute path: without '

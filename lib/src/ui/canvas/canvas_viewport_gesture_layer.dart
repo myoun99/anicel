@@ -701,8 +701,7 @@ class _CanvasViewportGestureLayerState
           AppInput.snapToList(nextZoom * 100, settings.zoomSnapPercents) /
           100;
     }
-    next = next.zoomedAround(nextZoom: nextZoom, anchor: focalAnchor);
-    return next;
+    return next.zoomedAround(nextZoom: nextZoom, anchor: focalAnchor);
   }
 
   void _updateBrushSize() {

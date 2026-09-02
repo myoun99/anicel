@@ -178,7 +178,7 @@ void main() {
     expect(
       paintedViewport(tester).zoom,
       opened,
-      reason: "toggle OFF = 재생 시 fit 안 함 (유저 확정 08-18)",
+      reason: 'toggle OFF = 재생 시 fit 안 함 (유저 확정 08-18)',
     );
 
     // Pan by hand mid-run, then cross into cut 2 exactly at local 0.

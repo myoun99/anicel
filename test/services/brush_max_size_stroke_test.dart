@@ -25,16 +25,16 @@ void main() {
   test('a max-size dab commits and paints a correct disc', () {
     const canvasSize = CanvasSize(width: 2200, height: 2200);
     final coordinator = BrushFrameEditingCoordinator(
-      initialFrameKey: BrushFrameKey(
-        projectId: const ProjectId('project'),
-        trackId: const TrackId('track'),
-        cutId: const CutId('cut'),
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('frame'),
+      initialFrameKey: const BrushFrameKey(
+        projectId: ProjectId('project'),
+        trackId: TrackId('track'),
+        cutId: CutId('cut'),
+        layerId: LayerId('layer'),
+        frameId: FrameId('frame'),
       ),
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: BrushHistoryPolicy(userUndoLimit: 4, deferredBakeRatio: 0),
+      historyPolicy: const BrushHistoryPolicy(userUndoLimit: 4, deferredBakeRatio: 0),
     );
 
     final outcome = coordinator.commitSourceStroke(

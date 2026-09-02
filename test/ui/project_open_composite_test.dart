@@ -156,8 +156,8 @@ void main() {
   test('the display-cache service reseeds from the baked truth instead of '
       'replaying a command-free cel to BLANK', () {
     final store = BrushFrameStore();
-    final canvasSize = CanvasSize(width: 512, height: 512);
-    final key = BrushFrameKey(
+    const canvasSize = CanvasSize(width: 512, height: 512);
+    const key = BrushFrameKey(
       projectId: ProjectId('p'),
       trackId: TrackId('t'),
       cutId: CutId('c'),
@@ -194,7 +194,7 @@ BitmapSurface materializeSingleDabSurface(CanvasSize canvasSize) {
     canvasSize: canvasSize,
     tileSize: 256,
   );
-  final key = BrushFrameKey(
+  const key = BrushFrameKey(
     projectId: ProjectId('fixture'),
     trackId: TrackId('t'),
     cutId: CutId('c'),

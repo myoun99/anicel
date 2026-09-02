@@ -261,8 +261,10 @@ class SelectionAffine {
 ({int left, int top, int width, int height}) selectionWarpOutputRect(
   List<CanvasPoint> points,
 ) {
-  var minX = double.infinity, minY = double.infinity;
-  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+  var minX = double.infinity;
+  var minY = double.infinity;
+  var maxX = double.negativeInfinity;
+  var maxY = double.negativeInfinity;
   for (final point in points) {
     minX = math.min(minX, point.x);
     maxX = math.max(maxX, point.x);
@@ -492,8 +494,10 @@ Float64List? solveHomography(List<CanvasPoint> from, List<CanvasPoint> to) {
   // Rows: [x y 1 0 0 0 -x*u -y*u | u] and [0 0 0 x y 1 -x*v -y*v | v].
   final a = List.generate(8, (_) => Float64List(9));
   for (var i = 0; i < 4; i += 1) {
-    final x = from[i].x, y = from[i].y;
-    final u = to[i].x, v = to[i].y;
+    final x = from[i].x;
+    final y = from[i].y;
+    final u = to[i].x;
+    final v = to[i].y;
     a[i * 2]
       ..[0] = x
       ..[1] = y
@@ -975,7 +979,7 @@ void _featherMask(Uint8List mask, int width, int height, double featherPx) {
   for (var y = 0; y < height; y += 1) {
     for (var x = 0; x < width; x += 1) {
       final i = y * width + x;
-      int best = dist[i];
+      var best = dist[i];
       if (best == 0) continue;
       // Canvas-edge pixels ramp too (border counts as outside).
       if (x == 0 || y == 0 || x == width - 1 || y == height - 1) best = 3;
@@ -995,7 +999,7 @@ void _featherMask(Uint8List mask, int width, int height, double featherPx) {
   for (var y = height - 1; y >= 0; y -= 1) {
     for (var x = width - 1; x >= 0; x -= 1) {
       final i = y * width + x;
-      int best = dist[i];
+      var best = dist[i];
       if (best == 0) continue;
       if (x < width - 1 && dist[i + 1] + 3 < best) best = dist[i + 1] + 3;
       if (y < height - 1) {

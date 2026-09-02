@@ -66,7 +66,7 @@ void main() {
       session.dispose();
     });
 
-    Future<void> openRefusing(WidgetTester tester, Object failure) async {
+    Future<void> openRefusing(WidgetTester tester, Exception failure) async {
       PdfRenderService.debugOpenerOverride = (path) async => throw failure;
       await tester.pumpWidget(
         MaterialApp(
@@ -125,4 +125,3 @@ void main() {
     });
   });
 }
-

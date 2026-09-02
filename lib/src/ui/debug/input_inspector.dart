@@ -470,12 +470,12 @@ class _InspectorCard extends StatelessWidget {
                                 ),
                         ),
                       const SizedBox(width: 4),
-                      AppIconButton(
+                      const AppIconButton(
                         keyValue: 'input-inspector-clear',
                         tooltip: 'Clear',
                         size: AppIconButtonSize.micro,
                         onPressed: InputInspector.clear,
-                        icon: const Icon(Icons.refresh),
+                        icon: Icon(Icons.refresh),
                       ),
                       AppIconButton(
                         keyValue: 'input-inspector-close',

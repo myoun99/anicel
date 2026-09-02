@@ -81,9 +81,9 @@ void main() {
             Frame(id: FrameId(id), duration: 1, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('f0'), length: 1),
-          1: TimelineExposure.drawing(const FrameId('f1'), length: 1),
-          2: TimelineExposure.drawing(const FrameId('f2'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('f0'), length: 1),
+          1: const TimelineExposure.drawing(FrameId('f1'), length: 1),
+          2: const TimelineExposure.drawing(FrameId('f2'), length: 1),
         },
       );
       final plans = planOnionSkin(

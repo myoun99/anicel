@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
@@ -17,7 +18,7 @@ class FakeCacheInvalidationSink implements CacheInvalidationSink {
   void invalidateLayerTile(LayerTileCacheKey key) => layerTiles.add(key);
 
   @override
-  void invalidateBrushFrame(invalidation) {}
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
 
   @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) =>

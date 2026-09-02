@@ -528,7 +528,7 @@ LayerAttachDrop? _attachPlan(
   final keepsOwnGroup =
       ownBase != null &&
       _slotKeepsGroup(lift.rest, lift.restInsertAt, ownBase, lift.pointerInRow);
-  final _Target? target =
+  final target =
       (keepsOwnGroup
           ? null
           : _slotInsideGroup(lift.rest, lift.restInsertAt, ownBase: ownBase)) ??

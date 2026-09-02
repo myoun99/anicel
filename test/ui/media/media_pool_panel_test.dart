@@ -6,7 +6,7 @@ import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
 
 class _Callbacks {
-  var importRequests = 0;
+  int importRequests = 0;
   final renamed = <(String, String)>[];
   final relinked = <(String, String)>[];
 
@@ -19,7 +19,7 @@ class _Callbacks {
   final relinkGrants = <List<Object?>>[];
   final removed = <String>[];
   final promoted = <String>[];
-  var promoteResult = true;
+  bool promoteResult = true;
   final opened = <MediaAsset>[];
   bool removeResult = true;
   Set<String> referencedPaths = {};

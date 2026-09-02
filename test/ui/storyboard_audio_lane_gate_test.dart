@@ -138,7 +138,7 @@ void main() {
     );
     expect(
       find.byKey(
-        ValueKey<String>('storyboard-se-lane-row-0-2-transform-group'),
+        const ValueKey<String>('storyboard-se-lane-row-0-2-transform-group'),
       ),
       findsOneWidget,
       reason: 'the twirl itself still opens the Transform group',

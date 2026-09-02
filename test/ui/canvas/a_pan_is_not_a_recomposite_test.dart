@@ -44,9 +44,9 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// and the second one counts.
 void main() {
   const canvasSize = CanvasSize(width: 32, height: 32);
-  final projectId = ProjectId('p');
-  final cutId = CutId('c');
-  final trackId = TrackId('t');
+  const projectId = ProjectId('p');
+  const cutId = CutId('c');
+  const trackId = TrackId('t');
 
   BrushFrameKey keyFor(String id) => BrushFrameKey(
     projectId: projectId,

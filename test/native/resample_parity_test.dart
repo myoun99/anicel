@@ -66,7 +66,8 @@ Float64List _inverseOf(ResampleTransform t) =>
 
 ResampleTransform _rotationAbout(double degrees, double cx, double cy) {
   final theta = -degrees * math.pi / 180;
-  final cos = math.cos(theta), sin = math.sin(theta);
+  final cos = math.cos(theta);
+  final sin = math.sin(theta);
   return ResampleTransform(
     a: cos,
     b: -sin,

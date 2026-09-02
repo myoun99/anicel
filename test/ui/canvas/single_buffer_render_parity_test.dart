@@ -49,9 +49,9 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// must now be the display's decision.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
-  final projectId = ProjectId('p');
-  final cutId = CutId('c');
-  final trackId = TrackId('t');
+  const projectId = ProjectId('p');
+  const cutId = CutId('c');
+  const trackId = TrackId('t');
 
   BrushFrameKey key(String id) => BrushFrameKey(
     projectId: projectId,

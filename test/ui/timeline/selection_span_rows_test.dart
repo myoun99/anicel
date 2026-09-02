@@ -43,11 +43,11 @@ List<TimelineDisplayRow> _railRows() {
 
 void main() {
   final rows = _railRows();
-  final aRow = LayerRowAddress(LayerId('A'));
-  final header = LaneRowAddress(LayerId('A'), 'transform');
-  final position = LaneRowAddress(LayerId('A'), 'position');
-  final transition = LayerRowAddress(LayerId('T'));
-  final camera = LayerRowAddress(LayerId('CAM'));
+  const aRow = LayerRowAddress(LayerId('A'));
+  const header = LaneRowAddress(LayerId('A'), 'transform');
+  const position = LaneRowAddress(LayerId('A'), 'position');
+  const transition = LayerRowAddress(LayerId('T'));
+  const camera = LayerRowAddress(LayerId('CAM'));
 
   test('a display row states its own address — lanes and headers included', () {
     expect(rows.map((row) => row.address).toList(), [
@@ -125,7 +125,7 @@ void main() {
     expect(
       resolveSelectionSpanRows(
         rows: rows,
-        anchor: LayerRowAddress(LayerId('hidden')),
+        anchor: const LayerRowAddress(LayerId('hidden')),
         rowDelta: 1,
       ),
       isEmpty,

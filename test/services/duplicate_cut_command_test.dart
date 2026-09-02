@@ -63,7 +63,7 @@ void main() {
       );
       expect(
         cuts.last.layers.single.timeline[0],
-        TimelineExposure.drawing(const FrameId('frame-copy'), length: 1),
+        const TimelineExposure.drawing(FrameId('frame-copy'), length: 1),
       );
       expect(cuts.last.layers.single.timeline.containsKey(1), isFalse);
       expect(editingSession.activeCutId, const CutId('cut-duplicate'));

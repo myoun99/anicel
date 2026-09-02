@@ -8,7 +8,6 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
-import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -45,7 +44,7 @@ void main() {
       addTearDown(() => dir.deleteSync(recursive: true));
       final path = '${dir.path}/envelope.anicel';
 
-      final Project project = createDefaultProject();
+      final project = createDefaultProject();
       final session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
       final cut = session.requireActiveCut;

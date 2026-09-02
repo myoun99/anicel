@@ -208,7 +208,7 @@ void main() {
       final rgba = Uint8List(side * side * 4);
       const dotX = 37;
       const dotY = 3;
-      final offset = (dotY * side + dotX) * 4;
+      const offset = (dotY * side + dotX) * 4;
       rgba[offset] = 255;
       rgba[offset + 3] = 255;
       return CutPiece(

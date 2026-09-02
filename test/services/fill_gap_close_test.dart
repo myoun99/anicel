@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -42,8 +42,10 @@ void main() {
       rgb[base + 2] = 0;
     }
 
-    const boxLeft = 8, boxTop = 8;
-    final boxRight = width - 9, boxBottom = height - 9;
+    const boxLeft = 8;
+    const boxTop = 8;
+    final boxRight = width - 9;
+    final boxBottom = height - 9;
     for (var x = boxLeft; x <= boxRight; x += 1) {
       black(x, boxTop);
       black(x, boxBottom);
@@ -98,7 +100,8 @@ void main() {
 
   test('gap close BLOCKS a leak through a hole narrower than ~2×radius; '
       'plain fill leaks', () {
-    const width = 64, height = 64;
+    const width = 64;
+    const height = 64;
     final rgb = boxWithGap(width: width, height: height, gap: 5);
 
     final leaked = fill(rgb, width: width, height: height, gapClosePx: 0)!;
@@ -117,7 +120,8 @@ void main() {
 
     // The contained region still reaches the REAL walls (grow-back):
     // the pixel just inside the left wall is covered.
-    final xInside = 9, yInside = height ~/ 2;
+    const xInside = 9;
+    const yInside = height ~/ 2;
     expect(
       closed.mask[(yInside - closed.top) * closed.width +
           (xInside - closed.left)],
@@ -128,7 +132,8 @@ void main() {
 
   test('a seed in a corridor narrower than the gap radius still fills '
       '(deterministic gap halving)', () {
-    const width = 32, height = 32;
+    const width = 32;
+    const height = 32;
     final rgb = Uint8List(width * height * 4);
     rgb.fillRange(0, rgb.length, 255);
     // Two horizontal walls 3px apart around the seed row.

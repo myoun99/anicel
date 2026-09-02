@@ -132,7 +132,7 @@ class _FrameClipboard {
       return 'Copy: -';
     }
 
-    final label = copiedFrame.frameName?.isNotEmpty == true
+    final label = copiedFrame.frameName?.isNotEmpty ?? false
         ? copiedFrame.frameName!
         : copiedFrame.frameId.value;
     return 'Copy: $label';

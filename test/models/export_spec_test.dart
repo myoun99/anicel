@@ -116,10 +116,10 @@ void main() {
 
   group('ExportPreset', () {
     test('round-trips through the tab discriminator', () {
-      final preset = ExportPreset(
-        id: const ExportPresetId('preset-1'),
+      const preset = ExportPreset(
+        id: ExportPresetId('preset-1'),
         name: '러시 체크 MP4',
-        spec: const SequenceExportSpec(applyLayerFx: false),
+        spec: SequenceExportSpec(applyLayerFx: false),
       );
       final restored = ExportPreset.fromJson(preset.toJson());
       expect(restored, preset);
@@ -128,10 +128,10 @@ void main() {
     });
 
     test('cels preset restores as a cels spec', () {
-      final preset = ExportPreset(
-        id: const ExportPresetId('preset-2'),
+      const preset = ExportPreset(
+        id: ExportPresetId('preset-2'),
         name: '납품 셀',
-        spec: const CelsExportSpec(includeFolderMembers: true),
+        spec: CelsExportSpec(includeFolderMembers: true),
       );
       final restored = ExportPreset.fromJson(preset.toJson());
       expect(restored.spec, isA<CelsExportSpec>());

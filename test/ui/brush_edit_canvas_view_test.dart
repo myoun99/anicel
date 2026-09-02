@@ -19,7 +19,7 @@ void main() {
       tester,
     ) async {
       final sessionState = _sessionState(
-        BitmapSurface(canvasSize: CanvasSize(width: 12, height: 8)),
+        BitmapSurface(canvasSize: const CanvasSize(width: 12, height: 8)),
       );
 
       await tester.pumpWidget(
@@ -66,7 +66,7 @@ void main() {
       'passes surface, viewport, overlay, and background to painter',
       (tester) async {
         final surface = BitmapSurface(
-          canvasSize: CanvasSize(width: 7, height: 5),
+          canvasSize: const CanvasSize(width: 7, height: 5),
         );
         final sessionState = _sessionState(surface);
         final viewport = CanvasViewport(zoom: 1.25, panX: 3, panY: 4);

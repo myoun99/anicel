@@ -63,7 +63,7 @@ void main() {
       'missing tiles as transparent', () {
     const tileSize = 4;
     final pixels = Uint8List(tileSize * tileSize * 4);
-    final base = (1 * tileSize + 2) * 4; // (x2, y1) in the tile
+    const base = (1 * tileSize + 2) * 4; // (x2, y1) in the tile
     pixels[base] = 200;
     pixels[base + 3] = 255;
     final surface = BitmapSurface(
@@ -82,7 +82,7 @@ void main() {
       DirtyRegion(left: 2, top: 0, rightExclusive: 8, bottomExclusive: 3),
     );
     // World (6,1) = tile(1,0) local (2,1) → region-local (4,1), width 6.
-    final regionBase = (1 * 6 + 4) * 4;
+    const regionBase = (1 * 6 + 4) * 4;
     expect(region[regionBase], 200);
     expect(region[regionBase + 3], 255);
     // World (0,0) has no tile: transparent.

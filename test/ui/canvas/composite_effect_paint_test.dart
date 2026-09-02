@@ -83,7 +83,7 @@ void main() {
   test('the blur outset is the radius — what a group buffer must grow by', () {
     expect(resolveCompositeEffectPaint([blur(x: 6, y: 2)]).outsetPixels, 6);
     expect(resolveCompositeEffectPaint([blur(x: 1, y: 9)]).outsetPixels, 9);
-    final bounds = const ui.Rect.fromLTWH(0, 0, 10, 10);
+    const bounds = ui.Rect.fromLTWH(0, 0, 10, 10);
     expect(
       effectBufferBounds(
         bounds,
@@ -103,7 +103,7 @@ void main() {
 
   test('the draw space scales the BLUR and leaves colour alone', () {
     final full = resolveCompositeEffectPaint([blur(x: 12)]);
-    final half = resolveCompositeEffectPaint([blur(x: 12)], space: DrawSpace.preScaled(0.5));
+    final half = resolveCompositeEffectPaint([blur(x: 12)], space: const DrawSpace.preScaled(0.5));
     expect(half.outsetPixels, 6);
     expect(full.outsetPixels, 12);
     expect(
@@ -119,7 +119,7 @@ void main() {
     expect(
       resolveCompositeEffectPaint([
         colour(brightness: 20),
-      ], space: DrawSpace.preScaled(0.25)).colorFilter,
+      ], space: const DrawSpace.preScaled(0.25)).colorFilter,
       resolveCompositeEffectPaint([colour(brightness: 20)]).colorFilter,
     );
   });

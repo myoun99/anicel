@@ -1,4 +1,4 @@
-﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -251,7 +251,7 @@ void main() {
       // as an ordinary timeline. That is what the host hands the grid.
       final band = folder.copyWith(
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('band:f1:0'), length: 3),
+          0: const TimelineExposure.drawing(FrameId('band:f1:0'), length: 3),
         },
       );
       LayerId? selectedLayerId;

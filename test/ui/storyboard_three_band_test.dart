@@ -230,9 +230,9 @@ void main() {
         Frame(id: const FrameId('cut-1-c'), duration: 1, strokes: const []),
       ],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('cut-1-a'), length: 4),
-        4: TimelineExposure.drawing(const FrameId('cut-1-b'), length: 5),
-        9: TimelineExposure.drawing(const FrameId('cut-1-c'), length: 3),
+        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 4),
+        4: const TimelineExposure.drawing(FrameId('cut-1-b'), length: 5),
+        9: const TimelineExposure.drawing(FrameId('cut-1-c'), length: 3),
       },
     );
     await _pump(tester, storyboardLayer: layer);
@@ -255,8 +255,8 @@ void main() {
       timeline: {
         // Panels are the cut's coverage projection — the last one runs to
         // the cut's end, so the 1-comma panel goes LAST to stay 1 comma.
-        0: TimelineExposure.drawing(const FrameId('cut-1-a'), length: 11),
-        11: TimelineExposure.drawing(const FrameId('cut-1-b'), length: 1),
+        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 11),
+        11: const TimelineExposure.drawing(FrameId('cut-1-b'), length: 1),
       },
     );
     await _pump(tester, storyboardLayer: layer);

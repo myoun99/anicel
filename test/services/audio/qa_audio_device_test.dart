@@ -1,4 +1,4 @@
-import 'dart:ffi' show Float, AllocatorAlloc;
+import 'dart:ffi' show AllocatorAlloc, Float;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';

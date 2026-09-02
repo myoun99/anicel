@@ -240,20 +240,20 @@ import 'timeline/effect_lane_editing.dart'
         effectLaneKeyFrames,
         effectsWithAdded,
         effectsWithEnabledToggled,
+        effectsWithGroupReset,
         effectsWithLaneKeyRemoved,
-        effectsWithRemoved,
-        effectsWithLaneRangeNamed,
         effectsWithLaneKeyToggled,
-        effectsWithGroupReset;
+        effectsWithLaneRangeNamed,
+        effectsWithRemoved;
 import 'timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
 import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
+        transformTrackWithGroupReset,
         transformTrackWithLaneKeyRemoved,
-        transformTrackWithLaneRangeNamed,
         transformTrackWithLaneKeyToggled,
-        transformTrackWithGroupReset;
+        transformTrackWithLaneRangeNamed;
 import 'timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import 'timeline/transform_lane_policy.dart'
@@ -589,7 +589,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// A test's budget for the playback caches (see the collaborator).
   @visibleForTesting
-  set debugPlaybackCacheBudgetBytes(int bytes) =>
+  void debugSetPlaybackCacheBudgetBytes(int bytes) =>
       _playbackCache._debugMaxBytes = bytes;
 
   int get playbackCacheByteBudget => _playbackCache.playbackCacheByteBudget;
@@ -636,7 +636,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// Canvas playback state machine; only the playback view and transport
   /// controls listen (the session playhead syncs once on stop).
   late final CanvasPlaybackController playback = CanvasPlaybackController(
-    resolveProject: () => _repository.requireProject(),
+    resolveProject: _repository.requireProject,
     resolveActiveCutId: () => _editingSession.activeCutId,
     resolveActiveTrackId: () => selectedTrackId,
     resolveFrameRate: () => projectFrameRate,
@@ -721,7 +721,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// but the BODY's own order still matters — the take has to have landed
   /// before the cut selection below runs, or the two commands reach the
   /// undo history in whichever order the isolate happened to finish in.
-  void _onPlaybackStopped(PlaybackPosition lastPosition) async {
+  Future<void> _onPlaybackStopped(PlaybackPosition lastPosition) async {
     // Transport stop finishes a rolling take (REC1-B): record = play +
     // capture, so ending one ends the other. The result message goes out
     // on the notice channel — this path has no button to return through.
@@ -741,7 +741,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// Stop landed on a playlist GAP frame (UI-R9 #3): match the editing
   /// gap semantics — park there with NO active cut.
   /// ⚠️`void` and `async` for the same reason as [_onPlaybackStopped].
-  void _onPlaybackStoppedInGap(int globalFrame) async {
+  Future<void> _onPlaybackStoppedInGap(int globalFrame) async {
     // The gap-stop twin of _onPlaybackStopped's take finish: a lane is
     // cut-independent, so a take may legitimately end over a gap.
     if (isVoiceRecording.value) {
@@ -2981,8 +2981,7 @@ class EditorSessionManager extends ChangeNotifier {
       return _layerContentBoundsCached;
     }
     _layerContentBoundsSurface = surface;
-    _layerContentBoundsCached = bitmapSurfaceContentBounds(surface);
-    return _layerContentBoundsCached;
+    return _layerContentBoundsCached = bitmapSurfaceContentBounds(surface);
   }
 
   BitmapSurface? _layerContentBoundsSurface;
@@ -5377,7 +5376,7 @@ class EditorSessionManager extends ChangeNotifier {
         for (final track in clip.audioTracks) track.filePath,
     };
     if (audioPaths.isNotEmpty) {
-      addMediaAssets(audioPaths.toList());
+      unawaited(addMediaAssets(audioPaths.toList()));
       _historyManager.clear();
       for (final path in audioPaths) {
         if (!File(path).existsSync()) {

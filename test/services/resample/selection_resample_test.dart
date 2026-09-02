@@ -252,8 +252,12 @@ void main() {
           x: random.nextDouble() * 60 - 30,
           y: random.nextDouble() * 60 - 30,
         );
-        final d0 = point(), d1 = point(), d2 = point();
-        final s0 = point(), s1 = point(), s2 = point();
+        final d0 = point();
+        final d1 = point();
+        final d2 = point();
+        final s0 = point();
+        final s1 = point();
+        final s2 = point();
         final denominator =
             (d1.x - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (d1.y - d0.y);
         if (denominator.abs() < 1) {

@@ -193,7 +193,7 @@ void main() {
     final red = Uint8List.fromList([
       for (var i = 0; i < 9; i += 1) ...[255, 0, 0, 255],
     ]);
-    var surface = materializeBrushDabSequenceOnBitmapSurface(
+    final surface = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
       sequence: BrushDabSequence([
         stampDab(

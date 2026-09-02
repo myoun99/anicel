@@ -119,13 +119,11 @@ class DeleteCutCommand implements Command {
 
     switch (fallbackDecision!.kind) {
       case CutDeletionFallbackKind.useExistingCut:
-        editingSession.setActiveCutId(fallbackDecision.cutId!);
-        break;
+        editingSession.setActiveCutId(fallbackDecision.cutId);
       // R28 #14: the track simply empties. No replacement cut is created
       // and nothing is active — the same state a storyboard gap parks in.
       case CutDeletionFallbackKind.emptyTrack:
         editingSession.setActiveCutId(null);
-        break;
     }
 
     _hasExecuted = true;

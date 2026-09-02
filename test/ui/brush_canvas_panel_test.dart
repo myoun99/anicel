@@ -1760,7 +1760,7 @@ void main() {
       );
     });
 
-    testWidgets("wheel zoom is suppressed while a stroke is active", (
+    testWidgets('wheel zoom is suppressed while a stroke is active', (
       tester,
     ) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
@@ -1882,7 +1882,7 @@ void main() {
                   .widget<CustomPaint>(
                     find.byKey(const ValueKey<String>('brush-cursor-overlay')),
                   )
-                  .painter
+                  .painter!
               as BrushCursorPainter;
       // A 40px brush is an outline, not the small-brush crosshair. The
       // radius is in SCREEN pixels, so it follows the render zoom — and a
@@ -1930,7 +1930,7 @@ void main() {
                   .widget<CustomPaint>(
                     find.byKey(const ValueKey<String>('brush-cursor-overlay')),
                   )
-                  .painter
+                  .painter!
               as BrushCursorPainter;
       expect(painter.shape, isNull);
     });

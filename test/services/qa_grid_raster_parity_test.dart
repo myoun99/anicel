@@ -1,4 +1,4 @@
-﻿import 'dart:math';
+import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
@@ -214,7 +214,7 @@ void main() {
     );
     expect(nativePixels, equals(referencePixels));
 
-    final inside = (3 * 8 + 3) * 4;
+    const inside = (3 * 8 + 3) * 4;
     expect(nativePixels[inside], 128, reason: 'premultiplied red');
     expect(nativePixels[inside + 3], 128, reason: 'alpha');
     expect(nativePixels[0], 0, reason: 'untouched pixels stay transparent');

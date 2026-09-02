@@ -108,7 +108,7 @@ void main() {
 
     test('the standalone recorder sink bounds its key log', () {
       final sink = BrushEditCacheInvalidationSink();
-      final overflow = BrushEditCacheInvalidationSink.maxRecordedKeys + 50;
+      const overflow = BrushEditCacheInvalidationSink.maxRecordedKeys + 50;
       for (var index = 0; index < overflow; index += 1) {
         sink.invalidateLayerTile(
           LayerTileCacheKey(
@@ -145,12 +145,12 @@ class _ProbeCommand implements Command {
 }
 
 BrushFrameEditingCoordinator _coordinator({required int userUndoLimit}) {
-  final key = BrushFrameKey(
-    projectId: const ProjectId('project'),
-    trackId: const TrackId('track'),
-    cutId: const CutId('cut'),
-    layerId: const LayerId('layer'),
-    frameId: const FrameId('frame'),
+  const key = BrushFrameKey(
+    projectId: ProjectId('project'),
+    trackId: TrackId('track'),
+    cutId: CutId('cut'),
+    layerId: LayerId('layer'),
+    frameId: FrameId('frame'),
   );
   return BrushFrameEditingCoordinator(
     initialFrameKey: key,

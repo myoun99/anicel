@@ -100,8 +100,8 @@ void main() {
       final fixture = _fixture(
         _layer(
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('a'), length: 1),
-            5: TimelineExposure.drawing(const FrameId('b'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('a'), length: 1),
+            5: const TimelineExposure.drawing(FrameId('b'), length: 1),
           },
         ),
       );
@@ -129,9 +129,9 @@ void main() {
       final fixture = _fixture(
         _layer(
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('a'), length: 1),
-            5: TimelineExposure.drawing(const FrameId('b'), length: 1),
-            9: TimelineExposure.drawing(const FrameId('b'), length: 1),
+            0: const TimelineExposure.drawing(FrameId('a'), length: 1),
+            5: const TimelineExposure.drawing(FrameId('b'), length: 1),
+            9: const TimelineExposure.drawing(FrameId('b'), length: 1),
           },
         ),
       );
@@ -233,7 +233,7 @@ void main() {
       final fixture = _fixture(
         _layer(
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('a'), length: 4),
+            0: const TimelineExposure.drawing(FrameId('a'), length: 4),
           },
         ),
       );
@@ -515,9 +515,9 @@ Layer _layer({Map<int, TimelineExposure>? timeline, List<Frame>? frames}) {
     timeline:
         timeline ??
         {
-          0: TimelineExposure.drawing(const FrameId('a'), length: 3),
-          5: TimelineExposure.drawing(const FrameId('b'), length: 4),
-          9: TimelineExposure.drawing(const FrameId('a'), length: 3),
+          0: const TimelineExposure.drawing(FrameId('a'), length: 3),
+          5: const TimelineExposure.drawing(FrameId('b'), length: 4),
+          9: const TimelineExposure.drawing(FrameId('a'), length: 3),
         },
   );
 }

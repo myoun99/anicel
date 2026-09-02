@@ -266,7 +266,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    var event = _camLayer(repository).instructions[2]!;
+    final event = _camLayer(repository).instructions[2]!;
     expect(event.valueB, 'B2');
     expect(event.length, 6, reason: 'length stays grip-owned');
 

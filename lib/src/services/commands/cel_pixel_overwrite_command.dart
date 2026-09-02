@@ -52,12 +52,11 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     this.selector,
     this.options = SelectionMaskOptions.none,
     this.cacheInvalidationSink,
-  }) : _value = Uint8List.fromList(value) {
-    assert(
-      value.length == channel.byteCount,
-      'value must carry exactly the channel bytes.',
-    );
-  }
+  }) : _value = Uint8List.fromList(value),
+       assert(
+         value.length == channel.byteCount,
+         'value must carry exactly the channel bytes.',
+       );
 
   /// The ONE place a verb becomes a channel, a value and a selector.
   ///

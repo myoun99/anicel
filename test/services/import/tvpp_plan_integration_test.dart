@@ -61,7 +61,7 @@ void main() {
           ctgSecondStream: [],
           instanceNames: {},
         ),
-        TvppLayer(
+        const TvppLayer(
           kind: TvppLayerKind.folder,
           name: 'F',
           layerId: 9,
@@ -71,9 +71,9 @@ void main() {
           opacity: 255,
           preBehavior: TvpEdgeBehavior.none,
           postBehavior: TvpEdgeBehavior.none,
-          slots: const [],
-          ctgSecondStream: const [],
-          instanceNames: const {},
+          slots: [],
+          ctgSecondStream: [],
+          instanceNames: {},
         ),
         TvppLayer(
           kind: TvppLayerKind.raster,
@@ -129,7 +129,7 @@ void main() {
   });
 
   test('a sound track becomes an SE row: reference linked, blockized', () {
-    final parsed = TvpImportClip(
+    const parsed = TvpImportClip(
       versionMajor: 0,
       versionMinor: 0,
       clipName: 'cut',
@@ -138,18 +138,18 @@ void main() {
       frameRate: 24,
       pixelAspectRatio: 1,
       frameCount: 48,
-      background: const TvpColor(255, 255, 255),
+      background: TvpColor(255, 255, 255),
       markIn: null,
       markOut: null,
-      camera: const TvpCamera(
+      camera: TvpCamera(
         width: 320,
         height: 180,
         keyframes: [],
         positions: [],
       ),
-      layers: const [],
-      warnings: const [],
-      audioTracks: const [
+      layers: [],
+      warnings: [],
+      audioTracks: [
         TvpAudioTrack(
           filePath: 'G:/sagyou/12.mp4',
           offsetSeconds: 0.5, // = 12 frames at 24fps

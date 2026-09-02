@@ -31,7 +31,7 @@ void main() {
         if (!_offending.hasMatch(line)) {
           continue;
         }
-        if (_allowed.any((allowed) => line.contains(allowed))) {
+        if (_allowed.any(line.contains)) {
           continue;
         }
         offenders.add('$path:${i + 1}  ${line.trim()}');

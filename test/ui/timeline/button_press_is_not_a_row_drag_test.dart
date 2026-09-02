@@ -97,10 +97,10 @@ void main() {
   testWidgets('a point outside every control is not a control', (tester) async {
     await pump(
       tester,
-      Row(
+      const Row(
         children: [
-          RowControlSurface(child: const SizedBox(width: 30, height: 24)),
-          const SizedBox(width: 120, height: 24, key: ValueKey<String>('name')),
+          RowControlSurface(child: SizedBox(width: 30, height: 24)),
+          SizedBox(width: 120, height: 24, key: ValueKey<String>('name')),
         ],
       ),
     );
@@ -133,10 +133,10 @@ void main() {
             panStarts += 1;
           }
         },
-        child: Row(
+        child: const Row(
           children: [
-            RowControlSurface(child: const SizedBox(width: 40, height: 24)),
-            const SizedBox(
+            RowControlSurface(child: SizedBox(width: 40, height: 24)),
+            SizedBox(
               width: 120,
               height: 24,
               key: ValueKey<String>('name'),

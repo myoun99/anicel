@@ -75,19 +75,19 @@ void main() {
     test('kicks a cooling pass — a plain budget write alone never cools',
         () async {
       final store = BrushFrameStore();
-      final k1 = BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: const CutId('c'),
-        layerId: const LayerId('l'),
-        frameId: const FrameId('f1'),
+      const k1 = BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('c'),
+        layerId: LayerId('l'),
+        frameId: FrameId('f1'),
       );
-      final k2 = BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: const CutId('c'),
-        layerId: const LayerId('l'),
-        frameId: const FrameId('f2'),
+      const k2 = BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('c'),
+        layerId: LayerId('l'),
+        frameId: FrameId('f2'),
       );
       BitmapSurface ink(int seed) {
         final pixels = Uint8List(8 * 8 * 4);

@@ -98,4 +98,3 @@ AudioPeaks peaksFromSamples({
     peaks: Float32List.fromList(peaks),
   );
 }
-

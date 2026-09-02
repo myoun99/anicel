@@ -23,7 +23,7 @@ void main() {
       frames: [Frame(id: const FrameId('a'), duration: 1, strokes: const [])],
     );
     final after = before.copyWith(
-      timeline: {0: TimelineExposure.drawing(const FrameId('a'), length: 4)},
+      timeline: {0: const TimelineExposure.drawing(FrameId('a'), length: 4)},
     );
     final repository = ProjectRepository(initialProject: _project(before));
     final history = HistoryManager();

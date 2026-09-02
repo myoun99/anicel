@@ -310,7 +310,8 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
   }
 
   void tileRows(int t, int declaredSize) {
-    final tr = t ~/ cols, tc = t % cols;
+    final tr = t ~/ cols;
+    final tc = t % cols;
     final tw = tc == cols - 1 ? width - tc * tile : tile;
     final th = tr == rows - 1 ? height - tr * tile : tile;
     final from = pb.at;
@@ -330,17 +331,21 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
     if (dst == src || src < 0 || src >= total) {
       return;
     }
-    final dr = dst ~/ cols, dc = dst % cols;
-    final sr = src ~/ cols, sc = src % cols;
+    final dr = dst ~/ cols;
+    final dc = dst % cols;
+    final sr = src ~/ cols;
+    final sc = src % cols;
     final tw = dc == cols - 1 ? width - dc * tile : tile;
     final th = dr == rows - 1 ? height - dr * tile : tile;
     for (var y = 0; y < th; y++) {
-      final gy = dr * tile + y, sy = sr * tile + y;
+      final gy = dr * tile + y;
+      final sy = sr * tile + y;
       if (sy >= height) {
         continue;
       }
       for (var xx = 0; xx < tw; xx++) {
-        final gx = dc * tile + xx, sx = sc * tile + xx;
+        final gx = dc * tile + xx;
+        final sx = sc * tile + xx;
         if (gx < width && sx < width) {
           img[gy * width + gx] = img[sy * width + sx];
         }

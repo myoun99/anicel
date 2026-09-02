@@ -31,15 +31,15 @@ void main() {
     test('groupOf finds the group of any member; null when unlinked', () {
       final links = registry();
       expect(
-        links.groupOf(cutId: CutId('cut-a'), layerId: LayerId('layer-1'))?.id,
+        links.groupOf(cutId: const CutId('cut-a'), layerId: const LayerId('layer-1'))?.id,
         'g1',
       );
       expect(
-        links.groupOf(cutId: CutId('cut-b'), layerId: LayerId('layer-9'))?.id,
+        links.groupOf(cutId: const CutId('cut-b'), layerId: const LayerId('layer-9'))?.id,
         'g1',
       );
       expect(
-        links.groupOf(cutId: CutId('cut-a'), layerId: LayerId('layer-9')),
+        links.groupOf(cutId: const CutId('cut-a'), layerId: const LayerId('layer-9')),
         isNull,
       );
     });
@@ -47,11 +47,11 @@ void main() {
     test('useCountOf is the member count for linked layers, 1 otherwise', () {
       final links = registry();
       expect(
-        links.useCountOf(cutId: CutId('cut-b'), layerId: LayerId('layer-9')),
+        links.useCountOf(cutId: const CutId('cut-b'), layerId: const LayerId('layer-9')),
         2,
       );
       expect(
-        links.useCountOf(cutId: CutId('cut-x'), layerId: LayerId('layer-1')),
+        links.useCountOf(cutId: const CutId('cut-x'), layerId: const LayerId('layer-1')),
         1,
       );
     });
@@ -59,12 +59,12 @@ void main() {
     test('canonicalCelKey rewrites a member key to the canonical address, '
         'keeps the frame, and is idempotent', () {
       final links = registry();
-      final memberKey = BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: const CutId('cut-b'),
-        layerId: const LayerId('layer-9'),
-        frameId: const FrameId('frame-7'),
+      const memberKey = BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('cut-b'),
+        layerId: LayerId('layer-9'),
+        frameId: FrameId('frame-7'),
       );
 
       final canonical = links.canonicalCelKey(memberKey);
@@ -75,12 +75,12 @@ void main() {
     });
 
     test('canonicalCelKey leaves unlinked keys untouched', () {
-      final key = BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: const CutId('cut-x'),
-        layerId: const LayerId('layer-1'),
-        frameId: const FrameId('frame-1'),
+      const key = BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('cut-x'),
+        layerId: LayerId('layer-1'),
+        frameId: FrameId('frame-1'),
       );
       expect(registry().canonicalCelKey(key), key);
     });
@@ -109,7 +109,7 @@ void main() {
       expect(reopened.linkRegistry, registry());
       expect(
         reopened.linkRegistry
-            .groupOf(cutId: CutId('cut-a'), layerId: LayerId('layer-1'))
+            .groupOf(cutId: const CutId('cut-a'), layerId: const LayerId('layer-1'))
             ?.id,
         'g1',
       );

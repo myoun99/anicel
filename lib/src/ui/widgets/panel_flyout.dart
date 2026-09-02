@@ -601,7 +601,7 @@ Widget _itemBody(PanelFlyoutItem entry, {bool hasSubmenu = false}) => Row(
                     style: TextStyle(fontSize: 12, color: _inkFor(entry)),
                   ),
                 ),
-    if (entry.checked == true) ...[
+    if (entry.checked ?? false) ...[
       const SizedBox(width: 8),
       Icon(Icons.check, size: 14, color: AppColors.accent),
     ],
@@ -819,6 +819,6 @@ class PanelFlyoutButton extends StatelessWidget {
     if (tooltip == null) {
       return chip;
     }
-    return Tooltip(message: tooltip!, child: chip);
+    return Tooltip(message: tooltip, child: chip);
   }
 }

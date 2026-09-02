@@ -44,7 +44,7 @@ void main() {
     });
 
     test('fx — the one facet a TRACK also carries', () {
-      final filter = TimelineRowFilter(fxOnly: true);
+      const filter = TimelineRowFilter(fxOnly: true);
       expect(filter.allows(layer(), fxEnabled: true), isTrue);
       expect(filter.allows(layer(), fxEnabled: false), isFalse);
       // Same chip, same answer, on a row with nothing but fx.
@@ -62,19 +62,19 @@ void main() {
 
     test('kind, sheet-only and fill-reference behave the same way', () {
       expect(
-        TimelineRowFilter(
+        const TimelineRowFilter(
           kinds: {LayerKind.animation},
         ).allowsFacets(fxEnabled: true),
         isTrue,
       );
       expect(
-        TimelineRowFilter(
+        const TimelineRowFilter(
           onTimesheetOnly: true,
         ).allowsFacets(fxEnabled: true),
         isTrue,
       );
       expect(
-        TimelineRowFilter(
+        const TimelineRowFilter(
           fillReferenceOnly: true,
         ).allowsFacets(fxEnabled: true),
         isTrue,
@@ -83,7 +83,7 @@ void main() {
 
     test('but a row that carries the facet and FAILS it still hides — the '
         'chip is not disabled, it is inapplicable', () {
-      final filter = TimelineRowFilter(onTimesheetOnly: true);
+      const filter = TimelineRowFilter(onTimesheetOnly: true);
       expect(filter.allowsFacets(fxEnabled: true, onTimesheet: false), isFalse);
       expect(filter.allowsFacets(fxEnabled: true, onTimesheet: true), isTrue);
     });

@@ -83,7 +83,7 @@ void main() {
           peakIndex = i;
         }
       }
-      final expected = at * outputRate / inputRate;
+      const expected = at * outputRate / inputRate;
       expect(
         peakIndex.toDouble(),
         closeTo(expected, 1.0),
