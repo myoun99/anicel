@@ -27,7 +27,17 @@ void main() {
     if (!file.existsSync()) {
       fail('${file.path} is missing — this test guards code it cannot find');
     }
-    final source = file.readAsStringSync();
+    // The rail is a part of the storyboard LIBRARY (the audit's SRP cut,
+    // 2026-09-02): the scan reads the State's file plus every part beside
+    // it, so the per-row seam is found wherever the cut put it.
+    final parts = Directory('lib/src/ui/storyboard');
+    final source = [
+      file.readAsStringSync(),
+      if (parts.existsSync())
+        for (final part in parts.listSync())
+          if (part is File && part.path.endsWith('.dart'))
+            part.readAsStringSync(),
+    ].join('\n');
 
     final start = source.indexOf('Widget _stripRowLine(');
     expect(

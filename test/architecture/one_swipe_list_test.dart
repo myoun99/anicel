@@ -15,7 +15,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// listed — a ledger line, not a licence.
 void main() {
   const home = 'lib/src/ui/timeline/timeline_swipe_columns.dart';
-  const ledger = <String>{'lib/src/ui/storyboard_panel.dart'};
+  // The storyboard rail is one caller whichever file it sits in: the
+  // audit's SRP cut (2026-09-02) moves it from the panel State's file into
+  // a collaborator part beside it.
+  const ledger = <String>{
+    'lib/src/ui/storyboard_panel.dart',
+    'lib/src/ui/storyboard/storyboard_rail_rows.dart',
+  };
 
   Iterable<File> dartFilesUnder(String dir) sync* {
     for (final entity in Directory(dir).listSync(recursive: true)) {
