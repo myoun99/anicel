@@ -65,6 +65,8 @@ import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
 
+part 'layer_grid/layer_grid_rail_rows.dart';
+
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
     super.key,
@@ -208,12 +210,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
 
-  LayerRailExtent get _railExtent =>
-      widget.railExtent ?? (_ownedRailExtent ??= LayerRailExtent());
-
-  /// The rail's NATURAL extent — what it costs laid out in full. The
-  /// window never changes it; that is the whole point of the model.
-  double get _naturalRailWidth => _metrics.layerControlsWidth;
+  // ── the rail rows: their own object, in their own file ──────────────
+  //
+  // A collaborator (timeline/layer_grid/layer_grid_rail_rows.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _LayerGridRailRows _railRows = _LayerGridRailRows(this);
 
   /// The quantized frame-window token: the leading visible CELL index.
   /// Changes only on cell-boundary crossings — the rows body and the
@@ -253,37 +254,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
         leadingOrigin: timelineLayerRowLeadingBorder,
       );
-
-  /// Resolves a rail-local vertical position to the row there — LANE ROWS
-  /// INCLUDED. Spacer gaps and positions past the window return null.
-  ///
-  /// The ROW rather than its layer, because a swipe needs its DEPTH: the
-  /// leading columns sit after the folder indent, so their x is a function
-  /// of the row (I-1).
-  ///
-  /// 🚨IT USED TO EXCLUDE LANE ROWS, and that rule had a source and an
-  /// expiry. `git log -S` puts it in c07cfa40 (#509), when the sweep was
-  /// THE EYE AND NOTHING ELSE — lane rows carry no eye, so skipping them
-  /// was right. The sweep later widened to columns (I-1) and lane rows grew
-  /// an fx toggle of their own, and the exclusion outlived its reason: a
-  /// sweep down the fx column stepped over every lane row it crossed while
-  /// the code's own rule said only rows with NO control in a column are
-  /// skipped. 유저 2026-08-29: 「버튼이면 다 가능하도록」.
-  ///
-  /// ⚠️The uniform division holds for lane rows too — measured, both are
-  /// 28.0 tall and meet with no gap.
-  TimelineDisplayRow? _rowAtRailY(
-    double localY,
-    List<TimelineDisplayRow> windowRows,
-    double leadingSpacerHeight,
-  ) {
-    final indexInWindow =
-        ((localY - leadingSpacerHeight) / _metrics.layerRowHeight).floor();
-    if (indexInWindow < 0 || indexInWindow >= windowRows.length) {
-      return null;
-    }
-    return windowRows[indexInWindow];
-  }
 
   @override
   void initState() {
@@ -698,7 +668,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       }
     }
     final rowHeight = _metrics.layerRowHeight;
-    final rowIndex = _selectedRowIndex();
+    final rowIndex = _railRows.selectedRowIndex();
     if (!_verticalScrollController.hasClients ||
         rowIndex == null ||
         rowHeight <= 0) {
@@ -715,34 +685,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (target != position.pixels) {
       _verticalScrollController.jumpTo(target);
     }
-  }
-
-  /// Which DISPLAY row the selection sits on — the row the current-row
-  /// address names, and the active layer's row when it names none.
-  int? _selectedRowIndex() {
-    final rows = _dragRows;
-    if (rows.isEmpty) {
-      return null;
-    }
-    final current = widget.hooks.currentRowHooks?.currentRow.value;
-    if (current is LaneRowAddress) {
-      final at = rows.indexWhere(
-        (row) =>
-            row.layer.id == current.layerId &&
-            row.lane?.laneId == current.laneId,
-      );
-      if (at >= 0) {
-        return at;
-      }
-    }
-    final activeId = widget.hooks.activeLayerId;
-    if (activeId == null) {
-      return null;
-    }
-    final at = rows.indexWhere(
-      (row) => !row.isLane && row.layer.id == activeId,
-    );
-    return at < 0 ? null : at;
   }
 
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
@@ -811,61 +753,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
   }
 
-  /// The memo gate for [_railRow] (UI-R7 #1): a controls row whose inputs
-  /// match hands back the CACHED widget instance — a zoom step (or any
-  /// rebuild that didn't touch the row) skips its whole Material subtree.
-  /// Lane label rows stay unmemoized: they subscribe to the frame cursor
-  /// themselves and their lane models churn identity per build.
-  /// R28 #11: ONE selection — and now there is only one THING that can be
-  /// selected. A folder is a layer, so `activeLayerId` answers for both
-  /// and two rows can no longer read as selected at once by construction.
-  bool _layerRowIsActive(Layer layer) => layer.id == widget.hooks.activeLayerId;
-
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
-
-  Widget _railRowMemoized(TimelineDisplayRow row) {
-    if (row.isLane) {
-      return _effectDraggable(row, _railRow(row));
-    }
-    final fold = _groupFoldFor(row);
-    final inputs = (
-      layer: row.layer,
-      active: _layerRowIsActive(row.layer),
-      selected: widget.hooks.selectedRows.contains(row.address),
-      hasLanes: _lanesFor(row.layer).isNotEmpty,
-      lanesExpanded: widget.hooks.expandedLaneLayerIds.contains(row.layer.id),
-      depth: row.depth,
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
-      fxState:
-          widget.hooks.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
-      onionSkinEnabled:
-          widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
-      isLinked: widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
-      // Solo is SESSION state, not a Layer field, so the layer comparison
-      // cannot see it: the speaker's accent tint went stale the moment
-      // solo moved anywhere but this row. It has always been shown here —
-      // R10 R3 only made it settable from every rail, which is what turned
-      // a latent staleness into one a user would hit.
-      soloed: widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
-      // The arrow reads the STACK (a folder's direction is its position
-      // against its base), so the Layer comparison cannot see it change.
-      attachArrow: widget.hooks.attachArrowPlacementOf?.call(row.layer.id),
-      layerRowHeight: _metrics.layerRowHeight,
-      layerControlsWidth: _metrics.layerControlsWidth,
-      sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
-      opacityDragPreview: widget.hooks.opacityDragPreview,
-      blendLanguage: widget.hooks.blendLanguage,
-    );
-    final cached = _railRowMemo[row.layer.id];
-    if (cached != null && _railRowInputsMatch(cached.inputs, inputs)) {
-      return _draggable(row, cached.row);
-    }
-    final built = _railRow(row);
-    _railRowMemo[row.layer.id] = (inputs: inputs, row: built);
-    return _draggable(row, built);
-  }
 
   /// The row, made draggable. The wrapper is built fresh every pass and the
   /// memoized row travels through it untouched — the drag state lives in a
@@ -880,15 +769,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// notifier — the press finds its row already built, and every window
   /// shift already rebuilds through [_handleVerticalScroll]'s setState.
   TimelineRowAddress? _heldDragRow;
-
-  /// The rail row's element key — ONE builder for the window loop and the
-  /// A5 pin site, so the two can never drift and the pinned element
-  /// re-matches the same State when the window returns.
-  ValueKey<String> _railRowKey(TimelineDisplayRow row) => ValueKey<String>(
-    'timeline-rail-row-'
-    '${row.layer.id}-'
-    '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
-  );
 
   /// The slot is this row's place among the layer rows ON SCREEN, and the
   /// list handed to the policy is those rows' layers — see [layerRowsOf]
@@ -1066,86 +946,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
-  bool _railRowInputsMatch(_RailRowMemoInputs a, _RailRowMemoInputs b) {
-    // What the row SHOWS gates content, not the Layer's identity: a
-    // timesheet edit rebuilds the edited layer's instance while every
-    // rail-visible field stays put (see the completeness contract on
-    // [timelineLayerControlsRowShowsSameState]).
-    return timelineLayerControlsRowShowsSameState(a.layer, b.layer) &&
-        a.active == b.active &&
-        a.selected == b.selected &&
-        a.hasLanes == b.hasLanes &&
-        a.lanesExpanded == b.lanesExpanded &&
-        a.depth == b.depth &&
-        a.hasGroupFold == b.hasGroupFold &&
-        a.groupFoldExpanded == b.groupFoldExpanded &&
-        a.fxState == b.fxState &&
-        a.onionSkinEnabled == b.onionSkinEnabled &&
-        a.isLinked == b.isLinked &&
-        a.soloed == b.soloed &&
-        a.attachArrow == b.attachArrow &&
-        a.layerRowHeight == b.layerRowHeight &&
-        a.layerControlsWidth == b.layerControlsWidth &&
-        a.sectionLabelGutterWidth == b.sectionLabelGutterWidth &&
-        identical(a.opacityDragPreview, b.opacityDragPreview) &&
-        a.blendLanguage == b.blendLanguage;
-  }
-
-  /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
-  /// legend-visible fact changes — zoom steps and unrelated session
-  /// notifies reuse the instance, skipping its ~15 tooltip/flyout cells.
-  Widget _legendHeaderMemoized(List<TimelineDisplayRow> rows) {
-    final displayedIds = _displayedLayerIds(rows);
-    final inputs = (
-      layerRowHeight: _metrics.layerRowHeight,
-      layerControlsWidth: _metrics.layerControlsWidth,
-      hasLegend: widget.legend != null,
-      hiddenSections: widget.hooks.hiddenSections,
-      rowFilter: widget.hooks.rowFilter,
-      marksInUse: _marksInUse(),
-      kindsInUse: _kindsInUse(),
-      visibilitySoloEnabled: widget.visibilitySoloEnabled,
-      anyLanesExpanded: widget.hooks.expandedLaneLayerIds.isNotEmpty,
-      allSeMuted: _allSeMuted(),
-      displayedIds: displayedIds,
-      masterOpacityValue: widget.masterOpacityValue,
-      hasLaneToggles: widget.hooks.onToggleLayerLanes != null,
-      displayedOnionSkinOn: widget.displayedOnionSkinOn,
-      blendLanguage: widget.hooks.blendLanguage,
-      hasBlendBulk: widget.legend?.onSetBlendModeForDisplayed != null,
-    );
-    final cached = _legendHeaderMemo;
-    if (cached != null && _legendInputsMatch(cached.inputs, inputs)) {
-      return cached.header;
-    }
-    final header = TimelineLayerControlsHeader(
-      metrics: _metrics,
-      legend: widget.legend,
-      hiddenSections: widget.hooks.hiddenSections,
-      onToggleSection: widget.onToggleSection,
-      rowFilter: widget.hooks.rowFilter,
-      marksInUse: inputs.marksInUse,
-      kindsInUse: inputs.kindsInUse,
-      visibilitySoloEnabled: widget.visibilitySoloEnabled,
-      anyLanesExpanded: inputs.anyLanesExpanded,
-      allSeMuted: inputs.allSeMuted,
-      // The fresh set is captured here — the token's setEquals invalidates
-      // the cached header whenever the displayed rows change.
-      displayedLayerIds: () => displayedIds,
-      displayedOpacity: widget.masterOpacityValue,
-      displayedOnionSkinOn: widget.displayedOnionSkinOn,
-      onExpandAllLanes: widget.hooks.onToggleLayerLanes == null
-          ? null
-          : _expandAllLanes,
-      onCollapseAllLanes: widget.hooks.onToggleLayerLanes == null
-          ? null
-          : _collapseAllLanes,
-      blendLanguage: widget.hooks.blendLanguage,
-    );
-    _legendHeaderMemo = (inputs: inputs, header: header);
-    return header;
-  }
-
   bool _legendInputsMatch(_LegendMemoInputs a, _LegendMemoInputs b) {
     return a.layerRowHeight == b.layerRowHeight &&
         a.layerControlsWidth == b.layerControlsWidth &&
@@ -1164,103 +964,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.blendLanguage == b.blendLanguage &&
         a.hasBlendBulk == b.hasBlendBulk;
   }
-
-  /// One rail row (layer controls or a lane label), extracted so the
-  /// windowed rail loop stays readable. Rows reserve an empty leading
-  /// section slot — the section ZONES overlay whole runs (UI-R7 #2).
-  Widget _railRow(TimelineDisplayRow row) {
-    if (row.isLane) {
-      // Lane labels show the value AT the cursor: subscribe here so a
-      // tick rebuilds only these small cells.
-      //
-      // R10: and through the drag gate, so the blue value column follows a
-      // key move per step. The band moved live while the number beside it
-      // still read the committed track — the label is where you WATCH the
-      // value, so it is the half that most needed to be live.
-      return ValueListenableBuilder<int>(
-        valueListenable: widget.hooks.frameCursor,
-        builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
-          dragPreview: widget.hooks.dragPreview,
-          layer: row.layer,
-          rowBuilder: (context, layer) => TimelineLaneControlsRow(
-            layer: layer,
-            lane: previewedLaneRow(
-              row: row,
-              previewLayer: layer,
-              lanesForLayer: _lanesFor,
-            ),
-            metrics: _metrics,
-            currentFrameIndex: cursorFrame,
-            onSelectFrame: widget.hooks.onSelectFrame,
-            laneEdit: widget.hooks.laneEdit,
-            onToggleLaneGroup: widget.hooks.onToggleLaneGroup,
-            onToggleLaneGroupEnabled: widget.hooks.onToggleLaneGroupEnabled,
-            onResetLaneGroup: widget.hooks.onResetLaneGroup,
-            currentRowHooks: widget.hooks.currentRowHooks,
-            leadingInset: layerSectionLabelSlotWidth,
-            // The SAME flags the layer row below passes, so a group
-            // header's fx lands in the layer rows' fx column (R5 #7).
-            hasOnionColumn: widget.hooks.onToggleLayerOnionSkin != null,
-            hasBlendColumn: widget.hooks.onLayerBlendModeSelected != null,
-          ),
-        ),
-      );
-    }
-    final fold = _groupFoldFor(row);
-    return TimelineLayerControlsRow(
-      layer: row.layer,
-      wearsBaseComposite: attachRowWearsBaseComposite(row.layer, widget.layers),
-      active: _layerRowIsActive(row.layer),
-      // ⑨: in the row selection the row verbs act on.
-      selected: widget.hooks.selectedRows.contains(row.address),
-      metrics: _metrics,
-      onSelectLayer: widget.hooks.onSelectLayer,
-      // T10: the rail row and the frame cells take the SAME settled-tap
-      // clear, because 「행이든 뭐든 동일하게」.
-      onSettledPress: widget.hooks.onSettledPress,
-      onToggleLayerVisibility: widget.hooks.onToggleLayerVisibility,
-      onLayerOpacityChanged: widget.hooks.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: widget.hooks.onLayerOpacityChangeEnd,
-      onToggleLayerTimesheet: widget.hooks.onToggleLayerTimesheet,
-      fxState:
-          widget.hooks.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
-      onToggleLayerFx: widget.hooks.onToggleLayerFx,
-      onionSkinEnabled:
-          widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
-      onToggleLayerOnionSkin: widget.hooks.onToggleLayerOnionSkin,
-      onLayerMarkSelected: widget.hooks.onLayerMarkSelected,
-      onToggleLayerFillReference: widget.hooks.onToggleLayerFillReference,
-      onOpenLayerMixer: widget.hooks.onOpenLayerMixer,
-      isLayerSoloed: widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
-      attachArrowPlacement: widget.hooks.attachArrowPlacementOf?.call(
-        row.layer.id,
-      ),
-      hasLanes: _lanesFor(row.layer).isNotEmpty,
-      lanesExpanded: widget.hooks.expandedLaneLayerIds.contains(row.layer.id),
-      onToggleLanes: widget.hooks.onToggleLayerLanes,
-      depth: row.depth,
-      // One fold twirl: a folder folds its members, an attach base folds
-      // its attach rows — the one answer both grids ask for.
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
-      onToggleGroupFold: fold.onToggle,
-      opacityDragPreview: widget.hooks.opacityDragPreview,
-      isLinked: widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
-      onLayerBlendModeSelected: widget.hooks.onLayerBlendModeSelected,
-      blendLanguage: widget.hooks.blendLanguage,
-      opacityOverride: widget.hooks.layerOpacityOverrideOf?.call(row.layer.id),
-    );
-  }
-
-  /// The row's fold twirl — [timelineGroupFoldFor] bound to this grid's hooks.
-  TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
-      timelineGroupFoldFor(
-        row: row,
-        layers: widget.layers,
-        collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: widget.hooks.onToggleLayerCollapsed,
-        onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
-      );
 
   /// The section ZONES over the rail rows' reserved band slots (UI-R7 #2):
   /// one tinted zone per section run — the pre-R5 gutter bracket inside
@@ -1553,193 +1256,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       pinnedIndex: pinnedIndex,
       pinnedBefore: pinnedBefore,
       pinnedAfter: pinnedAfter,
-    );
-  }
-
-  /// The rail column: every layer row is its controls, inside the window
-  /// the splitter sizes.
-  ///
-  /// One of the four slots `TimelineLayerFrameBodyLayout` lays out. It
-  /// takes the row window as ONE value rather than the seven locals it
-  /// unpacks below — that is what [_RowWindow] is for, and unpacking under
-  /// the same names is what lets the tree below move verbatim.
-  Widget _buildLayerControlsRail(
-    ColorScheme colorScheme,
-    List<TimelineDisplayRow> rows,
-    double? availableRailExtent,
-    _RowWindow window,
-    List<RailToggleColumn<TimelineDisplayRow>> swipeColumns,
-  ) {
-    final rowWindow = window.range;
-    final windowRows = window.rows;
-    final leadingRowSpacerHeight = window.leadingSpacerHeight;
-    final trailingRowSpacerHeight = window.trailingSpacerHeight;
-    final pinnedIndex = window.pinnedIndex;
-    final pinnedBefore = window.pinnedBefore;
-    final pinnedAfter = window.pinnedAfter;
-    return LayerRailWindow(
-      axis: Axis.horizontal,
-      rail: _railExtent,
-      naturalExtent: _naturalRailWidth,
-      availableExtent: availableRailExtent,
-      child: KeyedSubtree(
-        key: const ValueKey<String>('timeline-layer-controls-rail'),
-        child: KeyedSubtree(
-          key: const ValueKey<String>('timeline-layer-rows-scroll-body'),
-          // Sections live INSIDE the rows
-          // (UI-R5) as run-spanning ZONES
-          // (UI-R7 #2): the rows reserve the
-          // leading slot, the zone overlay
-          // paints the old gutter bracket
-          // over it.
-          child: RailColumnSwipe<TimelineDisplayRow>(
-            axis: Axis.vertical,
-            columns: swipeColumns,
-            rowAt: (localY) {
-              final row = _rowAtRailY(
-                localY,
-                windowRows,
-                leadingRowSpacerHeight,
-              );
-              return row == null
-                  ? null
-                  : (
-                      row: row,
-                      depth: row.depth,
-                      // A lane row and its
-                      // owner share a layer,
-                      // so the sweep dedupes
-                      // by BOTH.
-                      id:
-                          '${row.layer.id.value}'
-                          '/${row.lane?.laneId ?? ''}',
-                    );
-            },
-            child: Stack(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // The rail is windowed
-                    // with the same
-                    // layer-axis slice as the
-                    // frame rows; keys keep
-                    // row state glued to its
-                    // layer through window
-                    // shifts.
-                    // A5: a
-                    // pinned
-                    // (held)
-                    // row is
-                    // carved
-                    // out of
-                    // its
-                    // spacer —
-                    // total
-                    // extent is
-                    // unchanged.
-                    if (pinnedBefore) ...[
-                      if (pinnedIndex > 0)
-                        SizedBox(height: pinnedIndex * _metrics.layerRowHeight),
-                      KeyedSubtree(
-                        key: _railRowKey(rows[pinnedIndex]),
-                        child: _railRowMemoized(rows[pinnedIndex]),
-                      ),
-                      if (rowWindow.startIndex - pinnedIndex - 1 > 0)
-                        SizedBox(
-                          height:
-                              (rowWindow.startIndex - pinnedIndex - 1) *
-                              _metrics.layerRowHeight,
-                        ),
-                    ] else if (leadingRowSpacerHeight > 0)
-                      SizedBox(height: leadingRowSpacerHeight),
-                    for (final row in windowRows)
-                      KeyedSubtree(
-                        key: _railRowKey(row),
-                        child: _railRowMemoized(row),
-                      ),
-                    if (pinnedAfter) ...[
-                      if (pinnedIndex - rowWindow.endIndexExclusive > 0)
-                        SizedBox(
-                          height:
-                              (pinnedIndex - rowWindow.endIndexExclusive) *
-                              _metrics.layerRowHeight,
-                        ),
-                      KeyedSubtree(
-                        key: _railRowKey(rows[pinnedIndex]),
-                        child: _railRowMemoized(rows[pinnedIndex]),
-                      ),
-                      if (rows.length - pinnedIndex - 1 > 0)
-                        SizedBox(
-                          height:
-                              (rows.length - pinnedIndex - 1) *
-                              _metrics.layerRowHeight,
-                        ),
-                    ] else if (trailingRowSpacerHeight > 0)
-                      SizedBox(height: trailingRowSpacerHeight),
-                    if (widget.layers.isEmpty)
-                      SizedBox(
-                        width:
-                            _metrics.layerControlsWidth -
-                            _metrics.sectionLabelGutterWidth,
-                        height: _metrics.layerRowHeight,
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Text(
-                            AppText.strings.tlNoLayers,
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                // The section ZONES over the
-                // rows' reserved band slots
-                // (UI-R7 #2): the old gutter
-                // bracket inside the rows.
-                // Full rows, not the window
-                // (A3) — labels anchor to the
-                // section's true extent.
-                Positioned(left: 0, top: 0, child: _sectionBandOverlay(rows)),
-                // T1's one band
-                // per contiguous
-                // run — but only
-                // over the LAYER
-                // area (A2
-                // 2026-08-17
-                // reversed T1's
-                // full-width
-                // call): the
-                // section zone
-                // is the
-                // sections' own
-                // plate, not
-                // part of the
-                // selection.
-                Positioned(
-                  left: layerSectionLabelSlotWidth,
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: TimelineRowSelectionBands(
-                    selectedFlags: [
-                      for (final row in windowRows)
-                        widget.hooks.selectedRows.contains(row.address),
-                    ],
-                    rowExtent: _metrics.layerRowHeight,
-                    leadingSpacer: leadingRowSpacerHeight,
-                    crossExtent:
-                        _metrics.layerControlsWidth -
-                        layerSectionLabelSlotWidth,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -2039,7 +1555,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // memo key, and the frame geometry already paid that price
               // once at ~60% of a step).
               return ValueListenableBuilder<double?>(
-                valueListenable: _railExtent,
+                valueListenable: _railRows._railExtent,
                 builder: (context, _, child) {
                   // What the panel can spare for the rail: everything but its
                   // own chrome and the frame area's two-cell reserve. This is
@@ -2055,8 +1571,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                             .clamp(0.0, double.infinity)
                             .toDouble()
                       : null;
-                  final railWindowExtent = _railExtent.windowExtent(
-                    _naturalRailWidth,
+                  final railWindowExtent = _railRows._railExtent.windowExtent(
+                    _railRows.naturalRailWidth,
                     availableExtent: availableRailExtent,
                   );
                   // Viewport paper fill (UI-R12 #16): however wide the cell
@@ -2194,14 +1710,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               // like the ruler and the cells").
                                               LayerRailWindow(
                                                 axis: Axis.horizontal,
-                                                rail: _railExtent,
+                                                rail: _railRows._railExtent,
                                                 naturalExtent:
-                                                    _naturalRailWidth,
+                                                    _railRows.naturalRailWidth,
                                                 availableExtent:
                                                     availableRailExtent,
                                                 // Memo-gated (UI-R7 #1): zoom steps
                                                 // reuse the identical header instance.
-                                                child: _legendHeaderMemoized(
+                                                child: _railRows.legendHeaderMemoized(
                                                   rows,
                                                 ),
                                               ),
@@ -2530,7 +2046,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   verticalContentHeight,
                                                             ),
                                                         layerControlsRail:
-                                                            _buildLayerControlsRail(
+                                                            _railRows.buildLayerControlsRail(
                                                               colorScheme,
                                                               rows,
                                                               availableRailExtent,
@@ -2604,8 +2120,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 // clipped box), so this one is offset-driven.
                                 LayerRailScrollbar(
                                   axis: Axis.horizontal,
-                                  rail: _railExtent,
-                                  naturalExtent: _naturalRailWidth,
+                                  rail: _railRows._railExtent,
+                                  naturalExtent: _railRows.naturalRailWidth,
                                   availableExtent: availableRailExtent,
                                   laneExtent: bottomScrollbarRailHeight,
                                   keyPrefix: 'timeline',
@@ -2662,8 +2178,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                               'timeline-rail-splitter',
                             ),
                             axis: Axis.horizontal,
-                            extent: _railExtent,
-                            naturalExtent: _naturalRailWidth,
+                            extent: _railRows._railExtent,
+                            naturalExtent: _railRows.naturalRailWidth,
                             availableExtent: availableRailExtent,
                           ),
                         ),
