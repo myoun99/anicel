@@ -63,7 +63,7 @@ class _StoryboardRows {
 
   /// The cut after [cutId] in storyboard order, or null at the end.
   CutId? nextCutIdInStoryboardOrder(CutId cutId) {
-    final layout = _session._projectLayout();
+    final layout = _session._projectSettings.projectLayout();
     for (var index = 0; index < layout.length; index += 1) {
       if (layout[index].cutId == cutId) {
         return index + 1 < layout.length ? layout[index + 1].cutId : null;

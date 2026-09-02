@@ -291,6 +291,7 @@ part 'session/exposure_verbs.dart';
 part 'session/cell_instances.dart';
 part 'session/cell_verbs.dart';
 part 'session/folders_and_attachments.dart';
+part 'session/project_settings.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -441,31 +442,28 @@ class EditorSessionManager extends ChangeNotifier {
   // [EditorAppSettings]. These three are project data (R3b): they print, so
   // they travel with the project and each is one undo step.
 
-  /// One undo step; no-op when unchanged. Writes the PROJECT's pasteboard
-  /// (R3b promotion) — and remembers the choice as the app-level default
-  /// for the NEXT project, which is all that remains of the old app-state
-  /// pasteboard.
-  void setPasteboardColor(int argb) {
-    _cutCommandCoordinator.setProjectPasteboard(argb);
-    notifyListeners();
-    _appSettings.rememberPasteboardDefault(argb);
-  }
+  // ── the project settings: their own object ──────────────────────────
+  //
+  // A collaborator (session/project_settings.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _ProjectSettings _projectSettings = _ProjectSettings(this);
 
-  /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
-  /// opaque floor — what a fade reveals and what an opaque export bakes
-  /// where nothing covers.
-  void setProjectBackdrop(int argb) {
-    _cutCommandCoordinator.setProjectBackdrop(argb);
-    notifyListeners();
-  }
-
-  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
-  /// heights — where the pasteboard stops and the backdrop begins. One undo
-  /// step; no-op when unchanged.
-  void setProjectPasteboardMargin(double margin) {
-    _cutCommandCoordinator.setProjectPasteboardMargin(margin);
-    notifyListeners();
-  }
+  void setProjectBackdrop(int argb) =>
+      _projectSettings.setProjectBackdrop(argb);
+  void setProjectPasteboardMargin(double margin) =>
+      _projectSettings.setProjectPasteboardMargin(margin);
+  void setPasteboardColor(int argb) =>
+      _projectSettings.setPasteboardColor(argb);
+  ProjectFrameRate get projectFrameRate => _projectSettings.projectFrameRate;
+  int get projectFps => _projectSettings.projectFps;
+  void setProjectFrameRate(ProjectFrameRate frameRate) =>
+      _projectSettings.setProjectFrameRate(frameRate);
+  void setProjectFps(int fps) => _projectSettings.setProjectFps(fps);
+  ProjectBackground get projectBackground => _projectSettings.projectBackground;
+  void setProjectBackground(ProjectBackground background) =>
+      _projectSettings.setProjectBackground(background);
+  List<StoryboardTimelineLayoutEntry> projectTimelineLayout() =>
+      _projectSettings.projectTimelineLayout();
 
   /// The tool a temporary hold sprang FROM; null = no hold live.
   ///
@@ -2358,14 +2356,6 @@ class EditorSessionManager extends ChangeNotifier {
   double get cameraFrameAspect => _camera.cameraFrameAspect;
   TransformTrack? get activeCutCameraTrack => _camera.activeCutCameraTrack;
 
-  /// The exact rate, for the surfaces that convert frames to REAL TIME
-  /// (playback clock, audio placement, export). Everything that merely
-  /// COUNTS frames wants [projectFps] instead.
-  ProjectFrameRate get projectFrameRate =>
-      _repository.requireProject().frameRate;
-
-  int get projectFps => _repository.requireProject().fps;
-
   GuideId? _selectedGuideId;
 
   /// Which guide the guide tool is editing.
@@ -2380,32 +2370,6 @@ class EditorSessionManager extends ChangeNotifier {
     if (_selectedGuideId == id) return;
     _selectedGuideId = id;
     notifyListeners();
-  }
-
-  void setProjectFrameRate(ProjectFrameRate frameRate) {
-    if (frameRate.numerator < 1 ||
-        frameRate.denominator < 1 ||
-        frameRate.countingBase < 1 ||
-        frameRate == projectFrameRate) {
-      return;
-    }
-    _historyManager.execute(
-      UpdateProjectFrameRateCommand(
-        repository: _repository,
-        frameRate: frameRate,
-      ),
-    );
-    _warmActiveCut();
-    notifyListeners();
-  }
-
-  /// Whole-number convenience for the callers that only ever mean an
-  /// integer rate (the custom-rate dialog, tests).
-  void setProjectFps(int fps) {
-    if (fps < 1) {
-      return;
-    }
-    setProjectFrameRate(ProjectFrameRate.integer(fps));
   }
 
   /// Whether any SE row anywhere carries a sound — what decides if a
@@ -4060,19 +4024,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// One undo step; no-op when unchanged.
   void updateTimesheetInfo(TimesheetInfo info) {
     _cutCommandCoordinator.setTimesheetInfo(info);
-    notifyListeners();
-  }
-
-  /// The project's paper/background (R10-⑥): canvas paper, playback gap
-  /// fill and export backing.
-  ProjectBackground get projectBackground =>
-      _repository.requireProject().background;
-
-  /// One undo step; no-op when unchanged. Composites are untouched — the
-  /// background paints at display/export time, never baked (the camera
-  /// rule).
-  void setProjectBackground(ProjectBackground background) {
-    _cutCommandCoordinator.setProjectBackground(background);
     notifyListeners();
   }
 
@@ -8115,7 +8066,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// session playhead, the storyboard and the timeline consume THIS ONE
   /// axis — change it and every panel changes together.
   TrackFrameAxis trackFrameAxis() {
-    final layout = _projectLayout();
+    final layout = _projectSettings.projectLayout();
     final trackId = selectedTrackId;
     final scoped = [
       for (final entry in layout)
@@ -8123,30 +8074,6 @@ class EditorSessionManager extends ChangeNotifier {
     ];
     return TrackFrameAxis(scoped.isEmpty ? layout : scoped);
   }
-
-  /// The whole-project layout, memoized on PROJECT IDENTITY: scrubs ask
-  /// per MOVE and all-cuts playback per TICK, and the project only changes
-  /// identity on an edit — rebuilding the whole cross-track layout each
-  /// call was a fixed per-move tax (the same memo the storyboard host
-  /// keeps).
-  /// The memoized layout, for surfaces outside this class that need the
-  /// same cut ranges — the flip HUD's gap window reads the track's cuts
-  /// through here rather than rebuilding a second layout that could
-  /// disagree with the one the flip walks.
-  List<StoryboardTimelineLayoutEntry> projectTimelineLayout() =>
-      _projectLayout();
-
-  List<StoryboardTimelineLayoutEntry> _projectLayout() {
-    final project = repository.requireProject();
-    if (!identical(project, _projectLayoutProject)) {
-      _projectLayoutProject = project;
-      _projectLayoutMemo = buildStoryboardTimelineLayout(project);
-    }
-    return _projectLayoutMemo!;
-  }
-
-  Project? _projectLayoutProject;
-  List<StoryboardTimelineLayoutEntry>? _projectLayoutMemo;
 
   /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
   /// semantics: a gap has NO cut — the canvas shows a paperless void).
@@ -8249,7 +8176,7 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   List<PlaybackPosition> trackStackPositionsAt(int globalFrame) =>
       resolveTrackStackPositions(
-        layout: _projectLayout(),
+        layout: _projectSettings.projectLayout(),
         globalFrameIndex: globalFrame,
       );
 
@@ -8258,7 +8185,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// the parked canvas, all-cuts playback and the camera-size bake.
   List<TrackStackContribution> trackStackContributionsAt(int globalFrame) =>
       resolveTrackStackContributions(
-        layout: _projectLayout(),
+        layout: _projectSettings.projectLayout(),
         spansOf: transitionSpansOfTrack,
         globalFrameIndex: globalFrame,
       );
@@ -9690,7 +9617,7 @@ class EditorSessionManager extends ChangeNotifier {
     // a per-move cost, and rebuilding the whole cross-track layout for
     // each one is exactly the tax that memo exists to remove.
     final entries = [
-      for (final entry in _projectLayout())
+      for (final entry in _projectSettings.projectLayout())
         if (entry.trackId == trackId) entry,
     ];
     if (entries.isEmpty) {
