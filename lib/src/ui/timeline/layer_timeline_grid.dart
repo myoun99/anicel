@@ -70,6 +70,7 @@ part 'layer_grid/layer_grid_scroll.dart';
 part 'layer_grid/layer_grid_ruler_scrub.dart';
 part 'layer_grid/layer_grid_range_gestures.dart';
 part 'layer_grid/layer_grid_row_drags.dart';
+part 'layer_grid/layer_grid_lanes.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -423,8 +424,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
   }
 
-  List<PropertyLaneRow> _lanesFor(Layer layer) =>
-      widget.hooks.lanesForLayer?.call(layer) ?? const [];
+  // ── the lanes: their own object, in their own file ──────────────────
+  //
+  // A collaborator (timeline/layer_grid/layer_grid_lanes.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _LayerGridLanes _lanes = _LayerGridLanes(this);
 
   /// Marks assigned across the current layer list — the mark-solo menu's
   /// "solo color X" list is built from these.
@@ -463,32 +467,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return sawSe;
   }
 
-  /// Legend LAYER-cell sweeps: the grid owns the lane knowledge (which
-  /// layers HAVE lanes, which are expanded), so the all-lane fold rides its
-  /// existing per-layer toggle.
-  void _expandAllLanes() {
-    final onToggle = widget.hooks.onToggleLayerLanes;
-    if (onToggle == null) {
-      return;
-    }
-    for (final layer in widget.layers) {
-      if (_lanesFor(layer).isNotEmpty &&
-          !widget.hooks.expandedLaneLayerIds.contains(layer.id)) {
-        onToggle(layer.id);
-      }
-    }
-  }
-
-  void _collapseAllLanes() {
-    final onToggle = widget.hooks.onToggleLayerLanes;
-    if (onToggle == null) {
-      return;
-    }
-    for (final layerId in widget.hooks.expandedLaneLayerIds.toList()) {
-      onToggle(layerId);
-    }
-  }
-
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
 
@@ -511,37 +489,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   // A collaborator (timeline/layer_grid/layer_grid_row_drags.dart, a part of this
   // library). The State keeps the entry points its build tree calls.
   late final _LayerGridRowDrags _rowDrags = _LayerGridRowDrags(this);
-
-  /// A lane row that heads nothing still takes part in a SELECTION — a
-  /// target with no reorder to offer, only the span (B4-3).
-  ///
-  /// ⚠️`slotBefore` and `isLastRow` are the reorder caret's inputs and this
-  /// target never fires one, so they say "this row, not the last" and stop
-  /// there. `onCrossed` is a no-op for the same reason: a transform lane or
-  /// an fx parameter holds no place in any list a drop could rewrite.
-  Widget _laneSelectOnlyTarget(
-    TimelineDisplayRow row,
-    String laneId,
-    TimelineRowDragHooks hooks,
-    Widget child,
-  ) {
-    if (hooks.onSelectBegin == null ||
-        widget.hooks.onRowSelectionSpan == null) {
-      return child;
-    }
-    return LayerRowDragTarget(
-      subject: LaneRowSubject(row.layer.id, laneId),
-      slotBefore: row.layerIndex,
-      rowExtent: _metrics.layerRowHeight,
-      axis: Axis.horizontal,
-      hooks: hooks,
-      isLastRow: false,
-      onCrossed: (_, _, _) {},
-      onSelectCrossed: (rowDelta) =>
-          widget.hooks.onRowSelectionSpan?.call(_dragRows, rowDelta),
-      child: child,
-    );
-  }
 
   bool _legendInputsMatch(_LegendMemoInputs a, _LegendMemoInputs b) {
     return a.layerRowHeight == b.layerRowHeight &&
@@ -721,7 +668,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       commaDrag: widget.hooks.commaDrag,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
-      lanesForLayer: _lanesFor,
+      lanesForLayer: _lanes.lanesFor,
       unionLaneForLayer: widget.hooks.unionLaneForLayer,
       runEdit: widget.hooks.runEdit,
       laneEdit: widget.hooks.laneEdit,
@@ -895,7 +842,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final rows = buildTimelineDisplayRows(
       layers: widget.layers,
       expandedLayerIds: widget.hooks.expandedLaneLayerIds,
-      lanesForLayer: _lanesFor,
+      lanesForLayer: _lanes.lanesFor,
       hiddenSections: widget.hooks.hiddenSections,
       rowFilter: widget.hooks.rowFilter,
       collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,

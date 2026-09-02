@@ -110,12 +110,22 @@ class _LayerGridRowDrags {
     // ever needed an answer here.
     final parsed = parseEffectLaneId(lane.laneId);
     if (!lane.isGroupHeader || parsed == null || parsed.parameterId != null) {
-      return _state._laneSelectOnlyTarget(row, lane.laneId, hooks, child);
+      return _state._lanes._laneSelectOnlyTarget(
+        row,
+        lane.laneId,
+        hooks,
+        child,
+      );
     }
     final headers = effectHeaderRowsOf(_state._dragRows, row.layer.id);
     final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
     if (slot < 0) {
-      return _state._laneSelectOnlyTarget(row, lane.laneId, hooks, child);
+      return _state._lanes._laneSelectOnlyTarget(
+        row,
+        lane.laneId,
+        hooks,
+        child,
+      );
     }
     final displayEffects = [for (final header in headers) header.effectId];
     final myRowIndex = headers[slot].rowIndex;

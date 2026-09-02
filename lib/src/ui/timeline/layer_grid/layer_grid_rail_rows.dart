@@ -102,7 +102,7 @@ class _LayerGridRailRows {
       layer: row.layer,
       active: _layerRowIsActive(row.layer),
       selected: _state.widget.hooks.selectedRows.contains(row.address),
-      hasLanes: _state._lanesFor(row.layer).isNotEmpty,
+      hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
       lanesExpanded: _state.widget.hooks.expandedLaneLayerIds.contains(
         row.layer.id,
       ),
@@ -222,10 +222,10 @@ class _LayerGridRailRows {
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
       onExpandAllLanes: _state.widget.hooks.onToggleLayerLanes == null
           ? null
-          : _state._expandAllLanes,
+          : _state._lanes._expandAllLanes,
       onCollapseAllLanes: _state.widget.hooks.onToggleLayerLanes == null
           ? null
-          : _state._collapseAllLanes,
+          : _state._lanes._collapseAllLanes,
       blendLanguage: _state.widget.hooks.blendLanguage,
     );
     _state._legendHeaderMemo = (inputs: inputs, header: header);
@@ -254,7 +254,7 @@ class _LayerGridRailRows {
             lane: previewedLaneRow(
               row: row,
               previewLayer: layer,
-              lanesForLayer: _state._lanesFor,
+              lanesForLayer: _state._lanes.lanesFor,
             ),
             metrics: _state._metrics,
             currentFrameIndex: cursorFrame,
@@ -311,7 +311,7 @@ class _LayerGridRailRows {
       attachArrowPlacement: _state.widget.hooks.attachArrowPlacementOf?.call(
         row.layer.id,
       ),
-      hasLanes: _state._lanesFor(row.layer).isNotEmpty,
+      hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
       lanesExpanded: _state.widget.hooks.expandedLaneLayerIds.contains(
         row.layer.id,
       ),
