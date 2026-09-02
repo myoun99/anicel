@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/library_source.dart';
 
 /// 🚨★★THE SWEEPABLE COLUMNS ARE ONE LIST.
 ///
@@ -67,8 +68,11 @@ void main() {
       'lib/src/ui/timeline/layer_timeline_grid.dart',
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ]) {
+      // A grid is a LIBRARY — the file plus the collaborator parts the
+      // audit's SRP cuts (2026-09-02) put beside it — so the sweep is found
+      // where a cut put it.
       expect(
-        File(path).readAsStringSync(),
+        librarySource(path),
         contains('timelineSwipeColumns('),
         reason: '$path sweeps through the shared list',
       );
