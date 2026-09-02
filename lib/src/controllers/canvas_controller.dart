@@ -19,14 +19,12 @@ class CanvasController {
     required ProjectRepository repository,
     required HistoryManager historyManager,
     required FrameId frameId,
-    FrameId Function()? getCurrentFrameId,
     LayerController? layerController,
     TimelineController? timelineController,
     BrushSettings? brushSettings,
   }) : _repository = repository,
        _historyManager = historyManager,
        _frameId = frameId,
-       _getCurrentFrameId = getCurrentFrameId,
        _layerController = layerController,
        _timelineController = timelineController,
        _brushSettings = brushSettings ?? BrushSettings();
@@ -34,7 +32,6 @@ class CanvasController {
   final ProjectRepository _repository;
   final HistoryManager _historyManager;
   final FrameId _frameId;
-  final FrameId Function()? _getCurrentFrameId;
   final LayerController? _layerController;
   final TimelineController? _timelineController;
   final BrushSettings _brushSettings;
@@ -46,7 +43,6 @@ class CanvasController {
 
   FrameId get currentFrameId =>
       _resolveCurrentFrameId(createIfMissing: false) ??
-      _getCurrentFrameId?.call() ??
       _frameId;
 
   List<Stroke> get strokes {

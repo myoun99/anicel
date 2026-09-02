@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
@@ -43,11 +42,9 @@ class PlaybackFramePainter extends CustomPainter {
     this.cameraPose,
     this.cameraFrameSize,
     this.cutPose,
-    this.cutAnchorPoint,
     this.cutEffects = const <ResolvedLayerEffect>[],
     this.fadeOpacity = 1,
     this.imageOpacity = 1,
-    this.letterboxColor = const Color(0xFF15191C),
     // R28 #9: the one paper constant, not a repeated literal.
     this.paperColor = const Color(ProjectBackground.defaultPaperArgb),
     this.paperBackground,
@@ -89,10 +86,6 @@ class PlaybackFramePainter extends CustomPainter {
   /// unexercised until something does.
   final TransformPose? cutPose;
 
-  /// The cut pose's anchor; null = the display-space center. Unexercised for
-  /// the same reason as [cutPose].
-  final CanvasPoint? cutAnchorPoint;
-
   /// The V track's EFFECT chain, already sampled at this frame
   /// ([trackEffectPaintAt]) — a layer's fx one level up, filtering the cut's
   /// finished PICTURE. It lands on the composite draw for the same reason
@@ -115,7 +108,7 @@ class PlaybackFramePainter extends CustomPainter {
   /// fading away should reveal it. 1 costs nothing.
   final double imageOpacity;
 
-  final Color letterboxColor;
+  static const Color _letterboxColor = Color(0xFF15191C);
   final Color paperColor;
 
   /// The project PAPER (R10-⑥); when set it wins over [paperColor] —
@@ -180,7 +173,7 @@ class PlaybackFramePainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
 
     if (pose != null && paintLetterbox) {
-      canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
+      canvas.drawRect(Offset.zero & size, Paint()..color = _letterboxColor);
     }
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
@@ -251,7 +244,6 @@ class PlaybackFramePainter extends CustomPainter {
         canvas,
         resolvedCutPose,
         pose != null ? cameraFrameSize! : canvasSize,
-        anchorPoint: cutAnchorPoint,
       );
     }
     if (pose != null) {
@@ -370,11 +362,9 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.cameraPose != cameraPose ||
       oldDelegate.cameraFrameSize != cameraFrameSize ||
       oldDelegate.cutPose != cutPose ||
-      oldDelegate.cutAnchorPoint != cutAnchorPoint ||
       !listEquals(oldDelegate.cutEffects, cutEffects) ||
       oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.imageOpacity != imageOpacity ||
-      oldDelegate.letterboxColor != letterboxColor ||
       oldDelegate.paperColor != paperColor ||
       oldDelegate.paperBackground != paperBackground ||
       oldDelegate.pasteboardColor != pasteboardColor ||

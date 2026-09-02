@@ -25,7 +25,6 @@ BrushGroundSample sampleBitmapSurfaceGround(
   required double centerX,
   required double centerY,
   required double radius,
-  int gridSide = brushGroundSampleGridSide,
 }) {
   if (radius <= 0.0 || !radius.isFinite) {
     return BrushGroundSample.empty;
@@ -34,12 +33,12 @@ BrushGroundSample sampleBitmapSurfaceGround(
   // bytes are only valid inside `readPixels`.
   final pointsByTile = <TileCoord, List<int>>{};
   final tileSize = surface.tileSize;
-  final step = (radius * 2) / gridSide;
+  final step = (radius * 2) / brushGroundSampleGridSide;
   var considered = 0;
 
-  for (var row = 0; row < gridSide; row += 1) {
+  for (var row = 0; row < brushGroundSampleGridSide; row += 1) {
     final sampleY = centerY - radius + step * (row + 0.5);
-    for (var column = 0; column < gridSide; column += 1) {
+    for (var column = 0; column < brushGroundSampleGridSide; column += 1) {
       final sampleX = centerX - radius + step * (column + 0.5);
       final dx = sampleX - centerX;
       final dy = sampleY - centerY;

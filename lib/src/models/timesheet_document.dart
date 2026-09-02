@@ -223,10 +223,6 @@ class TimesheetDocument {
     required int fps,
     TimesheetInfo info = TimesheetInfo.empty,
     int pageSeconds = 6,
-    int actionColumnCount = 8,
-    int celColumnCount = 8,
-    int seColumnCount = 2,
-    int cameraColumnCount = 2,
     CameraInstructionDef? Function(String instructionId)? instructionDefById,
     // TRACK-owned SE rows (global-frame timelines) shown windowed to this
     // cut; [cutStartFrame] is the cut's global start on its track.
@@ -251,6 +247,10 @@ class TimesheetDocument {
     // down held rows).
     bool dataSheet = false,
   }) {
+    const actionColumnCount = 8;
+    const celColumnCount = 8;
+    const seColumnCount = 2;
+    const cameraColumnCount = 2;
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
     }

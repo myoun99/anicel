@@ -343,6 +343,9 @@ typedef RailToggle<TRow> = ({
   void Function(TRow row) toggle,
 });
 
+/// The rail's trailing padding past its last column.
+const double _railTrailingPadding = 8.0;
+
 /// 🚨★★★EVERY TOGGLE BUTTON A RAIL MOUNTS IS SWIPEABLE, AND THE LIST OF
 /// WHICH IS NOT A PER-RAIL DECISION.
 ///
@@ -369,7 +372,6 @@ typedef RailToggle<TRow> = ({
 List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double crossExtent,
   required double leadingOrigin,
-  double trailingPadding = 8.0,
   bool hasOnionColumn = false,
   bool hasBlendColumn = false,
   RailToggle<TRow>? visibility,
@@ -401,7 +403,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   ) {
     final edge =
         crossExtent -
-        trailingPadding -
+        _railTrailingPadding -
         layerRailTrailingWidth(
           from: after,
           hasOnionColumn: hasOnionColumn,

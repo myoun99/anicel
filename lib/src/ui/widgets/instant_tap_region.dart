@@ -33,7 +33,6 @@ class InstantTapRegion extends StatefulWidget {
     this.onPressDown,
     this.onSettledTap,
     this.pressSeeksFor,
-    this.travelSlop = 12,
     this.behavior = HitTestBehavior.deferToChild,
   });
 
@@ -74,7 +73,7 @@ class InstantTapRegion extends StatefulWidget {
   final bool Function(PointerDeviceKind kind)? pressSeeksFor;
 
   /// How far a finger may travel and still count as a tap.
-  final double travelSlop;
+  static const double travelSlop = 12;
 
   final HitTestBehavior behavior;
   final Widget child;
@@ -158,7 +157,8 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
         final downAt = _downAt;
         if (event.pointer == _pointer &&
             downAt != null &&
-            (event.position - downAt).distance > widget.travelSlop) {
+            (event.position - downAt).distance >
+                InstantTapRegion.travelSlop) {
           _travelled = true;
         }
       },

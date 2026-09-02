@@ -29,7 +29,6 @@ class TransportBar extends StatelessWidget {
     required this.onPlayPause,
     required this.onRangeChanged,
     this.looping = false,
-    this.onLoopingChanged,
     this.compact = false,
     this.showRange = true,
   });
@@ -52,7 +51,6 @@ class TransportBar extends StatelessWidget {
   final void Function(int inFrame, int outFrame) onRangeChanged;
 
   final bool looping;
-  final ValueChanged<bool>? onLoopingChanged;
 
   /// The narrow layout: the same controls, fewer of them. Used where the
   /// window has been dragged down to a tablet's width.
@@ -169,15 +167,6 @@ class TransportBar extends StatelessWidget {
                       size: AppIconButtonSize.strip,
                       onPressed: () => onSeek(outFrame),
                     ),
-                    if (onLoopingChanged != null)
-                      AppIconButton(
-                        keyValue: 'transport-loop',
-                        tooltip: AppText.strings.transportLoop,
-                        icon: const Icon(Icons.repeat),
-                        size: AppIconButtonSize.strip,
-                        isSelected: looping,
-                        onPressed: () => onLoopingChanged!(!looping),
-                      ),
                   ],
                 ),
               ),

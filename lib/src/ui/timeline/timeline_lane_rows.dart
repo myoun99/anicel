@@ -115,7 +115,6 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.keyPrefix = 'timeline',
     this.width,
     this.height,
-    this.minContentExtent,
     this.leadingInset = 0,
     this.currentRowHooks,
     this.hasOnionColumn = false,
@@ -173,11 +172,6 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// Explicit cell size; defaults to the horizontal rail-row geometry.
   final double? width;
   final double? height;
-
-  /// What the stood-up contents need along the cell's own axis even when
-  /// [height] is less — the cell then CLIPS rather than overflowing, the
-  /// same degradation the x-sheet's layer header takes (R10 R6).
-  final double? minContentExtent;
 
   /// Which row the verbs act on, and how to make it THIS one by pressing
   /// the label (R10 #19's rail half). Null leaves the label inert and
@@ -949,7 +943,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           ? Alignment.centerLeft
           : Alignment.topCenter,
       child: lead == null
-          ? _clipToContent(content)
+          ? content
           : Row(
               children: [
                 ...lead,
@@ -1065,32 +1059,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           ],
         );
       },
-    );
-  }
-
-  /// Below the host's stated content extent the cell SCALES instead of
-  /// striping — the x-sheet's layer header takes the same degradation, and
-  /// a lane column that overflowed while its neighbour shrank would be the
-  /// only yellow stripe on the panel.
-  Widget _clipToContent(Widget child) {
-    final extent = widget.minContentExtent;
-    final height = widget.height;
-    if (extent == null || height == null || height >= extent || extent <= 0) {
-      return child;
-    }
-    // The OverflowBox hands the child its full extent; `Transform` paints
-    // differently but passes the same constraints down.
-    return ClipRect(
-      child: OverflowBox(
-        alignment: Alignment.topCenter,
-        minHeight: extent,
-        maxHeight: extent,
-        child: Transform.scale(
-          scale: height / extent,
-          alignment: Alignment.topCenter,
-          child: child,
-        ),
-      ),
     );
   }
 }

@@ -1,10 +1,9 @@
 @TestOn('vm')
 library;
 
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../tool/audit_rank.dart';
 
 /// 🚨★★★THE RANKING IS THE AUDIT'S WORKLIST, SO ITS COLUMNS MUST NOT LIE.
 ///
@@ -25,21 +24,10 @@ void main() {
   late List<Map<String, dynamic>> rows;
 
   setUpAll(() {
-    final run = Process.runSync(
-      'dart',
-      ['run', 'tool/audit_rank.dart', '--json'],
-      // ⚠️`dart run` prints build-hook chatter to stdout on this toolchain,
-      // so the JSON is found rather than assumed to start at byte zero.
-      runInShell: true,
-    );
-    final out = run.stdout as String;
-    final start = out.indexOf('{');
-    expect(
-      start,
-      isNonNegative,
-      reason: 'audit_rank produced no JSON at all:\n$out\n${run.stderr}',
-    );
-    report = jsonDecode(out.substring(start)) as Map<String, dynamic>;
+    // In-process, not `dart run`: the no-process law
+    // (tests_do_not_race_the_code_test) — the tool's own entry point is
+    // called, so what is asserted is still what THE TOOL says.
+    report = auditRankReportJson();
     rows = (report['rows'] as List).cast<Map<String, dynamic>>();
   });
 
@@ -47,22 +35,33 @@ void main() {
     test('it read the real tree, not an empty one', () {
       // ⛔Without this every 「no row claims X」 assertion below would pass on
       // an empty list, which is the failure this repo keeps meeting.
-      expect(rows.length, greaterThan(700),
-          reason: 'lib/ has hundreds of files; a short list means the walk '
-              'did not happen');
-      expect(report['testFiles'] as int, greaterThan(500));
       expect(
-        rows.map((r) => r['path'] as String),
-        contains('lib/main.dart'),
+        rows.length,
+        greaterThan(700),
+        reason:
+            'lib/ has hundreds of files; a short list means the walk '
+            'did not happen',
       );
+      expect(report['testFiles'] as int, greaterThan(500));
+      expect(rows.map((r) => r['path'] as String), contains('lib/main.dart'));
     });
 
     test('every row carries every column', () {
       for (final r in rows) {
-        for (final key in ['path', 'layer', 'lines', 'fanIn', 'reach',
-          'direct', 'worstComplexity']) {
-          expect(r.containsKey(key), isTrue,
-              reason: '${r['path']} has no $key');
+        for (final key in [
+          'path',
+          'layer',
+          'lines',
+          'fanIn',
+          'reach',
+          'direct',
+          'worstComplexity',
+        ]) {
+          expect(
+            r.containsKey(key),
+            isTrue,
+            reason: '${r['path']} has no $key',
+          );
         }
       }
     });
@@ -99,24 +98,40 @@ void main() {
       // `reach` discriminating again, this fails and the header comment in
       // `audit_rank.dart` needs rewriting with it.
       final unreached = rows.where((r) => (r['reach'] as int) == 0).length;
-      expect(unreached, lessThan(rows.length ~/ 20),
-          reason: 'reach was saturated when this was written — 1 of 809');
+      expect(
+        unreached,
+        lessThan(rows.length ~/ 20),
+        reason: 'reach was saturated when this was written — 1 of 809',
+      );
     });
 
     test('`direct` is the column that discriminates', () {
       final unnamed = rows.where((r) => (r['direct'] as int) == 0).length;
-      expect(unnamed, greaterThan(10),
-          reason: 'a column that flags nothing is not a worklist');
-      expect(unnamed, lessThan(rows.length ~/ 2),
-          reason: 'a column that flags half the tree is not a worklist '
-              'either — it would mean the walk missed the test edges');
+      expect(
+        unnamed,
+        greaterThan(10),
+        reason: 'a column that flags nothing is not a worklist',
+      );
+      expect(
+        unnamed,
+        lessThan(rows.length ~/ 2),
+        reason:
+            'a column that flags half the tree is not a worklist '
+            'either — it would mean the walk missed the test edges',
+      );
     });
   });
 
   group('the layers are the ones the dependency rule names', () {
     test('every row lands in a known layer', () {
       const known = {
-        'core', 'models', 'services', 'controllers', 'ui', 'native', 'other',
+        'core',
+        'models',
+        'services',
+        'controllers',
+        'ui',
+        'native',
+        'other',
       };
       for (final r in rows) {
         expect(known, contains(r['layer']), reason: '${r['path']}');

@@ -141,8 +141,8 @@ abstract final class InputInspector {
     _bumpRevision();
   }
 
-  static void record(PointerEvent event, {String? phaseOverride}) {
-    final phase = phaseOverride ?? _phaseOf(event);
+  static void record(PointerEvent event) {
+    final phase = _phaseOf(event);
     if (phase == null) {
       return;
     }

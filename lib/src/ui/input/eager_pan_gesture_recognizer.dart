@@ -18,7 +18,7 @@ import 'value_control_pointers.dart';
 /// the event first: the edit gesture now wins deterministically on its
 /// hit area for every device it supports.
 class EagerPanGestureRecognizer extends PanGestureRecognizer {
-  EagerPanGestureRecognizer({super.debugOwner, super.supportedDevices});
+  EagerPanGestureRecognizer({super.debugOwner});
 
   @override
   bool hasSufficientGlobalDistanceToAccept(

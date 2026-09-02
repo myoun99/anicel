@@ -18,7 +18,6 @@ class TimelineFrameSpanPlacement {
     this.maxMainExtent,
     this.minMainExtent,
     this.minMainExtentCells,
-    this.mainInsetCells = 0,
     this.mainInset = 0,
     this.anchorAtTrailingEdge = false,
     this.crossInset = 0,
@@ -59,10 +58,6 @@ class TimelineFrameSpanPlacement {
   /// tappable. Null leaves [minMainExtent] uncapped.
   final double? minMainExtentCells;
 
-  /// Extra offset from the anchor edge in CELLS — how a glyph centers on its
-  /// cell (0.5) at any zoom.
-  final double mainInsetCells;
-
   /// Extra offset from the anchor edge, in pixels.
   final double mainInset;
 
@@ -84,7 +79,6 @@ class TimelineFrameSpanPlacement {
       other.maxMainExtent == maxMainExtent &&
       other.minMainExtent == minMainExtent &&
       other.minMainExtentCells == minMainExtentCells &&
-      other.mainInsetCells == mainInsetCells &&
       other.mainInset == mainInset &&
       other.anchorAtTrailingEdge == anchorAtTrailingEdge &&
       other.crossInset == crossInset &&
@@ -99,7 +93,6 @@ class TimelineFrameSpanPlacement {
     maxMainExtent,
     minMainExtent,
     minMainExtentCells,
-    mainInsetCells,
     mainInset,
     anchorAtTrailingEdge,
     crossInset,
@@ -316,7 +309,6 @@ class RenderTimelineFrameSpanLayout extends RenderBox
     final cellExtent = frames.frameCellExtent;
     final anchor =
         frames.edgeAt(placement.startIndex) +
-        placement.mainInsetCells * cellExtent +
         placement.mainInset;
     final end = placement.endIndexExclusive;
     final cells = placement.mainExtentCells;

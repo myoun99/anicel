@@ -38,7 +38,7 @@ class _BrushEditStroke {
 
     final canvasSize =
         _state.widget.sessionState.canvasState.currentSurface.canvasSize;
-    final clippedSegment = _state.widget.segmentClipper.clip(
+    final clippedSegment = const CanvasSegmentClipper().clip(
       previous: previousRaw,
       current: canvasPosition,
       canvasSize: canvasSize,
@@ -59,7 +59,7 @@ class _BrushEditStroke {
             _state._breakCurrentVisibleSegment ||
             _state._previousBaseDab == null
         ? _state._pressure.withPressureDynamics(
-            _state.widget.dabInterpolator.interpolate(
+            const BrushDabInterpolator().interpolate(
               previous: null,
               nextRaw: _state._dabFromPosition(
                 clippedSegment.start,
@@ -75,7 +75,7 @@ class _BrushEditStroke {
         ? segmentStartDabs.last
         : previousDab;
     final segmentEndDabs = _state._pressure.withPressureDynamics(
-      _state.widget.dabInterpolator.interpolate(
+      const BrushDabInterpolator().interpolate(
         previous: endPrevious,
         nextRaw: _state._dabFromPosition(
           clippedSegment.end,

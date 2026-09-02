@@ -48,7 +48,6 @@ SeTakePlacement? planSeTakePlacement({
   required String filePath,
   required FrameId takeFrameId,
   required FrameId Function() newFrameId,
-  String takeName = '',
   bool takeClipped = false,
 }) {
   if (lengthFrames < 1 || startFrame < 0) {
@@ -177,7 +176,7 @@ SeTakePlacement? planSeTakePlacement({
       id: takeFrameId,
       duration: 1,
       strokes: const [],
-      name: takeName.isEmpty ? null : takeName,
+      name: null,
     ),
   ];
   final nextClips = <AudioClip>[

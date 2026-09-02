@@ -45,10 +45,9 @@ import 'dart:io';
 import 'code_map.dart';
 import 'import_graph.dart';
 
-void main(List<String> args) {
-  final top = int.tryParse(_flag(args, '--top') ?? '') ?? 25;
-  final by = _flag(args, '--by') ?? 'lines';
-
+/// The ranking the tool prints and the tests read: every lib file with
+/// how many suites can reach it and how many test files name it.
+({List<_Row> rows, int testFiles}) _rank() {
   final map = CodeMap.walk('lib');
   if (map.unreadable.isNotEmpty) {
     stderr.writeln('⛔${map.unreadable.length} file(s) did not parse — the '
@@ -91,10 +90,29 @@ void main(List<String> args) {
         worstComplexity: _worstComplexityIn(map, file.path),
       ),
   ];
+  return (rows: rows, testFiles: testFiles.length);
+}
+
+/// The `--json` report, callable in-process — a test reads it from here
+/// instead of spawning `dart run` (the no-process law in
+/// tests_do_not_race_the_code_test).
+Map<String, dynamic> auditRankReportJson() {
+  final (:rows, :testFiles) = _rank();
+  return {
+    'testFiles': testFiles,
+    'rows': [for (final r in rows) r.toJson()],
+  };
+}
+
+void main(List<String> args) {
+  final top = int.tryParse(_flag(args, '--top') ?? '') ?? 25;
+  final by = _flag(args, '--by') ?? 'lines';
+
+  final (:rows, :testFiles) = _rank();
 
   if (args.contains('--json')) {
     stdout.writeln(const JsonEncoder.withIndent('  ').convert({
-      'testFiles': testFiles.length,
+      'testFiles': testFiles,
       'rows': [for (final r in rows) r.toJson()],
     }));
     return;
@@ -103,7 +121,7 @@ void main(List<String> args) {
   final unreached = rows.where((r) => r.reach == 0).toList()
     ..sort((a, b) => b.file.lines.compareTo(a.file.lines));
 
-  _headline(rows, unreached, testFiles.length);
+  _headline(rows, unreached, testFiles);
 
   if (args.contains('--unreached')) {
     _table('NO TEST REACHES THESE — biggest first', unreached, unreached.length);

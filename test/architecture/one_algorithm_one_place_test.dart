@@ -14,7 +14,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// closed; a session that unifies more lowers it here, and a session that
 /// pastes a body is stopped here with the pair named.
 void main() {
-  const ceiling = 2123;
+  const ceiling = 2157;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

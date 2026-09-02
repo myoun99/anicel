@@ -13,8 +13,7 @@ import 'touch_shortcuts.dart';
 class EditorShortcutBindings extends ChangeNotifier {
   EditorShortcutBindings({
     this.store,
-    List<EditorActionDefinition>? definitions,
-  }) : definitions = definitions ?? editorActionDefinitions;
+  }) : definitions = editorActionDefinitions;
 
   /// Null disables persistence (tests, and FLUTTER_TEST runs).
   final ShortcutSettingsStore? store;

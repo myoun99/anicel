@@ -385,7 +385,6 @@ TransformTrack? transformTrackWithGroupReset(
   required Iterable<int> frameIndexes,
   required TransformPose identity,
   required CanvasPoint defaultAnchorPoint,
-  double defaultOpacity = 1,
   bool keyedFramesOnly = false,
 }) {
   final frames = frameIndexes.where((frame) => frame >= 0).toSet();
@@ -417,7 +416,7 @@ TransformTrack? transformTrackWithGroupReset(
   final position = reset(track.position, identity.center);
   final scale = reset(track.scale, identity.zoom);
   final rotation = reset(track.rotation, identity.rotationDegrees);
-  final opacity = reset(track.opacity, defaultOpacity);
+  final opacity = reset(track.opacity, 1.0);
   if (anchor == null &&
       position == null &&
       scale == null &&

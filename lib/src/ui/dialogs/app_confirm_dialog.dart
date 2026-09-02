@@ -162,7 +162,6 @@ Future<void> showAppNotice(
   BuildContext context, {
   required String title,
   required String message,
-  IconData? titleIcon,
   /// The lines this notice is ABOUT — see [AppConfirmDialog.details].
   List<String> details = const [],
   Key? windowKey,
@@ -172,7 +171,6 @@ Future<void> showAppNotice(
     builder: (context) => AppConfirmDialog(
       windowKey: windowKey,
       title: title,
-      titleIcon: titleIcon,
       message: message,
       details: details,
       actions: [

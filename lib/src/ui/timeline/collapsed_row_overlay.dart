@@ -62,7 +62,6 @@ class CollapsedRowOverlay extends StatefulWidget {
     this.height = defaultHeight,
     this.railChild,
     this.frameRowBuilder,
-    this.laneValue,
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
@@ -109,10 +108,6 @@ class CollapsedRowOverlay extends StatefulWidget {
 
   final double pixelsPerFrame;
   final int framesPerSecond;
-
-  /// A property lane's value at the cursor, printed after its name the way
-  /// the rail prints it. Null on layer rows.
-  final String? laneValue;
 
   /// THE ROW'S OWN HEIGHT (유저 확정 2026-08-21: 「간편오버레이 높이도 해당
   /// 행 높이에따라서 맞춤. 이 높이 맞추는건 타임라인의 간편오버레이든
@@ -351,21 +346,6 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
               ),
             ),
           ),
-          if (widget.laneValue case final value?) ...[
-            const SizedBox(width: 8),
-            Text(
-              value,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.clip,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 10,
-                color: AppColors.textDim,
-                shadows: shadows,
-              ),
-            ),
-          ],
         ],
       ),
     );

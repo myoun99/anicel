@@ -92,6 +92,9 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
   BrushFrameStore storeFor(Null plane) => _store;
 }
 
+/// The smallest on-screen extent worth an ink window.
+const double _minMountedScreenExtent = 24;
+
 /// The windows worth MOUNTING right now.
 ///
 /// The analog preset has 86 inking boxes — eight times a conte page — and
@@ -106,13 +109,13 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
 List<SheetInkWindow> mountedEnvelopeInkWindows(
   List<SheetInkWindow> windows,
   CanvasViewport viewport,
-  Size screenSize, {
-  double minScreenExtent = 24,
-}) {
+  Size screenSize,
+) {
   final screen = Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
   return [
     for (final window in windows)
-      if (_mountable(window, viewport, screen, minScreenExtent)) window,
+      if (_mountable(window, viewport, screen, _minMountedScreenExtent))
+        window,
   ];
 }
 

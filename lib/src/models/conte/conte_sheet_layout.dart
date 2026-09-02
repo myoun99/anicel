@@ -20,25 +20,20 @@ class ConteSheetMetrics {
   const ConteSheetMetrics({
     this.pageWidth = 595.28,
     this.pageHeight = 841.89,
-    this.margin = 28,
-    this.headerHeight = 34,
-    this.rowsPerPage = 5,
-    this.cutColumnWidth = 30,
-    this.timeColumnWidth = 38,
     this.cameraAspect = 16 / 9,
   });
 
   final double pageWidth;
   final double pageHeight;
-  final double margin;
-  final double headerHeight;
+  double get margin => 28;
+  double get headerHeight => 34;
 
   /// FIVE, fixed (design): a conte page is five cells, and a sheet whose
   /// row count drifts with content stops being a sheet.
-  final int rowsPerPage;
+  int get rowsPerPage => 5;
 
-  final double cutColumnWidth;
-  final double timeColumnWidth;
+  double get cutColumnWidth => 30;
+  double get timeColumnWidth => 38;
 
   /// The project's camera ratio. The PICTURE column is as wide as a row is
   /// tall times this — the picture keeps the film's shape and the text

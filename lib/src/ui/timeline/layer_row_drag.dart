@@ -357,10 +357,10 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.hooks,
     required this.onSelectCrossed,
     required this.child,
-    this.grabOffsetWithinRun = 0,
-    this.onGripTaken,
-    this.onGripReleased,
   }) : canReorder = false,
+       grabOffsetWithinRun = 0,
+       onGripTaken = null,
+       onGripReleased = null,
        slotBefore = 0,
        isLastRow = false,
        onCrossed = _neverCrosses;

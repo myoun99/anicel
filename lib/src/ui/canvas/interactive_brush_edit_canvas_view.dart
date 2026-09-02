@@ -134,8 +134,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.frameId,
     required this.inputSettings,
     required this.onSourceStrokeCommitted,
-    this.dabInterpolator = const BrushDabInterpolator(),
-    this.segmentClipper = const CanvasSegmentClipper(),
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onAltPick,
@@ -203,8 +201,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushEditCanvasInputSettings inputSettings;
   final ValueChanged<BrushStrokeCommitData> onSourceStrokeCommitted;
   final bool showTransparentBackground;
-  final BrushDabInterpolator dabInterpolator;
-  final CanvasSegmentClipper segmentClipper;
   final ValueChanged<bool>? onActiveStrokeChanged;
 
   /// Alt+pointer-down picks a color instead of starting a stroke (P5's
@@ -828,7 +824,7 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
     final initialDabs = _pressure.withPressureDynamics(
-      widget.dabInterpolator.interpolate(
+      const BrushDabInterpolator().interpolate(
         previous: null,
         nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
         firstSequence: _nextSequence,

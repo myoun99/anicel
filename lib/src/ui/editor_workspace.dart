@@ -162,7 +162,6 @@ class EditorWorkspace extends StatefulWidget {
     required this.session,
     this.presetFileService,
     this.tipLibraryService,
-    this.brushFilePicker,
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
@@ -228,9 +227,6 @@ class EditorWorkspace extends StatefulWidget {
   /// layout file outside tests (`FLUTTER_TEST` disables it so widget tests
   /// never read a developer's saved arrangement).
   final WorkspaceLayoutStore? layoutStore;
-
-  /// Injectable brush-file picker; defaults to the platform file dialog.
-  final BrushFilePicker? brushFilePicker;
 
   /// The AppBar's Panels menu bridge: lists every panel with visibility
   /// and reopens closed (X-ed) ones.
@@ -1041,7 +1037,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
-      filePicker: widget.brushFilePicker,
       tipLibrary: _tipLibrary,
     );
     // Tips first: presets reference them by id, so the library has to be

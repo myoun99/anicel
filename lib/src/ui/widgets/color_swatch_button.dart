@@ -27,7 +27,6 @@ class ColorSwatchButton extends StatelessWidget {
     this.currentColorOf,
     this.onNone,
     this.tooltip,
-    this.diameter = 18,
   });
 
   /// Widget key string for the trigger ('canvas-paper-color-button').
@@ -61,7 +60,7 @@ class ColorSwatchButton extends StatelessWidget {
   final VoidCallback? onNone;
 
   final String? tooltip;
-  final double diameter;
+  static const double _diameter = 18;
 
   @override
   Widget build(BuildContext context) {
@@ -80,8 +79,8 @@ class ColorSwatchButton extends StatelessWidget {
               customBorder: const CircleBorder(),
               onTap: silentPress(() => _open(anchorContext)),
               child: SizedBox(
-                width: diameter,
-                height: diameter,
+                width: _diameter,
+                height: _diameter,
                 child: CustomPaint(painter: _SwatchPainter(color: color)),
               ),
             ),

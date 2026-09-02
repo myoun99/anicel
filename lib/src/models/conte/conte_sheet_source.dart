@@ -25,7 +25,6 @@ class ConteCellSource {
     this.rowSpan = 1,
     this.encroachFraction = 0,
     this.cameraLabels = const [],
-    this.showsWholeMove = false,
   }) : assert(rowSpan >= 1, 'A cell occupies at least one row.');
 
   /// Cut-LOCAL frames.
@@ -59,11 +58,6 @@ class ConteCellSource {
   /// The camera frame labels drawn on the picture — the keyframe names when
   /// they have them, `IN`/`OUT` otherwise.
   final List<String> cameraLabels;
-
-  /// Mode 2: this cell shows the WHOLE move from its first frame, rather
-  /// than the moment at [pictureFrame]. Mode 1 (the default, Storyboard
-  /// Pro's) leaves it false and gives every cell the camera it sits in.
-  final bool showsWholeMove;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
