@@ -135,38 +135,8 @@ class PlaybackTransportControls extends StatelessWidget {
             // is a fixed width with the text right-aligned INSIDE it, so
             // the count grows leftward into its own space and no button
             // ever moves. That is what keeping 「오른쪽정렬」 buys.
-            SizedBox(
-              width: _dropSlotWidth,
-              child: controlsThisScope && controller.droppedFrames > 0
-                  ? Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Text(
-                        '${controller.droppedFrames} dropped',
-                        key: const ValueKey<String>(
-                          'playback-dropped-indicator',
-                        ),
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            AppIconButton(
-              keyValue: 'playback-skip-to-start-button',
-              tooltip: AppText.strings.playbackToStart,
-              icon: const Icon(Icons.skip_previous),
-              onPressed: () {
-                if (controlsThisScope) {
-                  controller.seekToGlobalFrame(0);
-                } else {
-                  onSkipToStart?.call();
-                }
-              },
-            ),
+            _droppedFramesSlot(controlsThisScope, context),
+            _skipToStartButton(controlsThisScope),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
             //
@@ -176,98 +146,12 @@ class PlaybackTransportControls extends StatelessWidget {
             // joined it, hand-rolling `IconButton` + `selectedIcon` with a
             // theme colour of its own. Nothing here is a new rule; three
             // buttons stopped being exceptions to an old one.
-            AppIconButton(
-              keyValue: 'playback-play-button',
-              tooltip: isPlayingHere ? 'Stop' : 'Play',
-              isSelected: isPlayingHere,
-              icon: Icon(isPlayingHere ? Icons.stop : Icons.play_arrow),
-              onPressed: () {
-                if (isPlayingHere) {
-                  controller.stop();
-                } else {
-                  controller.play(
-                    scope: scope,
-                    startGlobalFrame: playbackStartFrame?.call(),
-                  );
-                }
-              },
-            ),
-            AppIconButton(
-              keyValue: 'playback-loop-toggle',
-              tooltip: controller.loopMode == PlaybackLoopMode.loop
-                  ? 'Loop (click for play once)'
-                  : 'Play once (click for loop)',
-              isSelected: controller.loopMode == PlaybackLoopMode.loop,
-              icon: const Icon(Icons.repeat),
-              onPressed: () {
-                controller.loopMode =
-                    controller.loopMode == PlaybackLoopMode.loop
-                    ? PlaybackLoopMode.once
-                    : PlaybackLoopMode.loop;
-              },
-            ),
+            _playButton(isPlayingHere),
+            _loopToggle(),
             if (isVoiceRecording != null && onToggleVoiceRecording != null)
-              ValueListenableBuilder<bool>(
-                valueListenable: isVoiceRecording!,
-                builder: (context, recording, _) {
-                  final strings =
-                      resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
-                  // 🚨THE LAST EXCEPTION IN THIS ROW. The comment on the play
-                  // button says three buttons stopped hand-rolling
-                  // `IconButton`; this one was still doing it, with its own
-                  // `iconSize: 18` and its own `colorScheme.error` for the on
-                  // state.
-                  //
-                  // ⛔RED LEAVES, AND THAT IS THE POINT. "Recording" is an ON
-                  // state like Loop and Play, and the app's law for an on
-                  // state is the accent foreground ([AppIconButton], and
-                  // [[ui-selection-style]]). Red stays on the clip light
-                  // beside it, where it means the one thing red should mean
-                  // here — a sample hit the ceiling. Two meanings on one
-                  // colour is what made the row hard to read.
-                  return AppIconButton(
-                    keyValue: 'playback-record-voice-button',
-                    tooltip: recording
-                        ? strings.recordVoiceStopTooltip
-                        : strings.recordVoiceTooltip,
-                    isSelected: recording,
-                    icon: Icon(recording ? Icons.stop_circle : Icons.mic),
-                    onPressed: onToggleVoiceRecording,
-                  );
-                },
-              ),
+              _voiceRecordButton(),
             if (isVoiceRecording != null && voiceRecordClipLit != null)
-              ValueListenableBuilder<bool>(
-                valueListenable: isVoiceRecording!,
-                builder: (context, recording, _) =>
-                    ValueListenableBuilder<bool>(
-                      valueListenable: voiceRecordClipLit!,
-                      builder: (context, lit, _) => Padding(
-                        padding: const EdgeInsets.only(left: 2, right: 2),
-                        child: Icon(
-                          Icons.circle,
-                          key: const ValueKey<String>(
-                            'playback-record-clip-light',
-                          ),
-                          size: 8,
-                          // ⛔THE SEAT IS ALWAYS RESERVED; only the colour
-                          // changes. This used to be `!recording ?
-                          // SizedBox.shrink() : …`, so arming a take GREW the
-                          // row, and the gap that appeared beside the mic is
-                          // what the user was looking at — 유저 08-27:
-                          // 「재생하면 생기는 마이크 오른쪽 패딩? 공간? **그게
-                          // 왜 생기는건지 몰랐어서**」. They were reading a
-                          // layout jump as a bug in the mic button, and it
-                          // was: 없다가 생기는 UI 금지.
-                          color: !recording
-                              ? Colors.transparent
-                              : lit
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                    ),
-              ),
+              _clipLight(),
             // ⛔The QUALITY selector left this row (유저 확정, 2026-08-10:
             // 품질도 설정에 두자). It is a setting, not a transport control —
             // touched about as often as the project frame rate — and the
@@ -279,19 +163,163 @@ class PlaybackTransportControls extends StatelessWidget {
             // playback is live — a silent strip otherwise would just be
             // chrome.
             if (resolveMeterPeaks != null && controlsThisScope)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: AudioLevelMeter(
-                  controller: controller,
-                  resolvePeaks: resolveMeterPeaks!,
-                ),
-              ),
+              _meter(),
             // ⛔The DROP readout is not here any more — it leads the row
             // (T29). Trailing a `min`-width row is exactly what made the
             // buttons move when its digits appeared.
           ],
         );
       },
+    );
+  }
+
+  Padding _meter() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: AudioLevelMeter(
+        controller: controller,
+        resolvePeaks: resolveMeterPeaks!,
+      ),
+    );
+  }
+
+  ValueListenableBuilder<bool> _clipLight() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: isVoiceRecording!,
+      builder: (context, recording, _) =>
+          ValueListenableBuilder<bool>(
+            valueListenable: voiceRecordClipLit!,
+            builder: (context, lit, _) => Padding(
+              padding: const EdgeInsets.only(left: 2, right: 2),
+              child: Icon(
+                Icons.circle,
+                key: const ValueKey<String>(
+                  'playback-record-clip-light',
+                ),
+                size: 8,
+                // ⛔THE SEAT IS ALWAYS RESERVED; only the colour
+                // changes. This used to be `!recording ?
+                // SizedBox.shrink() : …`, so arming a take GREW the
+                // row, and the gap that appeared beside the mic is
+                // what the user was looking at — 유저 08-27:
+                // 「재생하면 생기는 마이크 오른쪽 패딩? 공간? **그게
+                // 왜 생기는건지 몰랐어서**」. They were reading a
+                // layout jump as a bug in the mic button, and it
+                // was: 없다가 생기는 UI 금지.
+                color: !recording
+                    ? Colors.transparent
+                    : lit
+                    ? Theme.of(context).colorScheme.error
+                    : Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+          ),
+    );
+  }
+
+  ValueListenableBuilder<bool> _voiceRecordButton() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: isVoiceRecording!,
+      builder: (context, recording, _) {
+        final strings =
+            resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
+        // 🚨THE LAST EXCEPTION IN THIS ROW. The comment on the play
+        // button says three buttons stopped hand-rolling
+        // `IconButton`; this one was still doing it, with its own
+        // `iconSize: 18` and its own `colorScheme.error` for the on
+        // state.
+        //
+        // ⛔RED LEAVES, AND THAT IS THE POINT. "Recording" is an ON
+        // state like Loop and Play, and the app's law for an on
+        // state is the accent foreground ([AppIconButton], and
+        // [[ui-selection-style]]). Red stays on the clip light
+        // beside it, where it means the one thing red should mean
+        // here — a sample hit the ceiling. Two meanings on one
+        // colour is what made the row hard to read.
+        return AppIconButton(
+          keyValue: 'playback-record-voice-button',
+          tooltip: recording
+              ? strings.recordVoiceStopTooltip
+              : strings.recordVoiceTooltip,
+          isSelected: recording,
+          icon: Icon(recording ? Icons.stop_circle : Icons.mic),
+          onPressed: onToggleVoiceRecording,
+        );
+      },
+    );
+  }
+
+  AppIconButton _loopToggle() {
+    return AppIconButton(
+      keyValue: 'playback-loop-toggle',
+      tooltip: controller.loopMode == PlaybackLoopMode.loop
+          ? 'Loop (click for play once)'
+          : 'Play once (click for loop)',
+      isSelected: controller.loopMode == PlaybackLoopMode.loop,
+      icon: const Icon(Icons.repeat),
+      onPressed: () {
+        controller.loopMode =
+            controller.loopMode == PlaybackLoopMode.loop
+            ? PlaybackLoopMode.once
+            : PlaybackLoopMode.loop;
+      },
+    );
+  }
+
+  AppIconButton _playButton(bool isPlayingHere) {
+    return AppIconButton(
+      keyValue: 'playback-play-button',
+      tooltip: isPlayingHere ? 'Stop' : 'Play',
+      isSelected: isPlayingHere,
+      icon: Icon(isPlayingHere ? Icons.stop : Icons.play_arrow),
+      onPressed: () {
+        if (isPlayingHere) {
+          controller.stop();
+        } else {
+          controller.play(
+            scope: scope,
+            startGlobalFrame: playbackStartFrame?.call(),
+          );
+        }
+      },
+    );
+  }
+
+  AppIconButton _skipToStartButton(bool controlsThisScope) {
+    return AppIconButton(
+      keyValue: 'playback-skip-to-start-button',
+      tooltip: AppText.strings.playbackToStart,
+      icon: const Icon(Icons.skip_previous),
+      onPressed: () {
+        if (controlsThisScope) {
+          controller.seekToGlobalFrame(0);
+        } else {
+          onSkipToStart?.call();
+        }
+      },
+    );
+  }
+
+  SizedBox _droppedFramesSlot(bool controlsThisScope, BuildContext context) {
+    return SizedBox(
+      width: _dropSlotWidth,
+      child: controlsThisScope && controller.droppedFrames > 0
+          ? Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Text(
+                '${controller.droppedFrames} dropped',
+                key: const ValueKey<String>(
+                  'playback-dropped-indicator',
+                ),
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            )
+          : null,
     );
   }
 }
