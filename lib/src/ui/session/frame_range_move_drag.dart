@@ -594,7 +594,7 @@ class _FrameRangeMoveDrag {
   }) {
     int? shared;
     for (final id in ids) {
-      final hop = _session._latticeHopFor(
+      final hop = _latticeHopFor(
         rows: rows,
         lattice: lattice,
         layerId: id,
@@ -1672,5 +1672,32 @@ class _FrameRangeMoveDrag {
     );
     _session._warmActiveCut();
     _session._notifyChanged();
+  }
+
+  /// What [displayDelta] means INSIDE [lattice] for the row [layerId]:
+  /// walk the display rows by the hop, then read where the row it landed
+  /// on sits in the lattice. Null when the hop leaves the screen or lands
+  /// on a row this kind of content cannot live on.
+  int? _latticeHopFor({
+    required List<Layer> rows,
+    required List<Layer> lattice,
+    required LayerId layerId,
+    required int displayDelta,
+  }) {
+    final rowIndex = rows.indexWhere((layer) => layer.id == layerId);
+    if (rowIndex == -1) {
+      return null;
+    }
+    final landingIndex = rowIndex + displayDelta;
+    if (landingIndex < 0 || landingIndex >= rows.length) {
+      return null;
+    }
+    final landingId = rows[landingIndex].id;
+    final from = lattice.indexWhere((layer) => layer.id == layerId);
+    final to = lattice.indexWhere((layer) => layer.id == landingId);
+    if (from == -1 || to == -1) {
+      return null;
+    }
+    return to - from;
   }
 }
