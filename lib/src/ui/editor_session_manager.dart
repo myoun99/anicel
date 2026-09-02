@@ -269,6 +269,7 @@ part 'session/frame_scrub.dart';
 part 'session/row_selection.dart';
 part 'session/layer_row_drag.dart';
 part 'session/lane_range_move_drag.dart';
+part 'session/instructions.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -6074,26 +6075,40 @@ class EditorSessionManager extends ChangeNotifier {
     _setLayerFxSwitches(layers, enabled: !bypassed);
   }
 
-  /// Replaces [layerId]'s instruction span map (instruction rows only).
-  /// One undo step; no-op when unchanged. Never touches rendering caches —
-  /// instruction spans are timeline annotations, not composite inputs.
+  // ── the instructions: their own object, in their own file ───────────
+  //
+  // A collaborator (session/instructions.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _Instructions _instructions = _Instructions(this);
+
   void updateLayerInstructions(
     LayerId layerId,
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit instructions',
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.updateLayerInstructions(
-      cutId: cutId,
-      layerId: layerId,
-      instructions: instructions,
-      description: description,
-    );
-    notifyListeners();
-  }
+  }) => _instructions.updateLayerInstructions(
+    layerId,
+    instructions,
+    description: description,
+  );
+  MapEntry<int, InstructionEvent>? instructionSpanAt(
+    LayerId layerId,
+    int frameIndex,
+  ) => _instructions.instructionSpanAt(layerId, frameIndex);
+  void createDefaultInstructionEventAtCurrentFrame() =>
+      _instructions.createDefaultInstructionEventAtCurrentFrame();
+  void upsertInstructionEventAt(
+    LayerId layerId,
+    int frameIndex,
+    InstructionEvent event, {
+    int? createLengthFrames,
+  }) => _instructions.upsertInstructionEventAt(
+    layerId,
+    frameIndex,
+    event,
+    createLengthFrames: createLengthFrames,
+  );
+  void removeInstructionEventAt(LayerId layerId, int frameIndex) =>
+      _instructions.removeInstructionEventAt(layerId, frameIndex);
 
   // ---------------------------------------------------------------------
   // The TRANSITION row (O.L / F.I / F.O). Same spans, same dialog, same
@@ -6169,128 +6184,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// strip renders THIS while a grip is held, so the mark follows the hand
   /// instead of jumping on release. Null when no drag is in flight.
   final ValueNotifier<Layer?> transitionEdgeDragPreview = ValueNotifier(null);
-
-  /// The instruction span covering [frameIndex] on [layerId], as
-  /// (startIndex, event); null on empty cells / non-instruction rows.
-  MapEntry<int, InstructionEvent>? instructionSpanAt(
-    LayerId layerId,
-    int frameIndex,
-  ) {
-    final layer = _layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return null;
-    }
-    return instructionSpanCovering(layer.instructions, frameIndex);
-  }
-
-  /// Dialog-free instruction creation (UI-R25 #2, 조작 통일화): an EMPTY
-  /// instruction cell gains a ONE-frame event of the vocabulary's first
-  /// entry directly — the Edit Instance dialog changes it afterwards.
-  /// Covered cells no-op (creation never edits).
-  void createDefaultInstructionEventAtCurrentFrame() {
-    final layer = activeLayer;
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
-    }
-    final frameIndex = _timelineController.currentFrameIndex;
-    if (frameIndex < 0 ||
-        instructionSpanAt(layer.id, frameIndex) != null ||
-        cameraInstructionSet.defs.isEmpty) {
-      return;
-    }
-    upsertInstructionEventAt(
-      layer.id,
-      frameIndex,
-      InstructionEvent(
-        instructionId: cameraInstructionSet.defs.first.id,
-        length: 1,
-      ),
-      createLengthFrames: 1,
-    );
-  }
-
-  /// Creates or edits the instruction event at [frameIndex] in ONE undo
-  /// step: a covered cell replaces its span's event (start/length stay), an
-  /// empty cell starts a new span holding to the next one / the cut's end.
-  void upsertInstructionEventAt(
-    LayerId layerId,
-    int frameIndex,
-    InstructionEvent event, {
-    int? createLengthFrames,
-  }) {
-    final layer = _layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
-    }
-
-    // New events take the dialog's length (clamped into the cut; the add
-    // helper clamps at the next span too); null fills to the cut end.
-    // A resolvable instruction layer implies an active cut.
-    final available = (requireActiveCut.duration - frameIndex).clamp(
-      1,
-      1 << 20,
-    );
-    final covering = instructionSpanCovering(layer.instructions, frameIndex);
-    final next = covering != null
-        ? instructionMapWithEventReplaced(
-            layer.instructions,
-            spanStartIndex: covering.key,
-            event: event,
-          )
-        : instructionMapWithEventAdded(
-            layer.instructions,
-            startIndex: frameIndex,
-            event: event.copyWith(
-              length: (createLengthFrames ?? available).clamp(1, available),
-            ),
-          );
-    if (next == null) {
-      return;
-    }
-    // The sheet's memo shorthand ('A→B PAN memo') writes itself ONCE at
-    // creation and stays user-editable note text from then on (R5-⑥ — the
-    // derived always-printed line could not be edited). Edits and removals
-    // never rewrite the note; the user owns it. Event + note = ONE undo.
-    String? appendedNote;
-    if (covering == null) {
-      final line = timesheetMemoInstructionLine(
-        event,
-        cameraInstructionSet.defById(event.instructionId),
-      );
-      if (line.isNotEmpty) {
-        final note = activeCutNote ?? '';
-        appendedNote = note.isEmpty ? line : '$note\n$line';
-      }
-    }
-    _cutCommandCoordinator.updateLayerInstructions(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      instructions: next,
-      description: covering == null ? 'Add instruction' : 'Edit instruction',
-      note: appendedNote,
-    );
-    notifyListeners();
-  }
-
-  /// Removes the instruction span covering [frameIndex]; one undo step.
-  void removeInstructionEventAt(LayerId layerId, int frameIndex) {
-    final layer = _layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
-    }
-    final covering = instructionSpanCovering(layer.instructions, frameIndex);
-    if (covering == null) {
-      return;
-    }
-    final next = instructionMapWithEventRemoved(
-      layer.instructions,
-      spanStartIndex: covering.key,
-    );
-    if (next == null) {
-      return;
-    }
-    updateLayerInstructions(layerId, next, description: 'Delete instruction');
-  }
 
   /// Whether the active layer can take an audio clip (SE rows only).
   bool get canImportAudioToActiveLayer => activeLayer?.kind == LayerKind.se;
@@ -8711,7 +8604,7 @@ class EditorSessionManager extends ChangeNotifier {
         continue;
       }
       if (layer.kind == LayerKind.instruction) {
-        final command = _instructionEventsCommandForRange(layer, selection);
+        final command = _instructions.instructionEventsCommandForRange(layer, selection);
         if (command != null) {
           instructionCommands.add(command);
         }
@@ -8989,61 +8882,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
     notifyListeners();
     return true;
-  }
-
-  Command? _instructionEventsCommandForRange(
-    Layer layer,
-    TimelineFrameRangeSelection selection,
-  ) {
-    final cutId = _editingSession.activeCutId;
-    final defaultDef = cameraInstructionSet.defs.isEmpty
-        ? null
-        : cameraInstructionSet.defs.first;
-    if (defaultDef == null || cutId == null) {
-      return null;
-    }
-    bool covered(int index) {
-      for (final entry in layer.instructions.entries) {
-        if (index >= entry.key && index < entry.key + entry.value.length) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    final next = Map<int, InstructionEvent>.of(layer.instructions);
-    var changed = false;
-    int? gapStart;
-    for (
-      var index = selection.startIndex;
-      index <= selection.endIndexExclusive;
-      index += 1
-    ) {
-      final inGap =
-          index < selection.endIndexExclusive && index >= 0 && !covered(index);
-      if (inGap) {
-        gapStart ??= index;
-        continue;
-      }
-      if (gapStart != null) {
-        next[gapStart] = InstructionEvent(
-          instructionId: defaultDef.id,
-          length: index - gapStart,
-        );
-        changed = true;
-        gapStart = null;
-      }
-    }
-    if (!changed) {
-      return null;
-    }
-    return UpdateLayerInstructionsCommand(
-      repository: _repository,
-      cutId: cutId,
-      layerId: layer.id,
-      instructions: next,
-      description: 'Create events',
-    );
   }
 
   /// The lane-selection create (UI-R25 #3): a key frozen at the resolved
