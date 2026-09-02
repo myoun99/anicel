@@ -271,6 +271,7 @@ part 'session/layer_row_drag.dart';
 part 'session/lane_range_move_drag.dart';
 part 'session/instructions.dart';
 part 'session/onion_skin.dart';
+part 'session/effects_and_fx.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -3380,11 +3381,108 @@ class EditorSessionManager extends ChangeNotifier {
   // `transformTrackForCut` retired with the V row's transform: every route
   // that asked for a track pose or fade now has neither to apply.
 
-  /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
-  /// route that draws this cut filters its finished picture through. Empty
-  /// for an orphan, and empty is the zero-cost path.
+  // ── the effects and the fx switches: their own object ───────────────
+  //
+  // A collaborator (session/effects_and_fx.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _EffectsAndFx _effectsAndFx = _EffectsAndFx(this);
+
   List<LayerEffect> trackEffectsForCut(CutId cutId) =>
-      trackOwningCut(cutId)?.effects ?? const [];
+      _effectsAndFx.trackEffectsForCut(cutId);
+  void updateLayerEffects(
+    LayerId layerId,
+    List<LayerEffect> effects, {
+    String description = 'Edit layer effects',
+  }) => _effectsAndFx.updateLayerEffects(
+    layerId,
+    effects,
+    description: description,
+  );
+  bool get canAddEffectToActiveLayer => _effectsAndFx.canAddEffectToActiveLayer;
+  void addEffectToActiveLayer(EffectKind kind) =>
+      _effectsAndFx.addEffectToActiveLayer(kind);
+  bool setEffectKeyName({
+    required LayerId layerId,
+    required EffectId effectId,
+    required String parameterId,
+    required int frameIndex,
+    required String? name,
+  }) => _effectsAndFx.setEffectKeyName(
+    layerId: layerId,
+    effectId: effectId,
+    parameterId: parameterId,
+    frameIndex: frameIndex,
+    name: name,
+  );
+  void linkEffectKeyName({
+    required LayerId layerId,
+    required EffectId effectId,
+    required String parameterId,
+    required int frameIndex,
+    required String name,
+  }) => _effectsAndFx.linkEffectKeyName(
+    layerId: layerId,
+    effectId: effectId,
+    parameterId: parameterId,
+    frameIndex: frameIndex,
+    name: name,
+  );
+  void removeEffectFromActiveLayer(EffectId effectId) =>
+      _effectsAndFx.removeEffectFromActiveLayer(effectId);
+  double layerEffectParameterAtFrame(
+    Layer layer,
+    EffectId effectId,
+    String parameterId,
+    int frameIndex,
+  ) => _effectsAndFx.layerEffectParameterAtFrame(
+    layer,
+    effectId,
+    parameterId,
+    frameIndex,
+  );
+  void updateTrackEffects(
+    TrackId trackId,
+    List<LayerEffect> effects, {
+    String description = 'Edit track effects',
+  }) => _effectsAndFx.updateTrackEffects(
+    trackId,
+    effects,
+    description: description,
+  );
+  void addEffectToTrack(TrackId trackId, EffectKind kind) =>
+      _effectsAndFx.addEffectToTrack(trackId, kind);
+  void removeEffectFromTrack(TrackId trackId, EffectId effectId) =>
+      _effectsAndFx.removeEffectFromTrack(trackId, effectId);
+  bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) =>
+      _effectsAndFx.resetTrackEffectGroup(trackId, headerLaneId);
+  void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) =>
+      _effectsAndFx.toggleTrackEffectEnabled(trackId, effectId);
+  double trackEffectParameterAtFrame(
+    Track track,
+    EffectId effectId,
+    String parameterId,
+    int frameIndex,
+  ) => _effectsAndFx.trackEffectParameterAtFrame(
+    track,
+    effectId,
+    parameterId,
+    frameIndex,
+  );
+  LayerFxState layerFxState(LayerId layerId) =>
+      _effectsAndFx.layerFxState(layerId);
+  bool isLayerFxEnabled(LayerId layerId) =>
+      _effectsAndFx.isLayerFxEnabled(layerId);
+  bool isLayerTransformFxEnabled(LayerId layerId) =>
+      _effectsAndFx.isLayerTransformFxEnabled(layerId);
+  void toggleLayerFx(LayerId layerId) => _effectsAndFx.toggleLayerFx(layerId);
+  void toggleLayerTransformFx(LayerId layerId) =>
+      _effectsAndFx.toggleLayerTransformFx(layerId);
+  bool isCutFxEnabled(CutId cutId) => _effectsAndFx.isCutFxEnabled(cutId);
+  LayerFxState trackFxState(TrackId trackId) =>
+      _effectsAndFx.trackFxState(trackId);
+  void toggleTrackFx(TrackId trackId) => _effectsAndFx.toggleTrackFx(trackId);
+  void setAllLayersFxBypassed(bool bypassed) =>
+      _effectsAndFx.setAllLayersFxBypassed(bypassed);
 
   /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
   /// — what the track-owned lanes are keyed in.
@@ -3564,156 +3662,6 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Replaces [layerId]'s EFFECT CHAIN (R6 — the color/blur lanes); one
-  /// undo step, no-op when unchanged.
-  void updateLayerEffects(
-    LayerId layerId,
-    List<LayerEffect> effects, {
-    String description = 'Edit layer effects',
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.updateLayerEffects(
-      cutId: cutId,
-      layerId: layerId,
-      effects: effects,
-      description: description,
-    );
-    notifyListeners();
-  }
-
-  /// Whether the ACTIVE row can take an effect: a row that carries its own
-  /// FX, and not a track-owned SE row (its display clone strips FX, so a
-  /// chain committed through it would land nowhere the lanes could edit).
-  bool get canAddEffectToActiveLayer {
-    final layer = activeLayer;
-    return layer != null &&
-        layerKindHasLayerEffects(layer.kind) &&
-        !isTrackSeLayerId(layer.id) &&
-        // Attach rows wear their BASE's FX (W5) and have no lanes of their
-        // own — the effect belongs on the base.
-        layer.attachedToLayerId == null;
-  }
-
-  /// Appends a fresh effect of [kind] (every parameter at its default, so
-  /// adding one changes nothing until a value moves) to the active row.
-  void addEffectToActiveLayer(EffectKind kind) {
-    final layer = activeLayer;
-    if (layer == null || !canAddEffectToActiveLayer) {
-      return;
-    }
-    _effectSequence += 1;
-    final effect = LayerEffect.defaults(
-      // Timestamped like the frame ids: the lane address embeds this, so
-      // two effects added in the same session must never collide.
-      id: EffectId(
-        'fx-${layer.id.value}-'
-        '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
-      ),
-      kind: kind,
-    );
-    updateLayerEffects(layer.id, [
-      ...layer.effects,
-      effect,
-    ], description: 'Add ${kind.label}');
-  }
-
-  /// Names (or un-names, with null) one effect-parameter KEY.
-  ///
-  /// A name is a link: every key called this, in this same parameter, holds
-  /// one value — the frame-name rule said of keyframes (user 2026-07-30).
-  /// Because linked rows share effect ids, that naming space reaches the
-  /// 겸용 siblings whose chains otherwise only share their shape.
-  ///
-  /// Returns true when [name] is ALREADY taken in that space and NOTHING
-  /// was written, so the caller can offer to join instead (see
-  /// [linkEffectKeyName]) — the same report [renameSelectedFrame] makes
-  /// about a colliding frame name. False means the rename applied, or could
-  /// not.
-  ///
-  /// The collision is reported as a FACT rather than as the value behind
-  /// it: a transform lane's value is a point, not a number, and a link
-  /// whose two halves disagree about what they carry would be two links.
-  bool setEffectKeyName({
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String? name,
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return false;
-    }
-    final site = _effectKeySite(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-    );
-    if (site == null || site.key.name == name) {
-      return false;
-    }
-    if (name != null &&
-        _cutCommandCoordinator.namedEffectKeyValueInSpace(
-              cutId: cutId,
-              layerId: layerId,
-              effectId: effectId,
-              parameterId: parameterId,
-              name: name,
-            ) !=
-            null) {
-      return true;
-    }
-    _writeEffectKeyName(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-      name: name,
-    );
-    return false;
-  }
-
-  /// Joins [name], ADOPTING the value that name already holds — the answer
-  /// to the "합칠까요?" [setEffectKeyName] raises.
-  ///
-  /// The key takes the number rather than imposing its own, exactly as
-  /// [linkSelectedFrame] takes the drawing that is already there (user
-  /// 2026-08-10). A name that turns out to be free just applies, so a stale
-  /// confirmation cannot blank the value.
-  void linkEffectKeyName({
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String name,
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _writeEffectKeyName(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-      name: name,
-      adopted: _cutCommandCoordinator.namedEffectKeyValueInSpace(
-        cutId: cutId,
-        layerId: layerId,
-        effectId: effectId,
-        parameterId: parameterId,
-        name: name,
-      ),
-    );
-  }
-
   /// Names (or un-names, with null) one TRANSFORM lane KEY — the twin of
   /// [setEffectKeyName], under the same contract: true means [name] was
   /// ALREADY taken in that lane's naming space and NOTHING was written, so
@@ -3843,129 +3791,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  /// The one effect-parameter key a naming verb addresses, with what its
-  /// write needs — null when any link of that chain is missing.
-  ({
-    Layer layer,
-    LayerEffect effect,
-    int effectIndex,
-    EffectParameter parameter,
-    PropertyKey<double> key,
-  })?
-  _effectKeySite({
-    required CutId cutId,
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-  }) {
-    final layers = cutById(cutId)?.layers ?? const <Layer>[];
-    final layerIndex = layers.indexWhere((row) => row.id == layerId);
-    if (layerIndex == -1) {
-      return null;
-    }
-    final layer = layers[layerIndex];
-    final effectIndex = layer.effects.indexWhere(
-      (effect) => effect.id == effectId,
-    );
-    if (effectIndex == -1) {
-      return null;
-    }
-    final effect = layer.effects[effectIndex];
-    final parameter = effect.parameters[parameterId];
-    final key = parameter?.track.keyAt(frameIndex);
-    if (parameter == null || key == null) {
-      return null;
-    }
-    return (
-      layer: layer,
-      effect: effect,
-      effectIndex: effectIndex,
-      parameter: parameter,
-      key: key,
-    );
-  }
-
-  /// Writes one key's [name] — and, when [adopted] is given, the value that
-  /// name brings with it — as ONE undo step. The key's interpolation is
-  /// carried across explicitly: adopting a value must not silently restyle
-  /// the segment leaving the key.
-  void _writeEffectKeyName({
-    required CutId cutId,
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String? name,
-    double? adopted,
-  }) {
-    final site = _effectKeySite(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-    );
-    if (site == null) {
-      return;
-    }
-    var track = site.parameter.track;
-    if (adopted != null && adopted != site.key.value) {
-      track = track.withKey(
-        frameIndex,
-        adopted,
-        interpolation: site.key.interpolation,
-      );
-    }
-    track = track.withKeyName(frameIndex, name);
-    final next = [...site.layer.effects]
-      ..[site.effectIndex] = site.effect.withParameter(
-        parameterId,
-        EffectParameter(value: site.parameter.value, track: track),
-      );
-    updateLayerEffects(
-      layerId,
-      next,
-      description: name == null ? 'Unname key' : 'Name key',
-    );
-  }
-
-  /// Removes one effect from the active row (its keys go with it; one undo
-  /// brings both back).
-  void removeEffectFromActiveLayer(EffectId effectId) {
-    final layer = activeLayer;
-    if (layer == null) {
-      return;
-    }
-    final next = [
-      for (final effect in layer.effects)
-        if (effect.id != effectId) effect,
-    ];
-    if (next.length == layer.effects.length) {
-      return;
-    }
-    updateLayerEffects(layer.id, next, description: 'Remove effect');
-  }
-
-  int _effectSequence = 0;
-
-  /// An effect parameter's resolved value at [frameIndex] — the lane value
-  /// column and the key-freeze source, read through the SAME resolver the
-  /// composite uses so the number in the lane is the number on the canvas.
-  double layerEffectParameterAtFrame(
-    Layer layer,
-    EffectId effectId,
-    String parameterId,
-    int frameIndex,
-  ) {
-    for (final effect in layer.effects) {
-      if (effect.id == effectId) {
-        return effect.parameterOf(parameterId).resolveAt(frameIndex);
-      }
-    }
-    return 0;
-  }
-
   /// The layer's resolved transform pose at [frameIndex] (identity while
   /// the track is empty) — the lane value column and key-freeze source.
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex) {
@@ -3994,142 +3819,13 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Layer FX switches (PERSISTED layer state, R8) -----------------------
 
-  /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled])
-  /// plus every effect's own switch, read as one answer for the layer-label
-  /// button — AE's fx column, and a MASTER over the per-group switches
-  /// (user, 2026-07-30: "통합토글버튼").
-  ///
-  /// [LayerFxState.mixed] is what makes it a master rather than a second
-  /// independent bypass: some groups on, some off, and tapping resolves the
-  /// whole row one way.
-  LayerFxState layerFxState(LayerId layerId) {
-    final layer = _fxSwitchLayerById(layerId);
-    if (layer == null) {
-      return LayerFxState.on;
-    }
-    final switches = <bool>[
-      if (layerKindHasTransformFxSwitch(layer.kind)) layer.transformEnabled,
-      for (final effect in layer.effects) effect.enabled,
-    ];
-    if (switches.isEmpty) {
-      return LayerFxState.on; // An adjustment row with no effects yet.
-    }
-    if (switches.every((enabled) => enabled)) {
-      return LayerFxState.on;
-    }
-    if (switches.every((enabled) => !enabled)) {
-      return LayerFxState.off;
-    }
-    return LayerFxState.mixed;
-  }
-
-  /// Whether ANY of the row's FX apply — the row-level facet question the
-  /// timeline filter asks ("show me the rows that are doing something").
-  bool isLayerFxEnabled(LayerId layerId) =>
-      layerFxState(layerId) != LayerFxState.off;
-
-  /// Whether the row's TRANSFORM applies. Every reader of a transform
-  /// PROPERTY (pose, animated opacity, the position gizmo) asks this and
-  /// not [isLayerFxEnabled]: since R8 split the switches per group, a row
-  /// can have its transform bypassed while a colour effect still runs —
-  /// the master's [LayerFxState.mixed] answer cannot decide the pose.
-  bool isLayerTransformFxEnabled(LayerId layerId) =>
-      _fxSwitchLayerById(layerId)?.transformEnabled ?? true;
-
-  /// The MASTER toggle: off unless the row is already fully off, in which
-  /// case it turns everything back on. ONE undo step for the whole row.
-  void toggleLayerFx(LayerId layerId) {
-    final layer = _fxSwitchLayerById(layerId);
-    if (layer == null) {
-      return;
-    }
-    final turnOn = layerFxState(layerId) == LayerFxState.off;
-    _setLayerFxSwitches([layer], enabled: turnOn);
-  }
-
-  /// The TRANSFORM group header's own switch (R8).
-  void toggleLayerTransformFx(LayerId layerId) {
-    final layer = _fxSwitchLayerById(layerId);
-    if (layer == null) {
-      return;
-    }
-    updateLayerTransformEnabled(
-      layerId,
-      enabled: !layer.transformEnabled,
-      description: layer.transformEnabled
-          ? 'Bypass transform'
-          : 'Apply transform',
-    );
-  }
-
-  /// The row a switch edit addresses: a cut layer, or a track-owned SE row
-  /// (whose display clone is not the thing to write).
-  Layer? _fxSwitchLayerById(LayerId layerId) =>
-      _layerById(layerId) ?? trackSeGlobalLayerById(layerId);
-
-  /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
-  void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
-    final commands = <Command>[];
-    for (final layer in targets) {
-      // The camera row is IN: it carries no effects, but its own switch —
-      // the one that bypasses the cut camera's work — is this flag.
-      if (layerKindHasTransformFxSwitch(layer.kind) &&
-          layer.transformEnabled != enabled) {
-        commands.add(
-          UpdateLayerTransformEnabledCommand(
-            repository: _repository,
-            layerId: layer.id,
-            transformEnabled: enabled,
-          ),
-        );
-      }
-      if (layer.effects.isEmpty) {
-        continue;
-      }
-      // Through the COORDINATOR, not a hand-built command: it owns the
-      // 겸용컷 effect mirror, and a master that built its own would write
-      // one cut of a link group and leave its twin permanently `mixed`.
-      final cutId = cutIdOfLayer(_repository.requireProject(), layer.id);
-      if (cutId == null) {
-        continue; // A row no cut holds (a track-SE clone) has no chain here.
-      }
-      commands.addAll(
-        _cutCommandCoordinator.layerEffectsCommands(
-          cutId: cutId,
-          layerId: layer.id,
-          effects: [
-            for (final effect in layer.effects)
-              effect.copyWith(enabled: enabled),
-          ],
-          description: enabled ? 'Apply layer FX' : 'Bypass layer FX',
-        ),
-      );
-    }
-    if (commands.isEmpty) {
-      return;
-    }
-    _historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: enabled ? 'Apply layer FX' : 'Bypass layer FX',
-              commands: commands,
-            ),
-    );
-    // A bare notify, like every sibling row write (opacity, blend, the
-    // transform track, the effect chain): a switch flip is not a structural
-    // cut edit, and refreshing as one threw away the frame-range selection
-    // the user keeps while A/B-ing the switch.
-    notifyListeners();
-  }
-
   /// Writes one row's TRANSFORM switch; one undo step, no-op when unchanged.
   void updateLayerTransformEnabled(
     LayerId layerId, {
     required bool enabled,
     String description = 'Toggle transform FX',
   }) {
-    final layer = _fxSwitchLayerById(layerId);
+    final layer = _effectsAndFx.fxSwitchLayerById(layerId);
     if (layer == null || layer.transformEnabled == enabled) {
       return;
     }
@@ -4158,37 +3854,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Cut display gates ---------------------------------------------------
 
-  /// Whether the cut's fx (the V track's Transform group — the pose AND
-  /// the fade, "opacity joins the transform system") apply at DISPLAY
-  /// time. R9 #21: the owning TRACK's persisted master is folded in HERE
-  /// rather than at each reader — the playback canvas, the multitrack
-  /// stack and the editing preview all ask this one question, so the
-  /// track switch reaches all three by arriving at the choke point
-  /// instead of being threaded to them.
-  ///
-  /// R10 R3: the per-CUT bypass that used to sit in front of this line is
-  /// gone. It was reachable only through a context menu, it never left the
-  /// session, and while editing shows one cut at a time it said exactly
-  /// what the track switch already says.
-  bool isCutFxEnabled(CutId cutId) => trackOwningCut(cutId)?.fxEnabled ?? true;
-
   // --- V track display: the static opacity and the fx master (R9 #21) ----
-
-  /// The V row's fx switch: OFF while the track's flag is down, ON
-  /// otherwise. It stays a [LayerFxState] because the button it drives is
-  /// the shared one.
-  ///
-  /// Still never MIXED, now that the row carries an effect chain as well:
-  /// unlike a layer's, this master is STORED state rather than a reading of
-  /// the switches beneath it, so it reports what it is. A bypassed effect
-  /// says so on its own lane header, where the eye already looks.
-  LayerFxState trackFxState(TrackId trackId) {
-    final track = _trackById(trackId);
-    if (track == null) {
-      return LayerFxState.on;
-    }
-    return track.fxEnabled ? LayerFxState.on : LayerFxState.off;
-  }
 
   // --- The V row's EFFECT CHAIN (fx on the cut, not on one layer) --------
   //
@@ -4196,124 +3862,6 @@ class EditorSessionManager extends ChangeNotifier {
   // composited cut under the playhead (user 2026-08-08). It is TRACK data on
   // the GLOBAL axis, exactly like the pose and the fade beside it, so these
   // verbs take a TrackId and no cut is ever in the loop.
-
-  /// Replaces [trackId]'s effect chain; one undo step.
-  void updateTrackEffects(
-    TrackId trackId,
-    List<LayerEffect> effects, {
-    String description = 'Edit track effects',
-  }) {
-    _cutCommandCoordinator.updateTrackEffects(
-      trackId: trackId,
-      effects: effects,
-      description: description,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  /// Adds an effect to the V row's chain. Ids are minted the way a layer's
-  /// are (the lane address embeds them, so two adds in one session must not
-  /// collide) — off the TRACK id, since that is what carries the chain.
-  void addEffectToTrack(TrackId trackId, EffectKind kind) {
-    final track = _trackById(trackId);
-    if (track == null) {
-      return;
-    }
-    _effectSequence += 1;
-    updateTrackEffects(trackId, [
-      ...track.effects,
-      LayerEffect.defaults(
-        id: EffectId(
-          'fx-${trackId.value}-'
-          '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
-        ),
-        kind: kind,
-      ),
-    ], description: 'Add ${kind.label}');
-  }
-
-  void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
-    final track = _trackById(trackId);
-    if (track == null) {
-      return;
-    }
-    final next = [
-      for (final effect in track.effects)
-        if (effect.id != effectId) effect,
-    ];
-    if (next.length == track.effects.length) {
-      return;
-    }
-    updateTrackEffects(trackId, next, description: 'Remove effect');
-  }
-
-  /// A V-track effect group's RESET (R5) — the track twin of
-  /// [resetLaneGroup]. Track effects have no lane-range selection of their
-  /// own, so the scope is always the playhead.
-  bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) {
-    final track = _trackById(trackId);
-    if (track == null) {
-      return false;
-    }
-    final next = effectsWithGroupReset(
-      track.effects,
-      laneId: headerLaneId,
-      frameIndexes: [_timelineController.currentFrameIndex],
-    );
-    if (next == null) {
-      return false;
-    }
-    updateTrackEffects(trackId, next, description: 'Reset group');
-    return true;
-  }
-
-  /// One effect's own bypass on the V row — the switch on its group header,
-  /// the twin of a layer effect's.
-  void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) {
-    final track = _trackById(trackId);
-    if (track == null) {
-      return;
-    }
-    final next = effectsWithEnabledToggled(track.effects, effectId);
-    if (next == null) {
-      return;
-    }
-    updateTrackEffects(trackId, next, description: 'Toggle effect');
-  }
-
-  /// A track effect parameter's resolved value at GLOBAL [frameIndex] — the
-  /// lane value column and the key-freeze source, through the same resolver
-  /// the composite samples with.
-  double trackEffectParameterAtFrame(
-    Track track,
-    EffectId effectId,
-    String parameterId,
-    int frameIndex,
-  ) {
-    for (final effect in track.effects) {
-      if (effect.id == effectId) {
-        return effect.parameterOf(parameterId).resolveAt(frameIndex);
-      }
-    }
-    return 0;
-  }
-
-  /// The V row's fx toggle, one undoable write.
-  void toggleTrackFx(TrackId trackId) {
-    final track = _trackById(trackId);
-    if (track == null) {
-      return;
-    }
-    final turnOn = !track.fxEnabled;
-    _cutCommandCoordinator.updateTrackDisplay(
-      trackId: trackId,
-      fxEnabled: turnOn,
-      description: turnOn ? 'Apply track FX' : 'Bypass track FX',
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
 
   /// The live V-row opacity drag (session-owned, per the drag-verb rule):
   /// per-move preview, ONE write on release.
@@ -5562,16 +5110,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
 
-  /// The effect chain a lane/fx-header address names: a real layer's, or the
-  /// V TRACK's through the carrier id (R4b). Null when neither exists.
-  List<LayerEffect>? _effectChainOf(LayerId layerId) {
-    final trackId = trackIdOfTransformLaneCarrier(layerId);
-    if (trackId != null) {
-      return _trackById(trackId)?.effects;
-    }
-    return _layerById(layerId)?.effects;
-  }
-
   bool get canGroupActiveLayerIntoFolder =>
       activeLayer != null && activeLayer!.kind == LayerKind.animation;
 
@@ -6067,13 +5605,6 @@ class EditorSessionManager extends ChangeNotifier {
       ),
     );
     notifyListeners();
-  }
-
-  /// Bypasses or restores EVERY layer's fx — the legend's bulk flyout,
-  /// through the same persisted switches the per-row master writes, as ONE
-  /// undo step (R8).
-  void setAllLayersFxBypassed(bool bypassed) {
-    _setLayerFxSwitches(layers, enabled: !bypassed);
   }
 
   // ── the instructions: their own object, in their own file ───────────
