@@ -85,6 +85,7 @@ import 'update_exposure_memo_command.dart';
 part 'cut_commands/cut_commands.dart';
 part 'cut_commands/camera_commands.dart';
 part 'cut_commands/link_commands.dart';
+part 'cut_commands/track_commands.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -224,65 +225,60 @@ class CutCommandCoordinator {
   // self-propagation this round gave it retired with it: a V row no longer
   // has transform lanes for a name to link.
 
-  /// Replaces the V track's EFFECT CHAIN; one undo step, no-op when
-  /// unchanged.
-  ///
-  /// No 겸용 mirror and no value merge, unlike [updateLayerEffects]: a track
-  /// is held once (there is no second use of it to keep in step), so the
-  /// chain — shape and numbers together — is simply the track's.
+  // ── the track commands: their own object ────────────────────────────
+  //
+  // A collaborator (commands/cut_commands/track_commands.dart, a part of this
+  // library). The coordinator keeps the public commands as forwarders.
+  _TrackCommands get _tracks => _TrackCommands(this);
+
   void updateTrackEffects({
     required TrackId trackId,
     required List<LayerEffect> effects,
     String description = 'Edit track effects',
-  }) {
-    for (final track in repository.requireProject().tracks) {
-      if (track.id != trackId) {
-        continue;
-      }
-      if (listEquals(track.effects, effects)) {
-        return;
-      }
-      break;
-    }
-    historyManager.execute(
-      UpdateTrackEffectsCommand(
-        repository: repository,
-        trackId: trackId,
-        effects: effects,
-        description: description,
-      ),
-    );
-  }
-
-  /// The V track's static opacity and fx master (R9 #21) in one undo step;
-  /// no-op when nothing changes.
+  }) => _tracks.updateTrackEffects(
+    trackId: trackId,
+    effects: effects,
+    description: description,
+  );
   void updateTrackDisplay({
     required TrackId trackId,
     double? opacity,
     bool? fxEnabled,
     String description = 'Edit track display',
-  }) {
-    for (final track in repository.requireProject().tracks) {
-      if (track.id == trackId) {
-        final sameOpacity = opacity == null || track.opacity == opacity;
-        final sameFx = fxEnabled == null || track.fxEnabled == fxEnabled;
-        if (sameOpacity && sameFx) {
-          return;
-        }
-        break;
-      }
-    }
-
-    historyManager.execute(
-      UpdateTrackDisplayCommand(
-        repository: repository,
-        trackId: trackId,
-        opacity: opacity,
-        fxEnabled: fxEnabled,
-        description: description,
-      ),
-    );
-  }
+  }) => _tracks.updateTrackDisplay(
+    trackId: trackId,
+    opacity: opacity,
+    fxEnabled: fxEnabled,
+    description: description,
+  );
+  void updateLayerTransformTrack({
+    required CutId cutId,
+    required LayerId layerId,
+    required TransformTrack transformTrack,
+    String description = 'Edit layer transform',
+  }) => _tracks.updateLayerTransformTrack(
+    cutId: cutId,
+    layerId: layerId,
+    transformTrack: transformTrack,
+    description: description,
+  );
+  TransformTrack? transformTrackHoldingName({
+    required CutId cutId,
+    required LayerId layerId,
+    required TransformPropertyId property,
+    required String name,
+    Set<int> excludeFramesOnSource = const {},
+  }) => _tracks.transformTrackHoldingName(
+    cutId: cutId,
+    layerId: layerId,
+    property: property,
+    name: name,
+    excludeFramesOnSource: excludeFramesOnSource,
+  );
+  void setTrackSeOrder({
+    required TrackId trackId,
+    required List<LayerId> order,
+  }) => _tracks.setTrackSeOrder(trackId: trackId, order: order);
 
   void renameLayer({
     required CutId cutId,
@@ -955,125 +951,6 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Replaces a layer's transform track; one undo step, no-op when
-  /// unchanged. Camera layers keep their own track on the cut (the camera
-  /// panel/lanes edit that one).
-  void updateLayerTransformTrack({
-    required CutId cutId,
-    required LayerId layerId,
-    required TransformTrack transformTrack,
-    String description = 'Edit layer transform',
-  }) {
-    // Anywhere lookup, like the name tag above — SE rows are TRACK
-    // fixtures and the cut-scoped read throws for them, which is what
-    // stood between R5 #8's converted lane edits and the project.
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    if (!layerKindHasLayerTransform(layer.kind)) {
-      throw StateError(
-        'The camera layer transforms through the cut camera track.',
-      );
-    }
-    if (layer.transformTrack == transformTrack) {
-      return;
-    }
-
-    // "Same name, same value": a named key MOVED by this write drags every
-    // other key of that name along — here and in the 겸용 siblings, whose
-    // transform lanes are otherwise entirely their own ("레인만 각자").
-    // This is the ONLY way a transform number crosses cuts.
-    final changes = transformNamedKeyChanges(
-      layer.transformTrack,
-      transformTrack,
-    );
-    final commands = <Command>[
-      UpdateLayerTransformCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        transformTrack: transformTrackWithNamedValues(transformTrack, changes),
-        description: description,
-      ),
-    ];
-    if (!changes.isEmpty) {
-      final project = repository.requireProject();
-      for (final target in linkMirrorTargets(
-        project,
-        cutId: cutId,
-        layerId: layerId,
-      )) {
-        if (target.cutId == cutId && target.layerId == layerId) {
-          continue;
-        }
-        final sibling = requireLayerAnywhere(project, target.layerId);
-        final next = transformTrackWithNamedValues(
-          sibling.transformTrack,
-          changes,
-        );
-        if (next == sibling.transformTrack) {
-          continue;
-        }
-        commands.add(
-          UpdateLayerTransformCommand(
-            repository: repository,
-            cutId: target.cutId,
-            layerId: target.layerId,
-            transformTrack: next,
-            description: description,
-          ),
-        );
-      }
-    }
-
-    historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
-    );
-  }
-
-  /// The transform track that ALREADY holds [name] in [property]'s lane,
-  /// anywhere in this row's naming space — the row itself AND its 겸용
-  /// siblings. Null when the name is free, which is what tells a rename it
-  /// can simply apply.
-  ///
-  /// The space is keyed by the LINK GROUP because a transform has no
-  /// equivalent of the effect id that carries an FX naming space across
-  /// cuts: sibling rows are different [LayerId]s holding the same part, and
-  /// [linkMirrorTargets] is exactly that group. Returning the TRACK rather
-  /// than a bool lets the joining key adopt from it — the two questions a
-  /// rename asks have one answer.
-  TransformTrack? transformTrackHoldingName({
-    required CutId cutId,
-    required LayerId layerId,
-    required TransformPropertyId property,
-    required String name,
-    Set<int> excludeFramesOnSource = const {},
-  }) {
-    final project = repository.requireProject();
-    for (final target in linkMirrorTargets(
-      project,
-      cutId: cutId,
-      layerId: layerId,
-    )) {
-      final isSource = target.cutId == cutId && target.layerId == layerId;
-      final track = requireLayerAnywhere(
-        project,
-        target.layerId,
-      ).transformTrack;
-      if (transformLaneUsesName(
-        track,
-        property,
-        name,
-        // Only the SOURCE row holds the keys a range rename is naming; a
-        // sibling's keys are all "somewhere else" by construction.
-        excludeFrames: isSource ? excludeFramesOnSource : const {},
-      )) {
-        return track;
-      }
-    }
-    return null;
-  }
-
   /// Replaces a layer's EFFECT CHAIN (R6); one undo step, no-op when
   /// unchanged.
   ///
@@ -1448,21 +1325,6 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Resequences a track's SE rows. They live on the TRACK, so no cut and
-  /// no mirror is involved — the order is the whole placement.
-  void setTrackSeOrder({
-    required TrackId trackId,
-    required List<LayerId> order,
-  }) {
-    historyManager.execute(
-      SetTrackSeOrderCommand(
-        repository: repository,
-        trackId: trackId,
-        order: order,
-      ),
-    );
-  }
-
   /// The value [name] ALREADY holds in one effect parameter's whole naming
   /// space — this row AND its 겸용 siblings — or null when the name is free
   /// and a rename can simply apply.
@@ -1748,12 +1610,4 @@ class CutCommandCoordinator {
     return requireCut(repository.requireProject(), cutId);
   }
 
-  Track _requireTrack(TrackId trackId) {
-    for (final track in repository.requireProject().tracks) {
-      if (track.id == trackId) {
-        return track;
-      }
-    }
-    throw StateError('Track not found: $trackId');
-  }
 }

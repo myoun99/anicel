@@ -272,7 +272,8 @@ class _CutCommands {
     required int newIndex,
   }) {
     final cuts = [
-      for (final cut in _coordinator._requireTrack(trackId).cuts) cut.id,
+      for (final cut in _coordinator._tracks._requireTrack(trackId).cuts)
+        cut.id,
     ];
     final oldIndex = cuts.indexOf(cutId);
     if (oldIndex == -1) {
