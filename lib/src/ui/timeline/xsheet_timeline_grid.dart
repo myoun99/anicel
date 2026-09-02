@@ -72,6 +72,7 @@ import 'timeline_swipe_columns.dart';
 part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
+part 'xsheet_grid/xsheet_grid_columns.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -241,42 +242,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   // library). The State keeps the entry points its build tree calls.
   late final _XSheetGridHeaders _headers = _XSheetGridHeaders(this);
 
-  /// The layer column at a strip-local x — the x-sheet's answer to the
-  /// rail's "which row is under the press".
-  ///
-  /// 🚨A DIVISION, not a walk: every column header is one
-  /// [TimelineGridMetrics.layerRowHeight] wide, lane columns included, so
-  /// the pitch is uniform. The vertical rail has to walk its rows because
-  /// theirs are not.
-  ///
-  /// A LANE column answers null, exactly as the rail's lane rows do: it
-  /// carries none of these toggles, so there is nothing for a sweep to
-  /// paint on it.
-  RailSwipeRow<TimelineDisplayRow>? _columnAtX(
-    double alongX,
-    List<TimelineDisplayRow> entries,
-  ) {
-    if (alongX < 0) {
-      return null;
-    }
-    final index = alongX ~/ _metrics.layerRowHeight;
-    if (index < 0 || index >= entries.length) {
-      return null;
-    }
-    final entry = entries[index];
-    return (row: entry, depth: entry.depth, id: entry.address);
-  }
-
-  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
-  /// laid on the header's own extent: the rail's row width turned on its side
-  /// (the slot skeleton lays these cells with `axis: Axis.vertical`, so a
-  /// slot's WIDTH is its height here).
-  List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
-      timelineSwipeColumns(
-        hooks: widget.hooks,
-        crossExtent: _headers.naturalHeaderExtent,
-        leadingOrigin: 0,
-      );
+  // ── the columns: their own object, in their own file ────────────────
+  //
+  // A collaborator (timeline/xsheet_grid/xsheet_grid_columns.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _XSheetGridColumns _columns = _XSheetGridColumns(this);
 
   // ── the frame scroll: its own object, in its own file ───────────────
   //
@@ -463,135 +433,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The display entries of the pass in flight, for the drag's row → slot
   /// conversion (see [effectHeaderRowsOf]).
   List<TimelineDisplayRow> _dragRows = const [];
-
-  Widget _gatedColumn(
-    TimelineDisplayRow entry,
-    TimelineVisibleRange frameRange,
-    TimelineVirtualizationPlan plan,
-    double viewportExtent,
-  ) {
-    return RepaintBoundary(
-      key: ValueKey<String>(
-        'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
-      ),
-      child: TimelineDragPreviewRowGate(
-        dragPreview: widget.hooks.dragPreview,
-        layer: entry.layer,
-        rowBuilder: (context, layer) =>
-            _columnFor(entry, layer, frameRange, plan, viewportExtent),
-      ),
-    );
-  }
-
-  Widget _columnFor(
-    TimelineDisplayRow entry,
-    Layer layer,
-    TimelineVisibleRange frameRange,
-    TimelineVirtualizationPlan plan,
-    double viewportExtent,
-  ) {
-    // Recorded for the window, which is recomputed on bucket crossings —
-    // outside any build.
-    _frameViewportExtent = viewportExtent;
-    if (entry.isLane) {
-      return laneIsSeAudio(entry.lane!)
-          ? SeAudioLaneFrameRow(
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-              layer: layer,
-              frameStartIndex: frameRange.startIndex,
-              frameEndIndexExclusive: frameRange.endIndexExclusive,
-              leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
-              trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
-              metrics: _metrics,
-              frameRate: widget.hooks.projectFrameRate,
-              audioPeaksFor: widget.hooks.audioPeaksFor,
-              onSetClipOffset: widget.hooks.audioLane?.onSetClipOffset == null
-                  ? null
-                  : (clipIndex, offsetFrames) =>
-                        widget.hooks.audioLane!.onSetClipOffset!(
-                          entry.layer.id,
-                          clipIndex,
-                          offsetFrames,
-                        ),
-              offsetDrag: widget.hooks.audioLane?.offsetDrag,
-              onSetClipFades: widget.hooks.audioLane?.onSetClipFades == null
-                  ? null
-                  : (clipIndex, fadeIn, fadeOut) =>
-                        widget.hooks.audioLane!.onSetClipFades!(
-                          entry.layer.id,
-                          clipIndex,
-                          fadeIn,
-                          fadeOut,
-                        ),
-            )
-          : TimelineLaneFrameRow(
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-              // F-25, transposed: the sheet's lane COLUMN lights with its
-              // header, same law one axis over.
-              currentRow: widget.hooks.currentRowHooks?.currentRow,
-              layer: layer,
-              // R10: the previewed lane while a key drag is in flight —
-              // the same re-derivation the horizontal body does.
-              lane: previewedLaneRow(
-                row: entry,
-                previewLayer: layer,
-                lanesForLayer: _lanesFor,
-              ),
-              frameStartIndex: frameRange.startIndex,
-              frameEndIndexExclusive: frameRange.endIndexExclusive,
-              leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
-              trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
-              metrics: _metrics,
-              // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
-              // lanes now, camera included (2026-08-08; see the rail's
-              // twin for why it stood down and why the reason was wrong).
-              // Through the B4-④ escalation wrap, like the horizontal grid.
-              laneRange: _laneRange,
-            );
-    }
-    // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column
-    // gets FULL bounds — its painter windows itself off the quantized
-    // bucket (repaint per span crossing), so the bucket pass diffs
-    // identical params and records nothing; the sparse widget-cell kinds
-    // re-window internally under the same bucket.
-    return TimelineFrameCellsRow(
-      axis: Axis.vertical,
-      keyPrefix: 'xsheet',
-      onActivateCell: widget.hooks.onActivateCell,
-      instructionDefById: widget.hooks.instructionDefById,
-      instructionCrossingTooltip: widget.hooks.instructionCrossingTooltip,
-      audioPeaksFor: widget.hooks.audioPeaksFor,
-      projectFrameRate: widget.hooks.projectFrameRate,
-      showSeconds: widget.hooks.showSeconds,
-      audioLane: widget.hooks.audioLane,
-      onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
-      seClipMarkerTooltip: widget.hooks.seClipMarkerTooltip,
-      seSpillsIn: widget.hooks.seSpillInLayerIds.contains(layer.id),
-      layer: layer,
-      baseLayer: entry.layer,
-      active: entry.layer.id == widget.hooks.activeLayerId,
-      playbackFrameCount: widget.hooks.playbackFrameCount,
-      geometry: _frameScroll.publishFrameGeometry(layer.kind),
-      crossAxisExtent: _metrics.layerRowHeight,
-      windowBucket: _frameWindowBucket,
-      viewportMainExtent: viewportExtent,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
-      frameNameForLayer: widget.hooks.frameNameForLayer,
-      celContent: widget.hooks.celContent,
-      onSelectLayer: widget.hooks.onSelectLayer,
-      onSelectFrame: widget.hooks.onSelectFrame,
-      onSettledPress: widget.hooks.onSettledPress,
-      commaDrag: widget.hooks.commaDrag,
-      rangeGesture: _rangeGesture,
-      runEdit: widget.hooks.runEdit,
-      substrateGeneration: widget.hooks.substrateGeneration,
-      // The CAMERA column's union key markers (B4) — the shared lane key
-      // marker code, resolved per rebuild like the lanes are.
-      unionLane: widget.hooks.unionLaneForLayer?.call(layer),
-    );
-  }
 
   /// The cells-family drag callbacks for this pass, or null when the
   /// host wired none — the transposed twin of the layer grid's. It also
@@ -829,7 +670,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               // film stops stated over everything (the user's layer order).
               return TimelineFrameGridStack(
                 axis: Axis.vertical,
-                rowsBody: _buildColumns(entries, plan, bodyViewportHeight),
+                rowsBody: _columns.buildColumns(entries, plan, bodyViewportHeight),
                 beatLines: _buildBeatLines(colorScheme),
                 playheadExtent: geometry.totalFrameContentHeight,
                 playhead: _buildCursorLayer(entries, plan),
@@ -843,29 +684,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           ),
         ),
       ),
-    );
-  }
-
-  /// One column per display row. A RepaintBoundary per column (mirrors the
-  /// horizontal rows): the cursor layer repaints alone on ticks. The gate
-  /// inside makes an edge-drag step rebuild exactly the dragged layer's
-  /// column.
-  Widget _buildColumns(
-    List<TimelineDisplayRow> entries,
-    TimelineVirtualizationPlan plan,
-    double bodyViewportHeight,
-  ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var index = 0; index < entries.length; index += 1)
-          _gatedColumn(
-            entries[index],
-            plan.frameRange,
-            plan,
-            bodyViewportHeight,
-          ),
-      ],
     );
   }
 
@@ -961,8 +779,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         // ACROSS the layer columns instead of down the rows.
                         RailColumnSwipe<TimelineDisplayRow>(
                           axis: Axis.horizontal,
-                          columns: _swipeColumns(),
-                          rowAt: (along) => _columnAtX(along, entries),
+                          columns: _columns.swipeColumns(),
+                          rowAt: (along) => _columns.columnAtX(along, entries),
                           child: Row(
                             children: [
                               for (
