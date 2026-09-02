@@ -251,7 +251,7 @@ void main() {
         (3, 3): [0x00, 0x00, 0xFF, 0xFF],
       });
       final stack = cut([layer('bottom'), layer('top')]);
-      BitmapSurface? resolve(layer, _) =>
+      BitmapSurface? resolve(Layer layer, Object? _) =>
           layer.id.value == 'bottom' ? red : blue;
 
       // Display: the top layer wins, as it does on screen.

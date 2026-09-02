@@ -43,7 +43,7 @@ void main() {
   group('buildFfmpegArguments', () {
     test('without audio the command is the original video-only shape', () {
       final args = VideoExportService.buildFfmpegArguments(
-        frameRate: const ProjectFrameRate.integer(24),
+        frameRate: ProjectFrameRate.fps24,
         outputFilePath: 'out.mp4',
       );
 
@@ -58,7 +58,7 @@ void main() {
         'no filter graph, aac out (EXPORT-AUDIO — our mixer already did '
         'the mixing)', () {
       final args = VideoExportService.buildFfmpegArguments(
-        frameRate: const ProjectFrameRate.integer(24),
+        frameRate: ProjectFrameRate.fps24,
         outputFilePath: 'out.mp4',
         audioMixPath: 'C:/tmp/mix.wav',
       );
@@ -85,7 +85,7 @@ void main() {
         count: 1,
         renderImage: noImage,
         outputFilePath: 'out.mp4',
-        frameRate: const ProjectFrameRate.integer(24),
+        frameRate: ProjectFrameRate.fps24,
       ),
       throwsA(
         isA<VideoExportException>().having(
@@ -111,7 +111,7 @@ void main() {
         count: 1,
         renderImage: noImage,
         outputFilePath: 'out.mp4',
-        frameRate: const ProjectFrameRate.integer(24),
+        frameRate: ProjectFrameRate.fps24,
       ),
       throwsA(
         isA<VideoExportException>().having(
@@ -133,7 +133,7 @@ void main() {
       count: 5,
       renderImage: noImage,
       outputFilePath: 'out.mp4',
-      frameRate: const ProjectFrameRate.integer(24),
+      frameRate: ProjectFrameRate.fps24,
       isCancelled: () => true,
     );
 
@@ -155,7 +155,7 @@ void main() {
         return noImage(index);
       },
       outputFilePath: 'out.mp4',
-      frameRate: const ProjectFrameRate.integer(24),
+      frameRate: ProjectFrameRate.fps24,
       isCancelled: () => rendered >= 2,
     );
 

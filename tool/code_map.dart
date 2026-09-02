@@ -296,7 +296,7 @@ class CodeMap {
     final String content;
     try {
       content = File(path).readAsStringSync();
-    } catch (e) {
+    } on Object catch (e) {
       unreadable[path] = 'could not read: $e';
       return;
     }
@@ -308,7 +308,7 @@ class CodeMap {
         featureSet: FeatureSet.latestLanguageVersion(),
         throwIfDiagnostics: false,
       );
-    } catch (e) {
+    } on Object catch (e) {
       unreadable[path] = '$e';
       return;
     }

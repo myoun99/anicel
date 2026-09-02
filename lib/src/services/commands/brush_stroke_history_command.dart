@@ -34,9 +34,9 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
   bool _hasCommitted = false;
   bool _committedChanges = false;
 
-  BrushFrameKey? _frameKey;
-  BitmapSurface? _preSurface;
-  BitmapSurface? _postSurface;
+  late BrushFrameKey _frameKey;
+  late BitmapSurface _preSurface;
+  late BitmapSurface _postSurface;
   int _retainedBytes = 0;
 
   /// Diagnostic for the accumulation regression guard.
@@ -53,8 +53,8 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
     if (_hasCommitted) {
       if (_committedChanges) {
         coordinator.restoreSurfaceSnapshot(
-          _frameKey!,
-          _postSurface!,
+          _frameKey,
+          _postSurface,
           cacheInvalidationSink: cacheInvalidationSink,
         );
       }
@@ -93,8 +93,8 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
       return;
     }
     coordinator.restoreSurfaceSnapshot(
-      _frameKey!,
-      _preSurface!,
+      _frameKey,
+      _preSurface,
       cacheInvalidationSink: cacheInvalidationSink,
     );
   }

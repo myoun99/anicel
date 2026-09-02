@@ -17,20 +17,20 @@ void main() {
       // grid, the 6f lines and the sheet rows are untouched by the rate.
       expect(
         const ProjectFrameRate.ntsc(24).countingBase,
-        const ProjectFrameRate.integer(24).countingBase,
+        ProjectFrameRate.fps24.countingBase,
       );
       expect(const ProjectFrameRate.ntsc(30).countingBase, 30);
     });
 
     test('labels read the way an editor writes them', () {
-      expect(const ProjectFrameRate.integer(24).label, '24 fps');
+      expect(ProjectFrameRate.fps24.label, '24 fps');
       expect(const ProjectFrameRate.ntsc(24).label, '23.976 fps');
       expect(const ProjectFrameRate.ntsc(30).label, '29.97 fps');
       expect(const ProjectFrameRate.ntsc(60).label, '59.94 fps');
     });
 
     test('ffmpeg gets the fraction it understands', () {
-      expect(const ProjectFrameRate.integer(24).ffmpegRateArgument, '24');
+      expect(ProjectFrameRate.fps24.ffmpegRateArgument, '24');
       expect(
         const ProjectFrameRate.ntsc(24).ffmpegRateArgument,
         '24000/1001',
@@ -40,7 +40,7 @@ void main() {
 
   group('frames to samples', () {
     test('is exact at 48kHz', () {
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       expect(rate.frameToSample(0, 48000), 0);
       expect(rate.frameToSample(1, 48000), 2000);
       expect(rate.frameToSample(24, 48000), 48000);
@@ -76,7 +76,7 @@ void main() {
 
     test('round trips every frame of a long run', () {
       for (final rate in const [
-        ProjectFrameRate.integer(24),
+        ProjectFrameRate.fps24,
         ProjectFrameRate.ntsc(24),
         ProjectFrameRate.integer(30),
         ProjectFrameRate.ntsc(30),
@@ -97,14 +97,14 @@ void main() {
       // The old `.ceil()` on `2.0 * 24` saw 48.000000000000004 and
       // invented a 49th frame. From an exact ratio there is nothing to
       // round.
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       // 2 seconds expressed as 80 buckets at 40 buckets/second.
       expect(rate.framesCoveringExactSeconds(80, 40), 48);
       expect(rate.framesCoveringSeconds(2.0), 48);
     });
 
     test('a partial frame still rounds up — audio is never truncated', () {
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       // 2.01 seconds = 48.24 frames: the 49th frame has audio in it.
       expect(rate.framesCoveringSeconds(2.01), 49);
       // 81 buckets at 40/s = 2.025s = 48.6 frames.
@@ -112,14 +112,14 @@ void main() {
     });
 
     test('float noise does not buy a frame the file does not have', () {
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       expect(rate.framesCoveringSeconds(1.0), 24);
       expect(rate.framesCoveringSeconds(0.5), 12);
       expect(rate.framesCoveringSeconds(3.0), 72);
     });
 
     test('empty and nonsense inputs stay at zero', () {
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       expect(rate.framesCoveringSeconds(0), 0);
       expect(rate.framesCoveringSeconds(-1), 0);
       expect(rate.framesCoveringSeconds(double.nan), 0);
@@ -129,7 +129,7 @@ void main() {
 
   group('frames to time', () {
     test('frame starts are exact at 24', () {
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       expect(rate.frameStart(0), Duration.zero);
       expect(rate.frameStart(24), const Duration(seconds: 1));
       expect(rate.frameStartSeconds(12), 0.5);
@@ -143,7 +143,7 @@ void main() {
     });
 
     test('negative and zero elapsed clamp to frame 0', () {
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       expect(rate.frameAtElapsed(Duration.zero), 0);
       expect(rate.frameAtElapsed(const Duration(seconds: -5)), 0);
     });
@@ -184,7 +184,7 @@ void main() {
     expect(
       ProjectFrameRate.presets,
       containsAll(const [
-        ProjectFrameRate.integer(24),
+        ProjectFrameRate.fps24,
         ProjectFrameRate.ntsc(24),
         ProjectFrameRate.integer(30),
         ProjectFrameRate.ntsc(30),

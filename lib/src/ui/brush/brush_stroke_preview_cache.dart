@@ -69,7 +69,7 @@ class BrushStrokePreviewCache {
       return Future<ui.Image>.value(cached);
     }
     return _pending[key] ??= _rasterize(settings, width, height).then((image) {
-      _pending.remove(key);
+      unawaited(_pending.remove(key));
       _images[key] = image;
       while (_images.length > capacity) {
         // Callers hold clones (the contract above), so disposing the

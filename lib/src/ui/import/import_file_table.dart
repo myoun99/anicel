@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -400,7 +401,7 @@ void _openColumnPopup(
   required Object? current,
 }) {
   final rows = column.values;
-  showAnchoredPopup<void>(
+  unawaited(showAnchoredPopup<void>(
     context,
     label: column.label,
     width: 132,
@@ -421,7 +422,7 @@ void _openColumnPopup(
           ),
       ],
     ),
-  );
+  ));
 }
 
 class _PopupRow extends StatelessWidget {

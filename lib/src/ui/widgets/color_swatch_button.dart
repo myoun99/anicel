@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -308,7 +309,7 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
             ? null
             : () {
                 onNone();
-                Navigator.of(context).maybePop();
+                unawaited(Navigator.of(context).maybePop());
               },
       ),
     );

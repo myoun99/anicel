@@ -108,7 +108,7 @@ class ProjectAutosaveService {
     _writing = true;
     try {
       await writeSnapshot(autosavePath());
-    } catch (_) {
+    } on Object catch (_) {
       // Swallowed by design; the next trigger retries.
     } finally {
       _writing = false;
@@ -152,7 +152,7 @@ class ProjectAutosaveService {
       if (file.existsSync()) {
         file.deleteSync();
       }
-    } catch (_) {
+    } on Object catch (_) {
       // A locked sidecar (cloud sync mid-upload) is harmless — recovery
       // compares timestamps.
     }
@@ -248,7 +248,7 @@ class ProjectAutosaveService {
       try {
         entity.deleteSync();
         swept += 1;
-      } catch (_) {
+      } on Object catch (_) {
         // Locked by a sync client or an open handle: next launch retries.
       }
     }

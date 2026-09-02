@@ -258,7 +258,7 @@ void main() {
       expect(duration.numerator, 96000);
       expect(duration.denominator, 48000);
 
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       expect(
         rate.framesCoveringExactSeconds(
           duration.numerator,
@@ -278,7 +278,7 @@ void main() {
         ),
       );
       expect(decoded.length, 96000, reason: '2 seconds of stereo');
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       final duration = decoded.durationSeconds;
       expect(
         rate.framesCoveringExactSeconds(

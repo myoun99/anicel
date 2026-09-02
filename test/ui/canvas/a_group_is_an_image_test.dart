@@ -491,7 +491,7 @@ void main() {
                   viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
                   activeSurfacePainter: inkedPage(),
                   paintPaper: true,
-                  paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                  paperBackground: ProjectBackground.defaultBackground,
                   debugDisableSingleBuffer: directWalk,
                 ),
               ),

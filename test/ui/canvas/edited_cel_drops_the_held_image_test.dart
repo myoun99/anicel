@@ -68,7 +68,7 @@ void main() {
   tearDown(() {
     try {
       tempDir.deleteSync(recursive: true);
-    } catch (_) {}
+    } on Object catch (_) {}
   });
 
   BitmapSurface filledSurface({

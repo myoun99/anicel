@@ -26,9 +26,12 @@ void main() {
         : parsed.clips.firstWhere((c) => c.name == clipName);
     final converted = convertTvppClip(clip, clipIndex: 0).result;
 
-    final oracle = (jsonDecode(File(json).readAsStringSync())
-            as Map<String, dynamic>)['project']['clip']['camera']['positions']
-        as List<dynamic>;
+    final decoded =
+        jsonDecode(File(json).readAsStringSync()) as Map<String, dynamic>;
+    final project = decoded['project'] as Map<String, dynamic>;
+    final clipJson = project['clip'] as Map<String, dynamic>;
+    final camera = clipJson['camera'] as Map<String, dynamic>;
+    final oracle = camera['positions'] as List<dynamic>;
     expect(converted.camera.positions, hasLength(oracle.length),
         reason: 'one baked pose per frame');
 

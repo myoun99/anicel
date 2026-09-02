@@ -13,17 +13,36 @@ linter:
   # Round 2 of the audit (2026-09-03) measured every well-known lint outside
   # the Flutter set and turned on the ones that guard a decision rather than
   # a style: each rule below was either already clean or was fixed first,
-  # so `flutter analyze` — already the merge gate — graduates it. Rules left
-  # off on purpose: directives_ordering, cascade_invocations,
-  # prefer_expression_function_bodies, sort_constructors_first,
-  # prefer_int_literals, avoid_escaping_inner_quotes,
-  # avoid_redundant_argument_values (style churn across thousands of lines,
-  # no decision guarded), prefer_foreach (the opposite of this codebase's
-  # loop style), avoid_slow_async_io and avoid_classes_with_only_static_members
-  # (design choices made elsewhere).
+  # so `flutter analyze` — already the merge gate — graduates it.
+  #
+  # Left off on purpose:
+  # - directives_ordering, cascade_invocations,
+  #   prefer_expression_function_bodies, sort_constructors_first,
+  #   prefer_int_literals, avoid_escaping_inner_quotes,
+  #   avoid_redundant_argument_values: style churn across thousands of
+  #   lines, no decision guarded.
+  # - prefer_foreach: the opposite of this codebase's loop style.
+  # - avoid_slow_async_io, avoid_classes_with_only_static_members: design
+  #   choices made elsewhere (the AppX namespaces are deliberate).
+  # - use_setters_to_change_properties: the flagged methods are callbacks
+  #   (a setter cannot be passed as one).
+  # - matching_super_parameters: it fights use_super_parameters on
+  #   ValueNotifier's `_value`.
+  # - unnecessary_statements: its five sites are the native lane's
+  #   late-field warm-ups, which are statements on purpose.
+  # - avoid_positional_boolean_parameters: most sites are single-bool
+  #   callbacks in the Flutter shape (`void Function(bool)`), which the rule
+  #   cannot tell from an API taking a flag.
+  # - parameter_assignments: the sites normalise their argument
+  #   (`key = _canonicalize(key)`), a deliberate idiom.
+  # - no_adjacent_strings_in_list: the sites are intentional multi-line
+  #   strings inside lists; splitting them with `+` would violate
+  #   prefer_adjacent_string_concatenation from the core set.
   rules:
     - avoid_annotating_with_dynamic
     - avoid_bool_literals_in_conditional_expressions
+    - avoid_catches_without_on_clauses
+    - avoid_dynamic_calls
     - avoid_field_initializers_in_const_classes
     - avoid_implementing_value_types
     - avoid_multiple_declarations_per_line
@@ -34,6 +53,7 @@ linter:
     - combinators_ordering
     - dangling_library_doc_comments
     - deprecated_consistency
+    - discarded_futures
     - eol_at_end_of_file
     - implicit_call_tearoffs
     - join_return_with_assignment
@@ -70,6 +90,8 @@ linter:
     - use_colored_box
     - use_decorated_box
     - use_enums
+    - use_late_for_private_fields_and_variables
+    - use_named_constants
     - use_string_buffers
     - use_super_parameters
 

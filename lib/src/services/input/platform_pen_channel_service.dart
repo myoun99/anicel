@@ -79,7 +79,7 @@ class PlatformPenChannelService {
   }
 
   void stop() {
-    _subscription?.cancel();
+    unawaited(_subscription?.cancel());
     _subscription = null;
     latest.value = null;
     _lastSampleAt = DateTime.fromMillisecondsSinceEpoch(0);

@@ -164,7 +164,7 @@ void main() {
         currentFrameIndex: currentFrameIndex,
         playbackFrameCount: 30,
         leadingFrameSpacerWidth: 0,
-        metrics: const TimelineGridMetrics(frameCellWidth: 24),
+        metrics: TimelineGridMetrics.defaults,
         colorScheme: scheme,
       ).paint(spy, const Size(24 * 30, 28));
       return spy;
@@ -191,7 +191,7 @@ void main() {
         currentFrameIndex: 6,
         playbackFrameCount: 30,
         leadingFrameSpacerWidth: 0,
-        metrics: const TimelineGridMetrics(frameCellWidth: 24),
+        metrics: TimelineGridMetrics.defaults,
         colorScheme: scheme,
       ).headerModelAt(6).background;
       expect(
@@ -230,7 +230,7 @@ void main() {
       currentFrameIndex: -1,
       playbackFrameCount: 30,
       leadingFrameSpacerWidth: 0,
-      metrics: const TimelineGridMetrics(frameCellWidth: 24),
+      metrics: TimelineGridMetrics.defaults,
       colorScheme: scheme,
     ).paint(ruler, const Size(24 * 30, 28));
 

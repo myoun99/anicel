@@ -50,9 +50,7 @@ void main() {
   });
 
   test('one finger DRAWS: the finger edits instead (결정 10)', () {
-    AppInput.settings.value = const AppInputSettings(
-      touchDragOneFinger: CanvasTouchDragAction.draw,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     expect(AppInput.touchDraws, isTrue, reason: 'presence first');
     expect(
       touchEdits(),
@@ -86,18 +84,14 @@ void main() {
         reason: 'on $platform the STORED mode says navigate, so a finger '
             'navigates — no platform gets to override it',
       );
-      AppInput.settings.value = const AppInputSettings(
-        touchDragOneFinger: CanvasTouchDragAction.draw,
-      );
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
       expect(AppInput.touchDraws, isTrue, reason: 'and draw means draw');
     }
     debugDefaultTargetPlatformOverride = null;
   });
 
   test('⛔the canvas is a different question and keeps its own answer', () {
-    AppInput.settings.value = const AppInputSettings(
-      touchDragOneFinger: CanvasTouchDragAction.draw,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     expect(
       AppInput.toolPointerDevices,
       isNull,

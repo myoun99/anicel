@@ -285,7 +285,7 @@ class BrushPresetLibrary extends ChangeNotifier {
     final BrushFilePick? pick;
     try {
       pick = await _filePicker();
-    } catch (error) {
+    } on Object catch (error) {
       return 'Could not open the file: $error';
     }
     if (pick == null || _disposed) {

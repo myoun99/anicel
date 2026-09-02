@@ -46,7 +46,7 @@ class DeferredImageDisposer {
     final SchedulerBinding binding;
     try {
       binding = SchedulerBinding.instance;
-    } catch (_) {
+    } on Object catch (_) {
       image.dispose();
       return;
     }

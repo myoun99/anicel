@@ -85,7 +85,7 @@ class ColorPaletteFileService {
         return const ColorPaletteState();
       }
       return ColorPaletteState.fromJson(decoded);
-    } catch (_) {
+    } on Object catch (_) {
       return const ColorPaletteState();
     }
   }

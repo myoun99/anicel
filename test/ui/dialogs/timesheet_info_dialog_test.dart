@@ -207,7 +207,7 @@ void main() {
     // ⛔The slot is reserved on every row, including the empty ones — a cell
     // that appeared only once a file was chosen would be UI popping into
     // existence and the row would jump the first time anyone used it.
-    await _openDialog(tester, const TimesheetInfo(), (_) {});
+    await _openDialog(tester, TimesheetInfo.empty, (_) {});
     for (final process in LayerProcess.values) {
       final cell = find.byKey(
         ValueKey<String>('timesheet-stamp-${process.jsonValue}'),

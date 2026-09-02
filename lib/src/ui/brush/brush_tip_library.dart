@@ -142,7 +142,7 @@ class BrushTipLibrary extends ChangeNotifier {
     final BrushTipMask mask;
     try {
       mask = await decodeBrushTipImage(bytes, id: id);
-    } catch (_) {
+    } on Object catch (_) {
       return 'That image could not be read as a brush tip.';
     }
     if (!mask.alpha.any((value) => value > 0)) {
@@ -161,7 +161,7 @@ class BrushTipLibrary extends ChangeNotifier {
     final TipImagePick? pick;
     try {
       pick = await _picker();
-    } catch (error) {
+    } on Object catch (error) {
       return 'Could not open the file: $error';
     }
     if (pick == null || _disposed) {
@@ -202,7 +202,7 @@ class BrushTipLibrary extends ChangeNotifier {
   Future<void> _persistIndex() async {
     try {
       await _service.saveIndex(_tips);
-    } catch (_) {
+    } on Object catch (_) {
       // Index persistence must never take the editor down; the in-memory
       // library stays correct until the next successful write.
     }

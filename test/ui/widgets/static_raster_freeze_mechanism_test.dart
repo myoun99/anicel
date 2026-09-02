@@ -43,7 +43,7 @@ class _RenderUnguardedBake extends RenderProxyBox {
   bool get isRepaintBoundary => true;
 
   ui.Image? _raster;
-  Size? _sourceSize;
+  late Size _sourceSize;
   int captures = 0;
 
   @override
@@ -64,7 +64,7 @@ class _RenderUnguardedBake extends RenderProxyBox {
 
     context.canvas.drawImageRect(
       _raster!,
-      Offset.zero & _sourceSize!,
+      Offset.zero & _sourceSize,
       offset & size,
       Paint()..filterQuality = FilterQuality.none,
     );

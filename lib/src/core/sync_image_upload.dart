@@ -43,7 +43,7 @@ ui.Image? uploadImageSync(Uint8List pixels, int width, int height) {
   }
   try {
     return _upload(pixels, width, height);
-  } catch (_) {
+  } on Object catch (_) {
     // The probe said yes and this said no. Stop asking rather than throw
     // on every undrawable coordinate of every paint.
     _supported = false;
@@ -56,7 +56,7 @@ bool _probe() {
   try {
     _upload(Uint8List(4), 1, 1)?.dispose();
     return true;
-  } catch (_) {
+  } on Object catch (_) {
     // A bare String on Skia — not an Exception, so this is deliberately
     // unqualified.
     return false;

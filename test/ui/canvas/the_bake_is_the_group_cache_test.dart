@@ -147,7 +147,7 @@ void main() {
                 viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
                 activeSurfacePainter: livePainter(inkX),
                 paintPaper: true,
-                paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                paperBackground: ProjectBackground.defaultBackground,
               ),
             ),
           ),

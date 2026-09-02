@@ -84,7 +84,7 @@ void main() {
                 viewport: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
                 activeSurfacePainter: inkedPage(),
                 paintPaper: true,
-                paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                paperBackground: ProjectBackground.defaultBackground,
               ),
             ),
           ),

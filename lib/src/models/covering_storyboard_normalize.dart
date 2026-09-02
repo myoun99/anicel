@@ -1,5 +1,6 @@
 import 'cut.dart';
 import 'layer.dart';
+import 'timeline_exposure.dart';
 import 'layer_kind.dart';
 import 'storyboard_coverage.dart';
 
@@ -66,7 +67,7 @@ bool _hasDivisionOutsideCut(Layer layer, int cutDuration) {
   return false;
 }
 
-bool _sameTiling(Map<int, dynamic> filled, Layer layer) {
+bool _sameTiling(Map<int, TimelineExposure> filled, Layer layer) {
   if (filled.length != layer.timeline.length) {
     return false;
   }

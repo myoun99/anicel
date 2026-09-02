@@ -67,7 +67,7 @@ void main() {
             onLayerMarkSelected: (_, _) {},
             orientation: TimelineOrientation.horizontal,
             onOrientationChanged: (_) {},
-            projectFrameRate: const ProjectFrameRate.integer(24),
+            projectFrameRate: ProjectFrameRate.fps24,
             // Classic zoom: this file's pixel oracles assume 48 px/frame.
             pixelsPerFrame: 48,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
@@ -133,7 +133,7 @@ void main() {
             project: project,
             activeCutId: const CutId('wave-cut'),
             pixelsPerFrame: 8,
-            projectFrameRate: const ProjectFrameRate.integer(24),
+            projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
           ),
         ),

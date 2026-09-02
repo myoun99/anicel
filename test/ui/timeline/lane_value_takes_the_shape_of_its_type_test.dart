@@ -115,7 +115,7 @@ void main() {
             child: TimelineLaneControlsRow(
               layer: layer,
               lane: lane,
-              metrics: const TimelineGridMetrics(),
+              metrics: TimelineGridMetrics.defaults,
               laneEdit: PropertyLaneEditCallbacks(
                 onToggleKeyAt: (_, _, _) {},
                 onSetValue: (_, row, _, input) =>
@@ -178,7 +178,7 @@ void main() {
               child: TimelineLaneControlsRow(
                 layer: layer,
                 lane: lane,
-                metrics: const TimelineGridMetrics(),
+                metrics: TimelineGridMetrics.defaults,
                 laneEdit: PropertyLaneEditCallbacks(
                   onToggleKeyAt: (_, _, _) {},
                   onSetValue: (_, row, _, input) =>

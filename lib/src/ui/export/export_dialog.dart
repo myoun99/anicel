@@ -1476,7 +1476,7 @@ class ExportDialogState extends State<ExportDialog> {
       if (mounted) {
         setState(() => _statusMessage = message);
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (mounted) {
         setState(() => _statusMessage = 'Export failed: $error');
       }
@@ -1647,7 +1647,7 @@ class ExportDialogState extends State<ExportDialog> {
           if (!cancelled) {
             succeeded += 1;
           }
-        } catch (error) {
+        } on Object catch (error) {
           failed += 1;
           _queue.update(
             job.id,

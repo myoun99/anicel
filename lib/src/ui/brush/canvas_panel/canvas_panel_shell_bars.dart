@@ -56,7 +56,7 @@ class _CanvasPanelShellBars {
 
   Widget? _memoRightStripBar;
 
-  Widget? _memoHorizontalStripBar;
+  late Widget _memoHorizontalStripBar;
 
   Widget? _memoBottomBar;
 
@@ -213,7 +213,7 @@ class _CanvasPanelShellBars {
 
   Widget memoizedHorizontalStripBar() {
     _ensureShellBars();
-    return _memoHorizontalStripBar!;
+    return _memoHorizontalStripBar;
   }
 
   Widget memoizedBottomBar() {

@@ -33,11 +33,7 @@ TimelineExposureBlockVisualSegment calculateTimelineExposureBlockVisualSegment({
   required TimelineCellExposureState? next,
 }) {
   if (!current.isCovered) {
-    return const TimelineExposureBlockVisualSegment(
-      kind: TimelineExposureBlockKind.none,
-      continuesFromPrevious: false,
-      continuesToNext: false,
-    );
+    return TimelineExposureBlockVisualSegment.none;
   }
 
   return TimelineExposureBlockVisualSegment(

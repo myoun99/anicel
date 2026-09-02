@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -996,7 +997,7 @@ class _TimelineRowEditChromeLayerState
       case TimelineRowRunTagTarget():
         // The flyout opens on POINTER DOWN (UI-R10 #2).
         _tagPan.addPointer(event);
-        _openModeFlyout(target);
+        unawaited(_openModeFlyout(target));
     }
   }
 

@@ -321,26 +321,26 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       case _BrushPresetMenuAction.toggleRailName:
         setState(() => _railShowName = !_railShowName);
       case _BrushPresetMenuAction.newGroup:
-        _createGroup();
+        unawaited(_createGroup());
       case _BrushPresetMenuAction.renameGroup:
         final group = _openGroup;
         if (group != null) {
-          _editGroup(group);
+          unawaited(_editGroup(group));
         }
       case _BrushPresetMenuAction.deleteGroup:
         final group = _openGroup;
         if (group != null) {
-          _deleteGroup(group);
+          unawaited(_deleteGroup(group));
         }
       case _BrushPresetMenuAction.rename:
-        _renameSelectedPreset();
+        unawaited(_renameSelectedPreset());
       case _BrushPresetMenuAction.delete:
         final selectedId = widget.selectedPresetId;
         if (selectedId != null) {
           widget.onPresetDeleted!(selectedId);
         }
       case _BrushPresetMenuAction.reset:
-        _resetLibrary();
+        unawaited(_resetLibrary());
     }
   }
 

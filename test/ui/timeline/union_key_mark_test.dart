@@ -16,7 +16,7 @@ void main() {
     frames: const [],
   );
 
-  const metrics = TimelineGridMetrics(frameCellWidth: 24);
+  const metrics = TimelineGridMetrics.defaults;
 
   const member = PropertyLaneRow(
     laneId: 'position',

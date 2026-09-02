@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../text/vertical_writing_text.dart';
@@ -232,7 +233,7 @@ Future<void> showPanelFlyout(
                 open.value = null;
                 // The parent list goes with it: the level you answered is
                 // not a level you want to be left staring at.
-                Navigator.of(anchorContext).maybePop();
+                unawaited(Navigator.of(anchorContext).maybePop());
               },
             ),
     ),

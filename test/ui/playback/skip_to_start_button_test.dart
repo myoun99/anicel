@@ -47,7 +47,7 @@ Project _project({required int firstCutLeadingGap}) => Project(
   ],
 );
 
-Future<dynamic> _pumpStoryboard(
+Future<EditorSessionManager> _pumpStoryboard(
   WidgetTester tester, {
   required int firstCutLeadingGap,
 }) async {

@@ -1101,7 +1101,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         showSeconds: true,
-        projectFrameRate: const ProjectFrameRate.integer(24),
+        projectFrameRate: ProjectFrameRate.fps24,
       );
       expect(requireCutBlock(tester, 'cut-b').total, '2+0');
     });
@@ -1840,7 +1840,7 @@ Future<void> _pumpStoryboardPanel(
   StoryboardThumbnailResolver? thumbnailFor,
   double pixelsPerFrame = 8,
   bool showSeconds = false,
-  ProjectFrameRate projectFrameRate = const ProjectFrameRate.integer(24),
+  ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
 }) async {
   // The rail matches the timeline's — 372 in UI-R5, 434 since the user
   // unified the two widths (2026-08-04) — so the surface must stay wide

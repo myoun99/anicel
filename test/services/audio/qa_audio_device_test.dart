@@ -375,7 +375,7 @@ void main() {
     test('the picture is pulled forward by the reported latency', () {
       // The position counts what has been HANDED to the device; what is
       // being heard is that minus the buffer still in flight.
-      const rate = ProjectFrameRate.integer(24);
+      const rate = ProjectFrameRate.fps24;
       final frame = audioClockFrame(
         positionSamples: 48000, // one second queued
         latencySamples: 2000,

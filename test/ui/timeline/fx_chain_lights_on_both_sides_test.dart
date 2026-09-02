@@ -55,10 +55,7 @@ void main() {
                 frameEndIndexExclusive: 12,
                 leadingFrameSpacerWidth: 0,
                 trailingFrameSpacerWidth: 0,
-                metrics: const TimelineGridMetrics(
-                  frameCellWidth: 24,
-                  layerRowHeight: 28,
-                ),
+                metrics: TimelineGridMetrics.defaults,
                 currentRow: ValueNotifier<TimelineRowAddress?>(standing),
               ),
             ),

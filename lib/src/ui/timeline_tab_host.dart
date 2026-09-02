@@ -515,11 +515,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// session notify. Same source + same overlay state = the SAME copy.
   Layer? _cameraCopySource;
   bool? _cameraCopyVisible;
-  Layer? _cameraCopy;
+  late Layer _cameraCopy;
 
   Layer _cameraDisplayLayer(Layer layer, bool visible) {
     if (identical(_cameraCopySource, layer) && _cameraCopyVisible == visible) {
-      return _cameraCopy!;
+      return _cameraCopy;
     }
     final copy = layer.copyWith(isVisible: visible);
     _cameraCopySource = layer;

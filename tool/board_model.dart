@@ -32,7 +32,7 @@ String originOfId(String id, File records) {
       if (json is! Map || json['id'] != id) continue;
       final of = '${json['of'] ?? ''}'.trim();
       if (of.isNotEmpty) return of;
-    } catch (_) {
+    } on Object catch (_) {
       continue;
     }
   }
@@ -290,7 +290,7 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
     Map<String, dynamic> json;
     try {
       json = jsonDecode(trimmed) as Map<String, dynamic>;
-    } catch (_) {
+    } on Object catch (_) {
       stderr.writeln('board: line $lineNo is not valid JSON, skipped');
       bad.add(lineNo);
       continue;

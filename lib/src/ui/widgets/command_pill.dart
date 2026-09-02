@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -208,7 +209,7 @@ class PillNameCell extends StatelessWidget {
         if (entries.isEmpty) {
           return;
         }
-        showPanelFlyout(context, entries: entries);
+        unawaited(showPanelFlyout(context, entries: entries));
       },
       child: Material(
         color: Colors.transparent,

@@ -69,7 +69,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
   /// and redo restores the post SURFACE instead (same retention
   /// discipline as BrushStrokeHistoryCommand).
   BrushDab? _stampDab;
-  BitmapSurface? _postSurface;
+  late BitmapSurface _postSurface;
   bool _landed = false;
   final int _retainedBytes;
 
@@ -84,7 +84,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
     if (_landed) {
       coordinator.restoreSurfaceSnapshot(
         frameKey,
-        _postSurface!,
+        _postSurface,
         cacheInvalidationSink: cacheInvalidationSink,
       );
       restoreRegion?.call(_regionAfter);

@@ -70,7 +70,7 @@ class CreateCutCommand implements Command {
   /// The follower's leading gap before this cut took room out of it, kept so
   /// undo can hand the room back. Null when there is no follower.
   CutId? _absorbedFromCutId;
-  int? _absorbedGapBefore;
+  late int _absorbedGapBefore;
 
   @override
   String get description => 'Create cut ${cut.name}';
@@ -104,7 +104,7 @@ class CreateCutCommand implements Command {
     final absorbedFrom = _absorbedFromCutId;
     if (absorbedFrom != null) {
       final footprint = cut.leadingGapFrames + cut.duration;
-      final remaining = _absorbedGapBefore! - footprint;
+      final remaining = _absorbedGapBefore - footprint;
       repository.updateCutLeadingGap(
         cutId: absorbedFrom,
         leadingGapFrames: remaining < 0 ? 0 : remaining,
@@ -136,7 +136,7 @@ class CreateCutCommand implements Command {
     if (absorbedFrom != null) {
       repository.updateCutLeadingGap(
         cutId: absorbedFrom,
-        leadingGapFrames: _absorbedGapBefore!,
+        leadingGapFrames: _absorbedGapBefore,
       );
     }
     editingSession.setActiveCutId(previousActiveCutId);

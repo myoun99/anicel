@@ -71,7 +71,7 @@ import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 /// never renders, so there is nothing there to be byte-equal to.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  const background = ProjectBackground.color(0xFFFFFFFF);
+  const background = ProjectBackground.defaultBackground;
   const projectId = ProjectId('project');
   const trackId = TrackId('track');
   const cutId = CutId('cut');

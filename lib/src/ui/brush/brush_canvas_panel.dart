@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui show Image;
 import 'dart:math' as math;
 
@@ -1010,7 +1011,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _paintedIdleRegion = _selectionSeat.idleSelectionRegion;
     final show = _paintedIdleRegion != null;
     if (show && !_idleAnts.isAnimating) {
-      _idleAnts.repeat();
+      unawaited(_idleAnts.repeat());
     } else if (!show && _idleAnts.isAnimating) {
       _idleAnts.stop();
     }

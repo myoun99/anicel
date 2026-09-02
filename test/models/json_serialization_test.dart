@@ -73,7 +73,7 @@ void main() {
         ),
       ],
       createdAt: DateTime.utc(2026, 6, 2),
-      frameRate: const ProjectFrameRate.integer(24),
+      frameRate: ProjectFrameRate.fps24,
     );
 
     final restored = Project.fromJson(project.toJson());

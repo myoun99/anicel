@@ -105,7 +105,7 @@ void main() {
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,
               metrics: TimelineGridMetrics.defaults,
-              frameRate: const ProjectFrameRate.integer(24),
+              frameRate: ProjectFrameRate.fps24,
               audioPeaksFor: (_) => _peaks,
               onSetClipOffset: onSetClipOffset,
               onSetClipFades: onSetClipFades,

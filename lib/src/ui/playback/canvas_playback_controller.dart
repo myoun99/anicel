@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -356,7 +357,9 @@ class CanvasPlaybackController extends ChangeNotifier {
     }
     _ticker?.dispose();
     _baseGlobalFrame = _currentGlobalFrame;
-    _ticker = vsync.createTicker(_onTick)..start();
+    final ticker = vsync.createTicker(_onTick);
+    _ticker = ticker;
+    unawaited(ticker.start());
   }
 
   void _stopTicker() {

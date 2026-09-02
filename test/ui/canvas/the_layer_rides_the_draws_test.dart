@@ -403,7 +403,7 @@ void main() {
                     stampPreview: stampPreview,
                   ),
                   paintPaper: true,
-                  paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                  paperBackground: ProjectBackground.defaultBackground,
                   floatOverlay: floatOverlay,
                 ),
               ),

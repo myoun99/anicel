@@ -35,7 +35,7 @@ class WorkspaceLayoutStore {
         return null;
       }
       return decoded;
-    } catch (_) {
+    } on Object catch (_) {
       // A corrupt layout must not fail the editor: the defaults win and
       // the file is replaced on the next save.
       return null;

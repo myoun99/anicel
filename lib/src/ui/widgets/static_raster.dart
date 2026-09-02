@@ -934,7 +934,7 @@ class RenderStaticRaster extends RenderProxyBox {
     final Matrix4 toGlobal;
     try {
       toGlobal = getTransformTo(null);
-    } catch (_) {
+    } on Object catch (_) {
       return null;
     }
     final uniformScale = _uniformScaleOf(toGlobal);

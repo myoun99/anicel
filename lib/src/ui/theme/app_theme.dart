@@ -268,10 +268,7 @@ abstract final class AppShapes {
 /// Every popup menu opens INSTANTLY (R4 #2): Material's default grow +
 /// staggered item fade read as entries appearing one by one — pass this to
 /// each `showMenu`/`PopupMenuButton` as `popUpAnimationStyle`.
-const AnimationStyle instantMenuAnimation = AnimationStyle(
-  duration: Duration.zero,
-  reverseDuration: Duration.zero,
-);
+const AnimationStyle instantMenuAnimation = AnimationStyle.noAnimation;
 
 /// THE SUMMONED WINDOW'S SKIN — one definition for every surface the
 /// pointer calls up: menus, flyouts, and the anchored sub-windows.

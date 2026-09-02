@@ -617,7 +617,7 @@ class _HomePageState extends State<HomePage> {
           );
         }
       case EditorActionIds.voiceRecordToggle:
-        toggleVoiceRecordingWithFeedback(context, _session);
+        unawaited(toggleVoiceRecordingWithFeedback(context, _session));
       // While a polygon outline is open, undo/redo take its last vertex
       // back and put it there again (유저 확정). They are NOT document
       // history for that: a trace of twenty taps would otherwise bury the
@@ -742,7 +742,7 @@ class _HomePageState extends State<HomePage> {
         _session.setCommaForSelectionOrCurrent(4);
       case EditorActionIds.timelineCommaN:
         if (_session.canSetCommaForSelectionOrCurrent) {
-          showTimelineCommaCountDialog(context, _session);
+          unawaited(showTimelineCommaCountDialog(context, _session));
         }
     }
   }
@@ -759,7 +759,7 @@ class _HomePageState extends State<HomePage> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) {
-          _confirmSystemExit();
+          unawaited(_confirmSystemExit());
         }
       },
       child: Scaffold(

@@ -149,7 +149,7 @@ void main() {
   group('persistence', () {
     test('round trips through JSON', () {
       for (final settings in const [
-        AudioSyncSettings(),
+        AudioSyncSettings.defaults,
         AudioSyncSettings(offset: 120),
         AudioSyncSettings(offset: -3, unit: AvOffsetUnit.frames),
       ]) {

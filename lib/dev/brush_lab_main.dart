@@ -672,7 +672,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
           '${_contentSummary()}',
         );
       }
-    } catch (error) {
+    } on Object catch (error) {
       _log('fill-roundtrip C ABORT: $error');
     }
 
@@ -698,7 +698,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
         await _settleFrames(30);
         _log('fill-roundtrip B sample#$sample undecoded=${_undecodedCount()}');
       }
-    } catch (error) {
+    } on Object catch (error) {
       _log('fill-roundtrip B ABORT: $error');
     }
 

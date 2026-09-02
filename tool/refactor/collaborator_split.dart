@@ -125,7 +125,7 @@ class _Refs extends RecursiveAstVisitor<void> {
   bool _shadowedByAnEnclosingLambda(SimpleIdentifier node) {
     for (var a = node.parent; a != null; a = a.parent) {
       if (a is FunctionExpression) {
-        final params = a.parameters?.parameters ?? const [];
+        final params = a.parameters?.parameters ?? const <FormalParameter>[];
         if (params.any((p) => p.name?.lexeme == node.name)) return true;
       }
     }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -412,7 +413,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     super.initState();
     _syncActiveStandIn();
     _syncImagesWithCache();
-    _ensureImages();
+    unawaited(_ensureImages());
   }
 
   @override
@@ -438,7 +439,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // would drop it (the activated layer leaves the request set).
     _syncActiveStandIn();
     _syncImagesWithCache();
-    _ensureImages();
+    unawaited(_ensureImages());
   }
 
   /// Arms the stand-in on the activation frame, keeps it while its window
@@ -649,7 +650,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           quality: PlaybackQuality.full,
           sourceEffects: layer.sourceEffects,
         );
-      } catch (error, stack) {
+      } on Object catch (error, stack) {
         _noteFailure(layer.frameKey, error, stack, 'sync sweep');
         continue;
       }
@@ -738,7 +739,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               quality: PlaybackQuality.full,
               sourceEffects: layer.sourceEffects,
             );
-          } catch (error, stack) {
+          } on Object catch (error, stack) {
             if (!mounted) {
               return;
             }

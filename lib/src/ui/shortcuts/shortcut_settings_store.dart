@@ -31,7 +31,7 @@ class ShortcutSettingsStore {
         return null;
       }
       return decoded;
-    } catch (_) {
+    } on Object catch (_) {
       return null;
     }
   }

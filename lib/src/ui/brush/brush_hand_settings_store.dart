@@ -58,7 +58,7 @@ class BrushHandSettingsStore {
                   (entry.value as Map<String, dynamic>)['opacity'] as double?,
             ),
       };
-    } catch (_) {
+    } on Object catch (_) {
       return const {};
     }
   }

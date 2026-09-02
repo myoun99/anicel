@@ -285,7 +285,7 @@ class TimelineGridTileStore {
       return Future<_BakedGlyph?>.value(cached);
     }
     return _glyphBakes[key] ??= _bakeGlyph(text, style, dpr).then((baked) {
-      _glyphBakes.remove(key);
+      unawaited(_glyphBakes.remove(key));
       _glyphs[key] = baked;
       while (_glyphs.length > _glyphCapacity) {
         _glyphs.remove(_glyphs.keys.first);

@@ -410,7 +410,7 @@ void main() {
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,
               totalFrameContentWidth: 24 * 24,
-              metrics: const TimelineGridMetrics(),
+              metrics: TimelineGridMetrics.defaults,
               exposureStateForLayer: stateFor,
               celContent: celContent,
               onSelectLayer: onSelectLayer,

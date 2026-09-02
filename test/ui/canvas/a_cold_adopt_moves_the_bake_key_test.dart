@@ -63,7 +63,7 @@ void main() {
   tearDown(() {
     try {
       dir.deleteSync(recursive: true);
-    } catch (_) {}
+    } on Object catch (_) {}
   });
 
   BrushFrameStore drawnStore() {

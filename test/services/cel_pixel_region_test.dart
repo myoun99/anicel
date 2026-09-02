@@ -12,6 +12,7 @@ import 'package:anicel/src/services/canvas_selection.dart'
     show CanvasSelectionShape;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_region.dart';
+import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 
 void main() {
   const canvas = CanvasSize(width: 1024, height: 512);
@@ -35,7 +36,7 @@ void main() {
       );
 
   /// Everything the walk hands over, in order.
-  List<(TileCoord, Uint8List?)> collect(walk) {
+  List<(TileCoord, Uint8List?)> collect(CelPixelWalk walk) {
     final visited = <(TileCoord, Uint8List?)>[];
     walk((TileCoord coord, Uint8List? mask) {
       // The buffer is reused between tiles, so a test that wants to compare

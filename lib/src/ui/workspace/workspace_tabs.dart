@@ -581,7 +581,7 @@ class _WorkspaceTabs {
                 // keeps the two from disagreeing about which file the
                 // session may read.
                 _state.widget.session.rememberMediaGrants(grants);
-                _state.widget.session.relinkMediaAsset(oldPath, newPath);
+                unawaited(_state.widget.session.relinkMediaAsset(oldPath, newPath));
               },
               // RELINK-2: the loss banner reads the session's cached
               // answer rather than probing the disk per row.

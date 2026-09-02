@@ -39,7 +39,7 @@ void main() {
   }
 
   test('elapsedToGlobalFrame maps wall clock to frames at fps', () {
-    const fps24 = ProjectFrameRate.integer(24);
+    const fps24 = ProjectFrameRate.fps24;
     const fps12 = ProjectFrameRate.integer(12);
     expect(elapsedToGlobalFrame(Duration.zero, fps24), 0);
     expect(elapsedToGlobalFrame(const Duration(milliseconds: 41), fps24), 0);
@@ -64,7 +64,7 @@ void main() {
     // far from zero it is, so we check the clock against the exact frame
     // boundary at the one-hour mark rather than integrating small steps.
     for (final rate in const [
-      ProjectFrameRate.integer(24),
+      ProjectFrameRate.fps24,
       ProjectFrameRate.ntsc(24),
       ProjectFrameRate.ntsc(30),
     ]) {

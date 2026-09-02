@@ -269,9 +269,9 @@ class _RestoreBuilder {
   bool _uniform = true;
 
   BytesBuilder? _raw;
-  List<int>? _indices;
-  Map<int, int>? _paletteIndexByKey;
-  BytesBuilder? _palette;
+  late List<int> _indices;
+  late Map<int, int> _paletteIndexByKey;
+  late BytesBuilder _palette;
 
   /// Cleared once the palette overflows — the indices built so far are
   /// dropped and [_raw], which was being filled all along, becomes the
@@ -333,22 +333,22 @@ class _RestoreBuilder {
     for (var byte = 0; byte < byteCount; byte += 1) {
       key = (key << 8) | channelBytes[byte];
     }
-    final byKey = _paletteIndexByKey!;
+    final byKey = _paletteIndexByKey;
     final existing = byKey[key];
     if (existing != null) {
-      _indices!.add(existing);
+      _indices.add(existing);
       return;
     }
     if (byKey.length == _maxPaletteEntries) {
       _paletteOpen = false;
-      _indices!.clear();
+      _indices.clear();
       byKey.clear();
       return;
     }
     final index = byKey.length;
     byKey[key] = index;
-    _palette!.add(Uint8List.fromList(channelBytes));
-    _indices!.add(index);
+    _palette.add(Uint8List.fromList(channelBytes));
+    _indices.add(index);
   }
 
   /// Null when the pass touched nothing.
@@ -359,13 +359,13 @@ class _RestoreBuilder {
     if (_uniform) {
       return UniformCelPixelRestore(_first!);
     }
-    if (_paletteOpen && _paletteIndexByKey!.length == 1) {
-      return UniformCelPixelRestore(_palette!.toBytes());
+    if (_paletteOpen && _paletteIndexByKey.length == 1) {
+      return UniformCelPixelRestore(_palette.toBytes());
     }
     if (_paletteOpen) {
       return PalettedCelPixelRestore(
-        palette: _palette!.toBytes(),
-        indices: Uint8List.fromList(_indices!),
+        palette: _palette.toBytes(),
+        indices: Uint8List.fromList(_indices),
       );
     }
     return RawCelPixelRestore(_raw!.toBytes());

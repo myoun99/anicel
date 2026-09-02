@@ -40,6 +40,7 @@
 //
 // Localhost only, on purpose: the board is not published anywhere and the
 // records file is not in this repository, because the repository is public.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -169,7 +170,7 @@ bool _sourceMoved() {
       if (a[i] != b[i]) return true;
     }
     return false;
-  } catch (_) {
+  } on Object catch (_) {
     // Unreadable for a moment mid-write. Not news; the next request asks again.
     return false;
   }
@@ -188,12 +189,12 @@ bool _sourceMoved() {
 Never _relaunch() {
   final up = File('${File(_recordsPath).parent.path}/board_up.sh');
   if (up.existsSync()) {
-    Process.start(
+    unawaited(Process.start(
       'bash',
       [up.path],
       mode: ProcessStartMode.detached,
       runInShell: true,
-    );
+    ));
   }
   exit(0);
 }
@@ -259,7 +260,7 @@ Future<void> main(List<String> args) async {
   await for (final request in server) {
     try {
       await _handle(request);
-    } catch (e) {
+    } on Object catch (e) {
       stderr.writeln('board: request failed: $e');
       request.response.statusCode = 500;
       await request.response.close();
@@ -639,7 +640,7 @@ bool _purge(String id) {
     if (t.isEmpty) return false;
     try {
       return (jsonDecode(t) as Map<String, dynamic>)['id'] != id;
-    } catch (_) {
+    } on Object catch (_) {
       return true; // unreadable lines are somebody else's problem, not ours
     }
   });
@@ -757,15 +758,15 @@ class _Stale<T> {
   void _refresh() {
     if (_busy) return;
     _busy = true;
-    () async {
+    unawaited(() async {
       try {
         _store(await _fetch());
-      } catch (_) {
+      } on Object catch (_) {
         // Keep what we had. See the class doc.
       } finally {
         _busy = false;
       }
-    }();
+    }());
   }
 
   /// 「↻」 — the ONE caller that wants to wait. Pressing refresh is a person
@@ -802,7 +803,7 @@ Future<_Gh> _fetchPrs() async {
       // English, so this stayed invisible until bodies were read.
       stdoutEncoding: utf8,
     );
-  } catch (_) {
+  } on Object catch (_) {
     return _Gh(const [], ok: false);
   }
   if (result.exitCode != 0) return _Gh(const [], ok: false);
@@ -810,7 +811,7 @@ Future<_Gh> _fetchPrs() async {
   final List<dynamic> rows;
   try {
     rows = jsonDecode(result.stdout as String) as List;
-  } catch (e) {
+  } on Object catch (e) {
     // A response we cannot read is a failed lookup, not a failed page: the
     // board still has work to show, and saying "gh 를 못 불렀습니다" is both
     // true and better than a 500 that shows nothing at all.
@@ -891,7 +892,7 @@ Future<List<_Checkout>> _readCheckouts() async {
       final r = Process.runSync('git', ['-C', dir, ...args],
           stdoutEncoding: utf8);
       return r.exitCode == 0 ? (r.stdout as String).trim() : '';
-    } catch (_) {
+    } on Object catch (_) {
       return '';
     }
   }

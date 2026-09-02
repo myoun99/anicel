@@ -28,13 +28,13 @@ void main() {
       expect(
         audioPullBetween(
           const ProjectFrameRate.ntsc(24),
-          const ProjectFrameRate.integer(24),
+          ProjectFrameRate.fps24,
         ),
         (numerator: 1001, denominator: 1000),
       );
       expect(
         audioPullBetween(
-          const ProjectFrameRate.integer(24),
+          ProjectFrameRate.fps24,
           const ProjectFrameRate.ntsc(24),
         ),
         (numerator: 1000, denominator: 1001),
@@ -52,7 +52,7 @@ void main() {
         'no question', () {
       expect(
         audioPullBetween(
-          const ProjectFrameRate.integer(24),
+          ProjectFrameRate.fps24,
           const ProjectFrameRate.integer(30),
         ),
         isNull,
@@ -140,10 +140,10 @@ void main() {
 
       expect(session.projectHasAnyAudio, isTrue);
       session.setProjectFrameRateWithAudioPull(
-        const ProjectFrameRate.integer(24),
+        ProjectFrameRate.fps24,
       );
       final project = session.repository.requireProject();
-      expect(project.frameRate, const ProjectFrameRate.integer(24));
+      expect(project.frameRate, ProjectFrameRate.fps24);
       expect(project.audioSpeedNumerator, 1001);
       expect(project.audioSpeedDenominator, 1000);
       await pumpEventQueue();
@@ -164,7 +164,7 @@ void main() {
 
       // Going the other way pulls back and CANCELS to unity.
       session.setProjectFrameRateWithAudioPull(
-        const ProjectFrameRate.integer(24),
+        ProjectFrameRate.fps24,
       );
       session.setProjectFrameRateWithAudioPull(const ProjectFrameRate.ntsc(24));
       final roundTripped = session.repository.requireProject();
@@ -261,7 +261,7 @@ void main() {
               choice = await showFpsAudioChoiceDialog(
                 context,
                 from: const ProjectFrameRate.ntsc(24),
-                to: const ProjectFrameRate.integer(24),
+                to: ProjectFrameRate.fps24,
                 strings: AppStrings.of(AppLanguage.en),
               );
             },

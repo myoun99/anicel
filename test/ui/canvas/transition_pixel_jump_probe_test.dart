@@ -180,7 +180,7 @@ void main() {
                   viewport: viewport,
                   activeSurfacePainter: surfacePainter,
                   paintPaper: true,
-                  paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                  paperBackground: ProjectBackground.defaultBackground,
                   debugBufferCache: cache,
                   debugDisableSingleBuffer: disableBuffer,
                 ),

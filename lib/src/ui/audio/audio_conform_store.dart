@@ -302,7 +302,7 @@ class AudioConformStore extends ChangeNotifier {
         return;
       }
       (_resampledByRate[sourcePath] ??= {})[sampleRate] = converted;
-    } catch (error) {
+    } on Object catch (error) {
       if (_disposed) {
         return;
       }
@@ -375,7 +375,7 @@ class AudioConformStore extends ChangeNotifier {
           libraryPathOverride: libraryPathOverride,
         ),
       );
-    } catch (error) {
+    } on Object catch (error) {
       result = ConformResult(
         outcome: ConformOutcome.writeFailed,
         error: 'unexpected error: $error',

@@ -52,7 +52,7 @@ class BrushTipLibraryService {
         for (final entry in entries)
           BrushTipEntry.fromJson(entry as Map<String, dynamic>),
       ].where((entry) => seen.add(entry.id)).toList();
-    } catch (_) {
+    } on Object catch (_) {
       return const <BrushTipEntry>[];
     }
   }
@@ -68,7 +68,7 @@ class BrushTipLibraryService {
         return null;
       }
       return await decodeBrushTipImage(await file.readAsBytes(), id: id);
-    } catch (_) {
+    } on Object catch (_) {
       return null;
     }
   }
@@ -113,7 +113,7 @@ class BrushTipLibraryService {
       if (await file.exists()) {
         await file.delete();
       }
-    } catch (_) {
+    } on Object catch (_) {
       // A tip that will not delete stays on disk; the index has already
       // dropped it, so it is invisible either way.
     }

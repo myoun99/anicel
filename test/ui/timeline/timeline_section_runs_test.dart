@@ -16,7 +16,7 @@ Layer _layer(String id, LayerKind kind) => Layer(
 );
 
 void main() {
-  const metrics = TimelineGridMetrics();
+  const metrics = TimelineGridMetrics.defaults;
 
   group('timelineSectionRuns', () {
     test('groups consecutive rows by section; lanes join their layer', () {

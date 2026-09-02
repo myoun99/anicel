@@ -58,7 +58,7 @@ void main() {
     expect(AudioSyncSettings.fromJson(settings.toJson()), settings);
     expect(
       AudioSyncSettings.fromJson(
-        const AudioSyncSettings().toJson(),
+        AudioSyncSettings.defaults.toJson(),
       ).denoiseVoice,
       isFalse,
     );

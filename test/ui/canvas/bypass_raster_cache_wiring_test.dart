@@ -139,7 +139,7 @@ void main() {
                 canvasSize: const CanvasSize(width: 16, height: 16),
                 viewport: CanvasViewport(zoom: 1),
                 paintPaper: true,
-                paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                paperBackground: ProjectBackground.defaultBackground,
               ),
             ),
           ),

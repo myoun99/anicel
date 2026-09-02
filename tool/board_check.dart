@@ -283,7 +283,7 @@ Iterable<String> _stampsTheFileContradicts(
     Map<String, dynamic> json;
     try {
       json = jsonDecode(t) as Map<String, dynamic>;
-    } catch (_) {
+    } on Object catch (_) {
       continue;
     }
     final id = '${json['id'] ?? ''}';
@@ -383,7 +383,7 @@ Iterable<String> _sectionsTheStoryCannotName(
     Map<String, dynamic> json;
     try {
       json = jsonDecode(t) as Map<String, dynamic>;
-    } catch (_) {
+    } on Object catch (_) {
       continue;
     }
     if (json['kind'] == 'law' || json['kind'] == 'meta') continue;

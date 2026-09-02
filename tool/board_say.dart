@@ -158,7 +158,7 @@ Map<String, String> endedCards(List<BoardCard> cards) => {
     Map<String, dynamic> json;
     try {
       json = jsonDecode(t) as Map<String, dynamic>;
-    } catch (e) {
+    } on Object catch (e) {
       return (refusal: '$lineNo번째 줄이 JSON 이 아닙니다 — $e', bytes: null);
     }
     final why = recordRefusal(json, lineNo) ??

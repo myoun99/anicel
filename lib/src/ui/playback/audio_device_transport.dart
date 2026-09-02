@@ -17,6 +17,7 @@
 /// acceptable outcome for audio.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import '../../models/layer_id.dart';
@@ -86,7 +87,7 @@ class AudioDeviceTransport {
   bool _carrying = false;
 
   QaAudioDevice? _device;
-  ProjectFrameRate _rate = const ProjectFrameRate.integer(24);
+  ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
   int _totalFrames = 0;
 
@@ -409,7 +410,7 @@ class AudioDeviceTransport {
           position < _windowCenterSample - _windowBackSeconds * _deviceRate;
       if (recenter) {
         _windowAdvanceInFlight = true;
-        Future(() {
+        unawaited(Future(() {
           try {
             final mix = _mix;
             if (_carrying && mix != null && _device != null) {
@@ -418,7 +419,7 @@ class AudioDeviceTransport {
           } finally {
             _windowAdvanceInFlight = false;
           }
-        });
+        }));
       }
     }
     final heard = math.max(

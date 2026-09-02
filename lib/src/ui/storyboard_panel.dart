@@ -1437,9 +1437,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         // answer, not something derived from the width — so
                         // the extra width lands in the NAME, which is where
                         // a track wants it.
-                        metrics: const TimelineGridMetrics(
-                          layerControlsWidth: StoryboardPanel._trackLabelWidth,
-                        ),
+                        metrics: TimelineGridMetrics.defaults,
                         legend: widget.legend,
                         rowFilter: widget.rowFilter,
                         showRowSolos: true,

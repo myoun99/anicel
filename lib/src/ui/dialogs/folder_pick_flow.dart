@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -388,7 +389,7 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () {
             Navigator.of(context).pop();
-            AppStorage.requestAllFilesAccess();
+            unawaited(AppStorage.requestAllFilesAccess());
           },
         ),
       ],

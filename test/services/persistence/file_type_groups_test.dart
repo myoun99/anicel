@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
@@ -22,7 +23,7 @@ void main() {
 
   group('picker filters carry both halves', () {
     test('every group sets extensions AND uniformTypeIdentifiers', () {
-      final groups = <String, dynamic>{
+      final groups = <String, XTypeGroup>{
         'anicelProject': FileTypeGroups.anicelProject,
         // The iOS shape: that is the platform the identifiers are load
         // bearing on, and the one whose picker throws without them.

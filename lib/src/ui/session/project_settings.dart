@@ -105,10 +105,10 @@ class _ProjectSettings {
       _projectLayoutProject = project;
       _projectLayoutMemo = buildStoryboardTimelineLayout(project);
     }
-    return _projectLayoutMemo!;
+    return _projectLayoutMemo;
   }
 
   Project? _projectLayoutProject;
 
-  List<StoryboardTimelineLayoutEntry>? _projectLayoutMemo;
+  late List<StoryboardTimelineLayoutEntry> _projectLayoutMemo;
 }

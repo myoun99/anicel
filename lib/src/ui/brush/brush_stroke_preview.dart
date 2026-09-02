@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -69,7 +70,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
       _adopt(cached, settings, rasterWidth, rasterHeight);
       return;
     }
-    BrushStrokePreviewCache.instance
+    unawaited(BrushStrokePreviewCache.instance
         .ensure(settings, rasterWidth, rasterHeight)
         .then((image) {
           // Re-check against the LIVE widget: the row may have moved to
@@ -82,7 +83,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
             return;
           }
           setState(() => _adopt(image, settings, rasterWidth, rasterHeight));
-        });
+        }));
   }
 
   @override

@@ -237,7 +237,7 @@ void main() {
       count: 12,
       renderImage: render,
       outputFilePath: outputPath,
-      frameRate: const ProjectFrameRate.integer(24),
+      frameRate: ProjectFrameRate.fps24,
       audioMixPath: mixPath,
     );
     expect(summary.written, 12);

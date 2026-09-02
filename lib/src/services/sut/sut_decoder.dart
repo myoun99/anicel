@@ -684,7 +684,7 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
   }
   try {
     return await decodeBrushTipImage(png, id: maskId);
-  } catch (error) {
+  } on Object catch (error) {
     warnings.add(
       'Brush "$brushName": $describe image could not be decoded '
       '($error); imported without it.',

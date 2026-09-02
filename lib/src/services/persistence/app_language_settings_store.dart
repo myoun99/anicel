@@ -30,7 +30,7 @@ class AppLanguageSettingsStore {
         return null;
       }
       return AppLanguageSettings.fromJson(decoded);
-    } catch (_) {
+    } on Object catch (_) {
       // Corrupt settings never fail the editor: defaults win, the file is
       // replaced on the next save.
       return null;

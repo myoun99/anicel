@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 /// idea, so they draw the same band — same overlay, same geometry, same
 /// decoration. The lane rows used to paint their own flat rectangle.
 void main() {
-  const metrics = TimelineGridMetrics(frameCellWidth: 24, layerRowHeight: 28);
+  const metrics = TimelineGridMetrics.defaults;
 
   final layer = Layer(
     id: const LayerId('a'),

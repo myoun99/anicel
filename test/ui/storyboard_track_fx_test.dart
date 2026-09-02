@@ -69,7 +69,7 @@ Future<EditorSessionManager> _pumpPanel(
             project: session.repository.requireProject(),
             activeCutId: _cut,
             pixelsPerFrame: 12,
-            projectFrameRate: const ProjectFrameRate.integer(24),
+            projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (_) => null,
             expandedSeAudioRows: const <String>{},
             expandedTransformTracks: expandedTracks,

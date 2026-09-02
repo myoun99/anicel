@@ -416,7 +416,7 @@ class EditorTopStrip extends StatelessWidget {
           ),
         );
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (context.mounted) {
         _showFileError(context, error);
       }
@@ -1735,7 +1735,7 @@ Future<bool> saveProjectShowingProgress(
       );
     }
     return true;
-  } catch (error) {
+  } on Object catch (error) {
     if (context.mounted) {
       unawaited(
         showAppNotice(

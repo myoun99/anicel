@@ -39,7 +39,7 @@ void main() {
     session.dispose();
     try {
       dir.deleteSync(recursive: true);
-    } catch (_) {}
+    } on Object catch (_) {}
   });
 
   Widget host() => MaterialApp(

@@ -31,7 +31,7 @@ class AudioplayersClipPlayer implements AudioClipPlayer {
       await _player.setReleaseMode(ap.ReleaseMode.stop);
       await _player.setSource(ap.DeviceFileSource(filePath));
       _ready = true;
-    } catch (error) {
+    } on Object catch (error) {
       debugPrint('[AudioplayersClipPlayer] failed to load $filePath: $error');
     }
   }
@@ -49,7 +49,7 @@ class AudioplayersClipPlayer implements AudioClipPlayer {
     try {
       await _player.seek(position);
       await _player.resume();
-    } catch (error) {
+    } on Object catch (error) {
       debugPrint('[AudioplayersClipPlayer] failed to start: $error');
     }
   }
@@ -58,7 +58,7 @@ class AudioplayersClipPlayer implements AudioClipPlayer {
   Future<void> setVolume(double volume) async {
     try {
       await _player.setVolume(volume);
-    } catch (error) {
+    } on Object catch (error) {
       debugPrint('[AudioplayersClipPlayer] failed to set volume: $error');
     }
   }

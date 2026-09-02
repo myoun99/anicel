@@ -112,7 +112,7 @@ class BrushPresetFileService {
       }
 
       return (groups: groups, presets: _withKnownGroups(presets, groups));
-    } catch (_) {
+    } on Object catch (_) {
       // A corrupt library must not fail the editor: fall back to the
       // defaults; the file is replaced on the next save.
       return _defaults();

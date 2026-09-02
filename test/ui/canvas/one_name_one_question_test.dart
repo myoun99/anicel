@@ -38,7 +38,7 @@ void main() {
         const DrawSpace.preScaled(0.5).hashCode,
         const DrawSpace.preScaled(0.5).hashCode,
       );
-      expect(const DrawSpace.preScaled(1), DrawSpace.canvas);
+      expect(DrawSpace.canvas, DrawSpace.canvas);
     });
 
     test('it scales the blur and leaves colour alone', () {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -827,7 +828,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           _commitTransform();
         }
         if (_movePending) {
-          _promptPendingMove();
+          unawaited(_promptPendingMove());
         }
       });
     }
@@ -2192,7 +2193,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   void _syncAnts() {
     final animate = _hasSelection || _dragMode == _DragMode.marquee;
     if (animate && !_ants.isAnimating) {
-      _ants.repeat();
+      unawaited(_ants.repeat());
     } else if (!animate && _ants.isAnimating) {
       _ants.stop();
     }

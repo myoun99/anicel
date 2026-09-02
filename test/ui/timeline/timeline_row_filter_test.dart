@@ -74,7 +74,7 @@ void main() {
     });
 
     test('toggledMark flips membership', () {
-      const filter = TimelineRowFilter();
+      const filter = TimelineRowFilter.none;
       final withRed = filter.toggledMark(const LayerMark(process: LayerProcess.layout));
       expect(withRed.markColors, {const LayerMark(process: LayerProcess.layout)});
       expect(withRed.toggledMark(const LayerMark(process: LayerProcess.layout)).markColors, isEmpty);
@@ -108,7 +108,7 @@ void main() {
     });
 
     test('toggledKind flips membership', () {
-      const filter = TimelineRowFilter();
+      const filter = TimelineRowFilter.none;
       final withSe = filter.toggledKind(LayerKind.se);
       expect(withSe.kinds, {LayerKind.se});
       expect(withSe.toggledKind(LayerKind.se).kinds, isEmpty);

@@ -26,9 +26,7 @@ void main() {
     CanvasTouchContacts.reset();
     // Fingers must be allowed to draw at all, or the views bail earlier
     // and the test proves nothing: the one-finger slot IS the draw slot.
-    AppInput.settings.value = const AppInputSettings(
-      touchDragOneFinger: CanvasTouchDragAction.draw,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
   tearDown(() {
     CanvasTouchContacts.reset();

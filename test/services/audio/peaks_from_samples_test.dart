@@ -140,7 +140,7 @@ void main() {
         bucketsPerSecond: buckets,
       );
       expect(peaks.peaks, hasLength(80));
-      expect(peaks.durationFrames(const ProjectFrameRate.integer(24)), 48);
+      expect(peaks.durationFrames(ProjectFrameRate.fps24), 48);
     });
   });
 

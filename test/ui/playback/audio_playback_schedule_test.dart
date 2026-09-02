@@ -30,11 +30,7 @@ void main() {
     });
 
     test('carries trim, gain and fades into sample units', () {
-      const rate = ProjectFrameRate(
-        numerator: 24,
-        denominator: 1,
-        countingBase: 24,
-      );
+      const rate = ProjectFrameRate.fps24;
       final converted = audioMixScheduleFrom(
         schedule: const [
           ScheduledAudioClip(
@@ -60,11 +56,7 @@ void main() {
     });
 
     test('shares one source per distinct path, in first-appearance order', () {
-      const rate = ProjectFrameRate(
-        numerator: 24,
-        denominator: 1,
-        countingBase: 24,
-      );
+      const rate = ProjectFrameRate.fps24;
       final converted = audioMixScheduleFrom(
         schedule: const [
           ScheduledAudioClip(filePath: 'b.wav', startFrame: 0, endFrameExclusive: 1),

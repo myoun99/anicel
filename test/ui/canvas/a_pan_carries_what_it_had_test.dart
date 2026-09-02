@@ -153,7 +153,7 @@ void main() {
             viewport: viewport,
             activeSurfacePainter: live,
             paintPaper: true,
-            paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+            paperBackground: ProjectBackground.defaultBackground,
           ),
         ),
       ),

@@ -59,7 +59,7 @@ class AudioScrubber {
   bool _armed = false;
   bool _stoodDown = false;
   QaAudioDevice? _device;
-  ProjectFrameRate _rate = const ProjectFrameRate.integer(24);
+  ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
 
   /// Streaming state (AUDIO-PRO R6): the gesture's mix is kept so the

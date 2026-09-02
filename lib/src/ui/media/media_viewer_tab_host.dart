@@ -409,7 +409,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     super.initState();
     widget.request.addListener(_onRequestChanged);
     widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
-    _load(_currentRequest);
+    unawaited(_load(_currentRequest));
   }
 
   @override
@@ -453,7 +453,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     _rendersInFlight.clear();
     final document = _document;
     _document = null;
-    document?.dispose();
+    unawaited(document?.dispose());
     _message = null;
   }
 
@@ -592,7 +592,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     }
     final generation = _generation;
     final pageSize = document.pageSize(pageIndex);
-    () async {
+    unawaited(() async {
       final ui.Image image;
       try {
         image = await document.renderPage(
@@ -616,7 +616,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         _pageCache[pageIndex] = _RenderedPage(scale: scale, image: image);
         _evictToBudget(keeping: pageIndex);
       });
-    }();
+    }());
   }
 
   // --- Paging ------------------------------------------------------------

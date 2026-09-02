@@ -56,7 +56,7 @@ void main() {
 
     test('notation settings default to bar-off / SE-fill-on, round-trip and '
         'stay absent from default JSON', () {
-      const defaults = TimesheetInfo();
+      const defaults = TimesheetInfo.empty;
       expect(defaults.exposureBarThreshold, isNull);
       expect(defaults.seEmptyFill, isTrue);
       expect(defaults.toJson().containsKey('exposureBarThreshold'), isFalse);

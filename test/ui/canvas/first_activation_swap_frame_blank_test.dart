@@ -88,7 +88,7 @@ void main() {
     debugSyncImageUploadOverride = null;
     try {
       tempDir.deleteSync(recursive: true);
-    } catch (_) {}
+    } on Object catch (_) {}
   });
 
   BitmapTile filledTile(

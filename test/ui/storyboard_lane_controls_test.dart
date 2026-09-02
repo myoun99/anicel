@@ -116,7 +116,7 @@ Future<void> _pumpPanel(
             activeCutId: activeCutId,
             onRowFramePress: onRowFramePress,
             pixelsPerFrame: 12,
-            projectFrameRate: const ProjectFrameRate.integer(24),
+            projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
             expandedSeAudioRows: expandedAudio,
             onToggleSeRowLane: (track, slot) => setState(() {

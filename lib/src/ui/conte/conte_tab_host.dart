@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -131,7 +132,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   // shapes the cells) actually changes — the immutable repository makes
   // identity the staleness check, the timesheet host's pattern.
   ConteSheetSource? _source;
-  List<ContePageLayout>? _pages;
+  late List<ContePageLayout> _pages;
   Object? _sourceProject;
   double? _sourceCameraAspect;
 
@@ -148,11 +149,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
     // workspace warms them at startup, so this await is normally a no-op;
     // on a cold open the one rebuild below reflows the text out of the
     // fallback face the first frames measured in.
-    ensureConteFontsLoaded().then((_) {
+    unawaited(ensureConteFontsLoaded().then((_) {
       if (mounted) {
         setState(() {});
       }
-    });
+    }));
   }
 
   @override
@@ -189,7 +190,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         metrics: ConteSheetMetrics(cameraAspect: aspect),
       );
     }
-    return (_source!, _pages!);
+    return (_source!, _pages);
   }
 
   /// A cell press: the cut, its storyboard row and the frame — the

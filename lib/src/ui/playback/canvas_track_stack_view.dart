@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -231,7 +232,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       return;
     }
     _inFlightFrame[cut.id] = frameIndex;
-    widget.compositeCache
+    unawaited(widget.compositeCache
         .prepareCompositeInterruptible(
           cut: cut,
           frameIndex: frameIndex,
@@ -255,7 +256,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           // No repaint on failure: a repaint would re-request and a
           // persistently failing composite (store torn down) would spin.
           onError: (Object _) => _inFlightFrame.remove(cut.id),
-        );
+        ));
   }
 
   /// Drops held state for cuts no longer covered, so a long parked

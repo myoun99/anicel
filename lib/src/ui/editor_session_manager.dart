@@ -4285,7 +4285,7 @@ class EditorSessionManager extends ChangeNotifier {
     // decide whose bytes go inside the archive, so an import that dropped
     // it here would leave a carried sound outside the file it was carried
     // into.
-    addMediaAssets([effectivePath], carried: copyIntoProject);
+    unawaited(addMediaAssets([effectivePath], carried: copyIntoProject));
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: carrier.id,
@@ -6205,7 +6205,7 @@ class EditorSessionManager extends ChangeNotifier {
     )) {
       return;
     }
-    addMediaAssets([path]);
+    unawaited(addMediaAssets([path]));
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: layerId,
