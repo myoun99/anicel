@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
+
 /// UI-R16: the SHARED frame-axis window policy — one quantization every
 /// self-windowing consumer agrees on (row/ruler/rail painters, the
 /// cursor layer, sparse widget rows, lane strips; all three panels).
@@ -69,5 +71,38 @@ int timelineFrameWindowBucketOf({
     startIndex: bucket * span - timelineFrameWindowOverscanCells,
     endIndexExclusive:
         (bucket + 1) * span + viewportCells + timelineFrameWindowOverscanCells,
+  );
+}
+
+/// The frame window a painter actually draws: the bucket's window clipped
+/// to the painter's own [frameStartIndex, frameEndIndexExclusive), or the
+/// full bounds when there is no bucket (the classic pre-windowed contract).
+///
+/// 🚨One law for the ruler and the sheet's frame rail — the two painters
+/// each spelled it (the audit's clone scan, 2026-09-03).
+({int startIndex, int endIndexExclusive}) visibleFrameWindowFor({
+  required ValueListenable<int>? bucket,
+  required double viewportMainExtent,
+  required double cellExtent,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+}) {
+  if (bucket == null || viewportMainExtent <= 0 || cellExtent <= 0) {
+    return (
+      startIndex: frameStartIndex,
+      endIndexExclusive: frameEndIndexExclusive,
+    );
+  }
+  final window = timelineFrameWindowFor(
+    bucket: bucket.value,
+    cellExtent: cellExtent,
+    viewportExtent: viewportMainExtent,
+  );
+  return (
+    startIndex: math.max(frameStartIndex, window.startIndex),
+    endIndexExclusive: math.min(
+      frameEndIndexExclusive,
+      window.endIndexExclusive,
+    ),
   );
 }

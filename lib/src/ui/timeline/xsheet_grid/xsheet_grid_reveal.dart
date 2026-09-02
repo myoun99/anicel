@@ -61,24 +61,4 @@ class _XSheetGridReveal {
       _state._layerScrollController.jumpTo(target);
     }
   }
-
-  /// The cells-family drag callbacks for this pass, or null when the
-  /// host wired none — the transposed twin of the layer grid's. It also
-  /// loads `_rangeMoveResolver` with [entries], which is why it takes
-  /// them: both happen in the same pass or neither does.
-  /// Whether the cells selection covers this row at this frame — the
-  /// horizontal grid's twin, one law: a lane row answers with the layer it
-  /// sits inside ([TimelineRowAddress.owningLayerId]).
-  bool _rowFrameInSelection(
-    TimelineRowAddress row,
-    int frameIndex,
-    TimelineFrameRangeHooks rangeHooks,
-  ) {
-    final selection = rangeHooks.selection.value;
-    final layerId = row.owningLayerId;
-    return layerId != null &&
-        selection != null &&
-        selection.coversLayer(layerId) &&
-        selection.contains(frameIndex);
-  }
 }

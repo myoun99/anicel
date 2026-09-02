@@ -38,57 +38,15 @@ class _XSheetGridHeaders {
     }
     final lane = entry.lane;
     if (lane == null) {
-      // A5-4 / F-16: **같은 함수**가 답한다 — x시트가 가로 레일의 모양을
-      // 베껴서 같은 버그를 갖고 있던 자리다.
-      final unmovable = unmovableRowSelectTarget(
-        kind: entry.layer.kind,
-        layerId: entry.layer.id,
+      // A5-4 / F-16 / F-31: the SAME function the rail calls — the sheet
+      // used to copy its shape and drift behind it.
+      return layerRowDragWrapper(
+        row: entry,
+        dragRows: () => _state._dragRows,
         rowExtent: _state._metrics.layerRowHeight,
         axis: Axis.vertical,
         hooks: hooks,
-        onSelectCrossed: (rowDelta) => _state.widget.hooks.onRowSelectionSpan
-            ?.call(_state._dragRows, rowDelta),
-        child: child,
-      );
-      if (unmovable != null) {
-        return unmovable;
-      }
-      // F-31, transposed: the sheet counts the COLUMNS on screen, through
-      // the same object the rail counts its rows with.
-      final caret = LayerRowCaret.of(_state._dragRows, entry.layer.id);
-      if (caret == null) {
-        return child;
-      }
-      return LayerRowDragTarget(
-        subject: LayerRowSubject(entry.layer.id),
-        slotBefore: caret.slot,
-        rowExtent: _state._metrics.layerRowHeight,
-        axis: Axis.vertical,
-        hooks: hooks,
-        isLastRow: caret.isLastRow,
-        // R5 #15: the sheet's columns take the ON-COLUMN drop the way the
-        // rail's rows do — the band is measured along whichever axis this
-        // surface runs, so the transposition costs nothing.
-        onCrossed: (steps, onRow, inRow) {
-          final slot = caret.slotFor(steps);
-          final target = caret.onRowLayer(onRow);
-          if (target != null) {
-            hooks.onRowTarget(caret.layers, slot, target.id);
-            return;
-          }
-          hooks.onUpdate(
-            caret.layers,
-            slot,
-            pointerInRow: caret.onRowLayer(inRow)?.id,
-          );
-        },
-        // ⑨: the SELECT half, counted in the sheet's own display columns.
-        onSelectCrossed: hooks.onSelectBegin == null
-            ? null
-            : (rowDelta) => _state.widget.hooks.onRowSelectionSpan?.call(
-                _state._dragRows,
-                rowDelta,
-              ),
+        onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
         child: child,
       );
     }

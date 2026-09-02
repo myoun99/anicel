@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -100,29 +99,14 @@ class TimelineFrameRulerPainter extends CustomPainter {
   final double viewportMainExtent;
 
   /// The header window paint() actually draws (probe surface).
-  ({int startIndex, int endIndexExclusive}) visibleHeaderWindow() {
-    final bucket = windowBucket;
-    if (bucket == null ||
-        viewportMainExtent <= 0 ||
-        metrics.frameCellWidth <= 0) {
-      return (
-        startIndex: frameStartIndex,
-        endIndexExclusive: frameEndIndexExclusive,
+  ({int startIndex, int endIndexExclusive}) visibleHeaderWindow() =>
+      visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: metrics.frameCellWidth,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive: frameEndIndexExclusive,
       );
-    }
-    final window = timelineFrameWindowFor(
-      bucket: bucket.value,
-      cellExtent: metrics.frameCellWidth,
-      viewportExtent: viewportMainExtent,
-    );
-    return (
-      startIndex: math.max(frameStartIndex, window.startIndex),
-      endIndexExclusive: math.min(
-        frameEndIndexExclusive,
-        window.endIndexExclusive,
-      ),
-    );
-  }
 
   /// The header cell's rect in the strip's local coordinates (the probe
   /// geometry tests and taps share).

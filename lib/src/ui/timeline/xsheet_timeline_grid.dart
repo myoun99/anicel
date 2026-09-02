@@ -15,6 +15,9 @@ import 'rail_column_swipe.dart';
 import 'layer_rail_window.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
+import 'timeline_grid_range_callbacks.dart';
+import 'timeline_scroll_offset_sync.dart';
+import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_ruler_painter.dart'
     show TimelineRulerHeaderModel, timelineRulerSecondsLabel;
@@ -22,19 +25,12 @@ import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
-import 'timeline_row_cross_offset.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
-    show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
+    show effectHeaderRowsOf, rowStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
-import 'timeline_row_span_resolver.dart'
-    show
-        laneSpanOverDrawnRows,
-        resolveBlockMoveTargetLayer,
-        resolveInGroupHeadLane,
-        resolveLaneSpanEscalation;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
@@ -278,11 +274,26 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// rebuilds per pixel.
   final ValueNotifier<double> _frameAxisOffset = ValueNotifier<double>(0);
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
-  ScrollPosition? _watchedFramePosition;
-
   double _lastEffectiveFrameScrollOffset = 0;
-  double? _scheduledFrameOffsetCorrection;
-  int _endlessTrailingFrames = 0;
+
+  /// The frame axis following its controller — the rail's follower, the
+  /// same object, transposed by nothing but which controller it holds.
+  late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
+    controller: _frameScrollController,
+    frameAxisOffset: _frameAxisOffset,
+    frameWindowBucket: _frameWindowBucket,
+    cellExtent: () => _metrics.frameCellWidth,
+    baseFrameCount: () => _rangeGestures._frameRangePolicy.visibleFrameCount,
+    rebuild: _rebuild,
+    isMounted: () => mounted,
+  );
+
+  /// UI-R9 #9, transposed to y: the frame axis pulled to the offset the
+  /// layout resolved, one frame later — the rail's object.
+  late final TimelineScrollOffsetSync _frameSync = TimelineScrollOffsetSync(
+    _frameScrollController,
+    isMounted: () => mounted,
+  );
   final GlobalKey _railScrubViewportKey = GlobalKey();
   int? _lastRailScrubbedFrameIndex;
 
@@ -295,7 +306,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // coasting fling stops hiding the cells from hit-testing.
     _frameScrollController = PenFriendlyScrollController();
     _layerScrollController = PenFriendlyScrollController();
-    _frameScrollController.addListener(_frameScroll.handleFrameScroll);
+    _frameScrollController.addListener(_frameAxis.handleScroll);
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
   }
@@ -337,11 +348,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   @override
   void dispose() {
     widget.hooks.revealSelectionTick?.removeListener(_reveal.handleRevealSelection);
-    _watchedFramePosition?.isScrollingNotifier.removeListener(
-      _frameScroll.handleFrameScrollActivity,
-    );
+    _frameAxis.dispose();
     _frameScrollController
-      ..removeListener(_frameScroll.handleFrameScroll)
+      ..removeListener(_frameAxis.handleScroll)
       ..dispose();
     _layerScrollController.dispose();
     _frameWindowBucket.removeListener(_frameScroll.handleFrameWindowBucket);
@@ -919,7 +928,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   frameCellExtent: _metrics.frameCellWidth,
                 );
                 _lastEffectiveFrameScrollOffset = _frameAxisOffset.value;
-                _frameScroll.synchronizeFrameScrollController(
+                _frameSync.synchronize(
                   _frameScroll.effectiveFrameScrollOffset(
                     requestedOffset: _frameAxisOffset.value,
                     viewportExtent: bodyViewportHeight,
@@ -1272,29 +1281,14 @@ class XSheetFrameRailPainter extends CustomPainter {
   final double viewportMainExtent;
 
   /// The row window paint() actually draws (probe surface).
-  ({int startIndex, int endIndexExclusive}) visibleRowWindow() {
-    final bucket = windowBucket;
-    if (bucket == null ||
-        viewportMainExtent <= 0 ||
-        metrics.frameCellWidth <= 0) {
-      return (
-        startIndex: frameStartIndex,
-        endIndexExclusive: frameEndIndexExclusive,
+  ({int startIndex, int endIndexExclusive}) visibleRowWindow() =>
+      visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: metrics.frameCellWidth,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive: frameEndIndexExclusive,
       );
-    }
-    final window = timelineFrameWindowFor(
-      bucket: bucket.value,
-      cellExtent: metrics.frameCellWidth,
-      viewportExtent: viewportMainExtent,
-    );
-    return (
-      startIndex: math.max(frameStartIndex, window.startIndex),
-      endIndexExclusive: math.min(
-        frameEndIndexExclusive,
-        window.endIndexExclusive,
-      ),
-    );
-  }
 
   /// The row's rect in the rail's local coordinates.
   Rect rowRectFor(int frameIndex) => Rect.fromLTWH(

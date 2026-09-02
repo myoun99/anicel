@@ -206,19 +206,52 @@ void main() {
     // library, wherever a cut moved it.
     String source(String path) => librarySource(path);
 
+    // The three sites moved together into ONE builder both grids call (the
+    // audit's clone scan, 2026-09-03): the law is asked of the builder, and
+    // each grid is asked to call it rather than keep a copy.
+    const builder = 'lib/src/ui/timeline/timeline_grid_range_callbacks.dart';
+
+    test('$builder asks the address, never its type', () {
+      final text = source(builder);
+      expect(
+        RegExp(r'row\.owningLayerId').allMatches(text).length,
+        greaterThanOrEqualTo(3),
+        reason:
+            'isInSelection, onSelectUpdate and onMoveBegin each need '
+            'it — a builder that keeps one type test keeps one third of the '
+            'bug',
+      );
+      expect(
+        text,
+        isNot(contains('row is LayerRowAddress &&')),
+        reason:
+            'that is the invented rule, spelled the way it was spelled '
+            'at every site it was typed at',
+      );
+      expect(
+        text,
+        isNot(contains('row is! LayerRowAddress')),
+        reason: 'and its negation, which the x-sheet used',
+      );
+    });
+
     for (final path in [
       'lib/src/ui/timeline/layer_timeline_grid.dart',
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ]) {
-      test('$path asks the address, never its type', () {
+      test('$path calls the builder and keeps no type test of its own', () {
         final text = source(path);
         expect(
-          RegExp(r'row\.owningLayerId').allMatches(text).length,
-          greaterThanOrEqualTo(3),
+          text,
+          contains('timelineGridRangeCallbacks('),
+          reason: '$path must reach the shared builder, not keep its own',
+        );
+        expect(
+          text,
+          isNot(contains('isInSelection:')),
           reason:
-              'isInSelection, onSelectUpdate and onMoveBegin each need '
-              'it — a grid that keeps one type test keeps one third of the '
-              'bug',
+              'a grid that spells the range callbacks itself is the copy '
+              'that drifted — the sheet had lost the rows it swept',
         );
         expect(
           text,

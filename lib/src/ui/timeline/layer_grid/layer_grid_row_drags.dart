@@ -14,73 +14,24 @@ class _LayerGridRowDrags {
   /// list handed to the policy is those rows' layers — see [layerRowsOf]
   /// for why it cannot be [TimelineDisplayRow.layerIndex] and
   /// `widget.layers` (F-31).
-  Widget _draggable(TimelineDisplayRow row, Widget child) {
-    final hooks = _state.widget.hooks.rowDragHooks;
-    // 🚨A5-4 (유저 2026-08-22): 「카메라·트랜지션 = **드래그 불가**」 —
-    // 그런데 F-16: **선택은 된다.** 두 레일이 각자 적던 그 판단은 이제
-    // [unmovableRowSelectTarget] 하나가 답한다.
-    final unmovable = unmovableRowSelectTarget(
-      kind: row.layer.kind,
-      layerId: row.layer.id,
-      rowExtent: _state._metrics.layerRowHeight,
-      axis: Axis.horizontal,
-      hooks: hooks,
-      onSelectCrossed: (rowDelta) => _state.widget.hooks.onRowSelectionSpan
-          ?.call(_state._dragRows, rowDelta),
-      child: child,
-    );
-    if (unmovable != null) {
-      return unmovable;
-    }
-    final caret = LayerRowCaret.of(_state._dragRows, row.layer.id);
-    if (caret == null) {
-      return child;
-    }
-    return LayerRowDragTarget(
-      subject: LayerRowSubject(row.layer.id),
-      slotBefore: caret.slot,
-      rowExtent: _state._metrics.layerRowHeight,
-      axis: Axis.horizontal,
-      hooks: hooks,
-      onGripTaken: () => _state._heldDragRow = row.address,
-      onGripReleased: () {
-        if (_state._heldDragRow == row.address) {
-          _state._heldDragRow = null;
-        }
-      },
-      isLastRow: caret.isLastRow,
-      onCrossed: hooks == null
-          ? (_, _, _) {}
-          : (steps, onRow, inRow) {
-              // R5 #15: ON a row wins over the gap beside it — that is the
-              // whole point of the middle band. The row it names is read
-              // from the DISPLAY list, so which way this rail runs stays
-              // the surface's business as it already is for slots.
-              final slot = caret.slotFor(steps);
-              final target = caret.onRowLayer(onRow);
-              if (target != null) {
-                hooks.onRowTarget(caret.layers, slot, target.id);
-                return;
-              }
-              hooks.onUpdate(
-                caret.layers,
-                slot,
-                pointerInRow: caret.onRowLayer(inRow)?.id,
-              );
-            },
-      // ⑨: the SELECT half of the same drag. It counts in the rail's own
-      // DISPLAY rows (`_dragRows`) rather than in the layer list the caret
-      // uses — the span must be able to stop on a lane row, which the layer
-      // list does not contain.
-      onSelectCrossed: hooks?.onSelectBegin == null
-          ? null
-          : (rowDelta) => _state.widget.hooks.onRowSelectionSpan?.call(
-              _state._dragRows,
-              rowDelta,
-            ),
-      child: child,
-    );
-  }
+  Widget _draggable(TimelineDisplayRow row, Widget child) =>
+      layerRowDragWrapper(
+        row: row,
+        dragRows: () => _state._dragRows,
+        rowExtent: _state._metrics.layerRowHeight,
+        axis: Axis.horizontal,
+        hooks: _state.widget.hooks.rowDragHooks,
+        onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
+        // The held row is PINNED in the row window while its grip is taken
+        // (the window would otherwise unmount it mid-drag).
+        onGripTaken: () => _state._heldDragRow = row.address,
+        onGripReleased: () {
+          if (_state._heldDragRow == row.address) {
+            _state._heldDragRow = null;
+          }
+        },
+        child: child,
+      );
 
   /// An fx header, made draggable: grabbing it re-orders the layer's effect
   /// CHAIN. The Transform group header is never wrapped — it is not a chain

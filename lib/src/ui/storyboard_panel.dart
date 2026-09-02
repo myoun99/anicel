@@ -35,6 +35,7 @@ import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
+import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/timeline_cut_end_handle.dart' show movieEndPreviewTotalFrames;
 import 'timeline/layer_rail_columns.dart';
@@ -117,7 +118,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'timeline/timeline_frame_coordinate_policy.dart'
     show frameIndexFromLocalX;
 import 'timeline/timeline_frame_range_policy.dart'
-    show endlessTrailingFrames, endlessViewportFillFrames;
+    show endlessViewportFillFrames;
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
@@ -125,7 +126,6 @@ import 'timeline/timeline_instruction_row_visual.dart'
     show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
-import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
@@ -1013,6 +1013,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// frames between crossings are pure translation.
   final ValueNotifier<int> _horizontalWindowBucket = ValueNotifier<int>(0);
 
+  /// The frame axis following its controller — the timeline grids'
+  /// follower, the same object: the endless trailing room, the activity
+  /// watch for its lazy shrink, and the two notifiers above.
+  late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
+    controller: _horizontalController,
+    frameAxisOffset: _horizontalScrollOffset,
+    frameWindowBucket: _horizontalWindowBucket,
+    cellExtent: () => _scale.pixelsPerFrame,
+    baseFrameCount: () => _totalFrames(
+      widget.project,
+      buildStoryboardTimelineLayout(widget.project),
+    ),
+    rebuild: _rebuild,
+    isMounted: () => mounted,
+  );
+
   /// The cut under the pointer. With the blocks painted there is no widget
   /// per cut to hold a hover state, so this one notifier serves every V
   /// row and a hover costs a repaint instead of a rebuild.
@@ -1034,7 +1050,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void initState() {
     super.initState();
-    _horizontalController.addListener(_scroll.handleHorizontalScroll);
+    _horizontalController.addListener(_frameAxis.handleScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
   }
 
@@ -1100,10 +1116,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void dispose() {
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
-    _horizontalController.removeListener(_scroll.handleHorizontalScroll);
-    _scroll._watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      _scroll.handleHorizontalScrollActivity,
-    );
+    _horizontalController.removeListener(_frameAxis.handleScroll);
+    _frameAxis.dispose();
     _verticalController.dispose();
     _horizontalController.dispose();
     _horizontalScrollOffset.dispose();
@@ -1280,7 +1294,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     widget.project,
                     buildStoryboardTimelineLayout(widget.project),
                   ) +
-                  _scroll._endlessTrailingFrames +
+                  _frameAxis.trailingFrames +
                   _viewportFillFrameCells,
             );
             // SE rows are built OUTSIDE the drag-preview builder from the RAW
@@ -1324,7 +1338,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// cells vanish once out of view and the scrollbar stops at the built
   /// cells. Only the ruler edge-drag overshoots and grows the extent.
   int _renderedFramesFor(int totalFrames) =>
-      math.max(totalFrames + _scroll._endlessTrailingFrames, _viewportFillFrameCells);
+      math.max(totalFrames + _frameAxis.trailingFrames, _viewportFillFrameCells);
 
   /// The scroll content's full width for [layoutEntries] (cuts + the
   /// endless runway). The rendered-cell term is EXACT (UI-R12 #16): any

@@ -12,17 +12,12 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
-import 'timeline_row_cross_offset.dart';
-import 'timeline_row_span_resolver.dart'
-    show
-        laneSpanOverDrawnRows,
-        resolveInGroupHeadLane,
-        resolveLaneSpanEscalation,
-        resolveSelectionSpanHead,
-        resolveSelectionSpanRows;
+import 'timeline_grid_range_callbacks.dart';
+import 'timeline_scroll_offset_sync.dart';
+import 'timeline_frame_axis_follower.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
-    show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
+    show effectHeaderRowsOf, rowStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -36,7 +31,6 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
-import 'timeline_frame_window.dart';
 import 'layer_rail_window.dart';
 import 'rail_column_swipe.dart';
 import 'layer_label_controls.dart'
@@ -238,15 +232,33 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// the same shape, on the other axis.
   final ValueNotifier<int> _rowWindowBucket = ValueNotifier<int>(0);
 
-  /// The scroll position whose activity we watch for the lazy endless
-  /// SHRINK (UI-R9 #11: never rescale the extent mid-gesture).
-  ScrollPosition? _watchedHorizontalPosition;
-
   double _verticalScrollOffset = 0;
   double _lastEffectiveHorizontalScrollOffset = 0;
-  double? _scheduledHorizontalOffsetCorrection;
-  double? _scheduledVerticalOffsetCorrection;
-  int _endlessTrailingFrames = 0;
+
+  /// The frame axis following its controller (UI-R9 #11/#12a): the
+  /// activity watch for the lazy endless SHRINK (never rescale the extent
+  /// mid-gesture), the trailing room and the notifiers — one object, the
+  /// same one the sheet and the storyboard hold.
+  late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
+    controller: _horizontalScrollController,
+    frameAxisOffset: _frameAxisOffset,
+    frameWindowBucket: _frameWindowBucket,
+    cellExtent: () => _metrics.frameCellWidth,
+    baseFrameCount: () => _visibleFrameCount,
+    rebuild: _rebuild,
+    isMounted: () => mounted,
+  );
+
+  /// UI-R9 #9: each axis pulled to the offset the layout resolved, one
+  /// frame later — one object per axis, the same one the sheet holds.
+  late final TimelineScrollOffsetSync _horizontalSync = TimelineScrollOffsetSync(
+    _horizontalScrollController,
+    isMounted: () => mounted,
+  );
+  late final TimelineScrollOffsetSync _verticalSync = TimelineScrollOffsetSync(
+    _verticalScrollController,
+    isMounted: () => mounted,
+  );
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
@@ -267,7 +279,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // coasting fling stops hiding the cells from hit-testing.
     _horizontalScrollController = PenFriendlyScrollController();
     _verticalScrollController = PenFriendlyScrollController();
-    _horizontalScrollController.addListener(_scroll.handleHorizontalScroll);
+    _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
   }
@@ -314,11 +326,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   void dispose() {
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
-    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      _scroll.handleHorizontalScrollActivity,
-    );
+    _frameAxis.dispose();
     _horizontalScrollController
-      ..removeListener(_scroll.handleHorizontalScroll)
+      ..removeListener(_frameAxis.handleScroll)
       ..dispose();
     _verticalScrollController
       ..removeListener(_scroll.handleVerticalScroll)
@@ -369,7 +379,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// scroll physics clamp here; only the ruler edge-drag overshoots (and
   /// the growth listener then materializes what the view needs).
   int get _renderedFrameCount => math.max(
-    _visibleFrameCount + _endlessTrailingFrames,
+    _visibleFrameCount + _frameAxis.trailingFrames,
     _viewportFillFrameCells,
   );
 
@@ -760,7 +770,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   ? constraints.maxWidth
                   : 0.0;
               _lastEffectiveHorizontalScrollOffset = _frameAxisOffset.value;
-              _scroll.synchronizeHorizontalScrollController(
+              _horizontalSync.synchronize(
                 _scroll.effectiveHorizontalScrollOffset(
                   requestedOffset: _frameAxisOffset.value,
                   viewportWidth: viewportWidth,
@@ -1002,7 +1012,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           viewportHeight: bodyViewportHeight,
                                           contentHeight: verticalContentHeight,
                                         );
-                                    _scroll.synchronizeVerticalScrollController(
+                                    _verticalSync.synchronize(
                                       effectiveVerticalScrollOffset,
                                     );
                                     final window = _rowWindowFor(
@@ -1087,7 +1097,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       _lastEffectiveHorizontalScrollOffset =
                                                           _frameAxisOffset
                                                               .value;
-                                                      _scroll.synchronizeHorizontalScrollController(
+                                                      _horizontalSync.synchronize(
                                                         _scroll.effectiveHorizontalScrollOffset(
                                                           requestedOffset:
                                                               _frameAxisOffset

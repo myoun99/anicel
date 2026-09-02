@@ -174,25 +174,53 @@ void main() {
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ];
 
+    // Both grids resolve a row drag through ONE wrapper now (the audit's
+    // clone scan, 2026-09-03), so the caret is asked there — of the rows
+    // the grid DREW, handed in as a getter.
+    final owner = librarySource('lib/src/ui/timeline/layer_row_drag.dart');
+    expect(owner, contains('Widget layerRowDragWrapper('));
+    final wrapper = owner.substring(
+      owner.indexOf('Widget layerRowDragWrapper('),
+    );
+    expect(
+      wrapper.contains('LayerRowCaret.of(dragRows()'),
+      isTrue,
+      reason: 'the wrapper asks the caret of the rows on screen',
+    );
+    expect(
+      wrapper.contains('widget.layers'),
+      isFalse,
+      reason: 'the wrapper never sees the whole layer list',
+    );
+
     for (final path in grids) {
       // The grid is a LIBRARY — the file plus the parts the audit's SRP
-      // cuts (2026-09-02) put beside it — so the hook is found where it sits.
+      // cuts (2026-09-02) put beside it — so the call is found where it sits.
       final source = librarySource(path);
       expect(
-        source.contains('LayerRowCaret.of('),
+        source.contains('layerRowDragWrapper('),
         isTrue,
-        reason: '$path resolves a row drag, so it asks the caret',
+        reason: '$path resolves a row drag through the shared wrapper',
       );
-      for (final hook in ['onUpdate(', 'onRowTarget(']) {
-        expect(
-          source.contains('$hook\n          widget.layers') ||
-              source.contains('${hook}widget.layers'),
-          isFalse,
-          reason:
-              '$path passes $hook the rows ON SCREEN, never the whole '
-              'layer list — the difference is every folded group',
-        );
-      }
+      expect(
+        source.contains('LayerRowCaret.of('),
+        isFalse,
+        reason: '$path asks no caret of its own — the wrapper does',
+      );
+      expect(
+        RegExp(r'dragRows:\s*\(\)\s*=>\s*_state\._dragRows').hasMatch(source),
+        isTrue,
+        reason:
+            '$path hands the wrapper the rows ON SCREEN, never the whole '
+            'layer list — the difference is every folded group',
+      );
+      expect(
+        RegExp(r'dragRows:\s*\(\)\s*=>\s*widget\.layers').hasMatch(source),
+        isFalse,
+        reason:
+            '$path — the whole layer list is the list with the hidden rows '
+            'still in it',
+      );
     }
   });
 }

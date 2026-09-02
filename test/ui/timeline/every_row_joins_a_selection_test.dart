@@ -195,15 +195,44 @@ void main() {
         );
         expect(
           RegExp(r'onSelectCrossed:').allMatches(text).length,
-          greaterThanOrEqualTo(3),
+          greaterThanOrEqualTo(2),
           reason:
-              'the layer row had one; the fx CHAIN HEADER and the '
-              'select-only lane each need their own. The header was handed '
-              'onCrossed and never this — an unremarked omission, and the '
-              'whole bug',
+              'the fx CHAIN HEADER and the select-only lane each need their '
+              'own. The header was handed onCrossed and never this — an '
+              'unremarked omission, and the whole bug',
+        );
+        expect(
+          text,
+          contains('layerRowDragWrapper('),
+          reason:
+              'the LAYER row\'s own target comes from the shared wrapper '
+              '(the audit\'s clone scan, 2026-09-03) — a grid that builds '
+              'it by hand is the copy that drifted',
         );
       });
     }
+
+    test(
+      'and the layer row\'s target is wired ONCE, in the shared wrapper',
+      () {
+        // Both grids used to spell this target themselves, and the sheet's
+        // copy drifted behind the rail's (A5-4 / F-16, F-31). The wrapper is
+        // where the layer row's hand-over lives now — for the movable row's
+        // drag target and the unmovable row's select-only target alike.
+        final text = source('lib/src/ui/timeline/layer_row_drag.dart');
+        expect(text, contains('Widget layerRowDragWrapper('));
+        final wrapper = text.substring(
+          text.indexOf('Widget layerRowDragWrapper('),
+        );
+        expect(
+          RegExp(r'onSelectCrossed:').allMatches(wrapper).length,
+          greaterThanOrEqualTo(2),
+          reason:
+              'the unmovable row\'s select-only target and the movable row\'s '
+              'drag target each hand the span on',
+        );
+      },
+    );
 
     test('and the subject maps to the lane\'s own address', () {
       // ⚠️A5-3② moved this switch OUT of the timeline's host and beside the

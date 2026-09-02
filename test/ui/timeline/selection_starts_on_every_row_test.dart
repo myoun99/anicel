@@ -169,6 +169,18 @@ void _bothRailsSelectOnly() {
       reason: '⛔법이 여기 없으면 스캔이 빈 것을 쟀다',
     );
 
+    // 래퍼 — 두 레일이 각자 적던 행 드래그 포장을 한 함수로 합쳤다(2026-09-03
+    // 사본 스캔). 재배치 불가 행의 답은 여기서 **한 번** 불린다.
+    expect(owner, contains('Widget layerRowDragWrapper('));
+    final wrapper = owner.substring(
+      owner.indexOf('Widget layerRowDragWrapper('),
+    );
+    expect(
+      wrapper,
+      contains('unmovableRowSelectTarget('),
+      reason: '⛔래퍼가 그 한 함수를 안 부르면 두 레일이 다시 각자 답한다(F-16)',
+    );
+
     // 두 레일 — 각자 적지 말고 **부른다.**
     for (final path in const [
       'lib/src/ui/timeline/layer_timeline_grid.dart',
@@ -180,8 +192,15 @@ void _bothRailsSelectOnly() {
       final source = librarySource(path);
       expect(
         source,
-        contains('unmovableRowSelectTarget('),
-        reason: '$path — 재배치 불가 행의 답을 **한 함수**가 낸다(F-16)',
+        contains('layerRowDragWrapper('),
+        reason:
+            '$path — 재배치 불가 행의 답을 **한 함수**가 낸다(F-16); '
+            '레일은 그 래퍼를 부른다',
+      );
+      expect(
+        source,
+        isNot(contains('unmovableRowSelectTarget(')),
+        reason: '$path — 레일이 직접 부르면 래퍼와 두 벌이다',
       );
       expect(
         source,

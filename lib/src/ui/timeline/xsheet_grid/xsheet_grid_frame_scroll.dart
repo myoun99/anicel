@@ -50,74 +50,6 @@ class _XSheetGridFrameScroll {
     return _state._windowedFrameGeometry;
   }
 
-  /// Frame-axis scroll (UI-R9 #12a): NO setState per pixel — only an
-  /// endless-extent growth (a real relayout, rare) rebuilds the grid.
-  void handleFrameScroll() {
-    if (!_state._frameScrollController.hasClients) {
-      return;
-    }
-    _watchFrameScrollActivity();
-    final offset = _state._frameScrollController.offset;
-    if (offset == _state._frameAxisOffset.value) {
-      return;
-    }
-    _state._frameAxisOffset.value = offset;
-    // Quantized span buckets (UI-R16): repaint once per span crossing.
-    final bucket = timelineFrameWindowBucketOf(
-      offset: offset,
-      cellExtent: _state._metrics.frameCellWidth,
-    );
-    if (bucket != _state._frameWindowBucket.value) {
-      _state._frameWindowBucket.value = bucket;
-    }
-    final position = _state._frameScrollController.position;
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _visibleFrameCount,
-      currentTrailingFrames: _state._endlessTrailingFrames,
-      scrollOffset: offset,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _state._metrics.frameCellWidth,
-      // Discrete moves (wheel ticks, programmatic jumps) may shrink right
-      // away; gesture pixels never rescale mid-drag (the settle listener
-      // applies the release).
-      allowShrink: !position.isScrollingNotifier.value,
-    );
-    if (nextTrailingFrames != _state._endlessTrailingFrames) {
-      _state._rebuild(() => _state._endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
-  void _watchFrameScrollActivity() {
-    final position = _state._frameScrollController.position;
-    if (identical(position, _state._watchedFramePosition)) {
-      return;
-    }
-    _state._watchedFramePosition?.isScrollingNotifier.removeListener(
-      handleFrameScrollActivity,
-    );
-    _state._watchedFramePosition = position;
-    position.isScrollingNotifier.addListener(handleFrameScrollActivity);
-  }
-
-  /// Scroll settled: the lazy endless SHRINK (UI-R9 #11).
-  void handleFrameScrollActivity() {
-    final position = _state._watchedFramePosition;
-    if (position == null || position.isScrollingNotifier.value) {
-      return;
-    }
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _visibleFrameCount,
-      currentTrailingFrames: _state._endlessTrailingFrames,
-      scrollOffset: position.pixels,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _state._metrics.frameCellWidth,
-      allowShrink: true,
-    );
-    if (nextTrailingFrames != _state._endlessTrailingFrames && _state.mounted) {
-      _state._rebuild(() => _state._endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
   int get _visibleFrameCount =>
       _state._rangeGestures._frameRangePolicy.visibleFrameCount;
 
@@ -126,7 +58,7 @@ class _XSheetGridFrameScroll {
   /// and the rail clamp here; the frame-rail edge-drag overshoots and the
   /// growth listener materializes what the overshot view needs.
   int get renderedFrameCount => math.max(
-    _visibleFrameCount + _state._endlessTrailingFrames,
+    _visibleFrameCount + _state._frameAxis.trailingFrames,
     _state._viewportFillFrameCells,
   );
 
@@ -145,30 +77,4 @@ class _XSheetGridFrameScroll {
     ).effectiveOffset;
   }
 
-  void synchronizeFrameScrollController(double effectiveOffset) {
-    if (!_state._frameScrollController.hasClients ||
-        _state._frameScrollController.offset == effectiveOffset ||
-        _state._scheduledFrameOffsetCorrection == effectiveOffset) {
-      return;
-    }
-
-    _state._scheduledFrameOffsetCorrection = effectiveOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_state.mounted || !_state._frameScrollController.hasClients) {
-        _state._scheduledFrameOffsetCorrection = null;
-        return;
-      }
-
-      final maxScrollExtent =
-          _state._frameScrollController.position.maxScrollExtent;
-      final targetOffset = effectiveOffset
-          .clamp(0.0, maxScrollExtent)
-          .toDouble();
-
-      _state._scheduledFrameOffsetCorrection = null;
-      if (_state._frameScrollController.offset != targetOffset) {
-        _state._frameScrollController.jumpTo(targetOffset);
-      }
-    });
-  }
 }

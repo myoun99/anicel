@@ -24,6 +24,8 @@ import '../../models/track_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import 'layer_drop_policy.dart';
+import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId;
 import 'row_control_surface.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
@@ -995,6 +997,79 @@ Widget? unmovableRowSelectTarget({
     axis: axis,
     hooks: hooks,
     onSelectCrossed: onSelectCrossed,
+    child: child,
+  );
+}
+
+/// A layer row's drag wrapper: the movable row's [LayerRowDragTarget], the
+/// unmovable row's select-only target ([unmovableRowSelectTarget]), or the
+/// target with no hooks when the host wired none: it renders the bare child
+/// itself, and the rows stay countable by it (the rail always kept it).
+///
+/// 🚨ONE function for the rail and the sheet. The sheet used to copy the
+/// rail's shape and drift behind it — A5-4 / F-16 (「카메라·트랜지션 =
+/// 드래그 불가, 그런데 선택은 된다」) and F-31 (the caret counts the rows
+/// the grid DREW, never `widget.layers`) were each fixed on the rail first
+/// and found missing on the sheet later. The audit's clone scan
+/// (2026-09-03) found the pair; this is the one that stays.
+///
+/// [dragRows] is a getter: the caret reads the rows drawn at build time,
+/// the selection closures the rows drawn at EVENT time.
+Widget layerRowDragWrapper({
+  required TimelineDisplayRow row,
+  required List<TimelineDisplayRow> Function() dragRows,
+  required double rowExtent,
+  required Axis axis,
+  required TimelineRowDragHooks? hooks,
+  required void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan,
+  VoidCallback? onGripTaken,
+  VoidCallback? onGripReleased,
+  required Widget child,
+}) {
+  final unmovable = unmovableRowSelectTarget(
+    kind: row.layer.kind,
+    layerId: row.layer.id,
+    rowExtent: rowExtent,
+    axis: axis,
+    hooks: hooks,
+    onSelectCrossed: (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
+    child: child,
+  );
+  if (unmovable != null) {
+    return unmovable;
+  }
+  final caret = LayerRowCaret.of(dragRows(), row.layer.id);
+  if (caret == null) {
+    return child;
+  }
+  return LayerRowDragTarget(
+    subject: LayerRowSubject(row.layer.id),
+    slotBefore: caret.slot,
+    rowExtent: rowExtent,
+    axis: axis,
+    hooks: hooks,
+    onGripTaken: onGripTaken,
+    onGripReleased: onGripReleased,
+    isLastRow: caret.isLastRow,
+    onCrossed: hooks == null
+        ? (_, _, _) {}
+        : (steps, onRow, inRow) {
+      final slot = caret.slotFor(steps);
+      final target = caret.onRowLayer(onRow);
+      if (target != null) {
+        hooks.onRowTarget(caret.layers, slot, target.id);
+        return;
+      }
+      hooks.onUpdate(
+        caret.layers,
+        slot,
+        pointerInRow: caret.onRowLayer(inRow)?.id,
+      );
+    },
+    onSelectCrossed: hooks?.onSelectBegin == null
+        ? null
+        : (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
     child: child,
   );
 }

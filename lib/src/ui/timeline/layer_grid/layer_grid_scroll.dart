@@ -55,80 +55,6 @@ class _LayerGridScroll {
     }
   }
 
-  /// Frame-axis scroll (UI-R9 #12a): NO setState per pixel. The offset
-  /// notifier drives the ruler translate; the window bucket drives the
-  /// re-windowing; only an ENDLESS-extent growth (a real relayout, rare)
-  /// still rebuilds the grid.
-  void handleHorizontalScroll() {
-    if (!_state._horizontalScrollController.hasClients) {
-      return;
-    }
-    _watchHorizontalScrollActivity();
-    final offset = _state._horizontalScrollController.offset;
-    if (offset == _state._frameAxisOffset.value) {
-      return;
-    }
-    _state._frameAxisOffset.value = offset;
-    // Quantized span buckets (UI-R16): the bucket notifier — the
-    // painters' repaint trigger — fires once per span crossing, so the
-    // frames between crossings are pure translation.
-    final bucket = timelineFrameWindowBucketOf(
-      offset: offset,
-      cellExtent: _state._metrics.frameCellWidth,
-    );
-    if (bucket != _state._frameWindowBucket.value) {
-      _state._frameWindowBucket.value = bucket;
-    }
-    final position = _state._horizontalScrollController.position;
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _state._visibleFrameCount,
-      currentTrailingFrames: _state._endlessTrailingFrames,
-      scrollOffset: offset,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _state._metrics.frameCellWidth,
-      // Discrete moves (wheel ticks, programmatic jumps) may shrink right
-      // away; gesture pixels never rescale the extent mid-drag (the
-      // settle listener below applies the release).
-      allowShrink: !position.isScrollingNotifier.value,
-    );
-    if (nextTrailingFrames != _state._endlessTrailingFrames) {
-      _state._rebuild(() => _state._endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
-  void _watchHorizontalScrollActivity() {
-    final position = _state._horizontalScrollController.position;
-    if (identical(position, _state._watchedHorizontalPosition)) {
-      return;
-    }
-    _state._watchedHorizontalPosition?.isScrollingNotifier.removeListener(
-      handleHorizontalScrollActivity,
-    );
-    _state._watchedHorizontalPosition = position;
-    position.isScrollingNotifier.addListener(handleHorizontalScrollActivity);
-  }
-
-  /// Scroll settled: apply the lazy endless SHRINK (UI-R9 #11) — the
-  /// extent contracts back toward the base + runway so the scrollbar
-  /// thumb recovers, never mid-gesture.
-  void handleHorizontalScrollActivity() {
-    final position = _state._watchedHorizontalPosition;
-    if (position == null || position.isScrollingNotifier.value) {
-      return;
-    }
-    final nextTrailingFrames = endlessTrailingFrames(
-      baseFrameCount: _state._visibleFrameCount,
-      currentTrailingFrames: _state._endlessTrailingFrames,
-      scrollOffset: position.pixels,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: _state._metrics.frameCellWidth,
-      allowShrink: true,
-    );
-    if (nextTrailingFrames != _state._endlessTrailingFrames && _state.mounted) {
-      _state._rebuild(() => _state._endlessTrailingFrames = nextTrailingFrames);
-    }
-  }
-
   double effectiveHorizontalScrollOffset({
     required double requestedOffset,
     required double viewportWidth,
@@ -141,33 +67,6 @@ class _LayerGridScroll {
       totalContentWidth: totalFrameContentWidth,
       viewportWidth: viewportWidth,
     ).effectiveOffset;
-  }
-
-  void synchronizeHorizontalScrollController(double effectiveOffset) {
-    if (!_state._horizontalScrollController.hasClients ||
-        _state._horizontalScrollController.offset == effectiveOffset ||
-        _state._scheduledHorizontalOffsetCorrection == effectiveOffset) {
-      return;
-    }
-
-    _state._scheduledHorizontalOffsetCorrection = effectiveOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_state.mounted || !_state._horizontalScrollController.hasClients) {
-        _state._scheduledHorizontalOffsetCorrection = null;
-        return;
-      }
-
-      final maxScrollExtent =
-          _state._horizontalScrollController.position.maxScrollExtent;
-      final targetOffset = effectiveOffset
-          .clamp(0.0, maxScrollExtent)
-          .toDouble();
-
-      _state._scheduledHorizontalOffsetCorrection = null;
-      if (_state._horizontalScrollController.offset != targetOffset) {
-        _state._horizontalScrollController.jumpTo(targetOffset);
-      }
-    });
   }
 
   /// The vertical mirror of the horizontal clamp machinery (UI-R9 #9):
@@ -184,30 +83,4 @@ class _LayerGridScroll {
     return requestedOffset.clamp(0.0, maxOffset).toDouble();
   }
 
-  void synchronizeVerticalScrollController(double effectiveOffset) {
-    if (!_state._verticalScrollController.hasClients ||
-        _state._verticalScrollController.offset == effectiveOffset ||
-        _state._scheduledVerticalOffsetCorrection == effectiveOffset) {
-      return;
-    }
-
-    _state._scheduledVerticalOffsetCorrection = effectiveOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_state.mounted || !_state._verticalScrollController.hasClients) {
-        _state._scheduledVerticalOffsetCorrection = null;
-        return;
-      }
-
-      final maxScrollExtent =
-          _state._verticalScrollController.position.maxScrollExtent;
-      final targetOffset = effectiveOffset
-          .clamp(0.0, maxScrollExtent)
-          .toDouble();
-
-      _state._scheduledVerticalOffsetCorrection = null;
-      if (_state._verticalScrollController.offset != targetOffset) {
-        _state._verticalScrollController.jumpTo(targetOffset);
-      }
-    });
-  }
 }

@@ -1218,6 +1218,78 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
     expect(moveUpdates.last, (0, const LayerId('layer-b')));
   });
 
+
+  testWidgets('the X-sheet HANDS OVER the rows it swept, like the rail — one '
+      'law for both grids', (tester) async {
+    // The rail's law (pinned above for the rail): the span is sliced off the
+    // rows the grid drew, and the grid hands it over. The sheet copied the
+    // rail's callbacks and fell a law behind — it handed the session a
+    // block-move target and no span at all. The audit's clone scan
+    // (2026-09-03) found the pair; one builder answers for both now.
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final spans = <List<TimelineRowAddress>>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: XSheetTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-a'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              rangeHooks: hooks(selection: selection, onSpanRows: spans.add),
+            ),
+            layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
+          ),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final rowExtent = XSheetTimelineGrid.defaultMetrics.frameCellWidth;
+    final columnExtent = XSheetTimelineGrid.defaultMetrics.layerRowHeight;
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(20, 18),
+      kind: PointerDeviceKind.mouse,
+    );
+    // One column across (into layer B) and two frame rows down.
+    await gesture.moveBy(Offset(columnExtent, rowExtent * 2));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(spans, isNotEmpty, reason: 'the drag reported at least once');
+    expect(
+      spans.last,
+      isNotEmpty,
+      reason:
+          'an empty span means the sheet computed nothing and the '
+          'selection falls back to a model walk — the rail stopped doing '
+          'that, and the sheet answers with the same builder now',
+    );
+    expect(
+      spans.last.first,
+      const LayerRowAddress(LayerId('layer-a')),
+      reason: 'the run starts at the column the drag anchored on',
+    );
+    expect(
+      spans.last,
+      contains(const LayerRowAddress(LayerId('layer-b'))),
+      reason: 'the head column joined the span',
+    );
+  });
   testWidgets('PEN-9: a pen landing MID-COAST cannot select — the glide '
       'ignore-pointers the gesture layer (the tablet bug, pinned)', (
     tester,
