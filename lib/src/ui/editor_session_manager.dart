@@ -259,6 +259,7 @@ import 'timeline/transform_lane_policy.dart'
 
 part 'session/frame_range_move_drag.dart';
 part 'session/edge_drag.dart';
+part 'session/movie_end_drag.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -11500,55 +11501,18 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Movie-end drag (UI-R20 #3) -------------------------------------------
 
-  /// The in-flight end-line drag ([MovieEndDrag]), or null.
-  MovieEndDrag? _movieEndDrag;
+  // ── the movie-end drag: its own object, in its own file ────────────────
+  //
+  // A collaborator (session/movie_end_drag.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _MovieEndDrag _movieEnd = _MovieEndDrag(this);
 
-  /// The movie's content end: the last cut end across every track.
-  int get movieContentEndFrame {
-    var end = 0;
-    for (final entry in buildStoryboardTimelineLayout(
-      _repository.requireProject(),
-    )) {
-      if (entry.endFrame > end) {
-        end = entry.endFrame;
-      }
-    }
-    return end;
-  }
-
-  /// Starts an end-line drag (UI-R20 #3): the line edits the movie's
-  /// FINAL LENGTH — the project's trailing gap past the last cut — never
-  /// the cuts themselves (the tail gap is as first-class as any other
-  /// gap on this timeline).
-  bool beginMovieEndDrag() {
-    _movieEndDrag = MovieEndDrag(
-      beforeTrailing: _repository.requireProject().trailingFrames,
-      preview: dragPreview,
-      commitTrailing: (trailingFrames) {
-        _historyManager.execute(
-          UpdateProjectTrailingFramesCommand(
-            repository: _repository,
-            trailingFrames: trailingFrames,
-          ),
-        );
-        notifyListeners();
-      },
-    );
-    return true;
-  }
-
+  int get movieContentEndFrame => _movieEnd.movieContentEndFrame;
+  bool beginMovieEndDrag() => _movieEnd.beginMovieEndDrag();
   void updateMovieEndDrag(int cumulativeDelta) =>
-      _movieEndDrag?.update(cumulativeDelta);
-
-  void endMovieEndDrag() {
-    _movieEndDrag?.commit();
-    _movieEndDrag = null;
-  }
-
-  void cancelMovieEndDrag() {
-    _movieEndDrag?.cancel();
-    _movieEndDrag = null;
-  }
+      _movieEnd.updateMovieEndDrag(cumulativeDelta);
+  void endMovieEndDrag() => _movieEnd.endMovieEndDrag();
+  void cancelMovieEndDrag() => _movieEnd.cancelMovieEndDrag();
 
   // --- Storyboard cut RANGE selection (UI-R18 #1, O2c) ----------------------
 
