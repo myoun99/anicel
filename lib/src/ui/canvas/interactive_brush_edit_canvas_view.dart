@@ -47,6 +47,8 @@ import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 import 'canvas_touch_contacts.dart';
 
+part 'brush_edit/brush_edit_stroke.dart';
+
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
 /// handoff, so a just-committed stroke never trades its overlay for stale
@@ -422,7 +424,7 @@ class _InteractiveBrushEditCanvasViewState
       return; // A committed line survives extra fingers (PEN-12 #4).
     }
     _multiTouchNavigation = true;
-    _endStrokeInput();
+    _stroke.endStrokeInput();
     _resetOverlay();
   }
 
@@ -442,7 +444,7 @@ class _InteractiveBrushEditCanvasViewState
       // firing it synchronously here threw "setState during build" (the
       // mid-stroke flip red screen). Reset silently, notify post-frame.
       final hadActiveStroke = _activeDrawingPointer != null;
-      _clearStrokeInputState();
+      _stroke.clearStrokeInputState();
       _resetOverlay();
       // clear() before dropping: the live tiles are native-backed (R21)
       // and return to the engine's free list through it.
@@ -582,7 +584,7 @@ class _InteractiveBrushEditCanvasViewState
         // landed together). A stylus/mouse stroke keeps drawing: extra
         // touch contacts alongside it are palm rests.
         if (touchStroke) {
-          _endStrokeInput();
+          _stroke.endStrokeInput();
           _resetOverlay();
         }
         return;
@@ -823,7 +825,7 @@ class _InteractiveBrushEditCanvasViewState
         previous: null,
         nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
         firstSequence: _nextSequence,
-        spacingRatio: _activeStrokeSpacing,
+        spacingRatio: _stroke.activeStrokeSpacing,
       ),
     );
     if (initialDabs.isNotEmpty) {
@@ -941,122 +943,16 @@ class _InteractiveBrushEditCanvasViewState
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the
     // three-route parity holds by construction (P7).
-    _advanceStrokeThroughGuides(
+    _stroke.advanceStrokeThroughGuides(
       _stabilizer?.follow(penPosition) ?? penPosition,
     );
   }
 
-  /// Stabilized point → perspective snap → the stroke.
-  ///
-  /// Smoothing runs first because smoothing a snapped line would bend the
-  /// straightness back out of it. The snap can return NOTHING while it is
-  /// still deciding which ray this stroke belongs to; those points are held
-  /// inside the session and arrive together the moment it locks.
-  void _advanceStrokeThroughGuides(CanvasPoint canvasPosition) {
-    final session = _snapSession;
-    if (session == null) {
-      _advanceStrokeTo(canvasPosition);
-      return;
-    }
-    for (final snapped in session.follow(canvasPosition)) {
-      _advanceStrokeTo(snapped);
-    }
-  }
-
-  void _advanceStrokeTo(CanvasPoint canvasPosition) {
-    final previousRaw = _previousRawCanvasPosition;
-    _previousRawCanvasPosition = canvasPosition;
-    if (previousRaw == null) {
-      return;
-    }
-
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
-    final clippedSegment = widget.segmentClipper.clip(
-      previous: previousRaw,
-      current: canvasPosition,
-      canvasSize: canvasSize,
-    );
-    if (clippedSegment == null) {
-      _breakCurrentVisibleSegment = true;
-      return;
-    }
-
-    final previousDab =
-        _breakCurrentVisibleSegment ||
-            clippedSegment.startsNewVisibleSegment ||
-            _previousBaseDab == null
-        ? null
-        : _previousBaseDab;
-    final segmentStartDabs =
-        clippedSegment.startsNewVisibleSegment ||
-            _breakCurrentVisibleSegment ||
-            _previousBaseDab == null
-        ? _withPressureDynamics(
-            widget.dabInterpolator.interpolate(
-              previous: null,
-              nextRaw: _dabFromPosition(
-                clippedSegment.start,
-                sequence: _nextSequence,
-              ),
-              firstSequence: _nextSequence,
-              spacingRatio: _activeStrokeSpacing,
-            ),
-          )
-        : const <BrushDab>[];
-    final firstEndSequence = _nextSequence + segmentStartDabs.length;
-    final endPrevious = segmentStartDabs.isNotEmpty
-        ? segmentStartDabs.last
-        : previousDab;
-    final segmentEndDabs = _withPressureDynamics(
-      widget.dabInterpolator.interpolate(
-        previous: endPrevious,
-        nextRaw: _dabFromPosition(
-          clippedSegment.end,
-          sequence: firstEndSequence,
-        ),
-        firstSequence: firstEndSequence,
-        spacingRatio: _activeStrokeSpacing,
-      ),
-    );
-    final baseDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
-    if (baseDabs.isEmpty) {
-      return;
-    }
-    _previousBaseDab = baseDabs.last;
-
-    _lastDirectionDegrees =
-        strokeDirectionDegrees(from: previousRaw, to: canvasPosition) ??
-        _lastDirectionDegrees;
-    // Symmetry copies the DABS, after interpolation, spacing and dynamics
-    // have been computed once. The copy transforms are rigid, so distances
-    // — and therefore spacing — survive them exactly, and every copy of the
-    // stroke lands in the same batch as the original. That last part is why
-    // the axis does not darken: the copies pre-blend together instead of
-    // compositing over each other.
-    final emitted = BrushTipStampCache.instance.resolveDabs(
-      replicateDabs(
-        _withGroundMixing(
-          _strokeDynamics?.apply(
-                baseDabs,
-                firstSequence: _nextSequence,
-                directionDegrees: _lastDirectionDegrees,
-              ) ??
-              baseDabs,
-        ),
-        _symmetryTransforms,
-        firstSequence: _nextSequence,
-      ),
-    );
-
-    // No setState: pointer moves only QUEUE the new dabs (this runs at
-    // pointer-sample frequency); the per-frame flush rasterizes the batch
-    // and repaints the overlay layer directly, skipping widget rebuilds.
-    _collectedDabs.addAll(emitted);
-    _queueOverlayDabs(emitted);
-    _nextSequence += emitted.length;
-    _breakCurrentVisibleSegment = false;
-  }
+  // ── the stroke: its own object, in its own file ─────────────────────
+  //
+  // A collaborator (canvas/brush_edit/brush_edit_stroke.dart, a part of this library).
+  // The State keeps the entry points its pointer handlers call.
+  late final _BrushEditStroke _stroke = _BrushEditStroke(this);
 
   void _queueOverlayDabs(List<BrushDab> newDabs) {
     if (newDabs.isEmpty) {
@@ -1122,7 +1018,7 @@ class _InteractiveBrushEditCanvasViewState
     // the normal pipeline, so line ends land where the pen lifted.
     final lastPen = _lastPenPosition;
     if (_stabilizer != null && lastPen != null) {
-      _advanceStrokeThroughGuides(lastPen);
+      _stroke.advanceStrokeThroughGuides(lastPen);
     }
     // A stroke can lift before it travelled far enough to name a ray; the
     // snap settles on the best guess it has rather than swallowing a short
@@ -1131,7 +1027,7 @@ class _InteractiveBrushEditCanvasViewState
     final session = _snapSession;
     if (session != null) {
       for (final snapped in session.finish()) {
-        _advanceStrokeTo(snapped);
+        _stroke.advanceStrokeTo(snapped);
       }
     }
 
@@ -1140,182 +1036,13 @@ class _InteractiveBrushEditCanvasViewState
       // The commit reads the rasterizer's tiles — blend any dabs still
       // waiting on the per-frame flush first.
       _flushPendingOverlayDabs();
-      _commitStroke();
+      _stroke.commitStroke();
     }
 
-    _endStrokeInput();
+    _stroke.endStrokeInput();
     if (!hadDabs) {
       _resetOverlay();
     }
-  }
-
-  /// PROMOTION pen-up: the stroke is ALREADY blended into finished tiles
-  /// (that is what has been on screen the whole time), so committing is
-  /// installing them — no re-blend of the whole stroke, no re-decode.
-  ///
-  /// The order is what makes it invisible: promote the tiles, hand each
-  /// one the overlay image that shows exactly its pixels, commit, then
-  /// drop the overlay — all inside this one pointer event, so the very
-  /// next frame paints committed tiles that already have their pictures.
-  ///
-  /// ⚠️ EXCEPT for the tiles whose image is not there to hand over, and
-  /// there are always some. The handoff is revision-gated, the revision is
-  /// written inside the decode callback, and `_flushPendingOverlayDabs()`
-  /// runs in this same synchronous handler — so a tile the final flush
-  /// touched cannot have recorded its new revision yet. For those the
-  /// settle window is still needed and still exists. Dropping the overlay
-  /// for them instead is what left a tile-shaped patch of the line missing
-  /// for a frame, showing the pre-stroke pixels the painter's stale
-  /// fallback answers with.
-  ///
-  /// ⚠️ "Only on a rare miss" would be the comfortable thing to write here
-  /// and it is false: on an ordinary two-segment stroke, 12 of 21 promoted
-  /// coordinates miss. A stroke with nothing pending at pen-up does take
-  /// the synchronous path, and that is pinned by a test — but the settle
-  /// window is the common case, not the exception.
-  ///
-  /// ⚠️ And it covers only PART of the hole. What the overlay still holds
-  /// is exactly the missed-WITH-an-older-image set, because
-  /// `takeTileImageAt` removes the ones it hands over. A coordinate the
-  /// final flush touched for the FIRST time was never decoded by the
-  /// overlay either, so if the cel already had artwork there the stale
-  /// fallback still answers with the pre-stroke tile: measured on a wide
-  /// in-canvas fixture, 62 promoted and 50 still painting pre-stroke
-  /// pixels. Closing that needs the painter to stop borrowing for the
-  /// settling coordinates — a change to a painter three surfaces share.
-  ///
-  /// ⚠️ The dates, because they say this IS the user's report rather than
-  /// a neighbour of it. The stale fallback landed 2026-07-05; the settle
-  /// pin that covered pen-up landed 2026-07-08; `ccafbd74` took the pin
-  /// off this path on 2026-07-23. So the hole existed for three days in
-  /// early July, went away, and came back in late July — which is exactly
-  /// the shape of "intermittent, since early July" that was reported. An
-  /// earlier version of this comment said the report "goes back years" and
-  /// concluded this was a different bug; the repository's first commit is
-  /// 2026-06-02, so that was never possible.
-  ///
-  /// It only bites where the coordinate ALREADY holds decoded content —
-  /// drawing over existing ink, or a second pass through the same tile. On
-  /// blank paper the painter's per-pixel fallback draws the correct pixels.
-  void _commitStroke() {
-    final rasterizer = _liveRasterizer;
-    final base = _overlayModel.preBlendBase;
-    final blendMode =
-        (_activeStrokeInputSettings ?? widget.inputSettings).blendMode;
-    final erase = _overlayModel.erase;
-    _liveRasterizer = null;
-    if (rasterizer == null) {
-      return;
-    }
-    // Captured before `rasterizer.clear()`, which is what the settle
-    // window needs to know WHICH tiles to wait on. Null there means every
-    // tile of the cel.
-    final strokeBounds = rasterizer.strokeBounds;
-    var missedHandoff = false;
-    final promotable = base != null && base.tileSize == rasterizer.tileSize;
-    final promoted = promotable
-        ? rasterizer.promoteStrokeTiles(
-            base: base,
-            mode: blendMode,
-            erase: erase,
-          )
-        : const <PromotedStrokeTile>[];
-    if (promotable) {
-      // Hand the decoded images over BEFORE the commit: the painter must
-      // never see an adopted tile without a picture (that is a frame of
-      // stale content — the flicker the settle machinery existed for).
-      // Only images at the promoted tile's own revision qualify; a
-      // stale one would be pinned to that tile forever.
-      for (final entry in promoted) {
-        final image = _overlayModel.takeTileImageAt(
-          entry.tile.coord,
-          revision: entry.revision,
-        );
-        if (image != null) {
-          BitmapTileImageCache.instance.adoptDecoded(
-            entry.tile,
-            image,
-            staleScope: (widget.layerId, widget.frameId),
-          );
-        } else {
-          // Its decode never landed (or landed a revision behind): start
-          // one now, and REMEMBER, because the overlay must not be dropped
-          // while this coordinate has no picture.
-          //
-          // ⚠️ The sentence that used to be here — "the coordinate was
-          // showing base pixels anyway, so this is a continuation, not a
-          // regression" — is the false step that made this look benign.
-          // Once `_resetOverlay()` runs, base pixels ARE the regression:
-          // the committed tile has no image, so the painter's stale
-          // fallback answers with the PRE-STROKE tile and the stroke is
-          // missing in a tile-shaped patch.
-          //
-          // And this is not a rare race. `_flushPendingOverlayDabs()` and
-          // `_commitStroke()` run in one synchronous handler, and the
-          // revision is recorded inside the decode CALLBACK, so a tile the
-          // final flush touched cannot possibly have recorded its new
-          // revision by the time `takeTileImageAt` compares — the miss is
-          // guaranteed for exactly those tiles. With a stabilizer the
-          // catch-up segment guarantees that flush has fresh dabs, so it
-          // is guaranteed to happen at all.
-          missedHandoff = true;
-          // What the overlay still holds here is covering for a COMMITTED
-          // tile now, not for the stroke. Saying so is what lets it
-          // outlive the stroke: the next pen-down must not take it away
-          // before its committed tile can paint.
-          _overlayModel.markStandIn(entry.tile.coord);
-          BitmapTileImageCache.instance.ensureDecoded(
-            entry.tile,
-            staleScope: (widget.layerId, widget.frameId),
-          );
-        }
-      }
-    }
-    widget.onSourceStrokeCommitted(
-      BrushStrokeCommitData(
-        sourceDabs: List.of(_collectedDabs),
-        // BB-1: the stroke's blend rides the payload — captured from the
-        // stroke's settings SNAPSHOT, so a tool change can never flip a
-        // committed stroke's mode.
-        blendMode: blendMode,
-        promotedBase: promotable ? base : null,
-        promotedTiles: promotable
-            ? [for (final entry in promoted) entry.tile]
-            : null,
-        // Without promotion (a host whose overlay grid differs from its
-        // surface's) the classic payload still commits correctly: a
-        // bounds-local row-major stroke buffer the commit composites.
-        strokePixels: promotable ? null : rasterizer.strokePixelsWithinBounds(),
-        strokeBounds: promotable ? null : rasterizer.strokeBounds,
-        // F-12: the ceiling the live overlay has been drawing THROUGH.
-        // Promoted tiles already carry it (it is folded into the mask the
-        // pre-blend runs), and the commit's promotion path installs them
-        // untouched — so this reaches the buffer route only, which is
-        // exactly where the ceiling has not been applied yet.
-        strokeOpacity: rasterizer.strokeOpacity,
-      ),
-    );
-    rasterizer.clear();
-    if (missedHandoff) {
-      // At least one promoted tile went to the committed surface without a
-      // picture, so dropping the overlay now would show the pre-stroke
-      // tile in its place. The overlay STILL HOLDS that coordinate's image
-      // — `takeTileImageAt` removes only the ones that matched — one
-      // revision behind, which is the stroke minus its last few dabs
-      // rather than nothing. Keep it up until the committed tiles decode;
-      // `_onTileImagesChanged` releases on `allDecoded`, and the 2s
-      // deadline is the backstop.
-      //
-      // Bounds passed EXPLICITLY: `_settlingTiles()` falls back to every
-      // tile of the cel when `_settlingBounds` is null, which would make a
-      // one-tile stroke wait on the whole canvas.
-      _settlingBounds = strokeBounds;
-      _beginSettling();
-      return;
-    }
-    // Atomic: the overlay's remaining images retire in the same
-    // notification that reveals the committed tiles.
-    _resetOverlay();
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
@@ -1338,7 +1065,7 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    _endStrokeInput();
+    _stroke.endStrokeInput();
     _resetOverlay();
   }
 
@@ -1708,22 +1435,6 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
-  /// Spacing for the segment about to be interpolated.
-  ///
-  /// Clip Studio rolls its interval randomness per dab. The interpolator is
-  /// pure and shared, and a segment between two pointer samples almost
-  /// always yields one or two dabs (it returns nothing at all when the move
-  /// is shorter than one step), so rolling once per segment lands in the
-  /// same place without threading a random source through it.
-  double get _activeStrokeSpacing {
-    final settings = _activeStrokeInputSettings ?? widget.inputSettings;
-    final jitter = settings.spacingJitter;
-    if (jitter <= 0.0) {
-      return settings.spacing;
-    }
-    return settings.spacing * (1.0 - jitter * _spacingRandom.nextDouble());
-  }
-
   final math.Random _spacingRandom = math.Random();
 
   /// Whether [buttons] is a drawing contact.
@@ -1735,39 +1446,6 @@ class _InteractiveBrushEditCanvasViewState
   /// mapped-press path runs first and claims those pointers, so anything
   /// still reaching here with the primary bit down is a real stroke.
   bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
-
-  void _endStrokeInput() {
-    widget.onActiveStrokeChanged?.call(false);
-    _clearStrokeInputState();
-  }
-
-  /// State-only stroke teardown — safe inside the build phase (no
-  /// callbacks). [_endStrokeInput] is the pointer-event variant that also
-  /// notifies synchronously.
-  void _clearStrokeInputState() {
-    _activeDrawingPointer = null;
-    _touchStrokeDownPosition = null;
-    _touchStrokeCommitted = false;
-    _nextSequence = 0;
-    _breakCurrentVisibleSegment = false;
-    _previousRawCanvasPosition = null;
-    _activeStrokeInputSettings = null;
-    _currentPressure = 1.0;
-    _strokeDynamics = null;
-    _lastDirectionDegrees = null;
-    _previousBaseDab = null;
-    // Guides are re-read at the next pointer-down, so an axis moved between
-    // strokes takes effect on the next one and never on this one.
-    _snapSession = null;
-    _symmetryTransforms = const [];
-    // The reservoir is per stroke: a new stroke starts with a clean brush.
-    _groundMixer = null;
-    _groundSampler = null;
-    _stabilizer = null;
-    _lastPenPosition = null;
-    _collectedDabs.clear();
-    _pendingOverlayDabs.clear();
-  }
 
   /// Starts a stroke without taking away what is covering for the LAST
   /// one's committed tiles.
