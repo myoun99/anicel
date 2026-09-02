@@ -51,12 +51,60 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
   if (rowDelta == 0 || rangeEndIndexExclusive <= rangeStartIndex) {
     return null;
   }
+  final planner = _MultiRowRangeMovePlanner(
+    orderedLayers: orderedLayers,
+    rangeStartIndex: rangeStartIndex,
+    rangeEndIndexExclusive: rangeEndIndexExclusive,
+    frameDelta: frameDelta,
+    rowDelta: rowDelta,
+  );
+  if (!planner.gather(sourceLayerIds)) {
+    return null;
+  }
+  if (planner.selectedByLayer.isEmpty) {
+    return null; // Nothing but empty cells across every row.
+  }
+  return planner.rebuild();
+}
 
-  final indexById = <LayerId, int>{
-    for (var i = 0; i < orderedLayers.length; i += 1) orderedLayers[i].id: i,
-  };
+/// [planMultiRowRangeMove]'s two phases with one view of the lattice:
+/// GATHER what every source row carries (refusing the move where a rule
+/// says so), then REBUILD every affected row. (The audit's 2026-09-03
+/// restructure of one 157-line function; every rule and its comment
+/// moved verbatim.)
+class _MultiRowRangeMovePlanner {
+  _MultiRowRangeMovePlanner({
+    required this.orderedLayers,
+    required this.rangeStartIndex,
+    required this.rangeEndIndexExclusive,
+    required this.frameDelta,
+    required this.rowDelta,
+  }) : indexById = <LayerId, int>{
+         for (var i = 0; i < orderedLayers.length; i += 1)
+           orderedLayers[i].id: i,
+       };
 
-  SplayTreeMap<int, TimelineExposure> ghostFree(Layer layer) {
+  final List<Layer> orderedLayers;
+  final int rangeStartIndex;
+  final int rangeEndIndexExclusive;
+  final int frameDelta;
+  final int rowDelta;
+  final Map<LayerId, int> indexById;
+
+  /// Gathered per source row: its selected blocks + travelling cels.
+  /// Rows with NOTHING selected contribute nothing and need no target
+  /// mapping (UI-R24 #3: the selection's empty parts never block the move —
+  /// only the frames inside it travel).
+  final selectedByLayer = <LayerId, List<TimelineDrawingBlock>>{};
+  final framesByLayer = <LayerId, List<Frame>>{};
+  final frameIdsByLayer = <LayerId, Set<FrameId>>{};
+  final sourceIndexes = <int>{};
+
+  /// (from, to, frameId) triples the rebuild writes: a cel that changed
+  /// owning layer, so its brush frame must re-key.
+  final rekeys = <({LayerId from, LayerId to, FrameId frameId})>[];
+
+  static SplayTreeMap<int, TimelineExposure> ghostFree(Layer layer) {
     final base = SplayTreeMap<int, TimelineExposure>();
     layer.timeline.forEach((index, entry) {
       if (!(entry.isDrawing && entry.ghost)) {
@@ -66,23 +114,56 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
     return base;
   }
 
-  // Gather each source row's selected blocks + travelling cels, validating
-  // the block-snap and the link-safety of every cel that would travel.
-  // Rows with NOTHING selected contribute nothing and need no target
-  // mapping (UI-R24 #3: the selection's empty parts never block the move —
-  // only the frames inside it travel).
-  final selectedByLayer = <LayerId, List<TimelineDrawingBlock>>{};
-  final framesByLayer = <LayerId, List<Frame>>{};
-  final frameIdsByLayer = <LayerId, Set<FrameId>>{};
-  final sourceIndexes = <int>{};
-  for (final sourceId in sourceLayerIds) {
-    final sourceIndex = indexById[sourceId];
-    if (sourceIndex == null) {
-      continue; // Off the lattice — carries nothing (empty rows only; the
-      // caller keeps content-bearing ineligible rows out).
+  /// Phase 1: each source row's selected blocks + travelling cels,
+  /// validating the block-snap and the link-safety of every cel that
+  /// would travel. False when a rule voids the whole move.
+  bool gather(List<LayerId> sourceLayerIds) {
+    for (final sourceId in sourceLayerIds) {
+      final sourceIndex = indexById[sourceId];
+      if (sourceIndex == null) {
+        continue; // Off the lattice — carries nothing (empty rows only; the
+        // caller keeps content-bearing ineligible rows out).
+      }
+      if (!_gatherRow(sourceId, sourceIndex)) {
+        return false;
+      }
     }
+    return true;
+  }
+
+  bool _gatherRow(LayerId sourceId, int sourceIndex) {
     final source = orderedLayers[sourceIndex];
     final base = ghostFree(source);
+    final selected = _blockSnappedSelection(base);
+    if (selected == null) {
+      return false; // The range was not block-snapped on this row.
+    }
+    if (selected.isEmpty) {
+      return true; // An empty row rides along without mapping anywhere.
+    }
+    final targetIndex = sourceIndex + rowDelta;
+    if (targetIndex < 0 || targetIndex >= orderedLayers.length) {
+      return false;
+    }
+    sourceIndexes.add(sourceIndex);
+    final frameIds = <FrameId>{for (final block in selected) block.frameId};
+    if (_linkedFromOutside(base, selected, frameIds)) {
+      return false;
+    }
+    final frames = _framesOf(source, frameIds);
+    if (frames == null) {
+      return false;
+    }
+    selectedByLayer[sourceId] = selected;
+    framesByLayer[sourceId] = frames;
+    frameIdsByLayer[sourceId] = frameIds;
+    return true;
+  }
+
+  /// The blocks inside the range; null when a block straddles its edge.
+  List<TimelineDrawingBlock>? _blockSnappedSelection(
+    SplayTreeMap<int, TimelineExposure> base,
+  ) {
     final selected = <TimelineDrawingBlock>[];
     for (final block in drawingBlocks(base)) {
       final inRange =
@@ -94,28 +175,32 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
       if (inRange) {
         selected.add(block);
       } else if (overlaps) {
-        return null; // The range was not block-snapped on this row.
+        return null;
       }
     }
-    if (selected.isEmpty) {
-      continue; // An empty row rides along without mapping anywhere.
-    }
-    final targetIndex = sourceIndex + rowDelta;
-    if (targetIndex < 0 || targetIndex >= orderedLayers.length) {
-      return null;
-    }
-    sourceIndexes.add(sourceIndex);
-    final frameIds = <FrameId>{for (final block in selected) block.frameId};
-    // A cel referenced from OUTSIDE the moved set stays put (link intact) —
-    // the whole move is rejected rather than splitting the link.
+    return selected;
+  }
+
+  /// A cel referenced from OUTSIDE the moved set stays put (link intact) —
+  /// the whole move is rejected rather than splitting the link.
+  bool _linkedFromOutside(
+    SplayTreeMap<int, TimelineExposure> base,
+    List<TimelineDrawingBlock> selected,
+    Set<FrameId> frameIds,
+  ) {
     for (final entry in base.entries) {
       if (selected.any((block) => block.startIndex == entry.key)) {
         continue;
       }
       if (entry.value.isDrawing && frameIds.contains(entry.value.frameId)) {
-        return null;
+        return true;
       }
     }
+    return false;
+  }
+
+  /// The source's frames for [frameIds]; null when one is missing.
+  List<Frame>? _framesOf(Layer source, Set<FrameId> frameIds) {
     final frames = <Frame>[];
     for (final frameId in frameIds) {
       Frame? found;
@@ -130,70 +215,97 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
       }
       frames.add(found);
     }
-    selectedByLayer[sourceId] = selected;
-    framesByLayer[sourceId] = frames;
-    frameIdsByLayer[sourceId] = frameIds;
+    return frames;
   }
 
-  if (selectedByLayer.isEmpty) {
-    return null; // Nothing but empty cells across every row.
-  }
-
-  final affectedIndexes = <int>{};
-  for (final sourceIndex in sourceIndexes) {
-    affectedIndexes.add(sourceIndex);
-    affectedIndexes.add(sourceIndex + rowDelta);
-  }
-
-  final layersAfter = <LayerId, Layer>{};
-  final rekeys = <({LayerId from, LayerId to, FrameId frameId})>[];
-
-  for (final layerIndex in affectedIndexes) {
-    final layer = orderedLayers[layerIndex];
-    final isSource = sourceIndexes.contains(layerIndex);
-    final incomingSourceIndex = layerIndex - rowDelta;
-    final isTarget = sourceIndexes.contains(incomingSourceIndex);
-
-    final timeline = ghostFree(layer);
-    var frames = [...layer.frames];
-
-    // This row is a SOURCE: its own selected blocks (and cels) leave.
-    if (isSource) {
-      for (final block in selectedByLayer[layer.id]!) {
-        timeline.remove(block.startIndex);
-      }
-      final removedIds = frameIdsByLayer[layer.id]!;
-      frames = [
-        for (final frame in frames)
-          if (!removedIds.contains(frame.id)) frame,
-      ];
+  /// Phase 2: every affected row rebuilt — sources lose their selected
+  /// blocks, targets receive the mapped source's. Null when an incoming
+  /// block cannot land.
+  MultiRowRangeMovePlan? rebuild() {
+    final affectedIndexes = <int>{};
+    for (final sourceIndex in sourceIndexes) {
+      affectedIndexes.add(sourceIndex);
+      affectedIndexes.add(sourceIndex + rowDelta);
     }
 
-    // This row is a TARGET: the mapped source's selected blocks arrive.
-    if (isTarget) {
-      final sourceLayer = orderedLayers[incomingSourceIndex];
-      for (final block in selectedByLayer[sourceLayer.id]!) {
-        final landing = block.startIndex + frameDelta;
-        if (landing < 0) {
+    final layersAfter = <LayerId, Layer>{};
+    for (final layerIndex in affectedIndexes) {
+      final layer = orderedLayers[layerIndex];
+      final isSource = sourceIndexes.contains(layerIndex);
+      final incomingSourceIndex = layerIndex - rowDelta;
+      final isTarget = sourceIndexes.contains(incomingSourceIndex);
+
+      final timeline = ghostFree(layer);
+      var frames = [...layer.frames];
+
+      // This row is a SOURCE: its own selected blocks (and cels) leave.
+      if (isSource) {
+        frames = _withoutCarried(layer, timeline, frames);
+      }
+
+      // This row is a TARGET: the mapped source's selected blocks arrive.
+      if (isTarget) {
+        final landed = _landIncoming(
+          from: orderedLayers[incomingSourceIndex],
+          onto: layer,
+          timeline: timeline,
+        );
+        if (landed == null) {
           return null;
         }
-        final landingEnd = landing + block.length;
-        for (final other in drawingBlocks(timeline)) {
-          if (landing < other.endIndexExclusive &&
-              other.startIndex < landingEnd) {
-            return null; // Overlaps a block that stays — multi-row voids.
-          }
-        }
-        timeline[landing] = block.entry;
+        frames = [...frames, ...landed];
       }
-      frames = [...frames, ...framesByLayer[sourceLayer.id]!];
-      for (final frameId in frameIdsByLayer[sourceLayer.id]!) {
-        rekeys.add((from: sourceLayer.id, to: layer.id, frameId: frameId));
-      }
+
+      layersAfter[layer.id] = layer.copyWith(
+        timeline: timeline,
+        frames: frames,
+      );
     }
 
-    layersAfter[layer.id] = layer.copyWith(timeline: timeline, frames: frames);
+    return MultiRowRangeMovePlan(layersAfter: layersAfter, rekeys: rekeys);
   }
 
-  return MultiRowRangeMovePlan(layersAfter: layersAfter, rekeys: rekeys);
+  /// Lifts the source row's selected blocks out of [timeline]; the frames
+  /// that stay.
+  List<Frame> _withoutCarried(
+    Layer layer,
+    SplayTreeMap<int, TimelineExposure> timeline,
+    List<Frame> frames,
+  ) {
+    for (final block in selectedByLayer[layer.id]!) {
+      timeline.remove(block.startIndex);
+    }
+    final removedIds = frameIdsByLayer[layer.id]!;
+    return [
+      for (final frame in frames)
+        if (!removedIds.contains(frame.id)) frame,
+    ];
+  }
+
+  /// Lands the mapped source's selected blocks on [timeline] at the
+  /// shifted frames and records their re-keys; the frames they bring, or
+  /// null when a landing is illegal.
+  List<Frame>? _landIncoming({
+    required Layer from,
+    required Layer onto,
+    required SplayTreeMap<int, TimelineExposure> timeline,
+  }) {
+    for (final block in selectedByLayer[from.id]!) {
+      final landing = block.startIndex + frameDelta;
+      if (landing < 0) {
+        return null;
+      }
+      final landingEnd = landing + block.length;
+      for (final other in drawingBlocks(timeline)) {
+        if (landing < other.endIndexExclusive && other.startIndex < landingEnd) {
+          return null; // Overlaps a block that stays — multi-row voids.
+        }
+      }
+      timeline[landing] = block.entry;
+    }
+    for (final frameId in frameIdsByLayer[from.id]!) {
+      rekeys.add((from: from.id, to: onto.id, frameId: frameId));
+    }
+    return framesByLayer[from.id]!;
+  }
 }
