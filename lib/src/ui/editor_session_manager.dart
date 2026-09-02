@@ -279,6 +279,7 @@ part 'session/storyboard_cursor.dart';
 part 'session/storyboard_rows.dart';
 part 'session/frame_clipboard.dart';
 part 'session/playback_cache_budget.dart';
+part 'session/layer_verbs.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -833,7 +834,28 @@ class EditorSessionManager extends ChangeNotifier {
   // session keeps the public entry points as forwarders.
   late final _FrameClipboard _clipboard = _FrameClipboard(this);
 
-  void copyActiveLayer() => _clipboard.copyActiveLayer();
+  // ── the layer verbs: their own object, in their own file ────────────
+  //
+  // A collaborator (session/layer_verbs.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _LayerVerbs _layerVerbs = _LayerVerbs(this);
+
+  bool get canDeleteActiveLayer => _layerVerbs.canDeleteActiveLayer;
+  bool canDeleteLayer(Layer activeLayer) =>
+      _layerVerbs.canDeleteLayer(activeLayer);
+  void deleteActiveLayer() => _layerVerbs.deleteActiveLayer();
+  void deleteSelectedLayers() => _layerVerbs.deleteSelectedLayers();
+  void duplicateSelectedLayers() => _layerVerbs.duplicateSelectedLayers();
+  void duplicateActiveLayer() => _layerVerbs.duplicateActiveLayer();
+  bool get canLinkDuplicateActiveLayer =>
+      _layerVerbs.canLinkDuplicateActiveLayer;
+  void linkDuplicateActiveLayer() => _layerVerbs.linkDuplicateActiveLayer();
+  bool get canUnlinkActiveLayer => _layerVerbs.canUnlinkActiveLayer;
+  void unlinkActiveLayer() => _layerVerbs.unlinkActiveLayer();
+  bool isLayerLinked(LayerId layerId) => _layerVerbs.isLayerLinked(layerId);
+  void renameActiveLayer(String name) => _layerVerbs.renameActiveLayer(name);
+  void copyActiveLayer() => _layerVerbs.copyActiveLayer();
+
   bool get canCopyFrameAtCurrentFrame => _clipboard.canCopyFrameAtCurrentFrame;
   void copyFrameAtCurrentFrame() => _clipboard.copyFrameAtCurrentFrame();
   void pasteLayerFromClipboard() => _clipboard.pasteLayerFromClipboard();
@@ -3822,61 +3844,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  bool get canDeleteActiveLayer {
-    final activeLayer = this.activeLayer;
-    return activeLayer != null && canDeleteLayer(activeLayer);
-  }
-
-  /// Whether [activeLayer] may be deleted at all — the FLOORS, asked of any
-  /// row rather than only of the active one (⑨ needs it per selected row).
-  ///
-  /// The parameter keeps its name so the body below reads unchanged: this
-  /// was [canDeleteActiveLayer]'s own text, lifted so two askers cannot
-  /// drift apart ([[predicates-before-new-kind]]).
-  bool canDeleteLayer(Layer activeLayer) {
-    // Read-only where a cut can see it: the transition row is deleted (and
-    // moved) on the global axis, never from inside a cut.
-    if (layerKindIsReadOnlyInCut(activeLayer.kind)) {
-      return false;
-    }
-    // Attach rows are accessories: always deletable, never counted toward
-    // the drawing floor (deleting a BASE cascades over its attach rows).
-    if (isAttachedLayer(activeLayer)) {
-      return true;
-    }
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return false;
-    }
-    final layers = cut.layers;
-    return switch (activeLayer.kind) {
-      LayerKind.camera => false,
-      // The TRANSITION row is a track fixture like the camera: exactly one,
-      // never deleted from inside a cut.
-      LayerKind.transition => false,
-      // The sheet's fixture floors: at least two SE rows (S1·S2, now
-      // track-owned) and one instruction row survive.
-      LayerKind.se => activeTrack.seLayers.length > 2,
-      LayerKind.instruction =>
-        layers.where((layer) => layer.kind == LayerKind.instruction).length > 1,
-      // R28 #14: NO drawing floor. The action section may stand empty —
-      // the last action layer is deletable ("액션 레이어가 1개도 없는상황
-      // 허용"). The global track is the thing that has to exist, not any
-      // particular row inside a cut, and every drawing path already
-      // handles "no editable cel" (that is the R26 #35 refusal notice).
-      // A folder row deletes by DISSOLVING (the coordinator routes it) —
-      // its members are rows of their own and survive.
-      // An ADJUSTMENT row has no floor either: deleting it just stops the
-      // stack below being filtered.
-      LayerKind.animation ||
-      LayerKind.storyboard ||
-      LayerKind.image ||
-      LayerKind.text ||
-      LayerKind.folder ||
-      LayerKind.adjustment => true,
-    };
-  }
-
   LayerId? _stableLayerIdAfterDeleting({
     required List<Layer> beforeLayers,
     required LayerId deletedLayerId,
@@ -3948,129 +3915,6 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     return ids;
-  }
-
-  /// ⑨: every selected row duplicated, in ONE undo — the rename's twin.
-  void duplicateSelectedLayers() {
-    final cut = activeCutOrNull;
-    final ids = duplicatableSelectedLayerIds();
-    if (cut == null || ids.isEmpty) {
-      return;
-    }
-    LayerId? landed;
-    _historyManager.runAsOneStep('Duplicate rows', () {
-      for (final layerId in ids) {
-        landed = _cutCommandCoordinator.duplicateLayer(
-          cutId: cut.id,
-          sourceLayerId: layerId,
-        );
-      }
-    });
-    _refreshAfterCutCommand(preferredActiveLayerId: landed);
-    notifyListeners();
-  }
-
-  /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
-  /// falls back to the row you are standing on. Every caller — the pill
-  /// button, a shortcut — inherits that without asking twice.
-  void duplicateActiveLayer() {
-    if (duplicatableSelectedLayerIds().isNotEmpty) {
-      duplicateSelectedLayers();
-      return;
-    }
-    final activeLayer = this.activeLayer;
-    // Track-owned SE rows: duplication stands down (same clipboard-shape
-    // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
-    // double-link the same base cels).
-    if (activeLayer == null ||
-        !layerKindIsClipboardCopyable(activeLayer.kind) ||
-        // R9 #7: the copy lands in the same cut — always the second one.
-        layerKindIsSingletonPerCut(activeLayer.kind) ||
-        isAttachedLayer(activeLayer)) {
-      return;
-    }
-
-    final duplicatedLayerId = _cutCommandCoordinator.duplicateLayer(
-      // A non-null active layer implies an active cut (gap state has no
-      // rows at all).
-      cutId: requireActiveCut.id,
-      sourceLayerId: activeLayer.id,
-    );
-    _refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
-    notifyListeners();
-  }
-
-  /// Whether the layer is a member of a link group in the ACTIVE cut
-  /// (drives the link badge on its label).
-  bool isLayerLinked(LayerId layerId) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return false;
-    }
-    return _repository.requireProject().linkRegistry.useCountOf(
-          cutId: cut.id,
-          layerId: layerId,
-        ) >
-        1;
-  }
-
-  bool get canLinkDuplicateActiveLayer {
-    final activeLayer = this.activeLayer;
-    // Same stand-downs as plain duplication; an attach row's LINK
-    // duplicate is reached through its base (the group goes whole).
-    return activeLayer != null &&
-        layerKindIsClipboardCopyable(activeLayer.kind) &&
-        // R9 #7: a duplicate lands in the SAME cut, so a singleton kind's
-        // copy would always be the second one.
-        !layerKindIsSingletonPerCut(activeLayer.kind) &&
-        !isAttachedLayer(activeLayer);
-  }
-
-  /// 링크 복제: duplicates the active layer's whole attach group SHARING
-  /// the originals' pictures (the store routes both to one cel bank).
-  void linkDuplicateActiveLayer() {
-    if (!canLinkDuplicateActiveLayer) {
-      return;
-    }
-    final activeLayer = this.activeLayer!;
-    _cutCommandCoordinator.linkDuplicateLayer(
-      cutId: requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    notifyListeners();
-  }
-
-  bool get canUnlinkActiveLayer {
-    final activeLayer = this.activeLayer;
-    final cut = activeCutOrNull;
-    if (activeLayer == null || cut == null) {
-      return false;
-    }
-    // The verb unlinks the whole attach group; it is offered when ANY
-    // member is linked (mirrors the coordinator's own guard).
-    final baseId = activeLayer.attachedToLayerId ?? activeLayer.id;
-    final registry = _repository.requireProject().linkRegistry;
-    return cut.layers.any(
-      (layer) =>
-          (layer.id == baseId || layer.attachedToLayerId == baseId) &&
-          registry.useCountOf(cutId: cut.id, layerId: layer.id) > 1,
-    );
-  }
-
-  /// 독립시키기: forks the active layer's group out of its links — the
-  /// pictures stay identical but stop being shared from here on.
-  void unlinkActiveLayer() {
-    if (!canUnlinkActiveLayer) {
-      return;
-    }
-    final activeLayer = this.activeLayer!;
-    _cutCommandCoordinator.unlinkLayer(
-      cutId: requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    notifyListeners();
   }
 
   /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
@@ -4169,90 +4013,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _refreshAfterCutCommand();
     notifyListeners();
-  }
-
-  /// Deletes the active layer. Callers should confirm via dialog first and check
-  /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
-  void deleteActiveLayer() {
-    final activeLayer = this.activeLayer;
-    if (activeLayer == null || !canDeleteActiveLayer) {
-      return;
-    }
-
-    if (activeLayer.kind == LayerKind.se) {
-      final beforeSe = activeTrack.seLayers;
-      final nextActiveLayerId = _stableLayerIdAfterDeleting(
-        beforeLayers: beforeSe,
-        deletedLayerId: activeLayer.id,
-      );
-      _historyManager.execute(
-        RemoveTrackSeLayerCommand(
-          repository: _repository,
-          trackId: selectedTrackId,
-          layerId: activeLayer.id,
-        ),
-      );
-      _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-      notifyListeners();
-      return;
-    }
-
-    final beforeLayers = List<Layer>.of(requireActiveCut.layers);
-    final nextActiveLayerId = _stableLayerIdAfterDeleting(
-      beforeLayers: beforeLayers,
-      deletedLayerId: activeLayer.id,
-    );
-
-    _cutCommandCoordinator.deleteLayer(
-      cutId: requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    notifyListeners();
-  }
-
-  /// ⑨: deletes every selected row that names a deletable layer, as ONE
-  /// undo step — the gesture selected them together, so it undoes together.
-  ///
-  /// Deleting from the TOP down keeps each removal's own bookkeeping (the
-  /// stable next-active pick, an attach cascade) reading the stack it was
-  /// written against: taking a lower row out first would shift the ones
-  /// above it under the loop's feet.
-  void deleteSelectedLayers() {
-    final ids = deletableSelectedLayerIds();
-    if (ids.isEmpty) {
-      return;
-    }
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final order = {
-      for (var index = 0; index < cut.layers.length; index += 1)
-        cut.layers[index].id: index,
-    };
-    final ordered = [...ids]
-      ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
-    final nextActiveLayerId = _stableLayerIdAfterDeleting(
-      beforeLayers: List<Layer>.of(cut.layers),
-      deletedLayerId: ordered.last,
-    );
-    _historyManager.runAsOneStep('Delete rows', () {
-      for (final layerId in ordered) {
-        _cutCommandCoordinator.deleteLayer(cutId: cut.id, layerId: layerId);
-      }
-    });
-    clearRowSelection();
-    _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    notifyListeners();
-  }
-
-  void renameActiveLayer(String name) {
-    final activeLayer = this.activeLayer;
-    if (activeLayer == null) {
-      return;
-    }
-    renameLayer(activeLayer.id, name);
   }
 
   /// ⑨: 「이름편집은 선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」.
@@ -4411,12 +4171,12 @@ class EditorSessionManager extends ChangeNotifier {
                 kind: LayerKind.text,
               )
             : createDefaultAnimationLayer(layerId: layerId, cut: cut);
-        _addRowAboveActive(newLayerFor);
+        _layerVerbs.addRowAboveActive(newLayerFor);
       case LayerKind.adjustment:
         // R6b: a real row you ADD (unlike a folder), joining the stack
         // above the active layer like every other kind — which is exactly
         // what puts the rows it filters below it.
-        _addRowAboveActive(
+        _layerVerbs.addRowAboveActive(
           (cut) => createAdjustmentLayer(
             id: layerId,
             name: nextAdjustmentLayerName(cut.layers),
@@ -4433,7 +4193,7 @@ class EditorSessionManager extends ChangeNotifier {
         // folder would be a room with no door, because a caret between
         // rows cannot address the inside of a folder that has none (the
         // "in" and the "below" are the same slot).
-        _addRowAboveActive(
+        _layerVerbs.addRowAboveActive(
           (cut) => createFolderLayer(id: layerId, name: nextFolderName(cut)),
         );
       case LayerKind.camera:
@@ -4444,41 +4204,6 @@ class EditorSessionManager extends ChangeNotifier {
     // [selectLayer].
     _seatVerbRowOnActiveLayer();
     notifyListeners();
-  }
-
-  /// Inserts a NEW ROW the way one joins the stack above the active layer.
-  ///
-  /// Two structural rules, and they used to live inside the drawing-kind
-  /// arm where every later kind had to remember them:
-  /// - an attach group is INDIVISIBLE (R26 #36): the row lands past the
-  ///   whole group, never between a base and its attach rows — whether the
-  ///   active row is the base or one of its attaches. BOTH sides count: a
-  ///   below-only group used to slip through an above-only check.
-  /// - the row INHERITS the active row's folder. A row inserted into a
-  ///   folder's contiguous member run without belonging to it breaks the
-  ///   folder invariant and composites in the wrong scope; for R6b's
-  ///   adjustment that meant filtering nothing at all, silently.
-  void _addRowAboveActive(Layer Function(Cut cut) build) {
-    final cut = requireActiveCut;
-    final active = activeLayer;
-    final built = build(cut);
-    final layer = active?.folderId == null
-        ? built
-        : built.copyWith(folderId: active!.folderId);
-    final baseId = active == null
-        ? null
-        : isAttachedLayer(active)
-        ? active.attachedToLayerId
-        : active.id;
-    if (baseId != null) {
-      final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
-      final groupStart = attachedGroupStartIndex(baseId, cut.layers);
-      if (groupEnd - groupStart > 1) {
-        _layerController.addLayer(layer: layer, insertionIndex: groupEnd);
-        return;
-      }
-    }
-    _layerController.addLayer(layer: layer);
   }
 
   /// Whether the active layer can carry (or already rides within) an
