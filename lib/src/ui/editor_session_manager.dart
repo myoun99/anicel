@@ -261,6 +261,7 @@ part 'session/frame_range_move_drag.dart';
 part 'session/edge_drag.dart';
 part 'session/movie_end_drag.dart';
 part 'session/folder_bands.dart';
+part 'session/visibility_solo.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -2211,7 +2212,7 @@ class EditorSessionManager extends ChangeNotifier {
     );
     // Layer add/delete/undo may have moved the active row: keep the solo
     // mode following it (or exit if the command switched cuts).
-    _syncVisibilitySolo();
+    _solo.syncVisibilitySolo();
     _warmActiveCut();
   }
 
@@ -4441,111 +4442,15 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Visibility solo mode (session view state, not persisted) ------------
 
-  /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
-  /// engaging it snapshots every row's eye (cut layers + track SE), turns
-  /// every non-active eye OFF and the active one ON — the rows show it and
-  /// playback/fill follow naturally, exactly like clicking the eyes by
-  /// hand (view-ish controller writes, not undoable). Switching the active
-  /// layer re-solos; disengaging restores each eye from the snapshot.
-  /// Leaving the cut exits the mode (restoring first) — the snapshot is
-  /// cut-scoped.
-  bool _layerVisibilitySoloEnabled = false;
-  Map<LayerId, bool>? _visibilitySoloSnapshot;
-  CutId? _visibilitySoloCutId;
+  // ── visibility solo: its own object, in its own file ───────────────────
+  //
+  // A collaborator (session/visibility_solo.dart, a part of this library). The
+  // session keeps the public toggles as forwarders.
+  late final _VisibilitySolo _solo = _VisibilitySolo(this);
 
-  bool get layerVisibilitySoloEnabled => _layerVisibilitySoloEnabled;
-
-  void toggleLayerVisibilitySolo() {
-    if (_layerVisibilitySoloEnabled) {
-      _exitVisibilitySolo();
-    } else {
-      _layerVisibilitySoloEnabled = true;
-      _visibilitySoloCutId = _editingSession.activeCutId;
-      _visibilitySoloSnapshot = {
-        for (final layer in layers) layer.id: layer.isVisible,
-      };
-      _applyVisibilitySolo();
-    }
-    notifyListeners();
-  }
-
-  /// Re-solos to the CURRENT active layer. Rows born during the solo join
-  /// the snapshot with their pre-flip eye so exiting restores them too.
-  void _applyVisibilitySolo() {
-    final activeId = activeLayerId;
-    if (activeId == null) {
-      return;
-    }
-    final stack = layers;
-    // 🚨THE ANCESTORS STAY ON. Solo means "show this row alone", and a row
-    // inside a folder is not shown by its own eye — turning every OTHER row
-    // off turned its folders off with them, so soloing a row inside a folder
-    // hid the very thing it was soloing. On the editing canvas that read as
-    // "nothing happened"; in playback and export the frame came out EMPTY.
-    final keepShown = <LayerId>{
-      activeId,
-      for (final folder in stack.ancestryOf(
-        stack.where((layer) => layer.id == activeId).firstOrNull?.folderId,
-      ))
-        folder.id,
-    };
-    // ⛔ONE pass, and the eye is read ONCE per row. Splitting the two
-    // batches into two comprehensions read the row's own eye twice, and
-    // `hidden_folder_is_hidden_test`'s downward ratchet caught it — that
-    // count only goes down, because every extra place that re-derives
-    // "is this row shown" is a place a hidden folder can be forgotten.
-    final toShow = <LayerId>[];
-    final toHide = <LayerId>[];
-    for (final layer in stack) {
-      _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
-      final shouldShow = keepShown.contains(layer.id);
-      if (layer.isVisible == shouldShow) {
-        continue;
-      }
-      (shouldShow ? toShow : toHide).add(layer.id);
-    }
-    // Two batches, not one per row: Solo hides most of the stack and shows
-    // a few, and each side is one undo step rather than a screenful.
-    _layerController.setLayersVisible(layerIds: toShow, visible: true);
-    _layerController.setLayersVisible(layerIds: toHide, visible: false);
-  }
-
-  void _exitVisibilitySolo() {
-    _layerVisibilitySoloEnabled = false;
-    _visibilitySoloCutId = null;
-    final snapshot = _visibilitySoloSnapshot;
-    _visibilitySoloSnapshot = null;
-    if (snapshot == null) {
-      return;
-    }
-    // Restore through the repository's anywhere seam — rows deleted during
-    // the solo have nothing to restore (skip).
-    snapshot.forEach((layerId, visible) {
-      try {
-        _repository.updateLayer(
-          layerId: layerId,
-          update: (layer) => layer.isVisible == visible
-              ? layer
-              : layer.copyWith(isVisible: visible),
-        );
-      } on StateError {
-        // Layer gone.
-      }
-    });
-  }
-
-  /// Keeps the solo mode consistent after active-layer/cut changes: same
-  /// cut → re-solo to the new active row; different cut → exit (restore).
-  void _syncVisibilitySolo() {
-    if (!_layerVisibilitySoloEnabled) {
-      return;
-    }
-    if (_editingSession.activeCutId != _visibilitySoloCutId) {
-      _exitVisibilitySolo();
-    } else {
-      _applyVisibilitySolo();
-    }
-  }
+  bool get layerVisibilitySoloEnabled => _solo.layerVisibilitySoloEnabled;
+  void toggleLayerVisibilitySolo() => _solo.toggleLayerVisibilitySolo();
+  void toggleLayerSolo(LayerId layerId) => _solo.toggleLayerSolo(layerId);
 
   // --- Cut display gates ---------------------------------------------------
 
@@ -4859,8 +4764,8 @@ class EditorSessionManager extends ChangeNotifier {
     final fromGap =
         _gapGlobalFrame != null || _editingSession.activeCutId == null;
     // The visibility solo is cut-scoped: restore the eyes before leaving.
-    if (_layerVisibilitySoloEnabled) {
-      _exitVisibilitySolo();
+    if (_solo._layerVisibilitySoloEnabled) {
+      _solo.exitVisibilitySolo();
     }
     _editingSession.setActiveCutId(cutId);
     // Keep the pair reconciled at the seam instead of only at read time:
@@ -5862,7 +5767,7 @@ class EditorSessionManager extends ChangeNotifier {
       // The solo mode FOLLOWS the active layer (R4 #7) — nothing to follow
       // when the layer did not move, and re-applying it is what would have
       // fought a manual visibility toggle on every click.
-      _syncVisibilitySolo();
+      _solo.syncVisibilitySolo();
       changed = true;
     }
     // R10 #13: picking a layer moves the VERB's row, so the flip counts
@@ -6224,17 +6129,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// exported): non-empty narrows playback/scrub to these SE rows.
   final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
       ValueNotifier<Set<LayerId>>(const {});
-
-  /// Toggles an SE row's solo (pro semantics: multiple solos stack).
-  void toggleLayerSolo(LayerId layerId) {
-    final next = Set<LayerId>.of(soloedSeLayerIds.value);
-    if (!next.remove(layerId)) {
-      next.add(layerId);
-    }
-    soloedSeLayerIds.value = next;
-    _refreshLiveAudioSchedule();
-    notifyListeners();
-  }
 
   /// The SE row's track fader + pan (mix state like mute, repo-direct).
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
@@ -14496,8 +14390,8 @@ class EditorSessionManager extends ChangeNotifier {
     _rememberActiveLayerForCut();
     // The visibility solo is cut-scoped: restore the eyes before leaving
     // (the selectCut contract).
-    if (_layerVisibilitySoloEnabled) {
-      _exitVisibilitySolo();
+    if (_solo._layerVisibilitySoloEnabled) {
+      _solo.exitVisibilitySolo();
     }
     _editingSession.setActiveCutId(null);
     _copiedFrame = null;
