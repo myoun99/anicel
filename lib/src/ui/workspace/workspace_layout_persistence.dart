@@ -107,8 +107,8 @@ class _WorkspaceLayoutPersistence {
         // a build with a different pool size would otherwise leave open
         // ids that name nothing.
         final known = {
-          ..._EditorWorkspaceState._railSlotIds(right: false),
-          ..._EditorWorkspaceState._railSlotIds(right: true),
+          ..._WorkspaceRail._railSlotIds(right: false),
+          ..._WorkspaceRail._railSlotIds(right: true),
         };
         _state._openRails = {
           for (final id in openRails)

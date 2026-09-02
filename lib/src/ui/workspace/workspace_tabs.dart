@@ -176,7 +176,7 @@ class _WorkspaceTabs {
                   groupEntry: _state._brushTool.railEntry,
                   // The between-strokes group. Its own listeners, so undoing
                   // does not rebuild the tool column above it.
-                  historyControls: _state._railHistoryControls(),
+                  historyControls: _state._rail._railHistoryControls(),
                 ),
               ),
         );
@@ -722,13 +722,13 @@ class _WorkspaceTabs {
               expandedLaneLayerIds: _state._expandedLaneLayerIds.value,
               onToggleLayerLanes: _state._toggleLayerLanes,
               expandedLaneGroupKeys: _state._expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: _state._toggleLaneGroup,
+              onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
               hiddenSections: _state._hiddenTimelineSections.value,
               onToggleSection: _state._toggleTimelineSection,
               rowFilter: _state._timelineRowFilter.value,
               onSetRowFilter: _state._setTimelineRowFilter,
               collapsedAttachBaseIds: _state._collapsedAttachBaseIds.value,
-              onToggleAttachGroup: _state._toggleAttachGroup,
+              onToggleAttachGroup: _state._rail._toggleAttachGroup,
               // Unified layer controls: the camera row's visibility/opacity
               // drive the same camera-view state as the canvas overlay and
               // the camera panel.

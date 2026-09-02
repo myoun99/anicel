@@ -16,7 +16,7 @@ class _WorkspaceDocks {
   /// The first EMPTY slot of a rail, or null when the pool is full. This is
   /// where a panel dropped on the rail's "new group" target lands.
   String? _emptyRailSlot({required bool right}) {
-    for (final id in _EditorWorkspaceState._railSlotIds(right: right)) {
+    for (final id in _WorkspaceRail._railSlotIds(right: right)) {
       if (_state._layout.tabsIn(id).isEmpty) {
         return id;
       }
@@ -89,7 +89,7 @@ class _WorkspaceDocks {
         insertIndex: 0,
       );
     });
-    _state._ensureRailOpen(dockId);
+    _state._rail.ensureRailOpen(dockId);
   }
 
   EditorDockDropZone _emptyDockZone(
@@ -117,7 +117,7 @@ class _WorkspaceDocks {
   Widget buildEdgeDock(String dockId, EditorPanelDockSide side) {
     final right = side == EditorPanelDockSide.right;
     final hasTools = _state._layout.tabsIn(dockId).isNotEmpty;
-    final groups = _state._railGroups(right: right);
+    final groups = _state._rail._railGroups(right: right);
     final emptySlot = _emptyRailSlot(right: right);
     if (!hasTools && groups.isEmpty && emptySlot == null) {
       return _emptyDockZone(dockId, Axis.vertical);
@@ -221,11 +221,11 @@ class _WorkspaceDocks {
                   // it — so the button that opens the picker shows them,
                   // and tapping the back slot still swaps (⛔there is no
                   // swap glyph: that would be the same verb twice).
-                  face: _state._colorRailFace(railId),
+                  face: _state._rail._colorRailFace(railId),
                   dragging: dragging,
-                  onPressed: () => _state._toggleRailGroup(railId),
+                  onPressed: () => _state._rail._toggleRailGroup(railId),
                   onTabDropped: (data) =>
-                      _state._dropIntoRailGroup(railId, data),
+                      _state._rail._dropIntoRailGroup(railId, data),
                 ),
                 const SizedBox(height: 4),
               ],
@@ -240,7 +240,7 @@ class _WorkspaceDocks {
                   dragging: dragging,
                   onPressed: null,
                   onTabDropped: (data) =>
-                      _state._dropIntoRailGroup(emptySlot, data),
+                      _state._rail._dropIntoRailGroup(emptySlot, data),
                 ),
             ],
           ),
