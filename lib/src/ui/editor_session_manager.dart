@@ -282,6 +282,7 @@ part 'session/playback_cache_budget.dart';
 part 'session/layer_verbs.dart';
 part 'session/cut_verbs.dart';
 part 'session/range_selections.dart';
+part 'session/se_entries.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -1746,82 +1747,46 @@ class EditorSessionManager extends ChangeNotifier {
   List<Layer> get trackSeDisplayLayers => _trackSe.trackSeDisplayLayers;
   Set<LayerId> get trackSeSpillInLayerIds => _trackSe.trackSeSpillInLayerIds;
 
-  /// Whether the active row can carry an on-canvas name tag (R5b): the
-  /// SE rows, and only while a cut gives the canvas its geometry.
-  bool get canEditActiveSeNameTag =>
-      activeLayer?.kind == LayerKind.se && activeCutOrNull != null;
+  // ── the SE entries and name tags: their own object ──────────────────
+  //
+  // A collaborator (session/se_entries.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _SeEntries _seEntries = _SeEntries(this);
+
+  void createSeEntryAtCurrentFrame({
+    required String name,
+    String? seName,
+    int? lengthFrames,
+  }) => _seEntries.createSeEntryAtCurrentFrame(
+    name: name,
+    seName: seName,
+    lengthFrames: lengthFrames,
+  );
+  void updateSelectedSeEntry({required String dialogue, String? seName}) =>
+      _seEntries.updateSelectedSeEntry(dialogue: dialogue, seName: seName);
+  void updateSeEntryForLayer(
+    LayerId layerId,
+    FrameId frameId, {
+    required String dialogue,
+    String? seName,
+  }) => _seEntries.updateSeEntryForLayer(
+    layerId,
+    frameId,
+    dialogue: dialogue,
+    seName: seName,
+  );
+  bool get canEditActiveSeNameTag => _seEntries.canEditActiveSeNameTag;
+  void setActiveSeNameTag(SeNameTag? tag) => _seEntries.setActiveSeNameTag(tag);
+  void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) =>
+      _seEntries.setSeNameTagForLayer(layerId, tag);
+  List<ResolvedSeNameTag> seNameTagsForCutFrame(Cut cut, int localFrameIndex) =>
+      _seEntries.seNameTagsForCutFrame(cut, localFrameIndex);
+  String? get selectedFrameSeName => _seEntries.selectedFrameSeName;
 
   // `activeSeNameTagDefaultPosition` seeded the placement dialog's x/y
   // fields from a stacked per-row default. Both are gone with R5 #7: a tag
   // has no position of its own, so the SE row's Position lane is the whole
   // answer and there is nothing to seed.
-
-  /// Sets (or with null resets) the active SE row's name tag — one undo,
-  /// reaching the TRACK-owned row through the anywhere seam.
-  void setActiveSeNameTag(SeNameTag? tag) {
-    final layer = activeLayer;
-    if (layer == null || layer.kind != LayerKind.se) {
-      return;
-    }
-    _cutCommandCoordinator.setSeNameTag(layerId: layer.id, seNameTag: tag);
-    notifyListeners();
-  }
-
-  /// A NAME TAG lane edit landing on [layerId] (R5 #7) — one undo.
-  ///
-  /// The tag's keys sit on the track-owned row's GLOBAL axis while the lane
-  /// was read off a cut-local clone, so the frames convert on the way out,
-  /// exactly as the transform track's do (#8). The lane helpers key at
-  /// whatever frame the caller hands them, so the conversion belongs HERE —
-  /// after the edit, before the commit.
-  void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) {
-    final keys = tag?.track;
-    _cutCommandCoordinator.setSeNameTag(
-      layerId: layerId,
-      seNameTag: keys == null || !isTrackSeLayerId(layerId)
-          ? tag
-          : tag!.copyWith(track: trackSeWindow.globalSeNameTagTrack(keys)),
-    );
-    notifyListeners();
-  }
-
-  /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
-  /// one resolution every drawing surface asks (editing canvas, playback,
-  /// the parked stack, export), so none of them can disagree. Works for
-  /// ANY cut, not just the active one: it walks the owning track's global
-  /// SE rows and converts through that cut's start.
-  List<ResolvedSeNameTag> seNameTagsForCutFrame(Cut cut, int localFrameIndex) {
-    // The over-end runway is a CLIPPED VIEW of the cut (UI-R9 #4): a
-    // playhead past the last frame must never address the NEIGHBOUR
-    // cut's SE window and put the next speaker over this picture. The
-    // scrub preview already clamps this way, so drag and release agree.
-    final maxLocal = cut.duration > 0 ? cut.duration - 1 : 0;
-    final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
-    final project = _repository.requireProject();
-    // Rows on the tracks BELOW this one: unconfigured defaults stack the
-    // whole project's SE rows, so two covered tracks in the multitrack
-    // stack never land on the same spot.
-    var rowOffset = 0;
-    for (final track in project.tracks) {
-      // Cheap gate: most tracks hold no SE writing at all, and this runs
-      // per painted frame per covered track.
-      if (track.seLayers.isNotEmpty) {
-        final start = _cutGlobalStartFrameIn(track, cut.id);
-        if (start != null) {
-          return resolveSeNameTagsAt(
-            trackSeLayers: track.seLayers,
-            cutStartFrame: start,
-            localFrameIndex: localFrame,
-            canvas: cut.canvasSize,
-            cameraFrame: cameraFrameSize,
-            rowOffset: rowOffset,
-          );
-        }
-      }
-      rowOffset += track.seLayers.length;
-    }
-    return const [];
-  }
 
   // ── the folder bands: their own cache, in their own file ───────────────
   //
@@ -8963,9 +8928,6 @@ class EditorSessionManager extends ChangeNotifier {
 
   String? get selectedFrameName => selectedFrame?.name;
 
-  /// SE rows: the selected entry's speaker/effect name (the accent box).
-  String? get selectedFrameSeName => selectedFrame?.seName;
-
   /// The sounds the SELECTED SE instance carries, each with the index it
   /// sits at in its layer's clip list (R5 #19 — the instance editor shows
   /// what a block is linked to, and lets you take it off).
@@ -9059,86 +9021,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
     notifyListeners();
     return null;
-  }
-
-  /// Creates an SE entry at the current cell carrying [name] (the sheet's
-  /// dialogue text) and the optional [seName] (speaker/effect, the accent
-  /// box) in ONE undo step. The entry takes [lengthFrames] (the dialog's
-  /// length input); null falls back to filling to the cut end (legacy).
-  ///
-  /// The cut end no longer clamps the length (SE globalization): a sound
-  /// may run past it — the `~` crossing mark says so — and the NEXT
-  /// entry bounds the length in the controller, on the global axis, so
-  /// the neighbouring cuts' sounds count as walls too.
-  void createSeEntryAtCurrentFrame({
-    required String name,
-    String? seName,
-    int? lengthFrames,
-  }) {
-    final layer = activeLayer;
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        !canCreateDrawingAtCurrentFrame) {
-      return;
-    }
-
-    final remaining =
-        requireActiveCut.duration - _timelineController.currentFrameIndex;
-    final toCutEnd = remaining < 1 ? 1 : remaining;
-    final requested = lengthFrames ?? toCutEnd;
-    _frameSequence += 1;
-    _timelineController.createDrawingFrameForLayer(
-      layerId: layer.id,
-      frameId: FrameId(_nextFrameId(layer.id)),
-      length: requested < 1 ? 1 : requested,
-      name: name,
-      seName: seName,
-    );
-    notifyListeners();
-  }
-
-  /// SE rows: updates the selected entry's dialogue (Frame.name) and
-  /// speaker name in ONE undo step. Duplicates are allowed — the same
-  /// dialogue can legitimately repeat on a sheet.
-  void updateSelectedSeEntry({required String dialogue, String? seName}) {
-    final layer = activeLayer;
-    final frame = selectedFrame;
-    if (layer == null || frame == null || !canRenameFrameAtCurrentFrame) {
-      return;
-    }
-    updateSeEntryForLayer(
-      layer.id,
-      frame.id,
-      dialogue: dialogue,
-      seName: seName,
-    );
-  }
-
-  /// The same edit addressed by ROW + ENTRY instead of by standing (B6
-  /// 2026-08-17): the storyboard's SE editor commits here, because that
-  /// rail's standing row never moves the drawing target (유저 2026-07-27)
-  /// and so [activeLayer]/[selectedFrame] cannot carry its answer. The
-  /// timeline's [updateSelectedSeEntry] funnels into this too — one commit
-  /// body, two addressings.
-  void updateSeEntryForLayer(
-    LayerId layerId,
-    FrameId frameId, {
-    required String dialogue,
-    String? seName,
-  }) {
-    final layer = requireLayerAnywhere(_repository.requireProject(), layerId);
-    if (layer.kind != LayerKind.se) {
-      return;
-    }
-    _timelineController.renameFrameForLayer(
-      layerId: layerId,
-      frameId: frameId,
-      name: dialogue,
-      allowDuplicateName: true,
-      seName: seName,
-      updateSeName: true,
-    );
-    notifyListeners();
   }
 
   void linkSelectedFrame(FrameId targetFrameId) {
