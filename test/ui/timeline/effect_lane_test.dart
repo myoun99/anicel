@@ -301,16 +301,6 @@ void main() {
       )!;
       expect(effects.single.parameterOf('blurX').track.keyAt(9)!.value, 6);
 
-      effects = effectsWithLaneHoldToggled(
-        effects,
-        laneId: laneId,
-        frameIndex: 9,
-      )!;
-      expect(
-        effects.single.parameterOf('blurX').track.keyAt(9)!.interpolation,
-        PropertyKeyInterpolation.hold,
-      );
-
       effects = effectsWithLaneKeyRemoved(
         effects,
         laneId: laneId,

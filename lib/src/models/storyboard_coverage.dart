@@ -318,20 +318,3 @@ int storyboardCellPictureFrame(
     ? pinnedFrameIndex
     : cell.startIndex;
 
-/// The cell covering [frameIndex], or null when the frame is outside the
-/// cut.
-StoryboardCoverageCell? storyboardCellAt({
-  required SplayTreeMap<int, TimelineExposure>? timeline,
-  required int cutDuration,
-  required int frameIndex,
-}) {
-  for (final cell in storyboardCoverageCells(
-    timeline: timeline,
-    cutDuration: cutDuration,
-  )) {
-    if (cell.covers(frameIndex)) {
-      return cell;
-    }
-  }
-  return null;
-}

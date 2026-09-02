@@ -6,52 +6,13 @@ import '../editor_session_manager.dart';
 import '../input/app_input_settings.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
-import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 
-/// The pointer-input settings dialog (UI-R22 #6). One toggle decides
-/// what a TOUCH contact means on the timeline grids — scroll or edit —
-/// exclusively, so scrolling and editing never race over one contact.
-Future<void> showInputSettingsDialog(
-  BuildContext context, {
-  required EditorSessionManager session,
-}) {
-  return showDialog<void>(
-    context: context,
-    builder: (context) => _InputSettingsDialog(session: session),
-  );
-}
-
-class _InputSettingsDialog extends StatelessWidget {
-  const _InputSettingsDialog({required this.session});
-
-  final EditorSessionManager session;
-
-  @override
-  Widget build(BuildContext context) {
-    // The body scrolls: the window outgrew short screens once the canvas
-    // mappings joined (PEN-7a). AppWindow scrolls it by default.
-    return AppWindow(
-      windowKey: const ValueKey<String>('input-settings-dialog'),
-      title: AppText.strings.inputTitle,
-      titleIcon: Icons.gesture_outlined,
-      onClose: () => Navigator.of(context).pop(),
-      width: 560,
-      body: InputSettingsSection(session: session),
-      actions: [
-        AppWindowAction(
-          label: AppText.strings.commonClose,
-          actionKey: const ValueKey<String>('settings-input-close'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
-    );
-  }
-}
-
-/// The input-settings CONTENT, dialog-free (SAVE-1: the Preferences
-/// dialog embeds it as a section; the standalone dialog wraps it).
+/// The pointer-input settings (UI-R22 #6). One toggle decides what a TOUCH
+/// contact means on the timeline grids — scroll or edit — exclusively, so
+/// scrolling and editing never race over one contact. Dialog-free: SAVE-1
+/// made the Preferences dialog its one home (the standalone dialog that
+/// wrapped it went with its caller).
 class InputSettingsSection extends StatelessWidget {
   const InputSettingsSection({super.key, required this.session});
 

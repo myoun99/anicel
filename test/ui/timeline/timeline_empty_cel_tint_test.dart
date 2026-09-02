@@ -34,6 +34,11 @@ import 'timeline_frame_geometry_probe.dart';
 /// slightly grayed paper — the painter's style resolution, the session's
 /// fact/token pair, and the row memo's token invalidation.
 void main() {
+  // The DEFAULT paper's empty-cel look — the unlabelled row's paper through
+  // the one tint rule; the tests below pin that it never drifts from it.
+  final timelineEmptyCelBlockColor = timelineEmptyCelPaperColor(
+    timelineDrawingHeldColor,
+  );
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
       return TimelineCellExposureState.drawingStart;

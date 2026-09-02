@@ -80,34 +80,6 @@ void main() {
     });
   });
 
-  group('findCutById', () {
-    test('finds cuts by CutId', () {
-      final cutA = _cut('cut-a');
-      final cutB = _cut('cut-b');
-      final project = _projectWithTracks([
-        _track(id: 'video-track', cuts: [cutA]),
-        _track(id: 'audio-track', type: TrackType.audio, cuts: [cutB]),
-      ]);
-
-      expect(findCutById(project, const CutId('cut-b')), same(cutB));
-      expect(findCutById(project, const CutId('missing-cut')), isNull);
-    });
-  });
-
-  group('requireCutById', () {
-    test('returns a matching cut or throws', () {
-      final cut = _cut('cut-a');
-      final project = _projectWithTracks([
-        _track(id: 'video-track', cuts: [cut]),
-      ]);
-
-      expect(requireCutById(project, const CutId('cut-a')), same(cut));
-      expect(
-        () => requireCutById(project, const CutId('missing')),
-        throwsStateError,
-      );
-    });
-  });
 }
 
 Project _projectWithTracks(List<Track> tracks) {

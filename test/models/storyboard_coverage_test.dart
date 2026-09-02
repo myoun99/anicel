@@ -147,21 +147,4 @@ void main() {
     );
   });
 
-  test('storyboardCellAt finds the covering cell, and nothing outside', () {
-    final timeline = _timeline({0: _drawing('a'), 4: _drawing('b')});
-
-    expect(
-      storyboardCellAt(
-        timeline: timeline,
-        cutDuration: 12,
-        frameIndex: 7,
-      )?.frameId,
-      const FrameId('b'),
-    );
-    expect(
-      storyboardCellAt(timeline: timeline, cutDuration: 12, frameIndex: 12),
-      isNull,
-    );
-  });
-
 }

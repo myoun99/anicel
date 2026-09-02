@@ -68,10 +68,11 @@ class _EffectsAndFx {
       ),
       kind: kind,
     );
-    updateLayerEffects(layer.id, [
-      ...layer.effects,
-      effect,
-    ], description: 'Add ${kind.label}');
+    updateLayerEffects(
+      layer.id,
+      effectsWithAdded(layer.effects, effect),
+      description: 'Add ${kind.label}',
+    );
   }
 
   /// Names (or un-names, with null) one effect-parameter KEY.
@@ -262,11 +263,8 @@ class _EffectsAndFx {
     if (layer == null) {
       return;
     }
-    final next = [
-      for (final effect in layer.effects)
-        if (effect.id != effectId) effect,
-    ];
-    if (next.length == layer.effects.length) {
+    final next = effectsWithRemoved(layer.effects, effectId);
+    if (next == null) {
       return;
     }
     updateLayerEffects(layer.id, next, description: 'Remove effect');
@@ -478,16 +476,18 @@ class _EffectsAndFx {
       return;
     }
     _effectSequence += 1;
-    updateTrackEffects(trackId, [
-      ...track.effects,
-      LayerEffect.defaults(
-        id: EffectId(
-          'fx-${trackId.value}-'
-          '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
-        ),
-        kind: kind,
+    final effect = LayerEffect.defaults(
+      id: EffectId(
+        'fx-${trackId.value}-'
+        '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
       ),
-    ], description: 'Add ${kind.label}');
+      kind: kind,
+    );
+    updateTrackEffects(
+      trackId,
+      effectsWithAdded(track.effects, effect),
+      description: 'Add ${kind.label}',
+    );
   }
 
   void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
@@ -495,11 +495,8 @@ class _EffectsAndFx {
     if (track == null) {
       return;
     }
-    final next = [
-      for (final effect in track.effects)
-        if (effect.id != effectId) effect,
-    ];
-    if (next.length == track.effects.length) {
+    final next = effectsWithRemoved(track.effects, effectId);
+    if (next == null) {
       return;
     }
     updateTrackEffects(trackId, next, description: 'Remove effect');

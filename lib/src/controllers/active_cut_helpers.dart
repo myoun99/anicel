@@ -1,4 +1,3 @@
-import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
 import '../models/track.dart';
@@ -39,23 +38,3 @@ TrackId? trackIdOfCut(Project project, CutId? cutId) {
   return null;
 }
 
-Cut? findCutById(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) {
-        return cut;
-      }
-    }
-  }
-
-  return null;
-}
-
-Cut requireCutById(Project project, CutId cutId) {
-  final cut = findCutById(project, cutId);
-  if (cut == null) {
-    throw StateError('Project does not contain cut ${cutId.value}.');
-  }
-
-  return cut;
-}

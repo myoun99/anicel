@@ -142,10 +142,6 @@ void main() {
         'se2',
         'cam',
       ]);
-      // Dividers open at the drawing→SE and SE→camera boundaries.
-      expect(timelineSectionStartsAt(ordered, 2), isTrue);
-      expect(timelineSectionStartsAt(ordered, 3), isFalse);
-      expect(timelineSectionStartsAt(ordered, 4), isTrue);
     });
 
     test('horizontal display order reverses sections (camera on top)', () {
@@ -166,17 +162,6 @@ void main() {
       ]);
     });
 
-    test('section starts only at section boundaries in display order', () {
-      final display = sectionedLayerOrder([
-        _layer('a', LayerKind.animation),
-        _layer('b', LayerKind.animation),
-        _layer('cam', LayerKind.camera),
-      ]);
-
-      expect(timelineSectionStartsAt(display, 0), isFalse);
-      expect(timelineSectionStartsAt(display, 1), isFalse);
-      expect(timelineSectionStartsAt(display, 2), isTrue);
-    });
   });
 
   group('timeline section visuals', () {

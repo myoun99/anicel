@@ -119,16 +119,7 @@ void main() {
   // The `rowOffset` stacking test went with the stacked default: nothing
   // shifts per row or per track any more, so there is no offset to pin.
 
-  test('a lone speaker needs no brackets and a lone line needs no box '
-      'label; a block with no writing at all shows nothing', () {
-    expect(
-      seNameTagText(seName: 'タモツ', dialogue: null),
-      'タモツ',
-      reason: 'the box already frames the name',
-    );
-    expect(seNameTagText(seName: '  ', dialogue: 'おはよう'), 'おはよう');
-    expect(seNameTagText(seName: null, dialogue: '  '), isEmpty);
-
+  test('a block with no writing at all shows nothing', () {
     expect(
       resolve([seRow(id: 's1', name: 'S1')]),
       isEmpty,

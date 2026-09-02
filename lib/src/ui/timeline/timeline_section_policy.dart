@@ -88,15 +88,6 @@ List<Layer> sectionedLayerOrder(List<Layer> layers) {
   ]);
 }
 
-/// Whether the layer at [index] opens a new section relative to the layer
-/// before it in DISPLAY order. The first row/column never draws a divider.
-bool timelineSectionStartsAt(List<Layer> displayLayers, int index) {
-  if (index <= 0 || index >= displayLayers.length) {
-    return false;
-  }
-  return timelineSectionForLayerKind(displayLayers[index].kind) !=
-      timelineSectionForLayerKind(displayLayers[index - 1].kind);
-}
 
 /// The gutter label — the paper timesheet's column-group headings laid on
 /// their side (액션 / SE / CAM as the sheet prints them; CAM matches the

@@ -4,55 +4,12 @@ import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
-import '../widgets/app_window.dart';
 
-/// The two-language settings dialog (UI-R10 #7): program language (the
-/// app chrome) and notation language (what prints on the timesheet and
-/// other submission artifacts). Changes apply and persist immediately.
-Future<void> showLanguageSettingsDialog(
-  BuildContext context, {
-  required EditorSessionManager session,
-}) {
-  return showDialog<void>(
-    context: context,
-    builder: (context) => _LanguageSettingsDialog(session: session),
-  );
-}
-
-class _LanguageSettingsDialog extends StatelessWidget {
-  const _LanguageSettingsDialog({required this.session});
-
-  final EditorSessionManager session;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<AppLanguageSettings>(
-      valueListenable: session.languageSettings,
-      builder: (context, settings, _) {
-        final strings = AppStrings.of(settings.programLanguage);
-        return AppWindow(
-          windowKey: const ValueKey<String>('language-settings-dialog'),
-          title: strings.languageSettingsTitle,
-          titleIcon: Icons.translate_outlined,
-          onClose: () => Navigator.of(context).pop(),
-          width: 420,
-          body: LanguageSettingsSection(session: session),
-          actions: [
-            AppWindowAction(
-              label: strings.commonClose,
-              actionKey: const ValueKey<String>('settings-language-close'),
-              emphasis: AppWindowActionEmphasis.primary,
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// The language-settings CONTENT, dialog-free (SAVE-1: the Preferences
-/// dialog embeds it as a section; the standalone dialog wraps it).
+/// The two-language settings (UI-R10 #7): program language (the app
+/// chrome) and notation language (what prints on the timesheet and other
+/// submission artifacts). Changes apply and persist immediately.
+/// Dialog-free: SAVE-1 made the Preferences dialog its one home (the
+/// standalone dialog that wrapped it went with its caller).
 class LanguageSettingsSection extends StatelessWidget {
   const LanguageSettingsSection({super.key, required this.session});
 

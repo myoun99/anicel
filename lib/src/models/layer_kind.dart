@@ -609,31 +609,6 @@ bool layerKindExportsCels(LayerKind kind) {
   };
 }
 
-/// Whether [kind] takes a CEL column on the printed timesheet. The camera
-/// prints in the CAM group (its own column, driven by the cut's camera
-/// track), rows that only group other rows print nothing, and an IMAGE
-/// row is one nameless held picture — a column of blank cells would say
-/// nothing (the real sheets keep BG out of the cel columns).
-bool layerKindTakesTimesheetColumn(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation ||
-    LayerKind.storyboard ||
-    LayerKind.se ||
-    LayerKind.instruction ||
-    // The TRANSITION row is why it is a row at all: the sheet's camera
-    // group needs a column to print O.L/F.I/F.O into, and a column is what
-    // a row gets. (A ruler mark would have had no column to print in.)
-    LayerKind.transition => true,
-    // Text rows annotate the picture (cut numbers on paper), not the
-    // sheet — printed cel columns stay the field's vocabulary. An
-    // adjustment is 촬영 direction with no cel to print at all.
-    LayerKind.text ||
-    LayerKind.image ||
-    LayerKind.camera ||
-    LayerKind.folder ||
-    LayerKind.adjustment => false,
-  };
-}
 
 /// Whether [kind]'s exposures leave NO GAPS: every block runs to the next
 /// one's start and the last runs to the cut's end (design E).

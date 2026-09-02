@@ -62,7 +62,6 @@ void main() {
       expect(layerKindPaintsArtwork(LayerKind.text), isTrue);
       expect(layerKindExportsCels(LayerKind.text), isTrue);
       expect(layerKindIsClipboardCopyable(LayerKind.text), isTrue);
-      expect(layerKindTakesTimesheetColumn(LayerKind.text), isFalse);
       expect(layerKindCoversWithoutGaps(LayerKind.text), isFalse);
       expect(layerKindHoldsSingleCel(LayerKind.text), isFalse);
       expect(layerKindIsFixed(LayerKind.text), isFalse);
@@ -84,7 +83,6 @@ void main() {
         'attach-base drawing cel that still takes the brush at kind level',
         () {
       expect(layerKindHoldsSingleCel(LayerKind.image), isTrue);
-      expect(layerKindTakesTimesheetColumn(LayerKind.image), isFalse);
       expect(layerKindIsDrawingCel(LayerKind.image), isTrue);
       expect(layerKindAcceptsBrushInput(LayerKind.image), isTrue);
       expect(layerKindExportsCels(LayerKind.image), isTrue);

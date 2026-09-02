@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/track_frame_axis.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
@@ -25,19 +26,19 @@ void main() {
     return (s, first, second, track.cuts[0].duration);
   }
 
-  test('storyboardEntryOwningFrame: cut frames map to their cut, gap frames '
+  test('TrackFrameAxis.ownerOf: cut frames map to their cut, gap frames '
       'to the PRECEDING cut, past-the-end to the last cut', () {
     final (s, first, second, aEnd) = gappedSession();
     final layout = buildStoryboardTimelineLayout(s.repository.requireProject());
 
-    expect(storyboardEntryOwningFrame(layout, 0)?.cutId, first);
-    expect(storyboardEntryOwningFrame(layout, aEnd - 1)?.cutId, first);
+    expect(TrackFrameAxis(layout).ownerOf(0)?.cutId, first);
+    expect(TrackFrameAxis(layout).ownerOf(aEnd - 1)?.cutId, first);
     // Every gap frame belongs to cut-a's runway — no nearest-edge split.
-    expect(storyboardEntryOwningFrame(layout, aEnd)?.cutId, first);
-    expect(storyboardEntryOwningFrame(layout, aEnd + 3)?.cutId, first);
-    expect(storyboardEntryOwningFrame(layout, aEnd + 4)?.cutId, second);
+    expect(TrackFrameAxis(layout).ownerOf(aEnd)?.cutId, first);
+    expect(TrackFrameAxis(layout).ownerOf(aEnd + 3)?.cutId, first);
+    expect(TrackFrameAxis(layout).ownerOf(aEnd + 4)?.cutId, second);
     expect(
-      storyboardEntryOwningFrame(layout, aEnd + 400)?.cutId,
+      TrackFrameAxis(layout).ownerOf(aEnd + 400)?.cutId,
       second,
       reason: 'past the last cut = its endless runway',
     );

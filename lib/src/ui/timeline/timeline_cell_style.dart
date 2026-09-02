@@ -158,11 +158,6 @@ Color timelineInBlockInk({bool dimmed = false}) => dimmed
 /// this one on the old grey, and three tests went red saying so.
 const double timelineEmptyCelAlpha = 0x6E / 0xFF;
 
-/// The DEFAULT paper's empty-cel look — [timelineEmptyCelPaperColor] of the
-/// paper an unlabelled row wears, so it can never drift from it again.
-final Color timelineEmptyCelBlockColor = timelineEmptyCelPaperColor(
-  timelineDrawingHeldColor,
-);
 
 /// The empty-cel look of an arbitrary [paper] — the alpha above, applied to
 /// whatever colour the row's block is made of (⑲).

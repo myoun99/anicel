@@ -37,29 +37,6 @@ void main() {
     });
   });
 
-  group('planDeleteLastCutReplacementInput', () {
-    test('returns deterministic first-available IDs without mutation', () {
-      final project = _projectWithCuts([
-        _cut(
-          id: 'cut-1',
-          layers: [_layer(id: 'layer-2')],
-        ),
-        _cut(
-          id: 'cut-3',
-          layers: [_layer(id: 'layer-1')],
-        ),
-      ]);
-      final before = project.toJson();
-
-      final plan = planDeleteLastCutReplacementInput(project);
-
-      expect(plan.replacementCutId, const CutId('cut-2'));
-      expect(plan.replacementLayerId, const LayerId('layer-3'));
-      expect(_allCutIds(project), isNot(contains(plan.replacementCutId)));
-      expect(_allLayerIds(project), isNot(contains(plan.replacementLayerId)));
-      expect(project.toJson(), before);
-    });
-  });
 
   group('planDuplicateCutCommandInput', () {
     test('plans new IDs and complete maps without mutation', () {

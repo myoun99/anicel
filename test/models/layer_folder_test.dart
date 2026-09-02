@@ -26,7 +26,6 @@ void main() {
       expect(row.kind, LayerKind.folder);
       expect(layerKindHoldsDrawings(row.kind), isFalse);
       expect(layerKindAcceptsBrushInput(row.kind), isFalse);
-      expect(layerKindTakesTimesheetColumn(row.kind), isFalse);
       expect(row.frames, isEmpty);
       expect(row.timeline, isEmpty);
       expect(row.onTimesheet, isFalse);

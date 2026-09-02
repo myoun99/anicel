@@ -120,27 +120,19 @@ void main() {
     expect(TimesheetNotation.of(AppLanguage.ko).repeat, '리피트');
   });
 
-  testWidgets('the dialog switches the notation language on the session', (
+  testWidgets('the section switches the notation language on the session', (
     tester,
   ) async {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
+    // The section itself, as the Preferences dialog mounts it (SAVE-1).
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () =>
-                  showLanguageSettingsDialog(context, session: session),
-              child: const Text('open'),
-            ),
-          ),
-        ),
+        home: Scaffold(body: LanguageSettingsSection(session: session)),
       ),
     );
-    await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
     expect(

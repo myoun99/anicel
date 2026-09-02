@@ -139,13 +139,6 @@ bool storyboardFrameReady(
   return true;
 }
 
-/// The layout entry that OWNS [globalFrame] — delegates to the ONE
-/// structural axis model ([TrackFrameAxis.ownerOf], R15-①).
-StoryboardTimelineLayoutEntry? storyboardEntryOwningFrame(
-  List<StoryboardTimelineLayoutEntry> layout,
-  int globalFrame,
-) => TrackFrameAxis(layout).ownerOf(globalFrame);
-
 /// Ruler seeks: playback seeks the clock; EDITING seeks are the session's
 /// own global-axis seek ([EditorSessionManager.selectGlobalFrame]) — the
 /// storyboard adds nothing of its own (R15-①: one model, both panels).

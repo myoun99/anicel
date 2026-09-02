@@ -238,16 +238,21 @@ void main() {
     });
 
     test('only the drag-out verbs wear a shape', () {
+      // The verbs that drag an outline out of the canvas: select, the
+      // shape fill and the cut tools. MOVE does not — it drags a region
+      // that already exists rather than tracing a new one.
       for (final tool in CanvasTool.values) {
         expect(
           BrushToolState(tool: tool).activeShapeKind != null,
-          canvasToolDragsShape(tool),
+          tool == CanvasTool.select ||
+              tool == CanvasTool.fillShape ||
+              canvasToolCuts(tool),
           reason: '$tool',
         );
       }
       // MOVE mounts the selection layer but traces nothing.
       expect(canvasToolSelects(CanvasTool.move), isTrue);
-      expect(canvasToolDragsShape(CanvasTool.move), isFalse);
+      expect(BrushToolState(tool: CanvasTool.move).activeShapeKind, isNull);
     });
   });
 

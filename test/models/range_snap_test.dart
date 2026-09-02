@@ -4,9 +4,19 @@ import 'package:anicel/src/models/range_snap.dart';
 /// THE block-snapping rule, tested on its own material rather than through
 /// a layer or a track — the point of extracting it is that both axes get
 /// exactly these answers.
+/// Test material: a plain sorted, non-overlapping list answering as a lane.
+RangeBlock? _blockCoveringIn(List<RangeBlock> lane, int index) {
+  for (final block in lane) {
+    if (index >= block.startIndex && index < block.endIndexExclusive) {
+      return block;
+    }
+  }
+  return null;
+}
+
 void main() {
   RangeBlockAt laneOf(List<RangeBlock> blocks) =>
-      (index) => blockCoveringIn(blocks, index);
+      (index) => _blockCoveringIn(blocks, index);
 
   group('snapSpanToBlocks', () {
     test('a span inside one block extends through the whole block', () {
@@ -110,25 +120,4 @@ void main() {
     });
   });
 
-  group('blockCoveringIn', () {
-    final lane = const [
-      RangeBlock(startIndex: 0, endIndexExclusive: 3),
-      RangeBlock(startIndex: 5, endIndexExclusive: 6),
-      RangeBlock(startIndex: 10, endIndexExclusive: 20),
-    ];
-
-    test('finds the covering block', () {
-      expect(blockCoveringIn(lane, 0)?.startIndex, 0);
-      expect(blockCoveringIn(lane, 2)?.startIndex, 0);
-      expect(blockCoveringIn(lane, 5)?.startIndex, 5);
-      expect(blockCoveringIn(lane, 19)?.startIndex, 10);
-    });
-
-    test('returns null on empty cells and past the end', () {
-      expect(blockCoveringIn(lane, 3), isNull);
-      expect(blockCoveringIn(lane, 6), isNull);
-      expect(blockCoveringIn(lane, 20), isNull);
-      expect(blockCoveringIn(const [], 0), isNull);
-    });
-  });
 }

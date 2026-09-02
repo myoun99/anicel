@@ -359,19 +359,3 @@ double seNameTagWidthBudget({
   return shot.width * 0.88;
 }
 
-/// The tag's line: the speaker in the box, the dialogue beside it
-/// (`[タモツ] 대사내용`, the user's format). Either half alone stands on
-/// its own — a lone speaker needs no brackets, the box already frames it.
-/// Empty on both sides means the block carries no writing yet, so the row
-/// shows nothing at all rather than an empty red box.
-String seNameTagText({required String? seName, required String? dialogue}) {
-  final name = seName?.trim() ?? '';
-  final line = dialogue?.trim() ?? '';
-  if (name.isEmpty) {
-    return line;
-  }
-  if (line.isEmpty) {
-    return name;
-  }
-  return '[$name] $line';
-}

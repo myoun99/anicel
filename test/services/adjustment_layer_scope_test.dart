@@ -111,8 +111,7 @@ void main() {
       }
     });
 
-    test('no cel column, no cel export, and the kind is fixed', () {
-      expect(layerKindTakesTimesheetColumn(LayerKind.adjustment), isFalse);
+    test('no cel export, and the kind is fixed', () {
       expect(layerKindExportsCels(LayerKind.adjustment), isFalse);
       expect(layerKindIsFixed(LayerKind.adjustment), isTrue);
       expect(layerKindIsClipboardCopyable(LayerKind.adjustment), isFalse);

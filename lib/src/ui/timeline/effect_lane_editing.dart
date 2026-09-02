@@ -78,30 +78,6 @@ List<LayerEffect>? effectsWithLaneRangeNamed(
   });
 }
 
-/// Flips a key between linear and HOLD interpolation (AE's Toggle Hold
-/// Keyframe).
-List<LayerEffect>? effectsWithLaneHoldToggled(
-  List<LayerEffect> effects, {
-  required String laneId,
-  required int frameIndex,
-}) {
-  return _editParameter(effects, laneId, (parameter, spec) {
-    final key = parameter.track.keyAt(frameIndex);
-    if (key == null) {
-      return null;
-    }
-    return parameter.copyWith(
-      track: parameter.track.withKey(
-        frameIndex,
-        key.value,
-        interpolation: key.interpolation == PropertyKeyInterpolation.hold
-            ? PropertyKeyInterpolation.linear
-            : PropertyKeyInterpolation.hold,
-      ),
-    );
-  });
-}
-
 /// Applies a value typed into a lane's value editor.
 ///
 /// Editing a lane's value KEYS it at the playhead — always (R9 #18).

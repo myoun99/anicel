@@ -18,21 +18,16 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
+    // The section itself, as the Preferences dialog mounts it (SAVE-1).
     await tester.pumpWidget(
       MaterialApp(
-        home: Builder(
-          builder: (context) => Center(
-            child: ElevatedButton(
-              key: const ValueKey<String>('open-dialog'),
-              onPressed: () =>
-                  showInputSettingsDialog(context, session: session),
-              child: const Text('open'),
-            ),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: InputSettingsSection(session: session),
           ),
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey<String>('open-dialog')));
     await tester.pumpAndSettle();
     return session;
   }

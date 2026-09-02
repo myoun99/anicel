@@ -238,8 +238,10 @@ import 'timeline/timeline_section_policy.dart';
 import 'timeline/effect_lane_editing.dart'
     show
         effectLaneKeyFrames,
+        effectsWithAdded,
         effectsWithEnabledToggled,
         effectsWithLaneKeyRemoved,
+        effectsWithRemoved,
         effectsWithLaneRangeNamed,
         effectsWithLaneKeyToggled,
         effectsWithGroupReset;

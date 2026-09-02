@@ -22,17 +22,6 @@ import 'timeline_exposure.dart';
 /// One block on a row's index axis, as PUSH/PULL sees it.
 typedef ShiftableBlock = ({int startIndex, int endIndexExclusive});
 
-/// The blocks that a push/pull from [anchorIndex] moves: every block that
-/// STARTS at or after it. A block straddling the anchor stays put — the
-/// anchor is a boundary, and splitting a block would not be a rigid move.
-List<ShiftableBlock> blocksShiftedFrom(
-  List<ShiftableBlock> blocks,
-  int anchorIndex,
-) => [
-  for (final block in blocks)
-    if (block.startIndex >= anchorIndex) block,
-];
-
 /// How far a PULL from [anchorIndex] can travel before the first moved
 /// block touches whatever sits behind it. Zero when they already touch;
 /// unbounded rows (nothing before the anchor) clamp at frame 0.

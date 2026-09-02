@@ -41,13 +41,6 @@ int? clampFrameIndex({
   return frameIndex.clamp(0, visibleFrameCount - 1).toInt();
 }
 
-double frameContentX({
-  required int frameIndex,
-  required double frameCellWidth,
-}) {
-  return frameIndex * frameCellWidth;
-}
-
 double frameVisibleX({
   required int frameIndex,
   required int frameStartIndex,

@@ -12,20 +12,6 @@ void main() {
     for (final span in spans) (startIndex: span.$1, endIndexExclusive: span.$2),
   ];
 
-  group('blocksShiftedFrom', () {
-    test('takes the blocks that START at or after the anchor', () {
-      expect(
-        blocksShiftedFrom(blocks([(0, 4), (4, 8), (10, 12)]), 4),
-        blocks([(4, 8), (10, 12)]),
-      );
-    });
-
-    test('a block STRADDLING the anchor stays put — the anchor is a '
-        'boundary, and splitting a block is not a rigid move', () {
-      expect(blocksShiftedFrom(blocks([(0, 8)]), 4), isEmpty);
-    });
-  });
-
   group('rowPullSlack', () {
     test('is the free space between the anchor and what moves', () {
       // a[0,4) — 6 free — b[10,12): b can come back 6.

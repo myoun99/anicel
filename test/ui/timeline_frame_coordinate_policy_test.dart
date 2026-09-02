@@ -108,13 +108,6 @@ void main() {
     });
   });
 
-  group('frameContentX', () {
-    test('converts frame index to content x position', () {
-      expect(frameContentX(frameIndex: 0, frameCellWidth: 48), 0);
-      expect(frameContentX(frameIndex: 5, frameCellWidth: 48), 240);
-    });
-  });
-
   group('frameVisibleX', () {
     test('converts frame index to visible x position', () {
       expect(

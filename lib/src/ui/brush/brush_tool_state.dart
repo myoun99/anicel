@@ -114,14 +114,6 @@ bool canvasToolSelects(CanvasTool tool) =>
     tool == CanvasTool.fillShape ||
     canvasToolCuts(tool);
 
-/// Whether [tool] drags an outline out of the canvas — the verbs that wear
-/// a [CanvasShapeKind]. MOVE does not: it drags a region that already
-/// exists rather than tracing a new one.
-bool canvasToolDragsShape(CanvasTool tool) =>
-    tool == CanvasTool.select ||
-    tool == CanvasTool.fillShape ||
-    canvasToolCuts(tool);
-
 /// Whether [tool] is one of the FILL tool's tiles — what the rail's single
 /// Fill button lights up for. The bucket floods from a tap and the shape
 /// fill drags an outline; both are the fill.

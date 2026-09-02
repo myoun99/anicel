@@ -21,15 +21,6 @@ class CreateCutCommandInputPlan {
   final LayerId layerId;
 }
 
-class DeleteLastCutReplacementInputPlan {
-  const DeleteLastCutReplacementInputPlan({
-    required this.replacementCutId,
-    required this.replacementLayerId,
-  });
-
-  final CutId replacementCutId;
-  final LayerId replacementLayerId;
-}
 
 class PasteLayerCommandInputPlan {
   PasteLayerCommandInputPlan({
@@ -66,19 +57,6 @@ CreateCutCommandInputPlan planCreateCutCommandInput(Project project) {
   );
 }
 
-DeleteLastCutReplacementInputPlan planDeleteLastCutReplacementInput(
-  Project project,
-) {
-  final ids = _ProjectIdSnapshot.fromProject(project);
-  return DeleteLastCutReplacementInputPlan(
-    replacementCutId: CutId(
-      _firstAvailableId(prefix: 'cut', usedIds: ids.cutIds),
-    ),
-    replacementLayerId: LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    ),
-  );
-}
 
 DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   required Project project,

@@ -48,25 +48,6 @@ typedef RangeSpan = ({int startIndex, int endIndexExclusive});
 /// O(n) allocation on exactly the rows that are long.
 typedef RangeBlockAt = RangeBlock? Function(int index);
 
-/// The block of [lane] covering [index], for callers whose material really
-/// is a plain sorted, non-overlapping list.
-RangeBlock? blockCoveringIn(List<RangeBlock> lane, int index) {
-  var low = 0;
-  var high = lane.length - 1;
-  while (low <= high) {
-    final mid = (low + high) >> 1;
-    final block = lane[mid];
-    if (index < block.startIndex) {
-      high = mid - 1;
-    } else if (index >= block.endIndexExclusive) {
-      low = mid + 1;
-    } else {
-      return block;
-    }
-  }
-  return null;
-}
-
 /// Snaps the raw dragged span between [anchorIndex] and [headIndex] to whole
 /// blocks. Each entry of [lanes] resolves one run of blocks — a layer's
 /// exposures and its instruction events are two lanes because they may
