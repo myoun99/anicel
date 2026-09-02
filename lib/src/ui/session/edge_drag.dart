@@ -529,59 +529,7 @@ class _EdgeDrag {
     final bulkStarts = _edgeDragBulkStartsByLayer;
     final bulkBefore = _edgeDragBulkBefore;
     if (bulkStarts != null && bulkBefore != null) {
-      final lengthDelta = edge == TimelineBlockEdge.end
-          ? cumulativeDelta
-          : -cumulativeDelta;
-      final edits = <({Layer before, Layer after})>[];
-      final previews = <LayerId, Layer>{};
-      for (final entry in bulkStarts.entries) {
-        final beforeLayer = bulkBefore[entry.key];
-        if (beforeLayer == null) {
-          continue;
-        }
-        final after = _session._timelineController.retimedLayerForBlocks(
-          layer: beforeLayer,
-          newLengthByStart: {
-            for (final start in entry.value)
-              if (beforeLayer.timeline[start]?.isDrawing ?? false)
-                start: beforeLayer.timeline[start]!.length! + lengthDelta,
-          },
-        );
-        if (after != null && after != beforeLayer) {
-          edits.add((before: beforeLayer, after: after));
-          // Track-SE rows preview in their DISPLAY form (cut-local axis);
-          // the commit keeps the global form (UI-R18 #1 seam).
-          previews[entry.key] = _session.isTrackSeLayerId(entry.key)
-              ? _session.trackSeWindow.displayLayer(after)
-              : after;
-        }
-      }
-      _edgeDragBulkEdits = edits.isEmpty ? null : edits;
-      // A storyboard row in the bulk drags its cut's length along
-      // (feedback #9) — one preview, one release.
-      ({Map<CutId, int> durations, Map<CutId, int> gaps})? resize;
-      final sync = _edgeDragCutSync;
-      if (sync != null) {
-        for (final edit in edits) {
-          if (edit.after.id == sync.layerId) {
-            resize = _cutSyncResizeFor(edit.after);
-            break;
-          }
-        }
-      }
-      _edgeDragAfterDurations = resize?.durations;
-      _edgeDragAfterGaps = resize?.gaps;
-      _session.dragPreview.value = previews.isEmpty
-          ? null
-          : resize != null
-          ? CutTrimDragPreview(
-              previewDurations: resize.durations,
-              previewGaps: resize.gaps,
-              previewLayers: previews,
-            )
-          : previews.length == 1
-          ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
-          : BlockMoveDragPreview(previewLayers: previews);
+      _updateBulkExposureEdgeDrag(edge, cumulativeDelta, bulkStarts, bulkBefore);
       return;
     }
 
@@ -620,6 +568,63 @@ class _EdgeDrag {
             previewLayer: window == null ? after : window.displayLayer(after),
             globalPreviewLayer: window == null ? null : after,
           );
+  }
+
+  void _updateBulkExposureEdgeDrag(TimelineBlockEdge edge, int cumulativeDelta, Map<LayerId, List<int>> bulkStarts, Map<LayerId, Layer> bulkBefore) {
+    final lengthDelta = edge == TimelineBlockEdge.end
+        ? cumulativeDelta
+        : -cumulativeDelta;
+    final edits = <({Layer before, Layer after})>[];
+    final previews = <LayerId, Layer>{};
+    for (final entry in bulkStarts.entries) {
+      final beforeLayer = bulkBefore[entry.key];
+      if (beforeLayer == null) {
+        continue;
+      }
+      final after = _session._timelineController.retimedLayerForBlocks(
+        layer: beforeLayer,
+        newLengthByStart: {
+          for (final start in entry.value)
+            if (beforeLayer.timeline[start]?.isDrawing ?? false)
+              start: beforeLayer.timeline[start]!.length! + lengthDelta,
+        },
+      );
+      if (after != null && after != beforeLayer) {
+        edits.add((before: beforeLayer, after: after));
+        // Track-SE rows preview in their DISPLAY form (cut-local axis);
+        // the commit keeps the global form (UI-R18 #1 seam).
+        previews[entry.key] = _session.isTrackSeLayerId(entry.key)
+            ? _session.trackSeWindow.displayLayer(after)
+            : after;
+      }
+    }
+    _edgeDragBulkEdits = edits.isEmpty ? null : edits;
+    // A storyboard row in the bulk drags its cut's length along
+    // (feedback #9) — one preview, one release.
+    ({Map<CutId, int> durations, Map<CutId, int> gaps})? resize;
+    final sync = _edgeDragCutSync;
+    if (sync != null) {
+      for (final edit in edits) {
+        if (edit.after.id == sync.layerId) {
+          resize = _cutSyncResizeFor(edit.after);
+          break;
+        }
+      }
+    }
+    _edgeDragAfterDurations = resize?.durations;
+    _edgeDragAfterGaps = resize?.gaps;
+    _session.dragPreview.value = previews.isEmpty
+        ? null
+        : resize != null
+        ? CutTrimDragPreview(
+            previewDurations: resize.durations,
+            previewGaps: resize.gaps,
+            previewLayers: previews,
+          )
+        : previews.length == 1
+        ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
+        : BlockMoveDragPreview(previewLayers: previews);
+    return;
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
