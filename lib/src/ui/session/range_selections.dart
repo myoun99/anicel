@@ -637,7 +637,7 @@ class _RangeSelections {
       // what keeps the button and the dispatch reading one answer — the
       // three downstream copies of this filter used to leave every `can…`
       // gate lighting up for a row nothing would touch.
-      if (_session._isSyncedAttachedLayerId(id) ||
+      if (_session._folders.isSyncedAttachedLayerId(id) ||
           _session._isSingleCelLayerId(id)) {
         continue;
       }

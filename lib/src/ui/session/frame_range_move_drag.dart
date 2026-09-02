@@ -347,7 +347,7 @@ class _FrameRangeMoveDrag {
         // marking mirror entries ghost, so the block filter below no
         // longer excludes them. SINGLE-CEL (image) rows stand down too:
         // their covering block is pinned by the write normalization.
-        if (_session._isSyncedAttachedLayerId(id) ||
+        if (_session._folders.isSyncedAttachedLayerId(id) ||
             _session._isSingleCelLayerId(id)) {
           continue;
         }
@@ -374,7 +374,7 @@ class _FrameRangeMoveDrag {
           instructionSources.isEmpty) {
         // An all-synced span dies here — say why at the cursor, like the
         // single-row path does.
-        _session._noticeSyncedAttachRefusal(selection.layerId);
+        _session._folders._noticeSyncedAttachRefusal(selection.layerId);
         return false;
       }
       _rangeMoveMultiSources = sources;
@@ -391,8 +391,8 @@ class _FrameRangeMoveDrag {
     // the row look grabbable; before it, the all-ghost timeline fell out
     // of the block scan below on its own). A SINGLE-CEL (image) row's
     // covering block is immovable — the normalization would revert it.
-    if (_session._isSyncedAttachedLayerId(selection.layerId)) {
-      _session._noticeSyncedAttachRefusal(selection.layerId);
+    if (_session._folders.isSyncedAttachedLayerId(selection.layerId)) {
+      _session._folders._noticeSyncedAttachRefusal(selection.layerId);
       return false;
     }
     if (_session._isSingleCelLayerId(selection.layerId)) {

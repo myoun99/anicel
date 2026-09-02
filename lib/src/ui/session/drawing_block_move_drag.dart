@@ -25,7 +25,7 @@ class _DrawingBlockMoveDrag {
       blockStartIndex: blockStartIndex,
       layerById: _session._layerById,
       isEligibleRow: _session._blockMoveEligible,
-      noticeIneligible: _session._noticeSyncedAttachRefusal,
+      noticeIneligible: _session._folders._noticeSyncedAttachRefusal,
       cutFrameCount: () => _session._activeCutFrameCount,
       preview: _session.dragPreview,
       land: _landDrawingBlockMove,

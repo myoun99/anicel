@@ -319,7 +319,7 @@ class _EdgeDrag {
   }) {
     // SYNCED attach rows own no timing — no comma grips (the BASE's
     // grips move both, W5); free attach rows drag like normal (UI-R21).
-    if (_session._isSyncedAttachedLayerId(layerId)) {
+    if (_session._folders.isSyncedAttachedLayerId(layerId)) {
       return false;
     }
     // From scratch, the way the storyboard's seed already did it. The two
@@ -458,7 +458,7 @@ class _EdgeDrag {
       // normalization, so a bulk retime would PREVIEW the picture
       // stretching and then have it snapped back by the same write — the
       // move-then-revert flicker the project bans outright.
-      if (_session._isSyncedAttachedLayerId(id) ||
+      if (_session._folders.isSyncedAttachedLayerId(id) ||
           _session._isSingleCelLayerId(id)) {
         continue;
       }
