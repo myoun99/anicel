@@ -67,6 +67,7 @@ import 'timeline_swipe_columns.dart';
 
 part 'layer_grid/layer_grid_rail_rows.dart';
 part 'layer_grid/layer_grid_scroll.dart';
+part 'layer_grid/layer_grid_ruler_scrub.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -367,93 +368,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _viewportFillFrameCells,
   );
 
-  int? _frameIndexForRulerLocalX(double localX) {
-    return frameIndexFromLocalX(
-      localX: localX,
-      horizontalScrollOffset: _lastEffectiveHorizontalScrollOffset,
-      frameCellWidth: _metrics.frameCellWidth,
-      visibleFrameCount: _renderedFrameCount,
-    );
-  }
-
-  void _selectClampedFrameFromRuler(int frameIndex) {
-    // The endless runway IS the selectable tail now (UI-R10 #23 retired
-    // the fixed safety frames): clamp against the BUILT extent.
-    final clampedFrameIndex = clampFrameIndex(
-      frameIndex: frameIndex,
-      visibleFrameCount: _renderedFrameCount,
-    );
-    if (clampedFrameIndex == null ||
-        clampedFrameIndex == _lastRulerScrubbedFrameIndex) {
-      return;
-    }
-
-    _lastRulerScrubbedFrameIndex = clampedFrameIndex;
-    (widget.hooks.onScrubFrame ?? widget.hooks.onSelectFrame)(
-      clampedFrameIndex,
-    );
-  }
-
-  /// The scrub gesture's release (raw pointer up/cancel — fires for taps
-  /// AND drags, wherever the pointer ends up). Tracking is NOT reset here
-  /// so the ruler InkWell's trailing onTap stays deduplicated.
-  void _endRulerScrub() {
-    widget.hooks.onScrubEnd?.call();
-  }
-
-  double? _rulerViewportLocalXFromGlobal(Offset globalPosition) {
-    final renderObject = _rulerScrubViewportKey.currentContext
-        ?.findRenderObject();
-    if (renderObject is! RenderBox) {
-      return null;
-    }
-
-    return renderObject.globalToLocal(globalPosition).dx;
-  }
-
-  void _selectFrameFromRulerGlobalPosition(Offset globalPosition) {
-    final localX = _rulerViewportLocalXFromGlobal(globalPosition);
-    if (localX == null) {
-      return;
-    }
-    _autoPanRulerEdge(localX);
-
-    final frameIndex = _frameIndexForRulerLocalX(localX);
-    if (frameIndex == null) {
-      return;
-    }
-
-    _selectClampedFrameFromRuler(frameIndex);
-  }
-
-  /// Edge auto-pan (UI-R10 #24, the pro-standard ruler drag): a scrub
-  /// pointer past the viewport edge scrolls the frame axis under it.
-  /// Rightward it deliberately OVERSHOOTS the built extent (UI-R12 #16):
-  /// the ruler drag is THE way past the last built cell — the growth
-  /// listener materializes the frames the overshot view needs, while the
-  /// scrollbar and scroll physics stay clamped at the built cells.
-  void _autoPanRulerEdge(double localX) {
-    if (!_horizontalScrollController.hasClients) {
-      return;
-    }
-    final viewport = _rulerScrubViewportKey.currentContext?.findRenderObject();
-    if (viewport is! RenderBox || !viewport.hasSize) {
-      return;
-    }
-    final delta = edgeAutoPanDelta(localX, viewport.size.width);
-    if (delta == 0) {
-      return;
-    }
-    final position = _horizontalScrollController.position;
-    final target = math.max(0.0, position.pixels + delta);
-    if (target != position.pixels) {
-      _horizontalScrollController.jumpTo(target);
-    }
-  }
-
-  void _resetRulerScrubTracking() {
-    _lastRulerScrubbedFrameIndex = null;
-  }
+  // ── the ruler scrub: its own object, in its own file ────────────────
+  //
+  // A collaborator (timeline/layer_grid/layer_grid_ruler_scrub.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _LayerGridRulerScrub _rulerScrub = _LayerGridRulerScrub(this);
 
   /// Brings the SELECTION back into view on both axes (R5, user
   /// 2026-08-09): the frame under the cursor along the frame axis, the row
@@ -1631,7 +1550,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 metrics:
                                                                     _metrics,
                                                                 onSelectFrame:
-                                                                    _selectClampedFrameFromRuler,
+                                                                    _rulerScrub.selectClampedFrameFromRuler,
                                                                 framesPerSecond:
                                                                     _countingFps,
                                                                 showSeconds: widget
@@ -1687,38 +1606,38 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             HitTestBehavior
                                                                 .translucent,
                                                         onPointerDown: (event) {
-                                                          _resetRulerScrubTracking();
-                                                          _selectFrameFromRulerGlobalPosition(
+                                                          _rulerScrub.resetRulerScrubTracking();
+                                                          _rulerScrub.selectFrameFromRulerGlobalPosition(
                                                             event.position,
                                                           );
                                                         },
                                                         onPointerUp: (_) =>
-                                                            _endRulerScrub(),
+                                                            _rulerScrub.endRulerScrub(),
                                                         onPointerCancel: (_) =>
-                                                            _endRulerScrub(),
+                                                            _rulerScrub.endRulerScrub(),
                                                         child: GestureDetector(
                                                           behavior:
                                                               HitTestBehavior
                                                                   .translucent,
                                                           onHorizontalDragStart:
                                                               (details) {
-                                                                _selectFrameFromRulerGlobalPosition(
+                                                                _rulerScrub.selectFrameFromRulerGlobalPosition(
                                                                   details
                                                                       .globalPosition,
                                                                 );
                                                               },
                                                           onHorizontalDragUpdate:
                                                               (details) {
-                                                                _selectFrameFromRulerGlobalPosition(
+                                                                _rulerScrub.selectFrameFromRulerGlobalPosition(
                                                                   details
                                                                       .globalPosition,
                                                                 );
                                                               },
                                                           onHorizontalDragEnd:
                                                               (_) =>
-                                                                  _resetRulerScrubTracking(),
+                                                                  _rulerScrub.resetRulerScrubTracking(),
                                                           onHorizontalDragCancel:
-                                                              _resetRulerScrubTracking,
+                                                              _rulerScrub.resetRulerScrubTracking,
                                                           child: SizedBox(
                                                             key:
                                                                 _rulerScrubViewportKey,
