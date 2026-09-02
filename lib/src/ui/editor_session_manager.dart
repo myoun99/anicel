@@ -284,6 +284,7 @@ part 'session/cut_verbs.dart';
 part 'session/range_selections.dart';
 part 'session/se_entries.dart';
 part 'session/drawing_block_move_drag.dart';
+part 'session/run_frames_add_drag.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -8424,55 +8425,25 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
 
-  /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
-  /// deterministic id reservation that keeps preview == commit lives on
-  /// the drag class.
-  RunFramesAddDrag? _runFramesAddDrag;
+  // ── the run frames add drag: its own object ─────────────────────────
+  //
+  // A collaborator (session/run_frames_add_drag.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _RunFramesAddDrag _runFramesAdd = _RunFramesAddDrag(this);
 
-  /// Starts a "+ add frames" drag at the run edge (UI-R8): [atEnd] picks
-  /// the side. Returns false when the row stands down or there is no run.
   bool beginRunFramesAddDrag({
     required LayerId layerId,
     required int blockStartIndex,
     required bool atEnd,
-  }) {
-    final drag = RunFramesAddDrag.begin(
-      layerId: layerId,
-      blockStartIndex: blockStartIndex,
-      atEnd: atEnd,
-      blockMoveEligible: _blockMoveEligible,
-      layerById: _layerById,
-      tracksNow: () => _repository.requireProject().tracks,
-      activeCutFrameCount: () => _activeCutFrameCount,
-      preview: dragPreview,
-      commitLayerDrag: ({required before, required after}) {
-        _timelineController.commitLayerTimelineDrag(
-          before: before,
-          after: after,
-        );
-        _warmActiveCut();
-        notifyListeners();
-      },
-    );
-    if (drag == null) {
-      // A refused grip leaves an in-flight drag exactly as it was.
-      return false;
-    }
-    _runFramesAddDrag = drag;
-    return true;
-  }
-
-  void updateRunFramesAddDrag(int count) => _runFramesAddDrag?.update(count);
-
-  void endRunFramesAddDrag() {
-    _runFramesAddDrag?.commit();
-    _runFramesAddDrag = null;
-  }
-
-  void cancelRunFramesAddDrag() {
-    _runFramesAddDrag?.cancel();
-    _runFramesAddDrag = null;
-  }
+  }) => _runFramesAdd.beginRunFramesAddDrag(
+    layerId: layerId,
+    blockStartIndex: blockStartIndex,
+    atEnd: atEnd,
+  );
+  void updateRunFramesAddDrag(int count) =>
+      _runFramesAdd.updateRunFramesAddDrag(count);
+  void endRunFramesAddDrag() => _runFramesAdd.endRunFramesAddDrag();
+  void cancelRunFramesAddDrag() => _runFramesAdd.cancelRunFramesAddDrag();
 
   // --- Run-edge properties (UI-R9 #10 N/H/R tags) ----------------------------
 
