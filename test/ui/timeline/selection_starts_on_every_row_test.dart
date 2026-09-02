@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../../helpers/library_source.dart';
 
 /// 🚨F-16 — **레이어 영역의 선택범위는 어느 행에서도 시작할 수 있다.**
 ///
@@ -49,7 +50,11 @@ Project _project() => Project(
           canvasSize: const CanvasSize(width: 640, height: 360),
           camera: CutCamera.empty(),
           layers: [
-            Layer(id: const LayerId(_drawId), name: 'Drawing', frames: const []),
+            Layer(
+              id: const LayerId(_drawId),
+              name: 'Drawing',
+              frames: const [],
+            ),
             Layer(
               id: const LayerId(_transitionId),
               name: 'Transition',
@@ -169,7 +174,10 @@ void _bothRailsSelectOnly() {
       'lib/src/ui/timeline/layer_timeline_grid.dart',
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ]) {
-      final source = File(path).readAsStringSync();
+      // A grid is a LIBRARY — the file plus the collaborator parts the
+      // audit's SRP cuts (2026-09-02) put beside it — so the call is found
+      // where a cut put it.
+      final source = librarySource(path);
       expect(
         source,
         contains('unmovableRowSelectTarget('),
