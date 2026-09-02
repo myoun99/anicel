@@ -51,7 +51,7 @@ class _LaneRangeMoveDrag {
         ),
       );
     }
-    final layer = _session._laneVerbLayerFor(selection.layerId);
+    final layer = _session._laneVerbs._laneVerbLayerFor(selection.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return null;
     }
@@ -166,7 +166,7 @@ class _LaneRangeMoveDrag {
     final drag = LaneRangeMoveDrag.begin(
       selection: selection,
       subject: subject,
-      laneVerbTargets: _session._laneVerbTargets,
+      laneVerbTargets: _session._laneVerbs._laneVerbTargets,
       preview: _session.dragPreview,
       selectionChannel: _session.laneRangeSelection,
       clearCameraPreview: () => _cameraLaneTrackPreview = null,
