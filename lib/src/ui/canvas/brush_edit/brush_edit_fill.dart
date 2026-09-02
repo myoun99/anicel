@@ -62,7 +62,7 @@ class _BrushEditFill {
         ? rawDab.copyWith(erase: true)
         : rawDab;
     final stamp = dab.stamp;
-    _state._resetOverlay();
+    _state._overlay.resetOverlay();
     // The fill composites like anything else now (유저 확정: 버킷에도
     // 블렌드를 깐다) — 뒤에 그리기 puts colour UNDER the line art already
     // on the cel, which is the whole reason to want it.
@@ -71,8 +71,8 @@ class _BrushEditFill {
     // pre-blends with the commit's own kernels (R27 #4), so agreeing here
     // is all it takes for what is shown to be what lands. Setting one and
     // not the other is the way this goes wrong.
-    _state._overlayModel.erase = blend == BrushBlendMode.erase;
-    _state._overlayModel.blendMode = blend;
+    _state._overlay._overlayModel.erase = blend == BrushBlendMode.erase;
+    _state._overlay._overlayModel.blendMode = blend;
     final surface = _state.widget.sessionState.canvasState.currentSurface;
     if (stamp != null) {
       final stampLeft = (dab.center.x - stamp.width / 2).round();
@@ -134,7 +134,7 @@ class _BrushEditFill {
             image.dispose();
             return;
           }
-          _state._overlayModel.setStampOverlay(
+          _state._overlay._overlayModel.setStampOverlay(
             image,
             Offset(stampLeft.toDouble(), stampTop.toDouble()),
           );
@@ -148,7 +148,7 @@ class _BrushEditFill {
     // Pin the pre-fill tiles NOW: until the stamp image decodes the
     // canvas keeps showing the pre-fill picture (no flash), then the
     // overlay pops in complete.
-    _state._overlayModel.holdPreStrokeTiles(
+    _state._overlay._overlayModel.holdPreStrokeTiles(
       preStrokeHoldTiles(surface: surface, bounds: _state._settlingBounds),
     );
 

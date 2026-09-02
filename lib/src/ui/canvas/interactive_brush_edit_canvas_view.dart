@@ -50,6 +50,7 @@ import 'canvas_touch_contacts.dart';
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
+part 'brush_edit/brush_edit_overlay.dart';
 
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
@@ -379,8 +380,11 @@ class _InteractiveBrushEditCanvasViewState
   late final ActiveStrokeOverlayModel _ownedOverlayModel =
       ActiveStrokeOverlayModel();
 
-  ActiveStrokeOverlayModel get _overlayModel =>
-      widget.overlayModel ?? _ownedOverlayModel;
+  // ── the stroke overlay: its own object, in its own file ─────────────
+  //
+  // A collaborator (canvas/brush_edit/brush_edit_overlay.dart, a part of this library).
+  // The State keeps the entry points its pointer handlers call.
+  late final _BrushEditOverlay _overlay = _BrushEditOverlay(this);
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
@@ -427,7 +431,7 @@ class _InteractiveBrushEditCanvasViewState
     }
     _multiTouchNavigation = true;
     _stroke.endStrokeInput();
-    _resetOverlay();
+    _overlay.resetOverlay();
   }
 
   @override
@@ -447,7 +451,7 @@ class _InteractiveBrushEditCanvasViewState
       // mid-stroke flip red screen). Reset silently, notify post-frame.
       final hadActiveStroke = _activeDrawingPointer != null;
       _stroke.clearStrokeInputState();
-      _resetOverlay();
+      _overlay.resetOverlay();
       // clear() before dropping: the live tiles are native-backed (R21)
       // and return to the engine's free list through it.
       _liveRasterizer?.clear();
@@ -470,7 +474,7 @@ class _InteractiveBrushEditCanvasViewState
     if (widget.overlayModel == null) {
       _ownedOverlayModel.dispose();
     } else {
-      _overlayModel.reset();
+      _overlay._overlayModel.reset();
     }
     _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
     // R26 #5: a view disposed mid-touch never sees its pointer-up — its
@@ -537,7 +541,7 @@ class _InteractiveBrushEditCanvasViewState
                       viewport: widget.viewport,
                       showTransparentBackground:
                           widget.showTransparentBackground,
-                      overlayModel: _overlayModel,
+                      overlayModel: _overlay._overlayModel,
                       staleScope: (widget.layerId, widget.frameId),
                     ),
                   )
@@ -587,7 +591,7 @@ class _InteractiveBrushEditCanvasViewState
         // touch contacts alongside it are palm rests.
         if (touchStroke) {
           _stroke.endStrokeInput();
-          _resetOverlay();
+          _overlay.resetOverlay();
         }
         return;
       }
@@ -610,8 +614,8 @@ class _InteractiveBrushEditCanvasViewState
     // a live tail hold suppresses the button rows below. Its erase has to
     // reach this stroke's settings snapshot directly — the tool switch it
     // requests is asynchronous, and the stroke starts now.
-    _syncPenTailMapping();
-    var mappedErase = _penTailErases;
+    _overlay.syncPenTailMapping();
+    var mappedErase = _overlay.penTailErases;
     final mapping = _mappedPointerActionFor(event);
     if (mapping != null) {
       if (_multiTouchNavigation ||
@@ -795,7 +799,7 @@ class _InteractiveBrushEditCanvasViewState
     _groundMixer = strokeSettings.shape.mixesGroundColor
         ? BrushGroundColorMixer(shape: strokeSettings.shape)
         : null;
-    _beginStrokeOverlay();
+    _overlay.beginStrokeOverlay();
     // Overlay stroke configuration AFTER the reset — reset() clears
     // preBlendBase, so setting it earlier silently disabled the whole
     // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
@@ -806,9 +810,9 @@ class _InteractiveBrushEditCanvasViewState
     _groundSampler = _groundMixer == null
         ? null
         : bitmapSurfaceGroundSampler(strokeSurface);
-    _overlayModel.configureTileSize(strokeSurface.tileSize);
-    _overlayModel.erase = strokeSettings.erase;
-    _overlayModel.blendMode = strokeSettings.blendMode;
+    _overlay._overlayModel.configureTileSize(strokeSurface.tileSize);
+    _overlay._overlayModel.erase = strokeSettings.erase;
+    _overlay._overlayModel.blendMode = strokeSettings.blendMode;
     // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
     // own kernels against the cel as it stands (user rule 07-23: ONE
     // display pipeline for all modes — color included). The GPU never
@@ -816,7 +820,7 @@ class _InteractiveBrushEditCanvasViewState
     // byte in any mode. Revert switch if stroke feel regresses on
     // device: gate this on `blendMode != color` to give plain strokes
     // their classic stroke-only GPU-srcOver overlay back.
-    _overlayModel.preBlendBase = strokeSurface;
+    _overlay._overlayModel.preBlendBase = strokeSurface;
     _collectedDabs.clear();
     _prepareLiveRasterizer();
     if (!startsInsidePasteboard) {
@@ -856,7 +860,7 @@ class _InteractiveBrushEditCanvasViewState
       ),
     );
     _collectedDabs.addAll(emitted);
-    _queueOverlayDabs(emitted);
+    _overlay.queueOverlayDabs(emitted);
     _nextSequence += emitted.length;
   }
 
@@ -956,37 +960,6 @@ class _InteractiveBrushEditCanvasViewState
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
 
-  void _queueOverlayDabs(List<BrushDab> newDabs) {
-    if (newDabs.isEmpty) {
-      return;
-    }
-    _pendingOverlayDabs.addAll(newDabs);
-    if (_overlayFlushScheduled) {
-      return;
-    }
-    _overlayFlushScheduled = true;
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
-      _overlayFlushScheduled = false;
-      if (mounted) {
-        _flushPendingOverlayDabs();
-      } else {
-        _pendingOverlayDabs.clear();
-      }
-    });
-    // Pointer samples can arrive while no frame is scheduled (nothing else
-    // animating); make sure the flush frame actually happens.
-    SchedulerBinding.instance.ensureVisualUpdate();
-  }
-
-  void _flushPendingOverlayDabs() {
-    if (_pendingOverlayDabs.isEmpty) {
-      return;
-    }
-    final batch = List<BrushDab>.of(_pendingOverlayDabs);
-    _pendingOverlayDabs.clear();
-    _appendOverlayDabs(batch);
-  }
-
   void _handlePointerUp(PointerUpEvent event) {
     // A TAP on an empty cel is a dot, so the press still begins here — and
     // then this same event ends it: one dab, one undo entry.
@@ -1037,13 +1010,13 @@ class _InteractiveBrushEditCanvasViewState
     if (hadDabs) {
       // The commit reads the rasterizer's tiles — blend any dabs still
       // waiting on the per-frame flush first.
-      _flushPendingOverlayDabs();
+      _overlay.flushPendingOverlayDabs();
       _stroke.commitStroke();
     }
 
     _stroke.endStrokeInput();
     if (!hadDabs) {
-      _resetOverlay();
+      _overlay.resetOverlay();
     }
   }
 
@@ -1068,7 +1041,7 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _stroke.endStrokeInput();
-    _resetOverlay();
+    _overlay.resetOverlay();
   }
 
   void _forgetTouchPointer(int pointer) {
@@ -1148,58 +1121,6 @@ class _InteractiveBrushEditCanvasViewState
   /// turned back over.
   bool _penTailActive = false;
 
-  /// Whether a stroke starting NOW is a tail erase — the tool switch is
-  /// asynchronous, so the stroke's own settings snapshot has to carry
-  /// the substitution exactly as the barrel-eraser path does.
-  bool get _penTailErases =>
-      _penTailActive &&
-      AppInput.settings.value.canvasPenTail.action ==
-          CanvasPointerAction.eraser;
-
-  /// Engages or releases the tail mapping from the HID observer's view of
-  /// which end of the pen is down.
-  ///
-  /// FLIP-scoped by design, not contact-scoped: the switch happens when
-  /// the pen is turned OVER, so one flip covers a whole erasing pass and
-  /// the eraser's own size and settings are on screen before the first
-  /// stroke — rather than the tool panel blinking brush⇄eraser once per
-  /// stroke. A device whose driver reports no hover degrades to
-  /// per-contact switching for free: its first report IS the contact.
-  ///
-  /// A null reading (no observer, non-Windows, or the report aged out)
-  /// HOLDS the current state rather than releasing — losing sight of the
-  /// pen is not the same as the pen being turned back over.
-  void _syncPenTailMapping() {
-    final inverted = PenSidecars.freshInverted();
-    if (inverted == null || inverted == _penTailActive) {
-      return;
-    }
-    final mapping = AppInput.settings.value.canvasPenTail;
-    if (inverted) {
-      // A barrel hold that is already running owns the tool.
-      if (_hoverToolHoldActive || _mappedHoldPointer != null) {
-        return;
-      }
-      final tool = switch (mapping.action) {
-        CanvasPointerAction.eraser => CanvasTool.eraser,
-        CanvasPointerAction.eyedropper => CanvasTool.eyedropper,
-        // pan/undo/redo/none have no tail meaning: those are momentary
-        // verbs, and the tail is a state that can last minutes.
-        _ => null,
-      };
-      if (tool == null) {
-        return;
-      }
-      _penTailActive = true;
-      widget.onTemporaryToolHold?.call(tool);
-      return;
-    }
-    _penTailActive = false;
-    widget.onTemporaryToolRelease?.call(
-      keep: mapping.release == CanvasPointerRelease.keep,
-    );
-  }
-
   /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
   /// edge detector's memory (S-Pen/Wacom report barrel presses while
   /// hovering; a rising mapped button fires one-shot actions without
@@ -1241,7 +1162,7 @@ class _InteractiveBrushEditCanvasViewState
     // The tail is read on every hover sample: that is what makes turning
     // the pen over — not touching down with it — the moment the eraser
     // arrives.
-    _syncPenTailMapping();
+    _overlay.syncPenTailMapping();
     final pressedBits = _mappedButtonBits(pressed);
     final mapping = _mappingForButtons(pressedBits);
     if (mapping == null) {
@@ -1406,49 +1327,17 @@ class _InteractiveBrushEditCanvasViewState
   /// still reaching here with the primary bit down is a real stroke.
   bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
 
-  /// Starts a stroke without taking away what is covering for the LAST
-  /// one's committed tiles.
-  ///
-  /// An unconditional reset here was the pen-up hole. What remains in the
-  /// overlay after a commit is exactly the coordinates whose handoff
-  /// missed, so dropping them put those coordinates back on the painter's
-  /// stale fallback — the PRE-stroke tile — and the stroke the user had
-  /// just finished vanished in tile-shaped patches until its decodes
-  /// landed. Measured: stroke 1 pen-up, one frame, stroke 2 pen-down, 2
-  /// of 5 promoted coordinates overlay → stale. The window is the gap
-  /// between one pen-up and the next pen-down, which is why short strokes
-  /// drawn one after another are the case that shows it.
-  ///
-  /// The settle WINDOW still ends here — its timer and its release both
-  /// reset the whole overlay, which would now take the live stroke with
-  /// them. The stand-ins outlive it, which is why they are tracked
-  /// separately from the stroke's own tiles, and they are let go per
-  /// coordinate from [_onTileImagesChanged] as each committed tile
-  /// becomes able to paint itself.
-  void _beginStrokeOverlay() {
-    if (!_overlayModel.hasStandIns) {
-      _resetOverlay();
-      return;
-    }
-    _settling = false;
-    _settlingBounds = null;
-    _settlingFallbackTimer?.cancel();
-    _settlingFallbackTimer = null;
-    _fillOverlayToken += 1;
-    _overlayModel.beginStrokeKeepingStandIns();
-  }
-
   /// Lets go of every stand-in whose committed tile can now paint itself.
   ///
   /// A barrier, not a clock: the release is driven by decodes landing, so
   /// it cannot fire early, and it cannot leak when the work runs long.
   void _releaseSettledStandIns() {
-    if (!_overlayModel.hasStandIns || !mounted) {
+    if (!_overlay._overlayModel.hasStandIns || !mounted) {
       return;
     }
     final surface = widget.sessionState.canvasState.currentSurface;
     final cache = BitmapTileImageCache.instance;
-    _overlayModel.releaseStandIns((coord) {
+    _overlay._overlayModel.releaseStandIns((coord) {
       final tile = surface.tileAt(coord);
       // ⚠️ No tile is NOT "settled". The commit reaches this widget's
       // session state a rebuild later than it reaches the store, so
@@ -1458,19 +1347,6 @@ class _InteractiveBrushEditCanvasViewState
       // never finds a tile is bounded by the next reset.
       return tile != null && cache.imageFor(tile) != null;
     });
-  }
-
-  /// Clears the visible overlay (live or settling) and its tile images.
-  void _resetOverlay() {
-    _settling = false;
-    _settlingBounds = null;
-    _settlingFallbackTimer?.cancel();
-    _settlingFallbackTimer = null;
-    // Invalidate any in-flight fill stamp decode (R23): applying it
-    // after this reset would leave a ghost overlay with no settling to
-    // clear it.
-    _fillOverlayToken += 1;
-    _overlayModel.reset();
   }
 
   /// How long the settling safety cap keeps waiting for tile decodes
@@ -1487,7 +1363,7 @@ class _InteractiveBrushEditCanvasViewState
     // The overlay stops being the stroke and starts being a stand-in —
     // the painter needs to know, so it can prefer a committed tile that
     // has caught up over an image that is a revision behind it.
-    _overlayModel.settling = true;
+    _overlay._overlayModel.settling = true;
     _settlingFallbackTimer?.cancel();
     var waited = Duration.zero;
     _settlingFallbackTimer = Timer.periodic(_settlingRecheckInterval, (timer) {
@@ -1498,7 +1374,7 @@ class _InteractiveBrushEditCanvasViewState
       waited += _settlingRecheckInterval;
       if (waited >= _settlingDeadline) {
         timer.cancel();
-        _resetOverlay();
+        _overlay.resetOverlay();
         return;
       }
       // Belt and braces against a missed decode notification: re-request
@@ -1560,7 +1436,7 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
     if (BitmapTileImageCache.instance.allDecoded(_settlingTiles())) {
-      _resetOverlay();
+      _overlay.resetOverlay();
     } else {
       // Not done yet — start the next decode chunk off this notification
       // (the 50ms timer stays as the belt-and-braces fallback).
@@ -1647,19 +1523,4 @@ class _InteractiveBrushEditCanvasViewState
     return bytes;
   }
 
-  void _appendOverlayDabs(List<BrushDab> newDabs) {
-    if (newDabs.isEmpty) {
-      return;
-    }
-    final rasterizer = _liveRasterizer;
-    if (rasterizer == null) {
-      return;
-    }
-    final from = _overlayModel.dabs.length;
-    _overlayModel.dabs.addAll(newDabs);
-    final region = rasterizer.blendFrom(_overlayModel.dabs, from: from);
-    if (region != null) {
-      _overlayModel.updateRegion(source: rasterizer, region: region);
-    }
-  }
 }

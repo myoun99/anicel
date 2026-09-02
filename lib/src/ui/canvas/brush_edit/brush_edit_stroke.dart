@@ -119,7 +119,7 @@ class _BrushEditStroke {
     // pointer-sample frequency); the per-frame flush rasterizes the batch
     // and repaints the overlay layer directly, skipping widget rebuilds.
     _state._collectedDabs.addAll(emitted);
-    _state._queueOverlayDabs(emitted);
+    _state._overlay.queueOverlayDabs(emitted);
     _state._nextSequence += emitted.length;
     _state._breakCurrentVisibleSegment = false;
   }
@@ -174,11 +174,11 @@ class _BrushEditStroke {
   /// blank paper the painter's per-pixel fallback draws the correct pixels.
   void commitStroke() {
     final rasterizer = _state._liveRasterizer;
-    final base = _state._overlayModel.preBlendBase;
+    final base = _state._overlay._overlayModel.preBlendBase;
     final blendMode =
         (_state._activeStrokeInputSettings ?? _state.widget.inputSettings)
             .blendMode;
-    final erase = _state._overlayModel.erase;
+    final erase = _state._overlay._overlayModel.erase;
     _state._liveRasterizer = null;
     if (rasterizer == null) {
       return;
@@ -203,7 +203,7 @@ class _BrushEditStroke {
       // Only images at the promoted tile's own revision qualify; a
       // stale one would be pinned to that tile forever.
       for (final entry in promoted) {
-        final image = _state._overlayModel.takeTileImageAt(
+        final image = _state._overlay._overlayModel.takeTileImageAt(
           entry.tile.coord,
           revision: entry.revision,
         );
@@ -239,7 +239,7 @@ class _BrushEditStroke {
           // tile now, not for the stroke. Saying so is what lets it
           // outlive the stroke: the next pen-down must not take it away
           // before its committed tile can paint.
-          _state._overlayModel.markStandIn(entry.tile.coord);
+          _state._overlay._overlayModel.markStandIn(entry.tile.coord);
           BitmapTileImageCache.instance.ensureDecoded(
             entry.tile,
             staleScope: (_state.widget.layerId, _state.widget.frameId),
@@ -291,7 +291,7 @@ class _BrushEditStroke {
     }
     // Atomic: the overlay's remaining images retire in the same
     // notification that reveals the committed tiles.
-    _state._resetOverlay();
+    _state._overlay.resetOverlay();
   }
 
   /// Spacing for the segment about to be interpolated.
