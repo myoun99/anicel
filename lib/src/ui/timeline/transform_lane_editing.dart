@@ -6,6 +6,7 @@
 import '../../models/canvas_point.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
+import 'lane_span_keys_shift.dart';
 
 /// Adds a key at [frameIndex] with the property's RESOLVED value there
 /// (AE behavior: keying a property freezes its current value), or removes
@@ -491,34 +492,15 @@ TransformTrack? transformTrackWithLaneSpanKeysShifted(
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
-  }
-  var current = track;
-  var movedAny = false;
-  for (final laneId in laneIds) {
-    final hasRangedKey = transformLaneKeyFrames(current, laneId).any(
-      (frame) => frame >= rangeStartIndex && frame < rangeEndIndexExclusive,
-    );
-    if (!hasRangedKey) {
-      continue; // Nothing of this lane in the range — it rides along.
-    }
-    final next = transformTrackWithLaneKeysShifted(
-      current,
-      laneId: laneId,
-      rangeStartIndex: rangeStartIndex,
-      rangeEndIndexExclusive: rangeEndIndexExclusive,
-      frameDelta: frameDelta,
-    );
-    if (next == null) {
-      return null; // This lane HAD keys, so null here means blocked.
-    }
-    current = next;
-    movedAny = true;
-  }
-  return movedAny ? current : null;
-}
+}) => laneSpanKeysShifted(
+  track,
+  laneIds: laneIds,
+  rangeStartIndex: rangeStartIndex,
+  rangeEndIndexExclusive: rangeEndIndexExclusive,
+  frameDelta: frameDelta,
+  laneKeyFrames: transformLaneKeyFrames,
+  laneKeysShifted: transformTrackWithLaneKeysShifted,
+);
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
 Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) {

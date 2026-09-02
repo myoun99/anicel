@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
@@ -390,21 +391,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         );
       }
       bytes = straight;
-      for (var offset = 0; offset < bytes.length; offset += 4) {
-        final alpha = bytes[offset + 3];
-        if (alpha == 255) {
-          continue;
-        }
-        if (alpha == 0) {
-          bytes[offset] = 0;
-          bytes[offset + 1] = 0;
-          bytes[offset + 2] = 0;
-          continue;
-        }
-        bytes[offset] = _mul255Round(bytes[offset], alpha);
-        bytes[offset + 1] = _mul255Round(bytes[offset + 1], alpha);
-        bytes[offset + 2] = _mul255Round(bytes[offset + 2], alpha);
-      }
+      premultiplyRgbaInPlace(bytes);
     }
 
     final generation = _generation;
@@ -625,11 +612,5 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       DeferredImageDisposer.instance.retire(stamp);
       _stampImage = null;
     }
-  }
-
-  /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
-  static int _mul255Round(int value, int alpha) {
-    final product = value * alpha + 128;
-    return (product + (product >> 8)) >> 8;
   }
 }

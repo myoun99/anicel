@@ -27,6 +27,7 @@ import '../models/exposure_memo.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/reordered_by_ids.dart';
 import '../models/project_background.dart';
 import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
@@ -300,15 +301,14 @@ class ProjectRepository {
   void setCutOrder({required TrackId trackId, required List<CutId> order}) {
     updateProject((project) {
       final next = updateTrackById(project, trackId, (track) {
-        final byId = {for (final cut in track.cuts) cut.id: cut};
-        if (order.length != track.cuts.length ||
-            order.toSet().length != order.length ||
-            !order.every(byId.containsKey)) {
-          throw StateError(
-            'Cut order for track $trackId must be a permutation of its cuts.',
-          );
-        }
-        return track.copyWith(cuts: [for (final id in order) byId[id]!]);
+        return track.copyWith(
+          cuts: reorderedByIds(
+            track.cuts,
+            order,
+            idOf: (cut) => cut.id,
+            orderName: 'Cut order for track $trackId',
+          ),
+        );
       });
       if (next == null) {
         throw StateError('Track not found: $trackId');
@@ -694,21 +694,18 @@ class ProjectRepository {
   }) {
     updateProject((project) {
       final next = updateCutAnywhere(project, cutId, (cut) {
-        final byId = {for (final layer in cut.layers) layer.id: layer};
-        if (order.length != cut.layers.length ||
-            order.toSet().length != order.length ||
-            !order.every(byId.containsKey)) {
-          throw StateError(
-            'Layer order for cut $cutId must be a permutation of its layers.',
-          );
-        }
         return cut.copyWith(
           layers: [
-            for (final id in order)
-              if (folderIds.containsKey(id))
-                byId[id]!.copyWith(folderId: folderIds[id])
+            for (final layer in reorderedByIds(
+              cut.layers,
+              order,
+              idOf: (layer) => layer.id,
+              orderName: 'Layer order for cut $cutId',
+            ))
+              if (folderIds.containsKey(layer.id))
+                layer.copyWith(folderId: folderIds[layer.id])
               else
-                byId[id]!,
+                layer,
           ],
         );
       });
@@ -728,15 +725,14 @@ class ProjectRepository {
   }) {
     updateProject((project) {
       final next = updateTrackById(project, trackId, (track) {
-        final byId = {for (final layer in track.seLayers) layer.id: layer};
-        if (order.length != track.seLayers.length ||
-            order.toSet().length != order.length ||
-            !order.every(byId.containsKey)) {
-          throw StateError(
-            'SE order for track $trackId must be a permutation of its rows.',
-          );
-        }
-        return track.copyWith(seLayers: [for (final id in order) byId[id]!]);
+        return track.copyWith(
+          seLayers: reorderedByIds(
+            track.seLayers,
+            order,
+            idOf: (layer) => layer.id,
+            orderName: 'SE order for track $trackId',
+          ),
+        );
       });
       if (next == null) {
         throw StateError('Track not found: $trackId');

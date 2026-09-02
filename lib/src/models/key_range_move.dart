@@ -7,6 +7,7 @@ library;
 import 'camera_instruction.dart';
 import 'camera_pose.dart';
 import 'drawing_block_move.dart';
+import 'key_range_shift.dart';
 import 'layer.dart';
 import 'property_track.dart';
 import 'transform_track.dart';
@@ -20,31 +21,13 @@ Map<int, CameraPose>? shiftCameraKeysInRange({
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
-}) {
-  bool inRange(int frame) =>
-      frame >= rangeStartIndex && frame < rangeEndIndexExclusive;
-  final moved = <int>{
-    for (final frame in keyframes.keys)
-      if (inRange(frame)) frame,
-  };
-  if (moved.isEmpty || frameDelta == 0) {
-    return null;
-  }
-  final shifted = <int, CameraPose>{};
-  for (final entry in keyframes.entries) {
-    if (!moved.contains(entry.key)) {
-      shifted[entry.key] = entry.value;
-    }
-  }
-  for (final frame in moved) {
-    final landing = frame + frameDelta;
-    if (landing < 0 || shifted.containsKey(landing)) {
-      return null;
-    }
-    shifted[landing] = keyframes[frame]!;
-  }
-  return shifted;
-}
+}) => shiftKeysInRange(
+  entries: keyframes,
+  rangeStartIndex: rangeStartIndex,
+  rangeEndIndexExclusive: rangeEndIndexExclusive,
+  frameDelta: frameDelta,
+  extentOf: (_) => 1,
+);
 
 /// Every frame carrying a key on ANY lane of [track] — the transform
 /// group header's summary display (UI-R20 #13, the camera row pattern).
@@ -259,36 +242,10 @@ Map<int, InstructionEvent>? shiftInstructionEventsInRange({
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
-}) {
-  bool inRange(int frame) =>
-      frame >= rangeStartIndex && frame < rangeEndIndexExclusive;
-  final moved = <int>{
-    for (final start in events.keys)
-      if (inRange(start)) start,
-  };
-  if (moved.isEmpty || frameDelta == 0) {
-    return null;
-  }
-  final shifted = <int, InstructionEvent>{};
-  for (final entry in events.entries) {
-    if (!moved.contains(entry.key)) {
-      shifted[entry.key] = entry.value;
-    }
-  }
-  for (final start in moved) {
-    final event = events[start]!;
-    final landing = start + frameDelta;
-    if (landing < 0) {
-      return null;
-    }
-    final landingEnd = landing + event.length;
-    for (final other in shifted.entries) {
-      final otherEnd = other.key + other.value.length;
-      if (landing < otherEnd && other.key < landingEnd) {
-        return null;
-      }
-    }
-    shifted[landing] = event;
-  }
-  return shifted;
-}
+}) => shiftKeysInRange(
+  entries: events,
+  rangeStartIndex: rangeStartIndex,
+  rangeEndIndexExclusive: rangeEndIndexExclusive,
+  frameDelta: frameDelta,
+  extentOf: (event) => event.length,
+);

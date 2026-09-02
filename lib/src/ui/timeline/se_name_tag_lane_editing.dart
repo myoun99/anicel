@@ -5,6 +5,7 @@
 
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
+import 'lane_span_keys_shift.dart';
 import 'se_name_tag_lane_policy.dart';
 
 /// Adds a key at [frameIndex] holding the member's RESOLVED value there
@@ -360,31 +361,12 @@ SeNameTagTrack? seNameTagTrackWithLaneSpanKeysShifted(
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
-  }
-  var current = track;
-  var movedAny = false;
-  for (final laneId in laneIds) {
-    final hasRangedKey = seNameTagLaneKeyFrames(current, laneId).any(
-      (frame) => frame >= rangeStartIndex && frame < rangeEndIndexExclusive,
-    );
-    if (!hasRangedKey) {
-      continue; // Nothing of this lane in the range — it rides along.
-    }
-    final next = seNameTagTrackWithLaneKeysShifted(
-      current,
-      laneId: laneId,
-      rangeStartIndex: rangeStartIndex,
-      rangeEndIndexExclusive: rangeEndIndexExclusive,
-      frameDelta: frameDelta,
-    );
-    if (next == null) {
-      return null; // This lane HAD keys, so null here means blocked.
-    }
-    current = next;
-    movedAny = true;
-  }
-  return movedAny ? current : null;
-}
+}) => laneSpanKeysShifted(
+  track,
+  laneIds: laneIds,
+  rangeStartIndex: rangeStartIndex,
+  rangeEndIndexExclusive: rangeEndIndexExclusive,
+  frameDelta: frameDelta,
+  laneKeyFrames: seNameTagLaneKeyFrames,
+  laneKeysShifted: seNameTagTrackWithLaneKeysShifted,
+);

@@ -1,6 +1,5 @@
-import 'dart:math' as math;
-
 import '../core/collection_equality.dart';
+import '../core/unit_direction.dart';
 import 'canvas_point.dart';
 import 'string_id.dart';
 
@@ -79,20 +78,8 @@ class HomogeneousPoint {
   /// bare direction `(x, y)` when `w == 0`, so a vanishing point that ran off
   /// to infinity needs no branch here. Null when the two coincide (there is
   /// no ray through a point and itself).
-  ({double dx, double dy})? directionFrom(CanvasPoint from) {
-    final dx = x - from.x * w;
-    final dy = y - from.y * w;
-    // Scale by the larger term before squaring: a vanishing point a few
-    // million canvas units away would otherwise overflow on its way to a
-    // unit vector.
-    final scale = math.max(dx.abs(), dy.abs());
-    if (scale == 0 || !scale.isFinite) return null;
-    final sx = dx / scale;
-    final sy = dy / scale;
-    final length = math.sqrt(sx * sx + sy * sy);
-    if (length == 0 || !length.isFinite) return null;
-    return (dx: sx / length, dy: sy / length);
-  }
+  ({double dx, double dy})? directionFrom(CanvasPoint from) =>
+      unitDirection(x - from.x * w, y - from.y * w);
 
   @override
   bool operator ==(Object other) =>

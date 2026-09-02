@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../core/sync_image_upload.dart';
+import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
@@ -506,30 +507,10 @@ class BitmapTileImageCache extends ChangeNotifier {
       return PremultipliedTileUpload._(scratch.view, scratch);
     }
     final pixels = tile.pixels;
-    for (var offset = 0; offset < pixels.length; offset += 4) {
-      final alpha = pixels[offset + 3];
-      if (alpha == 255) {
-        continue;
-      }
-      if (alpha == 0) {
-        pixels[offset] = 0;
-        pixels[offset + 1] = 0;
-        pixels[offset + 2] = 0;
-        continue;
-      }
-      pixels[offset] = _mul255Round(pixels[offset], alpha);
-      pixels[offset + 1] = _mul255Round(pixels[offset + 1], alpha);
-      pixels[offset + 2] = _mul255Round(pixels[offset + 2], alpha);
-    }
+    premultiplyRgbaInPlace(pixels);
     // The fallback's list is already the caller's own, so its release is
     // the garbage collector's job.
     return PremultipliedTileUpload._(pixels, null);
-  }
-
-  /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
-  static int _mul255Round(int value, int alpha) {
-    final product = value * alpha + 128;
-    return (product + (product >> 8)) >> 8;
   }
 }
 

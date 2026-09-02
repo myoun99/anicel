@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../core/floor_math.dart';
+import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
@@ -439,7 +440,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
                   revision,
                 )
               : PreBlendedOverlayTile._(
-                  _premultipliedCopy(existing.bytes),
+                  premultipliedRgbaCopy(existing.bytes),
                   revision,
                   null,
                 );
@@ -573,7 +574,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return null; // Equal to the base: the committed tile already shows it.
     }
     return PreBlendedOverlayTile._(
-      _premultipliedCopy(result.bytes),
+      premultipliedRgbaCopy(result.bytes),
       result.revision,
       null,
     );
@@ -856,31 +857,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       promoted.add(PromotedStrokeTile._(tile, result.revision));
     }
     return promoted;
-  }
-
-  /// Fallback premultiply for the Dart route — the same mul-div-255
-  /// rounding every tile upload in the app uses.
-  static Uint8List _premultipliedCopy(Uint8List straight) {
-    final bytes = Uint8List.fromList(straight);
-    for (var offset = 0; offset < bytes.length; offset += 4) {
-      final alpha = bytes[offset + 3];
-      if (alpha == 255) {
-        continue;
-      }
-      if (alpha == 0) {
-        bytes[offset] = 0;
-        bytes[offset + 1] = 0;
-        bytes[offset + 2] = 0;
-        continue;
-      }
-      var product = bytes[offset] * alpha + 128;
-      bytes[offset] = (product + (product >> 8)) >> 8;
-      product = bytes[offset + 1] * alpha + 128;
-      bytes[offset + 1] = (product + (product >> 8)) >> 8;
-      product = bytes[offset + 2] * alpha + 128;
-      bytes[offset + 2] = (product + (product >> 8)) >> 8;
-    }
-    return bytes;
   }
 
   /// Copies [base]'s straight bytes for the tile rect at ([left], [top])

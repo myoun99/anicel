@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/floor_math.dart';
+import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -1497,30 +1498,5 @@ class _InteractiveBrushEditCanvasViewState
   late final _BrushEditFill _fill = _BrushEditFill(this);
 
   int _fillOverlayToken = 0;
-
-  /// Fallback premultiply (engine absent) — same bytes as the overlay
-  /// tile path: mul-div-255 rounding, alpha 0 zeroes the color.
-  static Uint8List _premultipliedCopyDart(Uint8List rgba) {
-    final bytes = Uint8List.fromList(rgba);
-    for (var offset = 0; offset < bytes.length; offset += 4) {
-      final alpha = bytes[offset + 3];
-      if (alpha == 255) {
-        continue;
-      }
-      if (alpha == 0) {
-        bytes[offset] = 0;
-        bytes[offset + 1] = 0;
-        bytes[offset + 2] = 0;
-        continue;
-      }
-      var product = bytes[offset] * alpha + 128;
-      bytes[offset] = (product + (product >> 8)) >> 8;
-      product = bytes[offset + 1] * alpha + 128;
-      bytes[offset + 1] = (product + (product >> 8)) >> 8;
-      product = bytes[offset + 2] * alpha + 128;
-      bytes[offset + 2] = (product + (product >> 8)) >> 8;
-    }
-    return bytes;
-  }
 
 }

@@ -114,10 +114,7 @@ class _BrushEditFill {
         scratch = engine.premultipliedStampCopy(stampRgba);
         premultiplied = scratch.view;
       } else {
-        premultiplied =
-            _InteractiveBrushEditCanvasViewState._premultipliedCopyDart(
-              stampRgba,
-            );
+        premultiplied = premultipliedRgbaCopy(stampRgba);
       }
       final token = _state._fillOverlayToken;
       ui.decodeImageFromPixels(

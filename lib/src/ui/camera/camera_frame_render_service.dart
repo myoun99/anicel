@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
@@ -104,9 +105,9 @@ Uint8List _assemblePremultipliedRgba(
           buffer[target + 1] = pixels[source + 1];
           buffer[target + 2] = pixels[source + 2];
         } else if (alpha != 0) {
-          buffer[target] = _mul255Round(pixels[source], alpha);
-          buffer[target + 1] = _mul255Round(pixels[source + 1], alpha);
-          buffer[target + 2] = _mul255Round(pixels[source + 2], alpha);
+          buffer[target] = mul255Round(pixels[source], alpha);
+          buffer[target + 1] = mul255Round(pixels[source + 1], alpha);
+          buffer[target + 2] = mul255Round(pixels[source + 2], alpha);
         }
         buffer[target + 3] = alpha;
         source += 4;
@@ -115,12 +116,6 @@ Uint8List _assemblePremultipliedRgba(
     }
   }
   return buffer;
-}
-
-/// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
-int _mul255Round(int value, int alpha) {
-  final product = value * alpha + 128;
-  return (product + (product >> 8)) >> 8;
 }
 
 /// Renders a composited cut frame as seen through the camera.

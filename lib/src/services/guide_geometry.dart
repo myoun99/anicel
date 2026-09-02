@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/unit_direction.dart';
 import '../models/canvas_point.dart';
 import '../models/drawing_guide.dart';
 
@@ -53,17 +54,8 @@ class GuideTransform {
 
   /// A direction (not a position) under this map, renormalised. Null when
   /// the map collapses it.
-  ({double dx, double dy})? mapDirection(double dx, double dy) {
-    final mappedX = a * dx + c * dy;
-    final mappedY = b * dx + d * dy;
-    final scale = math.max(mappedX.abs(), mappedY.abs());
-    if (scale == 0 || !scale.isFinite) return null;
-    final sx = mappedX / scale;
-    final sy = mappedY / scale;
-    final length = math.sqrt(sx * sx + sy * sy);
-    if (length == 0 || !length.isFinite) return null;
-    return (dx: sx / length, dy: sy / length);
-  }
+  ({double dx, double dy})? mapDirection(double dx, double dy) =>
+      unitDirection(a * dx + c * dy, b * dx + d * dy);
 
   /// A brush dab's tip angle after this map — the tip turns with its copy.
   ///
