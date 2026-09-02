@@ -84,6 +84,7 @@ import 'update_exposure_memo_command.dart';
 
 part 'cut_commands/cut_commands.dart';
 part 'cut_commands/camera_commands.dart';
+part 'cut_commands/link_commands.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -356,120 +357,32 @@ class CutCommandCoordinator {
     );
   }
 
-  /// 겸용컷 생성 (L2): a new cut whose drawing layers share the source's
-  /// cel banks with EMPTY timelines — the bank re-exposes to a new
-  /// rhythm. One undo step; the new cut becomes active.
-  void createLinkedCut({required CutId sourceCutId, String? name}) {
-    final project = repository.requireProject();
-    final sourceCut = requireCut(project, sourceCutId);
-    final plan = planCreateLinkedCutCommandInput(
-      project: project,
-      sourceCut: sourceCut,
-    );
+  // ── the link commands: their own object ─────────────────────────────
+  //
+  // A collaborator (commands/cut_commands/link_commands.dart, a part of this
+  // library). The coordinator keeps the public commands as forwarders.
+  _LinkCommands get _links => _LinkCommands(this);
 
-    historyManager.execute(
-      CreateLinkedCutCommand(
-        repository: repository,
-        editingSession: editingSession,
-        sourceCutId: sourceCutId,
-        newCutId: plan.newCutId,
-        // A linked cut is inserted right after its source, so the source
-        // is what it counts from.
-        newName: name ?? nextCutNameAfter(project, sourceCut.name),
-        layerIdMap: plan.layerIdMap,
-        newGroupIdBySource: plan.newGroupIdBySource,
-      ),
-    );
-  }
-
-  /// 독립시키기 (L2): removes [layerId]'s whole attach group from its
-  /// link groups and forks the shared pixels into the group's own cels.
-  /// No-op when nothing in the group is linked. One undo step.
-  void unlinkLayer({required CutId cutId, required LayerId layerId}) {
-    final store = brushFrameStore;
-    if (store == null) {
-      throw StateError('unlinkLayer needs the brush frame store.');
-    }
-    final project = repository.requireProject();
-    final cut = requireCut(project, cutId);
-    final source = requireLayer(project, cutId: cutId, layerId: layerId);
-    final baseId = source.attachedToLayerId ?? source.id;
-    final endIndex = attachedGroupEndIndex(baseId, cut.layers);
-    final startIndex = attachedGroupStartIndex(baseId, cut.layers);
-    final anyLinked = cut.layers
-        .sublist(startIndex, endIndex)
-        .any(
-          (member) =>
-              project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) !=
-              null,
-        );
-    if (!anyLinked) {
-      return;
-    }
-
-    historyManager.execute(
-      UnlinkLayerCommand(
-        repository: repository,
-        brushFrameStore: store,
-        cutId: cutId,
-        sourceLayerId: layerId,
-      ),
-    );
-  }
-
-  /// 겸용 변경 (L2b): links [targetCutId] to [originCutId] after both
-  /// were drawn — name-matching, 원본 승리 conflicts, 완전 미러 union.
-  /// [plan] previews the effect for the confirmation dialog; the caller
-  /// shows it and only then invokes this. No-op when nothing would link.
-  /// One undo step. Needs the brush frame store.
+  void createLinkedCut({required CutId sourceCutId, String? name}) =>
+      _links.createLinkedCut(sourceCutId: sourceCutId, name: name);
+  void unlinkLayer({required CutId cutId, required LayerId layerId}) =>
+      _links.unlinkLayer(cutId: cutId, layerId: layerId);
   void convertCutToLinked({
     required CutId originCutId,
     required CutId targetCutId,
-  }) {
-    final store = brushFrameStore;
-    if (store == null) {
-      throw StateError('convertCutToLinked needs the brush frame store.');
-    }
-    final project = repository.requireProject();
-    final originCut = requireCut(project, originCutId);
-    final targetCut = requireCut(project, targetCutId);
-    if (!convertToLinkedCutPreview(
-      originCutId: originCutId,
-      targetCutId: targetCutId,
-    ).linksAnything) {
-      return;
-    }
-    final plan = planConvertToLinkedCutCommandInput(
-      project: project,
-      originCut: originCut,
-      targetCut: targetCut,
-    );
-
-    historyManager.execute(
-      ConvertToLinkedCutCommand(
-        repository: repository,
-        brushFrameStore: store,
-        originCutId: originCutId,
-        targetCutId: targetCutId,
-        unionLayerIdMap: plan.unionLayerIdMap,
-        newGroupIdBySource: plan.newGroupIdBySource,
-      ),
-    );
-  }
-
-  /// The 겸용 변경 preview for the confirmation dialog (링크 목록·교체
-  /// 장수·합류 수·양측 고유 레이어) — pure, no mutation.
+  }) => _links.convertCutToLinked(
+    originCutId: originCutId,
+    targetCutId: targetCutId,
+  );
   ConvertToLinkedCutPlan convertToLinkedCutPreview({
     required CutId originCutId,
     required CutId targetCutId,
-  }) {
-    final project = repository.requireProject();
-    return planConvertToLinkedCut(
-      project: project,
-      originCut: requireCut(project, originCutId),
-      targetCut: requireCut(project, targetCutId),
-    );
-  }
+  }) => _links.convertToLinkedCutPreview(
+    originCutId: originCutId,
+    targetCutId: targetCutId,
+  );
+  void linkDuplicateLayer({required CutId cutId, required LayerId layerId}) =>
+      _links.linkDuplicateLayer(cutId: cutId, layerId: layerId);
 
   /// 폴더 생성: folds [layerId]'s whole attach group into a new folder ROW
   /// inserted directly above the group (attach groups never split across a
@@ -582,30 +495,6 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         folderId: folderId,
-      ),
-    );
-  }
-
-  /// 링크 복제 (L2): duplicates [layerId]'s whole attach group as a free
-  /// group sharing the originals' cel banks (same FrameIds — the store's
-  /// canonical resolution makes the pictures one). One undo step.
-  void linkDuplicateLayer({required CutId cutId, required LayerId layerId}) {
-    final project = repository.requireProject();
-    final cut = requireCut(project, cutId);
-    _requireLayer(cutId: cutId, layerId: layerId);
-    final plan = planLinkDuplicateLayerCommandInput(
-      project: project,
-      cut: cut,
-      sourceLayerId: layerId,
-    );
-
-    historyManager.execute(
-      LinkDuplicateLayerCommand(
-        repository: repository,
-        cutId: cutId,
-        sourceLayerId: layerId,
-        layerIdMap: plan.layerIdMap,
-        newGroupIdBySource: plan.newGroupIdBySource,
       ),
     );
   }
@@ -1375,7 +1264,7 @@ class CutCommandCoordinator {
     final commands = <Command>[];
 
     for (final layerId in attach.detachIds) {
-      for (final use in _linkedRowUses(project, cutId: cutId, rowId: layerId)) {
+      for (final use in _links.linkedRowUses(project, cutId: cutId, rowId: layerId)) {
         final cut = requireCut(project, use.cutId);
         final row = requireLayer(project, cutId: use.cutId, layerId: use.rowId);
         if (row.attachedToLayerId == null) {
@@ -1404,7 +1293,7 @@ class CutCommandCoordinator {
     if (sideChange != null) {
       // Same base, other side. Everything derived from the timing stays as
       // it is — this is a direction, not a re-mount.
-      for (final use in _linkedRowUses(
+      for (final use in _links.linkedRowUses(
         project,
         cutId: cutId,
         rowId: sideChange.layerId,
@@ -1491,7 +1380,7 @@ class CutCommandCoordinator {
     required LayerId baseId,
   }) {
     final uses = <({LayerId rowId, Layer standalone, Layer base})>[];
-    for (final use in _linkedRowUses(project, cutId: cutId, rowId: rowId)) {
+    for (final use in _links.linkedRowUses(project, cutId: cutId, rowId: rowId)) {
       final useBaseId = use.cutId == cutId
           ? baseId
           : linkCounterpartIn(
@@ -1557,28 +1446,6 @@ class CutCommandCoordinator {
           ? commands.single
           : CompositeCommand(description: description, commands: commands),
     );
-  }
-
-  /// Every (cut, row) the same shared row reaches: this cut, plus the 겸용
-  /// siblings holding a counterpart.
-  List<({CutId cutId, LayerId rowId})> _linkedRowUses(
-    Project project, {
-    required CutId cutId,
-    required LayerId rowId,
-  }) {
-    final uses = <({CutId cutId, LayerId rowId})>[(cutId: cutId, rowId: rowId)];
-    for (final siblingId in linkedCutSiblings(project, cutId: cutId)) {
-      final counterpart = linkCounterpartIn(
-        project,
-        cutId: cutId,
-        layerId: rowId,
-        targetCutId: siblingId,
-      );
-      if (counterpart != null) {
-        uses.add((cutId: siblingId, rowId: counterpart));
-      }
-    }
-    return uses;
   }
 
   /// Resequences a track's SE rows. They live on the TRACK, so no cut and
