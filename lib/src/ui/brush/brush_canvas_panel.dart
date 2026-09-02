@@ -1792,455 +1792,25 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                 // fill): one tap layer ABOVE the canvas
                                                 // absorbs the pointer so no stroke starts.
                                                 if (_toolTapHandler() != null)
-                                                  Positioned.fill(
-                                                    child: Listener(
-                                                      key: const ValueKey<String>(
-                                                        'canvas-tool-tap-layer',
-                                                      ),
-                                                      behavior: HitTestBehavior
-                                                          .opaque,
-                                                      onPointerDown: (event) {
-                                                        // PRIMARY contact only (R22-B):
-                                                        // the middle-button pan (the
-                                                        // ancestor gesture layer) used
-                                                        // to ALSO fire the tool here —
-                                                        // every pan click deposited a
-                                                        // stray fill, which is why one
-                                                        // fill sometimes took two undos.
-                                                        //
-                                                        // R28 #8: the EYEDROPPER is
-                                                        // exempt. Its whole point under a
-                                                        // mapped hold (pen barrel /
-                                                        // right-click) is that the held
-                                                        // NON-primary button is what
-                                                        // picks — the strict test meant
-                                                        // the mapping switched the tool
-                                                        // and then refused every press,
-                                                        // so it "제대로 작동하지도않고".
-                                                        // A pick writes no pixels, so
-                                                        // there is no stray-edit hazard
-                                                        // to guard against here.
-                                                        if (widget
-                                                                    .brushToolState
-                                                                    .tool !=
-                                                                CanvasTool
-                                                                    .eyedropper &&
-                                                            event.buttons !=
-                                                                kPrimaryButton) {
-                                                          return;
-                                                        }
-                                                        // TS9: and a finger
-                                                        // only drives a tool
-                                                        // while the one-finger
-                                                        // slot says draw. This
-                                                        // layer takes the pick
-                                                        // and the stamp, and
-                                                        // both were acting on
-                                                        // fingers in flip mode.
-                                                        if (!AppInput.toolAcceptsPointer(
-                                                          event.kind,
-                                                        )) {
-                                                          return;
-                                                        }
-                                                        // 🚨A TOUCH WAITS —
-                                                        // see [_touchTap].
-                                                        // A SECOND finger
-                                                        // arriving while one
-                                                        // waits is the pinch
-                                                        // this exists for.
-                                                        if (event.kind ==
-                                                            PointerDeviceKind
-                                                                .touch) {
-                                                          _tapLayerTouches.add(
-                                                            event.pointer,
-                                                          );
-                                                          if (_tapLayerTouches
-                                                                  .length >
-                                                              1) {
-                                                            _touchTap = null;
-                                                            return;
-                                                          }
-                                                          _touchTap = (
-                                                            pointer:
-                                                                event.pointer,
-                                                            canvas:
-                                                                _canvasPointOf(
-                                                                  event,
-                                                                ),
-                                                            local: event
-                                                                .localPosition,
-                                                          );
-                                                          return;
-                                                        }
-                                                        _toolTapHandler()!(
-                                                          _canvasPointOf(event),
-                                                        );
-                                                      },
-                                                      // TS7 (유저: 클릭중이면
-                                                      // 색 바뀌도록 — 규칙
-                                                      // 간단하게): a MOVE is
-                                                      // the press verb
-                                                      // CONTINUING. The stamp
-                                                      // lays its next dab
-                                                      // where the spacing says;
-                                                      // the eyedropper samples
-                                                      // again, which is what
-                                                      // dragging a dropper
-                                                      // means everywhere else.
-                                                      //
-                                                      // The bucket cannot get
-                                                      // here — its tap handler
-                                                      // is null (R22-A sends
-                                                      // the dab through the
-                                                      // stroke pipeline), so
-                                                      // this layer is not even
-                                                      // mounted for it and
-                                                      // "one fill per move
-                                                      // event" is structurally
-                                                      // impossible.
-                                                      onPointerMove: (event) {
-                                                        // The gesture
-                                                        // declares itself by
-                                                        // MOVING: crossing
-                                                        // the slop resolves
-                                                        // the waiting tap
-                                                        // where it was
-                                                        // pressed, and the
-                                                        // drag carries on
-                                                        // from there — the
-                                                        // stamp trails its
-                                                        // row, the dropper
-                                                        // keeps sampling.
-                                                        if (_touchTapPassedSlop(
-                                                          event,
-                                                        )) {
-                                                          _resolveTouchTap();
-                                                        }
-                                                        if (_touchTap != null) {
-                                                          // Still undecided —
-                                                          // a sub-slop wobble
-                                                          // is not a drag.
-                                                          return;
-                                                        }
-                                                        _continuePressVerb(
-                                                          event,
-                                                        );
-                                                      },
-                                                      onPointerUp: (event) {
-                                                        // A tap that stayed
-                                                        // put resolves when
-                                                        // the finger leaves.
-                                                        if (_touchTap
-                                                                ?.pointer ==
-                                                            event.pointer) {
-                                                          _resolveTouchTap();
-                                                        }
-                                                        _tapLayerTouches.remove(
-                                                          event.pointer,
-                                                        );
-                                                        _touchTap = null;
-                                                        _lastStampCenter = null;
-                                                      },
-                                                      onPointerCancel: (event) {
-                                                        _tapLayerTouches.remove(
-                                                          event.pointer,
-                                                        );
-                                                        _touchTap = null;
-                                                        _lastStampCenter = null;
-                                                      },
-                                                    ),
-                                                  ),
+                                                  _toolTapLayer(),
                                                 // Eyedropper cursor (R11-②): crosshair +
                                                 // a hover swatch of the color under the
                                                 // pointer — for the tool AND the Alt-held
                                                 // temporary pick. Translucent: picks fall
                                                 // through to the tap layer / canvas below.
-                                                if (_toolCursor.eyedropperCursorActive) ...[
-                                                  Positioned.fill(
-                                                    child: MouseRegion(
-                                                      // R26 #22: the eyedropper wears its
-                                                      // OWN icon, not a crosshair — the
-                                                      // system cursor hides and the icon
-                                                      // below rides the pointer.
-                                                      cursor: SystemMouseCursors
-                                                          .none,
-                                                      opaque: false,
-                                                      hitTestBehavior:
-                                                          HitTestBehavior
-                                                              .translucent,
-                                                      onExit: (_) =>
-                                                          _eyedropperHover
-                                                                  .value =
-                                                              null,
-                                                      // R28 #8: the swatch/icon is fed by
-                                                      // the panel's always-mounted pointer
-                                                      // census, not by a tracker mounted
-                                                      // here — one mounted at arming time
-                                                      // is outside an in-flight pointer's
-                                                      // route and hears nothing. This
-                                                      // region only hides the system
-                                                      // cursor and clears on exit.
-                                                      child: const SizedBox.expand(
-                                                        key: ValueKey<String>(
-                                                          'eyedropper-hover-tracker',
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
+                                                if (_toolCursor.eyedropperCursorActive) ..._eyedropperCursorLayers(),
                                                 // R26 #23: the fill tool wears the bucket.
-                                                if (_toolCursor.fillCursorActive) ...[
-                                                  Positioned.fill(
-                                                    child: MouseRegion(
-                                                      cursor: SystemMouseCursors
-                                                          .none,
-                                                      opaque: false,
-                                                      hitTestBehavior:
-                                                          HitTestBehavior
-                                                              .translucent,
-                                                      // 🚨D34: through the ONE
-                                                      // writer, which clears the
-                                                      // POSITION too. Nulling the
-                                                      // notifier alone left
-                                                      // `_lastCanvasPointer` holding
-                                                      // the departed pointer, and the
-                                                      // build-time seed republished
-                                                      // it on the next rebuild — so
-                                                      // the ring came back where
-                                                      // nobody was pointing.
-                                                      onExit: (_) =>
-                                                          _forgetCanvasPointer(),
-                                                      // ⛔No tracker of its own: the
-                                                      // census writes this notifier
-                                                      // for the fill tool now. This
-                                                      // region is left with the two
-                                                      // jobs only it can do — hiding
-                                                      // the system cursor, and
-                                                      // saying when the pointer has
-                                                      // gone.
-                                                      child: const SizedBox.expand(
-                                                        key: ValueKey<String>(
-                                                          'fill-cursor-tracker',
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
+                                                if (_toolCursor.fillCursorActive) ..._fillCursorLayers(),
                                                 // The painting tools wear their own
                                                 // footprint: an outline of the tip that
                                                 // follows the pointer, so a stroke can be
                                                 // aimed before it starts.
-                                                if (_toolCursor.brushCursorActive) ...[
-                                                  Positioned.fill(
-                                                    child: MouseRegion(
-                                                      key: const ValueKey<String>(
-                                                        'brush-cursor-region',
-                                                      ),
-                                                      // The outline IS the cursor, so
-                                                      // the system one steps aside.
-                                                      // Its POSITION comes from the
-                                                      // always-mounted census (R28
-                                                      // #8): a tracker mounted here
-                                                      // would sit outside an
-                                                      // in-flight stroke's route and
-                                                      // freeze the moment the pen
-                                                      // touched down.
-                                                      cursor: SystemMouseCursors
-                                                          .none,
-                                                      opaque: false,
-                                                      hitTestBehavior:
-                                                          HitTestBehavior
-                                                              .translucent,
-                                                      // 🚨D34: through the ONE
-                                                      // writer, which clears the
-                                                      // POSITION too. Nulling the
-                                                      // notifier alone left
-                                                      // `_lastCanvasPointer` holding
-                                                      // the departed pointer, and the
-                                                      // build-time seed republished
-                                                      // it on the next rebuild — so
-                                                      // the ring came back where
-                                                      // nobody was pointing.
-                                                      onExit: (_) =>
-                                                          _forgetCanvasPointer(),
-                                                      child:
-                                                          const SizedBox.expand(),
-                                                    ),
-                                                  ),
-                                                ],
+                                                if (_toolCursor.brushCursorActive) ..._brushCursorLayers(),
                                                 // The P9 selection tools own the pointer
                                                 // while active (marquee/lasso/move) —
                                                 // strokes cannot start below the layer.
                                                 if (selectionLayerActive)
-                                                  Positioned.fill(
-                                                    child: ValueListenableBuilder<TransformToolOptions>(
-                                                      valueListenable:
-                                                          widget
-                                                              .transformOptions ??
-                                                          _defaultTransformOptions,
-                                                      builder:
-                                                          (
-                                                            context,
-                                                            transformOptions,
-                                                            _,
-                                                          ) => CanvasSelectionLayer(
-                                                            tool: switch (widget
-                                                                .brushToolState
-                                                                .tool) {
-                                                              CanvasTool.move =>
-                                                                CanvasSelectionTool
-                                                                    .move,
-                                                              CanvasTool.cut =>
-                                                                CanvasSelectionTool
-                                                                    .cut,
-                                                              CanvasTool
-                                                                  .fillShape =>
-                                                                CanvasSelectionTool
-                                                                    .fillShape,
-                                                              _ =>
-                                                                CanvasSelectionTool
-                                                                    .select,
-                                                            },
-                                                            // The verb picks
-                                                            // the branch above;
-                                                            // the SHAPE rides
-                                                            // beside it, so
-                                                            // neither axis has
-                                                            // to enumerate the
-                                                            // other.
-                                                            shapeKind:
-                                                                widget
-                                                                    .brushToolState
-                                                                    .activeShapeKind ??
-                                                                CanvasShapeKind
-                                                                    .rect,
-                                                            // R17-U: Move = 이동+변형 통합 툴
-                                                            // — 핸들 상시.
-                                                            alwaysShowTransformBox:
-                                                                widget
-                                                                    .brushToolState
-                                                                    .tool ==
-                                                                CanvasTool.move,
-                                                            onShapeCommitted:
-                                                                _selectionSeat.recordSelectionChange,
-                                                            onCutShape:
-                                                                _cutPieceFromShape,
-                                                            onFillShape:
-                                                                _fillDrawnShape,
-                                                            // CANVAS space,
-                                                            // unmapped: this
-                                                            // layer never
-                                                            // leaves it,
-                                                            // unlike the
-                                                            // drawing view
-                                                            // below whose
-                                                            // guides ride
-                                                            // into artwork
-                                                            // coordinates.
-                                                            symmetry: widget
-                                                                .guides
-                                                                ?.actingSymmetry,
-                                                            viewport: _viewport,
-                                                            canvasSize: widget
-                                                                .canvasSize,
-                                                            // No frame = a stable sentinel:
-                                                            // the selection survives until a
-                                                            // real frame context arrives.
-                                                            frameToken:
-                                                                widget
-                                                                    .coordinator
-                                                                    ?.activeFrameKey ??
-                                                                'selection-no-frame',
-                                                            selectionCommands:
-                                                                widget
-                                                                    .selectionCommands,
-                                                            onTransformDragActiveChanged:
-                                                                (active) {
-                                                                  if (_transformDragActive !=
-                                                                      active) {
-                                                                    setState(
-                                                                      () => _transformDragActive =
-                                                                          active,
-                                                                    );
-                                                                  }
-                                                                },
-                                                            onDragActiveChanged: (active) {
-                                                              if (_selectionDragActive !=
-                                                                  active) {
-                                                                widget
-                                                                    .onSelectionInteractionChanged
-                                                                    ?.call(
-                                                                      active,
-                                                                    );
-                                                                setState(
-                                                                  () =>
-                                                                      _selectionDragActive =
-                                                                          active,
-                                                                );
-                                                              }
-                                                            },
-                                                            // R14-④: the Move tool lifts the
-                                                            // selection's PIXELS (never whole
-                                                            // strokes) — 유저 direction ⑧b.
-                                                            onLiftRequested:
-                                                                _selectionSeat.handleSelectionLift,
-                                                            onLiftLanded:
-                                                                _handleLiftLanded,
-                                                            onLiftConfirmed:
-                                                                _handleLiftConfirmed,
-                                                            onLiftReverted:
-                                                                _handleLiftReverted,
-                                                            // R26 #13 follow-up: the implicit
-                                                            // whole-picture box frames the
-                                                            // cel's tight ink bounds.
-                                                            contentBoundsProvider:
-                                                                _activeCelContentBounds,
-                                                            // The float stays up until the
-                                                            // committed surface can paint
-                                                            // what the session just landed —
-                                                            // its destination tiles are new
-                                                            // objects with no decoded image
-                                                            // for a frame or two, and the
-                                                            // base's stale fallback answers
-                                                            // for them with the tiles the
-                                                            // LIFT ERASED.
-                                                            committedRegionPendingTiles:
-                                                                _selectionSeat.committedRegionPendingTiles,
-                                                            // And where the float's own picture
-                                                            // can be composed onto those tiles,
-                                                            // they stop being pending at all.
-                                                            composeCommittedRegionPictures:
-                                                                _composeCommittedRegionPictures,
-                                                            // Pending move sessions hold the
-                                                            // session's edit lock (seeks
-                                                            // refused) WITHOUT locking
-                                                            // viewport navigation.
-                                                            onMoveSessionPendingChanged:
-                                                                widget
-                                                                    .onSelectionInteractionChanged,
-                                                            // The transform tool's whole knob
-                                                            // set. Read through the
-                                                            // listenable above, so changing
-                                                            // one mid session re-resamples
-                                                            // the open preview instead of
-                                                            // waiting for the next gesture.
-                                                            transformOptions:
-                                                                transformOptions,
-                                                            // TS1: with a
-                                                            // composite behind
-                                                            // this layer the
-                                                            // float goes into
-                                                            // it; without one
-                                                            // the layer draws
-                                                            // its own.
-                                                            floatOverlay:
-                                                                underlayBuilder ==
-                                                                    null
-                                                                ? null
-                                                                : _selectionFloat,
-                                                          ),
-                                                    ),
-                                                  ),
+                                                  _selectionLayer(underlayBuilder),
                                                 // R28-S: the selection is a DOCUMENT
                                                 // fact, so its ants stay on screen under
                                                 // every other tool too — that is what
@@ -2248,54 +1818,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                 // #18). Purely decorative: the layer
                                                 // above owns all interaction.
                                                 if (idleSelection != null)
-                                                  Positioned.fill(
-                                                    key: const ValueKey<String>(
-                                                      'canvas-idle-selection-ants',
-                                                    ),
-                                                    child: IgnorePointer(
-                                                      // ★ITS OWN LAYER. `_idleAnts`
-                                                      // is an `AnimationController`
-                                                      // on `repeat()`, so this
-                                                      // painter is asked to repaint
-                                                      // at DISPLAY RATE for as long
-                                                      // as a selection exists — with
-                                                      // no pointer input at all.
-                                                      // Without a boundary each tick
-                                                      // escalates out of the canvas
-                                                      // and re-records the whole
-                                                      // panel, which is a 60Hz tax
-                                                      // on anyone who has selected
-                                                      // something and walked away.
-                                                      child: RepaintBoundary(
-                                                        child: CustomPaint(
-                                                          painter:
-                                                              SelectionAntsPainter(
-                                                                repaint:
-                                                                    _idleAnts,
-                                                                viewport:
-                                                                    _viewport,
-                                                                committedRegion:
-                                                                    idleSelection,
-                                                                screenOffset:
-                                                                    Offset.zero,
-                                                                marqueeShapes:
-                                                                    const [],
-                                                                // The IDLE
-                                                                // ants: no
-                                                                // tool is
-                                                                // drawing, so
-                                                                // there is no
-                                                                // outline in
-                                                                // progress.
-                                                                openTrail:
-                                                                    const [],
-                                                              ),
-                                                          child:
-                                                              const SizedBox.expand(),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
+                                                  _idleSelectionAnts(idleSelection),
                                               ],
                                             ),
                                     ),
@@ -2341,6 +1864,515 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           );
         },
       ),
+    );
+  }
+
+  Positioned _idleSelectionAnts(CanvasSelectionRegion idleSelection) {
+    return Positioned.fill(
+      key: const ValueKey<String>(
+        'canvas-idle-selection-ants',
+      ),
+      child: IgnorePointer(
+        // ★ITS OWN LAYER. `_idleAnts`
+        // is an `AnimationController`
+        // on `repeat()`, so this
+        // painter is asked to repaint
+        // at DISPLAY RATE for as long
+        // as a selection exists — with
+        // no pointer input at all.
+        // Without a boundary each tick
+        // escalates out of the canvas
+        // and re-records the whole
+        // panel, which is a 60Hz tax
+        // on anyone who has selected
+        // something and walked away.
+        child: RepaintBoundary(
+          child: CustomPaint(
+            painter:
+                SelectionAntsPainter(
+                  repaint:
+                      _idleAnts,
+                  viewport:
+                      _viewport,
+                  committedRegion:
+                      idleSelection,
+                  screenOffset:
+                      Offset.zero,
+                  marqueeShapes:
+                      const [],
+                  // The IDLE
+                  // ants: no
+                  // tool is
+                  // drawing, so
+                  // there is no
+                  // outline in
+                  // progress.
+                  openTrail:
+                      const [],
+                ),
+            child:
+                const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Positioned _selectionLayer(CanvasUnderlayBuilder? underlayBuilder) {
+    return Positioned.fill(
+      child: ValueListenableBuilder<TransformToolOptions>(
+        valueListenable:
+            widget
+                .transformOptions ??
+            _defaultTransformOptions,
+        builder:
+            (
+              context,
+              transformOptions,
+              _,
+            ) => CanvasSelectionLayer(
+              tool: switch (widget
+                  .brushToolState
+                  .tool) {
+                CanvasTool.move =>
+                  CanvasSelectionTool
+                      .move,
+                CanvasTool.cut =>
+                  CanvasSelectionTool
+                      .cut,
+                CanvasTool
+                    .fillShape =>
+                  CanvasSelectionTool
+                      .fillShape,
+                _ =>
+                  CanvasSelectionTool
+                      .select,
+              },
+              // The verb picks
+              // the branch above;
+              // the SHAPE rides
+              // beside it, so
+              // neither axis has
+              // to enumerate the
+              // other.
+              shapeKind:
+                  widget
+                      .brushToolState
+                      .activeShapeKind ??
+                  CanvasShapeKind
+                      .rect,
+              // R17-U: Move = 이동+변형 통합 툴
+              // — 핸들 상시.
+              alwaysShowTransformBox:
+                  widget
+                      .brushToolState
+                      .tool ==
+                  CanvasTool.move,
+              onShapeCommitted:
+                  _selectionSeat.recordSelectionChange,
+              onCutShape:
+                  _cutPieceFromShape,
+              onFillShape:
+                  _fillDrawnShape,
+              // CANVAS space,
+              // unmapped: this
+              // layer never
+              // leaves it,
+              // unlike the
+              // drawing view
+              // below whose
+              // guides ride
+              // into artwork
+              // coordinates.
+              symmetry: widget
+                  .guides
+                  ?.actingSymmetry,
+              viewport: _viewport,
+              canvasSize: widget
+                  .canvasSize,
+              // No frame = a stable sentinel:
+              // the selection survives until a
+              // real frame context arrives.
+              frameToken:
+                  widget
+                      .coordinator
+                      ?.activeFrameKey ??
+                  'selection-no-frame',
+              selectionCommands:
+                  widget
+                      .selectionCommands,
+              onTransformDragActiveChanged:
+                  (active) {
+                    if (_transformDragActive !=
+                        active) {
+                      setState(
+                        () => _transformDragActive =
+                            active,
+                      );
+                    }
+                  },
+              onDragActiveChanged: (active) {
+                if (_selectionDragActive !=
+                    active) {
+                  widget
+                      .onSelectionInteractionChanged
+                      ?.call(
+                        active,
+                      );
+                  setState(
+                    () =>
+                        _selectionDragActive =
+                            active,
+                  );
+                }
+              },
+              // R14-④: the Move tool lifts the
+              // selection's PIXELS (never whole
+              // strokes) — 유저 direction ⑧b.
+              onLiftRequested:
+                  _selectionSeat.handleSelectionLift,
+              onLiftLanded:
+                  _handleLiftLanded,
+              onLiftConfirmed:
+                  _handleLiftConfirmed,
+              onLiftReverted:
+                  _handleLiftReverted,
+              // R26 #13 follow-up: the implicit
+              // whole-picture box frames the
+              // cel's tight ink bounds.
+              contentBoundsProvider:
+                  _activeCelContentBounds,
+              // The float stays up until the
+              // committed surface can paint
+              // what the session just landed —
+              // its destination tiles are new
+              // objects with no decoded image
+              // for a frame or two, and the
+              // base's stale fallback answers
+              // for them with the tiles the
+              // LIFT ERASED.
+              committedRegionPendingTiles:
+                  _selectionSeat.committedRegionPendingTiles,
+              // And where the float's own picture
+              // can be composed onto those tiles,
+              // they stop being pending at all.
+              composeCommittedRegionPictures:
+                  _composeCommittedRegionPictures,
+              // Pending move sessions hold the
+              // session's edit lock (seeks
+              // refused) WITHOUT locking
+              // viewport navigation.
+              onMoveSessionPendingChanged:
+                  widget
+                      .onSelectionInteractionChanged,
+              // The transform tool's whole knob
+              // set. Read through the
+              // listenable above, so changing
+              // one mid session re-resamples
+              // the open preview instead of
+              // waiting for the next gesture.
+              transformOptions:
+                  transformOptions,
+              // TS1: with a
+              // composite behind
+              // this layer the
+              // float goes into
+              // it; without one
+              // the layer draws
+              // its own.
+              floatOverlay:
+                  underlayBuilder ==
+                      null
+                  ? null
+                  : _selectionFloat,
+            ),
+      ),
+    );
+  }
+
+  List<Widget> _brushCursorLayers() {
+    return [
+      Positioned.fill(
+        child: MouseRegion(
+          key: const ValueKey<String>(
+            'brush-cursor-region',
+          ),
+          // The outline IS the cursor, so
+          // the system one steps aside.
+          // Its POSITION comes from the
+          // always-mounted census (R28
+          // #8): a tracker mounted here
+          // would sit outside an
+          // in-flight stroke's route and
+          // freeze the moment the pen
+          // touched down.
+          cursor: SystemMouseCursors
+              .none,
+          opaque: false,
+          hitTestBehavior:
+              HitTestBehavior
+                  .translucent,
+          // 🚨D34: through the ONE
+          // writer, which clears the
+          // POSITION too. Nulling the
+          // notifier alone left
+          // `_lastCanvasPointer` holding
+          // the departed pointer, and the
+          // build-time seed republished
+          // it on the next rebuild — so
+          // the ring came back where
+          // nobody was pointing.
+          onExit: (_) =>
+              _forgetCanvasPointer(),
+          child:
+              const SizedBox.expand(),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _fillCursorLayers() {
+    return [
+      Positioned.fill(
+        child: MouseRegion(
+          cursor: SystemMouseCursors
+              .none,
+          opaque: false,
+          hitTestBehavior:
+              HitTestBehavior
+                  .translucent,
+          // 🚨D34: through the ONE
+          // writer, which clears the
+          // POSITION too. Nulling the
+          // notifier alone left
+          // `_lastCanvasPointer` holding
+          // the departed pointer, and the
+          // build-time seed republished
+          // it on the next rebuild — so
+          // the ring came back where
+          // nobody was pointing.
+          onExit: (_) =>
+              _forgetCanvasPointer(),
+          // ⛔No tracker of its own: the
+          // census writes this notifier
+          // for the fill tool now. This
+          // region is left with the two
+          // jobs only it can do — hiding
+          // the system cursor, and
+          // saying when the pointer has
+          // gone.
+          child: const SizedBox.expand(
+            key: ValueKey<String>(
+              'fill-cursor-tracker',
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _eyedropperCursorLayers() {
+    return [
+      Positioned.fill(
+        child: MouseRegion(
+          // R26 #22: the eyedropper wears its
+          // OWN icon, not a crosshair — the
+          // system cursor hides and the icon
+          // below rides the pointer.
+          cursor: SystemMouseCursors
+              .none,
+          opaque: false,
+          hitTestBehavior:
+              HitTestBehavior
+                  .translucent,
+          onExit: (_) =>
+              _eyedropperHover
+                      .value =
+                  null,
+          // R28 #8: the swatch/icon is fed by
+          // the panel's always-mounted pointer
+          // census, not by a tracker mounted
+          // here — one mounted at arming time
+          // is outside an in-flight pointer's
+          // route and hears nothing. This
+          // region only hides the system
+          // cursor and clears on exit.
+          child: const SizedBox.expand(
+            key: ValueKey<String>(
+              'eyedropper-hover-tracker',
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Positioned _toolTapLayer() {
+    return Positioned.fill(
+      child: Listener(
+        key: const ValueKey<String>(
+          'canvas-tool-tap-layer',
+        ),
+        behavior: HitTestBehavior
+            .opaque,
+        onPointerDown: _toolTapDown,
+        // TS7 (유저: 클릭중이면
+        // 색 바뀌도록 — 규칙
+        // 간단하게): a MOVE is
+        // the press verb
+        // CONTINUING. The stamp
+        // lays its next dab
+        // where the spacing says;
+        // the eyedropper samples
+        // again, which is what
+        // dragging a dropper
+        // means everywhere else.
+        //
+        // The bucket cannot get
+        // here — its tap handler
+        // is null (R22-A sends
+        // the dab through the
+        // stroke pipeline), so
+        // this layer is not even
+        // mounted for it and
+        // "one fill per move
+        // event" is structurally
+        // impossible.
+        onPointerMove: _toolTapMove,
+        onPointerUp: _toolTapUp,
+        onPointerCancel: _toolTapCancel,
+      ),
+    );
+  }
+
+  void _toolTapCancel(PointerCancelEvent event) {
+    _tapLayerTouches.remove(
+      event.pointer,
+    );
+    _touchTap = null;
+    _lastStampCenter = null;
+  }
+
+  void _toolTapUp(PointerUpEvent event) {
+    // A tap that stayed
+    // put resolves when
+    // the finger leaves.
+    if (_touchTap
+            ?.pointer ==
+        event.pointer) {
+      _resolveTouchTap();
+    }
+    _tapLayerTouches.remove(
+      event.pointer,
+    );
+    _touchTap = null;
+    _lastStampCenter = null;
+  }
+
+  void _toolTapMove(PointerMoveEvent event) {
+    // The gesture
+    // declares itself by
+    // MOVING: crossing
+    // the slop resolves
+    // the waiting tap
+    // where it was
+    // pressed, and the
+    // drag carries on
+    // from there — the
+    // stamp trails its
+    // row, the dropper
+    // keeps sampling.
+    if (_touchTapPassedSlop(
+      event,
+    )) {
+      _resolveTouchTap();
+    }
+    if (_touchTap != null) {
+      // Still undecided —
+      // a sub-slop wobble
+      // is not a drag.
+      return;
+    }
+    _continuePressVerb(
+      event,
+    );
+  }
+
+  void _toolTapDown(PointerDownEvent event) {
+    // PRIMARY contact only (R22-B):
+    // the middle-button pan (the
+    // ancestor gesture layer) used
+    // to ALSO fire the tool here —
+    // every pan click deposited a
+    // stray fill, which is why one
+    // fill sometimes took two undos.
+    //
+    // R28 #8: the EYEDROPPER is
+    // exempt. Its whole point under a
+    // mapped hold (pen barrel /
+    // right-click) is that the held
+    // NON-primary button is what
+    // picks — the strict test meant
+    // the mapping switched the tool
+    // and then refused every press,
+    // so it "제대로 작동하지도않고".
+    // A pick writes no pixels, so
+    // there is no stray-edit hazard
+    // to guard against here.
+    if (widget
+                .brushToolState
+                .tool !=
+            CanvasTool
+                .eyedropper &&
+        event.buttons !=
+            kPrimaryButton) {
+      return;
+    }
+    // TS9: and a finger
+    // only drives a tool
+    // while the one-finger
+    // slot says draw. This
+    // layer takes the pick
+    // and the stamp, and
+    // both were acting on
+    // fingers in flip mode.
+    if (!AppInput.toolAcceptsPointer(
+      event.kind,
+    )) {
+      return;
+    }
+    // 🚨A TOUCH WAITS —
+    // see [_touchTap].
+    // A SECOND finger
+    // arriving while one
+    // waits is the pinch
+    // this exists for.
+    if (event.kind ==
+        PointerDeviceKind
+            .touch) {
+      _tapLayerTouches.add(
+        event.pointer,
+      );
+      if (_tapLayerTouches
+              .length >
+          1) {
+        _touchTap = null;
+        return;
+      }
+      _touchTap = (
+        pointer:
+            event.pointer,
+        canvas:
+            _canvasPointOf(
+              event,
+            ),
+        local: event
+            .localPosition,
+      );
+      return;
+    }
+    _toolTapHandler()!(
+      _canvasPointOf(event),
     );
   }
 
