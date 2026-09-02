@@ -25,6 +25,7 @@ import 'timesheet_notation.dart';
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 part 'document_painter/timesheet_instruction_pass.dart';
+part 'document_painter/timesheet_se_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
@@ -643,7 +644,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       // A text glyph: it honors the same zoom threshold every per-cell
       // text does (the paper-overview zoom hides the writing).
       if (drawTexts) {
-        _paintSeCrossingMarks(canvas);
+        _se.paintSeCrossingMarks(canvas);
       }
     }
 
@@ -802,58 +803,11 @@ class TimesheetDocumentPainter extends CustomPainter {
     );
   }
 
-  /// The timeline's `~` continuation marks, printed (SE globalization
-  /// round: "타임시트에도 동일하게 추가"). END: a sound starting inside
-  /// this cut runs past its end — the mark straddles the red cut-end
-  /// line, centred on its SE column. START: a sound from an earlier cut
-  /// spills into row 0 — the mark sits on the column's first row edge.
-  /// Pure display, exactly the timeline rows' meaning.
-  void _paintSeCrossingMarks(Canvas canvas) {
-    // The `~` straddles the red line, so it follows the same live length —
-    // otherwise a drag leaves the mark hanging where the line used to be.
-    final frameCount = livePlaybackFrameCount;
-    final endLine = layout.cutEndLineFor(frameCount);
-    final startTop = layout.frameRowTop(0);
-    final startPosition = layout.positionOfFrame(0);
-    for (var column = 0; column < document.columns.length; column += 1) {
-      final spec = document.columns[column];
-      if (spec.kind != TimesheetColumnKind.se ||
-          (!spec.crossesCutEnd && !spec.spillsInAtStart)) {
-        continue;
-      }
-      final columnWidth = layout.columnWidthFor(spec.kind);
-      if (spec.crossesCutEnd &&
-          frameCount >= 1 &&
-          frameCount <= document.rowCount &&
-          layout.visiblePageIndexes.contains(endLine.page)) {
-        final left =
-            layout.halfLeft(endLine.page, endLine.half) +
-            layout.columnLeftInHalf(column);
-        _text(
-          canvas,
-          '~',
-          Offset(left + columnWidth / 2, endLine.y - 5),
-          fontSize: 10,
-          bold: true,
-          centeredAtX: true,
-        );
-      }
-      if (spec.spillsInAtStart &&
-          layout.visiblePageIndexes.contains(startPosition.page)) {
-        final left =
-            layout.halfLeft(startPosition.page, startPosition.half) +
-            layout.columnLeftInHalf(column);
-        _text(
-          canvas,
-          '~',
-          Offset(left + columnWidth / 2, startTop - 5),
-          fontSize: 10,
-          bold: true,
-          centeredAtX: true,
-        );
-      }
-    }
-  }
+  // ── the SE pass: its own object, in its own file ────────────────────
+  //
+  // A collaborator (timesheet/document_painter/timesheet_se_pass.dart, a part of this
+  // library). The painter keeps the passes its paint() calls.
+  late final _TimesheetSePass _se = _TimesheetSePass(this);
 
   void _paintHalf(
     Canvas canvas, {
@@ -1081,7 +1035,7 @@ class TimesheetDocumentPainter extends CustomPainter {
           // SE columns mark their empty stretches the print-sheet way: a
           // dotted center guide, washed light gray while the toggle is on.
           if (seColumn && frame < document.playbackFrameCount) {
-            _paintSeEmptyRow(
+            _se.paintSeEmptyRow(
               canvas,
               columnLeft: columnLeft,
               columnWidth: columnWidth,
@@ -1095,7 +1049,7 @@ class TimesheetDocumentPainter extends CustomPainter {
           case TimesheetCellKind.drawing:
             if (drawTexts) {
               if (seColumn) {
-                _paintSeEntryStart(
+                _se.paintSeEntryStart(
                   canvas,
                   cell: cell,
                   row: row,
@@ -1121,7 +1075,7 @@ class TimesheetDocumentPainter extends CustomPainter {
               // Toei SE notation: no hold line down the dialogue; the
               // block's END closes with the full-width red bar instead.
               if ((cell.spanOffset ?? 0) == (cell.spanLength ?? 1) - 1) {
-                _paintSeRedBar(
+                _se.paintSeRedBar(
                   canvas,
                   columnLeft: columnLeft,
                   columnWidth: columnWidth,
@@ -1278,162 +1232,6 @@ class TimesheetDocumentPainter extends CustomPainter {
         centeredAtX: true,
       );
       runStart = runEnd + 1;
-    }
-  }
-
-  /// An SE entry's start cell (R5-⑦, user-approved mockup v4): a full-width
-  /// thin red bar RIGHT BEFORE the block start, a compact ACCENT name box
-  /// (the app's shared accent — same chip as the timeline/X-sheet rows)
-  /// hugging the boundary, the dialogue distributed vertically over the
-  /// REST of the span — no duration bar. Single-row entries close with the
-  /// red end bar right here; longer ones close from their last held row.
-  void _paintSeEntryStart(
-    Canvas canvas, {
-    required TimesheetCell cell,
-    required int row,
-    required int rowCount,
-    required double columnLeft,
-    required double columnWidth,
-    required double centerX,
-    required double cellTop,
-  }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    const nameBoxHeight = 12.0;
-    final spanLength = cell.spanLength ?? 1;
-    final rowsHere = spanLength.clamp(1, rowCount - row);
-    final spanBottom = cellTop + rowsHere * rowHeight;
-    final seName = cell.seName ?? '';
-
-    // The opening red bar sits ON the start boundary only when this row
-    // really is the span's first (page-half continuations skip it).
-    if ((cell.spanOffset ?? 0) == 0) {
-      _paintSeRedBar(
-        canvas,
-        columnLeft: columnLeft,
-        columnWidth: columnWidth,
-        y: cellTop + 1,
-      );
-    }
-
-    var dialogueTop = cellTop + 3;
-    if (seName.isNotEmpty) {
-      // R6-②: a soft accent tint with dark ink writing — the full-strength
-      // accent read too loud against the paper. FULL column width (R7-②:
-      // the name box, the red bars and the SE column must share ONE exact
-      // width — the old 1px inset read as a mismatched overlay).
-      canvas.drawRect(
-        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, nameBoxHeight),
-        Paint()..color = accent.withValues(alpha: 0.3),
-      );
-      _text(
-        canvas,
-        seName,
-        Offset(centerX, cellTop + 4),
-        fontSize: 7,
-        bold: true,
-        color: _ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 4,
-      );
-      dialogueTop = cellTop + nameBoxHeight + 4;
-    }
-
-    final dialogueExtent = spanBottom - 2 - dialogueTop;
-    if (dialogueExtent > 4 && (cell.label ?? '').isNotEmpty) {
-      _fitVerticalText(
-        canvas,
-        cell.label!,
-        topCenter: Offset(centerX, dialogueTop),
-        fontSize: 9,
-        extent: dialogueExtent,
-      );
-    }
-
-    if (spanLength == 1) {
-      _paintSeRedBar(
-        canvas,
-        columnLeft: columnLeft,
-        columnWidth: columnWidth,
-        y: spanBottom - 1,
-      );
-    }
-  }
-
-  /// The full-width thin red bar closing an SE block (and mirrored before
-  /// its start) — Toei notation, R5-⑦: frame-width, not a short tick. ONE
-  /// geometry with the name box and the SE column itself (R7-②).
-  void _paintSeRedBar(
-    Canvas canvas, {
-    required double columnLeft,
-    required double columnWidth,
-    required double y,
-  }) {
-    canvas.drawLine(
-      Offset(columnLeft, y),
-      Offset(columnLeft + columnWidth, y),
-      Paint()
-        ..color = AppColors.danger
-        ..strokeWidth = 2,
-    );
-  }
-
-  /// An SE column's empty row: the light-gray "no SE here" wash (project
-  /// toggle). Print-sheet only — the timeline/X-sheet's dark uncovered
-  /// cells already read as empty, and the dotted center guide is retired
-  /// everywhere (R5-②).
-  void _paintSeEmptyRow(
-    Canvas canvas, {
-    required double columnLeft,
-    required double columnWidth,
-    required double centerX,
-    required double cellTop,
-  }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    if (document.seEmptyFill) {
-      canvas.drawRect(
-        Rect.fromLTWH(columnLeft, cellTop, columnWidth, rowHeight),
-        Paint()..color = _ink.withValues(alpha: 0.05),
-      );
-    }
-  }
-
-  /// SE dialogue distributed evenly over the covered rows — the sheet's
-  /// "fit" rule, sharing [dialogueGlyphCenters] with the timeline overlay
-  /// so screen and print place glyphs identically. Never truncates: the
-  /// dialogue owns its whole block, exactly like the paper column.
-  ///
-  /// The FORMS come from the app's one vertical-writing table, like every
-  /// other column on this sheet. They used not to — this placer stacked
-  /// every glyph upright, so a `ー` inside dialogue lay across the column
-  /// while the notation word two columns over rotated it.
-  void _fitVerticalText(
-    Canvas canvas,
-    String text, {
-    required Offset topCenter,
-    required double fontSize,
-    required double extent,
-    Color color = _ink,
-  }) {
-    final glyphs = text.characters.toList(growable: false);
-    final centers = dialogueGlyphCenters(
-      glyphCount: glyphs.length,
-      mainExtent: extent,
-    );
-    for (var index = 0; index < glyphs.length; index += 1) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: glyphs[index],
-          style: TextStyle(color: color, fontSize: fontSize),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      paintVerticalTextCell(
-        canvas,
-        verticalGlyphCell(glyphs[index]),
-        painter: painter,
-        center: Offset(topCenter.dx, topCenter.dy + centers[index]),
-        fontSize: fontSize,
-      );
     }
   }
 
