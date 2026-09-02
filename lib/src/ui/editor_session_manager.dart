@@ -276,6 +276,7 @@ part 'session/lane_verbs.dart';
 part 'session/auto_frame_for_stroke.dart';
 part 'session/track_se_display.dart';
 part 'session/storyboard_cursor.dart';
+part 'session/storyboard_rows.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -1005,9 +1006,28 @@ class EditorSessionManager extends ChangeNotifier {
     return project.tracks.first.id;
   }
 
-  /// The storyboard rail's own selected row, as picked. Null = never
-  /// picked, which reads as the selected track's V row.
-  TimelineRowAddress? _storyboardRow;
+  // ── the storyboard rows: their own object, in their own file ────────
+  //
+  // A collaborator (session/storyboard_rows.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _StoryboardRows _storyboardRows = _StoryboardRows(this);
+
+  void claimStoryboardRow() => _storyboardRows.claimStoryboardRow();
+  List<CutId> get storyboardSelectedCutIds =>
+      _storyboardRows.storyboardSelectedCutIds;
+  void updateStoryboardCutSelectionByFrame({
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+    TrackId? trackId,
+    TimelineRowAddress? headRow,
+  }) => _storyboardRows.updateStoryboardCutSelectionByFrame(
+    anchorGlobalFrame: anchorGlobalFrame,
+    headGlobalFrame: headGlobalFrame,
+    trackId: trackId,
+    headRow: headRow,
+  );
+  void clearStoryboardCutSelection() =>
+      _storyboardRows.clearStoryboardCutSelection();
 
   /// The row a frame-axis VERB acts on (R10 #13) — the rail's rows and the
   /// cut's layer rows alike, whichever the user last engaged.
@@ -1051,37 +1071,6 @@ class EditorSessionManager extends ChangeNotifier {
       _verbRow = next;
       _publishCurrentRow();
     }
-  }
-
-  /// 🚨★★★THE CLAIM READS THE STORE, the way [claimTimelineRow] does.
-  ///
-  /// ⛔It used to read [selectedRow], and that getter answers a DIFFERENT
-  /// question: 「which RAIL row is lit」. A lane is a subject (R10 #19) but
-  /// never a rail row, so the getter collapses it to the track — and this
-  /// claim, which fires on the host's OUTERMOST pointer-down, therefore ran
-  /// last on every press and un-stood you from the lane the press had just
-  /// stood on. One getter answering two questions, which is the shape
-  /// CLAUDE.md names: 「한 플래그가 두 질문에 답하는 것도 발명이다」.
-  ///
-  /// 🚨It looked fine for a year because of an accident of timing: a finger
-  /// stood on the RELEASE, after this claim, so the lane survived. A mouse
-  /// never did — pressing a storyboard lane band with a mouse has been
-  /// leaving the ring on the track row all along, and only lifting the
-  /// finger's carve-out (터치 묘화 ON) made a test say so.
-  ///
-  /// ⛔But only a lane THIS RAIL SHOWS. A timeline lane also passes through
-  /// [selectRow], and claiming one here would leave the storyboard's flip
-  /// counting drawings instead of cuts — the very law this claim exists to
-  /// keep (「touching the storyboard hands the flip its rail's row」).
-  /// [_trackSe.trackOwnedRailOwner] is the question already asked of a lane's
-  /// carrier elsewhere, so no new rule is written here.
-  void claimStoryboardRow() {
-    final stored = _storyboardRow;
-    _verbRow =
-        stored is LaneRowAddress && _trackSe.trackOwnedRailOwner(stored.layerId) != null
-        ? stored
-        : selectedRow;
-    _publishCurrentRow();
   }
 
   /// Defaults to the active layer's row, not the track's: with nothing
@@ -1671,7 +1660,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// A stored row that the rail no longer shows (its track's SE slot went
   /// away) falls back to the track row rather than lighting nothing.
   TimelineRowAddress get selectedRow {
-    final row = _storyboardRow;
+    final row = _storyboardRows._storyboardRow;
     if (row is LayerRowAddress && isTrackOwnedRailLayerId(row.layerId)) {
       return row;
     }
@@ -1699,7 +1688,7 @@ class EditorSessionManager extends ChangeNotifier {
           _editingSession.setSelectedTrackId(owner.id);
           trackMoved = true;
         }
-        if (_storeStoryboardRow(row) || trackMoved) {
+        if (_storyboardRows.storeStoryboardRow(row) || trackMoved) {
           notifyListeners();
         }
       case LaneRowAddress():
@@ -1719,7 +1708,7 @@ class EditorSessionManager extends ChangeNotifier {
         // a frame range from a lane, so this can never drop one mid-drag.
         clearFrameRangeSelection();
         _timelineRow = row;
-        if (_storeStoryboardRow(row)) {
+        if (_storyboardRows.storeStoryboardRow(row)) {
           notifyListeners();
         }
       case TrackRowAddress(:final trackId):
@@ -1741,23 +1730,10 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final trackBefore = selectedTrackId;
     _editingSession.setSelectedTrackId(trackId);
-    if (_storeStoryboardRow(TrackRowAddress(trackId)) ||
+    if (_storyboardRows.storeStoryboardRow(TrackRowAddress(trackId)) ||
         selectedTrackId != trackBefore) {
       notifyListeners();
     }
-  }
-
-  /// Stores the rail's row. Returns whether the ANSWER moved — the store
-  /// and the answer differ, since a row the rail no longer shows resolves
-  /// back to the track row.
-  bool _storeStoryboardRow(TimelineRowAddress row) {
-    final before = selectedRow;
-    _storyboardRow = row;
-    // Picking a rail row is also engaging it, so the verb follows (R10
-    // #13). The reverse does not hold — see [_verbRow].
-    _verbRow = row;
-    _publishCurrentRow();
-    return selectedRow != before;
   }
 
   // --- Track-owned SE rows --------------------------------------------------
@@ -2055,19 +2031,8 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: cut.id,
       quality: playbackQuality,
       aroundFrameIndex: _timelineController.currentFrameIndex,
-      followedByCutId: _nextCutIdInStoryboardOrder(cut.id),
+      followedByCutId: _storyboardRows.nextCutIdInStoryboardOrder(cut.id),
     );
-  }
-
-  /// The cut after [cutId] in storyboard order, or null at the end.
-  CutId? _nextCutIdInStoryboardOrder(CutId cutId) {
-    final layout = _projectLayout();
-    for (var index = 0; index < layout.length; index += 1) {
-      if (layout[index].cutId == cutId) {
-        return index + 1 < layout.length ? layout[index + 1].cutId : null;
-      }
-    }
-    return null;
   }
 
   @override
@@ -8892,19 +8857,6 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TrackFrameRangeSelection?> trackFrameRangeSelection =
       ValueNotifier<TrackFrameRangeSelection?>(null);
 
-  /// The cuts the storyboard selection covers — DERIVED from the range, in
-  /// track order.
-  List<CutId> get storyboardSelectedCutIds {
-    final selection = trackFrameRangeSelection.value;
-    if (selection == null ||
-        !selection.coversRow(TrackRowAddress(selection.trackId))) {
-      return const [];
-    }
-    return _axisForTrack(
-      selection.trackId,
-    ).cutsIn(selection.startFrame, selection.endFrameExclusive);
-  }
-
   /// The global frame axis of ONE track (the selected track's is
   /// [trackFrameAxis]).
   TrackFrameAxis _axisForTrack(TrackId trackId) => TrackFrameAxis([
@@ -8970,63 +8922,6 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
     return (startFrame: first, endFrameExclusive: lastExclusive);
-  }
-
-  /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
-  /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
-  /// inside one cut to anywhere inside another selects both whole, and a
-  /// span that only crosses a gap selects nothing there.
-  ///
-  /// This is the ONLY cut-select entry point: the storyboard's cut row now
-  /// mounts the shared range gesture, which speaks frames, so the ordinal
-  /// form it used to need is gone.
-  ///
-  /// [trackId] names the row the drag is on; omitting it means the selected
-  /// track (the panel always knows, the session's own callers rarely do).
-  void updateStoryboardCutSelectionByFrame({
-    required int anchorGlobalFrame,
-    required int headGlobalFrame,
-    TrackId? trackId,
-    TimelineRowAddress? headRow,
-  }) {
-    final row = trackId ?? selectedTrackId;
-    _updateTrackRangeSelection(
-      trackId: row,
-      anchorRow: TrackRowAddress(row),
-      anchorGlobalFrame: anchorGlobalFrame,
-      headGlobalFrame: headGlobalFrame,
-      headRow: headRow,
-    );
-  }
-
-  /// The storyboard rail's rows for [trackId], in the order the panel
-  /// stacks them: the SE rows top-down (highest slot first — slot 0 sits
-  /// just above the cut row), then the CUT row at the bottom.
-  ///
-  /// A range drag walks THIS list (feedback #14, the timeline's Excel-style
-  /// cross-row select), so the list order IS the visual order — a positive
-  /// row delta must mean "downward on screen". It used to lead with the
-  /// cut row, which inverted every cross-row drag: dragging from an S row
-  /// down toward the V row walked the list AWAY from it (the real-device
-  /// "row-span select does nothing" report).
-  ///
-  /// Only track-GLOBAL rows are on it — the strip is a cut-owned row on
-  /// the other axis, so it cannot be reached by a row delta, and the clamp
-  /// below is therefore the whole of the kind guard (the row-move
-  /// precedent: what is not on the list is unreachable, so there is
-  /// nothing to refuse).
-  List<TimelineRowAddress> _storyboardRailRows(TrackId trackId) {
-    final track = _trackById(trackId);
-    return [
-      // The TRANSITION row heads the group on screen, so it heads the list: a
-      // row delta walks this in VISUAL order, and a row missing from it is
-      // unreachable — which is what left a cross-row drag unable to start on
-      // it or arrive at it (user 2026-08-11).
-      if (track != null) LayerRowAddress(track.transitionLayer.id),
-      if (track != null)
-        for (final layer in track.seLayers.reversed) LayerRowAddress(layer.id),
-      TrackRowAddress(trackId),
-    ];
   }
 
   Track? _trackById(TrackId trackId) {
@@ -9096,7 +8991,7 @@ class EditorSessionManager extends ChangeNotifier {
     required TimelineRowAddress? headRow,
     List<TimelineRowAddress> spanRows = const [],
   }) {
-    final railRows = _storyboardRailRows(trackId);
+    final railRows = _storyboardRows.storyboardRailRows(trackId);
     final anchorIndex = railRows.indexOf(anchorRow);
     final List<TimelineRowAddress> spanned;
     if (spanRows.isNotEmpty) {
@@ -9159,12 +9054,6 @@ class EditorSessionManager extends ChangeNotifier {
       startFrame: span.startIndex,
       endFrameExclusive: span.endIndexExclusive,
     );
-  }
-
-  void clearStoryboardCutSelection() {
-    if (trackFrameRangeSelection.value != null) {
-      trackFrameRangeSelection.value = null;
-    }
   }
 
   /// A select-drag step on a TRACK-OWNED rail row of the storyboard — an SE
