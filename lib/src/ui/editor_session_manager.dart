@@ -264,6 +264,7 @@ part 'session/folder_bands.dart';
 part 'session/visibility_solo.dart';
 part 'session/text_cel_bakes.dart';
 part 'session/transitions.dart';
+part 'session/camera.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -2889,11 +2890,41 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Camera --------------------------------------------------------------
 
-  CutCamera get activeCutCamera => requireActiveCut.camera;
+  // ── the camera: its own object, in its own file ────────────────────────
+  //
+  // A collaborator (session/camera.dart, a part of this library). The session
+  // keeps the public queries and commands as forwarders.
+  late final _Camera _camera = _Camera(this);
 
-  /// The camera's output frame size (the exported picture size); the camera
-  /// view rect on canvas is this divided by the pose zoom.
-  CanvasSize get cameraFrameSize => _repository.requireProject().cameraSize;
+  CutCamera get activeCutCamera => _camera.activeCutCamera;
+  CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
+  void setProjectCameraSize(CanvasSize size) =>
+      _camera.setProjectCameraSize(size);
+  CameraPose cameraPoseAtFrame(int frameIndex) =>
+      _camera.cameraPoseAtFrame(frameIndex);
+  CameraPose cameraPoseForCut(Cut cut, int frameIndex) =>
+      _camera.cameraPoseForCut(cut, frameIndex);
+  CameraPose get cameraPoseAtCurrentFrame => _camera.cameraPoseAtCurrentFrame;
+  CameraPose? get displayedCameraPose => _camera.displayedCameraPose;
+  bool get hasCameraKeyframeAtCurrentFrame =>
+      _camera.hasCameraKeyframeAtCurrentFrame;
+  void setCameraKeyframeAtCurrentFrame(CameraPose pose) =>
+      _camera.setCameraKeyframeAtCurrentFrame(pose);
+  void removeCameraKeyframeAtCurrentFrame() =>
+      _camera.removeCameraKeyframeAtCurrentFrame();
+  void clearActiveCutCamera() => _camera.clearActiveCutCamera();
+  void updateActiveCutCameraTrack(
+    TransformTrack track, {
+    String description = 'Edit camera keyframes',
+  }) => _camera.updateActiveCutCameraTrack(track, description: description);
+  bool get isCameraLayerActive => _camera.isCameraLayerActive;
+  BrushEditorSelection? get cameraBackdropSelection =>
+      _camera.cameraBackdropSelection;
+  CameraInstructionSet get cameraInstructionSet => _camera.cameraInstructionSet;
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) =>
+      _camera.updateCameraInstructionSet(instructionSet);
+  double get cameraFrameAspect => _camera.cameraFrameAspect;
+  TransformTrack? get activeCutCameraTrack => _camera.activeCutCameraTrack;
 
   /// The exact rate, for the surfaces that convert frames to REAL TIME
   /// (playback clock, audio placement, export). Everything that merely
@@ -3040,53 +3071,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _warmAudioConforms();
     notifyListeners();
-  }
-
-  /// Sets the project's camera (shooting) frame — one undo step, no-op
-  /// when unchanged. Poses are untouched: `CameraPose.zoom` is stated
-  /// against this frame's width, so every cut re-frames by itself.
-  void setProjectCameraSize(CanvasSize size) {
-    if (size.width < 1 || size.height < 1 || size == cameraFrameSize) {
-      return;
-    }
-    _historyManager.execute(
-      UpdateProjectCameraSizeCommand(repository: _repository, cameraSize: size),
-    );
-    notifyListeners();
-  }
-
-  /// Resolved camera pose at an arbitrary playback frame (for rendering).
-  CameraPose cameraPoseAtFrame(int frameIndex) => resolveCameraPoseAt(
-    camera: requireActiveCut.camera,
-    canvasSize: requireActiveCut.canvasSize,
-    frameIndex: frameIndex,
-  );
-
-  /// Resolved camera pose for any cut (play-all renders other cuts too).
-  /// The camera ROW's fx switch bypasses the camera work on this render
-  /// route (playback, export, storyboard thumbnails all resolve through
-  /// here) — the authoring overlays keep reading the real pose.
-  CameraPose cameraPoseForCut(Cut cut, int frameIndex) {
-    if (_cameraFxBypassedFor(cut)) {
-      return CameraPose(
-        center: CanvasPoint(
-          x: cut.canvasSize.width / 2,
-          y: cut.canvasSize.height / 2,
-        ),
-      );
-    }
-    return resolveCameraPoseAt(
-      camera: cut.camera,
-      canvasSize: cut.canvasSize,
-      frameIndex: frameIndex,
-    );
-  }
-
-  /// Whether [cut]'s camera row has its camera work bypassed — the camera
-  /// row's own transform switch (R8: persisted like every other row's).
-  bool _cameraFxBypassedFor(Cut cut) {
-    final camera = cut.layers.cameraLayer;
-    return camera != null && !camera.transformEnabled;
   }
 
   /// The editing canvas's composite TREE at the playhead — the same tree
@@ -3611,124 +3595,6 @@ class EditorSessionManager extends ChangeNotifier {
   BitmapSurface? _layerContentBoundsSurface;
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _layerContentBoundsCached;
-
-  /// The resolved camera pose at the current playhead frame (keyframe,
-  /// interpolation, or the default pose when the cut has no camera work).
-  CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
-    camera: requireActiveCut.camera,
-    canvasSize: requireActiveCut.canvasSize,
-    frameIndex: _timelineController.currentFrameIndex,
-  );
-
-  /// The camera pose the canvas should FRAME right now — not always the
-  /// ACTIVE cut's (㊲).
-  ///
-  /// "Which cut am I editing" and "which cut is under the playhead" are two
-  /// questions, and a live scrub makes them disagree ON PURPOSE: crossing a
-  /// boundary parks per move and leaves the active cut alone, because
-  /// switching it per move rebuilt every panel ([scrubGlobalFrame]). The
-  /// camera frame read the active cut through that, so a T.U that ended
-  /// zoomed kept framing the NEXT cut's pictures at the size the cut being
-  /// left had finished on — and dragging the other way showed no camera
-  /// work at all.
-  ///
-  /// Only a LIVE scrub asks the parked question: a committed parking means
-  /// there is no cut here (a gap, or the V-row eye's hidden picture), and
-  /// then there is nothing to frame. Null says exactly that.
-  CameraPose? get displayedCameraPose {
-    final parked = frameScrubActive.value ? _gapGlobalFrame : null;
-    if (parked == null) {
-      return activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
-    }
-    // 🚨[TrackFrameAxis.ownerOf] hands a gap frame to the PRECEDING cut on
-    // purpose (its over-end runway) — it is an addressing rule, not a
-    // containment test. [TrackFrameAxis.isGap] is the containment test, and
-    // it is the same pair [selectGlobalFrame] asks, so what the drag frames
-    // and what the release lands cannot disagree.
-    final axis = trackFrameAxis();
-    final owner = axis.isGap(parked) ? null : axis.ownerOf(parked);
-    if (owner == null) {
-      return null;
-    }
-    // The RENDER route's resolver (fx bypass honoured), because the picture
-    // under this rectangle came through it too: preview and camera frame
-    // must not disagree about the same cut.
-    return cameraPoseForCut(owner.cut, parked - owner.startFrame);
-  }
-
-  bool get hasCameraKeyframeAtCurrentFrame =>
-      activeCutOrNull?.camera.keyframeAt(
-        _timelineController.currentFrameIndex,
-      ) !=
-      null;
-
-  void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.setCutCameraKeyframe(
-      cutId: cutId,
-      frameIndex: _timelineController.currentFrameIndex,
-      pose: pose,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  void removeCameraKeyframeAtCurrentFrame() {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.removeCutCameraKeyframe(
-      cutId: cutId,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  void clearActiveCutCamera() {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.clearCutCamera(cutId: cutId);
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  /// Replaces the active cut's camera track (one undo step) — the property
-  /// lanes' per-property key edits route through here.
-  void updateActiveCutCameraTrack(
-    TransformTrack track, {
-    String description = 'Edit camera keyframes',
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    // "Same name, same value" INSIDE the camera's own track. A camera
-    // belongs to its cut, so this naming space has no second use site to
-    // reach — but two keys sharing a name on one lane still move together,
-    // which is the whole link at its smallest.
-    final before = cutById(cutId)?.camera.track;
-    _cutCommandCoordinator.updateCutCamera(
-      cutId: cutId,
-      camera: CutCamera.fromTrack(
-        before == null
-            ? track
-            : transformTrackWithNamedValues(
-                track,
-                transformNamedKeyChanges(before, track),
-              ),
-      ),
-      description: description,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
 
   // `setCutFade` and `updateTrackTransformTrack` retired with the V row's
   // transform. The cut fade is F.I / F.O spans on the TRANSITION row now
@@ -4796,40 +4662,6 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.folder ||
       LayerKind.adjustment => true,
     };
-  }
-
-  /// Whether the canvas is in camera manipulation mode.
-  bool get isCameraLayerActive => activeLayer?.kind == LayerKind.camera;
-
-  /// What the canvas shows while the camera layer is active: the first
-  /// visible drawing layer with a frame at the playhead, so there is artwork
-  /// to frame. `null` when the cut has nothing drawn at this frame.
-  BrushEditorSelection? get cameraBackdropSelection {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return null;
-    }
-    final frameIndex = _timelineController.currentFrameIndex;
-    for (final layer in cut.layers) {
-      if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
-        continue;
-      }
-      final frame = _timelineController.resolveFrameForLayer(
-        layer: layer,
-        frameIndex: frameIndex,
-      );
-      if (frame == null) {
-        continue;
-      }
-      return BrushEditorSelection(
-        projectId: _repository.requireProject().id,
-        trackId: selectedTrackId,
-        cutId: cut.id,
-        layerId: layer.id,
-        frameId: frame.id,
-      );
-    }
-    return null;
   }
 
   LayerId? _stableLayerIdAfterDeleting({
@@ -6411,16 +6243,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// undo step (R8).
   void setAllLayersFxBypassed(bool bypassed) {
     _setLayerFxSwitches(layers, enabled: !bypassed);
-  }
-
-  /// The project's instruction vocabulary (FI/FO/PAN …, user-editable).
-  CameraInstructionSet get cameraInstructionSet =>
-      _repository.requireProject().cameraInstructions;
-
-  /// One undo step; no-op when unchanged.
-  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
-    _cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
-    notifyListeners();
   }
 
   /// Replaces [layerId]'s instruction span map (instruction rows only).
@@ -9053,7 +8875,7 @@ class EditorSessionManager extends ChangeNotifier {
         continue;
       }
       if (layer.kind == LayerKind.camera) {
-        final command = _cameraKeysCommandForRange(selection);
+        final command = _camera.cameraKeysCommandForRange(selection);
         if (command != null) {
           cameraCommands.add(command);
         }
@@ -9338,45 +9160,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
     notifyListeners();
     return true;
-  }
-
-  Command? _cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
-    final cut = activeCutOrNull;
-    final cutId = _editingSession.activeCutId;
-    if (cut == null || cutId == null) {
-      return null;
-    }
-    var camera = cut.camera;
-    var changed = false;
-    for (
-      var frame = selection.startIndex;
-      frame < selection.endIndexExclusive;
-      frame += 1
-    ) {
-      if (frame < 0 || camera.keyframeAt(frame) != null) {
-        continue;
-      }
-      // Freeze the RESOLVED pose (AE behavior): keys appear, the picture
-      // does not move.
-      camera = camera.withKeyframe(
-        frame,
-        resolveCameraPoseAt(
-          camera: cut.camera,
-          canvasSize: cut.canvasSize,
-          frameIndex: frame,
-        ),
-      );
-      changed = true;
-    }
-    if (!changed) {
-      return null;
-    }
-    return UpdateCutCameraCommand(
-      repository: _repository,
-      cutId: cutId,
-      camera: camera,
-      description: 'Create camera keys',
-    );
   }
 
   Command? _instructionEventsCommandForRange(
@@ -10830,13 +10613,6 @@ class EditorSessionManager extends ChangeNotifier {
   // global axis now — a cut trim is a cut edit and moves no keys (the
   // user's independence rule, the SE precedent's sentence).
 
-  /// The camera frame's aspect — what the conte's PICTURE column is shaped
-  /// by, so a cell's silhouette matches the cut's.
-  double get cameraFrameAspect {
-    final size = cameraFrameSize;
-    return size.height <= 0 ? 16 / 9 : size.width / size.height;
-  }
-
   /// Writes a conte cell's ACTION text, undoably.
   ///
   /// A cell is a panel of the cut's storyboard row, so the text lands on the
@@ -12034,37 +11810,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// for the camera ROW's block move (P3b-2).
   TransformTrack? _cameraLaneTrackPreview;
 
-  /// [_cameraKeysDragPreview] as a [TransformTrack], memoized by the map's
-  /// identity — the getter below is read per cell during paints, and
-  /// rebuilding a SplayTreeMap track per read would be O(cells·keys).
-  Map<int, CameraPose>? _cameraBlockPreviewTrackSource;
-  TransformTrack? _cameraBlockPreviewTrackMemo;
-  TransformTrack? get _cameraBlockPreviewTrack {
-    final keys = _cameraKeysDragPreview;
-    if (keys == null) {
-      return null;
-    }
-    if (!identical(keys, _cameraBlockPreviewTrackSource)) {
-      _cameraBlockPreviewTrackSource = keys;
-      // The pose-facade form — the exact shape the block-ride commit lands
-      // (`CutCamera(keyframes: cameraShifted)`), so the preview can never
-      // promise a landing the release won't keep.
-      _cameraBlockPreviewTrackMemo = TransformTrack(keyframes: keys);
-    }
-    return _cameraBlockPreviewTrackMemo;
-  }
-
-  /// The camera track THE DISPLAY reads — the in-flight LANE-move preview,
-  /// the in-flight BLOCK-ride preview (P3b-2), or the committed track. The
-  /// lane provider, the union summary markers and the row's exposure states
-  /// all read THIS one answer (B4, 2026-08-17), so a camera key follows any
-  /// drag live instead of jumping on release — and every reader moves in
-  /// the same frame.
-  TransformTrack? get activeCutCameraTrack =>
-      _cameraLaneTrackPreview ??
-      _cameraBlockPreviewTrack ??
-      activeCutOrNull?.camera.track;
-
   /// Whether [layerId] can take part in a RANGE selection (UI-R20 #2:
   /// cells are cells — EVERY layer row selects, camera and instruction
   /// included; what a selection can DO stays kind-gated at each op's
@@ -12574,11 +12319,6 @@ class EditorSessionManager extends ChangeNotifier {
     mode: mode,
     scopeToSelection: scopeToSelection,
   );
-
-  /// The in-flight camera-key preview the cell resolution consults
-  /// (exposureStateForLayer): the camera row's cells follow the drag
-  /// without the repository moving.
-  Map<int, CameraPose>? _cameraKeysDragPreview;
 
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
 
