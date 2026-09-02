@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/theme/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import '../../helpers/library_source.dart';
 
 /// I-4 — 색 라벨이 `LayerMark` 를 **승계**했다는 것을 재는 계약.
 ///
@@ -118,10 +119,7 @@ void main() {
   });
 
   test('동화와 시아게는 여섯에 자기 검사를 하나씩 더 갖는다', () {
-    expect(
-      revisesFor(LayerProcess.inbetween).last,
-      LayerRevise.inbetweenCheck,
-    );
+    expect(revisesFor(LayerProcess.inbetween).last, LayerRevise.inbetweenCheck);
     expect(revisesFor(LayerProcess.finish).last, LayerRevise.cellCheck);
     expect(
       revisesFor(LayerProcess.inbetween).length,
@@ -262,7 +260,8 @@ void _axisAgreement() {
         expect(
           take.top,
           closeTo(mark.bottom, 0.5),
-          reason: '🚨세로 레일 — 테이크가 색 라벨 아래. 가로로 놓으면 열 머리 '
+          reason:
+              '🚨세로 레일 — 테이크가 색 라벨 아래. 가로로 놓으면 열 머리 '
               '폭 밖으로 나가 x시트가 통째로 무너진다',
         );
       }
@@ -282,9 +281,10 @@ void _oneWidgetBothSurfaces() {
     // 🆕2026-09-02: x시트는 칩을 **직접 세우지도 않는다** — 레일의 행 위젯을
     // `axis: Axis.vertical` 로 세우고, 칩은 그 행이 한 곳에서 세운다. 그래서
     // 「x시트에 `LayerMarkChip(` 이 있다」는 이제 사본의 징후다.
-    final grid = File(
-      'lib/src/ui/timeline/xsheet_timeline_grid.dart',
-    ).readAsStringSync();
+    // The x-sheet grid is a LIBRARY — the file plus the collaborator parts
+    // the audit's SRP cuts (2026-09-02) put beside it — so the row widget
+    // is found where a cut put it.
+    final grid = librarySource('lib/src/ui/timeline/xsheet_timeline_grid.dart');
     expect(
       grid,
       contains('TimelineLayerControlsRow('),
@@ -298,11 +298,7 @@ void _oneWidgetBothSurfaces() {
     final row = File(
       'lib/src/ui/timeline/timeline_layer_controls_row.dart',
     ).readAsStringSync();
-    expect(
-      row,
-      contains('LayerMarkChip('),
-      reason: '칩을 세우는 곳은 행 위젯 하나',
-    );
+    expect(row, contains('LayerMarkChip('), reason: '칩을 세우는 곳은 행 위젯 하나');
     expect(
       row,
       contains('axis: axis,'),
@@ -337,8 +333,8 @@ void _oneWidgetBothSurfaces() {
 /// 언어에따라 **로컬라이즈 안되니까** 해주고」 — 일본어 UI 에서 「ラベルなし」
 /// 옆에 「용지」가 나오고 있었다.
 void _namesFollowTheLanguage() {
-  void speak(AppLanguage language) => AppText.settings.value =
-      AppLanguageSettings(programLanguage: language);
+  void speak(AppLanguage language) =>
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
   tearDown(() => AppText.settings.value = const AppLanguageSettings());
 
   test('네 언어 모두 공정·수정의 이름과 축약어를 갖는다', () {
@@ -393,7 +389,6 @@ void _namesFollowTheLanguage() {
   });
 }
 
-
 /// ⛔**세로쓰기를 고르는 곳은 하나다** (래칫).
 ///
 /// 색 라벨과 테이크 칩은 나란히 앉아 「레일이면 세워 쓰고 x시트면 가로로
@@ -434,8 +429,8 @@ void _oneDecidesTheWritingDirection() {
 /// 축약어는 **세 글자까지** 간다. 유저 2026-08-28: 「총작화감독은 총작감,
 /// 총감독은 총감독, 러프원화는 러프원. 즉 **3글자까지 허용**이란느낌」.
 void _threeGlyphAbbreviations() {
-  void speak(AppLanguage language) => AppText.settings.value =
-      AppLanguageSettings(programLanguage: language);
+  void speak(AppLanguage language) =>
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
   tearDown(() => AppText.settings.value = const AppLanguageSettings());
 
   test('유저가 지정한 셋이 세 글자로 나온다 — 한국어와 일본어 둘 다', () {
@@ -487,9 +482,7 @@ void _labelGlyphsKeepTheirAntiAliasing() {
   // ⛔플레이트를 따로 세워서 재지 않는다. 그건 「내가 세운 것」을 재는 것이지
   // **화면에 나오는 것**이 아니다 — 앱에서 무언가 빠져도 통과한다.
   // 화면 전체를 찍고 **칩의 사각형만** 읽는다.
-  testWidgets('진짜 패널을 찍어 판의 픽셀을 센다 — 가장자리에 회색이 남아 있다', (
-    tester,
-  ) async {
+  testWidgets('진짜 패널을 찍어 판의 픽셀을 센다 — 가장자리에 회색이 남아 있다', (tester) async {
     final key = GlobalKey();
     await tester.pumpWidget(
       RepaintBoundary(key: key, child: markPanelForPixelTest()),
@@ -541,9 +534,7 @@ Widget markPanelForPixelTest() {
         process: LayerProcess.layout,
         revise: LayerRevise.animationDirector,
       ),
-      frames: [
-        Frame(id: const FrameId('af'), duration: 1, strokes: const []),
-      ],
+      frames: [Frame(id: const FrameId('af'), duration: 1, strokes: const [])],
       timeline: const {},
     ),
   ];
