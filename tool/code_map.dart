@@ -23,8 +23,10 @@
 //   - COMPLEXITY IS A COUNT OF DECISION POINTS, not a judgement. A 400-line
 //     function of straight-line code scores 1. That is not a bug in the
 //     number, it is the number's meaning — read `lines` beside it.
-//   - COGNITIVE COMPLEXITY IS THE OTHER NUMBER, and the one the ratchet
-//     reads (유저 2026-09-02: 「스위치문이 부당하게 늘어나니까 인지복잡도」).
+//   - COGNITIVE COMPLEXITY IS THE OTHER NUMBER, and the one the WARNING LINE
+//     reads — 15, Sonar's default, and a warning rather than a gate (the
+//     coding rules of 2026-09-02: 「스위치문이 부당하게 늘어나니까 인지복잡도」,
+//     「⛔게이트로 걸지 않는다」).
 //     SonarSource's rules: +1 for each if / else-if / else / ?: / switch (the
 //     WHOLE switch, not each case) / loop / catch / collection-if / -for, +1
 //     per run of `&&` or `||`, and + the nesting depth for each of those that

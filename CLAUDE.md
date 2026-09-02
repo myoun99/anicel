@@ -54,7 +54,7 @@
 - `flutter analyze` — **인자 없이.** `analyze lib` 은 게이트가 아니다(`test/` 를 안 본다).
 - `dart run tool/affected_tests.dart` — 로컬 기본값.
   🚨**소스를 훑는 계약 테스트는 이게 못 잡는다** ⇒ UI를 추가했으면 `app_strings_keys_test`·
-  `app_shapes_coverage_test`, 함수를 고쳤으면 `a_function_costs_six_to_read_at_most_test` 를 **직접** 돌린다.
+  `app_shapes_coverage_test`, 통일 라운드면 그 라운드가 낸 `one_*_test` 를 **직접** 돌린다.
 - **적대검증·뮤테이션은 선택이 아니다.** 「테스트가 통과한다」는 증거가 아니다 —
   **제품 코드를 껐을 때 빨개지는지**가 증거다.
   뮤테이션은 「돌렸다」가 아니라 **「바뀐 줄을 `git diff` 로 봤다」**로 센다.
