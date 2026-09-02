@@ -87,6 +87,7 @@ part 'cut_commands/camera_commands.dart';
 part 'cut_commands/link_commands.dart';
 part 'cut_commands/track_commands.dart';
 part 'cut_commands/folder_and_attachment_commands.dart';
+part 'cut_commands/project_setting_commands.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -647,73 +648,22 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Project-level sheet-header text; one undo step, no-op when unchanged.
-  void setTimesheetInfo(TimesheetInfo info) {
-    if (repository.requireProject().timesheetInfo == info) {
-      return;
-    }
-    historyManager.execute(
-      UpdateTimesheetInfoCommand(repository: repository, info: info),
-    );
-  }
+  // ── the project setting commands: their own object ──────────────────
+  //
+  // A collaborator (commands/cut_commands/project_setting_commands.dart, a part of this
+  // library). The coordinator keeps the public commands as forwarders.
+  _ProjectSettingCommands get _projectSettings => _ProjectSettingCommands(this);
 
-  /// One undo step; no-op when unchanged (R10-⑥).
-  void setProjectBackground(ProjectBackground background) {
-    if (repository.requireProject().background == background) {
-      return;
-    }
-    historyManager.execute(
-      UpdateProjectBackgroundCommand(
-        repository: repository,
-        background: background,
-      ),
-    );
-  }
-
-  /// One undo step; no-op when unchanged. The backdrop is opaque by
-  /// contract (R3b) — the alpha byte is forced here, so no caller can
-  /// thin the stage's final answer.
-  void setProjectBackdrop(int argb) {
-    final opaque = 0xFF000000 | argb;
-    if (repository.requireProject().backdropArgb == opaque) {
-      return;
-    }
-    historyManager.execute(
-      UpdateProjectStageColorsCommand(
-        repository: repository,
-        backdropArgb: opaque,
-      ),
-    );
-  }
-
-  /// One undo step; no-op when unchanged. RGBA — a thinned pasteboard
-  /// reveals the backdrop (R3b; project data since the promotion, R28 #9
-  /// reversed).
-  void setProjectPasteboard(int argb) {
-    if (repository.requireProject().pasteboardArgb == argb) {
-      return;
-    }
-    historyManager.execute(
-      UpdateProjectStageColorsCommand(
-        repository: repository,
-        pasteboardArgb: argb,
-      ),
-    );
-  }
-
-  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
-  /// heights. One undo step; no-op when unchanged.
-  void setProjectPasteboardMargin(double margin) {
-    if (repository.requireProject().pasteboardMargin == margin) {
-      return;
-    }
-    historyManager.execute(
-      UpdateProjectStageColorsCommand(
-        repository: repository,
-        pasteboardMargin: margin,
-      ),
-    );
-  }
+  void setTimesheetInfo(TimesheetInfo info) =>
+      _projectSettings.setTimesheetInfo(info);
+  void setProjectBackground(ProjectBackground background) =>
+      _projectSettings.setProjectBackground(background);
+  void setProjectBackdrop(int argb) =>
+      _projectSettings.setProjectBackdrop(argb);
+  void setProjectPasteboard(int argb) =>
+      _projectSettings.setProjectPasteboard(argb);
+  void setProjectPasteboardMargin(double margin) =>
+      _projectSettings.setProjectPasteboardMargin(margin);
 
   void setLayerTimesheet({
     // Nullable (B5③): the storyboard rail flips TRACK fixtures' flags from
