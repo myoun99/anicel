@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -15,6 +13,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import '../../helpers/library_source.dart';
 
 /// 🚨B4-3 (유저, 몇 번째인지 세지 않겠다고 했다) — **EVERY ROW JOINS A
 /// SELECTION.**
@@ -106,7 +105,8 @@ void main() {
     expect(
       lanes[1] - lanes[0],
       greaterThanOrEqualTo(2),
-      reason: 'and at least one ordinary row in between, which is the '
+      reason:
+          'and at least one ordinary row in between, which is the '
           'crossing the user could not make',
     );
   });
@@ -125,7 +125,8 @@ void main() {
     expect(
       s.rowSelection.value,
       [for (var i = from; i <= to; i += 1) rows[i].address],
-      reason: '「행의 다른 fx끼리 넘어서 선택범위가 불가능」 — it must be. The '
+      reason:
+          '「행의 다른 fx끼리 넘어서 선택범위가 불가능」 — it must be. The '
           'span is a slice of the drawn rows, and nothing about a lane makes '
           'it a different kind of row to slice',
     );
@@ -146,21 +147,25 @@ void main() {
     ]);
   });
 
-  test('a span that stops ON a lane keeps it — no snapping out to the layer', () {
-    final s = session();
-    final rows = railRows(s);
-    final lane = laneIndices(rows).first;
+  test(
+    'a span that stops ON a lane keeps it — no snapping out to the layer',
+    () {
+      final s = session();
+      final rows = railRows(s);
+      final lane = laneIndices(rows).first;
 
-    s.beginRowSelection(rows[lane - 1].address);
-    s.updateRowSelection(rows, 1);
+      s.beginRowSelection(rows[lane - 1].address);
+      s.updateRowSelection(rows, 1);
 
-    expect(
-      s.rowSelection.value,
-      [rows[lane - 1].address, rows[lane].address],
-      reason: 'the head is a lane and stays one — 「선택범위는 어떤 레이어를 '
-          '건너든 자유롭게, 규칙 두지 말 것」',
-    );
-  });
+      expect(
+        s.rowSelection.value,
+        [rows[lane - 1].address, rows[lane].address],
+        reason:
+            'the head is a lane and stays one — 「선택범위는 어떤 레이어를 '
+            '건너든 자유롭게, 규칙 두지 말 것」',
+      );
+    },
+  );
 
   /// ⚠️Everything above passes WITHOUT the fix — the resolver was already
   /// right, and driving the session directly walks straight past the part
@@ -170,7 +175,9 @@ void main() {
   /// 🚨This is why a green law file proved nothing. The gap was one hook
   /// not being passed, in a widget file no selection test opened.
   group('the WIRING, which the session-level tests cannot see', () {
-    String source(String path) => File(path).readAsStringSync();
+    // A grid is a LIBRARY — the file plus the collaborator parts the audit's
+    // SRP cuts (2026-09-02) put beside it; the wiring is asked of all of it.
+    String source(String path) => librarySource(path);
 
     for (final path in [
       'lib/src/ui/timeline/layer_timeline_grid.dart',
@@ -181,14 +188,16 @@ void main() {
         expect(
           text,
           contains('LaneRowSubject('),
-          reason: 'a lane row that heads no fx chain used to get NO drag '
+          reason:
+              'a lane row that heads no fx chain used to get NO drag '
               'target at all, so a span could neither start on it nor stop '
               'on it',
         );
         expect(
           RegExp(r'onSelectCrossed:').allMatches(text).length,
           greaterThanOrEqualTo(3),
-          reason: 'the layer row had one; the fx CHAIN HEADER and the '
+          reason:
+              'the layer row had one; the fx CHAIN HEADER and the '
               'select-only lane each need their own. The header was handed '
               'onCrossed and never this — an unremarked omission, and the '
               'whole bug',
@@ -206,7 +215,8 @@ void main() {
       expect(
         source('lib/src/ui/timeline/layer_row_drag.dart'),
         contains('LaneRowSubject(:final layerId, :final laneId)'),
-        reason: 'a select-only lane anchors where it is drawn; without this '
+        reason:
+            'a select-only lane anchors where it is drawn; without this '
             'arm the switch would not compile, which is the point of a '
             'sealed subject',
       );

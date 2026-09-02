@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/library_source.dart';
 
 /// A ROW SEAM IS ONE LINE HOWEVER IT IS REACHED — AND A BEHAVIOUR TEST
 /// CANNOT SAY SO.
@@ -28,16 +29,9 @@ void main() {
       fail('${file.path} is missing — this test guards code it cannot find');
     }
     // The rail is a part of the storyboard LIBRARY (the audit's SRP cut,
-    // 2026-09-02): the scan reads the State's file plus every part beside
-    // it, so the per-row seam is found wherever the cut put it.
-    final parts = Directory('lib/src/ui/storyboard');
-    final source = [
-      file.readAsStringSync(),
-      if (parts.existsSync())
-        for (final part in parts.listSync())
-          if (part is File && part.path.endsWith('.dart'))
-            part.readAsStringSync(),
-    ].join('\n');
+    // 2026-09-02): the scan reads the file plus the parts it declares, so
+    // the per-row seam is found wherever the cut put it.
+    final source = librarySource(file.path);
 
     final start = source.indexOf('Widget _stripRowLine(');
     expect(

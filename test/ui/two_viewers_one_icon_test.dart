@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/library_source.dart';
 
 /// 🔄F-46 — **두 뷰어는 같은 아이콘을 쓴다.**
 ///
@@ -28,15 +27,9 @@ void main() {
 
   test('뷰어와 서브뷰어의 탭 아이콘이 같다', () {
     // The tab table is a private switch of the workspace LIBRARY — the
-    // State's file plus the collaborator parts under workspace/ (the audit's
-    // SRP cuts, 2026-09-02, moved it into one). The scan follows the
-    // library, not a file name.
-    final source = [
-      File('lib/src/ui/editor_workspace.dart').readAsStringSync(),
-      for (final part in Directory('lib/src/ui/workspace').listSync())
-        if (part is File && part.path.endsWith('.dart'))
-          part.readAsStringSync(),
-    ].join('\n');
+    // State's file plus the collaborator parts it declares (the audit's SRP
+    // cuts, 2026-09-02, moved it into one). The scan follows the library.
+    final source = librarySource('lib/src/ui/editor_workspace.dart');
     expect(
       iconOfCase(source, 'mediaViewerSubTabId'),
       iconOfCase(source, 'mediaViewerTabId'),

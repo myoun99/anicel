@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -16,6 +14,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/library_source.dart';
 
 /// F-5 · C3-lane-move — **A LANE ROW IS A ROW.**
 ///
@@ -202,23 +201,10 @@ void main() {
   /// exactly how the wiring stayed missing while the law file next door stayed
   /// green (`every_row_joins_a_selection_test.dart`, same lesson).
   group('the WIRING, which the session-level tests cannot see', () {
-    // A grid is a LIBRARY: the State's file plus the collaborator parts the
-    // audit's SRP cuts (2026-09-02) put beside it. The wiring is asked of
-    // the whole library, wherever a cut moved it.
-    const partsOf = <String, String>{
-      'lib/src/ui/timeline/layer_timeline_grid.dart':
-          'lib/src/ui/timeline/layer_grid',
-    };
-    String source(String path) {
-      final parts = Directory(partsOf[path] ?? '');
-      return [
-        File(path).readAsStringSync(),
-        if (partsOf.containsKey(path) && parts.existsSync())
-          for (final part in parts.listSync())
-            if (part is File && part.path.endsWith('.dart'))
-              part.readAsStringSync(),
-      ].join('\n');
-    }
+    // A grid is a LIBRARY — the file plus the collaborator parts the audit's
+    // SRP cuts (2026-09-02) put beside it. The wiring is asked of the whole
+    // library, wherever a cut moved it.
+    String source(String path) => librarySource(path);
 
     for (final path in [
       'lib/src/ui/timeline/layer_timeline_grid.dart',

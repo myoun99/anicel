@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/layer_drop_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import '../../helpers/library_source.dart';
 
 /// **F-31 — a row drag counts the rows you can SEE.**
 ///
@@ -71,7 +70,8 @@ void main() {
           slot: caret.slotFor(1),
         ),
         5,
-        reason: 'model index 5 is just before z — past m1, m2 and m3. '
+        reason:
+            'model index 5 is just before z — past m1, m2 and m3. '
             'Counted in the full layer list the same travel named slot 2, '
             'which is the gap between the folder and its first member: '
             'one row of travel would have dropped the row INSIDE the '
@@ -107,7 +107,8 @@ void main() {
       expect(
         caret.slotFor(1),
         0,
-        reason: 'one row down is a lane of this very layer — not a gap a '
+        reason:
+            'one row down is a lane of this very layer — not a gap a '
             'layer can go in, so the caret stays on its own',
       );
     });
@@ -118,7 +119,8 @@ void main() {
       expect(
         caret.slotFor(3),
         2,
-        reason: 'three rail rows clears both lanes and b; counted in the '
+        reason:
+            'three rail rows clears both lanes and b; counted in the '
             'layer list it would have run off the end',
       );
     });
@@ -129,7 +131,8 @@ void main() {
       expect(
         caret.onRowLayer(1),
         isNull,
-        reason: 'a lane holds no drop — the old arithmetic read one row '
+        reason:
+            'a lane holds no drop — the old arithmetic read one row '
             'down as one LAYER down and offered b',
       );
       expect(caret.onRowLayer(3)?.id, b.id);
@@ -172,7 +175,9 @@ void main() {
     ];
 
     for (final path in grids) {
-      final source = File(path).readAsStringSync();
+      // The grid is a LIBRARY — the file plus the parts the audit's SRP
+      // cuts (2026-09-02) put beside it — so the hook is found where it sits.
+      final source = librarySource(path);
       expect(
         source.contains('LayerRowCaret.of('),
         isTrue,
@@ -183,7 +188,8 @@ void main() {
           source.contains('$hook\n          widget.layers') ||
               source.contains('${hook}widget.layers'),
           isFalse,
-          reason: '$path passes $hook the rows ON SCREEN, never the whole '
+          reason:
+              '$path passes $hook the rows ON SCREEN, never the whole '
               'layer list — the difference is every folded group',
         );
       }
