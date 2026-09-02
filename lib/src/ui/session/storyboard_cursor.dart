@@ -189,9 +189,13 @@ class _StoryboardCursor {
       case _StoryboardCursorCutBlock() || _StoryboardCursorStoryboardPanel():
         _session.deleteActiveCut();
       case _StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
-        if (_session.activeCutOrNull == null) {
-          return;
-        }
+        // ⛔This used to return when `activeCutOrNull == null` — the fourth
+        // copy of the sentence H11 retired (「a parked playhead has no cut
+        // to lens through」, 유저 2026-08-22: 「각 행들은 독립적인 글로벌행이라
+        // 뭐든 가능해야함」). The gate above already lights the verb in a
+        // gap; the lookup below finds the track row without a cut; the verb
+        // was the one still refusing. Found by the adversarial check on the
+        // 2026-09-02 cut — the verb had no test of its own.
         _session._timelineController.deleteBlocksForLayers({
           layerId: [blockStartIndex],
         });
