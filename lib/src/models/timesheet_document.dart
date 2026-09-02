@@ -4,6 +4,7 @@ import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
+import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
 import 'track_se_window.dart';
@@ -370,138 +371,19 @@ class TimesheetDocument {
         slot < _slotCount(actionColumnCount, animationLayers);
         slot += 1
       )
-        TimesheetColumn(
-          kind: TimesheetColumnKind.action,
-          label: slot < animationLayers.length
-              ? animationLayers[slot].name
-              : '',
-          layerName: slot < animationLayers.length
-              ? animationLayers[slot].name
-              : null,
-          layerId: slot < animationLayers.length
-              ? animationLayers[slot].id
-              : null,
-          cells: slot < animationLayers.length
-              ? timesheetLayerCells(
-                  layer: animationLayers[slot],
-                  rowCount: rowCount,
-                  playbackFrameCount: playbackFrameCount,
-                  dataSheet: dataSheet,
-                )
-              : _blankCells(rowCount),
-          previewCellsBuilder: slot < animationLayers.length
-              ? (layer) => timesheetLayerCells(
-                  layer: layer,
-                  rowCount: rowCount,
-                  playbackFrameCount: playbackFrameCount,
-                  dataSheet: dataSheet,
-                )
-              : null,
-        ),
+        _actionColumn(slot, animationLayers, rowCount, playbackFrameCount, dataSheet),
       for (var slot = 0; slot < _slotCount(seColumnCount, seSlots); slot += 1)
-        TimesheetColumn(
-          kind: TimesheetColumnKind.se,
-          // The layer's stored name — the same label the timeline and
-          // storyboard rows show (W3 ordering unification).
-          label: slot < seSlots.length
-              ? seSlots[slot].layer.name
-              : 'S${slot + 1}',
-          layerName: slot < seSlots.length ? seSlots[slot].layer.name : null,
-          layerId: slot < seSlots.length ? seSlots[slot].layer.id : null,
-          crossesCutEnd: slot < seSlots.length && seSlots[slot].crosses,
-          spillsInAtStart: slot < seSlots.length && seSlots[slot].spills,
-          cells: slot < seSlots.length
-              ? timesheetLayerCells(
-                  layer: seSlots[slot].layer,
-                  rowCount: rowCount,
-                  playbackFrameCount: playbackFrameCount,
-                  // SE columns stay blank between entries on paper — no X;
-                  // the speaker name rides along for the method-A name row.
-                  markEmptyRuns: false,
-                  includeSeNames: true,
-                  dataSheet: dataSheet,
-                )
-              : _blankCells(rowCount),
-          // SE drags preview live (UI-R18 #7): the timeline publishes
-          // the DISPLAY clone under the same id — open-ended now, so the
-          // sheet's own end clip applies before the recipe.
-          previewCellsBuilder: slot < seSlots.length
-              ? (layer) => timesheetLayerCells(
-                  layer: clipToSheet(layer),
-                  rowCount: rowCount,
-                  playbackFrameCount: playbackFrameCount,
-                  markEmptyRuns: false,
-                  includeSeNames: true,
-                  dataSheet: dataSheet,
-                )
-              : null,
-        ),
+        _seColumn(slot, seSlots, rowCount, playbackFrameCount, dataSheet, clipToSheet),
       // The CELL block mirrors the ACTION layers' NAMES as its headers
       // (UI-R10 #10) — the cel re-assignment content stays blank
       // handwriting space.
       for (var slot = 0; slot < celColumnCount; slot += 1)
-        TimesheetColumn(
-          kind: TimesheetColumnKind.cel,
-          label: slot < animationLayers.length
-              ? animationLayers[slot].name
-              : '',
-          cells: _blankCells(rowCount),
-        ),
+        _celColumn(slot, animationLayers, rowCount),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
       // past the fixed count when a cut carries more.
       for (var slot = 0; slot < cameraSlotCount; slot += 1)
-        TimesheetColumn(
-          kind: TimesheetColumnKind.camera,
-          label: '${slot + 1}',
-          layerName: slot == transitionSlot
-              ? transitionLayer!.name
-              : slot >= firstInstructionSlot &&
-                    slot - firstInstructionSlot < instructionLayers.length
-              ? instructionLayers[slot - firstInstructionSlot].name
-              : null,
-          // Instruction slots carry their layer id so edge drags preview
-          // live on the sheet (UI-R18 #7), like action/SE columns.
-          layerId: slot == transitionSlot
-              ? transitionLayer!.id
-              : slot >= firstInstructionSlot &&
-                    slot - firstInstructionSlot < instructionLayers.length
-              ? instructionLayers[slot - firstInstructionSlot].id
-              : null,
-          cells: slot == 0
-              ? (cameraOnSheet
-                    ? _cameraCells(cut: cut, rowCount: rowCount)
-                    : _blankCells(rowCount))
-              // D31: the transition's spans through the SAME instruction
-              // recipe — one mark vocabulary (bowtie/wedge, A→B, memo),
-              // no second printer. Its marks may legitimately run into
-              // the のりしろ rows. A5-4 moved it up to slot 1, directly
-              // under the camera, to match the rail.
-              : slot == transitionSlot
-              ? _instructionCells(
-                  layer: transitionLayer!,
-                  rowCount: rowCount,
-                  defById: instructionDefById,
-                )
-              : slot >= firstInstructionSlot &&
-                    slot - firstInstructionSlot < instructionLayers.length
-              ? _instructionCells(
-                  layer: instructionLayers[slot - firstInstructionSlot],
-                  rowCount: rowCount,
-                  defById: instructionDefById,
-                )
-              : _blankCells(rowCount),
-          previewCellsBuilder:
-              slot == transitionSlot ||
-                  (slot >= firstInstructionSlot &&
-                      slot - firstInstructionSlot < instructionLayers.length)
-              ? (layer) => _instructionCells(
-                  layer: layer,
-                  rowCount: rowCount,
-                  defById: instructionDefById,
-                )
-              : null,
-        ),
+        _cameraColumn(slot, transitionSlot, transitionLayer, firstInstructionSlot, instructionLayers, cameraOnSheet, cut, rowCount, instructionDefById),
     ];
 
     return TimesheetDocument._(
@@ -527,6 +409,141 @@ class TimesheetDocument {
             frameCount: pageFrameCount,
           ),
       ]),
+    );
+  }
+
+  static TimesheetColumn _cameraColumn(int slot, int transitionSlot, Layer? transitionLayer, int firstInstructionSlot, List<Layer> instructionLayers, bool cameraOnSheet, Cut cut, int rowCount, CameraInstructionDef? Function(String instructionId)? instructionDefById) {
+    return TimesheetColumn(
+      kind: TimesheetColumnKind.camera,
+      label: '${slot + 1}',
+      layerName: slot == transitionSlot
+          ? transitionLayer!.name
+          : slot >= firstInstructionSlot &&
+                slot - firstInstructionSlot < instructionLayers.length
+          ? instructionLayers[slot - firstInstructionSlot].name
+          : null,
+      // Instruction slots carry their layer id so edge drags preview
+      // live on the sheet (UI-R18 #7), like action/SE columns.
+      layerId: slot == transitionSlot
+          ? transitionLayer!.id
+          : slot >= firstInstructionSlot &&
+                slot - firstInstructionSlot < instructionLayers.length
+          ? instructionLayers[slot - firstInstructionSlot].id
+          : null,
+      cells: slot == 0
+          ? (cameraOnSheet
+                ? _cameraCells(cut: cut, rowCount: rowCount)
+                : _blankCells(rowCount))
+          // D31: the transition's spans through the SAME instruction
+          // recipe — one mark vocabulary (bowtie/wedge, A→B, memo),
+          // no second printer. Its marks may legitimately run into
+          // the のりしろ rows. A5-4 moved it up to slot 1, directly
+          // under the camera, to match the rail.
+          : slot == transitionSlot
+          ? _instructionCells(
+              layer: transitionLayer!,
+              rowCount: rowCount,
+              defById: instructionDefById,
+            )
+          : slot >= firstInstructionSlot &&
+                slot - firstInstructionSlot < instructionLayers.length
+          ? _instructionCells(
+              layer: instructionLayers[slot - firstInstructionSlot],
+              rowCount: rowCount,
+              defById: instructionDefById,
+            )
+          : _blankCells(rowCount),
+      previewCellsBuilder:
+          slot == transitionSlot ||
+              (slot >= firstInstructionSlot &&
+                  slot - firstInstructionSlot < instructionLayers.length)
+          ? (layer) => _instructionCells(
+              layer: layer,
+              rowCount: rowCount,
+              defById: instructionDefById,
+            )
+          : null,
+    );
+  }
+
+  static TimesheetColumn _celColumn(int slot, List<Layer> animationLayers, int rowCount) {
+    return TimesheetColumn(
+      kind: TimesheetColumnKind.cel,
+      label: slot < animationLayers.length
+          ? animationLayers[slot].name
+          : '',
+      cells: _blankCells(rowCount),
+    );
+  }
+
+  static TimesheetColumn _seColumn(int slot, List<({bool crosses, Layer layer, bool spills})> seSlots, int rowCount, int playbackFrameCount, bool dataSheet, Layer Function(Layer displayClone) clipToSheet) {
+    return TimesheetColumn(
+      kind: TimesheetColumnKind.se,
+      // The layer's stored name — the same label the timeline and
+      // storyboard rows show (W3 ordering unification).
+      label: slot < seSlots.length
+          ? seSlots[slot].layer.name
+          : 'S${slot + 1}',
+      layerName: slot < seSlots.length ? seSlots[slot].layer.name : null,
+      layerId: slot < seSlots.length ? seSlots[slot].layer.id : null,
+      crossesCutEnd: slot < seSlots.length && seSlots[slot].crosses,
+      spillsInAtStart: slot < seSlots.length && seSlots[slot].spills,
+      cells: slot < seSlots.length
+          ? timesheetLayerCells(
+              layer: seSlots[slot].layer,
+              rowCount: rowCount,
+              playbackFrameCount: playbackFrameCount,
+              // SE columns stay blank between entries on paper — no X;
+              // the speaker name rides along for the method-A name row.
+              markEmptyRuns: false,
+              includeSeNames: true,
+              dataSheet: dataSheet,
+            )
+          : _blankCells(rowCount),
+      // SE drags preview live (UI-R18 #7): the timeline publishes
+      // the DISPLAY clone under the same id — open-ended now, so the
+      // sheet's own end clip applies before the recipe.
+      previewCellsBuilder: slot < seSlots.length
+          ? (layer) => timesheetLayerCells(
+              layer: clipToSheet(layer),
+              rowCount: rowCount,
+              playbackFrameCount: playbackFrameCount,
+              markEmptyRuns: false,
+              includeSeNames: true,
+              dataSheet: dataSheet,
+            )
+          : null,
+    );
+  }
+
+  static TimesheetColumn _actionColumn(int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet) {
+    return TimesheetColumn(
+      kind: TimesheetColumnKind.action,
+      label: slot < animationLayers.length
+          ? animationLayers[slot].name
+          : '',
+      layerName: slot < animationLayers.length
+          ? animationLayers[slot].name
+          : null,
+      layerId: slot < animationLayers.length
+          ? animationLayers[slot].id
+          : null,
+      cells: slot < animationLayers.length
+          ? timesheetLayerCells(
+              layer: animationLayers[slot],
+              rowCount: rowCount,
+              playbackFrameCount: playbackFrameCount,
+              dataSheet: dataSheet,
+            )
+          : _blankCells(rowCount),
+      previewCellsBuilder: slot < animationLayers.length
+          ? (layer) => timesheetLayerCells(
+              layer: layer,
+              rowCount: rowCount,
+              playbackFrameCount: playbackFrameCount,
+              dataSheet: dataSheet,
+            )
+          : null,
     );
   }
 
@@ -627,265 +644,17 @@ class TimesheetDocument {
     bool includeSeNames = false,
     bool dataSheet = false,
   }) {
-    final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
-
-    final labelsByFrameId = <FrameId, String>{
-      // The sheet writes the frame NAME verbatim; unnamed cels print the
-      // in-between division mark — never an invented number (R5-④, same
-      // glyph the mark rows use).
-      for (final frame in layer.frames) frame.id: frame.name ?? '○',
-    };
-    final seNamesByFrameId = <FrameId, String?>{
-      if (includeSeNames)
-        for (final frame in layer.frames) frame.id: frame.seName,
-    };
-
-    // Drawing coverage straight from the timeline entries; the block's
-    // breakdown offsets overlay their held rows as ● cells. GHOST chains
-    // print simplified (UI-R10 #6/#11): repeat = the notation repeat word
-    // once + a guide line, END holds print nothing, FRONT holds print the
-    // held cel on their first row only — the timeline keeps the expanded
-    // data (XDTS/TDTS export reads that, never these display cells).
-    final covered = List<bool>.filled(rowCount, false);
-    final entries = layer.timeline.entries.toList(growable: false);
-    // The 止め condition (UI-R11 #15): the layer DISPLAYS as one cel held
-    // from row 1 — a single authored block whose visual start is frame 0
-    // (its own start, or a front-hold lead-in reaching 0).
-    var authoredBlockCount = 0;
-    for (final entry in entries) {
-      if (!entry.value.ghost) {
-        authoredBlockCount += 1;
-      }
+    final pass = _LayerCellsPass(
+      layer: layer,
+      rowCount: rowCount,
+      includeSeNames: includeSeNames,
+      dataSheet: dataSheet,
+    );
+    pass.writeBlocks();
+    if (markEmptyRuns) {
+      pass.markEmptyRuns(playbackFrameCount);
     }
-    final displaysFromRowZero = entries.isNotEmpty && entries.first.key == 0;
-    final singleCelDisplay = authoredBlockCount == 1 && displaysFromRowZero;
-    // Front-hold relocation (UI-R11 #6 → UI-R12 #17): the sheet's DATA
-    // moves the cel to the chain's first row FOR REAL — chain + anchor
-    // block fuse into ONE run, and the block's own start stops being a
-    // drawing cell entirely (XDTS-style output reads these cells; the
-    // TIMELINE keeps the authored position untouched).
-    final mergedBlockStarts = <int>{};
-    for (var index = 0; index < entries.length; index += 1) {
-      final start = entries[index].key;
-      if (start >= rowCount) {
-        continue;
-      }
-      final exposure = entries[index].value;
-
-      // DATA sheet (UI-R24 #1): ghost REPEAT chains skip the notation
-      // shorthand and fall through to the plain-block path below — every
-      // derived entry prints its concrete cel label at its own start,
-      // the value-change data XDTS/TDTS write.
-      //
-      // HOLD chains do NOT (R26 #26): a hold is the SAME cel exposed
-      // longer, so its real data is one drawing at the run's first row
-      // and held rows after it. Printing the label again per ghost entry
-      // made one cel look like two (or three, with a front + end hold).
-      final ghostHold =
-          exposure.ghost &&
-          runBehaviorOwningGhostAt(layer, start)?.mode ==
-              TimelineRunEdgeMode.hold;
-      if (exposure.ghost && (!dataSheet || ghostHold)) {
-        // The contiguous chain the same behavior owns.
-        final ownerId = exposure.ghostOwnerId;
-        var chainEndExclusive = start + exposure.length!;
-        var last = index;
-        while (last + 1 < entries.length &&
-            entries[last + 1].value.ghost &&
-            entries[last + 1].value.ghostOwnerId == ownerId &&
-            entries[last + 1].key == chainEndExclusive) {
-          last += 1;
-          chainEndExclusive = entries[last].key + entries[last].value.length!;
-        }
-        final rowsEnd = chainEndExclusive.clamp(0, rowCount);
-        for (var row = start; row < rowsEnd; row += 1) {
-          covered[row] = true; // Ghost coverage suppresses the X run.
-        }
-        final behavior = runBehaviorOwningGhostAt(layer, start);
-        if (behavior?.mode == TimelineRunEdgeMode.hold) {
-          if (behavior!.side == TimelineRunEdgeSide.start) {
-            // Front hold: the cel moves to the first row FOR REAL
-            // (UI-R12 #17) — one run from here through the anchor
-            // block's last frame, held straight across the authored
-            // position (breakdown ● keep their absolute rows).
-            final blockIndex = entries.indexWhere(
-              (entry) => !entry.value.ghost && entry.key == chainEndExclusive,
-            );
-            final block = blockIndex == -1 ? null : entries[blockIndex].value;
-            final mergedEndExclusive = block == null
-                ? rowsEnd
-                : (chainEndExclusive + block.length!).clamp(0, rowCount);
-            final runLength = mergedEndExclusive - start;
-            cells[start] = TimesheetCell(
-              TimesheetCellKind.drawing,
-              label: labelsByFrameId[exposure.frameId] ?? '?',
-              spanLength: runLength,
-            );
-            for (var row = start + 1; row < mergedEndExclusive; row += 1) {
-              final blockOffset = row - chainEndExclusive;
-              cells[row] = TimesheetCell(
-                block != null &&
-                        blockOffset >= 0 &&
-                        block.hasBreakdownAt(blockOffset)
-                    ? TimesheetCellKind.mark
-                    : TimesheetCellKind.held,
-                spanLength: runLength,
-                spanOffset: row - start,
-              );
-              covered[row] = true;
-            }
-            if (block != null) {
-              mergedBlockStarts.add(chainEndExclusive);
-            }
-          } else if (dataSheet) {
-            // END hold, DATA sheet (R26 #26): no second cel — the owning
-            // run simply runs longer. Find the drawing cell that owns
-            // these rows (a front-hold merge may have relocated it) and
-            // stretch its span across the held rows.
-            var runStart = start - 1;
-            while (runStart > 0 &&
-                cells[runStart].kind != TimesheetCellKind.drawing) {
-              runStart -= 1;
-            }
-            if (cells[runStart].kind != TimesheetCellKind.drawing) {
-              runStart = start;
-            }
-            final runLength = rowsEnd - runStart;
-            final owner = cells[runStart];
-            if (owner.kind == TimesheetCellKind.drawing) {
-              cells[runStart] = TimesheetCell(
-                TimesheetCellKind.drawing,
-                label: owner.label,
-                spanLength: runLength,
-                seName: owner.seName,
-              );
-            }
-            for (var row = runStart + 1; row < rowsEnd; row += 1) {
-              final prior = cells[row];
-              cells[row] = TimesheetCell(
-                // Breakdown dots already written for the block's own
-                // rows keep their glyph; the hold rows are plain holds.
-                row < start && prior.kind == TimesheetCellKind.mark
-                    ? TimesheetCellKind.mark
-                    : TimesheetCellKind.held,
-                spanLength: runLength,
-                spanOffset: row - runStart,
-              );
-              covered[row] = true;
-            }
-          } else if (singleCelDisplay) {
-            // One cel held from row 1: the hold word prints RIGHT AFTER
-            // the cel's first row (UI-R25 #1) — 1止め, never 1--止め: the
-            // word's span swallows the block's own held rows (already
-            // written by the block pass; row order puts the block first)
-            // and runs to the cut end, the rest staying blank paper.
-            const wordStart = 1;
-            if (wordStart < rowsEnd) {
-              cells[wordStart] = TimesheetCell(
-                TimesheetCellKind.holdStart,
-                spanLength: rowsEnd - wordStart,
-              );
-              for (var row = wordStart + 1; row < rowsEnd; row += 1) {
-                cells[row] = TimesheetCell.blank;
-              }
-            }
-          }
-        } else if (behavior?.side == TimelineRunEdgeSide.start) {
-          // FRONT repeats write their GHOST FRAMES verbatim (UI-R14 #3):
-          // the repeat word never notates a front repeat — the lead-in
-          // prints its expanded cel numbers exactly like authored cells.
-          for (var chainIndex = index; chainIndex <= last; chainIndex += 1) {
-            final ghostStart = entries[chainIndex].key;
-            if (ghostStart >= rowCount) {
-              continue;
-            }
-            final ghostExposure = entries[chainIndex].value;
-            final ghostEnd = (ghostStart + ghostExposure.length!).clamp(
-              0,
-              rowCount,
-            );
-            cells[ghostStart] = TimesheetCell(
-              TimesheetCellKind.drawing,
-              label: labelsByFrameId[ghostExposure.frameId] ?? '?',
-              spanLength: ghostEnd - ghostStart,
-            );
-            for (var row = ghostStart + 1; row < ghostEnd; row += 1) {
-              cells[row] = TimesheetCell(
-                ghostExposure.hasBreakdownAt(row - ghostStart)
-                    ? TimesheetCellKind.mark
-                    : TimesheetCellKind.held,
-                spanLength: ghostEnd - ghostStart,
-                spanOffset: row - ghostStart,
-              );
-            }
-          }
-        } else {
-          cells[start] = TimesheetCell(
-            TimesheetCellKind.repeatStart,
-            // The convention (UI-R13 #4): the repeat's first row writes
-            // the CEL it restarts on; the word begins on the next row.
-            label: labelsByFrameId[exposure.frameId] ?? '?',
-            spanLength: rowsEnd - start,
-          );
-          for (var row = start + 1; row < rowsEnd; row += 1) {
-            cells[row] = TimesheetCell(
-              TimesheetCellKind.repeatSpan,
-              spanLength: rowsEnd - start,
-              spanOffset: row - start,
-            );
-          }
-        }
-        index = last;
-        continue;
-      }
-
-      // A front-hold merge already wrote this block's rows as the tail of
-      // its relocated run (UI-R12 #17) — no second drawing start.
-      if (mergedBlockStarts.contains(start)) {
-        continue;
-      }
-
-      final endExclusive = (start + exposure.length!).clamp(0, rowCount);
-      cells[start] = TimesheetCell(
-        TimesheetCellKind.drawing,
-        label: labelsByFrameId[exposure.frameId] ?? '?',
-        spanLength: endExclusive - start,
-        seName: seNamesByFrameId[exposure.frameId],
-      );
-      covered[start] = true;
-      for (var row = start + 1; row < endExclusive; row += 1) {
-        // Held rows know their place in the span so the painter can gate
-        // the ACTION hold bar per the exposure-bar setting (drawn from the
-        // (N+1)th comma of N+ holds only).
-        cells[row] = TimesheetCell(
-          exposure.hasBreakdownAt(row - start)
-              ? TimesheetCellKind.mark
-              : TimesheetCellKind.held,
-          spanLength: endExclusive - start,
-          spanOffset: row - start,
-        );
-        covered[row] = true;
-      }
-    }
-
-    // X only at the first uncovered row of each run, only inside the
-    // playback range.
-    if (!markEmptyRuns) {
-      return cells;
-    }
-    var inEmptyRun = false;
-    for (var row = 0; row < playbackFrameCount && row < rowCount; row += 1) {
-      if (covered[row]) {
-        inEmptyRun = false;
-        continue;
-      }
-      if (!inEmptyRun) {
-        cells[row] = const TimesheetCell(TimesheetCellKind.emptyRunStart);
-        inEmptyRun = true;
-      }
-    }
-
-    return cells;
+    return pass.cells;
   }
 
   /// An instruction row's CAM column: each event prints its writing (free
@@ -1006,4 +775,337 @@ List<TimesheetCell> timesheetLayerCells({
     includeSeNames: includeSeNames,
     dataSheet: dataSheet,
   );
+}
+
+/// [TimesheetDocument._layerCells]'s working state — the column's cells
+/// being written, the coverage they leave, the layer's entries and
+/// labels — so each chain shape the sheet prints is a named step. (The
+/// audit's 2026-09-03 restructure of one 270-line function; every rule
+/// and its comment moved verbatim.)
+class _LayerCellsPass {
+  _LayerCellsPass({
+    required this.layer,
+    required this.rowCount,
+    required this.dataSheet,
+    required bool includeSeNames,
+  }) : cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank),
+       covered = List<bool>.filled(rowCount, false),
+       entries = layer.timeline.entries.toList(growable: false),
+       labelsByFrameId = <FrameId, String>{
+         // The sheet writes the frame NAME verbatim; unnamed cels print the
+         // in-between division mark — never an invented number (R5-④, same
+         // glyph the mark rows use).
+         for (final frame in layer.frames) frame.id: frame.name ?? '○',
+       },
+       seNamesByFrameId = <FrameId, String?>{
+         if (includeSeNames)
+           for (final frame in layer.frames) frame.id: frame.seName,
+       };
+
+  final Layer layer;
+  final int rowCount;
+  final bool dataSheet;
+  final List<TimesheetCell> cells;
+
+  /// Drawing coverage straight from the timeline entries; the block's
+  /// breakdown offsets overlay their held rows as ● cells. GHOST chains
+  /// print simplified (UI-R10 #6/#11): repeat = the notation repeat word
+  /// once + a guide line, END holds print nothing, FRONT holds print the
+  /// held cel on their first row only — the timeline keeps the expanded
+  /// data (XDTS/TDTS export reads that, never these display cells).
+  final List<bool> covered;
+  final List<MapEntry<int, TimelineExposure>> entries;
+  final Map<FrameId, String> labelsByFrameId;
+  final Map<FrameId, String?> seNamesByFrameId;
+
+  /// Front-hold relocation (UI-R11 #6 → UI-R12 #17): the sheet's DATA
+  /// moves the cel to the chain's first row FOR REAL — chain + anchor
+  /// block fuse into ONE run, and the block's own start stops being a
+  /// drawing cell entirely (XDTS-style output reads these cells; the
+  /// TIMELINE keeps the authored position untouched).
+  final mergedBlockStarts = <int>{};
+
+  /// The 止め condition (UI-R11 #15): the layer DISPLAYS as one cel held
+  /// from row 1 — a single authored block whose visual start is frame 0
+  /// (its own start, or a front-hold lead-in reaching 0).
+  late final bool singleCelDisplay = () {
+    var authoredBlockCount = 0;
+    for (final entry in entries) {
+      if (!entry.value.ghost) {
+        authoredBlockCount += 1;
+      }
+    }
+    final displaysFromRowZero = entries.isNotEmpty && entries.first.key == 0;
+    return authoredBlockCount == 1 && displaysFromRowZero;
+  }();
+
+  /// Every entry in row order: a ghost chain prints as one shape, a
+  /// merged block prints nothing of its own, an authored block prints its
+  /// cel and its held rows.
+  void writeBlocks() {
+    for (var index = 0; index < entries.length; index += 1) {
+      final start = entries[index].key;
+      if (start >= rowCount) {
+        continue;
+      }
+      final exposure = entries[index].value;
+
+      // DATA sheet (UI-R24 #1): ghost REPEAT chains skip the notation
+      // shorthand and fall through to the plain-block path below — every
+      // derived entry prints its concrete cel label at its own start,
+      // the value-change data XDTS/TDTS write.
+      //
+      // HOLD chains do NOT (R26 #26): a hold is the SAME cel exposed
+      // longer, so its real data is one drawing at the run's first row
+      // and held rows after it. Printing the label again per ghost entry
+      // made one cel look like two (or three, with a front + end hold).
+      final ghostHold =
+          exposure.ghost &&
+          runBehaviorOwningGhostAt(layer, start)?.mode ==
+              TimelineRunEdgeMode.hold;
+      if (exposure.ghost && (!dataSheet || ghostHold)) {
+        index = _writeGhostChain(index);
+        continue;
+      }
+
+      // A front-hold merge already wrote this block's rows as the tail of
+      // its relocated run (UI-R12 #17) — no second drawing start.
+      if (mergedBlockStarts.contains(start)) {
+        continue;
+      }
+
+      _writeAuthoredBlock(start, exposure);
+    }
+  }
+
+  /// The contiguous chain the same behavior owns, from [index]: printed
+  /// as the shape its behavior means. Returns the chain's last entry
+  /// index, which the block walk resumes after.
+  int _writeGhostChain(int index) {
+    final start = entries[index].key;
+    final exposure = entries[index].value;
+    // The contiguous chain the same behavior owns.
+    final ownerId = exposure.ghostOwnerId;
+    var chainEndExclusive = start + exposure.length!;
+    var last = index;
+    while (last + 1 < entries.length &&
+        entries[last + 1].value.ghost &&
+        entries[last + 1].value.ghostOwnerId == ownerId &&
+        entries[last + 1].key == chainEndExclusive) {
+      last += 1;
+      chainEndExclusive = entries[last].key + entries[last].value.length!;
+    }
+    final rowsEnd = chainEndExclusive.clamp(0, rowCount);
+    for (var row = start; row < rowsEnd; row += 1) {
+      covered[row] = true; // Ghost coverage suppresses the X run.
+    }
+    final behavior = runBehaviorOwningGhostAt(layer, start);
+    if (behavior?.mode == TimelineRunEdgeMode.hold) {
+      if (behavior!.side == TimelineRunEdgeSide.start) {
+        _writeFrontHold(
+          start,
+          exposure,
+          chainEndExclusive: chainEndExclusive,
+          rowsEnd: rowsEnd,
+        );
+      } else if (dataSheet) {
+        _stretchOwnerOverEndHold(start, rowsEnd: rowsEnd);
+      } else if (singleCelDisplay) {
+        _writeHoldWord(rowsEnd: rowsEnd);
+      }
+    } else if (behavior?.side == TimelineRunEdgeSide.start) {
+      _writeFrontRepeatFrames(index, last);
+    } else {
+      _writeRepeatWord(start, exposure, rowsEnd: rowsEnd);
+    }
+    return last;
+  }
+
+  /// Front hold: the cel moves to the first row FOR REAL (UI-R12 #17) —
+  /// one run from here through the anchor block's last frame, held
+  /// straight across the authored position (breakdown ● keep their
+  /// absolute rows).
+  void _writeFrontHold(
+    int start,
+    TimelineExposure exposure, {
+    required int chainEndExclusive,
+    required int rowsEnd,
+  }) {
+    final blockIndex = entries.indexWhere(
+      (entry) => !entry.value.ghost && entry.key == chainEndExclusive,
+    );
+    final block = blockIndex == -1 ? null : entries[blockIndex].value;
+    final mergedEndExclusive = block == null
+        ? rowsEnd
+        : (chainEndExclusive + block.length!).clamp(0, rowCount);
+    final runLength = mergedEndExclusive - start;
+    cells[start] = TimesheetCell(
+      TimesheetCellKind.drawing,
+      label: labelsByFrameId[exposure.frameId] ?? '?',
+      spanLength: runLength,
+    );
+    for (var row = start + 1; row < mergedEndExclusive; row += 1) {
+      final blockOffset = row - chainEndExclusive;
+      cells[row] = TimesheetCell(
+        block != null && blockOffset >= 0 && block.hasBreakdownAt(blockOffset)
+            ? TimesheetCellKind.mark
+            : TimesheetCellKind.held,
+        spanLength: runLength,
+        spanOffset: row - start,
+      );
+      covered[row] = true;
+    }
+    if (block != null) {
+      mergedBlockStarts.add(chainEndExclusive);
+    }
+  }
+
+  /// END hold, DATA sheet (R26 #26): no second cel — the owning run
+  /// simply runs longer. Find the drawing cell that owns these rows (a
+  /// front-hold merge may have relocated it) and stretch its span across
+  /// the held rows.
+  void _stretchOwnerOverEndHold(int start, {required int rowsEnd}) {
+    var runStart = start - 1;
+    while (runStart > 0 && cells[runStart].kind != TimesheetCellKind.drawing) {
+      runStart -= 1;
+    }
+    if (cells[runStart].kind != TimesheetCellKind.drawing) {
+      runStart = start;
+    }
+    final runLength = rowsEnd - runStart;
+    final owner = cells[runStart];
+    if (owner.kind == TimesheetCellKind.drawing) {
+      cells[runStart] = TimesheetCell(
+        TimesheetCellKind.drawing,
+        label: owner.label,
+        spanLength: runLength,
+        seName: owner.seName,
+      );
+    }
+    for (var row = runStart + 1; row < rowsEnd; row += 1) {
+      final prior = cells[row];
+      cells[row] = TimesheetCell(
+        // Breakdown dots already written for the block's own
+        // rows keep their glyph; the hold rows are plain holds.
+        row < start && prior.kind == TimesheetCellKind.mark
+            ? TimesheetCellKind.mark
+            : TimesheetCellKind.held,
+        spanLength: runLength,
+        spanOffset: row - runStart,
+      );
+      covered[row] = true;
+    }
+  }
+
+  /// One cel held from row 1: the hold word prints RIGHT AFTER the cel's
+  /// first row (UI-R25 #1) — 1止め, never 1--止め: the word's span
+  /// swallows the block's own held rows (already written by the block
+  /// pass; row order puts the block first) and runs to the cut end, the
+  /// rest staying blank paper.
+  void _writeHoldWord({required int rowsEnd}) {
+    const wordStart = 1;
+    if (wordStart < rowsEnd) {
+      cells[wordStart] = TimesheetCell(
+        TimesheetCellKind.holdStart,
+        spanLength: rowsEnd - wordStart,
+      );
+      for (var row = wordStart + 1; row < rowsEnd; row += 1) {
+        cells[row] = TimesheetCell.blank;
+      }
+    }
+  }
+
+  /// FRONT repeats write their GHOST FRAMES verbatim (UI-R14 #3): the
+  /// repeat word never notates a front repeat — the lead-in prints its
+  /// expanded cel numbers exactly like authored cells.
+  void _writeFrontRepeatFrames(int index, int last) {
+    for (var chainIndex = index; chainIndex <= last; chainIndex += 1) {
+      final ghostStart = entries[chainIndex].key;
+      if (ghostStart >= rowCount) {
+        continue;
+      }
+      final ghostExposure = entries[chainIndex].value;
+      final ghostEnd = (ghostStart + ghostExposure.length!).clamp(
+        0,
+        rowCount,
+      );
+      cells[ghostStart] = TimesheetCell(
+        TimesheetCellKind.drawing,
+        label: labelsByFrameId[ghostExposure.frameId] ?? '?',
+        spanLength: ghostEnd - ghostStart,
+      );
+      for (var row = ghostStart + 1; row < ghostEnd; row += 1) {
+        cells[row] = TimesheetCell(
+          ghostExposure.hasBreakdownAt(row - ghostStart)
+              ? TimesheetCellKind.mark
+              : TimesheetCellKind.held,
+          spanLength: ghostEnd - ghostStart,
+          spanOffset: row - ghostStart,
+        );
+      }
+    }
+  }
+
+  /// An END repeat: the notation repeat word once + a guide line.
+  void _writeRepeatWord(
+    int start,
+    TimelineExposure exposure, {
+    required int rowsEnd,
+  }) {
+    cells[start] = TimesheetCell(
+      TimesheetCellKind.repeatStart,
+      // The convention (UI-R13 #4): the repeat's first row writes
+      // the CEL it restarts on; the word begins on the next row.
+      label: labelsByFrameId[exposure.frameId] ?? '?',
+      spanLength: rowsEnd - start,
+    );
+    for (var row = start + 1; row < rowsEnd; row += 1) {
+      cells[row] = TimesheetCell(
+        TimesheetCellKind.repeatSpan,
+        spanLength: rowsEnd - start,
+        spanOffset: row - start,
+      );
+    }
+  }
+
+  /// An authored block: its cel at [start], its held rows after it.
+  void _writeAuthoredBlock(int start, TimelineExposure exposure) {
+    final endExclusive = (start + exposure.length!).clamp(0, rowCount);
+    cells[start] = TimesheetCell(
+      TimesheetCellKind.drawing,
+      label: labelsByFrameId[exposure.frameId] ?? '?',
+      spanLength: endExclusive - start,
+      seName: seNamesByFrameId[exposure.frameId],
+    );
+    covered[start] = true;
+    for (var row = start + 1; row < endExclusive; row += 1) {
+      // Held rows know their place in the span so the painter can gate
+      // the ACTION hold bar per the exposure-bar setting (drawn from the
+      // (N+1)th comma of N+ holds only).
+      cells[row] = TimesheetCell(
+        exposure.hasBreakdownAt(row - start)
+            ? TimesheetCellKind.mark
+            : TimesheetCellKind.held,
+        spanLength: endExclusive - start,
+        spanOffset: row - start,
+      );
+      covered[row] = true;
+    }
+  }
+
+  /// X only at the first uncovered row of each run, only inside the
+  /// playback range.
+  void markEmptyRuns(int playbackFrameCount) {
+    var inEmptyRun = false;
+    for (var row = 0; row < playbackFrameCount && row < rowCount; row += 1) {
+      if (covered[row]) {
+        inEmptyRun = false;
+        continue;
+      }
+      if (!inEmptyRun) {
+        cells[row] = const TimesheetCell(TimesheetCellKind.emptyRunStart);
+        inEmptyRun = true;
+      }
+    }
+  }
 }
