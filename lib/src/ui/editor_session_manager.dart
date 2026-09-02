@@ -283,6 +283,7 @@ part 'session/layer_verbs.dart';
 part 'session/cut_verbs.dart';
 part 'session/range_selections.dart';
 part 'session/se_entries.dart';
+part 'session/drawing_block_move_drag.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -8299,66 +8300,31 @@ class EditorSessionManager extends ChangeNotifier {
     return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
   }
 
-  /// Starts a whole-block move on the block starting at [blockStartIndex];
-  /// returns false when there is no such block or the row stands down.
+  // ── the drawing block move drag: its own object ─────────────────────
+  //
+  // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
+  // session keeps the public entry points as forwarders.
+  late final _DrawingBlockMoveDrag _drawingBlockMove = _DrawingBlockMoveDrag(
+    this,
+  );
+
   bool beginDrawingBlockMoveDrag({
     required LayerId layerId,
     required int blockStartIndex,
-  }) {
-    // ⚠️Assigned only on SUCCESS. A refused begin must not touch a drag
-    // already in flight — the first wiring of the session type overwrote
-    // the slot with null and left a preview stuck in the channel.
-    final drag = DrawingBlockMoveDrag.begin(
-      layerId: layerId,
-      blockStartIndex: blockStartIndex,
-      layerById: _layerById,
-      isEligibleRow: _blockMoveEligible,
-      noticeIneligible: _noticeSyncedAttachRefusal,
-      cutFrameCount: () => _activeCutFrameCount,
-      preview: dragPreview,
-      land: _landDrawingBlockMove,
-    );
-    if (drag == null) {
-      return false;
-    }
-    _blockMoveDrag = drag;
-    return true;
-  }
-
-  /// The session's half of the block-move commit: one undo step built by
-  /// the SHARED single-row builder, then the selection, the cache warm and
-  /// the notify — all of which are this class's jobs, not the gesture's.
-  void _landDrawingBlockMove(DrawingBlockMovePlan plan, Layer source) {
-    _historyManager.execute(
-      _singleRowMoveCommand(
-        plan,
-        source: source,
-        description: 'Move drawing block',
-      ),
-    );
-    // The selection follows the block onto its new layer (R12-④): the
-    // user grabbed THAT drawing — keep working on it where it landed.
-    if (plan.isCrossLayer) {
-      _layerController.selectLayer(plan.targetAfter!.id);
-    }
-    _warmActiveCut();
-    notifyListeners();
-  }
-
-  /// Applies the drag's cumulative deltas as a live preview on
-  /// [dragPreview] (repository untouched). [targetLayerId] is the layer row
-  /// currently under the pointer (null or the source id = plain slide).
-  /// Blocks in the way are pushed in the direction of travel (R12-②) and
-  /// ride the preview live; the rare still-illegal landing (mark collision,
-  /// ineligible row, linked cel) clears the preview — the block shows at
-  /// its committed spot until the pointer reaches a legal one.
+  }) => _drawingBlockMove.beginDrawingBlockMoveDrag(
+    layerId: layerId,
+    blockStartIndex: blockStartIndex,
+  );
   void updateDrawingBlockMoveDrag({
     required int frameDelta,
     LayerId? targetLayerId,
-  }) => _blockMoveDrag?.update(
+  }) => _drawingBlockMove.updateDrawingBlockMoveDrag(
     frameDelta: frameDelta,
     targetLayerId: targetLayerId,
   );
+  void endDrawingBlockMoveDrag() => _drawingBlockMove.endDrawingBlockMoveDrag();
+  void cancelDrawingBlockMoveDrag() =>
+      _drawingBlockMove.cancelDrawingBlockMoveDrag();
 
   /// The single undo step a ONE-ROW move lands as: the source row's
   /// rewrite, the target row's rewrite when the move crossed rows, and the
@@ -8412,24 +8378,6 @@ class EditorSessionManager extends ChangeNotifier {
     return commands.length == 1
         ? commands.single
         : CompositeCommand(description: description, commands: commands);
-  }
-
-  /// Commits the move as a single undo step (no-op when the drag ends on
-  /// an illegal or unchanged landing). Cross-layer moves compose the two
-  /// layer updates with the brush-store rekey so undo restores everything.
-  void endDrawingBlockMoveDrag() {
-    // ⚠️Forgotten BEFORE the commit runs, so neither closer can be reached
-    // twice and the landing cannot see a drag that is already over.
-    final drag = _blockMoveDrag;
-    _blockMoveDrag = null;
-    drag?.commit();
-  }
-
-  /// Drops an in-flight move preview without touching history.
-  void cancelDrawingBlockMoveDrag() {
-    final drag = _blockMoveDrag;
-    _blockMoveDrag = null;
-    drag?.cancel();
   }
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
