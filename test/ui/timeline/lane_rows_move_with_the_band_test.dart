@@ -104,10 +104,7 @@ void main() {
       anchorGlobalFrame: 2,
       headGlobalFrame: 4,
       anchorRow: const LaneRowAddress(_se1, 'position'),
-      spanRows: const [
-        LaneRowAddress(_se1, 'position'),
-        LayerRowAddress(_se2),
-      ],
+      spanRows: const [LaneRowAddress(_se1, 'position'), LayerRowAddress(_se2)],
     );
   }
 
@@ -117,7 +114,8 @@ void main() {
       expect(
         const LaneRowAddress(_se1, 'position').owningLayerId,
         _se1,
-        reason: 'a lane is INSIDE its layer — standing on a property must '
+        reason:
+            'a lane is INSIDE its layer — standing on a property must '
             'never cost you the layer',
       );
       expect(
@@ -141,7 +139,8 @@ void main() {
       expect(
         session.beginTrackRangeMoveDrag(_se1),
         isTrue,
-        reason: 'the anchor is a lane row of S1, so the move machine reads '
+        reason:
+            'the anchor is a lane row of S1, so the move machine reads '
             'S1. Refusing here is the silent re-select',
       );
     });
@@ -163,7 +162,8 @@ void main() {
       expect(
         se1.timeline.keys.toList(),
         [3],
-        reason: 'S1 owns the sound, the anchor row is one of S1 lanes, and '
+        reason:
+            'S1 owns the sound, the anchor row is one of S1 lanes, and '
             'the move slid it a frame. A dropped lane row leaves the sound '
             'where it was',
       );
@@ -188,7 +188,8 @@ void main() {
       expect(
         live,
         isNotNull,
-        reason: 'the lane domain rule is raw cells, no block snap — so the '
+        reason:
+            'the lane domain rule is raw cells, no block snap — so the '
             'raw span IS the answer',
       );
       expect(live!.startFrame, 6);
@@ -201,7 +202,23 @@ void main() {
   /// exactly how the wiring stayed missing while the law file next door stayed
   /// green (`every_row_joins_a_selection_test.dart`, same lesson).
   group('the WIRING, which the session-level tests cannot see', () {
-    String source(String path) => File(path).readAsStringSync();
+    // A grid is a LIBRARY: the State's file plus the collaborator parts the
+    // audit's SRP cuts (2026-09-02) put beside it. The wiring is asked of
+    // the whole library, wherever a cut moved it.
+    const partsOf = <String, String>{
+      'lib/src/ui/timeline/layer_timeline_grid.dart':
+          'lib/src/ui/timeline/layer_grid',
+    };
+    String source(String path) {
+      final parts = Directory(partsOf[path] ?? '');
+      return [
+        File(path).readAsStringSync(),
+        if (partsOf.containsKey(path) && parts.existsSync())
+          for (final part in parts.listSync())
+            if (part is File && part.path.endsWith('.dart'))
+              part.readAsStringSync(),
+      ].join('\n');
+    }
 
     for (final path in [
       'lib/src/ui/timeline/layer_timeline_grid.dart',
@@ -212,14 +229,16 @@ void main() {
         expect(
           RegExp(r'row\.owningLayerId').allMatches(text).length,
           greaterThanOrEqualTo(3),
-          reason: 'isInSelection, onSelectUpdate and onMoveBegin each need '
+          reason:
+              'isInSelection, onSelectUpdate and onMoveBegin each need '
               'it — a grid that keeps one type test keeps one third of the '
               'bug',
         );
         expect(
           text,
           isNot(contains('row is LayerRowAddress &&')),
-          reason: 'that is the invented rule, spelled the way it was spelled '
+          reason:
+              'that is the invented rule, spelled the way it was spelled '
               'at every site it was typed at',
         );
         expect(
