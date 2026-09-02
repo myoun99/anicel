@@ -30,8 +30,8 @@ class _XSheetGridRangeGestures {
             // The horizontal grid's twin, one law: a lane row
             // answers with the layer it sits inside
             // ([TimelineRowAddress.owningLayerId]).
-            isInSelection: (row, frameIndex) =>
-                _state._rowFrameInSelection(row, frameIndex, rangeHooks),
+            isInSelection: (row, frameIndex) => _state._reveal
+                ._rowFrameInSelection(row, frameIndex, rangeHooks),
             // Cross-row select (UI-R17 #8), transposed like the moves.
             //
             // 🚨[_dragRows] at CALL time, never the build-local

@@ -74,6 +74,7 @@ part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
 part 'xsheet_grid/xsheet_grid_columns.dart';
 part 'xsheet_grid/xsheet_grid_range_gestures.dart';
+part 'xsheet_grid/xsheet_grid_reveal.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -296,60 +297,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _layerScrollController = PenFriendlyScrollController();
     _frameScrollController.addListener(_frameScroll.handleFrameScroll);
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
-    widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
+    widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
   }
 
-  /// R5: the same reveal the rail does, asked of THIS surface's axes — the
-  /// frame runs down here and the columns run across, so one tick lands on
-  /// two different controllers without either side knowing the other's.
-  void _handleRevealSelection() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _revealSelection();
-      }
-    });
-  }
-
-  void _revealSelection() {
-    final cell = _metrics.frameCellWidth;
-    if (_frameScrollController.hasClients && cell > 0) {
-      final position = _frameScrollController.position;
-      final target = revealScrollOffset(
-        offset: position.pixels,
-        viewport: position.viewportDimension,
-        start: widget.hooks.frameCursor.value * cell,
-        extent: cell,
-        margin: cell,
-      ).clamp(position.minScrollExtent, position.maxScrollExtent);
-      if (target != position.pixels) {
-        _frameScrollController.jumpTo(target);
-      }
-    }
-    final columnWidth = _metrics.layerRowHeight;
-    final activeId = widget.hooks.activeLayerId;
-    if (!_layerScrollController.hasClients ||
-        activeId == null ||
-        columnWidth <= 0) {
-      return;
-    }
-    final at = _dragRows.indexWhere(
-      (row) => !row.isLane && row.layer.id == activeId,
-    );
-    if (at < 0) {
-      return;
-    }
-    final position = _layerScrollController.position;
-    final target = revealScrollOffset(
-      offset: position.pixels,
-      viewport: position.viewportDimension,
-      start: at * columnWidth,
-      extent: columnWidth,
-      margin: columnWidth,
-    ).clamp(position.minScrollExtent, position.maxScrollExtent);
-    if (target != position.pixels) {
-      _layerScrollController.jumpTo(target);
-    }
-  }
+  // ── revealing a selection: its own object ───────────────────────────
+  //
+  // A collaborator (timeline/xsheet_grid/xsheet_grid_reveal.dart, a part of this
+  // library). The State keeps the entry points its build tree calls.
+  late final _XSheetGridReveal _reveal = _XSheetGridReveal(this);
 
   @override
   void didUpdateWidget(covariant XSheetTimelineGrid oldWidget) {
@@ -357,9 +312,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     if (oldWidget.hooks.revealSelectionTick !=
         widget.hooks.revealSelectionTick) {
       oldWidget.hooks.revealSelectionTick?.removeListener(
-        _handleRevealSelection,
+        _reveal.handleRevealSelection,
       );
-      widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
+      widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
     }
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
@@ -381,7 +336,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   @override
   void dispose() {
-    widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
+    widget.hooks.revealSelectionTick?.removeListener(_reveal.handleRevealSelection);
     _watchedFramePosition?.isScrollingNotifier.removeListener(
       _frameScroll.handleFrameScrollActivity,
     );
@@ -436,26 +391,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The display entries of the pass in flight, for the drag's row → slot
   /// conversion (see [effectHeaderRowsOf]).
   List<TimelineDisplayRow> _dragRows = const [];
-
-  /// The cells-family drag callbacks for this pass, or null when the
-  /// host wired none — the transposed twin of the layer grid's. It also
-  /// loads `_rangeMoveResolver` with [entries], which is why it takes
-  /// them: both happen in the same pass or neither does.
-  /// Whether the cells selection covers this row at this frame — the
-  /// horizontal grid's twin, one law: a lane row answers with the layer it
-  /// sits inside ([TimelineRowAddress.owningLayerId]).
-  bool _rowFrameInSelection(
-    TimelineRowAddress row,
-    int frameIndex,
-    TimelineFrameRangeHooks rangeHooks,
-  ) {
-    final selection = rangeHooks.selection.value;
-    final layerId = row.owningLayerId;
-    return layerId != null &&
-        selection != null &&
-        selection.coversLayer(layerId) &&
-        selection.contains(frameIndex);
-  }
 
   /// The shared virtualization plan with the frame axis fed through the
   /// "horizontal" inputs (the axes are swapped in this grid). Read INSIDE
