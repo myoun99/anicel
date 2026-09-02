@@ -575,6 +575,11 @@ class EditorSessionManager extends ChangeNotifier {
   // session keeps the public entry points as forwarders.
   late final _PlaybackCacheBudget _playbackCache = _PlaybackCacheBudget(this);
 
+  /// A test's budget for the playback caches (see the collaborator).
+  @visibleForTesting
+  set debugPlaybackCacheBudgetBytes(int bytes) =>
+      _playbackCache._debugMaxBytes = bytes;
+
   int get playbackCacheByteBudget => _playbackCache.playbackCacheByteBudget;
   void enforcePlaybackCacheBudget() =>
       _playbackCache.enforcePlaybackCacheBudget();

@@ -19,7 +19,16 @@ class _PlaybackCacheBudget {
       PlaybackCacheBudgetEnforcer(
         layerImages: _session.layerFrameImageCache,
         composites: _session.cutFrameCompositeCache,
+        maxBytes: _debugMaxBytes ?? playbackCacheBudgetBytes,
       );
+
+  /// The budget a TEST hands the enforcer, in place of the 600 MB the
+  /// product uses — nothing a unit test can fill. Set before the first
+  /// cache use; the enforcer reads it once, when it is built. Added when
+  /// the adversarial check on the 2026-09-02 cut made
+  /// [enforcePlaybackCacheBudget] a no-op and every test stayed green: the
+  /// enforcer was measured, the session's wiring to it was not.
+  int? _debugMaxBytes;
 
   /// The composite-cache budget trim, runnable by every producer: the
   /// warmer after each cached frame, and the parked track stack after each
