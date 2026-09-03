@@ -1,5 +1,11 @@
 part of '../canvas_layer_stack_view.dart';
 
+/// Who paints a node's children under a walk — the plain walk, or the split
+/// walk that descends the chain enclosing the active layer and replays a
+/// recording for the rest.
+typedef _ChildPainter =
+    void Function(Canvas canvas, List<_PaintNode> children, double rasterScale);
+
 /// ONE PAINT OF THE LAYER STACK — the walk that draws the composite tree
 /// under the viewport, the split that paints the chain enclosing the active
 /// layer live and replays a recording for the rest, the paper and the
@@ -359,8 +365,7 @@ class _LayerStackPaintPass {
     // The scale the CTM this walk draws under is at. A group that
     // rasterises ITSELF needs it, and a `Canvas` will not tell anyone.
     double rasterScale,
-    void Function(Canvas canvas, List<_PaintNode> children, double rasterScale)
-    paintChildren,
+    _ChildPainter paintChildren,
   ) {
     for (final node in list) {
       // Poses apply at composite time — the stack shows the same picture
@@ -385,318 +390,349 @@ class _LayerStackPaintPass {
         anchorPoint: nodeAnchor,
         body: () {
           switch (node) {
-            case _PaintGroup(
-              :final children,
-              :final opacity,
-              :final blendMode,
-              :final effects,
-            ):
-              // R27 #29: one buffer for the group, one blend on it — and
-              // because the ACTIVE layer is a node in here, a stroke drawn
-              // inside a blended folder finally reads the way it will play
-              // back. R6: the folder's effect chain lands on the same buffer.
-              final groupPlan = resolveCompositeEffectPlan(effects);
-              final groupPaint = layerCompositePaint(
-                opacity: opacity,
-                blendMode: blendMode,
-                effects: groupPlan.finalPaint,
-              );
-              // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
-              // Bounded by the view, a folder asked Skia for the whole
-              // pasteboard (9× the page) at far zoom-out — an offscreen
-              // that the enclosing canvas-resolution buffer then clipped
-              // away. Content bounds keep it inside by construction, and
-              // this says so where it can fail.
-              final groupRect = effectBufferBounds(
-                _bufferBoundsFor(node),
-                groupPlan.outsetPixels,
-              );
-              assert(
-                _contentExtent.expandToInclude(groupRect) == _contentExtent,
-                'a group buffer must sit inside the composite it is part '
-                'of: $groupRect is not within $_contentExtent',
-              );
-              // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
-              // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
-              // the reason, and the test that certifies it against the
-              // saveLayer it replaced calls THAT function, not a copy.
-              drawSubtreeAsImage(
-                canvas: canvas,
-                // The size hint grows by the blur's spread, so artwork just
-                // OUTSIDE the visible rect still bleeds in — without this the
-                // blur at the screen edge would change as you scroll.
-                bounds: groupRect,
-                rasterScale: rasterScale,
-                paintSubtree: (into, scale) =>
-                    paintChildren(into, children, scale),
-                compose: (blit) => blit(groupPaint),
-                steps: groupPlan.preSteps,
-              );
-            case _PaintAdjustment(:final children, :final effects, :final mix):
-              // R6b: the scope into one buffer, the row's chain onto it —
-              // which is what lets a stroke drawn UNDER an adjustment read
-              // through the grade while you draw it.
-              final pass = resolveAdjustmentScopePass(
-                bounds: _bufferBoundsFor(node),
-                effects: effects,
-                mix: mix,
-              );
-              // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
-              // twice below full strength — a mix is a crossfade, not a
-              // fade-out — and it is the same picture both times. The
-              // passes keep their layers; what changed is that they now
-              // contain a blit of one raster instead of a second walk of
-              // the scope.
-              drawSubtreeAsImage(
-                canvas: canvas,
-                bounds: pass.bufferBounds,
-                rasterScale: rasterScale,
-                paintSubtree: (into, scale) =>
-                    paintChildren(into, children, scale),
-                compose: composeAdjustmentScope(canvas, pass),
-                steps: pass.preSteps,
-              );
-            case _PaintActiveSurface(
-              :final opacity,
-              :final blendMode,
-              :final effects,
-              :final standIn,
-            ):
-              // The live surface, drawn by the SAME painter the standalone
-              // interactive view uses — the canvas is already
-              // viewport-transformed, so only the content body runs.
-              //
-              // R6: the row's own effects need a buffer here, because the
-              // surface painter draws MANY tiles and a filter must see the
-              // assembled picture (a per-tile blur would show seams).
-              //
-              // ㊱: the OPACITY rides that same buffer — one alpha over the
-              // assembled picture, exactly as a group node applies its own
-              // (`alphaOnly` builds it, and clamps what the model does not).
-              // The panel's content-opacity wrap cannot do this job in
-              // merged mode: there the interactive view is input-only, so
-              // the wrap dims a widget that paints nothing and the layer
-              // you are drawing on stayed at full strength.
-              //
-              // The BLEND rides the same buffer for a reason of its own: the
-              // surface painter draws many separate tiles, and a non-srcOver
-              // blend applied per tile would compose each tile against the
-              // rows below it independently — overlapping coverage inside one
-              // row would then darken at the seams. One buffer, one blend, is
-              // the same answer [_PaintGroup] already gives for a folder.
-              final activePlan = resolveCompositeEffectPlan(effects);
-              final activeEffects = activePlan.finalPaint;
-              final activePaint = layerCompositePaint(
-                opacity: opacity,
-                blendMode: blendMode,
-                effects: activeEffects,
-              );
-              // 🚨★★★THE LAYER RIDES THE DRAWS, NOT A BUFFER AROUND THEM.
-              //
-              // A layer's opacity and blend have to apply to the LAYER
-              // once. A buffer is one way; handing the same paint to each
-              // draw is another, and they are the same pixels exactly when
-              // no two draws land on the same pixel — which is what
-              // [BitmapSurfacePainter.drawsDisjointCoverage] answers, and
-              // the law the overlay's own blend already rides one level
-              // down ("tiles never overlap, so per-tile draws blend each
-              // pixel exactly once").
-              //
-              // What is left for a buffer is the one thing a per-draw
-              // paint cannot do: a filter that SPREADS has to see across
-              // the tile boundaries, so it needs the layer assembled
-              // first. `outsetPixels` is exactly that question — a colour
-              // matrix is per-pixel and rides along fine.
-              final needsBuffer =
-                  activeEffects.outsetPixels > 0 ||
-                  !_painter.activeSurfacePainter!.drawsDisjointCoverage ||
-                  // The selection FLOAT is this layer's pixels lifted out
-                  // and drawn back on top of it — the one overlap the
-                  // painter cannot see, because it is not the painter's.
-                  // ⛔`isEmpty`, not `!= null`: an overlay mounted with
-                  // nothing in it draws nothing and overlaps nothing.
-                  !(_painter.floatOverlay?.value?.isEmpty ?? true) ||
-                  // 🚨A SHADER CANNOT SAMPLE A saveLayer. A colour key
-                  // BELOW a painted effect keys what that effect made, so
-                  // the layer has to be assembled into an image first —
-                  // the one thing a buffer cannot hand it.
-                  activePlan.preSteps.isNotEmpty;
-              // Null when the buffer carries it, so nothing applies twice.
-              final ridingPaint = needsBuffer ? null : activePaint;
-              assert(() {
-                debugLiveLayerRodeTheDraws = !needsBuffer;
-                return true;
-              }());
-              // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
-              // colour key BELOW a painted effect has to key what that
-              // effect made, and a shader cannot sample a `saveLayer`.
-              // ⛔Only that case rasterises. A plainly buffered layer keeps
-              // the cheaper `saveLayer`: 🧪measured, the image route costs
-              // 3.2x on the path a stroke redraws every step.
-              void paintLiveBody(Canvas into) {
-                into.save();
-                into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
-                final flat = _painter._activeFlatForRecording;
-                if (flat != null) {
-                  // ⓔ 5단계: under the scaled recording the active layer is
-                  // ONE image like every other layer, resampled by the
-                  // recording's transform under the SAME filter — that
-                  // uniformity is what closes T21 below the knee. 1:1
-                  // src/dst; the one resample comes from the CTM.
-                  into.drawImageRect(
-                    flat.image,
-                    Rect.fromLTWH(
-                      0,
-                      0,
-                      flat.image.width.toDouble(),
-                      flat.image.height.toDouble(),
-                    ),
-                    flat.worldRect,
-                    _withLayerPaint(
-                      Paint()..filterQuality = ui.FilterQuality.low,
-                      ridingPaint,
-                    ),
-                  );
-                } else if (standIn != null &&
-                    standIn.shouldStandInFor(_painter.activeSurfacePainter!)) {
-                  // The FIRST-ACTIVATION swap window: while any of the
-                  // promoted surface's tiles is still undecoded, the walk
-                  // could show only its budgets' worth and leave the rest
-                  // silent — the blank (whole on the swap frame, per-tile
-                  // once the first decodes landed). The held image is the
-                  // SAME pixels the previous frame drew for this cel at
-                  // the same rect with the same sampling, so standing in
-                  // is seamless; the paint-time predicate above hands
-                  // back to the walk once every tile can speak for itself
-                  // — and instantly the moment an edit could exist.
-                  if (_painter
-                      .activeSurfacePainter!
-                      .showTransparentBackground) {
-                    // Parity with [BitmapSurfacePainter.paintContentInto]'s
-                    // own opening block (the merged stack passes false and
-                    // paints paper itself; standalone hosts rely on this).
-                    into.drawRect(
-                      Rect.fromLTWH(
-                        0,
-                        0,
-                        _painter.canvasSize.width.toDouble(),
-                        _painter.canvasSize.height.toDouble(),
-                      ),
-                      Paint()
-                        ..color = const Color(
-                          ProjectBackground.defaultPaperArgb,
-                        ),
-                    );
-                  }
-                  into.drawImageRect(
-                    standIn.image,
-                    Rect.fromLTWH(
-                      0,
-                      0,
-                      standIn.image.width.toDouble(),
-                      standIn.image.height.toDouble(),
-                    ),
-                    standIn.worldRect,
-                    // `low`, exactly like the cached-image route this
-                    // image was drawn by one frame ago — the handoff into
-                    // the stand-in must be byte-identical.
-                    _withLayerPaint(
-                      Paint()..filterQuality = ui.FilterQuality.low,
-                      ridingPaint,
-                    ),
-                  );
-                  // ⛔The stand-in can only hand off if the decodes it is
-                  // waiting on actually start — the walk's collect pass is
-                  // skipped this frame, so its decode starts must not be.
-                  _painter.activeSurfacePainter!.startPendingDecodes(into);
-                } else {
-                  _painter.activeSurfacePainter!.paintContentInto(
-                    into,
-                    layerPaint: ridingPaint,
-                  );
-                }
-                // 🚨TS1: the selection's FLOAT belongs here, right on top of
-                // the surface it was lifted out of and UNDER everything
-                // above that row. Drawn inside this slot's clip and its
-                // effects/opacity buffer, because the pixels are that
-                // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
-                // half-opacity row previews a transform at half opacity,
-                // which is what the commit will look like.
-                //
-                // ⚠️Inside the POSE wrap as well (the whole switch is). For
-                // an unposed row that changes nothing; for a posed one the
-                // float now travels with its layer instead of ignoring the
-                // pose, but the drag delta rides through the pose matrix
-                // with it — fine for translation, and worth an eye on a
-                // scaled or rotated row.
-                _painter.floatOverlay?.value?.paintInto(into);
-                into.restore();
-              }
-              if (activePlan.preSteps.isNotEmpty) {
-                drawSubtreeAsImage(
-                  canvas: canvas,
-                  bounds: effectBufferBounds(
-                    _bufferBoundsFor(node),
-                    activePlan.outsetPixels,
-                  ),
-                  rasterScale: rasterScale,
-                  paintSubtree: (into, _) => paintLiveBody(into),
-                  compose: (blit) => blit(activePaint),
-                  steps: activePlan.preSteps,
-                );
-              } else {
-                if (needsBuffer) {
-                  canvas.saveLayer(
-                    effectBufferBounds(
-                      _painter.activeSurfacePainter!.pasteboardRect,
-                      activeEffects.outsetPixels,
-                    ),
-                    activePaint,
-                  );
-                }
-                paintLiveBody(canvas);
-                if (needsBuffer) {
-                  canvas.restore();
-                }
-              }
-            case _PaintImage(
-              :final image,
-              :final worldRect,
-              :final opacity,
-              :final blendMode,
-              :final tint,
-              :final effects,
-            ):
-              // Dest = the image's WORLD rect: the canvas rect for plain
-              // cels, grown for pasteboard content so off-canvas artwork of
-              // non-active layers shows at its position. The pose is already
-              // applied by the wrap above, which this node shares with the
-              // live surface — hence pose: null here rather than a second
-              // save/restore around the same matrix.
-              drawPosedLayerImage(
+            case final _PaintGroup group:
+              _paintGroupNode(canvas, group, rasterScale, paintChildren);
+            case final _PaintAdjustment adjustment:
+              _paintAdjustmentNode(
                 canvas,
-                image: image,
-                worldRect: worldRect,
-                canvasSize: _painter.canvasSize,
-                pose: null,
-                opacity: opacity,
-                blendMode: blendMode,
-                effects: effects,
-                // A4: today's value, now in writing. `low` is bilinear —
-                // the same sampling every non-active layer has always
-                // taken on this route.
-                filterQuality: ui.FilterQuality.low,
-                // Onion-skin Colors mode: the ghost CONVERTS fully to the
-                // tint — every drawn pixel takes the tint's RGB, only alpha
-                // survives (TVPaint's look, R11-①; modulate kept light
-                // artwork un-tinted). The paint alpha still fades the whole
-                // ghost.
-                tint: tint,
+                adjustment,
+                rasterScale,
+                paintChildren,
               );
+            case final _PaintActiveSurface active:
+              _paintActiveSurfaceNode(canvas, active, rasterScale);
+            case final _PaintImage image:
+              _paintImageNode(canvas, image);
           }
         },
       );
     }
+  }
+
+  /// A folder: its children buffered as one image, blended once with the
+  /// folder's paint.
+  void _paintGroupNode(
+    Canvas canvas,
+    _PaintGroup node,
+    double rasterScale,
+    _ChildPainter paintChildren,
+  ) {
+    final _PaintGroup(:children, :opacity, :blendMode, :effects) = node;
+    // R27 #29: one buffer for the group, one blend on it — and
+    // because the ACTIVE layer is a node in here, a stroke drawn
+    // inside a blended folder finally reads the way it will play
+    // back. R6: the folder's effect chain lands on the same buffer.
+    final groupPlan = resolveCompositeEffectPlan(effects);
+    final groupPaint = layerCompositePaint(
+      opacity: opacity,
+      blendMode: blendMode,
+      effects: groupPlan.finalPaint,
+    );
+    // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
+    // Bounded by the view, a folder asked Skia for the whole
+    // pasteboard (9× the page) at far zoom-out — an offscreen
+    // that the enclosing canvas-resolution buffer then clipped
+    // away. Content bounds keep it inside by construction, and
+    // this says so where it can fail.
+    final groupRect = effectBufferBounds(
+      _bufferBoundsFor(node),
+      groupPlan.outsetPixels,
+    );
+    assert(
+      _contentExtent.expandToInclude(groupRect) == _contentExtent,
+      'a group buffer must sit inside the composite it is part '
+      'of: $groupRect is not within $_contentExtent',
+    );
+    // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
+    // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
+    // the reason, and the test that certifies it against the
+    // saveLayer it replaced calls THAT function, not a copy.
+    drawSubtreeAsImage(
+      canvas: canvas,
+      // The size hint grows by the blur's spread, so artwork just
+      // OUTSIDE the visible rect still bleeds in — without this the
+      // blur at the screen edge would change as you scroll.
+      bounds: groupRect,
+      rasterScale: rasterScale,
+      paintSubtree: (into, scale) => paintChildren(into, children, scale),
+      compose: (blit) => blit(groupPaint),
+      steps: groupPlan.preSteps,
+    );
+  }
+
+  /// An adjustment scope: the rows under it buffered and graded as one.
+  void _paintAdjustmentNode(
+    Canvas canvas,
+    _PaintAdjustment node,
+    double rasterScale,
+    _ChildPainter paintChildren,
+  ) {
+    final _PaintAdjustment(:children, :effects, :mix) = node;
+    // R6b: the scope into one buffer, the row's chain onto it —
+    // which is what lets a stroke drawn UNDER an adjustment read
+    // through the grade while you draw it.
+    final pass = resolveAdjustmentScopePass(
+      bounds: _bufferBoundsFor(node),
+      effects: effects,
+      mix: mix,
+    );
+    // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
+    // twice below full strength — a mix is a crossfade, not a
+    // fade-out — and it is the same picture both times. The
+    // passes keep their layers; what changed is that they now
+    // contain a blit of one raster instead of a second walk of
+    // the scope.
+    drawSubtreeAsImage(
+      canvas: canvas,
+      bounds: pass.bufferBounds,
+      rasterScale: rasterScale,
+      paintSubtree: (into, scale) => paintChildren(into, children, scale),
+      compose: composeAdjustmentScope(canvas, pass),
+      steps: pass.preSteps,
+    );
+  }
+
+  /// The live layer: drawn straight onto the canvas when its paint can
+  /// ride the draws, through one buffer when it cannot (an outset effect,
+  /// overlapping coverage, a float overlay, or pre-steps).
+  void _paintActiveSurfaceNode(
+    Canvas canvas,
+    _PaintActiveSurface node,
+    double rasterScale,
+  ) {
+    final _PaintActiveSurface(:opacity, :blendMode, :effects, :standIn) = node;
+    // The live surface, drawn by the SAME painter the standalone
+    // interactive view uses — the canvas is already
+    // viewport-transformed, so only the content body runs.
+    //
+    // R6: the row's own effects need a buffer here, because the
+    // surface painter draws MANY tiles and a filter must see the
+    // assembled picture (a per-tile blur would show seams).
+    //
+    // ㊱: the OPACITY rides that same buffer — one alpha over the
+    // assembled picture, exactly as a group node applies its own
+    // (`alphaOnly` builds it, and clamps what the model does not).
+    // The panel's content-opacity wrap cannot do this job in
+    // merged mode: there the interactive view is input-only, so
+    // the wrap dims a widget that paints nothing and the layer
+    // you are drawing on stayed at full strength.
+    //
+    // The BLEND rides the same buffer for a reason of its own: the
+    // surface painter draws many separate tiles, and a non-srcOver
+    // blend applied per tile would compose each tile against the
+    // rows below it independently — overlapping coverage inside one
+    // row would then darken at the seams. One buffer, one blend, is
+    // the same answer [_PaintGroup] already gives for a folder.
+    final activePlan = resolveCompositeEffectPlan(effects);
+    final activeEffects = activePlan.finalPaint;
+    final activePaint = layerCompositePaint(
+      opacity: opacity,
+      blendMode: blendMode,
+      effects: activeEffects,
+    );
+    // 🚨★★★THE LAYER RIDES THE DRAWS, NOT A BUFFER AROUND THEM.
+    //
+    // A layer's opacity and blend have to apply to the LAYER
+    // once. A buffer is one way; handing the same paint to each
+    // draw is another, and they are the same pixels exactly when
+    // no two draws land on the same pixel — which is what
+    // [BitmapSurfacePainter.drawsDisjointCoverage] answers, and
+    // the law the overlay's own blend already rides one level
+    // down ("tiles never overlap, so per-tile draws blend each
+    // pixel exactly once").
+    //
+    // What is left for a buffer is the one thing a per-draw
+    // paint cannot do: a filter that SPREADS has to see across
+    // the tile boundaries, so it needs the layer assembled
+    // first. `outsetPixels` is exactly that question — a colour
+    // matrix is per-pixel and rides along fine.
+    final needsBuffer =
+        activeEffects.outsetPixels > 0 ||
+        !_painter.activeSurfacePainter!.drawsDisjointCoverage ||
+        // The selection FLOAT is this layer's pixels lifted out
+        // and drawn back on top of it — the one overlap the
+        // painter cannot see, because it is not the painter's.
+        // ⛔`isEmpty`, not `!= null`: an overlay mounted with
+        // nothing in it draws nothing and overlaps nothing.
+        !(_painter.floatOverlay?.value?.isEmpty ?? true) ||
+        // 🚨A SHADER CANNOT SAMPLE A saveLayer. A colour key
+        // BELOW a painted effect keys what that effect made, so
+        // the layer has to be assembled into an image first —
+        // the one thing a buffer cannot hand it.
+        activePlan.preSteps.isNotEmpty;
+    // Null when the buffer carries it, so nothing applies twice.
+    final ridingPaint = needsBuffer ? null : activePaint;
+    assert(() {
+      debugLiveLayerRodeTheDraws = !needsBuffer;
+      return true;
+    }());
+    // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
+    // colour key BELOW a painted effect has to key what that
+    // effect made, and a shader cannot sample a `saveLayer`.
+    // ⛔Only that case rasterises. A plainly buffered layer keeps
+    // the cheaper `saveLayer`: 🧪measured, the image route costs
+    // 3.2x on the path a stroke redraws every step.
+    void paintLiveBody(Canvas into) {
+      into.save();
+      into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
+      final flat = _painter._activeFlatForRecording;
+      if (flat != null) {
+        // ⓔ 5단계: under the scaled recording the active layer is
+        // ONE image like every other layer, resampled by the
+        // recording's transform under the SAME filter — that
+        // uniformity is what closes T21 below the knee. 1:1
+        // src/dst; the one resample comes from the CTM.
+        into.drawImageRect(
+          flat.image,
+          Rect.fromLTWH(
+            0,
+            0,
+            flat.image.width.toDouble(),
+            flat.image.height.toDouble(),
+          ),
+          flat.worldRect,
+          _withLayerPaint(
+            Paint()..filterQuality = ui.FilterQuality.low,
+            ridingPaint,
+          ),
+        );
+      } else if (standIn != null &&
+          standIn.shouldStandInFor(_painter.activeSurfacePainter!)) {
+        // The FIRST-ACTIVATION swap window: while any of the
+        // promoted surface's tiles is still undecoded, the walk
+        // could show only its budgets' worth and leave the rest
+        // silent — the blank (whole on the swap frame, per-tile
+        // once the first decodes landed). The held image is the
+        // SAME pixels the previous frame drew for this cel at
+        // the same rect with the same sampling, so standing in
+        // is seamless; the paint-time predicate above hands
+        // back to the walk once every tile can speak for itself
+        // — and instantly the moment an edit could exist.
+        if (_painter.activeSurfacePainter!.showTransparentBackground) {
+          // Parity with [BitmapSurfacePainter.paintContentInto]'s
+          // own opening block (the merged stack passes false and
+          // paints paper itself; standalone hosts rely on this).
+          into.drawRect(
+            Rect.fromLTWH(
+              0,
+              0,
+              _painter.canvasSize.width.toDouble(),
+              _painter.canvasSize.height.toDouble(),
+            ),
+            Paint()..color = const Color(ProjectBackground.defaultPaperArgb),
+          );
+        }
+        into.drawImageRect(
+          standIn.image,
+          Rect.fromLTWH(
+            0,
+            0,
+            standIn.image.width.toDouble(),
+            standIn.image.height.toDouble(),
+          ),
+          standIn.worldRect,
+          // `low`, exactly like the cached-image route this
+          // image was drawn by one frame ago — the handoff into
+          // the stand-in must be byte-identical.
+          _withLayerPaint(
+            Paint()..filterQuality = ui.FilterQuality.low,
+            ridingPaint,
+          ),
+        );
+        // ⛔The stand-in can only hand off if the decodes it is
+        // waiting on actually start — the walk's collect pass is
+        // skipped this frame, so its decode starts must not be.
+        _painter.activeSurfacePainter!.startPendingDecodes(into);
+      } else {
+        _painter.activeSurfacePainter!.paintContentInto(
+          into,
+          layerPaint: ridingPaint,
+        );
+      }
+      // 🚨TS1: the selection's FLOAT belongs here, right on top of
+      // the surface it was lifted out of and UNDER everything
+      // above that row. Drawn inside this slot's clip and its
+      // effects/opacity buffer, because the pixels are that
+      // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
+      // half-opacity row previews a transform at half opacity,
+      // which is what the commit will look like.
+      //
+      // ⚠️Inside the POSE wrap as well (the whole switch is). For
+      // an unposed row that changes nothing; for a posed one the
+      // float now travels with its layer instead of ignoring the
+      // pose, but the drag delta rides through the pose matrix
+      // with it — fine for translation, and worth an eye on a
+      // scaled or rotated row.
+      _painter.floatOverlay?.value?.paintInto(into);
+      into.restore();
+    }
+
+    if (activePlan.preSteps.isNotEmpty) {
+      drawSubtreeAsImage(
+        canvas: canvas,
+        bounds: effectBufferBounds(
+          _bufferBoundsFor(node),
+          activePlan.outsetPixels,
+        ),
+        rasterScale: rasterScale,
+        paintSubtree: (into, _) => paintLiveBody(into),
+        compose: (blit) => blit(activePaint),
+        steps: activePlan.preSteps,
+      );
+    } else {
+      if (needsBuffer) {
+        canvas.saveLayer(
+          effectBufferBounds(
+            _painter.activeSurfacePainter!.pasteboardRect,
+            activeEffects.outsetPixels,
+          ),
+          activePaint,
+        );
+      }
+      paintLiveBody(canvas);
+      if (needsBuffer) {
+        canvas.restore();
+      }
+    }
+  }
+
+  /// A cel or a cached row image; the pose is applied by the wrap around
+  /// the walk, so the draw itself is unposed.
+  void _paintImageNode(Canvas canvas, _PaintImage node) {
+    final _PaintImage(
+      :image,
+      :worldRect,
+      :opacity,
+      :blendMode,
+      :tint,
+      :effects,
+    ) = node;
+    // Dest = the image's WORLD rect: the canvas rect for plain
+    // cels, grown for pasteboard content so off-canvas artwork of
+    // non-active layers shows at its position. The pose is already
+    // applied by the wrap above, which this node shares with the
+    // live surface — hence pose: null here rather than a second
+    // save/restore around the same matrix.
+    drawPosedLayerImage(
+      canvas,
+      image: image,
+      worldRect: worldRect,
+      canvasSize: _painter.canvasSize,
+      pose: null,
+      opacity: opacity,
+      blendMode: blendMode,
+      effects: effects,
+      // A4: today's value, now in writing. `low` is bilinear —
+      // the same sampling every non-active layer has always
+      // taken on this route.
+      filterQuality: ui.FilterQuality.low,
+      // Onion-skin Colors mode: the ghost CONVERTS fully to the
+      // tint — every drawn pixel takes the tint's RGB, only alpha
+      // survives (TVPaint's look, R11-①; modulate kept light
+      // artwork un-tinted). The paint alpha still fades the whole
+      // ghost.
+      tint: tint,
+    );
   }
 
   void _paintNodes(Canvas canvas, List<_PaintNode> list, double rasterScale) =>
