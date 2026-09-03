@@ -89,7 +89,7 @@ void main() {
         continue;
       }
       final path = file.path.replaceAll(r'\', '/');
-      if (path.endsWith('lib/src/ui/canvas/composite_effect_paint.dart')) {
+      if (path.endsWith('lib/src/services/composite_effect_paint.dart')) {
         continue;
       }
       final lines = file.readAsLinesSync();
