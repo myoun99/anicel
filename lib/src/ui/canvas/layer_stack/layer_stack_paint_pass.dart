@@ -1168,6 +1168,24 @@ class _LayerStackPaintPass {
     return area;
   }
 
+  /// The display buffer for a SCALED [image] over [rect] — below the knee
+  /// the pixels are the image's, not the rect's: `ceil(rect · s)` a side,
+  /// which is what the blit's source rect must say or the picture lands
+  /// shrunk in the corner. ⛔Not [_bufferOf]: that one is the whole-pixel
+  /// law of the s=1 path, and 2026-09-04 the knee path was routed through
+  /// it by mistake — one wrong frame on every miss below the knee.
+  _DisplayBuffer _scaledBufferOf(
+    ui.Image image,
+    Rect rect, {
+    required bool owned,
+  }) => _DisplayBuffer(
+    image: image,
+    rect: rect,
+    pixelWidth: image.width.toDouble(),
+    pixelHeight: image.height.toDouble(),
+    owned: owned,
+  );
+
   /// ⓔ 5단계 — the buffer BELOW the knee: [rect] rendered at
   /// `s = min(1, zoom·dpr)` instead of canvas resolution, every layer one
   /// image under one uniform filter.
@@ -1224,13 +1242,7 @@ class _LayerStackPaintPass {
     if (cache != null && key != null) {
       final kept = cache.imageFor(key, rect);
       if (kept != null) {
-        return _DisplayBuffer(
-          image: kept,
-          rect: rect,
-          pixelWidth: kept.width.toDouble(),
-          pixelHeight: kept.height.toDouble(),
-          owned: false,
-        );
+        return _scaledBufferOf(kept, rect, owned: false);
       }
     }
     ActiveLayerFlatImage? flat;
@@ -1281,8 +1293,8 @@ class _LayerStackPaintPass {
     }
     if (cache != null && key != null) {
       cache.store(key, _painter.compositeKey, rect, image, patched: false);
-      return _bufferOf(image, rect, owned: false);
+      return _scaledBufferOf(image, rect, owned: false);
     }
-    return _bufferOf(image, rect, owned: true);
+    return _scaledBufferOf(image, rect, owned: true);
   }
 }
