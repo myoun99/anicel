@@ -607,49 +607,11 @@ class _InteractiveBrushEditCanvasViewState
           _hold._mappedHoldPointer != null) {
         return;
       }
-      switch (mapping.action) {
-        case CanvasPointerAction.none:
-        // Pan belongs to the panel's viewport gesture layer — this view
-        // only stands down so no stroke competes with it.
-        case CanvasPointerAction.pan:
+      switch (_pressAsMappedAction(mapping, event)) {
+        case _MappedPress.consumed:
           return;
-        case CanvasPointerAction.undo:
-          // Skip when the button press already fired during hover (the
-          // hover edge below) and the tip then touched with it held.
-          if (!_hold.mappedButtonHeldSinceHover(event)) {
-            widget.onInvokeAction?.call('edit-undo');
-          }
-          return;
-        case CanvasPointerAction.redo:
-          if (!_hold.mappedButtonHeldSinceHover(event)) {
-            widget.onInvokeAction?.call('edit-redo');
-          }
-          return;
-        case CanvasPointerAction.eyedropper:
-          _hold._mappedHoldPointer = event.pointer;
-          _hold._mappedHoldRelease = mapping.release;
-          _hold._mappedHoldIsEyedropper = true;
-          // The contact takes over a hover-engaged hold (R26 #19/#20):
-          // one hold session, one release.
-          _hold._hoverToolHoldActive = false;
-          _hold._hoverToolHoldRelease = null;
-          _hold._hoverToolHoldButton = 0;
-          widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
-          final pickPosition = _canvasPositionFromLocal(event.localPosition);
-          // The eyedropper picks anywhere on the pasteboard, like Flash
-          // (off-canvas artwork is real artwork).
-          if (_isInsidePasteboard(pickPosition)) {
-            widget.onAltPick?.call(pickPosition);
-          }
-          return;
-        case CanvasPointerAction.eraser:
+        case _MappedPress.erase:
           mappedErase = true;
-          _hold._mappedHoldPointer = event.pointer;
-          _hold._mappedHoldRelease = mapping.release;
-          _hold._mappedHoldIsEyedropper = false;
-          widget.onTemporaryToolHold?.call(CanvasTool.eraser);
-        // Falls through into the normal stroke start below with the
-        // erase-substituted settings snapshot.
       }
     }
 
@@ -685,51 +647,32 @@ class _InteractiveBrushEditCanvasViewState
     // tiles decode. (The R22-A live-raster blend re-snapshotted and
     // re-decoded thousands of 128px overlay tiles — the 8K
     // settle-frame stall.)
-    final fillDabAt = widget.fillDabAt;
-    if (fillDabAt != null) {
-      // Off-canvas fill taps flow through: the default (stage-bounded)
-      // raster answers null for them, the extended raster fills — the
-      // fill's own boundary options decide, not the pointer.
-      // The busy half of this used to be here too; it now lives in
-      // [_runFillTap], which is the only place that can be sure.
-      if (!startsInsidePasteboard) {
-        return;
-      }
-      // The seed and the axis come from the same pair the STROKE path uses
-      // — this view's own position and its own guides, both already in the
-      // space the pointer is in. Reading the symmetry from the project
-      // instead would put the mirror where the pen is not under a pose.
-      // 🚨★★★A TOUCH FILL RESOLVES ON THE LIFT, NOT ON THE TOUCH.
-      //
-      // 유저 2026-08-27, iPhone: 「필 툴인 채로 … undo가 작동안함. 브러시툴
-      // 에서는 잘 작동함. 1핑거 플립모드로 전환하면 또 잘 작동함」 — a
-      // two-finger undo tap put its FIRST finger down, the fill committed a
-      // history entry nobody asked for, and the undo that followed spent
-      // itself on that instead of on the user's work.
-      //
-      // ★The law is already here, thirty lines up: when a second finger
-      // arrives, a touch stroke that has not passed slop is DISCARDED —
-      // "the first finger turned out to be the start of a pinch, not a
-      // stroke". That branch is exactly why the brush tool works and this
-      // one did not: a zero-length stroke has nothing to commit, while the
-      // fill had already flooded, revealed and queued its commit.
-      //
-      // ⛔The fix cannot be 「commit, then undo it when the second finger
-      // shows」 — [[no-optimistic-commit-then-revert]], 유저: 「한 프레임
-      // 보이는 건 무조건 걸린다」. So the REVEAL waits with the commit; a
-      // tap that turns out to be a pinch never draws anything at all.
-      //
-      // Pen and mouse are untouched: they cannot be half of a pinch, and
-      // the instant reveal is the whole point of R22-A.
-      if (event.kind == PointerDeviceKind.touch) {
-        _fillTapPointer = event.pointer;
-        _fillTapSeed = canvasPosition;
-        return;
-      }
-      _fill.runFillTap(canvasPosition);
+    if (_pressAsFillTap(
+      event,
+      canvasPosition,
+      startsInsidePasteboard: startsInsidePasteboard,
+    )) {
       return;
     }
 
+    _beginStroke(
+      event,
+      canvasPosition,
+      startsInsidePasteboard: startsInsidePasteboard,
+      mappedErase: mappedErase,
+    );
+  }
+
+  /// A stroke begins under [event]: the pointer is ours, the settings are
+  /// the tool's (or the eraser's on a mapped tail), the stabiliser, the
+  /// snap session, the symmetry, the dynamics and the ground mixer are
+  /// armed, the overlay opens, and the first dabs go out.
+  void _beginStroke(
+    PointerDownEvent event,
+    CanvasPoint canvasPosition, {
+    required bool startsInsidePasteboard,
+    required bool mappedErase,
+  }) {
     _activeDrawingPointer = event.pointer;
     // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
     // touch slop a simultaneous second finger may still turn the pair
@@ -846,6 +789,115 @@ class _InteractiveBrushEditCanvasViewState
     _collectedDabs.addAll(emitted);
     _overlay.queueOverlayDabs(emitted);
     _nextSequence += emitted.length;
+  }
+
+  /// A press the pen tail or a mapped button turned into an action: pan
+  /// and the history verbs consume it, the eyedropper hold consumes it
+  /// after picking, and the eraser hold turns the stroke that follows into
+  /// an erase — every mapped press is one of the two.
+  _MappedPress _pressAsMappedAction(
+    CanvasPointerMapping mapping,
+    PointerDownEvent event,
+  ) {
+    switch (mapping.action) {
+      case CanvasPointerAction.none:
+      // Pan belongs to the panel's viewport gesture layer — this view
+      // only stands down so no stroke competes with it.
+      case CanvasPointerAction.pan:
+        return _MappedPress.consumed;
+      case CanvasPointerAction.undo:
+        // Skip when the button press already fired during hover (the
+        // hover edge below) and the tip then touched with it held.
+        if (!_hold.mappedButtonHeldSinceHover(event)) {
+          widget.onInvokeAction?.call('edit-undo');
+        }
+        return _MappedPress.consumed;
+      case CanvasPointerAction.redo:
+        if (!_hold.mappedButtonHeldSinceHover(event)) {
+          widget.onInvokeAction?.call('edit-redo');
+        }
+        return _MappedPress.consumed;
+      case CanvasPointerAction.eyedropper:
+        _hold._mappedHoldPointer = event.pointer;
+        _hold._mappedHoldRelease = mapping.release;
+        _hold._mappedHoldIsEyedropper = true;
+        // The contact takes over a hover-engaged hold (R26 #19/#20):
+        // one hold session, one release.
+        _hold._hoverToolHoldActive = false;
+        _hold._hoverToolHoldRelease = null;
+        _hold._hoverToolHoldButton = 0;
+        widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
+        final pickPosition = _canvasPositionFromLocal(event.localPosition);
+        // The eyedropper picks anywhere on the pasteboard, like Flash
+        // (off-canvas artwork is real artwork).
+        if (_isInsidePasteboard(pickPosition)) {
+          widget.onAltPick?.call(pickPosition);
+        }
+        return _MappedPress.consumed;
+      case CanvasPointerAction.eraser:
+        _hold._mappedHoldPointer = event.pointer;
+        _hold._mappedHoldRelease = mapping.release;
+        _hold._mappedHoldIsEyedropper = false;
+        widget.onTemporaryToolHold?.call(CanvasTool.eraser);
+        return _MappedPress.erase;
+      // Falls through into the normal stroke start below with the
+      // erase-substituted settings snapshot.
+    }
+  }
+
+  /// With the fill tool armed the press IS the fill: off the pasteboard
+  /// it does nothing, on touch it waits for the release (a two-finger
+  /// navigation may follow), else it runs at once. True when consumed.
+  bool _pressAsFillTap(
+    PointerDownEvent event,
+    CanvasPoint canvasPosition, {
+    required bool startsInsidePasteboard,
+  }) {
+    final fillDabAt = widget.fillDabAt;
+    if (fillDabAt != null) {
+      // Off-canvas fill taps flow through: the default (stage-bounded)
+      // raster answers null for them, the extended raster fills — the
+      // fill's own boundary options decide, not the pointer.
+      // The busy half of this used to be here too; it now lives in
+      // [_runFillTap], which is the only place that can be sure.
+      if (!startsInsidePasteboard) {
+        return true;
+      }
+      // The seed and the axis come from the same pair the STROKE path uses
+      // — this view's own position and its own guides, both already in the
+      // space the pointer is in. Reading the symmetry from the project
+      // instead would put the mirror where the pen is not under a pose.
+      // 🚨★★★A TOUCH FILL RESOLVES ON THE LIFT, NOT ON THE TOUCH.
+      //
+      // 유저 2026-08-27, iPhone: 「필 툴인 채로 … undo가 작동안함. 브러시툴
+      // 에서는 잘 작동함. 1핑거 플립모드로 전환하면 또 잘 작동함」 — a
+      // two-finger undo tap put its FIRST finger down, the fill committed a
+      // history entry nobody asked for, and the undo that followed spent
+      // itself on that instead of on the user's work.
+      //
+      // ★The law is already here, thirty lines up: when a second finger
+      // arrives, a touch stroke that has not passed slop is DISCARDED —
+      // "the first finger turned out to be the start of a pinch, not a
+      // stroke". That branch is exactly why the brush tool works and this
+      // one did not: a zero-length stroke has nothing to commit, while the
+      // fill had already flooded, revealed and queued its commit.
+      //
+      // ⛔The fix cannot be 「commit, then undo it when the second finger
+      // shows」 — [[no-optimistic-commit-then-revert]], 유저: 「한 프레임
+      // 보이는 건 무조건 걸린다」. So the REVEAL waits with the commit; a
+      // tap that turns out to be a pinch never draws anything at all.
+      //
+      // Pen and mouse are untouched: they cannot be half of a pinch, and
+      // the instant reveal is the whole point of R22-A.
+      if (event.kind == PointerDeviceKind.touch) {
+        _fillTapPointer = event.pointer;
+        _fillTapSeed = canvasPosition;
+        return true;
+      }
+      _fill.runFillTap(canvasPosition);
+      return true;
+    }
+    return false;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -1185,4 +1237,14 @@ class _InteractiveBrushEditCanvasViewState
 
   int _fillOverlayToken = 0;
 
+}
+
+/// What a mapped press did with the pointer-down (see
+/// [_InteractiveBrushEditCanvasViewState._pressAsMappedAction]).
+enum _MappedPress {
+  /// The mapping ate the press: nothing else happens on this down.
+  consumed,
+
+  /// An eraser hold began: the stroke that follows erases.
+  erase,
 }
