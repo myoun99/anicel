@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -66,20 +64,14 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
   /// The strip's thickness along the ruler's bottom edge.
   static const double readyBarThickness = 3;
 
-  ({int startIndex, int endIndexExclusive}) _visibleWindow() {
-    if (viewportMainExtent <= 0 || cellWidth <= 0) {
-      return (startIndex: 0, endIndexExclusive: renderedFrames);
-    }
-    final window = timelineFrameWindowFor(
-      bucket: windowBucket.value,
-      cellExtent: cellWidth,
-      viewportExtent: viewportMainExtent,
-    );
-    return (
-      startIndex: math.max(0, window.startIndex),
-      endIndexExclusive: math.min(renderedFrames, window.endIndexExclusive),
-    );
-  }
+  ({int startIndex, int endIndexExclusive}) _visibleWindow() =>
+      visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: cellWidth,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: renderedFrames,
+      );
 
   /// The ready RUNS this overlay would draw — the probe surface tests read
   /// instead of scraping the canvas.

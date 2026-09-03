@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -119,28 +117,14 @@ class TimelineCursorLayer extends StatelessWidget {
   /// Semantics key marking the selected cell in this grid's namespace.
   final ValueKey<String> selectedSemanticsKey;
 
-  ({int startIndex, int endIndexExclusive}) _visibleWindow() {
-    final bucket = windowBucket;
-    final cell = metrics.frameCellWidth;
-    if (bucket == null || viewportMainExtent <= 0 || cell <= 0) {
-      return (
-        startIndex: frameStartIndex,
-        endIndexExclusive: frameEndIndexExclusive,
+  ({int startIndex, int endIndexExclusive}) _visibleWindow() =>
+      visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: metrics.frameCellWidth,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive: frameEndIndexExclusive,
       );
-    }
-    final window = timelineFrameWindowFor(
-      bucket: bucket.value,
-      cellExtent: cell,
-      viewportExtent: viewportMainExtent,
-    );
-    return (
-      startIndex: math.max(frameStartIndex, window.startIndex),
-      endIndexExclusive: math.min(
-        frameEndIndexExclusive,
-        window.endIndexExclusive,
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

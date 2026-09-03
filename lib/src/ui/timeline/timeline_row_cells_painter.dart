@@ -252,27 +252,14 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// The frame window paint() actually draws: the full bounds under the
   /// classic contract, the bucket-derived span (shared policy) under the
   /// self-windowing one. THE probe surface for visibility tests.
-  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
-    final bucket = windowBucket;
-    if (bucket == null || viewportMainExtent <= 0 || frameCellExtent <= 0) {
-      return (
-        startIndex: frameStartIndex,
-        endIndexExclusive: frameEndIndexExclusive,
+  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
+      visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: frameCellExtent,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive: frameEndIndexExclusive,
       );
-    }
-    final window = timelineFrameWindowFor(
-      bucket: bucket.value,
-      cellExtent: frameCellExtent,
-      viewportExtent: viewportMainExtent,
-    );
-    return (
-      startIndex: math.max(frameStartIndex, window.startIndex),
-      endIndexExclusive: math.min(
-        frameEndIndexExclusive,
-        window.endIndexExclusive,
-      ),
-    );
-  }
 
   /// What this row's BAND shows at [frameIndex] — the union for a row that
   /// has both spans and cels, the layer's own cels for everything else.
