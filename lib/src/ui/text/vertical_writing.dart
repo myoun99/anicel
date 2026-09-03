@@ -374,29 +374,7 @@ List<VerticalTextCell> verticalTextCells(
     // spaces stay inside the run, so `Pass Through` is one turned phrase
     // rather than two words with a stacked blank between them.
     if (latinForm == VerticalLatinForm.sideways && _isLatinLetter(glyph)) {
-      var end = index;
-      var lastLetter = index;
-      while (end < glyphs.length) {
-        if (_isLatinLetter(glyphs[end])) {
-          lastLetter = end;
-          end += 1;
-          continue;
-        }
-        // A space carries on only into another WORD. Requiring two letters
-        // after it keeps cel notation out: `FOLLOW PAN A2` is the phrase
-        // `FOLLOW PAN` and then the cel `A2`, not `FOLLOW PAN A` with a
-        // stray `2` — the single letter of a cel name belongs to its
-        // number, and it stands upright the way a paper sheet writes it.
-        if (glyphs[end] == ' ' &&
-            end + 2 < glyphs.length &&
-            _isLatinLetter(glyphs[end + 1]) &&
-            _isLatinLetter(glyphs[end + 2])) {
-          end += 1;
-          continue;
-        }
-        break;
-      }
-      end = lastLetter + 1;
+      final end = _latinRunEnd(glyphs, index);
       final run = glyphs.sublist(index, end).join();
       // A LONE letter keeps standing upright — `A-1` reads `A│1`, which is
       // what a paper sheet writes.
@@ -413,10 +391,7 @@ List<VerticalTextCell> verticalTextCells(
       }
     }
     if (tateChuYokoDigits >= 2 && _isDigit(glyph)) {
-      var end = index;
-      while (end < glyphs.length && _isDigit(glyphs[end])) {
-        end += 1;
-      }
+      final end = _digitRunEnd(glyphs, index);
       final runLength = end - index;
       if (runLength >= 2 && runLength <= tateChuYokoDigits) {
         cells.add(
@@ -447,6 +422,44 @@ List<VerticalTextCell> verticalTextCells(
     index += 1;
   }
   return cells;
+}
+
+/// Where the run of Latin letters starting at [index] ends (exclusive):
+/// letters run on, and a single space between two letters joins the
+/// word on either side of it into one run.
+int _latinRunEnd(List<String> glyphs, int index) {
+  var end = index;
+  var lastLetter = index;
+  while (end < glyphs.length) {
+    if (_isLatinLetter(glyphs[end])) {
+      lastLetter = end;
+      end += 1;
+      continue;
+    }
+    // A space carries on only into another WORD. Requiring two letters
+    // after it keeps cel notation out: `FOLLOW PAN A2` is the phrase
+    // `FOLLOW PAN` and then the cel `A2`, not `FOLLOW PAN A` with a
+    // stray `2` — the single letter of a cel name belongs to its
+    // number, and it stands upright the way a paper sheet writes it.
+    if (glyphs[end] == ' ' &&
+        end + 2 < glyphs.length &&
+        _isLatinLetter(glyphs[end + 1]) &&
+        _isLatinLetter(glyphs[end + 2])) {
+      end += 1;
+      continue;
+    }
+    break;
+  }
+  return lastLetter + 1;
+}
+
+/// Where the run of digits starting at [index] ends (exclusive).
+int _digitRunEnd(List<String> glyphs, int index) {
+  var end = index;
+  while (end < glyphs.length && _isDigit(glyphs[end])) {
+    end += 1;
+  }
+  return end;
 }
 
 /// The size a vertical column settles on: how tall each cell is, how big
