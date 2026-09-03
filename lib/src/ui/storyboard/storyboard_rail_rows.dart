@@ -579,6 +579,43 @@ class _StoryboardRailRows {
 
   List<Widget> railRowsForTrack(Track track, int index) {
     final activeCut = _state._standing.activeCutOf(track);
+    final seRows = _seRowsFor(track);
+    final vRows = _vRowsFor(track, index, activeCut);
+    return [
+      // The transition row heads the group. It is a FIXTURE like S1/S2 — one
+      // per track, always there — so it takes no filter gate and no reorder
+      // drag: there is nothing to hide it behind and nowhere to move it to.
+      //
+      // The band says CAM because the transition row IS a camera-section row
+      // ([timelineSectionForLayerKind]) — the label comes from that policy
+      // rather than being typed here, so the two rails cannot start naming
+      // the same section differently.
+      _sectionZoneGroup(
+        keyValue: 'storyboard-section-zone-${track.id.value}-transition',
+        label: timelineSectionLabel(TimelineSection.camera),
+        rows: [_state._rows.transitionLabelRow(track)],
+      ),
+      // A section with no rows left draws no zone: an empty SE band would
+      // be a label over nothing once the filter took its rows.
+      if (seRows.isNotEmpty)
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-se',
+          label: 'SE',
+          rows: seRows,
+        ),
+      if (_filterAllowsTrackRow(track))
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-v',
+          label: 'V',
+          rows: vRows,
+        ),
+    ];
+  }
+
+  /// The SE section's rail rows for [track], top slot first: each slot
+  /// the filter allows, with its audio lane label and transform lane
+  /// labels while the row is expanded.
+  List<Widget> _seRowsFor(Track track) {
     final topSlot = _seSlotCount(track) - 1;
     final seRows = <Widget>[
       for (var slot = topSlot; slot >= 0; slot--)
@@ -615,6 +652,13 @@ class _StoryboardRailRows {
           ],
         ],
     ];
+    return seRows;
+  }
+
+  /// The V section's rail rows for [track]: the draggable track label
+  /// row (following the playhead), and the track's effect lane rows while
+  /// its transform group is expanded.
+  List<Widget> _vRowsFor(Track track, int index, Cut? activeCut) {
     final vRows = <Widget>[
       _state._rows.trackDraggable(
         track,
@@ -741,35 +785,7 @@ class _StoryboardRailRows {
         ),
       ],
     ];
-    return [
-      // The transition row heads the group. It is a FIXTURE like S1/S2 — one
-      // per track, always there — so it takes no filter gate and no reorder
-      // drag: there is nothing to hide it behind and nowhere to move it to.
-      //
-      // The band says CAM because the transition row IS a camera-section row
-      // ([timelineSectionForLayerKind]) — the label comes from that policy
-      // rather than being typed here, so the two rails cannot start naming
-      // the same section differently.
-      _sectionZoneGroup(
-        keyValue: 'storyboard-section-zone-${track.id.value}-transition',
-        label: timelineSectionLabel(TimelineSection.camera),
-        rows: [_state._rows.transitionLabelRow(track)],
-      ),
-      // A section with no rows left draws no zone: an empty SE band would
-      // be a label over nothing once the filter took its rows.
-      if (seRows.isNotEmpty)
-        _sectionZoneGroup(
-          keyValue: 'storyboard-section-zone-${track.id.value}-se',
-          label: 'SE',
-          rows: seRows,
-        ),
-      if (_filterAllowsTrackRow(track))
-        _sectionZoneGroup(
-          keyValue: 'storyboard-section-zone-${track.id.value}-v',
-          label: 'V',
-          rows: vRows,
-        ),
-    ];
+    return vRows;
   }
 
   /// One section's rail rows with the ZONE spanning the whole group over
