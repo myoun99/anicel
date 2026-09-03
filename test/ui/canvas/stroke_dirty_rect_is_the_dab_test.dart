@@ -140,15 +140,17 @@ void main() {
     // dab writes whole texels but the composite around it need not land on
     // them — a posed sibling or a rounded edge can put ink a fraction over
     // the line, and a patch trusting the exact rect leaves a hairline of
-    // the previous frame. The tile here is 8 wide, so an uninflated rect
-    // measures 8 and this one must measure more (the token-walk split's
-    // surviving mutant, 2026-09-04).
+    // the previous frame.
+    // 🚨MEASURED, BOTH WAYS (2026-09-04): the union here is 24 wide and
+    // this rect is 26 — one pixel added on each side. A `greaterThan(8)`
+    // bound was the first try and it never failed, because the union
+    // already clears 8: a bound the mutation cannot cross pins nothing.
     expect(
       firstDirty!.width,
-      greaterThan(8),
+      26.0,
       reason:
-          'one 8px tile plus the hairline inflate — an exact-rect patch '
-          'leaves a line of the frame before along the dab',
+          'the 24-wide union plus the hairline inflate — an exact-rect '
+          'patch leaves a line of the frame before along the dab',
     );
 
     // Dab 2 lands in tile 2 — the far end of the line. Tile 0's overlay
