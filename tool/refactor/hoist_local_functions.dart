@@ -150,19 +150,22 @@ void main(List<String> rawArgs) {
       // nullable field, assigned where the local was.
       fieldLines.add('  late final $type $name;');
       methodText = methodText.replaceAll(
-        RegExp('\\b(?:var|final) $name = '),
+        // `=(?=\s)`: the initializer may start on the next line.
+        RegExp('\\b(?:var|final) $name =(?=\\s)'),
         '$name = ',
       );
     } else if (type.endsWith('!')) {
       fieldLines.add('  late ${type.substring(0, type.length - 1)} $name;');
       methodText = methodText.replaceAll(
-        RegExp('\\b(?:var|final) $name = '),
+        // `=(?=\s)`: the initializer may start on the next line.
+        RegExp('\\b(?:var|final) $name =(?=\\s)'),
         '$name = ',
       );
     } else {
       fieldLines.add('  late final $type $name;');
       methodText = methodText.replaceAll(
-        RegExp('\\b(?:var|final) $name = '),
+        // `=(?=\s)`: the initializer may start on the next line.
+        RegExp('\\b(?:var|final) $name =(?=\\s)'),
         '$name = ',
       );
     }
@@ -201,11 +204,12 @@ String _rename(String text, Map<String, String> renames) {
   for (final entry in renames.entries) {
     out = out.replaceAllMapped(
       // `$name` in an interpolation IS a use and is renamed with the rest;
-      // only a member access or a longer identifier is left alone. A label
-      // is `name:` with the colon attached — `a ? name : b` is a use (the
-      // first cut of the layer-stack paint lost two ternaries to a looser
-      // guard).
-      RegExp('(?<![.\\w])${entry.key}\\b(?!:(?!:))'),
+      // only a member access (`x.name`, but not a spread `...name`) or a
+      // longer identifier is left alone. A label is `name:` with the colon
+      // attached — `a ? name : b` is a use (the first cut of the
+      // layer-stack paint lost two ternaries to a looser guard, and the
+      // bottom bar's `...joined(` to a guard that took a spread for a dot).
+      RegExp('(?<!\\w)(?<!\\.(?<!\\.\\.))${entry.key}\\b(?!:(?!:))'),
       (_) => entry.value,
     );
   }
