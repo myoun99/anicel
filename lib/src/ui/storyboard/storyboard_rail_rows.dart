@@ -412,13 +412,6 @@ class _StoryboardRailRows {
   /// ⚠️[leadingOrigin] is 0: this rail's row plate starts at the rail's own
   /// edge and pads only on the right, unlike the layer rail's bordered plate.
   List<RailToggleColumn<StoryboardRailRow>> _railSwipeColumns() {
-    final toggleCutVisibility = _state.widget.onToggleCutPictureVisibility;
-    final cutVisibleOf = _state.widget.cutPictureVisibleOf;
-    final toggleLayerVisibility = _state.widget.onToggleLayerVisibility;
-    final toggleTrackFx = _state.widget.onToggleTrackFx;
-    final trackFxStateOf = _state.widget.trackFxStateOf;
-    final toggleLayerFx = _state.widget.onToggleLayerFx;
-    final layerFxStateOf = _state.widget.layerFxStateOf;
     final toggleTimesheet = _state.widget.onToggleLayerTimesheet;
     final toggleTrackLane = _state.widget.onToggleTrackLane;
     final toggleSeRowLane = _state.widget.onToggleSeRowLane;
@@ -427,133 +420,161 @@ class _StoryboardRailRows {
     // track, which is what the row itself draws (UI-R13 #2). A track with no
     // cut there has no subject, so the column reads null and the sweep steps
     // over it.
-    Cut? cutOf(Track track) {
-      final index = _state.widget.project.tracks.indexOf(track);
-      return index < 0 ? null : _state._standing.cutAtPlayheadOn(index);
-    }
 
     return railSwipeColumns<StoryboardRailRow>(
       crossExtent: StoryboardPanel._trackLabelWidth,
       leadingOrigin: 0,
-      visibility: (
-        valueOf: (row) {
-          final layer = row.layer;
-          if (layer != null) {
-            return toggleLayerVisibility == null
-                ? null
-                : layerRailEyeIsOn(layer, live: _state.widget.layerEyeOnOf);
-          }
-          if (toggleCutVisibility == null) {
-            return null;
-          }
-          final cut = cutOf(row.track);
-          return cut == null ? null : (cutVisibleOf?.call(cut.id) ?? true);
-        },
-        toggle: (row) {
-          final layer = row.layer;
-          if (layer != null) {
-            toggleLayerVisibility?.call(layer.id);
-            return;
-          }
-          final cut = cutOf(row.track);
-          if (cut != null) {
-            toggleCutVisibility?.call(cut.id);
-          }
-        },
-      ),
+      visibility: (valueOf: _rowEyeOn, toggle: _toggleRowEye),
       // The transition row draws no fx switch, and a kind that shows none
       // draws none either — both read null, which is the same answer the row
       // builder gives by mounting nothing.
-      fx: (
-        valueOf: (row) {
-          final layer = row.layer;
-          if (layer != null) {
-            return toggleLayerFx == null || !layerKindShowsFxToggle(layer.kind)
-                ? null
-                : (layerFxStateOf?.call(layer.id) ?? LayerFxState.on) ==
-                      LayerFxState.on;
-          }
-          return toggleTrackFx == null || trackFxStateOf == null
-              ? null
-              : trackFxStateOf(row.track) == LayerFxState.on;
-        },
-        toggle: (row) {
-          final layer = row.layer;
-          if (layer != null) {
-            toggleLayerFx?.call(layer.id);
-            return;
-          }
-          toggleTrackFx?.call(row.track);
-        },
-      ),
+      fx: (valueOf: _rowFxOn, toggle: _toggleRowFx),
       // ⛔The V row mounts NO sheet toggle, so it reads null here — the same
       // rule an attach row follows on the layer rail.
       timesheet: toggleTimesheet == null
           ? null
-          : (
-              valueOf: (row) {
-                final layer = row.layer;
-                return layer != null &&
-                        layerKindEligibleForTimesheetToggle(layer.kind) &&
-                        layer.attachedToLayerId == null
-                    ? (_state.widget.layerOnTimesheetOf?.call(layer.id) ??
-                          layer.onTimesheet)
-                    : null;
-              },
-              toggle: (row) {
-                final layer = row.layer;
-                if (layer != null) {
-                  toggleTimesheet(layer.id);
-                }
-              },
-            ),
+          : (valueOf: _rowOnTimesheet, toggle: _toggleRowTimesheet),
       // Two verbs again, and a third row kind with neither: the V row's
       // twirl opens the TRACK's transform lanes, an S row's opens that
       // SLOT's audio and transform lanes, and the transition row has none.
       laneToggle: toggleTrackLane == null && toggleSeRowLane == null
           ? null
-          : (
-              valueOf: (row) {
-                final slot = row.seSlot;
-                if (slot != null) {
-                  final hasLanes =
-                      _seAudioLaneOpen(row.track, slot) ||
-                      _seTransformLanes(
-                        row.track,
-                        slot,
-                        _trackSeAt(row.track, slot),
-                      ).isNotEmpty;
-                  return toggleSeRowLane == null || !hasLanes
-                      ? null
-                      : (_state.widget.seRowLaneOpenOf?.call(row.track, slot) ??
-                            _state.widget.expandedSeAudioRows.contains(
-                              StoryboardPanel.seRowKey(row.track, slot),
-                            ));
-                }
-                if (row.layer != null) {
-                  // The transition row: no twirl at all.
-                  return null;
-                }
-                return toggleTrackLane == null ||
-                        _trackOwnLanes(row.track).isEmpty
-                    ? null
-                    : (_state.widget.trackLaneOpenOf?.call(row.track) ??
-                          _state.widget.expandedTransformTracks.contains(
-                            row.track.id.value,
-                          ));
-              },
-              toggle: (row) {
-                final slot = row.seSlot;
-                if (slot != null) {
-                  toggleSeRowLane?.call(row.track, slot);
-                  return;
-                }
-                if (row.layer == null) {
-                  toggleTrackLane?.call(row.track);
-                }
-              },
-            ),
+          : (valueOf: _rowLaneOpen, toggle: _toggleRowLane),
     );
+  }
+
+  Cut? _cutOf(Track track) {
+    final index = _state.widget.project.tracks.indexOf(track);
+    return index < 0 ? null : _state._standing.cutAtPlayheadOn(index);
+  }
+
+  /// The eye column's value for a row: the layer's eye, or the cut's
+  /// picture visibility on a V row — null where the column has no verb.
+  bool? _rowEyeOn(StoryboardRailRow row) {
+    final toggleCutVisibility = _state.widget.onToggleCutPictureVisibility;
+    final cutVisibleOf = _state.widget.cutPictureVisibleOf;
+    final toggleLayerVisibility = _state.widget.onToggleLayerVisibility;
+    final layer = row.layer;
+    if (layer != null) {
+      return toggleLayerVisibility == null
+          ? null
+          : layerRailEyeIsOn(layer, live: _state.widget.layerEyeOnOf);
+    }
+    if (toggleCutVisibility == null) {
+      return null;
+    }
+    final cut = _cutOf(row.track);
+    return cut == null ? null : (cutVisibleOf?.call(cut.id) ?? true);
+  }
+
+  void _toggleRowEye(StoryboardRailRow row) {
+    final toggleCutVisibility = _state.widget.onToggleCutPictureVisibility;
+    final toggleLayerVisibility = _state.widget.onToggleLayerVisibility;
+    final layer = row.layer;
+    if (layer != null) {
+      toggleLayerVisibility?.call(layer.id);
+      return;
+    }
+    final cut = _cutOf(row.track);
+    if (cut != null) {
+      toggleCutVisibility?.call(cut.id);
+    }
+  }
+
+  /// The FX column's value for a row: the layer's FX state where the kind
+  /// shows the toggle, the track's on a V row — null where it has no verb.
+  bool? _rowFxOn(StoryboardRailRow row) {
+    final toggleTrackFx = _state.widget.onToggleTrackFx;
+    final trackFxStateOf = _state.widget.trackFxStateOf;
+    final toggleLayerFx = _state.widget.onToggleLayerFx;
+    final layerFxStateOf = _state.widget.layerFxStateOf;
+    final layer = row.layer;
+    if (layer != null) {
+      return toggleLayerFx == null || !layerKindShowsFxToggle(layer.kind)
+          ? null
+          : (layerFxStateOf?.call(layer.id) ?? LayerFxState.on) ==
+                LayerFxState.on;
+    }
+    return toggleTrackFx == null || trackFxStateOf == null
+        ? null
+        : trackFxStateOf(row.track) == LayerFxState.on;
+  }
+
+  void _toggleRowFx(StoryboardRailRow row) {
+    final toggleTrackFx = _state.widget.onToggleTrackFx;
+    final toggleLayerFx = _state.widget.onToggleLayerFx;
+    final layer = row.layer;
+    if (layer != null) {
+      toggleLayerFx?.call(layer.id);
+      return;
+    }
+    toggleTrackFx?.call(row.track);
+  }
+
+  /// The timesheet column's value: whether the layer is on the sheet, for
+  /// an eligible unattached layer row — null elsewhere.
+  bool? _rowOnTimesheet(StoryboardRailRow row) {
+    final layer = row.layer;
+    return layer != null &&
+            layerKindEligibleForTimesheetToggle(layer.kind) &&
+            layer.attachedToLayerId == null
+        ? (_state.widget.layerOnTimesheetOf?.call(layer.id) ??
+              layer.onTimesheet)
+        : null;
+  }
+
+  void _toggleRowTimesheet(StoryboardRailRow row) {
+    final toggleTimesheet = _state.widget.onToggleLayerTimesheet;
+    final layer = row.layer;
+    if (layer != null) {
+      toggleTimesheet?.call(layer.id);
+    }
+  }
+
+  /// The lane column's value: an SE row's lane state where it has lanes,
+  /// a V row's transform lanes where the track owns any — null elsewhere.
+  bool? _rowLaneOpen(StoryboardRailRow row) {
+    final toggleTrackLane = _state.widget.onToggleTrackLane;
+    final toggleSeRowLane = _state.widget.onToggleSeRowLane;
+    final slot = row.seSlot;
+    if (slot != null) {
+      final hasLanes =
+          _seAudioLaneOpen(row.track, slot) ||
+          _seTransformLanes(
+            row.track,
+            slot,
+            _trackSeAt(row.track, slot),
+          ).isNotEmpty;
+      return toggleSeRowLane == null || !hasLanes
+          ? null
+          : (_state.widget.seRowLaneOpenOf?.call(row.track, slot) ??
+                _state.widget.expandedSeAudioRows.contains(
+                  StoryboardPanel.seRowKey(row.track, slot),
+                ));
+    }
+    if (row.layer != null) {
+      // The transition row: no twirl at all.
+      return null;
+    }
+    return toggleTrackLane == null || _trackOwnLanes(row.track).isEmpty
+        ? null
+        : (_state.widget.trackLaneOpenOf?.call(row.track) ??
+              _state.widget.expandedTransformTracks.contains(
+                row.track.id.value,
+              ));
+  }
+
+  void _toggleRowLane(StoryboardRailRow row) {
+    final toggleTrackLane = _state.widget.onToggleTrackLane;
+    final toggleSeRowLane = _state.widget.onToggleSeRowLane;
+    final slot = row.seSlot;
+    if (slot != null) {
+      toggleSeRowLane?.call(row.track, slot);
+      return;
+    }
+    if (row.layer == null) {
+      toggleTrackLane?.call(row.track);
+    }
   }
 
   List<Widget> railRowsForTrack(Track track, int index) {
