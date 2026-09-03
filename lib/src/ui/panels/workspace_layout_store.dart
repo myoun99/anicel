@@ -125,27 +125,29 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
     return null;
   }
 
-  final knownTabs = <String>{
-    for (final group in defaults.values) ...?group?.tabs,
-  };
-
-  final seen = <String>{};
-  final tabsByDock = <String, List<String>>{
-    for (final dockId in defaults.keys) dockId: <String>[],
-  };
-  final activeByDock = <String, String>{};
-  _readSavedDocks(docksJson, tabsByDock, knownTabs, seen, activeByDock);
+  final read = (
+    tabsByDock: <String, List<String>>{
+      for (final dockId in defaults.keys) dockId: <String>[],
+    },
+    knownTabs: <String>{for (final group in defaults.values) ...?group?.tabs},
+    seen: <String>{},
+    activeByDock: <String, String>{},
+  );
+  _readSavedDocks(docksJson, read);
 
   // Panels the user CLOSED stay closed; anything else missing from the
   // save (panels added by an app update) rejoins its default dock's group,
   // so an update-added tab slips into the existing strip invisibly.
-  _rejoinDefaultTabs(payload, defaults, tabsByDock, seen);
+  _rejoinDefaultTabs(payload, defaults, read);
 
   final docks = <String, DockGroup?>{
-    for (final entry in tabsByDock.entries)
+    for (final entry in read.tabsByDock.entries)
       entry.key: entry.value.isEmpty
           ? null
-          : DockGroup(tabs: entry.value, activeTabId: activeByDock[entry.key]),
+          : DockGroup(
+              tabs: entry.value,
+              activeTabId: read.activeByDock[entry.key],
+            ),
   };
 
   // ⚠️Not every saved extent names a DOCK. A rail's shared width is stored
@@ -157,7 +159,7 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
   // the keys that are extents but not docks; everything else is still junk.
   final dockExtents = _restoredDockExtents(layoutJson, docks, extraExtentKeys);
 
-  final lockedTabIds = _restoredLockedTabIds(payload, knownTabs);
+  final lockedTabIds = _restoredLockedTabIds(payload, read.knownTabs);
 
   return (
     docks: docks,
@@ -205,8 +207,7 @@ Map<String, double> _restoredDockExtents(
 void _rejoinDefaultTabs(
   Map<String, Object?> payload,
   Map<String, DockGroup?> defaults,
-  Map<String, List<String>> tabsByDock,
-  Set<String> seen,
+  _DockRead read,
 ) {
   final hiddenJson = payload['hiddenTabs'];
   final hiddenTabs = <String>{
@@ -219,26 +220,30 @@ void _rejoinDefaultTabs(
     if (group == null) {
       continue;
     }
-    tabsByDock[entry.key]!.addAll([
+    read.tabsByDock[entry.key]!.addAll([
       for (final tab in group.tabs)
-        if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
+        if (!hiddenTabs.contains(tab) && read.seen.add(tab)) tab,
     ]);
   }
 }
 
-/// The saved docks: each dock's sections join one strip, a tab counts once
-/// (the first section that names it), and only tabs the defaults know are
-/// kept. The FIRST section's active tab is the dock's.
-void _readSavedDocks(
-  Map<dynamic, dynamic> docksJson,
+/// A dock layout being read back: the tabs each dock has gathered so far,
+/// the tabs the defaults know, the tabs already placed (a tab counts once),
+/// and each dock's active tab.
+typedef _DockRead = ({
   Map<String, List<String>> tabsByDock,
   Set<String> knownTabs,
   Set<String> seen,
   Map<String, String> activeByDock,
-) {
+});
+
+/// The saved docks: each dock's sections join one strip, a tab counts once
+/// (the first section that names it), and only tabs the defaults know are
+/// kept. The FIRST section's active tab is the dock's.
+void _readSavedDocks(Map<dynamic, dynamic> docksJson, _DockRead read) {
   for (final entry in docksJson.entries) {
     final dockId = entry.key;
-    if (dockId is! String || !tabsByDock.containsKey(dockId)) {
+    if (dockId is! String || !read.tabsByDock.containsKey(dockId)) {
       continue;
     }
     // One group per dock, written as a map; a list is a layout from when a
@@ -249,27 +254,34 @@ void _readSavedDocks(
       _ => const [],
     };
     for (final groupJson in groupsJson) {
-      if (groupJson is! Map) {
-        continue;
-      }
-      final tabsJson = groupJson['tabs'];
-      if (tabsJson is! List) {
-        continue;
-      }
-      final tabs = <String>[
-        for (final tab in tabsJson)
-          if (tab is String && knownTabs.contains(tab) && seen.add(tab)) tab,
-      ];
-      if (tabs.isEmpty) {
-        continue;
-      }
-      tabsByDock[dockId]!.addAll(tabs);
-      // The FIRST section's active tab wins: it is the one the user was
-      // looking at in the strip that survives as the group's strip.
-      final active = groupJson['active'];
-      if (active is String && tabs.contains(active)) {
-        activeByDock.putIfAbsent(dockId, () => active);
-      }
+      _readSavedGroup(groupJson, dockId, read);
     }
+  }
+}
+
+/// One saved section of [dockId] joins its strip: the tabs the defaults
+/// know that no earlier section placed. The FIRST section's active tab
+/// wins: it is the one the user was looking at in the strip that survives
+/// as the group's strip.
+void _readSavedGroup(Object? groupJson, String dockId, _DockRead read) {
+  if (groupJson is! Map) {
+    return;
+  }
+  final tabsJson = groupJson['tabs'];
+  if (tabsJson is! List) {
+    return;
+  }
+  final tabs = <String>[
+    for (final tab in tabsJson)
+      if (tab is String && read.knownTabs.contains(tab) && read.seen.add(tab))
+        tab,
+  ];
+  if (tabs.isEmpty) {
+    return;
+  }
+  read.tabsByDock[dockId]!.addAll(tabs);
+  final active = groupJson['active'];
+  if (active is String && tabs.contains(active)) {
+    read.activeByDock.putIfAbsent(dockId, () => active);
   }
 }
