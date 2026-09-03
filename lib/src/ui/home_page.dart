@@ -65,6 +65,11 @@ import 'widgets/cursor_notice.dart';
 /// editor_canvas_area.dart) so parallel work on different panels stays in
 /// different files; the workspace only owns the dock layout and shared
 /// panel view state.
+/// An app-side store, or null under `flutter test`: FLUTTER_TEST keeps
+/// widget tests off the developer's saved files (UI-R10 #7 / UI-R22 #5).
+T? _unlessTesting<T>(T Function() make) =>
+    Platform.environment.containsKey('FLUTTER_TEST') ? null : make();
+
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -194,9 +199,7 @@ class _HomePageState extends State<HomePage> {
   /// user's persisted overrides. Persistence is disabled under
   /// FLUTTER_TEST like the workspace layout.
   late final EditorShortcutBindings _shortcuts = EditorShortcutBindings(
-    store: Platform.environment.containsKey('FLUTTER_TEST')
-        ? null
-        : ShortcutSettingsStore(),
+    store: _unlessTesting(ShortcutSettingsStore.new),
   );
 
   /// Autosave (P3): dirty-session snapshots into the recovery folder. The
@@ -254,31 +257,17 @@ class _HomePageState extends State<HomePage> {
       // Language + accent settings persist app-side (UI-R10 #7 /
       // UI-R22 #5); FLUTTER_TEST keeps widget tests off the developer's
       // saved files.
-      languageSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AppLanguageSettingsStore(),
-      accentSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AppAccentSettingsStore(),
-      inputSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AppInputSettingsStore(),
-      saveSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AppSaveSettingsStore(),
-      audioSyncSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AudioSyncSettingsStore(),
+      languageSettingsStore: _unlessTesting(AppLanguageSettingsStore.new),
+      accentSettingsStore: _unlessTesting(AppAccentSettingsStore.new),
+      inputSettingsStore: _unlessTesting(AppInputSettingsStore.new),
+      saveSettingsStore: _unlessTesting(AppSaveSettingsStore.new),
+      audioSyncSettingsStore: _unlessTesting(AudioSyncSettingsStore.new),
       // R28 #9: the pasteboard color, on the accents' app-state idiom.
-      workspaceColorsStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AppWorkspaceColorsStore(),
+      workspaceColorsStore: _unlessTesting(AppWorkspaceColorsStore.new),
       // R11: the UI scale's WRITE half only — it is RESTORED in `main()`
       // before the first frame, because a late restore would lay the
       // window out at 100% and then jump.
-      uiScaleStore: Platform.environment.containsKey('FLUTTER_TEST')
-          ? null
-          : AppUiScaleStore(),
+      uiScaleStore: _unlessTesting(AppUiScaleStore.new),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.
@@ -286,9 +275,7 @@ class _HomePageState extends State<HomePage> {
         _canvasSelectionCommands.confirmPendingMove;
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
-    _paletteService = Platform.environment.containsKey('FLUTTER_TEST')
-        ? null
-        : ColorPaletteFileService();
+    _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
       _paletteService?.loadOrDefaults().then((palette) {
         if (mounted) {
@@ -696,14 +683,12 @@ class _HomePageState extends State<HomePage> {
 
   /// 🚨T28: play or stop, and nothing in between. The middle branch
   /// used to resume a paused transport — a state that no longer
-  /// exists.
+  /// exists. The STOP half lives in the gate every bound actuation
+  /// passes first (T28-c, [_consumedByPlayback]): a running transport
+  /// is already stopped by the time this key arrives, so here it only
+  /// ever plays — the mutation campaign found the stop arm unreachable.
   void _togglePlayback() {
-    final playback = _session.playback;
-    if (playback.isPlaying) {
-      playback.stop();
-      return;
-    }
-    playback.play(
+    _session.playback.play(
       scope: PlaybackScope.activeCut,
       startGlobalFrame: _session.currentFrameIndex,
     );
