@@ -13,8 +13,14 @@ import '../../tool/refactor/clone_scan.dart';
 /// that the number does not rise. The ceiling is the count when the round
 /// closed; a session that unifies more lowers it here, and a session that
 /// pastes a body is stopped here with the pair named.
+///
+/// Round 6 (2026-09-04) refined the scan: a run with fewer than three
+/// distinct control-flow or operator tokens — a named-argument list, a
+/// field reset list — is a shape, not a law, and no longer counts. The
+/// ceiling is the refined scan's count for this tree (the same scan gave
+/// 673 at the round-2 commit that set 2157).
 void main() {
-  const ceiling = 2157;
+  const ceiling = 671;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

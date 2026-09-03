@@ -4,7 +4,9 @@
 // CANDIDATE — connascence (the same algorithm, whatever the text) is the
 // judgment, and it is made by reading, not here. The audit's Round 1
 // (2026-09-03) worked the list from the top; the architecture ratchet
-// keeps the count from growing back.
+// keeps the count from growing back. A run with no control flow and no
+// operators in it (an argument list, a field list) is a shape, not a law,
+// and is not counted — see [_carriesAnAlgorithm].
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/features.dart';
@@ -203,6 +205,7 @@ List<CloneCandidate> cloneCandidates(
         }
         if (ba == bb && ia < ib + len && ib < ia + len) continue;
         if (!seen.add('$ba:$ia:$bb:$ib')) continue;
+        if (!_carriesAnAlgorithm(bodies[ba].tokens, ia, len)) continue;
         hits.add(CloneCandidate(bodies[ba], ia, bodies[bb], ib, len));
       }
     }
@@ -226,4 +229,35 @@ List<CloneCandidate> cloneCandidates(
     result.removeWhere((h) => identical(h.a, h.b));
   }
   return result;
+}
+
+/// Tokens that make a run an ALGORITHM rather than a shape: control flow
+/// and operators. Identifiers, literals, punctuation and type syntax are
+/// what a named-argument list or a field list is made of.
+const _algorithmTokens = {
+  'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+  'return', 'break', 'continue', 'throw', 'try', 'catch', 'finally',
+  'await', 'yield', 'in', 'is', 'as', //
+  '=', '==', '!=', '+', '-', '*', '/', '%', '~/', '<=', '>=', '&&', '||',
+  '!', '??', '?.', '..', '?..', '+=', '-=', '*=', '/=', '??=', '++', '--',
+  '&', '|', '^', '~', '<<', '>>', '>>>',
+};
+
+/// Whether the run of [length] tokens from [start] carries an algorithm.
+/// Round 6 (2026-09-04) found the scan counting the named-argument lists
+/// of value-object constructions — `name: name,` forty tokens long — as
+/// copies of one another across unrelated constructors, and the field
+/// reset lists (`x = null;` over and over) of unrelated drags likewise. A
+/// run with fewer than three DISTINCT control-flow or operator tokens is
+/// a shape, not a law, and is not a candidate.
+bool _carriesAnAlgorithm(List<CloneToken> tokens, int start, int length) {
+  final kinds = <String>{};
+  for (var i = start; i < start + length; i++) {
+    final norm = tokens[i].norm;
+    if (_algorithmTokens.contains(norm)) {
+      kinds.add(norm);
+      if (kinds.length >= 3) return true;
+    }
+  }
+  return false;
 }
