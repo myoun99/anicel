@@ -109,6 +109,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart';
 import '../models/layer_kind.dart';
+import '../models/layer_link_registry.dart';
 import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/media_asset.dart';

@@ -55,14 +55,39 @@ class _TextCelBakes {
     }
   }
 
+  /// Catches one text cel up with its text: null when the session was
+  /// disposed mid-bake (stop touching the stores), else whether the bake
+  /// changed anything. Linked banks share one physical projection, so a
+  /// key the sweep has seen is skipped.
+  Future<bool?> _bakeOneTextCel(Cut cut, Layer layer, Frame frame) async {
+    if (_session._disposed) {
+      return null; // Mid-sweep dispose: stop touching the stores.
+    }
+    final raw = _session.brushFrameKeyForCut(cut, layer.id, frame.id);
+    final key = _sweepRegistry.canonicalCelKey(raw);
+    if (!_sweepSeen.add(key)) {
+      return false; // Linked banks share one physical projection.
+    }
+    final baked = await _catchUpTextCel(cut, frame, raw: raw, key: key);
+    if (baked == null) {
+      return null; // Disposed mid-bake: stop touching the stores.
+    }
+    return baked;
+  }
+
+  /// The sweep in flight: the registry it resolves keys through and the
+  /// keys it has already baked (linked banks share one projection).
+  late LayerLinkRegistry _sweepRegistry;
+  final _sweepSeen = <BrushFrameKey>{};
+
   Future<void> _sweepTextCelBakesOnce() async {
     final project = _session._repository.currentProject;
     if (project == null) {
       _textCelBakedContent.clear();
       return;
     }
-    final registry = project.linkRegistry;
-    final seen = <BrushFrameKey>{};
+    _sweepRegistry = project.linkRegistry;
+    _sweepSeen.clear();
     var changed = false;
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
@@ -71,26 +96,16 @@ class _TextCelBakes {
             continue;
           }
           for (final frame in layer.frames) {
-            if (_session._disposed) {
-              return; // Mid-sweep dispose: stop touching the stores.
-            }
-            final raw = _session.brushFrameKeyForCut(cut, layer.id, frame.id);
-            final key = registry.canonicalCelKey(raw);
-            if (!seen.add(key)) {
-              continue; // Linked banks share one physical projection.
-            }
-            final baked = await _catchUpTextCel(cut, frame, raw: raw, key: key);
+            final baked = await _bakeOneTextCel(cut, layer, frame);
             if (baked == null) {
-              return; // Disposed mid-bake: stop touching the stores.
+              return;
             }
-            if (baked) {
-              changed = true;
-            }
+            changed = changed || baked;
           }
         }
       }
     }
-    _textCelBakedContent.removeWhere((key, _) => !seen.contains(key));
+    _textCelBakedContent.removeWhere((key, _) => !_sweepSeen.contains(key));
     if (changed && !_session._disposed) {
       _session._notifyChanged();
     }
