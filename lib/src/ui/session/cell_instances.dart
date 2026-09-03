@@ -81,30 +81,7 @@ class _CellInstances {
         }
         continue;
       }
-      if (!layerKindTakesAuthoredCels(layer.kind) ||
-          isSyncedAttachedLayer(layer)) {
-        continue; // Synced mirrors follow their base; nothing to author.
-      }
-      // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
-      // frame" in its world, so a selection that happens to span it must
-      // pass over it rather than author into it. Until now nothing happened
-      // by luck (the covering normalization leaves no empty gap to fill),
-      // and #1 is about to put folders — and so their image members — into
-      // range selections on purpose. Say it instead of relying on it.
-      if (layerKindCoversWithoutGaps(layer.kind)) {
-        continue;
-      }
-      final layerFills =
-          <({int startIndex, int length, FrameId frameId, String? name})>[];
-      for (final gap in _session._emptyGapsInRange(layer, selection)) {
-        _session._frameSequence += 1;
-        layerFills.add((
-          startIndex: gap.startIndex,
-          length: gap.length,
-          frameId: FrameId(_session._nextFrameId(layer.id)),
-          name: null,
-        ));
-      }
+      final layerFills = _authoredFillsFor(layer, selection);
       if (layerFills.isNotEmpty) {
         fills[layer.id] = layerFills;
       }
@@ -130,6 +107,38 @@ class _CellInstances {
     }
     _session._notifyChanged();
     return true;
+  }
+
+  /// The blank cels [selection] authors on [layer]: one per empty gap,
+  /// each with a fresh frame id — none on a row that takes no authored
+  /// cels, a synced mirror, or a covering row.
+  List<({int startIndex, int length, FrameId frameId, String? name})>
+  _authoredFillsFor(Layer layer, TimelineFrameRangeSelection selection) {
+    if (!layerKindTakesAuthoredCels(layer.kind) ||
+        isSyncedAttachedLayer(layer)) {
+      return const []; // Synced mirrors follow their base; nothing to author.
+    }
+    // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
+    // frame" in its world, so a selection that happens to span it must
+    // pass over it rather than author into it. Until now nothing happened
+    // by luck (the covering normalization leaves no empty gap to fill),
+    // and #1 is about to put folders — and so their image members — into
+    // range selections on purpose. Say it instead of relying on it.
+    if (layerKindCoversWithoutGaps(layer.kind)) {
+      return const [];
+    }
+    final layerFills =
+        <({int startIndex, int length, FrameId frameId, String? name})>[];
+    for (final gap in _session._emptyGapsInRange(layer, selection)) {
+      _session._frameSequence += 1;
+      layerFills.add((
+        startIndex: gap.startIndex,
+        length: gap.length,
+        frameId: FrameId(_session._nextFrameId(layer.id)),
+        name: null,
+      ));
+    }
+    return layerFills;
   }
 
   /// #16 — creation on the TRACK axis: the S rows the range names get one
