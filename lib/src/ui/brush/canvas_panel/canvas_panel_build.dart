@@ -45,35 +45,7 @@ class _PanelBuild {
       // shell draws its own chrome).
       padding: EdgeInsets.zero,
       child: LayoutBuilder(
-        builder: (context, constraints) {
-          final fallbackSize = Size(
-            _state.widget.canvasSize.width.toDouble(),
-            _state.widget.canvasSize.height.toDouble(),
-          );
-          final boundedWidth = constraints.hasBoundedWidth
-              ? constraints.maxWidth
-              : fallbackSize.width;
-          final boundedHeight = constraints.hasBoundedHeight
-              ? constraints.maxHeight
-              : fallbackSize.height + _CanvasViewportBottomBar.height;
-
-          return SizedBox(
-            width: boundedWidth,
-            height: boundedHeight,
-            child: _CanvasEditorPanelShell(
-              rightStripBar: _state._shellBars.memoizedRightStripBar(),
-              horizontalStripBar: _state._shellBars
-                  .memoizedHorizontalStripBar(),
-              bottomBar: _state._shellBars.memoizedBottomBar(),
-              pageStrip: _state.widget.pageStrip,
-              // The capsules float INSIDE what the panels left over.
-              cover: _state.widget.floorCover,
-              railBand: _state.widget.floorRailBand,
-              bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
-              child: LayoutBuilder(builder: _viewport),
-            ),
-          );
-        },
+        builder: _panelBox,
       ),
     );
   }
@@ -130,6 +102,38 @@ class _PanelBuild {
               valueListenable: contentStrokeActive,
               builder: (context, active, _) => _gestureLayer(context, active),
             ),
+    );
+  }
+
+  /// The panel's box for the space it was given: the shell around the
+  /// viewport, sized to the constraints (the canvas size when unbounded).
+  Widget _panelBox(BuildContext context, BoxConstraints constraints) {
+    final fallbackSize = Size(
+      _state.widget.canvasSize.width.toDouble(),
+      _state.widget.canvasSize.height.toDouble(),
+    );
+    final boundedWidth = constraints.hasBoundedWidth
+        ? constraints.maxWidth
+        : fallbackSize.width;
+    final boundedHeight = constraints.hasBoundedHeight
+        ? constraints.maxHeight
+        : fallbackSize.height + _CanvasViewportBottomBar.height;
+
+    return SizedBox(
+      width: boundedWidth,
+      height: boundedHeight,
+      child: _CanvasEditorPanelShell(
+        rightStripBar: _state._shellBars.memoizedRightStripBar(),
+        horizontalStripBar: _state._shellBars
+            .memoizedHorizontalStripBar(),
+        bottomBar: _state._shellBars.memoizedBottomBar(),
+        pageStrip: _state.widget.pageStrip,
+        // The capsules float INSIDE what the panels left over.
+        cover: _state.widget.floorCover,
+        railBand: _state.widget.floorRailBand,
+        bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
+        child: LayoutBuilder(builder: _viewport),
+      ),
     );
   }
 
