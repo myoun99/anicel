@@ -265,18 +265,19 @@ Layer createFolderLayer({
   );
 }
 
-/// Validates the folder structure over a cut's stack order: every
-/// [Layer.folderId] names a real folder row, each folder's subtree is one
-/// contiguous run with the folder row directly above it, and the parent
-/// chain is acyclic. Returns a human-readable problem description, or null
-/// when the structure is sound.
-String? folderStructureProblem(List<Layer> layers) {
+/// Two folder rows with one id.
+String? _duplicateFolderProblem(List<Layer> layers) {
   final folderIds = <LayerId>{};
   for (final folder in layers.folderLayers) {
     if (!folderIds.add(folder.id)) {
       return 'Duplicate folder row ${folder.id}.';
     }
   }
+  return null;
+}
+
+/// A folder whose parent chain loops, or names a folder that is not there.
+String? _parentChainProblem(List<Layer> layers) {
   for (final folder in layers.folderLayers) {
     final seen = <LayerId>{folder.id};
     var parent = layers.folderById(folder.folderId);
@@ -290,11 +291,22 @@ String? folderStructureProblem(List<Layer> layers) {
       return 'Folder ${folder.id} has a missing parent ${folder.folderId}.';
     }
   }
+  return null;
+}
+
+/// A layer whose folder is not there.
+String? _missingFolderProblem(List<Layer> layers) {
   for (final layer in layers) {
     if (layer.folderId != null && layers.folderById(layer.folderId) == null) {
       return 'Layer ${layer.id} references missing folder ${layer.folderId}.';
     }
   }
+  return null;
+}
+
+/// A folder whose subtree is not one contiguous run with the folder row
+/// directly above it.
+String? _contiguityProblem(List<Layer> layers) {
   for (final folder in layers.folderLayers) {
     var runStart = -1;
     var runEnd = -1;
@@ -315,6 +327,11 @@ String? folderStructureProblem(List<Layer> layers) {
       return 'Folder ${folder.id} does not sit directly above its members.';
     }
   }
+  return null;
+}
+
+/// A folder that mixes attach rows with rows they do not belong to.
+String? _attachMixProblem(List<Layer> layers) {
   // A folder holding attach rows is either the group's shared OUTER
   // folder (the base lives in it too) or an ATTACH-ORGANIZER
   // ([연출]/[작감]…) holding NOTHING BUT one base's attaches. Anything
@@ -351,6 +368,19 @@ String? folderStructureProblem(List<Layer> layers) {
     }
   }
   return null;
+}
+
+/// Validates the folder structure over a cut's stack order: every
+/// [Layer.folderId] names a real folder row, each folder's subtree is one
+/// contiguous run with the folder row directly above it, and the parent
+/// chain is acyclic. Returns a human-readable problem description, or null
+/// when the structure is sound.
+String? folderStructureProblem(List<Layer> layers) {
+  return _duplicateFolderProblem(layers) ??
+      _parentChainProblem(layers) ??
+      _missingFolderProblem(layers) ??
+      _contiguityProblem(layers) ??
+      _attachMixProblem(layers);
 }
 /// The base whose attaches [folder] ORGANIZES, or null when [folder] is
 /// not an attach-organizer folder.
