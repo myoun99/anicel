@@ -134,6 +134,108 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
     for (final dockId in defaults.keys) dockId: <String>[],
   };
   final activeByDock = <String, String>{};
+  _readSavedDocks(docksJson, tabsByDock, knownTabs, seen, activeByDock);
+
+  // Panels the user CLOSED stay closed; anything else missing from the
+  // save (panels added by an app update) rejoins its default dock's group,
+  // so an update-added tab slips into the existing strip invisibly.
+  _rejoinDefaultTabs(payload, defaults, tabsByDock, seen);
+
+  final docks = <String, DockGroup?>{
+    for (final entry in tabsByDock.entries)
+      entry.key: entry.value.isEmpty
+          ? null
+          : DockGroup(tabs: entry.value, activeTabId: activeByDock[entry.key]),
+  };
+
+  // ⚠️Not every saved extent names a DOCK. A rail's shared width is stored
+  // under a key of its own ('rail-L' / 'rail-R') because it belongs to the
+  // rail rather than to any one group on it — and this filter, which only
+  // ever knew about dock ids, threw it away on every single restore. The
+  // side panels came back at the default width every launch and the drag
+  // that widened them looked like it had never been saved. The caller names
+  // the keys that are extents but not docks; everything else is still junk.
+  final dockExtents = _restoredDockExtents(layoutJson, docks, extraExtentKeys);
+
+  final lockedTabIds = _restoredLockedTabIds(payload, knownTabs);
+
+  return (
+    docks: docks,
+    dockExtents: dockExtents,
+    railExtents: restoreRailExtents(payload),
+    lockedTabIds: lockedTabIds,
+  );
+}
+
+/// The tabs the user locked, among the tabs the defaults know.
+Set<String> _restoredLockedTabIds(
+  Map<String, Object?> payload,
+  Set<String> knownTabs,
+) {
+  final lockedJson = payload['lockedTabs'];
+  final lockedTabIds = <String>{
+    if (lockedJson is List)
+      for (final tab in lockedJson)
+        if (tab is String && knownTabs.contains(tab)) tab,
+  };
+  return lockedTabIds;
+}
+
+/// The saved splitter extents, kept for the docks and for the extra keys
+/// the caller names (a rail's shared width is stored under its own key).
+Map<String, double> _restoredDockExtents(
+  Map<dynamic, dynamic> layoutJson,
+  Map<String, DockGroup?> docks,
+  Set<String> extraExtentKeys,
+) {
+  final extentsJson = layoutJson['extents'];
+  final dockExtents = <String, double>{
+    if (extentsJson is Map)
+      for (final entry in extentsJson.entries)
+        if (entry.key is String &&
+            (docks.containsKey(entry.key) ||
+                extraExtentKeys.contains(entry.key)))
+          entry.key as String: ?restoredSplitterValue(entry.value),
+  };
+  return dockExtents;
+}
+
+/// Panels the user CLOSED stay closed; anything else missing from the save
+/// (panels added by an app update) rejoins its default dock's strip.
+void _rejoinDefaultTabs(
+  Map<String, Object?> payload,
+  Map<String, DockGroup?> defaults,
+  Map<String, List<String>> tabsByDock,
+  Set<String> seen,
+) {
+  final hiddenJson = payload['hiddenTabs'];
+  final hiddenTabs = <String>{
+    if (hiddenJson is List)
+      for (final tab in hiddenJson)
+        if (tab is String) tab,
+  };
+  for (final entry in defaults.entries) {
+    final group = entry.value;
+    if (group == null) {
+      continue;
+    }
+    tabsByDock[entry.key]!.addAll([
+      for (final tab in group.tabs)
+        if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
+    ]);
+  }
+}
+
+/// The saved docks: each dock's sections join one strip, a tab counts once
+/// (the first section that names it), and only tabs the defaults know are
+/// kept. The FIRST section's active tab is the dock's.
+void _readSavedDocks(
+  Map<dynamic, dynamic> docksJson,
+  Map<String, List<String>> tabsByDock,
+  Set<String> knownTabs,
+  Set<String> seen,
+  Map<String, String> activeByDock,
+) {
   for (final entry in docksJson.entries) {
     final dockId = entry.key;
     if (dockId is! String || !tabsByDock.containsKey(dockId)) {
@@ -170,62 +272,4 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
       }
     }
   }
-
-  // Panels the user CLOSED stay closed; anything else missing from the
-  // save (panels added by an app update) rejoins its default dock's group,
-  // so an update-added tab slips into the existing strip invisibly.
-  final hiddenJson = payload['hiddenTabs'];
-  final hiddenTabs = <String>{
-    if (hiddenJson is List)
-      for (final tab in hiddenJson)
-        if (tab is String) tab,
-  };
-  for (final entry in defaults.entries) {
-    final group = entry.value;
-    if (group == null) {
-      continue;
-    }
-    tabsByDock[entry.key]!.addAll([
-      for (final tab in group.tabs)
-        if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
-    ]);
-  }
-
-  final docks = <String, DockGroup?>{
-    for (final entry in tabsByDock.entries)
-      entry.key: entry.value.isEmpty
-          ? null
-          : DockGroup(tabs: entry.value, activeTabId: activeByDock[entry.key]),
-  };
-
-  // ⚠️Not every saved extent names a DOCK. A rail's shared width is stored
-  // under a key of its own ('rail-L' / 'rail-R') because it belongs to the
-  // rail rather than to any one group on it — and this filter, which only
-  // ever knew about dock ids, threw it away on every single restore. The
-  // side panels came back at the default width every launch and the drag
-  // that widened them looked like it had never been saved. The caller names
-  // the keys that are extents but not docks; everything else is still junk.
-  final extentsJson = layoutJson['extents'];
-  final dockExtents = <String, double>{
-    if (extentsJson is Map)
-      for (final entry in extentsJson.entries)
-        if (entry.key is String &&
-            (docks.containsKey(entry.key) ||
-                extraExtentKeys.contains(entry.key)))
-          entry.key as String: ?restoredSplitterValue(entry.value),
-  };
-
-  final lockedJson = payload['lockedTabs'];
-  final lockedTabIds = <String>{
-    if (lockedJson is List)
-      for (final tab in lockedJson)
-        if (tab is String && knownTabs.contains(tab)) tab,
-  };
-
-  return (
-    docks: docks,
-    dockExtents: dockExtents,
-    railExtents: restoreRailExtents(payload),
-    lockedTabIds: lockedTabIds,
-  );
 }
