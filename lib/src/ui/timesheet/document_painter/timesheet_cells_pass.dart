@@ -378,6 +378,102 @@ class _TimesheetCellsPass {
     }
   }
 
+  /// A drawing cell's label — or, in an SE column, the SE entry start.
+  void _paintDrawingCell(
+    Canvas canvas,
+    _CellSlot slot, {
+    required bool drawTexts,
+    required int rowCount,
+  }) {
+    if (drawTexts) {
+      if (slot.seColumn) {
+        _painter._se.paintSeEntryStart(
+          canvas,
+          cell: slot.cell,
+          row: slot.row,
+          rowCount: rowCount,
+          columnLeft: slot.columnLeft,
+          columnWidth: slot.columnWidth,
+          centerX: slot.centerX,
+          cellTop: slot.cellTop,
+        );
+      } else {
+        _painter._text(
+          canvas,
+          slot.cell.label ?? '',
+          Offset(slot.centerX, slot.cellTop + 3),
+          fontSize: 10,
+          color: TimesheetDocumentPainter._ink,
+          centeredAtX: true,
+        );
+      }
+    }
+  }
+
+  /// A held cell's bar, by column: the SE red bar or the action hold bar.
+  void _paintHeldCell(Canvas canvas, _CellSlot slot) {
+    if (slot.seColumn) {
+      // Toei SE notation: no hold line down the dialogue; the
+      // block's END closes with the full-width red bar instead.
+      if ((slot.cell.spanOffset ?? 0) == (slot.cell.spanLength ?? 1) - 1) {
+        _painter._se.paintSeRedBar(
+          canvas,
+          columnLeft: slot.columnLeft,
+          columnWidth: slot.columnWidth,
+          y: slot.cellBottom - 1,
+        );
+      }
+      return;
+    }
+    // ACTION hold bar: off by default; with a threshold N it runs
+    // from the (N+1)th comma of N+ holds only (industry N=3).
+    final threshold = _painter.document.exposureBarThreshold;
+    if (threshold != null && (slot.cell.spanOffset ?? 0) >= threshold) {
+      canvas.drawLine(
+        Offset(slot.centerX, slot.cellTop),
+        Offset(slot.centerX, slot.cellBottom),
+        Paint()
+          ..color = TimesheetDocumentPainter._ink
+          ..strokeWidth = 1.0,
+      );
+    }
+  }
+
+  /// A repeat chain's first cell: the cel it restarts on, then the
+  /// notation repeat word down the rest of the chain.
+  void _paintRepeatStart(
+    Canvas canvas,
+    _CellSlot slot, {
+    required bool drawTexts,
+  }) {
+    // A repeat ghost chain prints the sheet CONVENTION (UI-R13
+    // #4): its first slot.row writes the cel it restarts on, and the
+    // NOTATION-language repeat word runs VERTICALLY from the
+    // next slot.row (UI-R11 #14) — the expanded cel numbers live in
+    // the timeline for exporters, never here. No guide line.
+    if (drawTexts) {
+      _painter._text(
+        canvas,
+        slot.cell.label ?? '',
+        Offset(slot.centerX, slot.cellTop + 3),
+        fontSize: 10,
+        color: TimesheetDocumentPainter._ink,
+        centeredAtX: true,
+      );
+      final wordRows = (slot.cell.spanLength ?? 1) - 1;
+      if (wordRows > 0) {
+        _painter._paintVerticalWord(
+          canvas,
+          _painter.notation.repeat,
+          centerX: slot.centerX,
+          top: slot.cellTop + TimesheetDocumentLayout.rowHeight,
+          rows: wordRows,
+          columnWidth: slot.columnWidth,
+        );
+      }
+    }
+  }
+
   /// One non-empty cell, by kind: a drawing's label (or the SE entry
   /// start), a hold's exposure bar past the threshold (or the SE red bar
   /// at its end), the camera span line, a mark, a repeat's label and word,
@@ -390,55 +486,14 @@ class _TimesheetCellsPass {
   }) {
     switch (slot.cell.kind) {
       case TimesheetCellKind.drawing:
-        if (drawTexts) {
-          if (slot.seColumn) {
-            _painter._se.paintSeEntryStart(
-              canvas,
-              cell: slot.cell,
-              row: slot.row,
-              rowCount: rowCount,
-              columnLeft: slot.columnLeft,
-              columnWidth: slot.columnWidth,
-              centerX: slot.centerX,
-              cellTop: slot.cellTop,
-            );
-          } else {
-            _painter._text(
-              canvas,
-              slot.cell.label ?? '',
-              Offset(slot.centerX, slot.cellTop + 3),
-              fontSize: 10,
-              color: TimesheetDocumentPainter._ink,
-              centeredAtX: true,
-            );
-          }
-        }
+        _paintDrawingCell(
+          canvas,
+          slot,
+          drawTexts: drawTexts,
+          rowCount: rowCount,
+        );
       case TimesheetCellKind.held:
-        if (slot.seColumn) {
-          // Toei SE notation: no hold line down the dialogue; the
-          // block's END closes with the full-width red bar instead.
-          if ((slot.cell.spanOffset ?? 0) == (slot.cell.spanLength ?? 1) - 1) {
-            _painter._se.paintSeRedBar(
-              canvas,
-              columnLeft: slot.columnLeft,
-              columnWidth: slot.columnWidth,
-              y: slot.cellBottom - 1,
-            );
-          }
-          break;
-        }
-        // ACTION hold bar: off by default; with a threshold N it runs
-        // from the (N+1)th comma of N+ holds only (industry N=3).
-        final threshold = _painter.document.exposureBarThreshold;
-        if (threshold != null && (slot.cell.spanOffset ?? 0) >= threshold) {
-          canvas.drawLine(
-            Offset(slot.centerX, slot.cellTop),
-            Offset(slot.centerX, slot.cellBottom),
-            Paint()
-              ..color = TimesheetDocumentPainter._ink
-              ..strokeWidth = 1.0,
-          );
-        }
+        _paintHeldCell(canvas, slot);
       case TimesheetCellKind.cameraSpan:
         canvas.drawLine(
           Offset(slot.centerX, slot.cellTop),
@@ -456,32 +511,7 @@ class _TimesheetCellsPass {
           Paint()..color = TimesheetDocumentPainter._ink,
         );
       case TimesheetCellKind.repeatStart:
-        // A repeat ghost chain prints the sheet CONVENTION (UI-R13
-        // #4): its first slot.row writes the cel it restarts on, and the
-        // NOTATION-language repeat word runs VERTICALLY from the
-        // next slot.row (UI-R11 #14) — the expanded cel numbers live in
-        // the timeline for exporters, never here. No guide line.
-        if (drawTexts) {
-          _painter._text(
-            canvas,
-            slot.cell.label ?? '',
-            Offset(slot.centerX, slot.cellTop + 3),
-            fontSize: 10,
-            color: TimesheetDocumentPainter._ink,
-            centeredAtX: true,
-          );
-          final wordRows = (slot.cell.spanLength ?? 1) - 1;
-          if (wordRows > 0) {
-            _painter._paintVerticalWord(
-              canvas,
-              _painter.notation.repeat,
-              centerX: slot.centerX,
-              top: slot.cellTop + TimesheetDocumentLayout.rowHeight,
-              rows: wordRows,
-              columnWidth: slot.columnWidth,
-            );
-          }
-        }
+        _paintRepeatStart(canvas, slot, drawTexts: drawTexts);
       case TimesheetCellKind.repeatSpan:
         break; // The word above covers the chain (UI-R11 #14).
       case TimesheetCellKind.holdStart:
