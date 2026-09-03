@@ -373,10 +373,6 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     );
   }
 
-  /// Every block this row would draw, in track order — THE probe surface.
-  ///
-  /// Off-window cuts are absent by construction, which is also what keeps
-  /// [thumbnailFor] from being asked for pictures nobody can see.
   /// One cut's block, or null when it lies outside the visible window:
   /// its rect and bands, the cells with their names and comma labels (only
   /// when the top band is open), the selection and hover state, the title
@@ -403,18 +399,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
     final bands = _bandsOf(rect);
     final cells = storyboardCellsByCut[entry.cutId] ?? const [];
-    // The panels' writing (#15): frame name + comma count per cell, the
-    // timeline row's conventions (`○` unnamed head — `●` would read as
-    // an inbetween mark). Safe to resolve here — the row lookup no
-    // longer throws on duplicates (#760). A folded block carries no
-    // writing at all: folding that far means watching the cuts.
-    final folded = bands.top.height <= 0;
-    final frameNames = <FrameId, String?>{
-      if (!folded)
-        for (final frame
-            in storyboardLayerForCut(entry.cut)?.frames ?? const <Frame>[])
-          frame.id: frame.name,
-    };
+    final writing = _cellWriting(entry, cells, folded: bands.top.height <= 0);
     return StoryboardCutBlockVisual(
       cutId: entry.cutId,
       rect: rect,
@@ -422,34 +407,8 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       strip: bands.strip,
       bottomBand: bands.bottom,
       cells: cells,
-      cellNames: [
-        if (!folded)
-          for (final cell in cells)
-            cell.frameId == null
-                ? ''
-                : ((frameNames[cell.frameId] ?? '').isEmpty
-                      ? '○'
-                      : frameNames[cell.frameId]!),
-      ],
-      cellCommaLabels: [
-        if (!folded)
-          for (final cell in cells)
-            // D23: a 1-comma panel prints nothing — the shared
-            // predicate, through the existing empty-string convention
-            // the paint path already skips. (The bottom-right `total`
-            // below is a running END frame, not a comma length — it
-            // stays un-gated on purpose.)
-            cell.frameId == null ||
-                    !timelineCommaLabelVisibleFor(
-                      cell.endIndexExclusive - cell.startIndex,
-                    )
-                ? ''
-                : timelineDurationLabel(
-                    cell.endIndexExclusive - cell.startIndex,
-                    showSeconds: showSeconds,
-                    countingBase: countingBase,
-                  ),
-      ],
+      cellNames: writing.names,
+      cellCommaLabels: writing.commaLabels,
       isActive: entry.cutId == activeCutId,
       isRangeSelected:
           selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
@@ -465,23 +424,80 @@ class StoryboardCutBlocksPainter extends CustomPainter {
               countingBase: countingBase,
             )
           : null,
-      // Asked ONLY here, for blocks the window keeps: the row used to
-      // request every cut's picture on every build. One per PANEL now,
-      // each at the frame that panel is about.
-      thumbnails: [
-        if (showThumbnails && thumbnailFor != null)
-          for (final cell in cells)
-            thumbnailFor!(
-              entry.cut,
-              storyboardCellPictureFrame(
-                cell,
-                pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
-              ),
-            ),
+      thumbnails: _thumbnailsFor(entry, cells),
+    );
+  }
+
+  /// The panels' writing (#15): frame name + comma count per cell, the
+  /// timeline row's conventions (`○` unnamed head — `●` would read as
+  /// an inbetween mark). Safe to resolve here — the row lookup no
+  /// longer throws on duplicates (#760). A folded block carries no
+  /// writing at all: folding that far means watching the cuts.
+  ({List<String> names, List<String> commaLabels}) _cellWriting(
+    StoryboardTimelineLayoutEntry entry,
+    List<StoryboardCoverageCell> cells, {
+    required bool folded,
+  }) {
+    if (folded) {
+      return (names: const [], commaLabels: const []);
+    }
+    final frameNames = <FrameId, String?>{
+      for (final frame
+          in storyboardLayerForCut(entry.cut)?.frames ?? const <Frame>[])
+        frame.id: frame.name,
+    };
+    return (
+      names: [
+        for (final cell in cells)
+          cell.frameId == null
+              ? ''
+              : ((frameNames[cell.frameId] ?? '').isEmpty
+                    ? '○'
+                    : frameNames[cell.frameId]!),
+      ],
+      commaLabels: [
+        for (final cell in cells)
+          // D23: a 1-comma panel prints nothing — the shared
+          // predicate, through the existing empty-string convention
+          // the paint path already skips. (The block's bottom-right
+          // `total` is a running END frame, not a comma length — it
+          // stays un-gated on purpose.)
+          cell.frameId == null ||
+                  !timelineCommaLabelVisibleFor(
+                    cell.endIndexExclusive - cell.startIndex,
+                  )
+              ? ''
+              : timelineDurationLabel(
+                  cell.endIndexExclusive - cell.startIndex,
+                  showSeconds: showSeconds,
+                  countingBase: countingBase,
+                ),
       ],
     );
   }
 
+  /// One picture per PANEL, each at the frame that panel is about — asked
+  /// ONLY for blocks the window keeps: the row used to request every
+  /// cut's picture on every build.
+  List<ui.Image?> _thumbnailsFor(
+    StoryboardTimelineLayoutEntry entry,
+    List<StoryboardCoverageCell> cells,
+  ) => [
+    if (showThumbnails && thumbnailFor != null)
+      for (final cell in cells)
+        thumbnailFor!(
+          entry.cut,
+          storyboardCellPictureFrame(
+            cell,
+            pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
+          ),
+        ),
+  ];
+
+  /// Every block this row would draw, in track order — THE probe surface.
+  ///
+  /// Off-window cuts are absent by construction, which is also what keeps
+  /// [thumbnailFor] from being asked for pictures nobody can see.
   List<StoryboardCutBlockVisual> blocks() {
     final window = visibleFrameWindow();
     final selectionValue = selectedRange?.value;
