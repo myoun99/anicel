@@ -2692,124 +2692,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     final canvasPoint = _toCanvas(event.localPosition);
-    var transform = _transform;
-
-    /// TP4: the press landed inside the box the Move tool is DRAWING, even
-    /// though no session is open yet — which is a grab, whatever the
-    /// selection's own outline says (유저: "변형툴 내부 사각형 안이라면
-    /// 언제든 작동하도록").
-    var insideImplicitBox = false;
-    // R17-U 핸들 상시: with the always-on box (Move tool), grabbing a
-    // scale/rotate HANDLE promotes the implicit box into a real session
-    // on the spot — the lift happens here, at the first interaction.
-    if (transform == null &&
-        widget.alwaysShowTransformBox &&
-        widget.tool == CanvasSelectionTool.move &&
-        widget.onLiftRequested != null) {
-      // R26 #13: with NO selection the always-on box frames the WHOLE
-      // picture — grabbing one of its handles opens the session on the
-      // implicit whole-canvas shape.
-      final implicitRegion =
-          _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
-      final box = _regionBounds(implicitRegion);
-      _baseBoxWidth = box.width;
-      _baseBoxHeight = box.height;
-      final implicit = SelectionAffine(pivot: box.center);
-      final handle = _hitTestTransformHandle(event.localPosition, implicit);
-      if (handle != null && handle != _TransformHandle.inside) {
-        if (_region == null) {
-          setState(
-            // The implicit region IS the whole-canvas shape on this branch
-            // (`_region` is null), so its one step has one copy.
-            () => _adoptImplicitWholePictureShape(
-              implicitRegion.steps.first.shapes.first,
-            ),
-          );
-        }
-        final hadPendingLift = _pendingLiftStamp != null;
-        if (!_ensureLifted(implicitRegion)) {
-          _baseBoxWidth = 0;
-          _baseBoxHeight = 0;
-          setState(_clearFailedImplicitShape);
-          _syncAnts();
-          return;
-        }
-        setState(() {
-          _transformOpenedLift = !hadPendingLift;
-          _transform = implicit;
-          _syncOffsetsToMode();
-          _floatSurface = _buildFloatSurface();
-        });
-        transform = implicit;
-      } else {
-        // Inside/miss: fall through to the ordinary move-drag flow — but
-        // remember WHICH (TP4). "Inside" is the box the user can see, and
-        // the box is the promise: 유저 확정 (변형툴 라운드 ④) already said
-        // 사각형(박스)을 잡아야 해당 기능, while the flow below asked the
-        // REGION instead. A lasso's box has corners the outline does not
-        // fill, and pressing there did nothing at all.
-        insideImplicitBox = handle == _TransformHandle.inside;
-        _baseBoxWidth = 0;
-        _baseBoxHeight = 0;
-      }
+    final pressed = _pressOnImplicitBox(event);
+    if (pressed == null) {
+      return;
     }
+    final transform = pressed.transform;
+    final insideImplicitBox = pressed.insideImplicitBox;
     if (transform != null) {
       // The open box is modal: only the box's handles/inside react;
       // clicks elsewhere are inert until Enter/Escape closes the session.
       _beginTransformDrag(transform, event, canvasPoint);
       return;
     }
-    final region = _region;
     if (widget.tool == CanvasSelectionTool.move) {
-      // The MOVE tool drags the selected content; outside a REAL region
-      // it does nothing (R11-⑧). R26 #13 revises the no-selection half:
-      // with no region at all, a press inside the canvas targets the
-      // WHOLE picture through the implicit whole-canvas shape.
-      var targetShape = region;
-      if (targetShape == null) {
-        // A press anywhere on the PASTEBOARD grabs the whole picture (PS
-        // move grammar) — the implicit shape itself may be the tighter
-        // ink bounds, which would make small drawings fiddly to grab.
-        //
-        // The pasteboard, not the canvas rect: the box this press opens
-        // frames pasteboard ink now, and its HANDLES were already
-        // grabbable out there (_hitTestTransformHandle has no such
-        // gate), so a canvas-only gate meant the drawing you could see
-        // framed was one you could not grab by pressing on it.
-        final onStage = widget.canvasSize.containsPasteboardPoint(
-          x: canvasPoint.x,
-          y: canvasPoint.y,
-        );
-        if (widget.onLiftRequested == null || !onStage) {
-          return;
-        }
-        setState(() {
-          targetShape = _adoptImplicitWholePictureShape(_wholeCanvasShape());
-        });
-      } else if (!targetShape.containsPoint(canvasPoint) &&
-          !insideImplicitBox) {
-        // TP4: inside the drawn box counts as a grab. What MOVES is still
-        // the region's own pixels — the box widened the door, not the
-        // thing being carried through it.
+      if (!_beginMovePress(
+        event,
+        canvasPoint,
+        insideImplicitBox: insideImplicitBox,
+      )) {
         return;
       }
-      final liftShape = targetShape;
-      // R14-④/R19 pixel model: the shape's PIXELS are the content — the
-      // first gesture on a selection (or on a confirmed landing) lifts
-      // them fresh from the current raster.
-      if (liftShape == null ||
-          widget.onLiftRequested == null ||
-          !_ensureLifted(liftShape)) {
-        setState(_clearFailedImplicitShape);
-        _syncAnts();
-        return;
-      }
-      _activePointer = event.pointer;
-      setState(() {
-        _dragMode = _DragMode.move;
-        _moveScreenDelta = Offset.zero;
-        _floatSurface = _buildFloatSurface();
-      });
     } else if (_tapsVertices) {
       // The polygon places points; it has no drag verb at all, so the
       // press only records where the tap aimed and the release decides
@@ -2847,6 +2749,134 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _notifyDragActive(true);
     _syncAnts();
+  }
+
+  /// R17-U 핸들 상시: with the always-on box (Move tool), grabbing a
+  /// scale/rotate HANDLE promotes the implicit box into a real session
+  /// on the spot — the lift happens here, at the first interaction.
+  ///
+  /// Null when the press was refused (the lift failed); otherwise the
+  /// session now open (the one already open, or the one this press opened)
+  /// and — TP4 — whether the press landed inside the box the Move tool is
+  /// DRAWING even though no session is open yet, which is a grab, whatever
+  /// the selection's own outline says (유저: "변형툴 내부 사각형 안이라면
+  /// 언제든 작동하도록").
+  ({SelectionAffine? transform, bool insideImplicitBox})? _pressOnImplicitBox(
+    PointerDownEvent event,
+  ) {
+    final transform = _transform;
+    if (transform != null ||
+        !widget.alwaysShowTransformBox ||
+        widget.tool != CanvasSelectionTool.move ||
+        widget.onLiftRequested == null) {
+      return (transform: transform, insideImplicitBox: false);
+    }
+    // R26 #13: with NO selection the always-on box frames the WHOLE
+    // picture — grabbing one of its handles opens the session on the
+    // implicit whole-canvas shape.
+    final implicitRegion =
+        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
+    final box = _regionBounds(implicitRegion);
+    _baseBoxWidth = box.width;
+    _baseBoxHeight = box.height;
+    final implicit = SelectionAffine(pivot: box.center);
+    final handle = _hitTestTransformHandle(event.localPosition, implicit);
+    if (handle == null || handle == _TransformHandle.inside) {
+      // Inside/miss: fall through to the ordinary move-drag flow — but
+      // remember WHICH (TP4). "Inside" is the box the user can see, and
+      // the box is the promise: 유저 확정 (변형툴 라운드 ④) already said
+      // 사각형(박스)을 잡아야 해당 기능, while the flow below asked the
+      // REGION instead. A lasso's box has corners the outline does not
+      // fill, and pressing there did nothing at all.
+      _baseBoxWidth = 0;
+      _baseBoxHeight = 0;
+      return (
+        transform: null,
+        insideImplicitBox: handle == _TransformHandle.inside,
+      );
+    }
+    if (_region == null) {
+      setState(
+        // The implicit region IS the whole-canvas shape on this branch
+        // (`_region` is null), so its one step has one copy.
+        () => _adoptImplicitWholePictureShape(
+          implicitRegion.steps.first.shapes.first,
+        ),
+      );
+    }
+    final hadPendingLift = _pendingLiftStamp != null;
+    if (!_ensureLifted(implicitRegion)) {
+      _baseBoxWidth = 0;
+      _baseBoxHeight = 0;
+      setState(_clearFailedImplicitShape);
+      _syncAnts();
+      return null;
+    }
+    setState(() {
+      _transformOpenedLift = !hadPendingLift;
+      _transform = implicit;
+      _syncOffsetsToMode();
+      _floatSurface = _buildFloatSurface();
+    });
+    return (transform: implicit, insideImplicitBox: false);
+  }
+
+  /// The MOVE tool drags the selected content; outside a REAL region it
+  /// does nothing (R11-⑧). R26 #13 revises the no-selection half: with no
+  /// region at all, a press inside the canvas targets the WHOLE picture
+  /// through the implicit whole-canvas shape. False when the press was
+  /// refused; true once the move drag is open.
+  bool _beginMovePress(
+    PointerDownEvent event,
+    CanvasPoint canvasPoint, {
+    required bool insideImplicitBox,
+  }) {
+    var targetShape = _region;
+    if (targetShape == null) {
+      // A press anywhere on the PASTEBOARD grabs the whole picture (PS
+      // move grammar) — the implicit shape itself may be the tighter
+      // ink bounds, which would make small drawings fiddly to grab.
+      //
+      // The pasteboard, not the canvas rect: the box this press opens
+      // frames pasteboard ink now, and its HANDLES were already
+      // grabbable out there (_hitTestTransformHandle has no such
+      // gate), so a canvas-only gate meant the drawing you could see
+      // framed was one you could not grab by pressing on it.
+      final onStage = widget.canvasSize.containsPasteboardPoint(
+        x: canvasPoint.x,
+        y: canvasPoint.y,
+      );
+      if (widget.onLiftRequested == null || !onStage) {
+        return false;
+      }
+      setState(() {
+        targetShape = _adoptImplicitWholePictureShape(_wholeCanvasShape());
+      });
+    } else if (!targetShape.containsPoint(canvasPoint) &&
+        !insideImplicitBox) {
+      // TP4: inside the drawn box counts as a grab. What MOVES is still
+      // the region's own pixels — the box widened the door, not the
+      // thing being carried through it.
+      return false;
+    }
+    final liftShape = targetShape;
+    // R14-④/R19 pixel model: the shape's PIXELS are the content — the
+    // first gesture on a selection (or on a confirmed landing) lifts
+    // them fresh from the current raster.
+    if (liftShape == null ||
+        widget.onLiftRequested == null ||
+        !_ensureLifted(liftShape)) {
+      setState(_clearFailedImplicitShape);
+      _syncAnts();
+      return false;
+    }
+    _activePointer = event.pointer;
+    setState(() {
+      _dragMode = _DragMode.move;
+      _moveScreenDelta = Offset.zero;
+      _floatSurface = _buildFloatSurface();
+    });
+    return true;
   }
 
   void _beginTransformDrag(SelectionAffine transform, PointerDownEvent event, CanvasPoint canvasPoint) {
