@@ -15,6 +15,25 @@ typedef _MultiRowSpanCast = ({
   List<LayerId> sePassengerIds,
 });
 
+/// What one row can DO with a rigid hop (R27 #8, [_castMultiRowSpan]).
+enum _HopCast {
+  /// Travels across its own lattice.
+  drawingSource,
+
+  /// Rides along on the track-SE lattice.
+  sePassenger,
+
+  /// Its keys ride the FRAME delta and the row stays put.
+  frameAxisRider,
+
+  /// Contributes nothing.
+  nothing,
+
+  /// Content on a row that is none of the above (a SYNCED attach row):
+  /// the step belongs to its base — the plain slide owns it.
+  boundToBase,
+}
+
 /// One rigid multi-row drag step's subjects, read once per step.
 typedef _MultiRowStep = ({
   TimelineFrameRangeSelection selection,
@@ -837,44 +856,58 @@ class _FrameRangeMoveDrag {
     final drawingSourceIds = <LayerId>[];
     final sePassengerIds = <LayerId>[];
     for (final id in selection.spanLayerIds) {
-      if (_session._blockMoveEligible(id)) {
-        final layer = _session._layerById(id);
-        if (layer != null && carriesBlockInRange(layer)) {
+      switch (_castRowForHop(id, carriesBlockInRange)) {
+        case _HopCast.drawingSource:
           drawingSourceIds.add(id);
-        }
-        continue;
-      }
-      if (_session.isTrackSeLayerId(id)) {
-        final display = _session._rangeLayerById(id);
-        if (display != null && carriesBlockInRange(display)) {
+        case _HopCast.sePassenger:
           sePassengerIds.add(id);
-        }
-        continue;
-      }
-      final layer = _session._layerById(id);
-      if (layer == null) {
-        continue;
-      }
-      // The camera and instruction rows (the transition included, via its
-      // display clone) are frame-axis riders — WHO rides was decided at
-      // begin (_rangeMoveCameraBefore and _rangeMoveInstructionSources,
-      // the same answers the plain slide consumes). Re-deriving them here
-      // is the copy that silently dropped the TRANSITION on rigid steps
-      // (C④): its clone's kind matched no arm, so the spans snapped home
-      // the moment the pointer crossed a row.
-      if (layer.kind == LayerKind.camera ||
-          layer.kind == LayerKind.instruction ||
-          layer.kind == LayerKind.transition) {
-        continue;
-      }
-      // A row that is neither move-eligible nor a known frame-axis rider
-      // (a SYNCED attach row) still routes the step to the plain slide
-      // when it carries content: its timing belongs to its base.
-      if (carriesBlockInRange(layer)) {
-        return null;
+        case _HopCast.boundToBase:
+          return null;
+        case _HopCast.frameAxisRider || _HopCast.nothing:
+          break;
       }
     }
     return (drawingSourceIds: drawingSourceIds, sePassengerIds: sePassengerIds);
+  }
+
+  /// Which [_HopCast] the row [id] is for this hop, given whether a row
+  /// [carriesBlockInRange].
+  _HopCast _castRowForHop(
+    LayerId id,
+    bool Function(Layer) carriesBlockInRange,
+  ) {
+    if (_session._blockMoveEligible(id)) {
+      final layer = _session._layerById(id);
+      return layer != null && carriesBlockInRange(layer)
+          ? _HopCast.drawingSource
+          : _HopCast.nothing;
+    }
+    if (_session.isTrackSeLayerId(id)) {
+      final display = _session._rangeLayerById(id);
+      return display != null && carriesBlockInRange(display)
+          ? _HopCast.sePassenger
+          : _HopCast.nothing;
+    }
+    final layer = _session._layerById(id);
+    if (layer == null) {
+      return _HopCast.nothing;
+    }
+    // The camera and instruction rows (the transition included, via its
+    // display clone) are frame-axis riders — WHO rides was decided at
+    // begin (_rangeMoveCameraBefore and _rangeMoveInstructionSources,
+    // the same answers the plain slide consumes). Re-deriving them here
+    // is the copy that silently dropped the TRANSITION on rigid steps
+    // (C④): its clone's kind matched no arm, so the spans snapped home
+    // the moment the pointer crossed a row.
+    if (layer.kind == LayerKind.camera ||
+        layer.kind == LayerKind.instruction ||
+        layer.kind == LayerKind.transition) {
+      return _HopCast.frameAxisRider;
+    }
+    // A row that is neither move-eligible nor a known frame-axis rider
+    // (a SYNCED attach row) still routes the step to the plain slide
+    // when it carries content: its timing belongs to its base.
+    return carriesBlockInRange(layer) ? _HopCast.boundToBase : _HopCast.nothing;
   }
 
   /// The row orders a rigid step reads: the display rows (where the
@@ -1253,21 +1286,7 @@ class _FrameRangeMoveDrag {
     if (source == null || selection == null || groupStart == null) {
       return;
     }
-    Layer? target = source;
-    if (targetLayerId != null && targetLayerId != source.id) {
-      target = _session._blockMoveEligible(targetLayerId)
-          ? _session._layerById(targetLayerId)
-          : null;
-      // Cross-row drops stay within the SAME SECTION (UI-R20 #2 P3b-3:
-      // 행이동도 같은 섹션 내 — animation/storyboard/image interchange
-      // freely now; an animation range still never lands on the SE or
-      // camera sections).
-      if (target != null &&
-          timelineSectionForLayerKind(target.kind) !=
-              timelineSectionForLayerKind(source.kind)) {
-        target = null;
-      }
-    }
+    final target = _singleRowMoveTarget(source, targetLayerId);
     final plan = target == null
         ? null
         : planDrawingRangeMove(
@@ -1284,6 +1303,39 @@ class _FrameRangeMoveDrag {
       // and resumes on a legal return (no snap-back to the origin).
       return;
     }
+    _publishSingleRowMove(plan, selection, source, groupStart);
+  }
+
+  /// The row a single-row range move lands on: [source] itself, or the
+  /// row [targetLayerId] names when it is move-eligible and in the same
+  /// section — else none, and the step has no plan.
+  Layer? _singleRowMoveTarget(Layer source, LayerId? targetLayerId) {
+    Layer? target = source;
+    if (targetLayerId != null && targetLayerId != source.id) {
+      target = _session._blockMoveEligible(targetLayerId)
+          ? _session._layerById(targetLayerId)
+          : null;
+      // Cross-row drops stay within the SAME SECTION (UI-R20 #2 P3b-3:
+      // 행이동도 같은 섹션 내 — animation/storyboard/image interchange
+      // freely now; an animation range still never lands on the SE or
+      // camera sections).
+      if (target != null &&
+          timelineSectionForLayerKind(target.kind) !=
+              timelineSectionForLayerKind(source.kind)) {
+        target = null;
+      }
+    }
+    return target;
+  }
+
+  /// Publishes a single-row [plan]: the plan itself, the preview layers,
+  /// and the selection moved to where the group landed.
+  void _publishSingleRowMove(
+    DrawingBlockMovePlan plan,
+    TimelineFrameRangeSelection selection,
+    Layer source,
+    int groupStart,
+  ) {
     _rangeMovePlan = plan;
     _session.dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
@@ -1633,44 +1685,8 @@ class _FrameRangeMoveDrag {
   ) {
     final cut = _session.activeCutOrNull;
     final commands = <Command>[];
-    for (final se in multiSeRowChanges ?? const <SeRowMovePair>[]) {
-      commands.add(
-        UpdateLayerTimelineCommand(
-          repository: _session._repository,
-          before: se.sourceBefore,
-          after: se.sourceAfter,
-        ),
-      );
-      commands.add(
-        UpdateLayerTimelineCommand(
-          repository: _session._repository,
-          before: se.targetBefore,
-          after: se.targetAfter,
-        ),
-      );
-    }
-    for (final entry
-        in multiRowPlan?.layersAfter.entries ??
-            const <MapEntry<LayerId, Layer>>[]) {
-      final before = _session._layerById(entry.key);
-      if (before == null) {
-        continue;
-      }
-      final after = rederiveRunBehaviors(
-        entry.value,
-        cutFrameCount: _session._activeCutFrameCount,
-      );
-      if (after == before) {
-        continue; // An untouched source/target row — no command.
-      }
-      commands.add(
-        UpdateLayerTimelineCommand(
-          repository: _session._repository,
-          before: before,
-          after: after,
-        ),
-      );
-    }
+    commands.addAll(_seRowMoveCommands(multiSeRowChanges));
+    commands.addAll(_multiRowLayerCommands(multiRowPlan));
     // R27 #8: the frame-axis riders (camera keys, instruction spans)
     // land in the SAME undo step as the rigid row move — through the
     // ONE two-armed projection the plain slide commits with, so a
@@ -1722,6 +1738,58 @@ class _FrameRangeMoveDrag {
     _session._warmActiveCut();
     _session._notifyChanged();
     return;
+  }
+
+  /// The timeline commands of the SE row pairs a multi-row move changed:
+  /// each pair's source and target rows.
+  List<Command> _seRowMoveCommands(List<SeRowMovePair>? multiSeRowChanges) {
+    final commands = <Command>[];
+    for (final se in multiSeRowChanges ?? const <SeRowMovePair>[]) {
+      commands.add(
+        UpdateLayerTimelineCommand(
+          repository: _session._repository,
+          before: se.sourceBefore,
+          after: se.sourceAfter,
+        ),
+      );
+      commands.add(
+        UpdateLayerTimelineCommand(
+          repository: _session._repository,
+          before: se.targetBefore,
+          after: se.targetAfter,
+        ),
+      );
+    }
+    return commands;
+  }
+
+  /// The timeline commands of the rows a multi-row plan moved — none for
+  /// a row the plan left as it was.
+  List<Command> _multiRowLayerCommands(MultiRowRangeMovePlan? multiRowPlan) {
+    final commands = <Command>[];
+    for (final entry
+        in multiRowPlan?.layersAfter.entries ??
+            const <MapEntry<LayerId, Layer>>[]) {
+      final before = _session._layerById(entry.key);
+      if (before == null) {
+        continue;
+      }
+      final after = rederiveRunBehaviors(
+        entry.value,
+        cutFrameCount: _session._activeCutFrameCount,
+      );
+      if (after == before) {
+        continue; // An untouched source/target row — no command.
+      }
+      commands.add(
+        UpdateLayerTimelineCommand(
+          repository: _session._repository,
+          before: before,
+          after: after,
+        ),
+      );
+    }
+    return commands;
   }
 
   void _commitInstructionRowMove(
@@ -1847,21 +1915,6 @@ class _FrameRangeMoveDrag {
       return;
     }
 
-    // Replace any behavior already sitting on this (run, side).
-    bool ownsThisEdge(TimelineRunBehavior behavior) {
-      if (behavior.side != side) {
-        return false;
-      }
-      for (final entry in before.timeline.entries) {
-        if (entry.value.ghost ||
-            entry.value.frameId != behavior.anchorFrameId) {
-          continue;
-        }
-        return entry.key >= run.startIndex && entry.key < run.endIndexExclusive;
-      }
-      return false;
-    }
-
     final patternAnchor = _repeatPatternAnchor(
       mode,
       scopeToSelection,
@@ -1877,7 +1930,7 @@ class _FrameRangeMoveDrag {
     final edgeAnchor = _edgeAnchorOf(run, side, before);
     final behaviors = [
       for (final behavior in before.runBehaviors)
-        if (!ownsThisEdge(behavior)) behavior,
+        if (!_behaviorOwnsEdge(behavior, side, run, before)) behavior,
       if (mode != null)
         TimelineRunBehavior(
           anchorFrameId: edgeAnchor,
@@ -1899,6 +1952,26 @@ class _FrameRangeMoveDrag {
     );
     _session._warmActiveCut();
     _session._notifyChanged();
+  }
+
+  /// Whether [behavior] already sits on this [side] of [run] — the one a
+  /// new setting replaces.
+  bool _behaviorOwnsEdge(
+    TimelineRunBehavior behavior,
+    TimelineRunEdgeSide side,
+    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
+    Layer before,
+  ) {
+    if (behavior.side != side) {
+      return false;
+    }
+    for (final entry in before.timeline.entries) {
+      if (entry.value.ghost || entry.value.frameId != behavior.anchorFrameId) {
+        continue;
+      }
+      return entry.key >= run.startIndex && entry.key < run.endIndexExclusive;
+    }
+    return false;
   }
 
   FrameId _edgeAnchorOf(
