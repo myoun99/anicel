@@ -79,34 +79,28 @@ class _TimesheetCellsPass {
     final boldPaint = Paint()
       ..color = TimesheetDocumentPainter._gridBold
       ..strokeWidth = 1.6;
+    final seRanges = _seColumnRanges(left);
+    final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
+    final sheet = _HalfFrame(
+      left: left,
+      right: right,
+      rowsTop: rowsTop,
+      rowsBottom: rowsBottom,
+      columnsTop: columnsTop,
+      lettersTop: lettersTop,
+      startFrame: startFrame,
+      rowCount: rowCount,
+      firstRow: firstRow,
+      lastRow: lastRow,
+      numbersRight: left - 4,
+      lightPaint: lightPaint,
+      mediumPaint: mediumPaint,
+      boldPaint: boldPaint,
+      seRanges: seRanges,
+    );
 
     // Group titles + letter row (printed form).
-    if (drawTexts && _painter._drawForm) {
-      _painter._bands.paintGroupTitles(canvas, left, columnsTop);
-      for (
-        var column = 0;
-        column < _painter.document.columns.length;
-        column += 1
-      ) {
-        // Unbacked slots print nothing — no placeholder letters.
-        if (_painter.document.columns[column].label.isEmpty) {
-          continue;
-        }
-        final columnLeft = left + _painter.layout.columnLeftInHalf(column);
-        final columnWidth = _painter.layout.columnWidthFor(
-          _painter.document.columns[column].kind,
-        );
-        _painter._text(
-          canvas,
-          _painter.document.columns[column].label,
-          Offset(columnLeft + columnWidth / 2, lettersTop + 2),
-          fontSize: 9,
-          color: TimesheetDocumentPainter._ink,
-          centeredAtX: true,
-          maxWidth: columnWidth - 2,
-        );
-      }
-    }
+    _paintColumnTitles(canvas, sheet, drawTexts: drawTexts);
     if (_painter._drawForm) {
       canvas.drawLine(
         Offset(left, columnsTop),
@@ -137,53 +131,7 @@ class _TimesheetCellsPass {
       );
       return;
     }
-    final seRanges = <(double, double)>[];
-    for (
-      var column = 0;
-      column < _painter.document.columns.length;
-      column += 1
-    ) {
-      if (_painter.document.columns[column].kind != TimesheetColumnKind.se) {
-        continue;
-      }
-      final seLeft = left + _painter.layout.columnLeftInHalf(column);
-      final seRight =
-          seLeft + _painter.layout.columnWidthFor(TimesheetColumnKind.se);
-      if (seRanges.isNotEmpty && seRanges.last.$2 >= seLeft) {
-        seRanges[seRanges.length - 1] = (seRanges.last.$1, seRight);
-      } else {
-        seRanges.add((seLeft, seRight));
-      }
-    }
-    final numbersRight = left - 4;
-    final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
-    for (var row = firstRow; row <= lastRow; row += 1) {
-      final frame = startFrame + row;
-      final y = rowsTop + row * TimesheetDocumentLayout.rowHeight;
-      final Paint paint;
-      if (frame % _painter.document.fps == 0 || row == rowCount) {
-        paint = boldPaint;
-      } else if (frame % 6 == 0) {
-        paint = mediumPaint;
-      } else {
-        paint = lightPaint;
-      }
-      if (row == 0 || row == rowCount || seRanges.isEmpty) {
-        // The table's outer edges close full width.
-        canvas.drawLine(Offset(left, y), Offset(right, y), paint);
-        continue;
-      }
-      var segmentStart = left;
-      for (final (seLeft, seRight) in seRanges) {
-        if (seLeft > segmentStart) {
-          canvas.drawLine(Offset(segmentStart, y), Offset(seLeft, y), paint);
-        }
-        segmentStart = seRight;
-      }
-      if (segmentStart < right) {
-        canvas.drawLine(Offset(segmentStart, y), Offset(right, y), paint);
-      }
-    }
+    _paintRowLines(canvas, sheet);
 
     // Vertical lines: half edges + column separators (bold at section
     // changes). The number gutter draws NO lines — bare numbers on paper.
@@ -217,18 +165,39 @@ class _TimesheetCellsPass {
     // half — page-local on paper, global in the continuous strip. On each
     // second's LAST frame row (24, 48, …) the second index prints BOLD in
     // place of the frame number — the paper convention (A-1 form).
+    _paintRowNumbers(canvas, sheet, drawTexts: drawTexts);
+
+    if (_painter._drawContent) {
+      _paintHalfCells(
+        canvas,
+        left: left,
+        rowsTop: rowsTop,
+        startFrame: startFrame,
+        rowCount: rowCount,
+        drawTexts: drawTexts,
+      );
+    }
+  }
+
+  /// The second numbers: one per [fps] rows, right-aligned in the margin,
+  /// bold; the other rows print their frame number small.
+  void _paintRowNumbers(
+    Canvas canvas,
+    _HalfFrame sheet, {
+    required bool drawTexts,
+  }) {
     if (drawTexts) {
-      for (var row = firstRow; row < lastRow; row += 1) {
-        final frame = startFrame + row;
+      for (var row = sheet.firstRow; row < sheet.lastRow; row += 1) {
+        final frame = sheet.startFrame + row;
         final printed = _painter.layout.continuous
             ? frame + 1
             : frame % _painter.document.pageFrameCount + 1;
-        final rowTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
+        final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
         if (printed % _painter.document.fps == 0) {
           _painter._text(
             canvas,
             '${printed ~/ _painter.document.fps}',
-            Offset(numbersRight, rowTop + 3),
+            Offset(sheet.numbersRight, rowTop + 3),
             fontSize: 10,
             bold: true,
             color: TimesheetDocumentPainter._gridBold,
@@ -242,23 +211,102 @@ class _TimesheetCellsPass {
         _painter._text(
           canvas,
           '$printed',
-          Offset(numbersRight, rowTop + 4),
+          Offset(sheet.numbersRight, rowTop + 4),
           fontSize: 8,
           color: TimesheetDocumentPainter._gridMedium,
           rightAlignedAtX: true,
         );
       }
     }
+  }
 
-    if (_painter._drawContent) {
-      _paintHalfCells(
-        canvas,
-        left: left,
-        rowsTop: rowsTop,
-        startFrame: startFrame,
-        rowCount: rowCount,
-        drawTexts: drawTexts,
-      );
+  /// The row rules: bold on the second, medium on the half-second, light
+  /// elsewhere — and skipping the SE columns, whose rows are their own.
+  void _paintRowLines(Canvas canvas, _HalfFrame sheet) {
+    for (var row = sheet.firstRow; row <= sheet.lastRow; row += 1) {
+      final frame = sheet.startFrame + row;
+      final y = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
+      final Paint paint;
+      if (frame % _painter.document.fps == 0 || row == sheet.rowCount) {
+        paint = sheet.boldPaint;
+      } else if (frame % 6 == 0) {
+        paint = sheet.mediumPaint;
+      } else {
+        paint = sheet.lightPaint;
+      }
+      if (row == 0 || row == sheet.rowCount || sheet.seRanges.isEmpty) {
+        // The table's outer edges close full width.
+        canvas.drawLine(Offset(sheet.left, y), Offset(sheet.right, y), paint);
+        continue;
+      }
+      var segmentStart = sheet.left;
+      for (final (seLeft, seRight) in sheet.seRanges) {
+        if (seLeft > segmentStart) {
+          canvas.drawLine(Offset(segmentStart, y), Offset(seLeft, y), paint);
+        }
+        segmentStart = seRight;
+      }
+      if (segmentStart < sheet.right) {
+        canvas.drawLine(Offset(segmentStart, y), Offset(sheet.right, y), paint);
+      }
+    }
+  }
+
+  /// The SE columns as left/right ranges, adjacent ones merged.
+  List<(double, double)> _seColumnRanges(double left) {
+    final seRanges = <(double, double)>[];
+    for (
+      var column = 0;
+      column < _painter.document.columns.length;
+      column += 1
+    ) {
+      if (_painter.document.columns[column].kind != TimesheetColumnKind.se) {
+        continue;
+      }
+      final seLeft = left + _painter.layout.columnLeftInHalf(column);
+      final seRight =
+          seLeft + _painter.layout.columnWidthFor(TimesheetColumnKind.se);
+      if (seRanges.isNotEmpty && seRanges.last.$2 >= seLeft) {
+        seRanges[seRanges.length - 1] = (seRanges.last.$1, seRight);
+      } else {
+        seRanges.add((seLeft, seRight));
+      }
+    }
+    return seRanges;
+  }
+
+  /// The column titles on the letter row, when the form and its texts draw.
+  void _paintColumnTitles(
+    Canvas canvas,
+    _HalfFrame sheet, {
+    required bool drawTexts,
+  }) {
+    if (drawTexts && _painter._drawForm) {
+      _painter._bands.paintGroupTitles(canvas, sheet.left, sheet.columnsTop);
+      for (
+        var column = 0;
+        column < _painter.document.columns.length;
+        column += 1
+      ) {
+        // Unbacked slots print nothing — no placeholder letters.
+        if (_painter.document.columns[column].label.isEmpty) {
+          continue;
+        }
+        final columnLeft =
+            sheet.left + _painter.layout.columnLeftInHalf(column);
+        final columnWidth = _painter.layout.columnWidthFor(
+          _painter.document.columns[column].kind,
+        );
+        _painter._text(
+          canvas,
+          _painter.document.columns[column].label,
+          Offset(columnLeft + columnWidth / 2, sheet.lettersTop + 2),
+          fontSize: 9,
+          color: TimesheetDocumentPainter._ink,
+          centeredAtX: true,
+          maxWidth: columnWidth - 2,
+        );
+      }
     }
   }
 
@@ -513,4 +561,43 @@ class _CellSlot {
   final double cellBottom;
   final double cellCenterY;
   final bool seColumn;
+}
+
+/// One half page's frame: where it sits, which rows are visible, the three
+/// grid paints, and the SE column ranges the row lines skip. The steps of
+/// [_TimesheetCellsPass.paintHalf] read it instead of a dozen parameters.
+class _HalfFrame {
+  const _HalfFrame({
+    required this.left,
+    required this.right,
+    required this.rowsTop,
+    required this.rowsBottom,
+    required this.columnsTop,
+    required this.lettersTop,
+    required this.startFrame,
+    required this.rowCount,
+    required this.firstRow,
+    required this.lastRow,
+    required this.numbersRight,
+    required this.lightPaint,
+    required this.mediumPaint,
+    required this.boldPaint,
+    required this.seRanges,
+  });
+
+  final double left;
+  final double right;
+  final double rowsTop;
+  final double rowsBottom;
+  final double columnsTop;
+  final double lettersTop;
+  final int startFrame;
+  final int rowCount;
+  final int firstRow;
+  final int lastRow;
+  final double numbersRight;
+  final Paint lightPaint;
+  final Paint mediumPaint;
+  final Paint boldPaint;
+  final List<(double, double)> seRanges;
 }
