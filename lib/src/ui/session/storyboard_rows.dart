@@ -40,12 +40,12 @@ class _StoryboardRows {
   /// carrier elsewhere, so no new rule is written here.
   void claimStoryboardRow() {
     final stored = _storyboardRow;
-    _session._verbRow =
+    _session._standing._verbRow =
         stored is LaneRowAddress &&
             _session._trackSe.trackOwnedRailOwner(stored.layerId) != null
         ? stored
         : _session.selectedRow;
-    _session._publishCurrentRow();
+    _session._standing.publishCurrentRow();
   }
 
   /// Stores the rail's row. Returns whether the ANSWER moved — the store
@@ -56,8 +56,8 @@ class _StoryboardRows {
     _storyboardRow = row;
     // Picking a rail row is also engaging it, so the verb follows (R10
     // #13). The reverse does not hold — see [_verbRow].
-    _session._verbRow = row;
-    _session._publishCurrentRow();
+    _session._standing._verbRow = row;
+    _session._standing.publishCurrentRow();
     return _session.selectedRow != before;
   }
 

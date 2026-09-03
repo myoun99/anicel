@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -12,6 +10,8 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/library_source.dart';
 
 /// 🚨F-44 — **플립은 어느 행에 서 있든 컷 끝을 넘는다.**
 ///
@@ -104,9 +104,10 @@ void main() {
 
   /// ⛔끝없는 축의 규칙을 **각자 적지 않는다** (소스 스캔 래칫).
   test('플립의 착지 규칙은 한 곳이다', () {
-    final source = File(
-      'lib/src/ui/editor_session_manager.dart',
-    ).readAsStringSync();
+    // The library — host plus the parts it lists — because the flip moved
+    // into the frame verbs collaborator on 2026-09-03 and a scan of the
+    // host alone would have gone quietly empty.
+    final source = librarySource('lib/src/ui/editor_session_manager.dart');
     expect(
       source,
       contains('_flipToFrame('),
