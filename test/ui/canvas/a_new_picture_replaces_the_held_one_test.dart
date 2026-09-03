@@ -54,7 +54,7 @@ void main() {
       pixels[i + (red ? 0 : 2)] = 0xFF;
       pixels[i + 3] = 0xFF;
     }
-    const coord = TileCoord(x: 0, y: 0);
+    final coord = TileCoord(x: 0, y: 0);
     return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: tileSize,
@@ -127,7 +127,7 @@ void main() {
           );
           image.dispose();
           final bytes = data!.buffer.asUint8List();
-          final i = (tileSize ~/ 2 * tileSize + tileSize ~/ 2) * 4;
+          const i = (tileSize ~/ 2 * tileSize + tileSize ~/ 2) * 4;
           return [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]];
         })
         .then((pixel) => pixel!);

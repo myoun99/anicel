@@ -19,8 +19,12 @@ import '../../tool/refactor/clone_scan.dart';
 /// field reset list — is a shape, not a law, and no longer counts. The
 /// ceiling is the refined scan's count for this tree (the same scan gave
 /// 673 at the round-2 commit that set 2157).
+///
+/// 🚨The ceiling is read from THIS test's own scan, never from a side
+/// tool. A scratch counter set it to 660 on 2026-09-04 and the gate then
+/// measured 661 on the same tree: two instruments, one number apart.
 void main() {
-  const ceiling = 660;
+  const ceiling = 661;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
