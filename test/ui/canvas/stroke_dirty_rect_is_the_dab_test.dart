@@ -65,8 +65,9 @@ void main() {
     sequence: sequence,
   );
 
-  testWidgets('the second dab dirties its own tile, not the whole stroke',
-      (tester) async {
+  testWidgets('the second dab dirties its own tile, not the whole stroke', (
+    tester,
+  ) async {
     final cache = DisplayBufferCache();
     addTearDown(cache.dispose);
     final overlay = ActiveStrokeOverlayModel(tileSize: 8);
@@ -135,6 +136,20 @@ void main() {
     await paintOnce();
     final firstDirty = cache.lastDirtyRect;
     expect(firstDirty, isNotNull, reason: 'the dab composed as a patch');
+    // ⛔THE RECT IS INFLATED BY ONE PIXEL, and that is not decoration: a
+    // dab writes whole texels but the composite around it need not land on
+    // them — a posed sibling or a rounded edge can put ink a fraction over
+    // the line, and a patch trusting the exact rect leaves a hairline of
+    // the previous frame. The tile here is 8 wide, so an uninflated rect
+    // measures 8 and this one must measure more (the token-walk split's
+    // surviving mutant, 2026-09-04).
+    expect(
+      firstDirty!.width,
+      greaterThan(8),
+      reason:
+          'one 8px tile plus the hairline inflate — an exact-rect patch '
+          'leaves a line of the frame before along the dab',
+    );
 
     // Dab 2 lands in tile 2 — the far end of the line. Tile 0's overlay
     // image is untouched by this step.
@@ -153,7 +168,8 @@ void main() {
     expect(
       dirty!.left,
       greaterThanOrEqualTo(15),
-      reason: 'tile 0 did not move, so the patch must not reach back into '
+      reason:
+          'tile 0 did not move, so the patch must not reach back into '
           'it — under the old union walk this rect spanned the whole '
           'stroke (left 0)',
     );
