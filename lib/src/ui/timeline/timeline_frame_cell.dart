@@ -8,10 +8,10 @@ import '../../models/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_cell_marker.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_grid_metrics.dart';
-import 'timeline_se_row_visual.dart';
 
 /// One frame cell. Deliberately CURSOR-INDEPENDENT: the selected-cell ring,
 /// the selected-exposure outline and the playhead all live on the grid's
@@ -27,7 +27,6 @@ class TimelineFrameCell extends StatelessWidget {
     required this.exposureState,
     required this.exposureBlockSegment,
     this.ghost = false,
-    this.emptyRunStart = false,
     this.frameName,
     required this.onSelectLayer,
     required this.onSelectFrame,
@@ -51,9 +50,6 @@ class TimelineFrameCell extends StatelessWidget {
   /// render ghosts at full quality.
   final bool ghost;
 
-  /// Whether this cell opens an empty run — the timesheet X marks only the
-  /// FIRST cell of each empty stretch, like paper sheets.
-  final bool emptyRunStart;
   final String? frameName;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
@@ -179,12 +175,13 @@ class TimelineFrameCell extends StatelessWidget {
               // colors alone carry the overview (Premiere-style).
               (width ?? _metrics.frameCellWidth) < 14
                   ? ''
-                  : _markerForCell(
+                  : timelineCellMarker(
                       layer: layer,
                       exposureState: exposureState,
-                      emptyRunStart: emptyRunStart,
+                      // The miniature never shows an uncovered cell, so
+                      // no empty run can start here.
+                      emptyRunStart: false,
                       frameName: frameName,
-                      outsidePlaybackRange: outsidePlaybackRange,
                     ),
               semanticsLabel: _semanticsLabelForCell(
                 layer: layer,
@@ -286,43 +283,6 @@ BorderRadius? _timelineCellBorderRadius(
       right: endRadius,
     ),
     Axis.vertical => BorderRadius.vertical(top: startRadius, bottom: endRadius),
-  };
-}
-
-String _markerForCell({
-  required Layer layer,
-  required TimelineCellExposureState exposureState,
-  required bool emptyRunStart,
-  String? frameName,
-  required bool outsidePlaybackRange,
-}) {
-  return switch (exposureState) {
-    // The timesheet "X": the FIRST cell of each empty run inside the
-    // playback range (paper-sheet style). Camera rows mirror keyframes,
-    // instruction rows carry instruction events and SE columns stay blank
-    // between entries on paper — no X on any of those.
-    TimelineCellExposureState.uncovered =>
-      !layerKindHoldsDrawings(layer.kind) ||
-              layerKindUsesSeSheetCells(layer.kind) ||
-              outsidePlaybackRange ||
-              !emptyRunStart
-          ? ''
-          : 'X',
-    // SE entries and instruction events draw their writing through the
-    // row-level span overlays; the cells stay glyph-free paper. Camera key
-    // summaries ride the shared lane key markers since B4
-    // ([timelineUnionKeyMarkerSpans]) — never a text glyph, never the ○.
-    TimelineCellExposureState.drawingStart =>
-      layerKindUsesSeSheetCells(layer.kind) ||
-              layerKindBandIsInstructionsOnly(layer.kind) ||
-              layer.kind == LayerKind.camera
-          ? ''
-          : frameName == null || frameName.isEmpty
-          ? '○'
-          : frameName,
-    TimelineCellExposureState.held => '',
-    TimelineCellExposureState.markHeld ||
-    TimelineCellExposureState.markUncovered => '●',
   };
 }
 

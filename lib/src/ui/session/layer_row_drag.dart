@@ -101,12 +101,10 @@ class _LayerRowDrag {
   void updateLayerRowDrag(
     List<Layer> displayLayers,
     int slot, {
-    String? noticeLabel,
     LayerId? pointerInRow,
   }) => _rowOrderDrag?.updateLayerRow(
     displayLayers,
     slot,
-    noticeLabel: noticeLabel,
     pointerInRow: pointerInRow,
   );
 

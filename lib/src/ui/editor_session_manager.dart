@@ -3787,12 +3787,10 @@ class EditorSessionManager extends ChangeNotifier {
   void updateLayerRowDrag(
     List<Layer> displayLayers,
     int slot, {
-    String? noticeLabel,
     LayerId? pointerInRow,
   }) => _layerRowDrag.updateLayerRowDrag(
     displayLayers,
     slot,
-    noticeLabel: noticeLabel,
     pointerInRow: pointerInRow,
   );
   void updateLayerRowDropOnRow(

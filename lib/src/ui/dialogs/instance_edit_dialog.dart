@@ -22,8 +22,6 @@ class InstanceEditDialogShell extends StatelessWidget {
     this.preview,
     required this.onSubmit,
     this.onDelete,
-    this.submitLabel,
-    this.deleteLabel,
   });
 
   final String title;
@@ -40,15 +38,12 @@ class InstanceEditDialogShell extends StatelessWidget {
   final VoidCallback? onSubmit;
 
   /// Non-null shows the Delete action.
+  ///
+  /// It is always the tabled Delete verb. If a kind's secondary action is
+  /// ever not a deletion (the SE name tag's Reset was the case in mind),
+  /// give it its own label — a danger-styled button must not lie about what
+  /// it does. No kind needed that, so the label knobs went (2026-09-03).
   final VoidCallback? onDelete;
-
-  /// Null takes the tabled Save verb in the program language.
-  final String? submitLabel;
-
-  /// Null takes the tabled Delete verb. Kinds whose secondary action is
-  /// not a deletion (the SE tag's "Reset") name it instead, so a
-  /// danger-styled button never lies about what it does.
-  final String? deleteLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +83,7 @@ class InstanceEditDialogShell extends StatelessWidget {
       actions: [
         if (onDelete != null)
           AppWindowAction(
-            label: deleteLabel ?? strings.commonDelete,
+            label: strings.commonDelete,
             actionKey: const ValueKey<String>('instance-edit-delete-button'),
             emphasis: AppWindowActionEmphasis.danger,
             onPressed: onDelete,
@@ -99,7 +94,7 @@ class InstanceEditDialogShell extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
-          label: submitLabel ?? strings.commonSave,
+          label: strings.commonSave,
           actionKey: const ValueKey<String>('instance-edit-ok-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: onSubmit,

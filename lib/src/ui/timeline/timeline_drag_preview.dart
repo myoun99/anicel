@@ -11,7 +11,6 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
-import '../../models/transform_track.dart';
 
 /// The scoped edit-drag preview channel.
 ///
@@ -60,11 +59,15 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 /// block is crossing onto another layer. Published only while the current
 /// pointer position resolves to a LEGAL landing (otherwise the channel
 /// clears and the block shows at its committed spot).
+///
+/// R4b's per-track transform preview (`previewTrackTransforms`) was declared
+/// here in 2026-08 and nothing ever produced or painted it; it went on
+/// 2026-09-03. When the storyboard's continuous lane rows get their preview,
+/// it comes back with its producer and its painter together.
 class BlockMoveDragPreview extends TimelineDragPreview {
   const BlockMoveDragPreview({
     required this.previewLayers,
     this.previewGlobalLayers = const {},
-    this.previewTrackTransforms,
     this.previewTrackEffects,
     this.cameraCutId,
     this.cameraKeyframes,
@@ -81,11 +84,6 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   /// the timeline row gates; cut-owned layers appear only there (both
   /// forms are the same).
   final Map<LayerId, Layer> previewGlobalLayers;
-
-  /// A V-track LANE key move in flight (R4b): the previewed
-  /// [Track.transformTrack] per track — the storyboard's continuous lane
-  /// rows render this form while the drag rides the carrier route.
-  final Map<TrackId, TransformTrack>? previewTrackTransforms;
 
   /// The same, for a V-track's EFFECT chain. The V row's fx lanes could not
   /// be key-moved at all before 2026-08-08 — the move path looked at a
@@ -108,7 +106,6 @@ class BlockMoveDragPreview extends TimelineDragPreview {
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
       mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
-      mapEquals(other.previewTrackTransforms, previewTrackTransforms) &&
       _trackEffectsEqual(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
       mapEquals(other.cameraKeyframes, cameraKeyframes) &&
@@ -122,13 +119,6 @@ class BlockMoveDragPreview extends TimelineDragPreview {
     Object.hashAllUnordered(
       previewGlobalLayers.entries.map((e) => Object.hash(e.key, e.value)),
     ),
-    previewTrackTransforms == null
-        ? null
-        : Object.hashAllUnordered(
-            previewTrackTransforms!.entries.map(
-              (e) => Object.hash(e.key, e.value),
-            ),
-          ),
     previewTrackEffects == null
         ? null
         : Object.hashAllUnordered(

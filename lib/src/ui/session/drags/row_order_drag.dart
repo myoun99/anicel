@@ -136,6 +136,7 @@ class RowOrderDrag {
           if (layerHasFxToLose(layer)) layer,
     ];
   }
+
   List<LayerId>? _seOrder;
   List<EffectId>? _effectOrder;
   int? _trackSlot;
@@ -209,7 +210,11 @@ class RowOrderDrag {
   /// the 겸용 link group. Building an `UpdateLayerEffectsCommand` here
   /// would drop that mirror silently, which is the trap that command's own
   /// doc names.
-  void updateEffectRow(LayerId layerId, List<EffectId> displayEffects, int slot) {
+  void updateEffectRow(
+    LayerId layerId,
+    List<EffectId> displayEffects,
+    int slot,
+  ) {
     final subject = _subject;
     // The V row's chain rides the same drag through the carrier id (R4b) —
     // the gesture, the caret and the arithmetic are the layer rail's; only
@@ -236,13 +241,12 @@ class RowOrderDrag {
   /// renders, which is what lets the model insertion be resolved without
   /// this verb knowing which way that rail runs.
   ///
-  /// [noticeLabel] overrides what the caret SAYS (⑦): the landing is an
-  /// ordinary move, but something the pointer just passed over refused for a
-  /// reason worth naming.
+  /// The caret says what the drop does (⑦). An override of that wording
+  /// was threaded through here for a refusal worth naming; nothing ever
+  /// passed one, so it went (2026-09-03).
   void updateLayerRow(
     List<Layer> displayLayers,
     int slot, {
-    String? noticeLabel,
     LayerId? pointerInRow,
   }) {
     final subject = _subject;
@@ -299,8 +303,7 @@ class RowOrderDrag {
       subject: subject,
       caretSlot: landing?.slot ?? slot,
       legal: plan != null,
-      joinLabel:
-          noticeLabel ?? _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
+      joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }
 
