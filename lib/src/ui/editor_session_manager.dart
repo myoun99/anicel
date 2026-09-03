@@ -299,6 +299,7 @@ part 'session/folders_and_attachments.dart';
 part 'session/project_settings.dart';
 part 'session/frame_verbs.dart';
 part 'session/standing.dart';
+part 'session/cut_move_drag.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -6253,68 +6254,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
 
-  /// The in-flight whole-block move ([CutMoveDrag]), or null. The move's
-  /// own doc — re-time vs reorder, the contiguous-run rule — lives on the
-  /// drag class.
-  CutMoveDrag? _cutMoveDrag;
+  // The cut move drag (Round 6): begun, moved, ended or cancelled.
+  late final _CutMoveDragVerbs _cutMove = _CutMoveDragVerbs(this);
 
-  bool beginCutMoveDrag(CutId cutId) {
-    final drag = CutMoveDrag.begin(
-      cutId: cutId,
-      tracks: _repository.requireProject().tracks,
-      selectedCutIds: storyboardSelectedCutIds,
-      preview: dragPreview,
-      selection: trackFrameRangeSelection.value,
-      publishSelection: (selection) =>
-          trackFrameRangeSelection.value = selection,
-      commitOrder:
-          ({
-            required trackId,
-            required order,
-            required beforeGaps,
-            required afterGaps,
-          }) {
-            _cutCommandCoordinator.commitCutMoveReorder(
-              trackId: trackId,
-              order: order,
-              beforeGaps: beforeGaps,
-              afterGaps: afterGaps,
-            );
-            _refreshAfterCutCommand();
-            notifyListeners();
-          },
-      commitGaps: ({required beforeGaps, required afterGaps}) {
-        _cutCommandCoordinator.commitCutDurationDrag(
-          beforeDurations: const {},
-          afterDurations: const {},
-          beforeGaps: beforeGaps,
-          afterGaps: afterGaps,
-        );
-        _refreshAfterCutCommand();
-        notifyListeners();
-      },
-    );
-    if (drag == null) {
-      // A refused grip leaves an in-flight drag exactly as it was.
-      return false;
-    }
-    _cutMoveDrag = drag;
-    return true;
-  }
-
+  bool beginCutMoveDrag(CutId cutId) => _cutMove.beginCutMoveDrag(cutId);
   void updateCutMoveDrag(int cumulativeDelta) =>
-      _cutMoveDrag?.update(cumulativeDelta);
-
-  void endCutMoveDrag() {
-    _cutMoveDrag?.commit();
-    _cutMoveDrag = null;
-  }
-
-  /// Drops an in-flight move preview without touching history.
-  void cancelCutMoveDrag() {
-    _cutMoveDrag?.cancel();
-    _cutMoveDrag = null;
-  }
+      _cutMove.updateCutMoveDrag(cumulativeDelta);
+  void endCutMoveDrag() => _cutMove.endCutMoveDrag();
+  void cancelCutMoveDrag() => _cutMove.cancelCutMoveDrag();
 
   // --- Whole-block move drags (R10-④b) --------------------------------------
   //

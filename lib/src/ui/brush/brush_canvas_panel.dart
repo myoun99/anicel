@@ -87,6 +87,9 @@ import '../text/app_strings.dart';
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
 part 'canvas_panel/canvas_panel_tool_cursor.dart';
+part 'canvas_panel/canvas_panel_tap.dart';
+part 'canvas_panel/canvas_panel_lift.dart';
+part 'canvas_panel/canvas_panel_viewport.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
 /// whenever [token] changes between widget updates the panel reframes the
@@ -641,125 +644,8 @@ final ValueNotifier<TransformToolOptions> _defaultTransformOptions =
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     with SingleTickerProviderStateMixin {
-  /// The panel's OWN storage, used only when no owner supplied one.
-  ///
-  /// The view is a notifier rather than a plain field because the settings
-  /// list is an overlay route built once when it opens, so nothing in
-  /// there would ever see a rotation land or a flip toggle. A knob that
-  /// does not show its own state is a knob nobody can read.
-  /// ⚠️`late`, so [widget] is readable: [BrushCanvasPanel.viewport] is the
-  /// SEED, taken once here. Null stays null and the getter below resolves
-  /// it to the identity.
-  late final ValueNotifier<CanvasViewport?> _ownViewport = ValueNotifier(
-    widget.viewport,
-  );
-
-  /// 🎯**Where the view actually lives — ONE object, not a copy.**
-  ///
-  /// The panel used to take the view as a VALUE and keep a copy, pushing
-  /// changes back through a callback and re-applying the prop whenever it
-  /// differed from the last value it had emitted. That is two sources of
-  /// truth with a marker between them, and the marker meant two different
-  /// things in the two places that wrote it — "what the owner gave me" in
-  /// the re-apply and "what I gave the owner" in the publish. The moment
-  /// an owner was a frame late, the panel read its own emission as a
-  /// stale prop and reverted its own change. That is one measured defect
-  /// (a document tab absorbing a UI-scale change) and one near miss (a
-  /// zoom press discarding a ratio correction) from the same line.
-  ///
-  /// ⛔Every owner ALREADY held a `ValueNotifier` — the workspace's three
-  /// document viewports and the media slot's — so this is not a new
-  /// concept, it is the end of unwrapping one and re-wrapping it.
-  ValueNotifier<CanvasViewport?> get _viewportNotifier =>
-      widget.viewportController ?? _ownViewport;
-
-  /// The view in LOGICAL units — what every painter, every hit test and
-  /// every gesture in this panel works in.
-  ///
-  /// 🎯**The stored form is DEVICE units; this is the projection.** The
-  /// panel is the only boundary the two units meet at: read here, write in
-  /// the setter, and nothing in between has to know a ratio exists.
-  ///
-  /// 🚨What that buys is the whole of the exclusion, for free. A ratio
-  /// change — a new UI scale, a window dragged to another monitor — moves
-  /// the projection and not the stored value, so the artwork keeps every
-  /// device pixel it had. There is no re-zoom to run, no anchor to pick,
-  /// and, crucially, **nothing that has to be MOUNTED to happen**: a closed
-  /// document tab comes back at the percentage it left at because its value
-  /// never meant anything ratio-dependent in the first place.
-  ///
-  /// ⛔The three mechanisms this replaced are gone, not disabled: the
-  /// re-zoom (`rescaledFrom`), the held value that carried it through the
-  /// build it was noticed in, and the post-frame commit that got it out of
-  /// that build. Each existed only because the stored number moved.
-  ///
-  /// ⚠️`null` is "nobody has framed this yet", and in device units that is
-  /// exactly `CanvasViewport()` — one artwork pixel per device pixel. The
-  /// bare constructor was the WRONG value in render units; it is the right
-  /// one here, which is the clearest sign the unit belongs at the storage.
-  ///
-  /// 🎯**[BrushCanvasPanel.unframedFit] is the SECOND answer to that same
-  /// `null`.** An owner that has a framing in mind for a view nobody has
-  /// framed hands over the RECT, not a viewport, and the fit resolves HERE,
-  /// at the read — so the very first build that sees it already paints
-  /// fitted. Nothing is stored, so nothing has to wait for the frame to end
-  /// to store it, and there is nothing to put back afterwards.
-  CanvasViewport get _viewport {
-    final stored = _viewportNotifier.value;
-    if (stored != null) {
-      return _zoomScale.fromDevice(stored);
-    }
-    final unframed = widget.unframedFit;
-    if (unframed == null) {
-      return _zoomScale.fromDevice(CanvasViewport());
-    }
-    // ⛔No `fromDevice`: [_fittedInto] works in the LAYOUT box's own
-    // coordinates, which are already the logical units this getter owes.
-    return _fittedInto(_resolvedVisibleRect(), canvasRect: unframed);
-  }
-
-  set _viewport(CanvasViewport value) {
-    _publishingViewport = true;
-    _viewportNotifier.value = _zoomScale.toDevice(value);
-    _publishingViewport = false;
-  }
-
-  /// The notifier this panel is currently subscribed to — [_viewportNotifier]
-  /// is a getter whose identity changes with the prop, so the object to
-  /// UNSUBSCRIBE from has to be remembered rather than recomputed.
-  ValueNotifier<CanvasViewport?>? _listenedViewport;
-
-  /// True while the panel is writing the view itself.
-  ///
-  /// Its own writes ride a `setState` already, so hearing them back would
-  /// only schedule a second build for the same change.
-  bool _publishingViewport = false;
-
-  /// Repaints when the OWNER moves the view.
-  ///
-  /// 🚨The hole this closes is the price of sharing the object. The view
-  /// used to arrive as a PROP, so an owner that re-framed it rebuilt this
-  /// panel by definition; now it writes into a notifier the panel merely
-  /// reads, and nothing schedules a frame. Measured on the playback stop
-  /// restore (`editor_canvas_area.dart` writes the pre-play view straight
-  /// into the notifier): the value was right and the canvas kept painting
-  /// the playback framing.
-  ///
-  void _handleViewportMovedByOwner() {
-    if (_publishingViewport || !mounted) {
-      return;
-    }
-    // The value already lives in the notifier — this call IS the repaint.
-    setState(() {});
-  }
-
-  /// The last value the CALLER handed us through [BrushCanvasPanel.viewport].
-  ///
-  /// ⛔An INPUT marker, written in `build` and nowhere else. Writing it
-  /// from the publish path is what made the panel revert itself.
-  CanvasViewport? _lastSeenViewportInput;
-
-  Size? _editorViewportSize;
+  // The viewport (Round 6): own, owner's, published, and the editor size.
+  late final _CanvasPanelViewport _viewportState = _CanvasPanelViewport(this);
 
   /// True while a brush stroke is in progress; the viewport gesture layer
   /// ignores wheel zooms and new pans so they cannot disturb the stroke.
@@ -909,14 +795,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   void initState() {
     super.initState();
-    _bindViewCommands();
+    _viewportState.bindViewCommands();
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
     CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
     _altHeld = HardwareKeyboard.instance.isAltPressed;
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
-    _listenedViewport = _viewportNotifier
-      ..addListener(_handleViewportMovedByOwner);
+    _viewportState._listenedViewport = _viewportState.viewportNotifier
+      ..addListener(_viewportState.handleViewportMovedByOwner);
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
     _selectionSeat.bindSelectionHistoryRecorder();
     _bindCutPasteHandler();
@@ -1033,9 +919,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // ⚠️Unsubscribe FIRST, and from the REMEMBERED object: the owner's
     // notifier outlives this panel, so a listener left behind holds a dead
     // `State` and calls `setState` on it at the owner's next write.
-    _listenedViewport?.removeListener(_handleViewportMovedByOwner);
-    _listenedViewport = null;
-    _ownViewport.dispose();
+    _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
+    _viewportState._listenedViewport = null;
+    _viewportState._ownViewport.dispose();
     // A mid-stroke teardown must release the session's warm hold — a
     // leaked hold would gate prerendering forever. Same for a mid-drag
     // selection interaction (R15-⑤: a leaked hold would block seeks).
@@ -1139,15 +1025,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _toolCursor.setToolCursorHover(null, 'touch-landed');
   }
 
-  /// Pointers that are DOWN and could drive a tool — the census's own
-  /// count of who is holding the aim up.
-  ///
-  /// A press is a SPAN, not a moment, and several can overlap. The aim
-  /// belongs to the span, so it survives until the last holder lifts:
-  /// without this a second finger's up blanked the ring the first was
-  /// still drawing with, and it returned only on that finger's next move
-  /// — one flicker per staggered lift-off.
-  final Set<int> _pointersHoldingAim = <int>{};
+  // The tap (Round 6): press, slop, stamp drag, and the pointers holding aim.
+  late final _CanvasPanelTap _tap = _CanvasPanelTap(this);
 
   /// Self-reporting devices (mouse, stylus) currently ON THE GLASS.
   ///
@@ -1163,51 +1042,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// deleted the mouse's ring. Keyed by `event.device`, which is what
   /// Flutter's own bookkeeping uses — a hover has no stable pointer id.
   final Set<int> _hoverDevicesInside = <int>{};
-
-  /// Whether ANY holder still has the aim — pressed or merely present.
-  /// One test for both kinds, so a departure of either sort cannot decide
-  /// on its own that nobody is left.
-  bool get _aimIsHeld =>
-      _pointersHoldingAim.isNotEmpty || _hoverDevicesInside.isNotEmpty;
-
-  void _beginCanvasPointer(PointerDownEvent event) {
-    if (!AppInput.toolAcceptsPointer(event.kind)) {
-      return;
-    }
-    _pointersHoldingAim.add(event.pointer);
-  }
-
-  /// A pointer's contact ended. For a pointer that reports its own exit,
-  /// that means nothing — a mouse is still on the glass after a click,
-  /// and forgetting here would blank its cursor until it moved again.
-  /// For every other kind the contact WAS the presence.
-  void _endCanvasPointer(PointerEvent event) {
-    // ⛔A pointer that may not WRITE the census may not erase it either —
-    // and MEMBERSHIP is how we know that, not a fresh look at the setting.
-    //
-    // [AppInput.toolAcceptsPointer] reads the LIVE one-finger slot, so
-    // re-asking it here puts a question about the PAST to a value that
-    // can have moved since. Change the slot while a finger is down and
-    // its id never leaves this set, which makes the clear below
-    // unreachable for the life of the panel — D34 back, and silently.
-    // The mirror order is no better: a finger that was never admitted
-    // becomes acceptable on the way out and deletes the ring a hovering
-    // pen owns.
-    //
-    // The set was written at DOWN, when the question was actually being
-    // asked, so a navigating finger is simply not in it and the
-    // standdown holds by construction.
-    if (!_pointersHoldingAim.remove(event.pointer)) {
-      return;
-    }
-    if (AppInput.pointerReportsItsOwnExit(event.kind)) {
-      return;
-    }
-    if (_aimIsHeld) {
-      return;
-    }
-    _forgetCanvasPointer();
-  }
 
   /// The census records a pointer only if that pointer could DRIVE a tool.
   ///
@@ -1303,16 +1137,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
   }
 
-  void _bindViewCommands() {
-    widget.viewCommands?.bind(
-      this,
-      rotateBy: _rotateAroundCenter,
-      toggleFlipHorizontal: _toggleFlipHorizontal,
-      toggleFlipVertical: _toggleFlipVertical,
-      resetRotation: _resetRotation,
-    );
-  }
-
   @override
   void didUpdateWidget(covariant BrushCanvasPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1327,14 +1151,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
       oldWidget.viewCommands?.unbind(this);
-      _bindViewCommands();
+      _viewportState.bindViewCommands();
     }
     // A host can hand over a DIFFERENT view to own — a document tab
     // swapping slots. Follow the new object, and stop hearing the old one.
-    final notifier = _viewportNotifier;
-    if (!identical(_listenedViewport, notifier)) {
-      _listenedViewport?.removeListener(_handleViewportMovedByOwner);
-      _listenedViewport = notifier..addListener(_handleViewportMovedByOwner);
+    final notifier = _viewportState.viewportNotifier;
+    if (!identical(_viewportState._listenedViewport, notifier)) {
+      _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
+      _viewportState._listenedViewport = notifier..addListener(_viewportState.handleViewportMovedByOwner);
     }
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
       oldWidget.selectionCommands?.removeListener(
@@ -1371,20 +1195,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       final pending = _pendingAutoFrame;
       _pendingAutoFrame = null;
       if (mounted && pending != null) {
-        _autoFrame(pending);
+        _viewportState._autoFrame(pending);
       }
     });
-  }
-
-  void _autoFrame(CanvasAutoFrameRequest request) {
-    final visible = _resolvedVisibleRect();
-    final next = request.panOnly
-        ? _viewportRevealing(request.rect, visible)
-        : _fittedInto(visible, canvasRect: request.rect);
-    if (next == _viewport) {
-      return;
-    }
-    _setViewport(next);
   }
 
   /// Fits [canvasRect] into [visible], which is expressed in LAYOUT
@@ -1407,50 +1220,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// The minimal zoom-preserving pan that brings [rect] (canvas space)
-  /// into the viewport with a small margin; when the rect cannot fully
-  /// fit, its top-left edge wins. Under rotation/flip the rect's mapped
-  /// AABB is what must land inside.
-  CanvasViewport _viewportRevealing(Rect rect, Rect visible) {
-    const margin = 24.0;
-    var panX = _viewport.panX;
-    var panY = _viewport.panY;
-    final unpanned = _viewport.copyWith(panX: 0, panY: 0);
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final corner in [
-      rect.topLeft,
-      rect.topRight,
-      rect.bottomRight,
-      rect.bottomLeft,
-    ]) {
-      final mapped = unpanned.canvasToViewport(
-        CanvasPoint(x: corner.dx, y: corner.dy),
-      );
-      minX = math.min(minX, mapped.x);
-      maxX = math.max(maxX, mapped.x);
-      minY = math.min(minY, mapped.y);
-      maxY = math.max(maxY, mapped.y);
-    }
-    // Reveal into the window, not into the box: the 24px breathing room is
-    // worthless if it is measured against an edge that is covered.
-    if (maxY + panY > visible.bottom - margin) {
-      panY = visible.bottom - margin - maxY;
-    }
-    if (minY + panY < visible.top + margin) {
-      panY = visible.top + margin - minY;
-    }
-    if (maxX + panX > visible.right - margin) {
-      panX = visible.right - margin - maxX;
-    }
-    if (minX + panX < visible.left + margin) {
-      panX = visible.left + margin - minX;
-    }
-    return _viewport.copyWith(panX: panX, panY: panY);
-  }
-
   // Named handlers (not closures) so the memoized bars capture stable
   // callbacks — a fresh closure per build would defeat nothing here, but
   // stale-capture bugs are impossible with tear-offs.
@@ -1466,14 +1235,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // change. That is one measured defect and one near miss from a single
     // line. Written only here, it means what the condition needs: take the
     // prop when the CALLER changed it, and never when the panel did.
-    if (widget.viewport != null && widget.viewport != _lastSeenViewportInput) {
-      _lastSeenViewportInput = widget.viewport;
+    if (widget.viewport != null && widget.viewport != _viewportState._lastSeenViewportInput) {
+      _viewportState._lastSeenViewportInput = widget.viewport;
       // ⛔Straight into the notifier, NOT through `_viewport` — the prop is
       // already in DEVICE units, and the setter's job is to convert INTO
       // them. Going through it would multiply by the ratio a second time.
-      _publishingViewport = true;
-      _viewportNotifier.value = widget.viewport;
-      _publishingViewport = false;
+      _viewportState._publishingViewport = true;
+      _viewportState.viewportNotifier.value = widget.viewport;
+      _viewportState._publishingViewport = false;
     }
     // R27 #17: a cursor that armed mid-gesture gets a starting position.
     _toolCursor.seedEyedropperHoverIfNeeded();
@@ -1514,7 +1283,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                     viewportConstraints.maxWidth,
                     viewportConstraints.maxHeight,
                   );
-                  _rememberEditorViewportSize(viewportSize);
+                  _viewportState.rememberEditorViewportSize(viewportSize);
 
                   final canvasView = _buildViewportContent(context);
                   final overlayBuilder = widget.viewportOverlayBuilder;
@@ -1536,8 +1305,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   Widget gestureLayer(bool contentStrokeIsActive) {
                     final hud = widget.flipHud;
                     final layer = CanvasViewportGestureLayer(
-                      viewport: _viewport,
-                      onViewportChanged: _setViewport,
+                      viewport: _viewportState._viewport,
+                      onViewportChanged: _viewportState.setViewport,
                       rotationEnabled: widget.allowViewRotation,
                       flipHud: hud,
                       // PEN-7b: the control-mode touch slots — flip
@@ -1674,7 +1443,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                   pasteboardArgb: _stagePasteboardArgb,
                                   pasteboardMargin: _stagePasteboardMargin,
                                   canvasSize: widget.canvasSize,
-                                  viewport: _viewport,
+                                  viewport: _viewportState._viewport,
                                   // R27 #17: a passive census of where the pointer
                                   // is — button-held moves included — so a cursor
                                   // that arms mid-gesture knows where to appear.
@@ -1702,7 +1471,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                       )) {
                                         return;
                                       }
-                                      if (_aimIsHeld) {
+                                      if (_tap.aimIsHeld) {
                                         return;
                                       }
                                       _forgetCanvasPointer();
@@ -1715,7 +1484,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                             kind: event.kind,
                                           ),
                                       onPointerDown: (event) {
-                                        _beginCanvasPointer(event);
+                                        _tap.beginCanvasPointer(event);
                                         _noteCanvasPointer(
                                           event.localPosition,
                                           kind: event.kind,
@@ -1736,8 +1505,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                       // the ring stayed where the hand had
                                       // been — for ever. For those, the
                                       // contact ending IS the exit.
-                                      onPointerUp: _endCanvasPointer,
-                                      onPointerCancel: _endCanvasPointer,
+                                      onPointerUp: _tap.endCanvasPointer,
+                                      onPointerCancel: _tap.endCanvasPointer,
                                       child:
                                           // 🐛The FILL cursor was missing from this
                                           // list, and the omission is not cosmetic:
@@ -1760,7 +1529,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                           // a visual is.
                                           overlayBuilder == null &&
                                               underlayBuilder == null &&
-                                              _toolTapHandler() == null &&
+                                              _tap.toolTapHandler() == null &&
                                               !selectionLayerActive &&
                                               idleSelection == null &&
                                               !_toolCursor.eyedropperCursorActive &&
@@ -1773,7 +1542,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                   Positioned.fill(
                                                     child: underlayBuilder(
                                                       context,
-                                                      _viewport,
+                                                      _viewportState._viewport,
                                                       widget._editableCoordinator ==
                                                               null
                                                           ? null
@@ -1788,14 +1557,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                   Positioned.fill(
                                                     child: overlayBuilder(
                                                       context,
-                                                      _viewport,
+                                                      _viewportState._viewport,
                                                     ),
                                                   ),
                                                 // Non-painting tools (P5 eyedropper / P6
                                                 // fill): one tap layer ABOVE the canvas
                                                 // absorbs the pointer so no stroke starts.
-                                                if (_toolTapHandler() != null)
-                                                  _toolTapLayer(),
+                                                if (_tap.toolTapHandler() != null)
+                                                  _tap.toolTapLayer(),
                                                 // Eyedropper cursor (R11-②): crosshair +
                                                 // a hover swatch of the color under the
                                                 // pointer — for the tool AND the Alt-held
@@ -1896,7 +1665,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   repaint:
                       _idleAnts,
                   viewport:
-                      _viewport,
+                      _viewportState._viewport,
                   committedRegion:
                       idleSelection,
                   screenOffset:
@@ -1990,7 +1759,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               symmetry: widget
                   .guides
                   ?.actingSymmetry,
-              viewport: _viewport,
+              viewport: _viewportState._viewport,
               canvasSize: widget
                   .canvasSize,
               // No frame = a stable sentinel:
@@ -2035,11 +1804,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               onLiftRequested:
                   _selectionSeat.handleSelectionLift,
               onLiftLanded:
-                  _handleLiftLanded,
+                  _lift.handleLiftLanded,
               onLiftConfirmed:
-                  _handleLiftConfirmed,
+                  _lift.handleLiftConfirmed,
               onLiftReverted:
-                  _handleLiftReverted,
+                  _lift.handleLiftReverted,
               // R26 #13 follow-up: the implicit
               // whole-picture box frames the
               // cel's tight ink bounds.
@@ -2060,7 +1829,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // can be composed onto those tiles,
               // they stop being pending at all.
               composeCommittedRegionPictures:
-                  _composeCommittedRegionPictures,
+                  _lift._composeCommittedRegionPictures,
               // Pending move sessions hold the
               // session's edit lock (seeks
               // refused) WITHOUT locking
@@ -2210,179 +1979,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     ];
   }
 
-  Positioned _toolTapLayer() {
-    return Positioned.fill(
-      child: Listener(
-        key: const ValueKey<String>(
-          'canvas-tool-tap-layer',
-        ),
-        behavior: HitTestBehavior
-            .opaque,
-        onPointerDown: _toolTapDown,
-        // TS7 (유저: 클릭중이면
-        // 색 바뀌도록 — 규칙
-        // 간단하게): a MOVE is
-        // the press verb
-        // CONTINUING. The stamp
-        // lays its next dab
-        // where the spacing says;
-        // the eyedropper samples
-        // again, which is what
-        // dragging a dropper
-        // means everywhere else.
-        //
-        // The bucket cannot get
-        // here — its tap handler
-        // is null (R22-A sends
-        // the dab through the
-        // stroke pipeline), so
-        // this layer is not even
-        // mounted for it and
-        // "one fill per move
-        // event" is structurally
-        // impossible.
-        onPointerMove: _toolTapMove,
-        onPointerUp: _toolTapUp,
-        onPointerCancel: _toolTapCancel,
-      ),
-    );
-  }
-
-  void _toolTapCancel(PointerCancelEvent event) {
-    _tapLayerTouches.remove(
-      event.pointer,
-    );
-    _touchTap = null;
-    _lastStampCenter = null;
-  }
-
-  void _toolTapUp(PointerUpEvent event) {
-    // A tap that stayed
-    // put resolves when
-    // the finger leaves.
-    if (_touchTap
-            ?.pointer ==
-        event.pointer) {
-      _resolveTouchTap();
-    }
-    _tapLayerTouches.remove(
-      event.pointer,
-    );
-    _touchTap = null;
-    _lastStampCenter = null;
-  }
-
-  void _toolTapMove(PointerMoveEvent event) {
-    // The gesture
-    // declares itself by
-    // MOVING: crossing
-    // the slop resolves
-    // the waiting tap
-    // where it was
-    // pressed, and the
-    // drag carries on
-    // from there — the
-    // stamp trails its
-    // row, the dropper
-    // keeps sampling.
-    if (_touchTapPassedSlop(
-      event,
-    )) {
-      _resolveTouchTap();
-    }
-    if (_touchTap != null) {
-      // Still undecided —
-      // a sub-slop wobble
-      // is not a drag.
-      return;
-    }
-    _continuePressVerb(
-      event,
-    );
-  }
-
-  void _toolTapDown(PointerDownEvent event) {
-    // PRIMARY contact only (R22-B):
-    // the middle-button pan (the
-    // ancestor gesture layer) used
-    // to ALSO fire the tool here —
-    // every pan click deposited a
-    // stray fill, which is why one
-    // fill sometimes took two undos.
-    //
-    // R28 #8: the EYEDROPPER is
-    // exempt. Its whole point under a
-    // mapped hold (pen barrel /
-    // right-click) is that the held
-    // NON-primary button is what
-    // picks — the strict test meant
-    // the mapping switched the tool
-    // and then refused every press,
-    // so it "제대로 작동하지도않고".
-    // A pick writes no pixels, so
-    // there is no stray-edit hazard
-    // to guard against here.
-    if (widget
-                .brushToolState
-                .tool !=
-            CanvasTool
-                .eyedropper &&
-        event.buttons !=
-            kPrimaryButton) {
-      return;
-    }
-    // TS9: and a finger
-    // only drives a tool
-    // while the one-finger
-    // slot says draw. This
-    // layer takes the pick
-    // and the stamp, and
-    // both were acting on
-    // fingers in flip mode.
-    if (!AppInput.toolAcceptsPointer(
-      event.kind,
-    )) {
-      return;
-    }
-    // 🚨A TOUCH WAITS —
-    // see [_touchTap].
-    // A SECOND finger
-    // arriving while one
-    // waits is the pinch
-    // this exists for.
-    if (event.kind ==
-        PointerDeviceKind
-            .touch) {
-      _tapLayerTouches.add(
-        event.pointer,
-      );
-      if (_tapLayerTouches
-              .length >
-          1) {
-        _touchTap = null;
-        return;
-      }
-      _touchTap = (
-        pointer:
-            event.pointer,
-        canvas:
-            _canvasPointOf(
-              event,
-            ),
-        local: event
-            .localPosition,
-      );
-      return;
-    }
-    _toolTapHandler()!(
-      _canvasPointOf(event),
-    );
-  }
-
   Widget _buildViewportContent(BuildContext context) {
     final override = widget.contentOverride;
     if (override != null) {
-      return override(context, _viewport);
+      return override(context, _viewportState._viewport);
     }
 
     final coordinator = widget.coordinator!;
@@ -2396,7 +1996,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       layerId: activeKey.layerId,
       frameId: activeKey.frameId,
       inputSettings: widget.brushToolState.toInputSettings(),
-      viewport: _viewport,
+      viewport: _viewportState._viewport,
       // Alt+click = temporary eyedropper (P5): color only, the active
       // painting tool stays.
       onAltPick: widget.sampleColorAt == null || widget.onAltColorPick == null
@@ -2457,7 +2057,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
             transform: layerPoseViewportWrapMatrix(
               pose.pose,
               widget.canvasSize,
-              _viewport,
+              _viewportState._viewport,
               anchorPoint: pose.anchorPoint,
             ),
             child: interactiveView,
@@ -2471,290 +2071,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  void _rememberEditorViewportSize(Size size) {
-    if (size.width <= 0 || size.height <= 0) {
-      return;
-    }
-    if (_editorViewportSize == size) {
-      return;
-    }
-    final previous = _editorViewportSize;
-    final insets = _framingInsets;
-    // Both windows measured with the SAME cover, so the delta below is the
-    // BOX's doing and nothing else. A cover that changed at the same time
-    // is deliberately not counted — see [_reanchorAfterBoxChange].
-    final before = previous == null
-        ? null
-        : canvasVisibleRect(previous, insets);
-    _editorViewportSize = size;
-    final after = canvasVisibleRect(size, insets);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      if (before != null) {
-        _reanchorAfterBoxChange(before, after);
-      }
-      setState(() {});
-    });
-  }
-
-  /// Keeps what you are looking at where you are looking when the BOX
-  /// changes size.
-  ///
-  /// Pan is a pure screen-space translation applied after zoom, rotation and
-  /// flip, so a window whose centre moved by a delta is answered by moving
-  /// pan by exactly that delta — nothing has to be unprojected.
-  ///
-  /// Only the FLOOR does this, and only for the box. Two deliberate limits:
-  ///
-  ///  * A docked panel has always let the artwork sit still against its
-  ///    top-left corner, and nothing is asking it to change. The floor is the
-  ///    one surface that grows by hundreds of pixels the moment a dock opens
-  ///    or the window resizes, which is where "the drawing walked into the
-  ///    corner" comes from.
-  ///  * A COVER change is left alone on purpose. When a panel opens over the
-  ///    canvas the artwork does not move on screen — only the window onto it
-  ///    shrinks — and sliding the picture out from under a panel the user
-  ///    just opened, or shifting it on every frame of a splitter drag, is a
-  ///    motion nobody asked for.
-  void _reanchorAfterBoxChange(Rect before, Rect after) {
-    final dx = after.center.dx - before.center.dx;
-    final dy = after.center.dy - before.center.dy;
-    if (dx == 0 && dy == 0) {
-      return;
-    }
-    _setViewport(_viewport.translated(dx: dx, dy: dy));
-  }
-
-  void _setViewport(CanvasViewport viewport) {
-    setState(() => _viewport = viewport.clamped());
-    _syncViewportParent();
-  }
-
-  /// Tells the owner the view moved, in DEVICE pixels.
-  ///
-  /// ⚠️Notification ONLY. The value is already in the owner's notifier by
-  /// the time this runs — writing a "last published" marker here is what
-  /// used to make the panel revert itself.
-  ///
-  /// ⛔The STORED value, not `toDevice(_viewport)`: the two agree to within
-  /// a float ulp, and handing out the one that is already in the notifier
-  /// means a caller that echoes it straight back is a no-op rather than a
-  /// change. It also keeps the rule with no exceptions — every viewport
-  /// that crosses this panel's boundary, in either direction and through
-  /// any of the three channels, is in device pixels.
-  void _syncViewportParent() {
-    final onChanged = widget.onViewportChanged;
-    if (onChanged == null) {
-      return;
-    }
-    onChanged(_viewportNotifier.value ?? CanvasViewport());
-  }
-
-  /// One press of the pill's − / +. Back with the buttons themselves
-  /// (유저 확정 2026-08-13: 줌 버튼도 살림).
-  void _zoomAroundCenter(double factor) {
-    _zoomToAroundCenter(_viewport.zoom * factor);
-  }
-
-  void _zoomToAroundCenter(double nextZoom) {
-    // The centre of what you can SEE, not of the box: anchoring on the box
-    // walks the picture toward a covered edge one press at a time.
-    final center = _resolvedVisibleRect().center;
-    final anchor = ViewportPoint(x: center.dx, y: center.dy);
-    setState(() {
-      // ⛔The clamp is in DISPLAY units, and it is the same one for every
-      // absolute zoom verb. The ± buttons used to stop at the model's
-      // RENDER rail while the readout stopped at 10–1600%, so on a 2×
-      // tablet the buttons reached 3200% and then a one-pixel nudge of the
-      // readout halved the view in a single step.
-      _viewport = _viewport.zoomedAround(
-        nextZoom: _zoomScale.clampRender(nextZoom),
-        anchor: anchor,
-      );
-    });
-    // ⚠️Through the shared publisher, not `onViewportChanged` directly:
-    // that left `_lastWidgetViewport` stale for one build, and the
-    // controlled re-apply on the next build would then overwrite — and
-    // discard a ratio hold that had just been set.
-    _syncViewportParent();
-  }
-
-  void _fitToView() {
-    final canvasSize = widget.canvasSize;
-    final target =
-        widget.fitFocusRect ??
-        Rect.fromLTWH(
-          0,
-          0,
-          canvasSize.width.toDouble(),
-          canvasSize.height.toDouble(),
-        );
-    setState(() {
-      _viewport = _fittedInto(_resolvedVisibleRect(), canvasRect: target);
-    });
-    _syncViewportParent();
-  }
-
-  /// The panel's LAYOUT box — the surface you touch. Pan bars, the gesture
-  /// layer and the shell memo want this one.
-  Size _resolvedEditorViewportSize() {
-    return _editorViewportSize ??
-        Size(
-          widget.canvasSize.width.toDouble(),
-          widget.canvasSize.height.toDouble(),
-        );
-  }
-
   /// What is hidden from the artwork by the panels lying on it. Zero for a
   /// panel nothing lies on, which is every one but the floor.
   EdgeInsets get _framingInsets => widget.floorCover;
-
-  /// The window you LOOK THROUGH, in layout coordinates. Every verb that
-  /// frames the artwork wants this one — see [canvasVisibleRect].
-  Rect _resolvedVisibleRect() =>
-      canvasVisibleRect(_resolvedEditorViewportSize(), _framingInsets);
-
-  /// The 1:1 button. ⛔NOT `CanvasViewport()`: a bare zoom of 1.0 is one
-  /// artwork pixel per LOGICAL pixel, which on a 1.5 display drew the
-  /// artwork at 150% while the readout said 100%. The button's own glyph
-  /// says "1:1" and now it means it — one artwork pixel, one device pixel,
-  /// whatever the monitor and the UI scale are.
-  void _resetView() {
-    _setViewport(_zoomScale.identityViewport);
-  }
-
-  ViewportPoint get _viewportCenterAnchor {
-    final center = _resolvedVisibleRect().center;
-    return ViewportPoint(x: center.dx, y: center.dy);
-  }
-
-  /// Rotates the VIEW by [degrees] around the viewport center (P8). The
-  /// result snaps to 0° when within ±0.01° (float dust from gesture
-  /// accumulations must not leave the AABB slow path armed forever).
-  void _rotateAroundCenter(double degrees) {
-    var next = _viewport.rotationDegrees + degrees;
-    final normalized = ((next + 180) % 360) - 180;
-    if (normalized.abs() < 0.01) {
-      next = next - normalized;
-    }
-    _setViewport(
-      _viewport.rotatedAround(
-        nextRotationDegrees: next,
-        anchor: _viewportCenterAnchor,
-      ),
-    );
-  }
-
-  void _toggleFlipHorizontal() {
-    _setViewport(_viewport.flippedAround(anchor: _viewportCenterAnchor));
-  }
-
-  void _toggleFlipVertical() {
-    _setViewport(
-      _viewport.flippedVerticalAround(anchor: _viewportCenterAnchor),
-    );
-  }
-
-  /// Straightens the rotation to 0° around the viewport center, keeping
-  /// zoom/pan/flips (UI-R18 #20).
-  void _resetRotation() {
-    _setViewport(
-      _viewport.rotatedAround(
-        nextRotationDegrees: 0,
-        anchor: _viewportCenterAnchor,
-      ),
-    );
-  }
-
-  /// The angle-label drag (UI-R18 #21): one degree per pixel, anchored to
-  /// the viewport center.
-  void _rotateByDrag(double deltaDegrees) {
-    _rotateAroundCenter(deltaDegrees);
-  }
-
-  /// The tap action for the active NON-PAINTING tool; null while a
-  /// painting tool is active (no tap layer mounts then).
-  void Function(CanvasPoint point)? _toolTapHandler() {
-    switch (widget.brushToolState.tool) {
-      case CanvasTool.brush:
-      case CanvasTool.eraser:
-      // The selection/move tools mount their own drag layer, not the tap
-      // layer. The CUT variants ride that same layer (canvasToolSelects),
-      // and the STAMP variant paints, so none of them want a tap handler
-      // here either.
-      case CanvasTool.select:
-      case CanvasTool.move:
-      case CanvasTool.cut:
-      // The shape fill rides the same drag layer as select and cut — one
-      // outline, three things to do with it.
-      case CanvasTool.fillShape:
-        return null;
-      case CanvasTool.cutStamp:
-        // Click = drop the held piece, centred here, committed at once.
-        // Photoshop, Clip Studio and TVPaint agree on the immediate part:
-        // none of them float a pasted or stamped piece behind a confirm
-        // step. That is also what keeps this tool out of the confirm
-        // button's state machine.
-        final slot = widget.cutPieceSlot;
-        if (slot == null || widget._editableCoordinator == null) {
-          return null;
-        }
-        return (point) {
-          final piece = slot.piece;
-          if (piece == null) {
-            return;
-          }
-          _commitStampDabs([
-            buildCutStampDab(
-              piece: piece,
-              center: point,
-              opacity: widget.brushToolState.cutStampOpacity,
-            ),
-          ]);
-          // A press is also the start of a possible drag, and the drag
-          // measures its spacing from the stamp that just landed.
-          _lastStampCenter = point;
-        };
-      case CanvasTool.eyedropper:
-        final sample = widget.sampleColorAt;
-        final pick = widget.onEyedropperPick;
-        if (sample == null || pick == null) {
-          return null;
-        }
-        return (point) {
-          final color = sample(point);
-          if (color != null) {
-            pick(color);
-          }
-        };
-      case CanvasTool.fill:
-        // R22-A: fill taps are handled by the interactive view's stroke
-        // pipeline (fillDabAt) — instant overlay, settling hold, and the
-        // same primary-button discipline as strokes. No tap layer.
-        return null;
-      case CanvasTool.guide:
-        // The guide tool drags HANDLES, not points on the cel — it mounts
-        // its own layer in the viewport overlay, like the selection tools.
-        return null;
-    }
-  }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
   }
 
-  /// Pre-lift surfaces by session token (R19 P3b): the immutable surface
-  /// captured BEFORE a lift's erase — the confirm command's undo target
-  /// and the revert's restore point. Reference-cheap.
-  /// What a lift session found when it began: the pixels AND the selection.
-  ///
-  /// ⛔ONE record, not a second map beside this one. Both are anchored at the
-  /// same instant and released at the same instant, and a parallel map would
-  /// be one more place to forget to clear.
-  final Map<int, ({BitmapSurface pixels, CanvasSelectionRegion? region})>
-  _liftAnchors = {};
+  // The lift (Round 6): anchors, the pre-landing surface, and how a lift ends.
+  late final _CanvasPanelLift _lift = _CanvasPanelLift(this);
+
   /// R16-① bitmap lift: commits [shape]'s ERASE — RAW, outside app
   /// history (the origin must vanish instantly, but nothing is undoable
   /// until the session CONFIRMS) — and returns a session token plus the
@@ -2818,87 +2145,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   int _cutPieceSequence = 0;
 
-  /// Where the last stamp of the current drag landed. Null between drags.
-  CanvasPoint? _lastStampCenter;
-
-  /// 🚨★★★A TOUCH TAP RESOLVES ON THE LIFT OR ON THE SLOP, NEVER ON THE
-  /// TOUCH — the fill's law (#1277), now the tap layer's too.
-  ///
-  /// 유저 2026-08-27: 「1핑거 드로잉모드일때 다른 툴도 비슷한 문제 있을거
-  /// 같은데 … **손가락이 동시에 착지하는게 불가능하니까** … 그런 비슷한
-  /// 방식으로 통일하는게 **근본통일**같은데」.
-  ///
-  /// Two fingers never land on the same millisecond, so a pinch begins as a
-  /// lone contact. The app's answer to that has never been a timer — a
-  /// gesture DECLARES ITSELF BY MOVING, and a touch stroke owns the screen
-  /// only once it crosses [InteractiveBrushEditCanvasView
-  /// .kTouchStrokeCommitSlop]. The stamp and the eyedropper fired on the
-  /// press instead, so the first finger of every two-finger undo dropped a
-  /// piece or repainted the colour.
-  ///
-  /// ⛔Not 「fire, then take it back when the second finger shows」 —
-  /// [[no-optimistic-commit-then-revert]], 유저: 「한 프레임 보이는 건 무조건
-  /// 걸린다」. Nothing happens until the gesture has said what it is.
-  ///
-  /// ★ONE RULE FOR BOTH TOOLS, which is the 근본통일 asked for: a tap that
-  /// stays put resolves when the finger leaves, and one that moves resolves
-  /// the moment it crosses the slop — so the eyedropper still samples all
-  /// the way along a drag (TS7) and the stamp still trails a row of pieces.
-  /// Pen and mouse never wait: they cannot be half of a pinch.
-  ({int pointer, CanvasPoint canvas, Offset local})? _touchTap;
-
-  /// The fingers this layer is holding right now.
-  ///
-  /// 🚨THE ONE ANSWER to 「is this still the user's own single gesture」, and
-  /// it has to be a COUNT rather than 「is a tap already waiting」. Measured:
-  /// with the waiting-tap flag as the only guard, the second finger cleared
-  /// the pending tap and the THIRD armed a fresh one — a three-finger redo
-  /// stamped a piece on its way past. The view's stroke path words it the
-  /// same way: no new gesture starts until every finger lifts, so a quick
-  /// pinch never leaves marks.
-  ///
-  /// ⛔This layer absorbs its pointers above the canvas, so the ink census
-  /// ([CanvasTouchContacts]) never sees them — asking it here would be a
-  /// second answer that reads zero through the very gesture it is meant to
-  /// catch. Measured too: removing that check changed no behaviour at all.
-  final Set<int> _tapLayerTouches = <int>{};
-
-  /// Runs the waiting tap at the point it was pressed. Harmless when
-  /// nothing is waiting — a tap that turned out to be a pinch was dropped
-  /// when the second finger landed, so there is nothing left to refuse.
-  void _resolveTouchTap() {
-    final pending = _touchTap;
-    if (pending == null) {
-      return;
-    }
-    _touchTap = null;
-    _toolTapHandler()?.call(pending.canvas);
-  }
-
-  /// Whether [event] has carried the waiting tap far enough to have
-  /// declared itself a drag rather than half of a pinch.
-  bool _touchTapPassedSlop(PointerEvent event) {
-    final pending = _touchTap;
-    return pending != null &&
-        pending.pointer == event.pointer &&
-        (event.localPosition - pending.local).distance >=
-            InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop;
-  }
-
-  /// Continues a stamp drag up to [point].
-  ///
-  /// Stamps go down one whole piece apart, so they touch without
-  /// overlapping — which is why there is no spacing knob to get wrong, and
-  /// why a soft edge cannot accumulate where two stamps stack.
-  ///
-  /// The remainder of the travel is deliberately NOT carried: the next
-  /// move continues from the last stamp that actually landed, so a slow
-  /// drag and a fast one lay the same number of stamps over the same
-  /// distance.
-  CanvasPoint _canvasPointOf(PointerEvent event) => _viewport.viewportToCanvas(
-    ViewportPoint(x: event.localPosition.dx, y: event.localPosition.dy),
-  );
-
   /// TS7: the tap layer's press verb, continued while the pointer is held.
   ///
   /// One rule for both of its tools rather than a per-tool `if` at the call
@@ -2911,39 +2157,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!AppInput.toolAcceptsPointer(event.kind)) {
       return;
     }
-    final point = _canvasPointOf(event);
+    final point = _viewportState.canvasPointOf(event);
     if (canvasToolStamps(widget.brushToolState.tool)) {
-      _dragStampTo(point);
+      _tap.dragStampTo(point);
       return;
     }
     if (widget.brushToolState.tool == CanvasTool.eyedropper) {
-      _toolTapHandler()?.call(point);
+      _tap.toolTapHandler()?.call(point);
     }
-  }
-
-  void _dragStampTo(CanvasPoint point) {
-    if (!canvasToolStamps(widget.brushToolState.tool)) {
-      return;
-    }
-    final piece = widget.cutPieceSlot?.piece;
-    final from = _lastStampCenter;
-    if (piece == null || from == null) {
-      return;
-    }
-    final centers = cutStampCentersAlong(piece: piece, from: from, to: point);
-    if (centers.isEmpty) {
-      return;
-    }
-    for (final center in centers) {
-      _commitStampDabs([
-        buildCutStampDab(
-          piece: piece,
-          center: center,
-          opacity: widget.brushToolState.cutStampOpacity,
-        ),
-      ]);
-    }
-    _lastStampCenter = centers.last;
   }
 
   /// Paint a finished shape-fill outline.
@@ -3024,201 +2245,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   BitmapSurface? _contentBoundsSurface;
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _contentBoundsCached;
-
-  /// The cel as it stood just before a lift session's landing committed —
-  /// the base half of a composed stand-in.
-  ///
-  /// Captured at the call rather than read back, because by the time the
-  /// selection layer asks, the commit has already replaced it. Consumed
-  /// once; a stale one would compose the wrong artwork under the landing.
-  ///
-  /// 🚨 Released on the NEXT FRAME whether or not anyone consumed it, and
-  /// that is not tidiness. Three ordinary endings land a stamp and never
-  /// reach the composer — a tool switch that confirms from the unmounting
-  /// layer's `dispose`, a cel change that lands the pending stamp through
-  /// `_resetAll`, and a confirm with no ink to compose from — and a
-  /// [BitmapSurface] holds every tile the landing replaced, whose pixels
-  /// are NATIVE allocations plus their GPU images. On a whole-picture
-  /// transform of a 2340×1654 cel that is tens of megabytes pinned for
-  /// the rest of the session, which is the same "every edit pins its last
-  /// generation" term [BitmapTileImageCache.retainedScopeLimit] exists to
-  /// bound. The compose runs synchronously inside the same landing, so a
-  /// post-frame release can never take it away early.
-  BitmapSurface? _preLandingSurface;
-
-  /// Captures the pre-landing cel and schedules its release, so the slot
-  /// cannot outlive the landing that filled it.
-  void _holdPreLandingSurface(BrushFrameEditingCoordinator coordinator) {
-    _preLandingSurface = coordinator.currentSurfaceOf(
-      coordinator.activeFrameKey,
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _preLandingSurface = null;
-    });
-  }
-
-  /// Gives the tiles a landing just created a picture of themselves,
-  /// composed from what the float is already showing.
-  ///
-  /// This is the answer to the same question the hold covers for, and it
-  /// runs first: what it can seed leaves the pending set, so the float is
-  /// clipped to a smaller region — or to nothing at all, which is the
-  /// whole landing painted by the canvas on the frame it lands.
-  ///
-  /// Silent about coordinates it cannot answer for, deliberately: those
-  /// keep the hold, which is today's behaviour and correct.
-  void _composeCommittedRegionPictures(
-    int left,
-    int top,
-    int right,
-    int bottom,
-    ProvisionalInkPainter paintInk,
-  ) {
-    final coordinator = widget._editableCoordinator;
-    final preSurface = _preLandingSurface;
-    _preLandingSurface = null;
-    if (coordinator == null || preSurface == null) {
-      return;
-    }
-    final postSurface = coordinator.currentSurfaceOf(
-      coordinator.activeFrameKey,
-    );
-    if (identical(postSurface, preSurface) ||
-        postSurface.tileSize != preSurface.tileSize) {
-      return;
-    }
-    // floorDiv, not ~/: a landing in the pasteboard has negative
-    // coordinates, where truncation picks the wrong tile.
-    final size = postSurface.tileSize;
-    final firstTx = floorDiv(left, size);
-    final lastTx = floorDiv(right - 1, size);
-    final lastTy = floorDiv(bottom - 1, size);
-    final coords = <TileCoord>[];
-    for (var ty = floorDiv(top, size); ty <= lastTy; ty += 1) {
-      for (var tx = firstTx; tx <= lastTx; tx += 1) {
-        coords.add(TileCoord(x: tx, y: ty));
-      }
-    }
-    // Under the probe because it is the one part of a confirm whose cost
-    // scales with the LANDING rather than with the change: a whole-canvas
-    // stamp is every tile of the cel, at a `toImageSync` each.
-    final activeKey = coordinator.activeFrameKey;
-    labProbe(
-      'confirm.composeStandIns',
-      () => seedProvisionalTilePictures(
-        preSurface: preSurface,
-        postSurface: postSurface,
-        coords: coords,
-        ink: paintInk,
-        // The cel's lineage. Only the synchronous-upload path inside
-        // reaches the bucket, but it puts TRUTH there, and truth in the
-        // null bucket is the shared-tin defect the float once had.
-        staleScope: (activeKey.layerId, activeKey.frameId),
-      ),
-    );
-  }
-
-  /// R16-① confirm: lands the floating stamp and adopts the whole move
-  /// session (raw lift + landed stamp) into app history as ONE undo
-  /// entry — a surface-snapshot command whose undo target is the exact
-  /// pre-lift picture (R19 P3b).
-  void _handleLiftConfirmed(int liftToken, BrushDab stampDab) {
-    final coordinator = widget._editableCoordinator;
-    final preLift = _liftAnchors.remove(liftToken);
-    if (coordinator == null) {
-      return;
-    }
-    // The setState rebuilds the interactive view onto the post-confirm
-    // surface (R17-①b: without it the landed stamp stayed invisible —
-    // white hole at the origin, nothing at the destination — until an
-    // unrelated rebuild). Mounted guard: the layer's unmount path
-    // confirms post-frame, possibly after this panel went with it.
-    void run() {
-      // The base the landing is about to be blended onto, for the
-      // composed stand-ins the layer asks for immediately after this.
-      _holdPreLandingSurface(coordinator);
-      final historyManager = widget.historyManager;
-      if (historyManager == null || preLift == null) {
-        // Headless hosts (focused tests) or a lost anchor: land raw.
-        coordinator.commitSourceStroke(
-          sourceDabs: [stampDab],
-          cacheInvalidationSink: widget.cacheInvalidationSink,
-        );
-        return;
-      }
-      historyManager.execute(
-        BrushLiftMoveHistoryCommand(
-          coordinator: coordinator,
-          frameKey: coordinator.activeFrameKey,
-          preLiftSurface: preLift.pixels,
-          stampDab: stampDab,
-          cacheInvalidationSink: widget.cacheInvalidationSink,
-          // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27: 「언두
-          // 하면 그림만 돌리는게아니라 선택도 이전 선택으로 되돌리기」 — a
-          // transform moves the outline as much as the drawing, and one
-          // confirm has to come back as one undo.
-          regionBefore: preLift.region,
-          readRegion: () => widget.selectionCommands?.region,
-          restoreRegion: (region) =>
-              widget.selectionCommands?.setRegion(region),
-        ),
-      );
-    }
-
-    if (mounted) {
-      setState(run);
-    } else {
-      run();
-    }
-  }
-
-  /// REVERT of a session (R17-①): the pre-lift surface snapshot restores
-  /// the picture byte-exactly; nothing lands in history.
-  void _handleLiftReverted(int liftToken) {
-    final coordinator = widget._editableCoordinator;
-    final preLift = _liftAnchors.remove(liftToken);
-    if (coordinator == null || preLift == null) {
-      return;
-    }
-    void run() {
-      coordinator.restoreSurfaceSnapshot(
-        coordinator.activeFrameKey,
-        preLift.pixels,
-        cacheInvalidationSink: widget.cacheInvalidationSink,
-      );
-    }
-
-    if (mounted) {
-      setState(run);
-    } else {
-      run();
-    }
-  }
-
-  /// Raw landing of the floating stamp (no history entry) — the abandon
-  /// fallback so a reset never loses the float's pixels. The base surface
-  /// is the post-erase state throughout the session, so landing is a
-  /// plain stamp commit.
-  void _handleLiftLanded(int liftToken, BrushDab stampDab) {
-    final coordinator = widget._editableCoordinator;
-    _liftAnchors.remove(liftToken);
-    if (coordinator == null) {
-      return;
-    }
-    void run() {
-      _holdPreLandingSurface(coordinator);
-      coordinator.commitSourceStroke(
-        sourceDabs: [stampDab],
-        cacheInvalidationSink: widget.cacheInvalidationSink,
-      );
-    }
-
-    if (mounted) {
-      setState(run);
-    } else {
-      run();
-    }
-  }
 
   void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the

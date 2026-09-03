@@ -29,7 +29,7 @@ class _CanvasPanelToolCursor {
     CutPiece piece,
     ui.Image? image,
   ) {
-    final centre = _state._viewport.viewportToCanvas(
+    final centre = _state._viewportState._viewport.viewportToCanvas(
       ViewportPoint(x: position.dx, y: position.dy),
     );
     final width = piece.stampWidth.toDouble();
@@ -119,7 +119,7 @@ class _CanvasPanelToolCursor {
           : '(${position.dx.round()},${position.dy.round()})';
       InputInspector.note(
         'aim $source -> $where'
-        ' held=$_state._aimIsHeld touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
+        ' held=$_state._tap.aimIsHeld touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
         ' draws=${AppInput.touchDraws}',
       );
     }
@@ -163,7 +163,7 @@ class _CanvasPanelToolCursor {
   /// ★So the seed asks whether anyone still HOLDS the aim. It exists for
   /// R3 #8 — arming a cursor while the pointer sits still, which is exactly
   /// what pressing a tool button does — and there the mouse or pen IS on
-  /// the glass, so [_state._aimIsHeld] is true and that fix is untouched. What it
+  /// the glass, so [_state._tap.aimIsHeld] is true and that fix is untouched. What it
   /// must never do is put a ring back for a pointer that has left, at
   /// coordinates nobody is pointing at any more.
   // ⛔THE SEED IS GONE. It existed because the aim lived in TWO fields: the
@@ -333,7 +333,7 @@ class _CanvasPanelToolCursor {
             }
             return BrushCursorOverlay(
               position: position,
-              viewport: _state._viewport,
+              viewport: _state._viewportState._viewport,
               size: _state.widget.brushToolState.size,
               roundness: _state.widget.brushToolState.roundness,
               angleDegrees: _state.widget.brushToolState.angleDegrees,
@@ -371,7 +371,7 @@ class _CanvasPanelToolCursor {
       return;
     }
     final color = sample(
-      _state._viewport.viewportToCanvas(
+      _state._viewportState._viewport.viewportToCanvas(
         ViewportPoint(x: localPosition.dx, y: localPosition.dy),
       ),
     );

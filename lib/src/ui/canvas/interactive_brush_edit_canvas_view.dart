@@ -52,6 +52,9 @@ part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
 part 'brush_edit/brush_edit_overlay.dart';
+part 'brush_edit/brush_edit_settling.dart';
+part 'brush_edit/brush_edit_hold.dart';
+part 'brush_edit/brush_edit_cel_press.dart';
 
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
@@ -265,14 +268,8 @@ class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
   int? _activeDrawingPointer;
 
-  /// I-10: the press that MADE the cel, waiting for the cel to arrive.
-  ///
-  /// ⚠️Held rather than acted on, because the two are a frame apart: the
-  /// block is created inside the down event, the rebuild that hands us the
-  /// new frame happens after it, and only then is there a surface to ink.
-  /// The stroke begins at the position stored here, so the line starts
-  /// where the pen actually landed rather than where it had moved on to.
-  PointerDownEvent? _pendingCelPress;
+  // The press that makes its cel first (Round 6).
+  late final _BrushEditCelPress _celPress = _BrushEditCelPress(this);
 
   /// PEN-12 #4: the touch stroke's commitment tracking — sub-slop, a
   /// simultaneous second finger still converts the pair to navigation;
@@ -297,12 +294,8 @@ class _InteractiveBrushEditCanvasViewState
   /// mouse draws exactly as before.
   double _currentPressure = 1.0;
 
-  /// The live mapped-hold session (PEN-7a): a secondary-button press
-  /// whose canvas mapping switched the tool temporarily. One at a time;
-  /// eyedropper holds pick continuously through the move stream.
-  int? _mappedHoldPointer;
-  CanvasPointerRelease? _mappedHoldRelease;
-  bool _mappedHoldIsEyedropper = false;
+  // The held button (Round 6): a mapped button standing in for a tool.
+  late final _BrushEditHold _hold = _BrushEditHold(this);
 
   /// The contact that started as an ALT pick (TS7), so its moves keep
   /// sampling.
@@ -397,14 +390,8 @@ class _InteractiveBrushEditCanvasViewState
   // After pointer-up the overlay stays visible ("settling") until the
   // committed tiles finish decoding, so the stroke never flashes away while
   // the display switches to the materialized bitmap.
-  bool _settling = false;
-  Timer? _settlingFallbackTimer;
-
-  /// Canvas region the settling stroke touched: only ITS tiles gate the
-  /// overlay handoff (checking the whole surface stalled the drop on
-  /// unrelated tiles, and the old flat 300ms give-up then revealed stale
-  /// pre-stroke tiles — the "part of the stroke blinks" bug).
-  DirtyRegion? _settlingBounds;
+  // Settling (Round 6): the decode window after a stroke lands.
+  late final _BrushEditSettling _settlingState = _BrushEditSettling(this);
 
   @override
   void initState() {
@@ -465,7 +452,7 @@ class _InteractiveBrushEditCanvasViewState
   @override
   void dispose() {
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
-    _settlingFallbackTimer?.cancel();
+    _settlingState._settlingFallbackTimer?.cancel();
     // Only OUR model — a host-owned one outlives this view (it survives
     // the layer switches that rebuild us).
     if (widget.overlayModel == null) {
@@ -519,7 +506,7 @@ class _InteractiveBrushEditCanvasViewState
             onPointerMove: _handlePointerMove,
             onPointerUp: _handlePointerUp,
             onPointerCancel: _handlePointerCancel,
-            onPointerHover: _handlePointerHover,
+            onPointerHover: _hold.handlePointerHover,
             // paintsContent false: the merged stack painter draws this
             // surface in TREE order (inside whatever folder buffer holds
             // it) — this view stays for input alone. The listener above is
@@ -595,7 +582,7 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     if (!widget.editable) {
-      _pressAsksForACel(event);
+      _celPress.pressAsksForACel(event);
       return;
     }
 
@@ -613,11 +600,11 @@ class _InteractiveBrushEditCanvasViewState
     // requests is asynchronous, and the stroke starts now.
     _overlay.syncPenTailMapping();
     var mappedErase = _overlay.penTailErases;
-    final mapping = _mappedPointerActionFor(event);
+    final mapping = _hold.mappedPointerActionFor(event);
     if (mapping != null) {
       if (_multiTouchNavigation ||
           _activeDrawingPointer != null ||
-          _mappedHoldPointer != null) {
+          _hold._mappedHoldPointer != null) {
         return;
       }
       switch (mapping.action) {
@@ -629,24 +616,24 @@ class _InteractiveBrushEditCanvasViewState
         case CanvasPointerAction.undo:
           // Skip when the button press already fired during hover (the
           // hover edge below) and the tip then touched with it held.
-          if (!_mappedButtonHeldSinceHover(event)) {
+          if (!_hold.mappedButtonHeldSinceHover(event)) {
             widget.onInvokeAction?.call('edit-undo');
           }
           return;
         case CanvasPointerAction.redo:
-          if (!_mappedButtonHeldSinceHover(event)) {
+          if (!_hold.mappedButtonHeldSinceHover(event)) {
             widget.onInvokeAction?.call('edit-redo');
           }
           return;
         case CanvasPointerAction.eyedropper:
-          _mappedHoldPointer = event.pointer;
-          _mappedHoldRelease = mapping.release;
-          _mappedHoldIsEyedropper = true;
+          _hold._mappedHoldPointer = event.pointer;
+          _hold._mappedHoldRelease = mapping.release;
+          _hold._mappedHoldIsEyedropper = true;
           // The contact takes over a hover-engaged hold (R26 #19/#20):
           // one hold session, one release.
-          _hoverToolHoldActive = false;
-          _hoverToolHoldRelease = null;
-          _hoverToolHoldButton = 0;
+          _hold._hoverToolHoldActive = false;
+          _hold._hoverToolHoldRelease = null;
+          _hold._hoverToolHoldButton = 0;
           widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
           final pickPosition = _canvasPositionFromLocal(event.localPosition);
           // The eyedropper picks anywhere on the pasteboard, like Flash
@@ -657,9 +644,9 @@ class _InteractiveBrushEditCanvasViewState
           return;
         case CanvasPointerAction.eraser:
           mappedErase = true;
-          _mappedHoldPointer = event.pointer;
-          _mappedHoldRelease = mapping.release;
-          _mappedHoldIsEyedropper = false;
+          _hold._mappedHoldPointer = event.pointer;
+          _hold._mappedHoldRelease = mapping.release;
+          _hold._mappedHoldIsEyedropper = false;
           widget.onTemporaryToolHold?.call(CanvasTool.eraser);
         // Falls through into the normal stroke start below with the
         // erase-substituted settings snapshot.
@@ -669,7 +656,7 @@ class _InteractiveBrushEditCanvasViewState
     if (!mappedErase &&
         (_multiTouchNavigation ||
             _activeDrawingPointer != null ||
-            !_isPrimaryButton(_effectiveButtons(event)))) {
+            !_isPrimaryButton(_hold.effectiveButtons(event)))) {
       return;
     }
 
@@ -861,43 +848,8 @@ class _InteractiveBrushEditCanvasViewState
     _nextSequence += emitted.length;
   }
 
-  /// Standing down, and something pressed: ask the shell for a cel.
-  ///
-  /// ⛔PRIMARY contact only, the rule the stroke path keeps as well: a
-  /// mapped barrel/middle press means pan or undo, and none of those wants
-  /// a block made underneath it.
-  void _pressAsksForACel(PointerDownEvent event) {
-    if (_pendingCelPress != null) {
-      return;
-    }
-    if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
-      return;
-    }
-    if (!(widget.onPressNeedsCel?.call() ?? false)) {
-      return;
-    }
-    _pendingCelPress = event;
-  }
-
-  /// Begins the held press now that there is somewhere for it to go.
-  ///
-  /// ⚠️Called from the MOVE and the UP rather than from a post-frame
-  /// callback: those are the next events this listener receives, they carry
-  /// the proof that the finger is still down, and they arrive after the
-  /// rebuild for anything but an impossibly fast tap. A move that beats the
-  /// rebuild is simply dropped and the next one tries again — the stroke
-  /// still starts at the DOWN position either way.
-  void _resumePressThatMadeTheCel(int pointer) {
-    final pending = _pendingCelPress;
-    if (pending == null || pending.pointer != pointer || !widget.editable) {
-      return;
-    }
-    _pendingCelPress = null;
-    _handlePointerDown(pending);
-  }
-
   void _handlePointerMove(PointerMoveEvent event) {
-    _resumePressThatMadeTheCel(event.pointer);
+    _celPress.resumePressThatMadeTheCel(event.pointer);
     if (!widget.editable) {
       return; // Standing down: inert, exactly as when nothing was built.
     }
@@ -906,10 +858,10 @@ class _InteractiveBrushEditCanvasViewState
     // than on the down event, and the hover edge above never sees it
     // then. Only picked up while nothing is drawing yet, so a live
     // stroke is never hijacked mid-line.
-    _handleMappedButtonRiseDuringContact(event);
+    _hold.handleMappedButtonRiseDuringContact(event);
     // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
     // '누르는 동안 해당 색을 뽑는다').
-    if (event.pointer == _mappedHoldPointer && _mappedHoldIsEyedropper) {
+    if (event.pointer == _hold._mappedHoldPointer && _hold._mappedHoldIsEyedropper) {
       final pickPosition = _canvasPositionFromLocal(event.localPosition);
       if (_isInsidePasteboard(pickPosition)) {
         widget.onAltPick?.call(pickPosition);
@@ -960,16 +912,16 @@ class _InteractiveBrushEditCanvasViewState
   void _handlePointerUp(PointerUpEvent event) {
     // A TAP on an empty cel is a dot, so the press still begins here — and
     // then this same event ends it: one dab, one undo entry.
-    _resumePressThatMadeTheCel(event.pointer);
-    if (_pendingCelPress?.pointer == event.pointer) {
-      _pendingCelPress = null; // Never resumed; nothing is left to draw.
+    _celPress.resumePressThatMadeTheCel(event.pointer);
+    if (_celPress._pendingCelPress?.pointer == event.pointer) {
+      _celPress._pendingCelPress = null; // Never resumed; nothing is left to draw.
     }
     if (!widget.editable) {
       return;
     }
-    _lastContactButtons.remove(event.pointer);
+    _hold._lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
-    _releaseMappedHold(event.pointer);
+    _hold.releaseMappedHold(event.pointer);
     if (event.pointer == _altPickPointer) {
       _altPickPointer = null;
     }
@@ -1018,18 +970,18 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    if (_pendingCelPress?.pointer == event.pointer) {
-      _pendingCelPress = null;
+    if (_celPress._pendingCelPress?.pointer == event.pointer) {
+      _celPress._pendingCelPress = null;
     }
     if (!widget.editable) {
       return;
     }
-    _lastContactButtons.remove(event.pointer);
+    _hold._lastContactButtons.remove(event.pointer);
     if (event.pointer == _fillTapPointer) {
       _fill.forgetFillTap();
     }
     _forgetTouchPointer(event.pointer);
-    _releaseMappedHold(event.pointer);
+    _hold.releaseMappedHold(event.pointer);
     if (event.pointer == _altPickPointer) {
       _altPickPointer = null;
     }
@@ -1048,52 +1000,6 @@ class _InteractiveBrushEditCanvasViewState
       _multiTouchNavigation = false;
     }
   }
-
-  /// Every button bit that is NOT the primary contact (R27 #17 / R28).
-  ///
-  /// The mapping used to recognise EXACTLY `kSecondaryButton` and
-  /// `kTertiaryButton`. A stylus barrel that a driver reports on any other
-  /// bit — Windows Ink and the Wacom driver have several configurations —
-  /// then fell through every branch in silence, which is the shape of the
-  /// "와콤 펜은 우클릭버튼인거 확인했는데 툴이 아예 안 바뀜" report. Treating
-  /// any non-primary bit as the secondary mapping costs nothing (the
-  /// primary contact is the only one that draws) and stops the behaviour
-  /// depending on which bit a driver happens to pick.
-  static const int _nonPrimaryButtons = ~kPrimaryButton;
-
-  /// The secondary-ish bits of [buttons]: null when only the primary (or
-  /// nothing) is down.
-  static int _mappedButtonBits(int buttons) => buttons & _nonPrimaryButtons;
-
-  /// The canvas mapping row for a secondary-button press (PEN-7a); null =
-  /// not a mapped press (primary drawing input, or touch).
-  CanvasPointerMapping? _mappedPointerActionFor(PointerDownEvent event) {
-    if (event.kind == PointerDeviceKind.touch) {
-      return null;
-    }
-    return _mappingForButtons(_mappedButtonBits(_effectiveButtons(event)));
-  }
-
-  /// The buttons to BELIEVE for [event].
-  ///
-  /// A driver sidecar that speaks for this moment WINS — the same
-  /// contract [_pressure.normalizedPressure] already follows, and for the same
-  /// reason: the OS path can be lying about what the pen just did.
-  ///
-  /// The lie this catches: Windows Ink hands a Wacom barrel press to a
-  /// legacy window (Flutter never asks for WM_POINTER) as a PHANTOM PEN
-  /// TAP — kind stylus, pressure exactly 0.0, the PRIMARY button down,
-  /// on its own pointer id, while the pen is still hovering. Taken
-  /// literally that is a drawing contact, so the barrel never reached
-  /// its mapping AND the phantom opened a real stroke on top of it.
-  ///
-  /// Note this is a truth source, not a fingerprint: nothing here
-  /// guesses from pressure being 0. A device with no pressure at all
-  /// reports 0 for every honest contact it ever makes, so reading the
-  /// zero as "must be a barrel press" would turn every stroke on such a
-  /// tablet into a button press.
-  int _effectiveButtons(PointerEvent event) =>
-      PenSidecars.freshButtons() ?? event.buttons;
 
   /// The mapping a set of non-primary [bits] drives: the wheel click owns
   /// the tertiary bit, and everything else reads as the secondary — the
@@ -1117,122 +1023,6 @@ class _InteractiveBrushEditCanvasViewState
   /// tail-down). Not a button hold: it spans strokes until the pen is
   /// turned back over.
   bool _penTailActive = false;
-
-  /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
-  /// edge detector's memory (S-Pen/Wacom report barrel presses while
-  /// hovering; a rising mapped button fires one-shot actions without
-  /// needing contact — the S-Pen hover window blocks touch, so the pen
-  /// carries its own undo).
-  int _lastHoverButtons = 0;
-
-  bool _mappedButtonHeldSinceHover(PointerDownEvent event) =>
-      (_lastHoverButtons & _mappedButtonBits(_effectiveButtons(event))) != 0;
-
-  /// R26 #19/#20: a mapped HOLD tool (eyedropper) engaged from a hover
-  /// button press — a Wacom barrel button pressed while the pen hovers
-  /// never produced a pointer DOWN, so the mapping silently did nothing
-  /// and no eyedropper UI appeared. The tool switches on the press edge
-  /// and springs back on the release edge.
-  bool _hoverToolHoldActive = false;
-  CanvasPointerRelease? _hoverToolHoldRelease;
-  int _hoverToolHoldButton = 0;
-
-  void _handlePointerHover(PointerHoverEvent event) {
-    if (!widget.editable) {
-      return; // Nothing to hover OVER while standing down.
-    }
-    if (event.kind == PointerDeviceKind.touch) {
-      return;
-    }
-    final buttons = _effectiveButtons(event);
-    final previousButtons = _lastHoverButtons;
-    final pressed = buttons & ~previousButtons;
-    final released = previousButtons & ~buttons;
-    _lastHoverButtons = buttons;
-    if (_hoverToolHoldActive && (released & _hoverToolHoldButton) != 0) {
-      final keep = _hoverToolHoldRelease == CanvasPointerRelease.keep;
-      _hoverToolHoldActive = false;
-      _hoverToolHoldRelease = null;
-      _hoverToolHoldButton = 0;
-      widget.onTemporaryToolRelease?.call(keep: keep);
-    }
-    // The tail is read on every hover sample: that is what makes turning
-    // the pen over — not touching down with it — the moment the eraser
-    // arrives.
-    _overlay.syncPenTailMapping();
-    final pressedBits = _mappedButtonBits(pressed);
-    final mapping = _mappingForButtons(pressedBits);
-    if (mapping == null) {
-      return;
-    }
-    switch (mapping.action) {
-      case CanvasPointerAction.undo:
-        widget.onInvokeAction?.call('edit-undo');
-      case CanvasPointerAction.eyedropper:
-        // R26 #19/#20: engage the eyedropper on the HOVER press edge —
-        // the pen barrel button is a right-click that never touches the
-        // surface, and the tool switch is what brings the eyedropper's
-        // cursor + live swatch up. The pick itself still happens on
-        // contact (the mapped-down path below).
-        if (!_hoverToolHoldActive && _mappedHoldPointer == null) {
-          _hoverToolHoldActive = true;
-          _hoverToolHoldRelease = mapping.release;
-          _hoverToolHoldButton = pressedBits;
-          widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
-        }
-      case CanvasPointerAction.redo:
-        widget.onInvokeAction?.call('edit-redo');
-      case CanvasPointerAction.eraser ||
-          CanvasPointerAction.pan ||
-          CanvasPointerAction.none:
-        break;
-    }
-  }
-
-  /// Buttons last seen on a CONTACT event, per pointer — the in-contact
-  /// counterpart of [_lastHoverButtons] (R27 #17).
-  final Map<int, int> _lastContactButtons = {};
-
-  void _handleMappedButtonRiseDuringContact(PointerMoveEvent event) {
-    if (event.kind == PointerDeviceKind.touch) {
-      return;
-    }
-    final buttons = _effectiveButtons(event);
-    final previous = _lastContactButtons[event.pointer] ?? 0;
-    final pressed = buttons & ~previous;
-    _lastContactButtons[event.pointer] = buttons;
-    if (pressed == 0 ||
-        _mappedHoldPointer != null ||
-        _hoverToolHoldActive ||
-        _activeDrawingPointer != null) {
-      return;
-    }
-    final mapping = _mappingForButtons(_mappedButtonBits(pressed));
-    if (mapping == null || mapping.action != CanvasPointerAction.eyedropper) {
-      return;
-    }
-    _mappedHoldPointer = event.pointer;
-    _mappedHoldRelease = mapping.release;
-    _mappedHoldIsEyedropper = true;
-    widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
-    final pickPosition = _canvasPositionFromLocal(event.localPosition);
-    if (_isInsidePasteboard(pickPosition)) {
-      widget.onAltPick?.call(pickPosition);
-    }
-  }
-
-  /// Ends an active mapped hold (pointer up/cancel): tells the shell to
-  /// spring the tool back or keep it, per the mapping.
-  void _releaseMappedHold(int pointer) {
-    if (pointer != _mappedHoldPointer) {
-      return;
-    }
-    final keep = _mappedHoldRelease == CanvasPointerRelease.keep;
-    _mappedHoldPointer = null;
-    _mappedHoldRelease = null;
-    _mappedHoldIsEyedropper = false;
-    widget.onTemporaryToolRelease?.call(keep: keep);
-  }
 
   /// EVERY tool works anywhere on the pasteboard (Flash-style — the
   /// stage rectangle is a crop at composite time, not an input
@@ -1324,120 +1114,20 @@ class _InteractiveBrushEditCanvasViewState
   /// still reaching here with the primary bit down is a real stroke.
   bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
 
-  /// Lets go of every stand-in whose committed tile can now paint itself.
-  ///
-  /// A barrier, not a clock: the release is driven by decodes landing, so
-  /// it cannot fire early, and it cannot leak when the work runs long.
-  void _releaseSettledStandIns() {
-    if (!_overlay._overlayModel.hasStandIns || !mounted) {
-      return;
-    }
-    final surface = widget.sessionState.canvasState.currentSurface;
-    final cache = BitmapTileImageCache.instance;
-    _overlay._overlayModel.releaseStandIns((coord) {
-      final tile = surface.tileAt(coord);
-      // ⚠️ No tile is NOT "settled". The commit reaches this widget's
-      // session state a rebuild later than it reaches the store, so
-      // between the handoff's miss and that rebuild the coordinate the
-      // stamp just wrote to can still be absent here — and letting go
-      // then is letting go before anything can paint it. A stand-in that
-      // never finds a tile is bounded by the next reset.
-      return tile != null && cache.imageFor(tile) != null;
-    });
-  }
-
-  /// How long the settling safety cap keeps waiting for tile decodes
-  /// before force-dropping the overlay. Purely a stuck-state escape hatch:
-  /// dropping EARLY is what used to blink parts of big strokes back to
-  /// their pre-stroke tiles (the old 300ms flat timeout fired before slow
-  /// decodes finished), so the deadline is generous and the periodic
-  /// re-check below re-requests decodes instead of giving up.
-  static const Duration _settlingDeadline = Duration(seconds: 2);
-  static const Duration _settlingRecheckInterval = Duration(milliseconds: 50);
-
-  void _beginSettling() {
-    _settling = true;
-    // The overlay stops being the stroke and starts being a stand-in —
-    // the painter needs to know, so it can prefer a committed tile that
-    // has caught up over an image that is a revision behind it.
-    _overlay._overlayModel.settling = true;
-    _settlingFallbackTimer?.cancel();
-    var waited = Duration.zero;
-    _settlingFallbackTimer = Timer.periodic(_settlingRecheckInterval, (timer) {
-      if (!mounted || !_settling) {
-        timer.cancel();
-        return;
-      }
-      waited += _settlingRecheckInterval;
-      if (waited >= _settlingDeadline) {
-        timer.cancel();
-        _overlay.resetOverlay();
-        return;
-      }
-      // Belt and braces against a missed decode notification: re-request
-      // the stroke tiles' decodes and re-run the handoff check.
-      _requestSettlingDecodes();
-      _onTileImagesChanged();
-    });
-    // Check after the parent rebuild delivers the post-commit session state;
-    // checking synchronously would consult the pre-commit surface and clear
-    // the overlay immediately, reintroducing the flash.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestSettlingDecodes();
-      _onTileImagesChanged();
-    });
-  }
-
-  /// The committed-surface tiles the settling stroke touched (all tiles
-  /// when the bounds are unknown).
-  List<BitmapTile> _settlingTiles() {
-    return settlingTilesForBounds(
-      surface: widget.sessionState.canvasState.currentSurface,
-      bounds: _settlingBounds,
-    );
-  }
-
-  void _requestSettlingDecodes() {
-    if (!_settling || !mounted) {
-      return;
-    }
-    // Budgeted starts (R18 B-1): a canvas-covering stroke used to start
-    // EVERY touched tile's decode in this one call — each start is a
-    // synchronous tile copy + 65k-pixel premultiply, a pen-up hitch at
-    // heavy sizes. Chunks chain instead: every decode completion notifies
-    // the cache listener below, which re-requests the next chunk until
-    // [allDecoded] releases the overlay (the overlay keeps the stroke on
-    // screen throughout, so the handoff stays atomic and invisible).
-    var budget = BitmapTileImageCache.decodeStartBudget;
-    for (final tile in _settlingTiles()) {
-      if (!BitmapTileImageCache.instance.needsDecodeStart(tile)) {
-        continue;
-      }
-      BitmapTileImageCache.instance.ensureDecoded(
-        tile,
-        staleScope: (widget.layerId, widget.frameId),
-      );
-      budget -= 1;
-      if (budget <= 0) {
-        break;
-      }
-    }
-  }
-
   void _onTileImagesChanged() {
     // BEFORE the settle gate: a stand-in outlives the window that made
     // it, so once a new stroke is live this is the only thing that lets
     // it go.
-    _releaseSettledStandIns();
-    if (!_settling || !mounted) {
+    _settlingState.releaseSettledStandIns();
+    if (!_settlingState._settling || !mounted) {
       return;
     }
-    if (BitmapTileImageCache.instance.allDecoded(_settlingTiles())) {
+    if (BitmapTileImageCache.instance.allDecoded(_settlingState.settlingTiles())) {
       _overlay.resetOverlay();
     } else {
       // Not done yet — start the next decode chunk off this notification
       // (the 50ms timer stays as the belt-and-braces fallback).
-      _requestSettlingDecodes();
+      _settlingState.requestSettlingDecodes();
     }
   }
 

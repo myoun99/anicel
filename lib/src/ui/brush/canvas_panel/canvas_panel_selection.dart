@@ -163,7 +163,7 @@ class _CanvasPanelSelection {
       return null;
     }
     final token = ++_liftTokenSeq;
-    _state._liftAnchors[token] = (
+    _state._lift._liftAnchors[token] = (
       pixels: preLift,
       // The selection as the session finds it — captured at the same instant
       // as the pixels, so undo can put both back exactly as they were.

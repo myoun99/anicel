@@ -285,8 +285,8 @@ class _BrushEditStroke {
       // Bounds passed EXPLICITLY: `_settlingTiles()` falls back to every
       // tile of the cel when `_settlingBounds` is null, which would make a
       // one-tile stroke wait on the whole canvas.
-      _state._settlingBounds = strokeBounds;
-      _state._beginSettling();
+      _state._settlingState._settlingBounds = strokeBounds;
+      _state._settlingState._beginSettling();
       return;
     }
     // Atomic: the overlay's remaining images retire in the same

@@ -77,7 +77,7 @@ class _BrushEditFill {
     if (stamp != null) {
       final stampLeft = (dab.center.x - stamp.width / 2).round();
       final stampTop = (dab.center.y - stamp.height / 2).round();
-      _state._settlingBounds = DirtyRegion(
+      _state._settlingState._settlingBounds = DirtyRegion(
         left: math.max(0, stampLeft),
         top: math.max(0, stampTop),
         rightExclusive: math.min(
@@ -140,13 +140,13 @@ class _BrushEditFill {
     } else {
       // A stampless fill dab (synthetic/test): no overlay preview —
       // the deferred commit below still lands it identically.
-      _state._settlingBounds = null;
+      _state._settlingState._settlingBounds = null;
     }
     // Pin the pre-fill tiles NOW: until the stamp image decodes the
     // canvas keeps showing the pre-fill picture (no flash), then the
     // overlay pops in complete.
     _state._overlay._overlayModel.holdPreStrokeTiles(
-      preStrokeHoldTiles(surface: surface, bounds: _state._settlingBounds),
+      preStrokeHoldTiles(surface: surface, bounds: _state._settlingState._settlingBounds),
     );
 
     // Commit AFTER the tap frame renders: unconditional (never gated on
@@ -172,6 +172,6 @@ class _BrushEditFill {
         blendMode: _state.widget.inputSettings.blendMode,
       ),
     );
-    _state._beginSettling();
+    _state._settlingState._beginSettling();
   }
 }

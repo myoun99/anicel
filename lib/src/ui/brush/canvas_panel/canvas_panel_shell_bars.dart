@@ -61,9 +61,9 @@ class _CanvasPanelShellBars {
   Widget? _memoBottomBar;
 
   void _ensureShellBars() {
-    final viewportSize = _state._resolvedEditorViewportSize();
+    final viewportSize = _state._viewportState._resolvedEditorViewportSize();
     final panbarsToken = (
-      viewport: _state._viewport,
+      viewport: _state._viewportState._viewport,
       viewportSize: viewportSize,
       canvasSize: _state.widget.canvasSize,
     );
@@ -105,7 +105,7 @@ class _CanvasPanelShellBars {
       // holds. That is safe only because `zoom` is now the ONLY thing it
       // reads off it; a second read added without adding it here brings
       // back a stale readout.
-      zoom: _state._viewport.zoom,
+      zoom: _state._viewportState._viewport.zoom,
       canvasSize: _state.widget.canvasSize,
       rotation: _state.widget.allowViewRotation,
       // WHICH BAR this is — flat on the floor, folded anywhere else. It
@@ -148,18 +148,18 @@ class _CanvasPanelShellBars {
     if (panbarsToken != _panbarsToken || _memoRightStripBar == null) {
       _panbarsToken = panbarsToken;
       _memoRightStripBar = CanvasViewportVerticalScrollbar(
-        viewport: _state._viewport,
+        viewport: _state._viewportState._viewport,
         editorViewportSize: viewportSize,
         canvasSize: _state.widget.canvasSize,
         onViewportChanged: _setViewportDuringPanbarDrag,
-        onViewportChangeEnd: _state._syncViewportParent,
+        onViewportChangeEnd: _state._viewportState._syncViewportParent,
       );
       _memoHorizontalStripBar = CanvasViewportHorizontalScrollbar(
-        viewport: _state._viewport,
+        viewport: _state._viewportState._viewport,
         editorViewportSize: viewportSize,
         canvasSize: _state.widget.canvasSize,
         onViewportChanged: _setViewportDuringPanbarDrag,
-        onViewportChangeEnd: _state._syncViewportParent,
+        onViewportChangeEnd: _state._viewportState._syncViewportParent,
       );
     }
     if (memoizable && pillToken == _pillToken && _memoBottomBar != null) {
@@ -170,8 +170,8 @@ class _CanvasPanelShellBars {
       onFloor: _state._onFloor,
       leading: _state.widget.bottomBarLeading,
       hostSettings: _state.widget.bottomBarSettings,
-      viewport: _state._viewport,
-      liveViewport: _state._viewportNotifier,
+      viewport: _state._viewportState._viewport,
+      liveViewport: _state._viewportState.viewportNotifier,
       canvasSize: _state.widget.canvasSize,
       paperColor: _state.widget.paperColor,
       onPaperColorChanged: _state.widget.onPaperColorChanged,
@@ -183,25 +183,25 @@ class _CanvasPanelShellBars {
       // rebuilt every time the brush colour moves.
       currentColorOf: () => _state.widget.brushToolState.color,
       onViewportChanged: _setViewportDuringPanbarDrag,
-      onViewportChangeEnd: _state._syncViewportParent,
+      onViewportChangeEnd: _state._viewportState._syncViewportParent,
       onZoomSet: _setZoomFromLabel,
       onZoomIn: _zoomInFromBar,
       onZoomOut: _zoomOutFromBar,
-      onFit: _state._fitToView,
-      onReset: _state._resetView,
+      onFit: _state._viewportState._fitToView,
+      onReset: _state._viewportState._resetView,
       onRotateCcw: _state.widget.allowViewRotation ? _rotateCcwFromBar : null,
       onRotateCw: _state.widget.allowViewRotation ? _rotateCwFromBar : null,
       onRotateReset: _state.widget.allowViewRotation
-          ? _state._resetRotation
+          ? _state._viewportState._resetRotation
           : null,
       onRotateByDrag: _state.widget.allowViewRotation
-          ? _state._rotateByDrag
+          ? _state._viewportState._rotateByDrag
           : null,
       onFlipHorizontal: _state.widget.allowViewRotation
-          ? _state._toggleFlipHorizontal
+          ? _state._viewportState._toggleFlipHorizontal
           : null,
       onFlipVertical: _state.widget.allowViewRotation
-          ? _state._toggleFlipVertical
+          ? _state._viewportState._toggleFlipVertical
           : null,
     );
   }
@@ -221,22 +221,22 @@ class _CanvasPanelShellBars {
     return _memoBottomBar!;
   }
 
-  void _rotateCcwFromBar() => _state._rotateAroundCenter(-15);
+  void _rotateCcwFromBar() => _state._viewportState._rotateAroundCenter(-15);
 
-  void _rotateCwFromBar() => _state._rotateAroundCenter(15);
+  void _rotateCwFromBar() => _state._viewportState._rotateAroundCenter(15);
 
   void _setViewportDuringPanbarDrag(CanvasViewport viewport) {
-    _state._rebuild(() => _state._viewport = viewport.clamped());
+    _state._rebuild(() => _state._viewportState._viewport = viewport.clamped());
   }
 
-  void _zoomInFromBar() => _state._zoomAroundCenter(1.25);
+  void _zoomInFromBar() => _state._viewportState._zoomAroundCenter(1.25);
 
-  void _zoomOutFromBar() => _state._zoomAroundCenter(0.8);
+  void _zoomOutFromBar() => _state._viewportState._zoomAroundCenter(0.8);
 
-  /// Absolute-zoom twin of [_state._zoomAroundCenter] — the readout's drag is
+  /// Absolute-zoom twin of [_state._viewportState._zoomAroundCenter] — the readout's drag is
   /// 1%/px and its double-tap types a percent, and both of those are
   /// absolute.
   void _setZoomFromLabel(double zoom) {
-    _state._zoomToAroundCenter(zoom);
+    _state._viewportState._zoomToAroundCenter(zoom);
   }
 }

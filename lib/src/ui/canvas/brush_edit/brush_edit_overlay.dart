@@ -75,7 +75,7 @@ class _BrushEditOverlay {
     final mapping = AppInput.settings.value.canvasPenTail;
     if (inverted) {
       // A barrel hold that is already running owns the tool.
-      if (_state._hoverToolHoldActive || _state._mappedHoldPointer != null) {
+      if (_state._hold._hoverToolHoldActive || _state._hold._mappedHoldPointer != null) {
         return;
       }
       final tool = switch (mapping.action) {
@@ -122,20 +122,20 @@ class _BrushEditOverlay {
       resetOverlay();
       return;
     }
-    _state._settling = false;
-    _state._settlingBounds = null;
-    _state._settlingFallbackTimer?.cancel();
-    _state._settlingFallbackTimer = null;
+    _state._settlingState._settling = false;
+    _state._settlingState._settlingBounds = null;
+    _state._settlingState._settlingFallbackTimer?.cancel();
+    _state._settlingState._settlingFallbackTimer = null;
     _state._fillOverlayToken += 1;
     _overlayModel.beginStrokeKeepingStandIns();
   }
 
   /// Clears the visible overlay (live or settling) and its tile images.
   void resetOverlay() {
-    _state._settling = false;
-    _state._settlingBounds = null;
-    _state._settlingFallbackTimer?.cancel();
-    _state._settlingFallbackTimer = null;
+    _state._settlingState._settling = false;
+    _state._settlingState._settlingBounds = null;
+    _state._settlingState._settlingFallbackTimer?.cancel();
+    _state._settlingState._settlingFallbackTimer = null;
     // Invalidate any in-flight fill stamp decode (R23): applying it
     // after this reset would leave a ghost overlay with no settling to
     // clear it.
