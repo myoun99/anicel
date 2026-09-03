@@ -159,6 +159,89 @@ class EditorDockDropZone extends StatelessWidget {
   static double footprintOf(BuildContext context) =>
       DeviceGrid.of(context).position(thickness + margin * 2);
 
+  /// The zone while nothing it can take is in flight: the footprint it
+  /// reserves, so a drag that becomes eligible changes nothing but the
+  /// content (no UI pops into existence).
+  Widget _reservedFootprint(BuildContext context, ColorScheme colorScheme) {
+    // ★THE SPACE IS ALWAYS RESERVED; only the BAND comes and goes
+    // (유저 2026-08-21: 「통일할까요? 란 질문이면 통일이 좋은데」 —
+    // and [no-ui-that-pops-into-existence] had already said it:
+    // 「자리는 항상 예약하고 내용만 바꾼다」).
+    //
+    // ⛔It used to be `SizedBox.shrink()`, which made this zone one
+    // of 0 / 30 / 48 wide depending on app state — and the change
+    // landed on the TAB-LIFT frame, shifting everything beside it,
+    // the canvas included. The quantization round put all three on
+    // the device grid, so the jump stopped being a half-pixel smear
+    // and stayed a jump. A footprint that only ever changes what it
+    // DRAWS cannot jump at all.
+    return expandToFill
+        ? ColoredBox(color: colorScheme.surfaceContainerLowest)
+        : SizedBox(
+            width: axis == Axis.vertical ? footprintOf(context) : null,
+            height: axis == Axis.horizontal ? footprintOf(context) : null,
+          );
+  }
+
+  /// The well a drag can land in — brighter and bordered while [hovered].
+  Widget _dropWell(
+    BuildContext context,
+    bool hovered,
+    ColorScheme colorScheme,
+  ) {
+    // 🚨This zone exists ONLY while a tab is in the air, and its
+    // whole footprint shifts everything beside it — including the
+    // canvas. So the x the canvas starts at is 0 / this / 48
+    // depending on app state, and it changes on the tab-lift
+    // frame, which is itself a layout-change frame. 30 × 1.25 =
+    // 37.5: half a device pixel, on exactly the frame that hops.
+    //
+    // The FOOTPRINT is what the chain needs on the grid, and the
+    // band absorbs the residue — which is the run rule working:
+    // the total is quantized once and the last extent takes what
+    // is left. Measured footprint at 1.125 / 1.25 / 1.35 / 1.75:
+    // 33 / 37 / 40 / 52 device px, integral at all four.
+    //
+    // ⚠️The band's OWN edges stay off the grid, because leaf
+    // crispness is a later PR's job. ⛔That is not "two runs over
+    // one boundary" — an earlier draft of this comment said so
+    // and was wrong: the margin/band split is nested inside the
+    // footprint and shares no boundary with the outer chain, so
+    // a run taking [2, 26, 2] would be the documented composing
+    // pattern, not the forbidden one.
+    final band = footprintOf(context) - margin * 2;
+    return Container(
+      key: ValueKey<String>('editor-dock-drop-rail-$dockId'),
+      width: expandToFill ? null : (axis == Axis.vertical ? band : null),
+      height: expandToFill ? null : (axis == Axis.horizontal ? band : null),
+      margin: const EdgeInsets.all(margin),
+      decoration: ShapeDecoration(
+        color: hovered
+            ? colorScheme.primary.withValues(alpha: 0.25)
+            : colorScheme.primary.withValues(alpha: 0.06),
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: BorderSide(
+            color: hovered
+                ? colorScheme.primary
+                : colorScheme.primary.withValues(alpha: 0.45),
+            width: hovered ? 1.5 : 1,
+          ),
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.add,
+          size: 14,
+          // 「＋가 있는 모든 곳, 공통적으로」. This one only exists
+          // while a tab is in the air, so it is never disabled —
+          // hovering deepens the rail behind it, not the glyph.
+          color: AppColors.addGlyph(enabled: true),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -167,84 +250,13 @@ class EditorDockDropZone extends StatelessWidget {
       builder: (context, dragging, _) {
         final eligible = dragging != null && canAcceptTab(dragging);
         if (!eligible) {
-          // ★THE SPACE IS ALWAYS RESERVED; only the BAND comes and goes
-          // (유저 2026-08-21: 「통일할까요? 란 질문이면 통일이 좋은데」 —
-          // and [no-ui-that-pops-into-existence] had already said it:
-          // 「자리는 항상 예약하고 내용만 바꾼다」).
-          //
-          // ⛔It used to be `SizedBox.shrink()`, which made this zone one
-          // of 0 / 30 / 48 wide depending on app state — and the change
-          // landed on the TAB-LIFT frame, shifting everything beside it,
-          // the canvas included. The quantization round put all three on
-          // the device grid, so the jump stopped being a half-pixel smear
-          // and stayed a jump. A footprint that only ever changes what it
-          // DRAWS cannot jump at all.
-          return expandToFill
-              ? ColoredBox(color: colorScheme.surfaceContainerLowest)
-              : SizedBox(
-                  width: axis == Axis.vertical ? footprintOf(context) : null,
-                  height: axis == Axis.horizontal ? footprintOf(context) : null,
-                );
+          return _reservedFootprint(context, colorScheme);
         }
         return DragTarget<EditorPanelTabDragData>(
           onAcceptWithDetails: (details) => onDropped(details.data),
           builder: (context, candidateData, rejectedData) {
             final hovered = candidateData.isNotEmpty;
-            // 🚨This zone exists ONLY while a tab is in the air, and its
-            // whole footprint shifts everything beside it — including the
-            // canvas. So the x the canvas starts at is 0 / this / 48
-            // depending on app state, and it changes on the tab-lift
-            // frame, which is itself a layout-change frame. 30 × 1.25 =
-            // 37.5: half a device pixel, on exactly the frame that hops.
-            //
-            // The FOOTPRINT is what the chain needs on the grid, and the
-            // band absorbs the residue — which is the run rule working:
-            // the total is quantized once and the last extent takes what
-            // is left. Measured footprint at 1.125 / 1.25 / 1.35 / 1.75:
-            // 33 / 37 / 40 / 52 device px, integral at all four.
-            //
-            // ⚠️The band's OWN edges stay off the grid, because leaf
-            // crispness is a later PR's job. ⛔That is not "two runs over
-            // one boundary" — an earlier draft of this comment said so
-            // and was wrong: the margin/band split is nested inside the
-            // footprint and shares no boundary with the outer chain, so
-            // a run taking [2, 26, 2] would be the documented composing
-            // pattern, not the forbidden one.
-            final band = footprintOf(context) - margin * 2;
-            return Container(
-              key: ValueKey<String>('editor-dock-drop-rail-$dockId'),
-              width: expandToFill
-                  ? null
-                  : (axis == Axis.vertical ? band : null),
-              height: expandToFill
-                  ? null
-                  : (axis == Axis.horizontal ? band : null),
-              margin: const EdgeInsets.all(margin),
-              decoration: ShapeDecoration(
-                color: hovered
-                    ? colorScheme.primary.withValues(alpha: 0.25)
-                    : colorScheme.primary.withValues(alpha: 0.06),
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(
-                    color: hovered
-                        ? colorScheme.primary
-                        : colorScheme.primary.withValues(alpha: 0.45),
-                    width: hovered ? 1.5 : 1,
-                  ),
-                ),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.add,
-                  size: 14,
-                  // 「＋가 있는 모든 곳, 공통적으로」. This one only exists
-                  // while a tab is in the air, so it is never disabled —
-                  // hovering deepens the rail behind it, not the glyph.
-                  color: AppColors.addGlyph(enabled: true),
-                ),
-              ),
-            );
+            return _dropWell(context, hovered, colorScheme);
           },
         );
       },
