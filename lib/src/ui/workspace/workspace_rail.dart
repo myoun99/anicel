@@ -440,64 +440,8 @@ class _WorkspaceRail {
                 child: room.hosts[railId] ?? const SizedBox.shrink(),
               ),
             ),
-            // The WIDTH grip, on this panel's inner edge — the edge
-            // facing the artwork. Every group has one and they all
-            // write the rail's single room.width, so the rail stays one
-            // column wide however many panels are on it.
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: room.right ? 0 : null,
-              right: room.right ? null : 0,
-              width: DockEdgeSplitter.thickness,
-              child: DockEdgeSplitter(
-                key: ValueKey<String>('dock-resize-$railId'),
-                axis: Axis.vertical,
-                onDragDelta: (delta) {
-                  // ⚠️The sign flip has to be UNDONE on the way back.
-                  // A room.right rail grows as the pointer moves LEFT, so
-                  // reporting the room.width's own delta would hand the
-                  // splitter a debt pointing the wrong way — and a
-                  // debt with the wrong sign is worse than none: it
-                  // would make the edge run ahead instead of behind.
-                  final used = _state._layout.resizeDock(
-                    EditorWorkspace.railWidthKey(right: room.right),
-                    room.right ? -delta : delta,
-                    fallback: room.width,
-                    maxExtent: room.dragCeiling,
-                  );
-                  return room.right ? -used : used;
-                },
-              ),
-            ),
-            // The HEIGHT grip, on this panel's bottom edge. It costs
-            // no layout, so the gap below stays a gap.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: DockEdgeSplitter.thickness,
-              child: DockEdgeSplitter(
-                key: ValueKey<String>('dock-resize-$railId-height'),
-                axis: Axis.horizontal,
-                onDragDelta: (delta) => _state._layout.resizeDock(
-                  railId,
-                  delta,
-                  fallback: EditorWorkspace.railGroupHeight,
-                  minExtent: _state._verticalDockMinimumExtent(railId),
-                  // The RAIL is the ceiling, not the model's default
-                  // 640: that number guards a room.width, and a panel's
-                  // height here can legitimately be more than it on a
-                  // tall window and must be less than it on a short
-                  // one. Without this the grip banked height the rail
-                  // could never show and then dragged dead on the way
-                  // back — measured: 60px of return travel moved the
-                  // edge 9px. It is the same defect this round already
-                  // fixed for the floating region.
-                  maxExtent: railExtent.isFinite ? railExtent : null,
-                ),
-              ),
-            ),
+            _widthGrip(railId, room),
+            _heightGrip(railId, railExtent),
           ],
         ),
       );
@@ -534,7 +478,7 @@ class _WorkspaceRail {
       height: content,
       child: Stack(clipBehavior: Clip.none, children: children),
     );
-    // The panels themselves keep their own room.width; the gap beside them
+    // The panels themselves keep their own width; the gap beside them
     // is the rail's, and belongs to the strip room.side.
     // The gap beside the strip. It is a link in the chain to the
     // RAIL-DOCKED canvas — everything inside the rail panel starts
@@ -663,6 +607,68 @@ class _WorkspaceRail {
       ],
     );
   }
+
+  /// The WIDTH grip, on this panel's inner edge — the edge facing the
+  /// artwork. Every group has one and they all write the rail's single
+  /// width, so the rail stays one column wide however many panels are on
+  /// it. The room is handed in: a grip fires after other rails have built,
+  /// so it must hold its own rail's answers, never a shared field's.
+  Widget _widthGrip(String railId, _RailRoom room) => Positioned(
+    top: 0,
+    bottom: 0,
+    left: room.right ? 0 : null,
+    right: room.right ? null : 0,
+    width: DockEdgeSplitter.thickness,
+    child: DockEdgeSplitter(
+      key: ValueKey<String>('dock-resize-$railId'),
+      axis: Axis.vertical,
+      onDragDelta: (delta) {
+        // ⚠️The sign flip has to be UNDONE on the way back.
+        // A right rail grows as the pointer moves LEFT, so
+        // reporting the width's own delta would hand the
+        // splitter a debt pointing the wrong way — and a
+        // debt with the wrong sign is worse than none: it
+        // would make the edge run ahead instead of behind.
+        final used = _state._layout.resizeDock(
+          EditorWorkspace.railWidthKey(right: room.right),
+          room.right ? -delta : delta,
+          fallback: room.width,
+          maxExtent: room.dragCeiling,
+        );
+        return room.right ? -used : used;
+      },
+    ),
+  );
+
+  /// The HEIGHT grip, on this panel's bottom edge. It costs no layout,
+  /// so the gap below stays a gap. The rail extent is handed in for the
+  /// same reason the width grip's room is.
+  Widget _heightGrip(String railId, double railExtent) => Positioned(
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: DockEdgeSplitter.thickness,
+    child: DockEdgeSplitter(
+      key: ValueKey<String>('dock-resize-$railId-height'),
+      axis: Axis.horizontal,
+      onDragDelta: (delta) => _state._layout.resizeDock(
+        railId,
+        delta,
+        fallback: EditorWorkspace.railGroupHeight,
+        minExtent: _state._verticalDockMinimumExtent(railId),
+        // The RAIL is the ceiling, not the model's default
+        // 640: that number guards a width, and a panel's
+        // height here can legitimately be more than it on a
+        // tall window and must be less than it on a short
+        // one. Without this the grip banked height the rail
+        // could never show and then dragged dead on the way
+        // back — measured: 60px of return travel moved the
+        // edge 9px. It is the same defect this round already
+        // fixed for the floating region.
+        maxExtent: railExtent.isFinite ? railExtent : null,
+      ),
+    ),
+  );
 
   Widget buildRailColumn(
     EditorPanelDockSide side, {
