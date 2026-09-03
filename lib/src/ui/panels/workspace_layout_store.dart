@@ -89,15 +89,8 @@ double? restoredSplitterValue(Object? value) {
 /// This rides the workspace layout file rather than a store of its own
 /// because it is the same kind of fact as a dock width — a splitter
 /// position the user set once and expects to find again.
-Map<String, double> restoreRailExtents(Map<String, Object?> payload) {
-  final railsJson = payload['railExtents'];
-  return <String, double>{
-    if (railsJson is Map)
-      for (final entry in railsJson.entries)
-        if (entry.key is String)
-          entry.key as String: ?restoredSplitterValue(entry.value),
-  };
-}
+Map<String, double> restoreRailExtents(Map<String, Object?> payload) =>
+    _splitterExtents(payload['railExtents'], (_) => true);
 
 /// Rebuilds a dock layout from a saved payload, validated against the
 /// CURRENT panel set given by [defaults]: unknown tab ids are dropped,
@@ -183,24 +176,30 @@ Set<String> _restoredLockedTabIds(
   return lockedTabIds;
 }
 
+/// The splitter extents saved under [json] — a map of key → value — kept
+/// for the keys [keep] admits; a value that does not parse is dropped.
+/// The rails' shared widths and the docks' extents are the same kind of
+/// fact read the same way; only which keys are kept differs.
+Map<String, double> _splitterExtents(
+  Object? json,
+  bool Function(String key) keep,
+) => <String, double>{
+  if (json is Map)
+    for (final entry in json.entries)
+      if (entry.key case final String key when keep(key))
+        key: ?restoredSplitterValue(entry.value),
+};
+
 /// The saved splitter extents, kept for the docks and for the extra keys
 /// the caller names (a rail's shared width is stored under its own key).
 Map<String, double> _restoredDockExtents(
   Map<dynamic, dynamic> layoutJson,
   Map<String, DockGroup?> docks,
   Set<String> extraExtentKeys,
-) {
-  final extentsJson = layoutJson['extents'];
-  final dockExtents = <String, double>{
-    if (extentsJson is Map)
-      for (final entry in extentsJson.entries)
-        if (entry.key is String &&
-            (docks.containsKey(entry.key) ||
-                extraExtentKeys.contains(entry.key)))
-          entry.key as String: ?restoredSplitterValue(entry.value),
-  };
-  return dockExtents;
-}
+) => _splitterExtents(
+  layoutJson['extents'],
+  (key) => docks.containsKey(key) || extraExtentKeys.contains(key),
+);
 
 /// Panels the user CLOSED stay closed; anything else missing from the save
 /// (panels added by an app update) rejoins its default dock's strip.
