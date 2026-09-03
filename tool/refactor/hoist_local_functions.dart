@@ -26,7 +26,20 @@ import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 
-void main(List<String> args) {
+void main(List<String> rawArgs) {
+  // `@file` splices the file's non-empty lines in as arguments: a field
+  // type like `Map<TileCoord, BitmapTile?>?` cannot survive the Windows
+  // `dart.bat` wrapper (`<` and `>` are redirections to cmd.exe).
+  final args = <String>[
+    for (final arg in rawArgs)
+      if (arg.startsWith('@'))
+        ...File(arg.substring(1))
+            .readAsLinesSync()
+            .map((line) => line.trim())
+            .where((line) => line.isNotEmpty)
+      else
+        arg,
+  ];
   final dry = args.contains('--dry');
   final positional = args.where((a) => !a.startsWith('--')).toList();
   if (positional.length < 3) {
@@ -78,7 +91,10 @@ void main(List<String> args) {
   final locals = body.block.statements
       .whereType<FunctionDeclarationStatement>()
       .toList();
-  if (locals.isEmpty) {
+  // No local functions but captured locals named: the method is being
+  // prepared for a range cut (its locals become fields first, so the
+  // ranges moved out afterwards have nothing to capture).
+  if (locals.isEmpty && fieldSpecs.isEmpty) {
     stderr.writeln('$methodName declares no local functions');
     exit(1);
   }
@@ -119,17 +135,23 @@ void main(List<String> args) {
   for (final entry in fieldSpecs.entries) {
     final name = '_${entry.key}';
     final type = entry.value;
-    if (type.endsWith('?')) {
+    final memoDeclaration = RegExp(
+      '^[ \\t]*${RegExp.escape(type)} $name;[ \\t]*\\n',
+      multiLine: true,
+    );
+    if (type.endsWith('?') && methodText.contains(memoDeclaration)) {
       fieldLines.add('  $type $name;');
       // A memo: its declaration line goes; the field is the memo now.
       // (`Rect?` escaped — a bare `?` is a quantifier, and the first run
       // left the local behind.)
+      methodText = methodText.replaceAll(memoDeclaration, '');
+    } else if (type.endsWith('?')) {
+      // A nullable local assigned once (`final x = maybe;`): a late final
+      // nullable field, assigned where the local was.
+      fieldLines.add('  late final $type $name;');
       methodText = methodText.replaceAll(
-        RegExp(
-          '^[ \\t]*${RegExp.escape(type)} $name;[ \\t]*\\n',
-          multiLine: true,
-        ),
-        '',
+        RegExp('\\b(?:var|final) $name = '),
+        '$name = ',
       );
     } else if (type.endsWith('!')) {
       fieldLines.add('  late ${type.substring(0, type.length - 1)} $name;');
