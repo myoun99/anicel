@@ -584,62 +584,17 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.frameWalkDown:
         _walkTimeline(horizontal: false, forward: true, byFrame: true);
       case EditorActionIds.drawingPrevious:
-        // A live selection claims the PLAIN arrow keys as nudges (PS
-        // arbitration — the arbitration follows the KEYS, which walk
-        // drawings since PEN-7c). Nudges stand down while a stroke is
-        // live (R16-③: rewriting the lift under the pen froze both).
-        if (_canvasSelectionCommands.hasSelection) {
-          if (!_session.brushInputActive.value) {
-            _canvasSelectionCommands.nudge(-1, 0);
-          }
-        } else {
-          _walkTimeline(horizontal: true, forward: false);
-        }
+        _nudgeOrWalk(-1, 0);
       case EditorActionIds.drawingNext:
-        if (_canvasSelectionCommands.hasSelection) {
-          if (!_session.brushInputActive.value) {
-            _canvasSelectionCommands.nudge(1, 0);
-          }
-        } else {
-          _walkTimeline(horizontal: true, forward: true);
-        }
+        _nudgeOrWalk(1, 0);
       case EditorActionIds.playbackToggle:
-        // 🚨T28: play or stop, and nothing in between. The middle branch
-        // used to resume a paused transport — a state that no longer
-        // exists.
-        final playback = _session.playback;
-        if (playback.isPlaying) {
-          playback.stop();
-        } else {
-          playback.play(
-            scope: PlaybackScope.activeCut,
-            startGlobalFrame: _session.currentFrameIndex,
-          );
-        }
+        _togglePlayback();
       case EditorActionIds.voiceRecordToggle:
         unawaited(toggleVoiceRecordingWithFeedback(context, _session));
-      // While a polygon outline is open, undo/redo take its last vertex
-      // back and put it there again (유저 확정). They are NOT document
-      // history for that: a trace of twenty taps would otherwise bury the
-      // twenty real edits under it, and the undo cap is 200.
-      //
-      // The channel answers false once the trace is empty, so undo falls
-      // straight through to the document — undo never becomes a dead key
-      // just because a polygon was being drawn a moment ago.
       case EditorActionIds.undo:
-        if (_canvasSelectionCommands.undoPolygonPoint()) {
-          break;
-        }
-        if (_session.canUndo) {
-          _session.undo();
-        }
+        _undoVertexOrDocument();
       case EditorActionIds.redo:
-        if (_canvasSelectionCommands.redoPolygonPoint()) {
-          break;
-        }
-        if (_session.canRedo) {
-          _session.redo();
-        }
+        _redoVertexOrDocument();
       case EditorActionIds.toolBrush:
         _armToolGroup(CanvasTool.brush);
       case EditorActionIds.toolEraser:
@@ -693,44 +648,19 @@ class _HomePageState extends State<HomePage> {
         _armToolGroup(CanvasTool.move);
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
-      // With a live selection ↑/↓ nudge; otherwise they walk the
-      // displayed layer rows (TVP layer nav, UI-R20 #14) — the same
-      // dispatch-level arbitration the horizontal arrows use.
       case EditorActionIds.selectionNudgeUp:
-        if (_canvasSelectionCommands.hasSelection) {
-          if (!_session.brushInputActive.value) {
-            _canvasSelectionCommands.nudge(0, -1);
-          }
-        } else {
-          _walkTimeline(horizontal: false, forward: false);
-        }
+        _nudgeOrWalk(0, -1);
       case EditorActionIds.selectionNudgeDown:
-        if (_canvasSelectionCommands.hasSelection) {
-          if (!_session.brushInputActive.value) {
-            _canvasSelectionCommands.nudge(0, 1);
-          }
-        } else {
-          _walkTimeline(horizontal: false, forward: true);
-        }
+        _nudgeOrWalk(0, 1);
       case EditorActionIds.selectionFreeTransform:
         // R26 #17: Ctrl+T is not its own transform mode — it SWITCHES to
         // the Move tool, so one code path (and one set of guards) owns
         // transforming.
         _armToolGroup(CanvasTool.move);
-      // CONFIRM. An open polygon outline is the newest thing this key can
-      // be closing, and it takes precedence: it is what the user is
-      // looking at (유저 확정 — 폴리곤 확정은 확정 버튼으로).
       case EditorActionIds.selectionTransformCommit:
-        if (_canvasSelectionCommands.closePolygon()) {
-          break;
-        }
-        _canvasSelectionCommands.commitTransform();
+        _confirmPolygonOrTransform();
       case EditorActionIds.selectionTransformCancel:
-        if (_canvasSelectionCommands.hasOpenPolygon) {
-          _canvasSelectionCommands.abandonPolygon();
-          break;
-        }
-        _canvasSelectionCommands.cancelTransform();
+        _abandonPolygonOrCancelTransform();
       // The comma set row (UI-R17 #7): current block or whole selection.
       case EditorActionIds.timelineComma1:
         _session.setCommaForSelectionOrCurrent(1);
@@ -745,6 +675,82 @@ class _HomePageState extends State<HomePage> {
           unawaited(showTimelineCommaCountDialog(context, _session));
         }
     }
+  }
+
+  /// A live selection claims the PLAIN arrow keys as nudges (PS
+  /// arbitration — the arbitration follows the KEYS, which walk
+  /// drawings since PEN-7c). Nudges stand down while a stroke is
+  /// live (R16-③: rewriting the lift under the pen froze both).
+  /// Without a selection the arrows walk the displayed rows (TVP layer
+  /// nav, UI-R20 #14) — along the frame axis for ←/→, across it for
+  /// ↑/↓: the same dispatch-level arbitration for all four.
+  void _nudgeOrWalk(int dx, int dy) {
+    if (_canvasSelectionCommands.hasSelection) {
+      if (!_session.brushInputActive.value) {
+        _canvasSelectionCommands.nudge(dx.toDouble(), dy.toDouble());
+      }
+      return;
+    }
+    _walkTimeline(horizontal: dy == 0, forward: dx + dy > 0);
+  }
+
+  /// 🚨T28: play or stop, and nothing in between. The middle branch
+  /// used to resume a paused transport — a state that no longer
+  /// exists.
+  void _togglePlayback() {
+    final playback = _session.playback;
+    if (playback.isPlaying) {
+      playback.stop();
+      return;
+    }
+    playback.play(
+      scope: PlaybackScope.activeCut,
+      startGlobalFrame: _session.currentFrameIndex,
+    );
+  }
+
+  /// While a polygon outline is open, undo/redo take its last vertex
+  /// back and put it there again (유저 확정). They are NOT document
+  /// history for that: a trace of twenty taps would otherwise bury the
+  /// twenty real edits under it, and the undo cap is 200.
+  ///
+  /// The channel answers false once the trace is empty, so undo falls
+  /// straight through to the document — undo never becomes a dead key
+  /// just because a polygon was being drawn a moment ago.
+  void _undoVertexOrDocument() {
+    if (_canvasSelectionCommands.undoPolygonPoint()) {
+      return;
+    }
+    if (_session.canUndo) {
+      _session.undo();
+    }
+  }
+
+  void _redoVertexOrDocument() {
+    if (_canvasSelectionCommands.redoPolygonPoint()) {
+      return;
+    }
+    if (_session.canRedo) {
+      _session.redo();
+    }
+  }
+
+  /// CONFIRM. An open polygon outline is the newest thing this key can
+  /// be closing, and it takes precedence: it is what the user is
+  /// looking at (유저 확정 — 폴리곤 확정은 확정 버튼으로).
+  void _confirmPolygonOrTransform() {
+    if (_canvasSelectionCommands.closePolygon()) {
+      return;
+    }
+    _canvasSelectionCommands.commitTransform();
+  }
+
+  void _abandonPolygonOrCancelTransform() {
+    if (_canvasSelectionCommands.hasOpenPolygon) {
+      _canvasSelectionCommands.abandonPolygon();
+      return;
+    }
+    _canvasSelectionCommands.cancelTransform();
   }
 
   @override
