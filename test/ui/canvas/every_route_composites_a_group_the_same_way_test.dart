@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -14,6 +13,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
+import '../../helpers/library_source.dart';
 
 /// 🚨★★★EVERY ROUTE COMPOSITES A GROUP THE SAME WAY.
 ///
@@ -100,10 +100,13 @@ void main() {
   };
 
   List<String> codeLines(String path) {
-    final lines = File(path).readAsLinesSync();
+    // The library, host and parts: the stack view keeps its paint in a
+    // part since the Round 6 cut.
+    final lines = librarySource(path).split('\n');
     return [
       for (final line in lines)
-        if (!line.trimLeft().startsWith('//') && !line.trimLeft().startsWith('///'))
+        if (!line.trimLeft().startsWith('//') &&
+            !line.trimLeft().startsWith('///'))
           line,
     ];
   }
@@ -119,7 +122,8 @@ void main() {
       expect(
         source.contains('maxPixelSide'),
         isFalse,
-        reason: '$path must not ARGUE about the cap. It is the parameter '
+        reason:
+            '$path must not ARGUE about the cap. It is the parameter '
             'DEFAULT now, which holds tighter than three routes spelling '
             'one constant correctly: a route that wanted a different cap '
             'would have to write an argument, and none of them may.',
@@ -135,7 +139,8 @@ void main() {
       expect(
         count,
         allowedSaveLayers[path],
-        reason: 'saveLayer count changed in $path. A saveLayer offscreen '
+        reason:
+            'saveLayer count changed in $path. A saveLayer offscreen '
             'cannot be sampled, so buffering a sub-tree in one is what makes '
             'a folder effect impossible. If this new one is an alpha group '
             'over an existing image, say so in allowedSaveLayers in the same '

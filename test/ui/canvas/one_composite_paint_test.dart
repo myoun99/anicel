@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
+import '../../helpers/library_source.dart';
 
 /// 🚨★★★ONE COMPOSITE PAINT — the half #1304 left hand-written.
 ///
@@ -77,7 +78,8 @@ void main() {
     expect(
       paint.colorFilter,
       chain.colorFilter,
-      reason: 'a folder whose own effects never reach the picture it '
+      reason:
+          'a folder whose own effects never reach the picture it '
           'composed is the failure this function exists to prevent',
     );
   });
@@ -107,7 +109,8 @@ void main() {
     expect(
       offenders,
       isEmpty,
-      reason: 'an alpha-only paint is built by `alphaOnly` — a hand-spelled '
+      reason:
+          'an alpha-only paint is built by `alphaOnly` — a hand-spelled '
           'one is a copy, and the copies already disagreed about the clamp',
     );
   });
@@ -119,11 +122,13 @@ void main() {
       'lib/src/ui/camera/camera_frame_render_service.dart',
     ];
     for (final route in routes) {
-      final source = File(route).readAsStringSync();
+      // Host and parts: the stack view keeps its paint in a part.
+      final source = librarySource(route);
       expect(
         source.contains('layerCompositePaint('),
         isTrue,
-        reason: '$route composites a group and must build its paint with '
+        reason:
+            '$route composites a group and must build its paint with '
             'the shared function',
       );
     }

@@ -122,8 +122,13 @@ void main(List<String> args) {
     if (type.endsWith('?')) {
       fieldLines.add('  $type $name;');
       // A memo: its declaration line goes; the field is the memo now.
+      // (`Rect?` escaped — a bare `?` is a quantifier, and the first run
+      // left the local behind.)
       methodText = methodText.replaceAll(
-        RegExp('^[ \\t]*$type $name;[ \\t]*\\n', multiLine: true),
+        RegExp(
+          '^[ \\t]*${RegExp.escape(type)} $name;[ \\t]*\\n',
+          multiLine: true,
+        ),
         '',
       );
     } else if (type.endsWith('!')) {
@@ -174,8 +179,11 @@ String _rename(String text, Map<String, String> renames) {
   for (final entry in renames.entries) {
     out = out.replaceAllMapped(
       // `$name` in an interpolation IS a use and is renamed with the rest;
-      // only a member access or a longer identifier is left alone.
-      RegExp('(?<![.\\w])${entry.key}\\b(?!\\s*:(?!:))'),
+      // only a member access or a longer identifier is left alone. A label
+      // is `name:` with the colon attached — `a ? name : b` is a use (the
+      // first cut of the layer-stack paint lost two ternaries to a looser
+      // guard).
+      RegExp('(?<![.\\w])${entry.key}\\b(?!:(?!:))'),
       (_) => entry.value,
     );
   }
