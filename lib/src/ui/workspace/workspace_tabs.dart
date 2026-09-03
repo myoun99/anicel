@@ -232,13 +232,13 @@ class _WorkspaceTabs {
                 navigationRegionKey: _state.widget.canvasNavigationRegionKey,
                 canvasSelectionCommands: _state.widget.canvasSelectionCommands,
                 cutPieceSlot: _state._cutPieceSlot,
-                cameraViewEnabled: _state._cameraViewEnabled,
-                cameraDimOpacity: _state._cameraDimOpacity,
+                cameraViewEnabled: _state._views._cameraViewEnabled,
+                cameraDimOpacity: _state._views._cameraDimOpacity,
                 expandedLaneLayerIds: _state._expandedLaneLayerIds,
-                fillOptions: _state._fillOptions,
-                selectionMaskOptions: _state._selectionMaskOptions,
-                transformOptions: _state._transformOptions,
-                eyedropperSource: _state._eyedropperSource,
+                fillOptions: _state._views._fillOptions,
+                selectionMaskOptions: _state._views._selectionMaskOptions,
+                transformOptions: _state._views._transformOptions,
+                eyedropperSource: _state._views._eyedropperSource,
                 flipHud: _state.widget.flipHud,
               ),
               // A pool row dropped on the STAGE (§7): the cut and the layer
@@ -318,9 +318,9 @@ class _WorkspaceTabs {
                         toolState.activeShapeKind,
                       ),
                       builder: (context) => ToolLibraryPanel(
-                        transformOptions: _state._transformOptions,
+                        transformOptions: _state._views._transformOptions,
                         onTransformOptionsChanged: (options) =>
-                            _state._transformOptions.value = options,
+                            _state._views._transformOptions.value = options,
                         tool: toolState.tool,
                         onToolChanged: (tool) => _state._brushTool.value =
                             _state._brushTool.value.copyWith(tool: tool),
@@ -407,7 +407,7 @@ class _WorkspaceTabs {
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _state._brushTool,
             builder: (context, toolState, _) => ValueListenableBuilder<FloodFillOptions>(
-              valueListenable: _state._fillOptions,
+              valueListenable: _state._views._fillOptions,
               builder: (context, fillOptions, _) =>
                   KeyedKeepAliveStack<
                     CanvasTool,
@@ -422,13 +422,13 @@ class _WorkspaceTabs {
                     // the kept-alive subtree is thrown away, not when
                     // it rebuilds.
                     builder: (context) => ValueListenableBuilder<TransformToolOptions>(
-                      valueListenable: _state._transformOptions,
+                      valueListenable: _state._views._transformOptions,
                       builder: (context, transformOptions, _) =>
                           ValueListenableBuilder<SelectionMaskOptions>(
-                            valueListenable: _state._selectionMaskOptions,
+                            valueListenable: _state._views._selectionMaskOptions,
                             builder: (context, maskOptions, _) =>
                                 ValueListenableBuilder<CanvasColorSampleSource>(
-                                  valueListenable: _state._eyedropperSource,
+                                  valueListenable: _state._views._eyedropperSource,
                                   // The tip library loads in two passes,
                                   // so the pickers have to follow it.
                                   builder: (context, eyedropperSource, _) =>
@@ -469,24 +469,22 @@ class _WorkspaceTabs {
                                           },
                                           fillOptions: fillOptions,
                                           onFillOptionsChanged: (options) =>
-                                              _state._fillOptions.value =
+                                              _state._views._fillOptions.value =
                                                   options,
                                           eyedropperSource: eyedropperSource,
                                           onEyedropperSourceChanged: (source) =>
-                                              _state._eyedropperSource.value =
+                                              _state._views._eyedropperSource.value =
                                                   source,
                                           selectionMaskOptions: maskOptions,
                                           onSelectionMaskOptionsChanged:
                                               (options) =>
-                                                  _state
-                                                          ._selectionMaskOptions
+                                                  _state._views._selectionMaskOptions
                                                           .value =
                                                       options,
                                           transformOptions: transformOptions,
                                           onTransformOptionsChanged:
                                               (options) =>
-                                                  _state
-                                                          ._transformOptions
+                                                  _state._views._transformOptions
                                                           .value =
                                                       options,
                                           selectionCommands: _state
@@ -664,7 +662,7 @@ class _WorkspaceTabs {
           sillTrailing: (context) => FramePanelSillControls(
             session: _state.widget.session,
             scope: PlaybackScope.activeCut,
-            cameraViewEnabled: _state._cameraViewEnabled,
+            cameraViewEnabled: _state._views._cameraViewEnabled,
             cameraViewKeyValue: 'timeline-camera-view-button',
             playbackStartFrame: () => _state.widget.session.currentFrameIndex,
             onSkipToStart: () => _state.widget.session.selectFrameIndex(0),
@@ -740,8 +738,8 @@ class _WorkspaceTabs {
               // Unified layer controls: the camera row's visibility/opacity
               // drive the same camera-view state as the canvas overlay and
               // the camera panel.
-              cameraViewEnabled: _state._cameraViewEnabled,
-              cameraDimOpacity: _state._cameraDimOpacity,
+              cameraViewEnabled: _state._views._cameraViewEnabled,
+              cameraDimOpacity: _state._views._cameraDimOpacity,
               // The legend's "open onion panel" (UI-R17 #5): already open
               // = the panel flashes in place (the common reveal logic).
               onRevealOnionSkinPanel: () =>
@@ -765,7 +763,7 @@ class _WorkspaceTabs {
           sillTrailing: (context) => FramePanelSillControls(
             session: _state.widget.session,
             scope: PlaybackScope.allCuts,
-            cameraViewEnabled: _state._cameraViewEnabled,
+            cameraViewEnabled: _state._views._cameraViewEnabled,
             cameraViewKeyValue: 'storyboard-camera-view-button',
             playbackStartFrame: () =>
                 storyboardPlayheadFrame(_state.widget.session) ?? 0,
@@ -835,9 +833,9 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardThumbnails,
-              _state._conteViewport,
-              _state._conteInkEnabled,
-              _state._conteInk,
+              _state._views._conteViewport,
+              _state._views._conteInkEnabled,
+              _state._views._conteInk,
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
             ]),
@@ -851,12 +849,12 @@ class _WorkspaceTabs {
               // The notifier ITSELF — the panel writes into this one, so
               // there is no copy to echo and nothing to go stale while the
               // panel is unmounted.
-              viewportController: _state._conteViewport,
-              inkController: _state._conteInk,
+              viewportController: _state._views._conteViewport,
+              inkController: _state._views._conteInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._conteInkEnabled.value,
+              inkEnabled: _state._views._conteInkEnabled.value,
               onInkEnabledChanged: (enabled) {
-                _state._conteInkEnabled.value = enabled;
+                _state._views._conteInkEnabled.value = enabled;
               },
             ),
           ),
@@ -876,30 +874,30 @@ class _WorkspaceTabs {
           builder: (context) => PanelAwareListenableBuilder(
             listenable: Listenable.merge([
               _state.widget.session,
-              _state._envelopeViewport,
-              _state._envelopeInkEnabled,
-              _state._envelopeFormId,
-              _state._envelopeInk,
+              _state._views._envelopeViewport,
+              _state._views._envelopeInkEnabled,
+              _state._views._envelopeFormId,
+              _state._views._envelopeInk,
               _state.widget.session.languageSettings,
             ]),
             builder: (context) => CutEnvelopeTabHost(
               session: _state.widget.session,
-              formId: _state._envelopeFormId.value,
+              formId: _state._views._envelopeFormId.value,
               onFormIdChanged: (formId) {
-                _state._envelopeFormId.value = formId;
+                _state._views._envelopeFormId.value = formId;
               },
-              viewportController: _state._envelopeViewport,
-              inkController: _state._envelopeInk,
+              viewportController: _state._views._envelopeViewport,
+              inkController: _state._views._envelopeInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._envelopeInkEnabled.value,
+              inkEnabled: _state._views._envelopeInkEnabled.value,
               onInkEnabledChanged: (enabled) {
-                _state._envelopeInkEnabled.value = enabled;
+                _state._views._envelopeInkEnabled.value = enabled;
               },
               // 🚨WIRED NOW. The comment that stood here said this waited on
               // the 작품 정보 round because nothing set a logo or a 도장 path
               // yet, so a resolver had no source. The stamp picker in the
               // sheet-info window is that source.
-              imageFor: _state._envelopeImages.imageFor,
+              imageFor: _state._views._envelopeImages.imageFor,
             ),
           ),
         );
@@ -925,29 +923,29 @@ class _WorkspaceTabs {
             // jank. Only the ink overlay consumes the tool state, through
             // its own boundary builder inside the host.
             listenable: Listenable.merge([
-              _state._timesheetContinuous,
-              _state._timesheetPage,
-              _state._timesheetViewport,
-              _state._timesheetInkEnabled,
+              _state._views._timesheetContinuous,
+              _state._views._timesheetPage,
+              _state._views._timesheetViewport,
+              _state._views._timesheetInkEnabled,
               // The notation language reprints the sheet (UI-R10 #7).
               _state.widget.session.languageSettings,
             ]),
             builder: (context) => TimesheetTabHost(
               session: _state.widget.session,
-              continuous: _state._timesheetContinuous.value,
+              continuous: _state._views._timesheetContinuous.value,
               onContinuousChanged: (continuous) {
-                _state._timesheetContinuous.value = continuous;
+                _state._views._timesheetContinuous.value = continuous;
               },
-              page: _state._timesheetPage.value,
+              page: _state._views._timesheetPage.value,
               onPageChanged: (page) {
-                _state._timesheetPage.value = page;
+                _state._views._timesheetPage.value = page;
               },
-              viewportController: _state._timesheetViewport,
-              inkController: _state._timesheetInk,
+              viewportController: _state._views._timesheetViewport,
+              inkController: _state._views._timesheetInk,
               brushToolState: _state._brushTool,
-              inkEnabled: _state._timesheetInkEnabled.value,
+              inkEnabled: _state._views._timesheetInkEnabled.value,
               onInkEnabledChanged: (enabled) {
-                _state._timesheetInkEnabled.value = enabled;
+                _state._views._timesheetInkEnabled.value = enabled;
               },
             ),
           ),

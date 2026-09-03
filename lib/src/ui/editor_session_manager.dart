@@ -300,6 +300,7 @@ part 'session/project_settings.dart';
 part 'session/frame_verbs.dart';
 part 'session/standing.dart';
 part 'session/cut_move_drag.dart';
+part 'session/layer_switch_verbs.dart';
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -3258,10 +3259,25 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleLayerVisibility(LayerId layerId) {
-    _layerController.toggleLayerVisibility(layerId);
-    notifyListeners();
-  }
+  // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
+  late final _LayerSwitchVerbs _layerSwitches = _LayerSwitchVerbs(this);
+
+  void toggleLayerVisibility(LayerId layerId) =>
+      _layerSwitches.toggleLayerVisibility(layerId);
+  void toggleLayerMuted(LayerId layerId) =>
+      _layerSwitches.toggleLayerMuted(layerId);
+  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) =>
+      _layerSwitches.setLayerAudio(layerId: layerId, gain: gain, pan: pan);
+  void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) =>
+      _layerSwitches.setLayerBlendMode(layerId, blendMode);
+  void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) =>
+      _layerSwitches.setBlendModeForLayers(layerIds, mode);
+  void setAllLayersVisibility(bool visible) =>
+      _layerSwitches.setAllLayersVisibility(visible);
+  void setAllSeLayersMuted(bool muted) =>
+      _layerSwitches.setAllSeLayersMuted(muted);
+  bool get canToggleTargetLayerKind => _layerSwitches.canToggleTargetLayerKind;
+  void toggleTargetLayerKind() => _layerSwitches.toggleTargetLayerKind();
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
   /// listener and by the repo-direct mix edits (mute/fader/pan/solo,
@@ -3400,35 +3416,12 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Silences/unsilences an SE row's sounds (the mute button — view state
-  /// like visibility, not undoable): playback and export skip muted
-  /// layers' clips, waveforms keep displaying.
-  void toggleLayerMuted(LayerId layerId) {
-    _layerController.toggleLayerMuted(layerId);
-    _refreshLiveAudioSchedule();
-    notifyListeners();
-  }
-
   // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
 
   /// The solo set — pure MONITORING state (never persisted, never
   /// exported): non-empty narrows playback/scrub to these SE rows.
   final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
       ValueNotifier<Set<LayerId>>(const {});
-
-  /// The SE row's track fader + pan (mix state like mute, repo-direct).
-  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _layerController.setLayerAudio(layerId: layerId, gain: gain, pan: pan);
-    _refreshLiveAudioSchedule();
-    notifyListeners();
-  }
-
-  /// R26 #30: the layer's composite blend — display state alongside the
-  /// eye/static opacity (repo-direct, link-group mirrored).
-  void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {
-    _layerController.setLayerBlendMode(layerId: layerId, blendMode: blendMode);
-    notifyListeners();
-  }
 
   // --- Opacity drag preview (R4 #4/#6) ------------------------------------
 
@@ -3444,25 +3437,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// The master bar's LAST committed value — the bar rests on this, not a
   /// live average (UI-R6 #2).
   double lastMasterOpacity = 1.0;
-
-  /// R27 #6: the legend's BLEND bulk — the master opacity bar's rule for
-  /// the mode. Only rows that actually composite take it (the camera and
-  /// the sound/instruction rows have no blend), and only rows that would
-  /// change are written, so a no-op pick costs nothing.
-  void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
-    // ⛔ONE undo step for one blend pick, however many rows it lands on.
-    final targets = [
-      for (final layer in layers)
-        if (layerIds.contains(layer.id) &&
-            layerKindShowsBlendControl(layer.kind) &&
-            layer.blendMode != mode)
-          layer.id,
-    ];
-    if (targets.isNotEmpty) {
-      _layerController.setLayersBlendMode(layerIds: targets, blendMode: mode);
-      notifyListeners();
-    }
-  }
 
   /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
   /// selection moves to the nearest PASSING layer ABOVE it on screen
@@ -3589,33 +3563,6 @@ class EditorSessionManager extends ChangeNotifier {
   // UNDOABLE for all of them (유저: 「눈을 껏다키든 뭐든 다 언두」). Every
   // bulk action lands as ONE entry, the way sheet/mark/fill-reference
   // already did.
-
-  /// Shows or hides every layer of the active cut.
-  void setAllLayersVisibility(bool visible) {
-    // ⛔ONE undo step for one legend press — the loop used to make one per
-    // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
-    // 다 한번에 언두되야하는데 안됨」 in the place it is easiest to hit.
-    _layerController.setLayersVisible(
-      layerIds: [
-        for (final layer in layers)
-          if (layer.isVisible != visible) layer.id,
-      ],
-      visible: visible,
-    );
-    notifyListeners();
-  }
-
-  /// Mutes/unmutes every SE layer of the active cut.
-  void setAllSeLayersMuted(bool muted) {
-    _layerController.setLayersMuted(
-      layerIds: [
-        for (final layer in layers)
-          if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
-      ],
-      muted: muted,
-    );
-    notifyListeners();
-  }
 
   /// Turns the timesheet flag on/off for every eligible layer — one undo.
   /// Track-owned rows join the sweep: SE rows since the SE mark/sheet fix,
@@ -5770,26 +5717,6 @@ class EditorSessionManager extends ChangeNotifier {
 
   Layer? get _targetLayerForKindToggle => activeLayer;
 
-  bool get canToggleTargetLayerKind {
-    final targetLayer = _targetLayerForKindToggle;
-    // Only the animation ⇄ storyboard pair; other kinds have their own
-    // toggles (SE) or are fixed (camera/instruction/attach rows).
-    if (targetLayer == null ||
-        isAttachedLayer(targetLayer) ||
-        targetLayer.kind != LayerKind.animation &&
-            targetLayer.kind != LayerKind.storyboard) {
-      return false;
-    }
-    if (targetLayer.kind == LayerKind.storyboard) {
-      return true;
-    }
-
-    return !_layerController.layers.any(
-      (layer) =>
-          layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
-    );
-  }
-
   // ── the storyboard cursor: its own object, in its own file ──────────
   //
   // A collaborator (session/storyboard_cursor.dart, a part of this library). The
@@ -5821,50 +5748,6 @@ class EditorSessionManager extends ChangeNotifier {
   );
   String? get targetLayerStoryboardRefusal =>
       _storyboardCursor.targetLayerStoryboardRefusal;
-
-  void toggleTargetLayerKind() {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null || targetLayerStoryboardRefusal != null) {
-      return;
-    }
-
-    final toStoryboard = targetLayer.kind != LayerKind.storyboard;
-    final nextKind = toStoryboard ? LayerKind.storyboard : LayerKind.animation;
-
-    // A storyboard row TILES its cut, so a row that becomes one is filled
-    // to cover before it changes kind — otherwise its holes would show as
-    // "X" cells in the timeline while the strip, which reads the coverage
-    // rule, showed none. An empty row becomes a fresh blank panel, which
-    // is what a new storyboard row is born as.
-    if (toStoryboard) {
-      final cut = requireActiveCut;
-      final filled = storyboardTimelineFilledToCover(
-        timeline: targetLayer.timeline,
-        cutDuration: cut.duration,
-      );
-      final covered = filled == null
-          ? createStoryboardLayer(
-              layerId: targetLayer.id,
-              frameId: FrameId(_nextFrameId(targetLayer.id)),
-              cut: cut,
-            ).copyWith(name: targetLayer.name)
-          : targetLayer.copyWith(timeline: filled);
-      if (covered != targetLayer) {
-        _timelineController.commitLayerTimelineDrag(
-          before: targetLayer,
-          after: covered,
-        );
-      }
-    }
-
-    _cutCommandCoordinator.updateLayerKind(
-      cutId: requireActiveCut.id,
-      layerId: targetLayer.id,
-      kind: nextKind,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
 
   // --- Frame / cell state / commands -------------------------------------
 

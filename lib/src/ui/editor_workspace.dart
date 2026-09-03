@@ -140,6 +140,7 @@ part 'workspace/workspace_tabs.dart';
 part 'workspace/workspace_rail.dart';
 part 'workspace/workspace_flip_hud.dart';
 part 'workspace/workspace_brush_presets.dart';
+part 'workspace/workspace_document_views.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
 /// bottom dock, plus the slim edge docks that home the PS/CSP-style tool
@@ -703,33 +704,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     this,
   );
 
-  /// The fill tool's flood options (Tool Settings knobs).
-  final ValueNotifier<FloodFillOptions> _fillOptions = ValueNotifier(
-    const FloodFillOptions(),
-  );
-
-  /// The Select tool's lift-time mask knobs (R26): grow/shrink, inward
-  /// feather, edge AA. Defaults keep the lift byte-preserving.
-  final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
-      ValueNotifier(SelectionMaskOptions.none);
-
-  /// P3a: which resampler a transform commit runs through. Session state
-  /// like its three neighbours here, deliberately NOT a [BrushToolState]
-  /// field — everything there other than the tool itself forwards into
-  /// [BrushShape], which is what a saved brush preset serialises, so the
-  /// bit would follow every preset around for no reason.
-  ///
-  /// Blend is the default: smoothing is what a transform is expected to do
-  /// everywhere else in the industry, and the argmax is the deliberate
-  /// choice for two-value work.
-  final ValueNotifier<TransformToolOptions> _transformOptions = ValueNotifier(
-    TransformToolOptions.defaults,
-  );
-
-  /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
-  /// user's default is "pick what you SEE".
-  final ValueNotifier<CanvasColorSampleSource> _eyedropperSource =
-      ValueNotifier(CanvasColorSampleSource.display);
+  // The document views' state (Round 6): what each panel shows and how.
+  late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews(this);
 
   // The colour state — the background slot, the pinned palette, its file
   // service and the recent-colour recorder — is the SHELL's now, alongside
@@ -738,10 +714,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
 
   late final BrushPresetLibrary _presetLibrary;
   late final BrushTipLibrary _tipLibrary;
-
-  /// Camera view mode: overlay shown with the outside dimmed.
-  final ValueNotifier<bool> _cameraViewEnabled = ValueNotifier(false);
-  final ValueNotifier<double> _cameraDimOpacity = ValueNotifier(0.5);
 
   final ValueNotifier<TimelineOrientation> _timelineOrientation = ValueNotifier(
     TimelineOrientation.horizontal,
@@ -849,51 +821,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     }
   }
 
-  /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
-  /// on screen in page view (R26 #41), the sheet viewport (zoom/pan) and
-  /// the sheet-ink allow toggle — owned here so they survive tab switches.
-  final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
-  final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
-  final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
-  final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
-
-  /// Sheet ink stores (S2 annotations) — owned here so freehand memos
-  /// survive tab switches; separate from the session's cel stroke store.
-  final TimesheetInkController _timesheetInk = TimesheetInkController();
-
-  /// Conte tab view state (#16 — the conte rides the same canvas shell):
-  /// the sheet viewport and its ink toggle, owned here like the
-  /// timesheet's. Ink starts BLOCKED: the conte's first verb is reading
-  /// and selecting cells.
-  final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
-  final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
-
-  /// Cut-envelope tab view state — the conte's pair, said of the 봉투.
-  /// Ink starts BLOCKED here too: the envelope is read (and printed)
-  /// before anybody writes on it.
-  final ValueNotifier<CanvasViewport?> _envelopeViewport = ValueNotifier(null);
-  final ValueNotifier<bool> _envelopeInkEnabled = ValueNotifier(false);
-
-  /// The logo and 도장 the envelope prints, decoded once each.
-  ///
-  /// A repaint is all a landed decode needs, and the envelope tab is the
-  /// only thing that reads it — but the cache lives HERE because that tab is
-  /// rebuilt on every panel switch and would drop its images each time.
-  late final EnvelopeImageCache _envelopeImages = EnvelopeImageCache(
-    onLoaded: () {
-      if (mounted) {
-        setState(() {});
-      }
-    },
-  );
-
-  /// Which bundled 봉투 form the panel prints. Session-scoped for now: the
-  /// project-level choice arrives with the form editor, and until there is
-  /// a place to store one, remembering it here beats hard-coding it.
-  final ValueNotifier<String> _envelopeFormId = ValueNotifier(
-    CutEnvelopePresets.analogId,
-  );
-
   /// The TWO viewers (R4 §6-h, second one 유저 확정 2026-08-12): the one
   /// that lies on the floor to be looked at large, and the one that sits
   /// on a rail beside the drawing. Same panel, same code, separate state
@@ -990,17 +917,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       },
     );
   }
-
-  /// The cel stores are the SESSION's (R5): the archive saves and loads
-  /// them with the project; this controller owns only the edit sessions.
-  late final ConteInkController _conteInk = ConteInkController(
-    rowStore: widget.session.conteInkRowStore,
-    pageStore: widget.session.conteInkPageStore,
-  );
-
-  late final CutEnvelopeInkController _envelopeInk = CutEnvelopeInkController(
-    store: widget.session.envelopeInkStore,
-  );
 
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 
@@ -1372,11 +1288,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     if (widget.brushTool == null) {
       _brushTool.dispose();
     }
-    _fillOptions.dispose();
-    _transformOptions.dispose();
-    _eyedropperSource.dispose();
-    _cameraViewEnabled.dispose();
-    _cameraDimOpacity.dispose();
+    _views.dispose();
     _timelineOrientation.dispose();
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
@@ -1392,19 +1304,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       controller.dispose();
     }
     _panelFlash.dispose();
-    _timesheetContinuous.dispose();
-    _timesheetPage.dispose();
-    _timesheetViewport.dispose();
-    _timesheetInkEnabled.dispose();
-    _timesheetInk.dispose();
-    _conteViewport.dispose();
-    _conteInkEnabled.dispose();
-    _conteInk.dispose();
-    _envelopeViewport.dispose();
-    _envelopeInkEnabled.dispose();
-    _envelopeImages.dispose();
-    _envelopeFormId.dispose();
-    _envelopeInk.dispose();
     widget.session.removeListener(_syncViewersWithProject);
     for (final slot in _viewerSlots.values) {
       slot.request.removeListener(_writeViewerBookmarks);
