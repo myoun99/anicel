@@ -8,6 +8,19 @@ part of '../editor_workspace.dart';
 /// 🚨A collaborator carved out of `_EditorWorkspaceState` (the audit's SRP cut,
 /// 2026-09-02). It reaches the State through `_state` and rebuilds
 /// through `_rebuild`.
+/// What one rail column build settled before laying out its groups: the
+/// side, the open groups on it, the width it was given, the hosts the groups
+/// mount, and the grip's ceiling. The column reads it instead of six
+/// captured locals.
+typedef _RailRoom = ({
+  EditorPanelDockSide side,
+  bool right,
+  List<String> open,
+  double width,
+  Map<String, Widget> hosts,
+  double dragCeiling,
+});
+
 class _WorkspaceRail {
   _WorkspaceRail(this._state);
 
@@ -383,6 +396,274 @@ class _WorkspaceRail {
     return (top: top, bottom: top + math.min(content, available));
   }
 
+  /// The rail's column for the height it was given: the open groups
+  /// stacked on the device grid, the gaps between them, the grip that
+  /// resizes the rail, and a scrollbar when the groups overflow.
+  Widget _railColumn(
+    BuildContext context,
+    BoxConstraints constraints,
+    _RailRoom room,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final railExtent = constraints.hasBoundedHeight
+        ? constraints.maxHeight
+        : double.infinity;
+    final heights = [
+      for (final id in room.open) _railGroupHeight(id, railExtent),
+    ];
+    var content = 0.0;
+    for (final height in heights) {
+      content += height + _EditorWorkspaceState._railGroupGap;
+    }
+    content -= _EditorWorkspaceState._railGroupGap;
+
+    // Each room.open group is its OWN floating object: the app's corner,
+    // clipped so the corner is real rather than painted, and a gap of
+    // pasteboard between it and its neighbour.
+    //
+    // ★Its grips live INSIDE that clip, laid along the two edges they
+    // resize. The clip is what makes them read as the panel's own edge
+    // lighting up rather than as a bar parked beside it — a 5px band
+    // cannot carry a 14px corner by itself (유저, R2 #11).
+    Widget group(int i) {
+      final railId = room.open[i];
+      return SuperellipseClip(
+        shape: AppShapes.container(AppShapes.floatingPanelRadius),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: colorScheme.surface,
+                  shape: AppShapes.container(AppShapes.floatingPanelRadius),
+                ),
+                child: room.hosts[railId] ?? const SizedBox.shrink(),
+              ),
+            ),
+            // The WIDTH grip, on this panel's inner edge — the edge
+            // facing the artwork. Every group has one and they all
+            // write the rail's single room.width, so the rail stays one
+            // column wide however many panels are on it.
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: room.right ? 0 : null,
+              right: room.right ? null : 0,
+              width: DockEdgeSplitter.thickness,
+              child: DockEdgeSplitter(
+                key: ValueKey<String>('dock-resize-$railId'),
+                axis: Axis.vertical,
+                onDragDelta: (delta) {
+                  // ⚠️The sign flip has to be UNDONE on the way back.
+                  // A room.right rail grows as the pointer moves LEFT, so
+                  // reporting the room.width's own delta would hand the
+                  // splitter a debt pointing the wrong way — and a
+                  // debt with the wrong sign is worse than none: it
+                  // would make the edge run ahead instead of behind.
+                  final used = _state._layout.resizeDock(
+                    EditorWorkspace.railWidthKey(right: room.right),
+                    room.right ? -delta : delta,
+                    fallback: room.width,
+                    maxExtent: room.dragCeiling,
+                  );
+                  return room.right ? -used : used;
+                },
+              ),
+            ),
+            // The HEIGHT grip, on this panel's bottom edge. It costs
+            // no layout, so the gap below stays a gap.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: DockEdgeSplitter.thickness,
+              child: DockEdgeSplitter(
+                key: ValueKey<String>('dock-resize-$railId-height'),
+                axis: Axis.horizontal,
+                onDragDelta: (delta) => _state._layout.resizeDock(
+                  railId,
+                  delta,
+                  fallback: EditorWorkspace.railGroupHeight,
+                  minExtent: _state._verticalDockMinimumExtent(railId),
+                  // The RAIL is the ceiling, not the model's default
+                  // 640: that number guards a room.width, and a panel's
+                  // height here can legitimately be more than it on a
+                  // tall window and must be less than it on a short
+                  // one. Without this the grip banked height the rail
+                  // could never show and then dragged dead on the way
+                  // back — measured: 60px of return travel moved the
+                  // edge 9px. It is the same defect this round already
+                  // fixed for the floating region.
+                  maxExtent: railExtent.isFinite ? railExtent : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // The rail's own cumulative chain, and the textbook case for a
+    // run: floor each cumulative POSITION and take each extent as
+    // the difference of neighbours. ⛔Snapping `heights[i]` and
+    // `_railGroupGap` on their own instead would drift — n groups
+    // would carry n roundings, all in the same direction, and the
+    // last panel would walk off the rail's bottom.
+    //
+    // ⚠️A gap of 8 is 9 device px at 1.125 and 10.8 at 1.35, so the
+    // run legitimately hands back slightly different gaps; that is
+    // the residue landing where it must rather than accumulating.
+    final children = <Widget>[];
+    final run = DeviceGrid.of(context).run();
+    for (var i = 0; i < room.open.length; i += 1) {
+      final top = run.position;
+      final height = run.take(heights[i]);
+      children.add(
+        Positioned(
+          left: 0,
+          right: 0,
+          top: top,
+          height: height,
+          child: group(i),
+        ),
+      );
+      run.take(_EditorWorkspaceState._railGroupGap);
+    }
+
+    final column = SizedBox(
+      height: content,
+      child: Stack(clipBehavior: Clip.none, children: children),
+    );
+    // The panels themselves keep their own room.width; the gap beside them
+    // is the rail's, and belongs to the strip room.side.
+    // The gap beside the strip. It is a link in the chain to the
+    // RAIL-DOCKED canvas — everything inside the rail panel starts
+    // after it — and 8 × 1.35 is 10.8, so it is off the grid at
+    // exactly the product ratios a UI scale produces.
+    final gap = DeviceGrid.of(
+      context,
+    ).position(_EditorWorkspaceState._railGroupGap);
+    Widget inGap(Widget child) => Padding(
+      // Keyed so the quantization can be PINNED. It is otherwise
+      // unobservable from the canvas: 8 is already integral at
+      // 1.125, 1.25 and 1.75, and at 1.35 — the one ratio where it
+      // matters — a larger fraction upstream still dominates the
+      // rail-docked boundary. Unpinned quantization is quantization
+      // that a later edit undoes in silence.
+      key: const ValueKey<String>('rail-group-gap'),
+      padding: EdgeInsets.only(
+        left: room.right ? 0 : gap,
+        right: room.right ? gap : 0,
+      ),
+      child: child,
+    );
+    // 🚨★★★ ONE TREE SHAPE, ALWAYS (R6-⑤, 유저: 「아래스플리터가
+    // 조작중에 멋대로 그립이 풀려버림. 클릭중인데도.」)
+    //
+    // This used to return two DIFFERENT trees — `Padding > Align >
+    // column` under the rail's height, `Stack > … > SingleChildScrollView
+    // > column` over it. Dragging the bottom height grip changes
+    // `content`, so crossing that boundary swapped the trees, element
+    // matching failed, and the whole column was rebuilt from scratch —
+    // taking with it the State of the very `DockEdgeSplitter` the hand
+    // was holding. The grip released itself mid-drag, while the button
+    // was still down. The colour wheel and the timesheet hit it because
+    // they are tall enough to sit near the boundary.
+    //
+    // ★The user's rule (넘칠 때만 스크롤) survives for free: a
+    // `SingleChildScrollView` whose content fits has min == max extent,
+    // and Flutter drops its drag recognizer at that point
+    // (`shouldAcceptUserOffset`). So the scroller is always MOUNTED and
+    // only sometimes LIVE, which is exactly what was wanted — and the
+    // tree stops changing shape under a live gesture.
+    final overflowing = railExtent.isFinite && content > railExtent;
+    final controller = _state._railScrollControllers[room.right]!;
+    return Stack(
+      children: [
+        Positioned.fill(
+          // ⛔NOT the Material scrollbar. The framework's desktop
+          // behaviour puts one on every vertical scrollable, and that
+          // one fades out and FATTENS under the pointer — both of
+          // which the app's own bar was written not to do (유저: 어떤
+          // 레일이든 눌렀다고 크기가 바뀌지 않는다).
+          child: inGap(
+            ScrollConfiguration(
+              behavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false),
+              child: SingleChildScrollView(
+                key: ValueKey<String>(
+                  'rail-scroll-${room.right ? 'right' : 'left'}',
+                ),
+                controller: controller,
+                // 🚨★★ THE RAIL OWNS ITS PANELS, NOT ITS COLUMN
+                // (유저 2026-08-15 #1: 「작은거 열면 밑에 공간 남는데
+                // 그 공간에서 터치가 안먹힘」 — 그리기도 안 됐다).
+                //
+                // The column is laid out full height whatever is room.open
+                // on it, and it has to be: R6-⑤ pinned ONE tree shape
+                // so a live splitter drag cannot rebuild itself away.
+                // But a scroller's default `hitTestBehavior` is
+                // `opaque`, so that full-height rectangle took every
+                // pointer that entered it — and the floor is
+                // full-bleed underneath, so the pasteboard below a
+                // short panel was a pane of glass over live canvas.
+                // One hit test stopping stops every verb at once:
+                // the tap, the stroke, the hover, the wheel.
+                //
+                // Deferring to the child says the true thing instead
+                // — the rail owns exactly the rectangles its panels
+                // occupy — and it says it without changing the tree.
+                // ⚠️Nothing is lost when the rail DOES scroll: then
+                // the content fills the viewport and there is no
+                // empty space to have dragged in.
+                hitTestBehavior: HitTestBehavior.deferToChild,
+                // Top-aligned when it does not fill, which is what the
+                // `Align` used to do on the non-scrolling branch.
+                //
+                // ⚠️OUTERMOST FIRST: this rail is the outer scroller
+                // of the app's deepest chain, and a leaf corrected
+                // under an uncorrected ancestor buys nothing —
+                // measured 4.985e-1 inner-only against 1.4e-14 with
+                // both.
+                child: DeviceGridScrollBody(
+                  controller: controller,
+                  axisDirection: AxisDirection.down,
+                  child: Align(alignment: Alignment.topCenter, child: column),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // 띠랑 패널 사이공간에 (유저, R3 #12). The bar rides the gap
+        // between the strip and the panels rather than the panels'
+        // far edge, where it lay on whatever the panel had there and
+        // pointed away from the strip it belongs to. The lane IS the
+        // gap — narrower than the app's other lanes, and it can be,
+        // because nothing else is within reach of it to mis-hit.
+        // The BAR stays conditional — it is the one thing here that
+        // should appear only while there is something to scroll, and
+        // adding or removing it cannot disturb the column: it is a
+        // SIBLING in the stack, not an ancestor.
+        if (overflowing)
+          Positioned(
+            left: room.right ? null : 0,
+            right: room.right ? 0 : null,
+            top: 0,
+            bottom: 0,
+            width: _EditorWorkspaceState._railGroupGap,
+            child: AppControllerScrollbar(
+              controller: controller,
+              axis: Axis.vertical,
+              thumbKey: ValueKey<String>(
+                'rail-scroll-thumb-${room.right ? 'right' : 'left'}',
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget buildRailColumn(
     EditorPanelDockSide side, {
     required double width,
@@ -415,6 +696,14 @@ class _WorkspaceRail {
       // dropped there with no way back.
       return const SizedBox.shrink();
     }
+    final room = (
+      side: side,
+      right: right,
+      open: open,
+      width: width,
+      hosts: hosts,
+      dragCeiling: dragCeiling,
+    );
     // NO fill and NO border. A rail is not a container of panels, it is a
     // place panels float beside; anything painted here puts them back in a
     // box and undoes every rounded corner inside it.
@@ -427,271 +716,8 @@ class _WorkspaceRail {
       key: ValueKey<String>('editor-panel-dock-${right ? 'right' : 'left'}'),
       width: width + _EditorWorkspaceState._railGroupGap,
       child: LayoutBuilder(
-        builder: (context, constraints) {
-          final colorScheme = Theme.of(context).colorScheme;
-          final railExtent = constraints.hasBoundedHeight
-              ? constraints.maxHeight
-              : double.infinity;
-          final heights = [
-            for (final id in open) _railGroupHeight(id, railExtent),
-          ];
-          var content = 0.0;
-          for (final height in heights) {
-            content += height + _EditorWorkspaceState._railGroupGap;
-          }
-          content -= _EditorWorkspaceState._railGroupGap;
-
-          // Each open group is its OWN floating object: the app's corner,
-          // clipped so the corner is real rather than painted, and a gap of
-          // pasteboard between it and its neighbour.
-          //
-          // ★Its grips live INSIDE that clip, laid along the two edges they
-          // resize. The clip is what makes them read as the panel's own edge
-          // lighting up rather than as a bar parked beside it — a 5px band
-          // cannot carry a 14px corner by itself (유저, R2 #11).
-          Widget group(int i) {
-            final railId = open[i];
-            return SuperellipseClip(
-              shape: AppShapes.container(AppShapes.floatingPanelRadius),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: ShapeDecoration(
-                        color: colorScheme.surface,
-                        shape: AppShapes.container(
-                          AppShapes.floatingPanelRadius,
-                        ),
-                      ),
-                      child: hosts[railId] ?? const SizedBox.shrink(),
-                    ),
-                  ),
-                  // The WIDTH grip, on this panel's inner edge — the edge
-                  // facing the artwork. Every group has one and they all
-                  // write the rail's single width, so the rail stays one
-                  // column wide however many panels are on it.
-                  Positioned(
-                    top: 0,
-                    bottom: 0,
-                    left: right ? 0 : null,
-                    right: right ? null : 0,
-                    width: DockEdgeSplitter.thickness,
-                    child: DockEdgeSplitter(
-                      key: ValueKey<String>('dock-resize-$railId'),
-                      axis: Axis.vertical,
-                      onDragDelta: (delta) {
-                        // ⚠️The sign flip has to be UNDONE on the way back.
-                        // A right rail grows as the pointer moves LEFT, so
-                        // reporting the width's own delta would hand the
-                        // splitter a debt pointing the wrong way — and a
-                        // debt with the wrong sign is worse than none: it
-                        // would make the edge run ahead instead of behind.
-                        final used = _state._layout.resizeDock(
-                          EditorWorkspace.railWidthKey(right: right),
-                          right ? -delta : delta,
-                          fallback: width,
-                          maxExtent: dragCeiling,
-                        );
-                        return right ? -used : used;
-                      },
-                    ),
-                  ),
-                  // The HEIGHT grip, on this panel's bottom edge. It costs
-                  // no layout, so the gap below stays a gap.
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: DockEdgeSplitter.thickness,
-                    child: DockEdgeSplitter(
-                      key: ValueKey<String>('dock-resize-$railId-height'),
-                      axis: Axis.horizontal,
-                      onDragDelta: (delta) => _state._layout.resizeDock(
-                        railId,
-                        delta,
-                        fallback: EditorWorkspace.railGroupHeight,
-                        minExtent: _state._verticalDockMinimumExtent(railId),
-                        // The RAIL is the ceiling, not the model's default
-                        // 640: that number guards a width, and a panel's
-                        // height here can legitimately be more than it on a
-                        // tall window and must be less than it on a short
-                        // one. Without this the grip banked height the rail
-                        // could never show and then dragged dead on the way
-                        // back — measured: 60px of return travel moved the
-                        // edge 9px. It is the same defect this round already
-                        // fixed for the floating region.
-                        maxExtent: railExtent.isFinite ? railExtent : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          // The rail's own cumulative chain, and the textbook case for a
-          // run: floor each cumulative POSITION and take each extent as
-          // the difference of neighbours. ⛔Snapping `heights[i]` and
-          // `_railGroupGap` on their own instead would drift — n groups
-          // would carry n roundings, all in the same direction, and the
-          // last panel would walk off the rail's bottom.
-          //
-          // ⚠️A gap of 8 is 9 device px at 1.125 and 10.8 at 1.35, so the
-          // run legitimately hands back slightly different gaps; that is
-          // the residue landing where it must rather than accumulating.
-          final children = <Widget>[];
-          final run = DeviceGrid.of(context).run();
-          for (var i = 0; i < open.length; i += 1) {
-            final top = run.position;
-            final height = run.take(heights[i]);
-            children.add(
-              Positioned(
-                left: 0,
-                right: 0,
-                top: top,
-                height: height,
-                child: group(i),
-              ),
-            );
-            run.take(_EditorWorkspaceState._railGroupGap);
-          }
-
-          final column = SizedBox(
-            height: content,
-            child: Stack(clipBehavior: Clip.none, children: children),
-          );
-          // The panels themselves keep their own width; the gap beside them
-          // is the rail's, and belongs to the strip side.
-          // The gap beside the strip. It is a link in the chain to the
-          // RAIL-DOCKED canvas — everything inside the rail panel starts
-          // after it — and 8 × 1.35 is 10.8, so it is off the grid at
-          // exactly the product ratios a UI scale produces.
-          final gap = DeviceGrid.of(
-            context,
-          ).position(_EditorWorkspaceState._railGroupGap);
-          Widget inGap(Widget child) => Padding(
-            // Keyed so the quantization can be PINNED. It is otherwise
-            // unobservable from the canvas: 8 is already integral at
-            // 1.125, 1.25 and 1.75, and at 1.35 — the one ratio where it
-            // matters — a larger fraction upstream still dominates the
-            // rail-docked boundary. Unpinned quantization is quantization
-            // that a later edit undoes in silence.
-            key: const ValueKey<String>('rail-group-gap'),
-            padding: EdgeInsets.only(
-              left: right ? 0 : gap,
-              right: right ? gap : 0,
-            ),
-            child: child,
-          );
-          // 🚨★★★ ONE TREE SHAPE, ALWAYS (R6-⑤, 유저: 「아래스플리터가
-          // 조작중에 멋대로 그립이 풀려버림. 클릭중인데도.」)
-          //
-          // This used to return two DIFFERENT trees — `Padding > Align >
-          // column` under the rail's height, `Stack > … > SingleChildScrollView
-          // > column` over it. Dragging the bottom height grip changes
-          // `content`, so crossing that boundary swapped the trees, element
-          // matching failed, and the whole column was rebuilt from scratch —
-          // taking with it the State of the very `DockEdgeSplitter` the hand
-          // was holding. The grip released itself mid-drag, while the button
-          // was still down. The colour wheel and the timesheet hit it because
-          // they are tall enough to sit near the boundary.
-          //
-          // ★The user's rule (넘칠 때만 스크롤) survives for free: a
-          // `SingleChildScrollView` whose content fits has min == max extent,
-          // and Flutter drops its drag recognizer at that point
-          // (`shouldAcceptUserOffset`). So the scroller is always MOUNTED and
-          // only sometimes LIVE, which is exactly what was wanted — and the
-          // tree stops changing shape under a live gesture.
-          final overflowing = railExtent.isFinite && content > railExtent;
-          final controller = _state._railScrollControllers[right]!;
-          return Stack(
-            children: [
-              Positioned.fill(
-                // ⛔NOT the Material scrollbar. The framework's desktop
-                // behaviour puts one on every vertical scrollable, and that
-                // one fades out and FATTENS under the pointer — both of
-                // which the app's own bar was written not to do (유저: 어떤
-                // 레일이든 눌렀다고 크기가 바뀌지 않는다).
-                child: inGap(
-                  ScrollConfiguration(
-                    behavior: ScrollConfiguration.of(
-                      context,
-                    ).copyWith(scrollbars: false),
-                    child: SingleChildScrollView(
-                      key: ValueKey<String>(
-                        'rail-scroll-${right ? 'right' : 'left'}',
-                      ),
-                      controller: controller,
-                      // 🚨★★ THE RAIL OWNS ITS PANELS, NOT ITS COLUMN
-                      // (유저 2026-08-15 #1: 「작은거 열면 밑에 공간 남는데
-                      // 그 공간에서 터치가 안먹힘」 — 그리기도 안 됐다).
-                      //
-                      // The column is laid out full height whatever is open
-                      // on it, and it has to be: R6-⑤ pinned ONE tree shape
-                      // so a live splitter drag cannot rebuild itself away.
-                      // But a scroller's default `hitTestBehavior` is
-                      // `opaque`, so that full-height rectangle took every
-                      // pointer that entered it — and the floor is
-                      // full-bleed underneath, so the pasteboard below a
-                      // short panel was a pane of glass over live canvas.
-                      // One hit test stopping stops every verb at once:
-                      // the tap, the stroke, the hover, the wheel.
-                      //
-                      // Deferring to the child says the true thing instead
-                      // — the rail owns exactly the rectangles its panels
-                      // occupy — and it says it without changing the tree.
-                      // ⚠️Nothing is lost when the rail DOES scroll: then
-                      // the content fills the viewport and there is no
-                      // empty space to have dragged in.
-                      hitTestBehavior: HitTestBehavior.deferToChild,
-                      // Top-aligned when it does not fill, which is what the
-                      // `Align` used to do on the non-scrolling branch.
-                      //
-                      // ⚠️OUTERMOST FIRST: this rail is the outer scroller
-                      // of the app's deepest chain, and a leaf corrected
-                      // under an uncorrected ancestor buys nothing —
-                      // measured 4.985e-1 inner-only against 1.4e-14 with
-                      // both.
-                      child: DeviceGridScrollBody(
-                        controller: controller,
-                        axisDirection: AxisDirection.down,
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: column,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // 띠랑 패널 사이공간에 (유저, R3 #12). The bar rides the gap
-              // between the strip and the panels rather than the panels'
-              // far edge, where it lay on whatever the panel had there and
-              // pointed away from the strip it belongs to. The lane IS the
-              // gap — narrower than the app's other lanes, and it can be,
-              // because nothing else is within reach of it to mis-hit.
-              // The BAR stays conditional — it is the one thing here that
-              // should appear only while there is something to scroll, and
-              // adding or removing it cannot disturb the column: it is a
-              // SIBLING in the stack, not an ancestor.
-              if (overflowing)
-                Positioned(
-                  left: right ? null : 0,
-                  right: right ? 0 : null,
-                  top: 0,
-                  bottom: 0,
-                  width: _EditorWorkspaceState._railGroupGap,
-                  child: AppControllerScrollbar(
-                    controller: controller,
-                    axis: Axis.vertical,
-                    thumbKey: ValueKey<String>(
-                      'rail-scroll-thumb-${right ? 'right' : 'left'}',
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
+        builder: (context, constraints) =>
+            _railColumn(context, constraints, room),
       ),
     );
   }
