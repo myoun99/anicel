@@ -966,6 +966,41 @@ class StoryboardPanel extends StatefulWidget {
   State<StoryboardPanel> createState() => _StoryboardPanelState();
 }
 
+/// What one build of the storyboard body computes once and every stage of
+/// the body reads: the layout and its scale, the frame counts, the content
+/// width, the rail's window, the playhead listenable, the theme and the
+/// strip rows the host handed in.
+///
+/// A value object rather than nine parameters — the same shape as the
+/// workspace's `_WorkspaceFrame` (Round 6, 2026-09-03: `_buildBody` was 574
+/// lines and became four named stages plus this).
+class _StoryboardBodyFrame {
+  const _StoryboardBodyFrame({
+    required this.project,
+    required this.layoutEntries,
+    required this.scale,
+    required this.totalFrames,
+    required this.renderedFrames,
+    required this.contentWidth,
+    required this.playheadListenable,
+    required this.availableRailWidth,
+    required this.railWindowExtent,
+    required this.colorScheme,
+    required this.trackGlobalStripRowsByTrack,
+  });
+
+  final Project project;
+  final List<StoryboardTimelineLayoutEntry> layoutEntries;
+  final TimelineScale scale;
+  final int totalFrames;
+  final int renderedFrames;
+  final double contentWidth;
+  final ValueListenable<int?>? playheadListenable;
+  final double? availableRailWidth;
+  final double railWindowExtent;
+  final ColorScheme colorScheme;
+  final List<List<Widget>> trackGlobalStripRowsByTrack;
+}
 class _StoryboardPanelState extends State<StoryboardPanel> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
@@ -1391,6 +1426,19 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       _naturalRailWidth,
       availableExtent: availableRailWidth,
     );
+    final frame = _StoryboardBodyFrame(
+      project: project,
+      layoutEntries: layoutEntries,
+      scale: scale,
+      totalFrames: totalFrames,
+      renderedFrames: renderedFrames,
+      contentWidth: contentWidth,
+      playheadListenable: playheadListenable,
+      availableRailWidth: availableRailWidth,
+      railWindowExtent: railWindowExtent,
+      colorScheme: colorScheme,
+      trackGlobalStripRowsByTrack: trackGlobalStripRowsByTrack,
+    );
     return ColoredBox(
       key: const ValueKey<String>('storyboard-panel'),
       color: colorScheme.surface,
@@ -1403,535 +1451,552 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               // area (the timeline's sticky-header pattern) so it stays put
               // while tracks and SE rows scroll under it; it follows the
               // horizontal scroll by translation.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // The corner above the layer-axis scrollbar: the seconds
-                  // toggle, moved off the command bar (rail-window round).
-                  TimelineSecondsToggleCorner(
-                    key: const ValueKey<String>(
-                      'storyboard-time-display-toggle-button',
-                    ),
-                    width: StoryboardPanel._scrollbarLaneWidth,
-                    height: StoryboardPanel._rulerHeight,
-                    showSeconds: widget.showSeconds,
-                    onChanged: widget.onShowSecondsChanged,
+              _pinnedRulerRow(frame),
+              _scrollArea(frame),
+              // BOTTOM row of the 3-row structure (UI-R10 #21): blank
+              // corners under the rail and the scrollbar lane, then the
+              // PINNED horizontal scrollbar (it used to live inside the
+              // vertical scroll content and scrolled away with it).
+              _bottomScrollbarRow(frame),
+            ],
+          ),
+          // The grip floats over the 5px slot the three rows reserve, so
+          // one grab spans the legend, the rows and the scrollbar line.
+          _railGrip(frame),
+        ],
+      ),
+    );
+  }
+
+  Positioned _railGrip(_StoryboardBodyFrame frame) {
+    return Positioned(
+      left: StoryboardPanel._scrollbarLaneWidth + frame.railWindowExtent,
+      top: 0,
+      bottom: 0,
+      width: LayerRailSplitter.thickness,
+      child: LayerRailSplitter(
+        key: const ValueKey<String>('storyboard-rail-splitter'),
+        axis: Axis.horizontal,
+        extent: _railRows._railExtent,
+        naturalExtent: _naturalRailWidth,
+        availableExtent: frame.availableRailWidth,
+      ),
+    );
+  }
+
+  Row _bottomScrollbarRow(_StoryboardBodyFrame frame) {
+    return Row(
+      children: [
+        const SizedBox(
+          key: ValueKey<String>(
+            'storyboard-bottom-scrollbar-left-spacer',
+          ),
+          width: StoryboardPanel._scrollbarLaneWidth,
+          height: StoryboardPanel._bottomScrollbarRailHeight,
+        ),
+        // The rail's own bar — the panel's second of three.
+        LayerRailScrollbar(
+          axis: Axis.horizontal,
+          rail: _railRows._railExtent,
+          naturalExtent: _naturalRailWidth,
+          availableExtent: frame.availableRailWidth,
+          laneExtent: StoryboardPanel._bottomScrollbarRailHeight,
+          keyPrefix: 'storyboard',
+        ),
+        const SizedBox(
+          width: LayerRailSplitter.thickness,
+          height: StoryboardPanel._bottomScrollbarRailHeight,
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportWidth = constraints.hasBoundedWidth
+                  ? constraints.maxWidth
+                  : 0.0;
+              return TimelineHorizontalScrollbarRail(
+                key: const ValueKey<String>(
+                  'storyboard-horizontal-scrollbar',
+                ),
+                controller: _horizontalController,
+                viewportWidth: viewportWidth,
+                contentWidth: frame.contentWidth,
+                height: StoryboardPanel._bottomScrollbarRailHeight,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Expanded _scrollArea(_StoryboardBodyFrame frame) {
+    final playheadListenable = frame.playheadListenable;
+    return Expanded(
+      child: LayoutBuilder(
+        builder: (context, middleConstraints) {
+          final middleViewportHeight =
+              middleConstraints.hasBoundedHeight
+              ? middleConstraints.maxHeight
+              : 0.0;
+          return Stack(
+            children: [
+              ScrollConfiguration(
+                // The pinned rail IS this area's scrollbar — the desktop
+                // auto-overlay would double it (UI-R10 #22 unification).
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  key: const ValueKey<String>(
+                    'storyboard-vertical-viewport',
                   ),
-                  // The timeline's legend header over the rail (UI-R5
-                  // storyboard unification): same slots, same flyouts —
-                  // and now inside the rail's own window, so the legend is
-                  // cut exactly where the rows below it are.
-                  LayerRailWindow(
-                    axis: Axis.horizontal,
-                    rail: _railRows._railExtent,
-                    naturalExtent: _naturalRailWidth,
-                    availableExtent: availableRailWidth,
-                    child: SizedBox(
-                      width: StoryboardPanel._trackLabelWidth,
-                      child: TimelineLayerControlsHeader(
-                        // The storyboard rail states its OWN width, which
-                        // today is the same number as the timeline's and is
-                        // deliberately not the same constant (see
-                        // [StoryboardPanel._trackLabelWidth]). Widening it
-                        // adds no column here — `hasBlendColumn` is a host
-                        // answer, not something derived from the width — so
-                        // the extra width lands in the NAME, which is where
-                        // a track wants it.
-                        metrics: TimelineGridMetrics.defaults,
-                        legend: widget.legend,
-                        rowFilter: widget.rowFilter,
-                        showRowSolos: true,
-                        marksInUse: _legendMarksInUse(),
-                        kindsInUse: _legendKindsInUse(),
-                        visibilitySoloEnabled: widget.visibilitySoloEnabled,
-                        allSeMuted: _legendAllSeMuted(),
-                        displayedLayerIds: widget.legend == null
-                            ? null
-                            : _legendDisplayedLayerIds,
-                        displayedOpacity: widget.legendOpacityValue,
-                        // ㉒: the lane column's header verb, same as the
-                        // timeline's.
-                        anyLanesExpanded: _railRows._anyLanesExpanded,
-                        onExpandAllLanes: _railRows.hasLaneTwirls
-                            ? _railRows.expandAllLanes
-                            : null,
-                        onCollapseAllLanes: _railRows.hasLaneTwirls
-                            ? _railRows.collapseAllLanes
-                            : null,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: LayerRailSplitter.thickness),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final viewportWidth = constraints.hasBoundedWidth
-                            ? constraints.maxWidth
-                            : contentWidth;
-                        return SizedBox(
-                          height: StoryboardPanel._rulerHeight,
-                          child: ClipRect(
-                            child: OverflowBox(
-                              alignment: Alignment.topLeft,
-                              minWidth: contentWidth,
-                              maxWidth: contentWidth,
-                              minHeight: StoryboardPanel._rulerHeight,
-                              maxHeight: StoryboardPanel._rulerHeight,
-                              // UI-R15: scroll moves ONLY this translate — the
-                              // ruler strip itself builds once (full bounds)
-                              // and its painters window off the live offset.
-                              child: ValueListenableBuilder<double>(
-                                valueListenable: _horizontalScrollOffset,
-                                child: _StoryboardRuler(
-                                  width: contentWidth,
-                                  renderedFrames: renderedFrames,
-                                  contentFrames: totalFrames,
-                                  playhead: playheadListenable,
-                                  frameReadySignal: widget.frameReadySignal,
-                                  viewportOffset: _horizontalScrollOffset,
-                                  windowBucket: _horizontalWindowBucket,
-                                  viewportWidth: viewportWidth,
-                                  timelineScale: scale,
-                                  onSeekGlobalFrame: widget.onSeekGlobalFrame,
-                                  onScrubGlobalFrame: widget.onScrubGlobalFrame,
-                                  onScrubEnd: widget.onScrubEnd,
-                                  isFrameReady: widget.isFrameReady,
-                                  onEdgeAutoPan: _scroll.autoPanRulerEdge,
-                                  framesPerSecond: _countingFps,
-                                  showSeconds: widget.showSeconds,
-                                ),
-                                // 🚨★★★F-32, the THIRD grid with this exact
-                                // shape: the cells below sit inside
-                                // `DeviceGridScrollBody` (which cancels the
-                                // scroll offset's sub-device-pixel fraction)
-                                // and this ruler translated raw, so it kept
-                                // the fraction they had cancelled.
-                                //
-                                // 🧪Measured at ratio 1.5, offset 1.5: ruler
-                                // 453.5 vs cells 453.667 — the same numbers
-                                // the horizontal timeline gave.
-                                builder: (context, offset, child) =>
-                                    DeviceGridScrollBody(
-                                      controller: _horizontalController,
-                                      axisDirection: AxisDirection.right,
-                                      child: Transform.translate(
-                                        offset: Offset(-offset, 0),
-                                        child: child,
-                                      ),
-                                    ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, middleConstraints) {
-                    final middleViewportHeight =
-                        middleConstraints.hasBoundedHeight
-                        ? middleConstraints.maxHeight
-                        : 0.0;
-                    return Stack(
+                  controller: _verticalController,
+                  child: DeviceGridScrollBody(
+                    controller: _verticalController,
+                    axisDirection: AxisDirection.down,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ScrollConfiguration(
-                          // The pinned rail IS this area's scrollbar — the desktop
-                          // auto-overlay would double it (UI-R10 #22 unification).
-                          behavior: ScrollConfiguration.of(
-                            context,
-                          ).copyWith(scrollbars: false),
-                          child: SingleChildScrollView(
+                        // Reserves the left EDGE column the layer-axis
+                        // scrollbar floats over.
+                        const SizedBox(
+                          width: StoryboardPanel._scrollbarLaneWidth,
+                        ),
+                        // Sections live INSIDE the rows now (UI-R5): the
+                        // first S row and the V row carry inline tags — no
+                        // bracket gutter beside the rail.
+                        LayerRailWindow(
+                          axis: Axis.horizontal,
+                          rail: _railRows._railExtent,
+                          naturalExtent: _naturalRailWidth,
+                          availableExtent: frame.availableRailWidth,
+                          child: SizedBox(
                             key: const ValueKey<String>(
-                              'storyboard-vertical-viewport',
+                              'storyboard-track-label-rail',
                             ),
-                            controller: _verticalController,
-                            child: DeviceGridScrollBody(
-                              controller: _verticalController,
-                              axisDirection: AxisDirection.down,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            width: StoryboardPanel._trackLabelWidth,
+                            // 🚨The rail's Krita-style column
+                            // swipe, the SAME one the timeline
+                            // rail wears (유저 2026-08-29: 「타임
+                            // 라인이랑 왜 통일안한거지?」). It was
+                            // the timeline's private state until
+                            // the reason for that was measured and
+                            // found invented — see
+                            // [RailSwipeColumnPointer].
+                            child: RailColumnSwipe<StoryboardRailRow>(
+                              axis: Axis.vertical,
+                              columns: _railRows._railSwipeColumns(),
+                              rowAt: _railRows.railRowAtY,
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 children: [
-                                  // Reserves the left EDGE column the layer-axis
-                                  // scrollbar floats over.
-                                  const SizedBox(
-                                    width: StoryboardPanel._scrollbarLaneWidth,
-                                  ),
-                                  // Sections live INSIDE the rows now (UI-R5): the
-                                  // first S row and the V row carry inline tags — no
-                                  // bracket gutter beside the rail.
-                                  LayerRailWindow(
-                                    axis: Axis.horizontal,
-                                    rail: _railRows._railExtent,
-                                    naturalExtent: _naturalRailWidth,
-                                    availableExtent: availableRailWidth,
-                                    child: SizedBox(
-                                      key: const ValueKey<String>(
-                                        'storyboard-track-label-rail',
-                                      ),
-                                      width: StoryboardPanel._trackLabelWidth,
-                                      // 🚨The rail's Krita-style column
-                                      // swipe, the SAME one the timeline
-                                      // rail wears (유저 2026-08-29: 「타임
-                                      // 라인이랑 왜 통일안한거지?」). It was
-                                      // the timeline's private state until
-                                      // the reason for that was measured and
-                                      // found invented — see
-                                      // [RailSwipeColumnPointer].
-                                      child: RailColumnSwipe<StoryboardRailRow>(
-                                        axis: Axis.vertical,
-                                        columns: _railRows._railSwipeColumns(),
-                                        rowAt: _railRows.railRowAtY,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // Track groups in TIMELINE order (R6 B3): the
-                                            // S rows sit ABOVE their V track, slots
-                                            // bottom-up like the timeline (top-down
-                                            // S2, S1, V — R7-④).
-                                            for (
-                                              var index = 0;
-                                              index < project.tracks.length;
-                                              index++
-                                            )
-                                              ..._railRows.railRowsForTrack(
-                                                project.tracks[index],
-                                                index,
-                                              ),
-                                          ],
-                                        ),
-                                      ),
+                                  // Track groups in TIMELINE order (R6 B3): the
+                                  // S rows sit ABOVE their V track, slots
+                                  // bottom-up like the timeline (top-down
+                                  // S2, S1, V — R7-④).
+                                  for (
+                                    var index = 0;
+                                    index < frame.project.tracks.length;
+                                    index++
+                                  )
+                                    ..._railRows.railRowsForTrack(
+                                      frame.project.tracks[index],
+                                      index,
                                     ),
-                                  ),
-                                  // Reserves the gap the rail splitter floats over.
-                                  const SizedBox(
-                                    width: LayerRailSplitter.thickness,
-                                  ),
-                                  Expanded(
-                                    child: ScrollConfiguration(
-                                      behavior: ScrollConfiguration.of(
-                                        context,
-                                      ).copyWith(scrollbars: false),
-                                      child: SingleChildScrollView(
-                                        key: const ValueKey<String>(
-                                          'storyboard-timeline-horizontal-viewport',
-                                        ),
-                                        controller: _horizontalController,
-                                        scrollDirection: Axis.horizontal,
-                                        child: DeviceGridScrollBody(
-                                          controller: _horizontalController,
-                                          axisDirection: AxisDirection.right,
-                                          child: Stack(
-                                            children: [
-                                              // Frame grid lines under the blocks:
-                                              // THE shared painter (D8/D38 —
-                                              // the storyboard's own copy had
-                                              // drifted: pre-split beat color,
-                                              // base+beat double ink at 6f, a
-                                              // line at x=0, no snap; deleted,
-                                              // never reconciled).
-                                              Positioned.fill(
-                                                child: IgnorePointer(
-                                                  child: RepaintBoundary(
-                                                    child: CustomPaint(
-                                                      key: const ValueKey<String>(
-                                                        'storyboard-frame-lines',
-                                                      ),
-                                                      painter: TimelineBeatLinesPainter(
-                                                        frameCellExtent: scale
-                                                            .pixelsPerFrame,
-                                                        framesPerSecond:
-                                                            _countingFps,
-                                                        colorScheme:
-                                                            colorScheme,
-                                                        // D43: the storyboard panel sits
-                                                        // on `surface`, not the timeline's
-                                                        // container colour.
-                                                        ground:
-                                                            colorScheme.surface,
-                                                        // Row seams are the
-                                                        // storyboard rail's
-                                                        // own hairlines.
-                                                        crossCellExtent: 0,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              // RepaintBoundary (R12-⑥): the playhead
-                                              // overlay above moves every playback tick;
-                                              // without the boundary each move re-
-                                              // rasterizes every strip, thumbnail and
-                                              // waveform in this column.
-                                              RepaintBoundary(
-                                                child: Column(
-                                                  key: const ValueKey<String>(
-                                                    'storyboard-timeline-scroll-content',
-                                                  ),
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    // Width driver: the scroll content spans
-                                                    // the full frame runway even when every
-                                                    // row is narrower (the pinned ruler used
-                                                    // to do this from inside the content).
-                                                    SizedBox(
-                                                      width: contentWidth,
-                                                    ),
-                                                    // Track groups in TIMELINE order (R6
-                                                    // B3), mirroring the rail exactly —
-                                                    // row for row, height for height.
-                                                    for (
-                                                      var index = 0;
-                                                      index <
-                                                          project.tracks.length;
-                                                      index++
-                                                    )
-                                                      _railRows.trackGroupSection(
-                                                        project.tracks[index],
-                                                        index,
-                                                        layoutEntries
-                                                            .where(
-                                                              (entry) =>
-                                                                  entry
-                                                                      .trackIndex ==
-                                                                  index,
-                                                            )
-                                                            .toList(
-                                                              growable: false,
-                                                            ),
-                                                        contentWidth,
-                                                        scale,
-                                                        index <
-                                                                trackGlobalStripRowsByTrack
-                                                                    .length
-                                                            ? trackGlobalStripRowsByTrack[index]
-                                                            : const [],
-                                                      ),
-                                                  ],
-                                                ),
-                                              ),
-                                              if (playheadListenable != null)
-                                                // Frame-wide accent tint only — no solid
-                                                // edge line over the blocks (user
-                                                // direction); the ruler carries its own
-                                                // current-frame highlight. Subscribes to
-                                                // the cursor itself: a tick moves THIS
-                                                // overlay, the blocks never rebuild.
-                                                ValueListenableBuilder<int?>(
-                                                  valueListenable:
-                                                      playheadListenable,
-                                                  builder:
-                                                      (
-                                                        context,
-                                                        playheadFrame,
-                                                        _,
-                                                      ) => playheadFrame == null
-                                                      ? const SizedBox.shrink()
-                                                      : Positioned(
-                                                          key:
-                                                              const ValueKey<
-                                                                String
-                                                              >(
-                                                                'storyboard-playhead',
-                                                              ),
-                                                          left: scale
-                                                              .leftForFrame(
-                                                                playheadFrame,
-                                                              ),
-                                                          top: 0,
-                                                          bottom: 0,
-                                                          width: scale
-                                                              .pixelsPerFrame,
-                                                          child: IgnorePointer(
-                                                            child: ColoredBox(
-                                                              color: timelinePlayheadColor
-                                                                  .withValues(
-                                                                    alpha: 0.18,
-                                                                  ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                ),
-                                              // The MOVIE-END line through the
-                                              // STRIPS (UI-R20 #3): the ruler's
-                                              // red line extended vertically, and
-                                              // draggable — it edits the movie's
-                                              // FINAL LENGTH (the project's
-                                              // trailing gap), never the cuts;
-                                              // the panel's internal preview
-                                              // substitution makes it follow
-                                              // live.
-                                              // 🚨F-18: the line and its grip
-                                              // follow the DRAG, not the
-                                              // committed project. The body
-                                              // around them still builds
-                                              // committed-once on purpose —
-                                              // only these two read the
-                                              // preview, so nothing else
-                                              // rebuilds per step.
-                                              if (totalFrames > 0)
-                                                ValueListenableBuilder<
-                                                  TimelineDragPreview?
-                                                >(
-                                                  valueListenable:
-                                                      widget.dragPreview ??
-                                                      _noDragPreview,
-                                                  builder: (context, preview, _) {
-                                                    final live =
-                                                        movieEndPreviewTotalFrames(
-                                                          preview: preview,
-                                                          committedTotalFrames:
-                                                              totalFrames,
-                                                          committedTrailingFrames:
-                                                              project
-                                                                  .trailingFrames,
-                                                        );
-                                                    return Positioned(
-                                                      key: const ValueKey<String>(
-                                                        'storyboard-cut-end-line',
-                                                      ),
-                                                      left: scale.leftForFrame(
-                                                        live,
-                                                      ),
-                                                      top: 0,
-                                                      bottom: 0,
-                                                      width: 2,
-                                                      child:
-                                                          const IgnorePointer(
-                                                            child: ColoredBox(
-                                                              color: AppColors
-                                                                  .danger,
-                                                            ),
-                                                          ),
-                                                    );
-                                                  },
-                                                ),
-                                              if (totalFrames > 0 &&
-                                                  widget.movieEnd != null)
-                                                _StoryboardEndLineHandle(
-                                                  dragPreview:
-                                                      widget.dragPreview,
-                                                  committedTotalFrames:
-                                                      totalFrames,
-                                                  committedTrailingFrames:
-                                                      project.trailingFrames,
-                                                  scale: scale,
-                                                  // Grabbed from the EMPTY side of
-                                                  // the line, never straddling it:
-                                                  // everything left of the movie's
-                                                  // end belongs to the content, and
-                                                  // the last cut's trailing edge
-                                                  // grip is right there. Centring
-                                                  // the handle put a full-height
-                                                  // opaque box over that grip and
-                                                  // made it unreachable.
-                                                  pixelsPerFrame:
-                                                      scale.pixelsPerFrame,
-                                                  movieEnd: widget.movieEnd!,
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
                           ),
                         ),
-                        // The layer-axis bar moved off the rail's right edge
-                        // and onto the panel's left one — the gap it used to
-                        // fill is the splitter's now.
-                        Positioned(
-                          left: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: StoryboardPanel._scrollbarLaneWidth,
-                          child: TimelineVerticalScrollbarRail(
-                            key: const ValueKey<String>(
-                              'storyboard-vertical-scrollbar',
+                        // Reserves the gap the rail splitter floats over.
+                        const SizedBox(
+                          width: LayerRailSplitter.thickness,
+                        ),
+                        Expanded(
+                          child: ScrollConfiguration(
+                            behavior: ScrollConfiguration.of(
+                              context,
+                            ).copyWith(scrollbars: false),
+                            child: SingleChildScrollView(
+                              key: const ValueKey<String>(
+                                'storyboard-timeline-horizontal-viewport',
+                              ),
+                              controller: _horizontalController,
+                              scrollDirection: Axis.horizontal,
+                              child: DeviceGridScrollBody(
+                                controller: _horizontalController,
+                                axisDirection: AxisDirection.right,
+                                child: Stack(
+                                  children: [
+                                    // Frame grid lines under the blocks:
+                                    // THE shared painter (D8/D38 —
+                                    // the storyboard's own copy had
+                                    // drifted: pre-split beat color,
+                                    // base+beat double ink at 6f, a
+                                    // line at x=0, no snap; deleted,
+                                    // never reconciled).
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: RepaintBoundary(
+                                          child: CustomPaint(
+                                            key: const ValueKey<String>(
+                                              'storyboard-frame-lines',
+                                            ),
+                                            painter: TimelineBeatLinesPainter(
+                                              frameCellExtent: frame.scale
+                                                  .pixelsPerFrame,
+                                              framesPerSecond:
+                                                  _countingFps,
+                                              colorScheme:
+                                                  frame.colorScheme,
+                                              // D43: the storyboard panel sits
+                                              // on `surface`, not the timeline's
+                                              // container colour.
+                                              ground:
+                                                  frame.colorScheme.surface,
+                                              // Row seams are the
+                                              // storyboard rail's
+                                              // own hairlines.
+                                              crossCellExtent: 0,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // RepaintBoundary (R12-⑥): the playhead
+                                    // overlay above moves every playback tick;
+                                    // without the boundary each move re-
+                                    // rasterizes every strip, thumbnail and
+                                    // waveform in this column.
+                                    RepaintBoundary(
+                                      child: Column(
+                                        key: const ValueKey<String>(
+                                          'storyboard-timeline-scroll-content',
+                                        ),
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Width driver: the scroll content spans
+                                          // the full frame runway even when every
+                                          // row is narrower (the pinned ruler used
+                                          // to do this from inside the content).
+                                          SizedBox(
+                                            width: frame.contentWidth,
+                                          ),
+                                          // Track groups in TIMELINE order (R6
+                                          // B3), mirroring the rail exactly —
+                                          // row for row, height for height.
+                                          for (
+                                            var index = 0;
+                                            index <
+                                                frame.project.tracks.length;
+                                            index++
+                                          )
+                                            _railRows.trackGroupSection(
+                                              frame.project.tracks[index],
+                                              index,
+                                              frame.layoutEntries
+                                                  .where(
+                                                    (entry) =>
+                                                        entry
+                                                            .trackIndex ==
+                                                        index,
+                                                  )
+                                                  .toList(
+                                                    growable: false,
+                                                  ),
+                                              frame.contentWidth,
+                                              frame.scale,
+                                              index <
+                                                      frame.trackGlobalStripRowsByTrack
+                                                          .length
+                                                  ? frame.trackGlobalStripRowsByTrack[index]
+                                                  : const [],
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (playheadListenable != null)
+                                      // Frame-wide accent tint only — no solid
+                                      // edge line over the blocks (user
+                                      // direction); the ruler carries its own
+                                      // current-frame highlight. Subscribes to
+                                      // the cursor itself: a tick moves THIS
+                                      // overlay, the blocks never rebuild.
+                                      ValueListenableBuilder<int?>(
+                                        valueListenable:
+                                            playheadListenable,
+                                        builder:
+                                            (
+                                              context,
+                                              playheadFrame,
+                                              _,
+                                            ) => playheadFrame == null
+                                            ? const SizedBox.shrink()
+                                            : Positioned(
+                                                key:
+                                                    const ValueKey<
+                                                      String
+                                                    >(
+                                                      'storyboard-playhead',
+                                                    ),
+                                                left: frame.scale
+                                                    .leftForFrame(
+                                                      playheadFrame,
+                                                    ),
+                                                top: 0,
+                                                bottom: 0,
+                                                width: frame.scale
+                                                    .pixelsPerFrame,
+                                                child: IgnorePointer(
+                                                  child: ColoredBox(
+                                                    color: timelinePlayheadColor
+                                                        .withValues(
+                                                          alpha: 0.18,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ),
+                                      ),
+                                    // The MOVIE-END line through the
+                                    // STRIPS (UI-R20 #3): the ruler's
+                                    // red line extended vertically, and
+                                    // draggable — it edits the movie's
+                                    // FINAL LENGTH (the project's
+                                    // trailing gap), never the cuts;
+                                    // the panel's internal preview
+                                    // substitution makes it follow
+                                    // live.
+                                    // 🚨F-18: the line and its grip
+                                    // follow the DRAG, not the
+                                    // committed project. The body
+                                    // around them still builds
+                                    // committed-once on purpose —
+                                    // only these two read the
+                                    // preview, so nothing else
+                                    // rebuilds per step.
+                                    if (frame.totalFrames > 0)
+                                      ValueListenableBuilder<
+                                        TimelineDragPreview?
+                                      >(
+                                        valueListenable:
+                                            widget.dragPreview ??
+                                            _noDragPreview,
+                                        builder: (context, preview, _) {
+                                          final live =
+                                              movieEndPreviewTotalFrames(
+                                                preview: preview,
+                                                committedTotalFrames:
+                                                    frame.totalFrames,
+                                                committedTrailingFrames:
+                                                    frame.project
+                                                        .trailingFrames,
+                                              );
+                                          return Positioned(
+                                            key: const ValueKey<String>(
+                                              'storyboard-cut-end-line',
+                                            ),
+                                            left: frame.scale.leftForFrame(
+                                              live,
+                                            ),
+                                            top: 0,
+                                            bottom: 0,
+                                            width: 2,
+                                            child:
+                                                const IgnorePointer(
+                                                  child: ColoredBox(
+                                                    color: AppColors
+                                                        .danger,
+                                                  ),
+                                                ),
+                                          );
+                                        },
+                                      ),
+                                    if (frame.totalFrames > 0 &&
+                                        widget.movieEnd != null)
+                                      _StoryboardEndLineHandle(
+                                        dragPreview:
+                                            widget.dragPreview,
+                                        committedTotalFrames:
+                                            frame.totalFrames,
+                                        committedTrailingFrames:
+                                            frame.project.trailingFrames,
+                                        scale: frame.scale,
+                                        // Grabbed from the EMPTY side of
+                                        // the line, never straddling it:
+                                        // everything left of the movie's
+                                        // end belongs to the content, and
+                                        // the last cut's trailing edge
+                                        // grip is right there. Centring
+                                        // the handle put a full-height
+                                        // opaque box over that grip and
+                                        // made it unreachable.
+                                        pixelsPerFrame:
+                                            frame.scale.pixelsPerFrame,
+                                        movieEnd: widget.movieEnd!,
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            controller: _verticalController,
-                            viewportHeight: middleViewportHeight,
-                            contentHeight: middleViewportHeight,
-                            width: StoryboardPanel._scrollbarLaneWidth,
                           ),
                         ),
                       ],
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
-              // BOTTOM row of the 3-row structure (UI-R10 #21): blank
-              // corners under the rail and the scrollbar lane, then the
-              // PINNED horizontal scrollbar (it used to live inside the
-              // vertical scroll content and scrolled away with it).
-              Row(
-                children: [
-                  const SizedBox(
-                    key: ValueKey<String>(
-                      'storyboard-bottom-scrollbar-left-spacer',
-                    ),
-                    width: StoryboardPanel._scrollbarLaneWidth,
-                    height: StoryboardPanel._bottomScrollbarRailHeight,
+              // The layer-axis bar moved off the rail's right edge
+              // and onto the panel's left one — the gap it used to
+              // fill is the splitter's now.
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: StoryboardPanel._scrollbarLaneWidth,
+                child: TimelineVerticalScrollbarRail(
+                  key: const ValueKey<String>(
+                    'storyboard-vertical-scrollbar',
                   ),
-                  // The rail's own bar — the panel's second of three.
-                  LayerRailScrollbar(
-                    axis: Axis.horizontal,
-                    rail: _railRows._railExtent,
-                    naturalExtent: _naturalRailWidth,
-                    availableExtent: availableRailWidth,
-                    laneExtent: StoryboardPanel._bottomScrollbarRailHeight,
-                    keyPrefix: 'storyboard',
-                  ),
-                  const SizedBox(
-                    width: LayerRailSplitter.thickness,
-                    height: StoryboardPanel._bottomScrollbarRailHeight,
-                  ),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final viewportWidth = constraints.hasBoundedWidth
-                            ? constraints.maxWidth
-                            : 0.0;
-                        return TimelineHorizontalScrollbarRail(
-                          key: const ValueKey<String>(
-                            'storyboard-horizontal-scrollbar',
-                          ),
-                          controller: _horizontalController,
-                          viewportWidth: viewportWidth,
-                          contentWidth: contentWidth,
-                          height: StoryboardPanel._bottomScrollbarRailHeight,
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                  controller: _verticalController,
+                  viewportHeight: middleViewportHeight,
+                  contentHeight: middleViewportHeight,
+                  width: StoryboardPanel._scrollbarLaneWidth,
+                ),
               ),
             ],
+          );
+        },
+      ),
+    );
+  }
+
+  Row _pinnedRulerRow(_StoryboardBodyFrame frame) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // The corner above the layer-axis scrollbar: the seconds
+        // toggle, moved off the command bar (rail-window round).
+        TimelineSecondsToggleCorner(
+          key: const ValueKey<String>(
+            'storyboard-time-display-toggle-button',
           ),
-          // The grip floats over the 5px slot the three rows reserve, so
-          // one grab spans the legend, the rows and the scrollbar line.
-          Positioned(
-            left: StoryboardPanel._scrollbarLaneWidth + railWindowExtent,
-            top: 0,
-            bottom: 0,
-            width: LayerRailSplitter.thickness,
-            child: LayerRailSplitter(
-              key: const ValueKey<String>('storyboard-rail-splitter'),
-              axis: Axis.horizontal,
-              extent: _railRows._railExtent,
-              naturalExtent: _naturalRailWidth,
-              availableExtent: availableRailWidth,
+          width: StoryboardPanel._scrollbarLaneWidth,
+          height: StoryboardPanel._rulerHeight,
+          showSeconds: widget.showSeconds,
+          onChanged: widget.onShowSecondsChanged,
+        ),
+        // The timeline's legend header over the rail (UI-R5
+        // storyboard unification): same slots, same flyouts —
+        // and now inside the rail's own window, so the legend is
+        // cut exactly where the rows below it are.
+        LayerRailWindow(
+          axis: Axis.horizontal,
+          rail: _railRows._railExtent,
+          naturalExtent: _naturalRailWidth,
+          availableExtent: frame.availableRailWidth,
+          child: SizedBox(
+            width: StoryboardPanel._trackLabelWidth,
+            child: TimelineLayerControlsHeader(
+              // The storyboard rail states its OWN width, which
+              // today is the same number as the timeline's and is
+              // deliberately not the same constant (see
+              // [StoryboardPanel._trackLabelWidth]). Widening it
+              // adds no column here — `hasBlendColumn` is a host
+              // answer, not something derived from the width — so
+              // the extra width lands in the NAME, which is where
+              // a track wants it.
+              metrics: TimelineGridMetrics.defaults,
+              legend: widget.legend,
+              rowFilter: widget.rowFilter,
+              showRowSolos: true,
+              marksInUse: _legendMarksInUse(),
+              kindsInUse: _legendKindsInUse(),
+              visibilitySoloEnabled: widget.visibilitySoloEnabled,
+              allSeMuted: _legendAllSeMuted(),
+              displayedLayerIds: widget.legend == null
+                  ? null
+                  : _legendDisplayedLayerIds,
+              displayedOpacity: widget.legendOpacityValue,
+              // ㉒: the lane column's header verb, same as the
+              // timeline's.
+              anyLanesExpanded: _railRows._anyLanesExpanded,
+              onExpandAllLanes: _railRows.hasLaneTwirls
+                  ? _railRows.expandAllLanes
+                  : null,
+              onCollapseAllLanes: _railRows.hasLaneTwirls
+                  ? _railRows.collapseAllLanes
+                  : null,
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: LayerRailSplitter.thickness),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportWidth = constraints.hasBoundedWidth
+                  ? constraints.maxWidth
+                  : frame.contentWidth;
+              return SizedBox(
+                height: StoryboardPanel._rulerHeight,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topLeft,
+                    minWidth: frame.contentWidth,
+                    maxWidth: frame.contentWidth,
+                    minHeight: StoryboardPanel._rulerHeight,
+                    maxHeight: StoryboardPanel._rulerHeight,
+                    // UI-R15: scroll moves ONLY this translate — the
+                    // ruler strip itself builds once (full bounds)
+                    // and its painters window off the live offset.
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _horizontalScrollOffset,
+                      child: _StoryboardRuler(
+                        width: frame.contentWidth,
+                        renderedFrames: frame.renderedFrames,
+                        contentFrames: frame.totalFrames,
+                        playhead: frame.playheadListenable,
+                        frameReadySignal: widget.frameReadySignal,
+                        viewportOffset: _horizontalScrollOffset,
+                        windowBucket: _horizontalWindowBucket,
+                        viewportWidth: viewportWidth,
+                        timelineScale: frame.scale,
+                        onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                        onScrubGlobalFrame: widget.onScrubGlobalFrame,
+                        onScrubEnd: widget.onScrubEnd,
+                        isFrameReady: widget.isFrameReady,
+                        onEdgeAutoPan: _scroll.autoPanRulerEdge,
+                        framesPerSecond: _countingFps,
+                        showSeconds: widget.showSeconds,
+                      ),
+                      // 🚨★★★F-32, the THIRD grid with this exact
+                      // shape: the cells below sit inside
+                      // `DeviceGridScrollBody` (which cancels the
+                      // scroll offset's sub-device-pixel fraction)
+                      // and this ruler translated raw, so it kept
+                      // the fraction they had cancelled.
+                      //
+                      // 🧪Measured at ratio 1.5, offset 1.5: ruler
+                      // 453.5 vs cells 453.667 — the same numbers
+                      // the horizontal timeline gave.
+                      builder: (context, offset, child) =>
+                          DeviceGridScrollBody(
+                            controller: _horizontalController,
+                            axisDirection: AxisDirection.right,
+                            child: Transform.translate(
+                              offset: Offset(-offset, 0),
+                              child: child,
+                            ),
+                          ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
