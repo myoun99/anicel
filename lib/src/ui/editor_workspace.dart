@@ -1695,318 +1695,341 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       // feel heavy. Sizes ride `_layout.extentRevision` and are read inside
       // the two builders that actually consume them.
       listenable: Listenable.merge([_layout, _timelineOrientation]),
-      builder: (context, _) {
-        // A rail is THERE when any of its groups is open; which groups
-        // those are is the rail's own business.
-        final hasLeftDock = _rail.openRailGroups(right: false).isNotEmpty;
-        final hasRightDock = _rail.openRailGroups(right: true).isNotEmpty;
-        final hasBottomDock = _layout
-            .tabsIn(EditorWorkspace.bottomGroupId)
-            .isNotEmpty;
-        // ★EVERY HEAVY SUBTREE IS BUILT HERE, above the extent builder, and
-        // merely REFERENCED inside it. An element whose new widget is the
-        // identical instance is reused without rebuilding, so a splitter
-        // drag re-lays these out and never rebuilds them — the same
-        // mechanism the floor's `child:` uses, applied to the two things
-        // that were still paying full price per drag frame.
-        final leftRailHosts = _rail.railHosts(right: false);
-        final rightRailHosts = _rail.railHosts(right: true);
-        final bottomContent = hasBottomDock
-            ? _docks.buildBottomDockContent(onTop: _regionOnTop)
-            : null;
-        return Row(
-          children: [
-            // The two tool strips are the only things that take space from
-            // the canvas. Everything else LIES ON IT.
-            _docks.buildEdgeDock(
-              EditorWorkspace.toolLeftGroupId,
-              EditorPanelDockSide.left,
-            ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) =>
-                    // EVERY read of an extent lives below this line. It is the
-                    // narrowest wrapper that still sees them all, so a splitter
-                    // drag rebuilds the rails and the region — and stops there.
-                    //
-                    // ★THE FLOOR RIDES THROUGH AS A CHILD. Building it inside
-                    // this builder is what was left of the drag lag: every
-                    // frame of every splitter drag rebuilt the canvas panel,
-                    // and the edge trailed the cursor by however long that
-                    // took. It does not depend on any extent — the cover it
-                    // needs reaches it through an InheritedWidget, which
-                    // notifies without rebuilding anything between.
-                    ListenableBuilder(
-                      // The region's own INSET rides here too. It used to be
-                      // a plain field behind setState, so pulling the
-                      // floating region's side in rebuilt the entire
-                      // workspace — canvas included — once per drag frame,
-                      // which is why that grip stayed heavy after the
-                      // splitter one was fixed.
-                      listenable: Listenable.merge([
-                        _layout.extentRevision,
-                        _bottomInsetOverride,
-                      ]),
-                      child: _docks.buildCenterDock(),
-                      builder: (context, floor) {
-                        // The side docks keep their saved extents but may never
-                        // squeeze the canvas out: scale both down proportionally
-                        // when the window can't fit them.
-                        const minCenterWidth = 120.0;
-                        final grid = DeviceGrid.of(context);
-                        // D37: the OPENING width is a fraction of this window.
-                        // A dock the user has sized keeps its pixels; only a
-                        // dock that has never been dragged reads this.
-                        final opening = EditorWorkspace.sideDockWidthFor(
-                          constraints.maxWidth,
-                          grid,
-                        );
-                        var leftWidth = hasLeftDock
-                            ? _layout.dockExtent(
-                                EditorWorkspace.railWidthKey(right: false),
-                                fallback: opening,
-                              )
-                            : 0.0;
-                        var rightWidth = hasRightDock
-                            ? _layout.dockExtent(
-                                EditorWorkspace.railWidthKey(right: true),
-                                fallback: opening,
-                              )
-                            : 0.0;
-                        // The gap between the strip and the panel floating
-                        // beside it. It is what a rail costs the canvas
-                        // beyond the panel itself; the width grips are
-                        // overlays and cost nothing.
-                        final gaps =
-                            (hasLeftDock ? _railGroupGap : 0.0) +
-                            (hasRightDock ? _railGroupGap : 0.0);
-                        // D37's ceiling, applied on the way OUT as well as on
-                        // the drag: a layout saved before it existed can sit
-                        // above it, and the host must draw what the drag would
-                        // now allow rather than what the file remembers.
-                        //
-                        // 🚨결정 8: ONE ceiling, computed from the window, and
-                        // the SAME one for both sides. It used to take the
-                        // other dock's width — so the right was clamped
-                        // against an already-clamped left, and equal stored
-                        // widths drew unequal.
-                        final ceiling = EditorWorkspace.sideDockCeiling(
-                          availableWidth: constraints.maxWidth,
-                          gaps: gaps,
-                          minCentreWidth: minCenterWidth,
-                        );
-                        leftWidth = math.min(leftWidth, ceiling);
-                        rightWidth = math.min(rightWidth, ceiling);
-                        // ⛔The proportional squeeze that stood here is GONE.
-                        // It scaled BOTH sides by one factor whenever the pair
-                        // overflowed, which is the other half of 「한쪽을
-                        // 바꾸면 반대쪽도 바뀐다」 and the half that only
-                        // showed on a small window. With a ceiling of at most
-                        // half the room, two rails cannot overflow, so there
-                        // is nothing left to share out.
-                        // ⛔Snapped AFTER the squeeze, not before: the scale
-                        // above is a fraction and would push an on-grid width
-                        // back off it.
-                        leftWidth = grid.position(leftWidth);
-                        rightWidth = grid.position(rightWidth);
-                        final bottomHeight = hasBottomDock
-                            ? _docks.bottomDockHeight(constraints.maxHeight)
-                            : 0.0;
-                        // Symmetric, and clamped against the WINDOW: the region
-                        // may narrow until it is a panel rather than a bar, and
-                        // no further.
-                        final bottomInset =
-                            _bottomInsetFor(constraints.maxWidth)
-                                .clamp(
-                                  0.0,
-                                  math.max(
-                                    0.0,
-                                    (constraints.maxWidth -
-                                            _minBottomRegionWidth) /
-                                        2,
-                                  ),
-                                )
-                                .toDouble();
-                        // 🚨★★★ONE VALUE PER BOUNDARY. `_detented` must aim
-                        // at the same number `_railPassesBottom` compares
-                        // against, or the pass-through state is not
-                        // reachable at all.
-                        //
-                        // ⛔An earlier draft split this into raw and
-                        // quantized, feeding the grips the raw span while
-                        // the gate compared the quantized one — and the two
-                        // rails quantize in OPPOSITE directions (the left
-                        // floors, the right ceils, because the right is
-                        // derived from a snapped far edge). Measured, one
-                        // driven drag: 28 of 45 steps asymmetric at 1.125
-                        // and at 1.35, with the rails 355 logical px apart
-                        // at the detent — and the magnet pulls the user
-                        // INTO that state, which is its whole job. Zero at
-                        // 1.25 and 1.75, where `position` happens to be the
-                        // identity for these numbers.
-                        //
-                        // ⛔And the reason that draft gave was FALSE. It
-                        // cited this file's own "the detent ate the drag"
-                        // defect, but R3 #2 already made that unreachable:
-                        // the accumulator is `_bottomInsetDragRaw` and the
-                        // reported travel is `raw - before`, neither of
-                        // which can see this span. Measured travel ratio
-                        // 1.000000 on both grips at every ratio, with the
-                        // magnet releasing exactly on schedule. ⇒ Snapping
-                        // the span costs no travel; splitting it broke a
-                        // gate.
-                        final leftRailSpanRaw = hasLeftDock
-                            ? leftWidth + _railGroupGap
-                            : 0.0;
-                        final rightRailSpanRaw = hasRightDock
-                            ? rightWidth + _railGroupGap
-                            : 0.0;
-                        final leftRailSpan = grid.position(leftRailSpanRaw);
-                        // ⚠️The RIGHT span is a distance from the FAR edge,
-                        // so snapping it as if it were measured from the
-                        // origin puts the content's right boundary between
-                        // two pixels. Snap the boundary itself — one run
-                        // across the axis — and derive the span from it.
-                        // `constraints.maxWidth × ratio` is integral by
-                        // construction (the window's physical size is), so
-                        // an integer minus an integer stays one.
-                        final rightRailSpan = hasRightDock
-                            ? constraints.maxWidth -
-                                  grid.position(
-                                    constraints.maxWidth - rightRailSpanRaw,
-                                  )
-                            : 0.0;
-                        // Which edge the region is on. Everything below reads
-                        // this and nothing anywhere else has to.
-                        final onTop = _regionOnTop;
-                        final regionSpan = hasBottomDock
-                            ? bottomHeight + DockEdgeSplitter.thickness
-                            : 0.0;
-                        // What the panels hide from the artwork. The floor reads
-                        // this and nothing else has to know it exists.
-                        final floorCover = EdgeInsets.only(
-                          left: leftRailSpan,
-                          right: rightRailSpan,
-                          top: onTop ? regionSpan : 0,
-                          bottom: onTop ? 0 : regionSpan,
-                        );
-                        // ★What the region occupies against OTHER PANELS,
-                        // which is a different question from what it hides
-                        // from the artwork (⑫).
-                        //
-                        // The folded row lies ON the drawing on purpose — no
-                        // ground, no fill — so it is deliberately absent from
-                        // `floorCover`. That reading leaked into the rails,
-                        // and a rail grown while the panel was folded stopped
-                        // 23px INSIDE the row: it was standing in another
-                        // panel's space because nobody had said the space was
-                        // a panel's (유저 ⑫, 「옆에 패널들은 간편오버레이를
-                        // 침범해서 자리차지함」).
-                        //
-                        // A `max` rather than a sum: the splitter's thickness
-                        // is the room the region already claims above itself,
-                        // and the folded row occupies that same band and then
-                        // some. Reading BOTH from one number is what makes a
-                        // taller fold later need no second edit (유저: 「그래야
-                        // 수정했을때 아무것도 안고치고 반영되니까」).
-                        final regionPanelSpan = hasBottomDock
-                            ? bottomHeight +
-                                  math.max(
-                                    DockEdgeSplitter.thickness,
-                                    _bottomDockCollapsed
-                                        ? _collapsedRows.collapsedRowHeight()
-                                        : 0.0,
-                                  )
-                            : 0.0;
-                        // ★ Whether each column runs past the floating region or
-                        // stops on its edge — one comparison per side, because the
-                        // two rails can be different widths and the answer is
-                        // about whether THIS one has room.
-                        double columnStop(double railSpan) =>
-                            hasBottomDock &&
-                                !_WorkspaceRail.railPassesBottom(
-                                  bottomInset: bottomInset,
-                                  railWidth: railSpan,
-                                )
-                            ? regionPanelSpan
-                            : 0.0;
-                        // 🚨★★★RAW on BOTH sides. This gate is a semantic
-                        // question — "is the region wide enough to reach
-                        // past the rail" — and the answer must not depend
-                        // on which way each side happens to snap.
-                        //
-                        // ⛔The two spans quantize in OPPOSITE directions:
-                        // the left FLOORS (it is a distance from the
-                        // origin) and the right CEILS (it is derived from
-                        // a snapped far edge). Comparing one raw inset
-                        // against those gives different answers for the
-                        // two rails at the same inset — measured, 28 of 45
-                        // drag steps behaved differently at 1.125 and 1.35
-                        // while 1.25 and 1.75 were untouched, because
-                        // `position` is the identity for those numbers.
-                        // The detent magnet then pulls the user into that
-                        // window, which is its whole job.
-                        final leftStop = columnStop(leftRailSpanRaw);
-                        final rightStop = columnStop(rightRailSpanRaw);
+      builder: (context, _) => _workspace(context),
+    );
+  }
 
-                        final frame = _WorkspaceFrame(
-                          grid: grid,
-                          constraints: constraints,
-                          onTop: onTop,
-                          hasLeftDock: hasLeftDock,
-                          hasRightDock: hasRightDock,
-                          hasBottomDock: hasBottomDock,
-                          leftWidth: leftWidth,
-                          rightWidth: rightWidth,
-                          ceiling: ceiling,
-                          bottomHeight: bottomHeight,
-                          bottomInset: bottomInset,
-                          leftRailSpanRaw: leftRailSpanRaw,
-                          rightRailSpanRaw: rightRailSpanRaw,
-                          leftRailSpan: leftRailSpan,
-                          rightRailSpan: rightRailSpan,
-                          floorCover: floorCover,
-                          leftStop: leftStop,
-                          rightStop: rightStop,
-                        );
-                        return Stack(
-                          children: [
-                            // ★ THE FLOOR. Everything below this line is drawn on
-                            // top of the drawing.
-                            _floor(frame, floor),
-                            // ★ The rails FLOAT. A gap of pasteboard between
-                            // the strip and the panel, another above the
-                            // first panel, and each panel its own rounded
-                            // object — the same kind of thing the timeline
-                            // is, rather than a slab bolted to the strip.
-                            // Their width grips ride their own inner edges
-                            // inside the column.
-                            _leftRailColumn(frame, leftRailHosts),
-                            _rightRailColumn(frame, rightRailHosts),
-                            // ★The collapsed row, over the artwork and OUTSIDE
-                            // the region's clip. It has to be a sibling: the
-                            // region is inside a `SuperellipseClip`, so an
-                            // overlay mounted in there could never reach up
-                            // onto the canvas. It also has to come BEFORE the
-                            // region in this stack — the region paints over
-                            // it, which is what keeps the row from spilling
-                            // onto the sill when the two meet.
-                            if (hasBottomDock && _bottomDockCollapsed)
-                              _collapsedRowOverlay(frame),
-                            _bottomDock(frame, bottomContent),
-                          ],
-                        );
-                      },
-                    ),
+  /// The workspace for the current layout and timeline orientation: the
+  /// two rails, the floor between them, and the docks floating over it.
+  Widget _workspace(BuildContext context) {
+    // A rail is THERE when any of its groups is open; which groups
+    // those are is the rail's own business.
+    final hasLeftDock = _rail.openRailGroups(right: false).isNotEmpty;
+    final hasRightDock = _rail.openRailGroups(right: true).isNotEmpty;
+    final hasBottomDock = _layout
+        .tabsIn(EditorWorkspace.bottomGroupId)
+        .isNotEmpty;
+    // ★EVERY HEAVY SUBTREE IS BUILT HERE, above the extent builder, and
+    // merely REFERENCED inside it. An element whose new widget is the
+    // identical instance is reused without rebuilding, so a splitter
+    // drag re-lays these out and never rebuilds them — the same
+    // mechanism the floor's `child:` uses, applied to the two things
+    // that were still paying full price per drag frame.
+    final leftRailHosts = _rail.railHosts(right: false);
+    final rightRailHosts = _rail.railHosts(right: true);
+    final bottomContent = hasBottomDock
+        ? _docks.buildBottomDockContent(onTop: _regionOnTop)
+        : null;
+    final room = _WorkspaceRoom(
+      hasLeftDock: hasLeftDock,
+      hasRightDock: hasRightDock,
+      hasBottomDock: hasBottomDock,
+      leftRailHosts: leftRailHosts,
+      rightRailHosts: rightRailHosts,
+      bottomContent: bottomContent,
+    );
+    return Row(
+      children: [
+        // The two tool strips are the only things that take space from
+        // the canvas. Everything else LIES ON IT.
+        _docks.buildEdgeDock(
+          EditorWorkspace.toolLeftGroupId,
+          EditorPanelDockSide.left,
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) =>
+                // EVERY read of an extent lives below this line. It is the
+                // narrowest wrapper that still sees them all, so a splitter
+                // drag rebuilds the rails and the region — and stops there.
+                //
+                // ★THE FLOOR RIDES THROUGH AS A CHILD. Building it inside
+                // this builder is what was left of the drag lag: every
+                // frame of every splitter drag rebuilt the canvas panel,
+                // and the edge trailed the cursor by however long that
+                // took. It does not depend on any extent — the cover it
+                // needs reaches it through an InheritedWidget, which
+                // notifies without rebuilding anything between.
+                ListenableBuilder(
+                  // The region's own INSET rides here too. It used to be
+                  // a plain field behind setState, so pulling the
+                  // floating region's side in rebuilt the entire
+                  // workspace — canvas included — once per drag frame,
+                  // which is why that grip stayed heavy after the
+                  // splitter one was fixed.
+                  listenable: Listenable.merge([
+                    _layout.extentRevision,
+                    _bottomInsetOverride,
+                  ]),
+                  child: _docks.buildCenterDock(),
+                  builder: (context, floor) =>
+                      _floorFor(context, floor, room, constraints),
+                ),
+          ),
+        ),
+        _docks.buildEdgeDock(
+          EditorWorkspace.toolRightGroupId,
+          EditorPanelDockSide.right,
+        ),
+      ],
+    );
+  }
+
+  /// The FLOOR: the panel lying under everything, sized to the room the
+  /// rails leave, with the docks floating over it and the region (the
+  /// timeline and the paper panels) docked to its top or bottom edge.
+  Widget _floorFor(
+    BuildContext context,
+    Widget? floor,
+    _WorkspaceRoom room,
+    BoxConstraints constraints,
+  ) {
+    // The side docks keep their saved extents but may never
+    // squeeze the canvas out: scale both down proportionally
+    // when the window can't fit them.
+    const minCenterWidth = 120.0;
+    final grid = DeviceGrid.of(context);
+    // D37: the OPENING width is a fraction of this window.
+    // A dock the user has sized keeps its pixels; only a
+    // dock that has never been dragged reads this.
+    final opening = EditorWorkspace.sideDockWidthFor(
+      constraints.maxWidth,
+      grid,
+    );
+    var leftWidth = room.hasLeftDock
+        ? _layout.dockExtent(
+            EditorWorkspace.railWidthKey(right: false),
+            fallback: opening,
+          )
+        : 0.0;
+    var rightWidth = room.hasRightDock
+        ? _layout.dockExtent(
+            EditorWorkspace.railWidthKey(right: true),
+            fallback: opening,
+          )
+        : 0.0;
+    // The gap between the strip and the panel floating
+    // beside it. It is what a rail costs the canvas
+    // beyond the panel itself; the width grips are
+    // overlays and cost nothing.
+    final gaps =
+        (room.hasLeftDock ? _railGroupGap : 0.0) +
+        (room.hasRightDock ? _railGroupGap : 0.0);
+    // D37's ceiling, applied on the way OUT as well as on
+    // the drag: a layout saved before it existed can sit
+    // above it, and the host must draw what the drag would
+    // now allow rather than what the file remembers.
+    //
+    // 🚨결정 8: ONE ceiling, computed from the window, and
+    // the SAME one for both sides. It used to take the
+    // other dock's width — so the right was clamped
+    // against an already-clamped left, and equal stored
+    // widths drew unequal.
+    final ceiling = EditorWorkspace.sideDockCeiling(
+      availableWidth: constraints.maxWidth,
+      gaps: gaps,
+      minCentreWidth: minCenterWidth,
+    );
+    leftWidth = math.min(leftWidth, ceiling);
+    rightWidth = math.min(rightWidth, ceiling);
+    // ⛔The proportional squeeze that stood here is GONE.
+    // It scaled BOTH sides by one factor whenever the pair
+    // overflowed, which is the other half of 「한쪽을
+    // 바꾸면 반대쪽도 바뀐다」 and the half that only
+    // showed on a small window. With a ceiling of at most
+    // half the room, two rails cannot overflow, so there
+    // is nothing left to share out.
+    // ⛔Snapped AFTER the squeeze, not before: the scale
+    // above is a fraction and would push an on-grid width
+    // back off it.
+    leftWidth = grid.position(leftWidth);
+    rightWidth = grid.position(rightWidth);
+    final bottomHeight = room.hasBottomDock
+        ? _docks.bottomDockHeight(constraints.maxHeight)
+        : 0.0;
+    // Symmetric, and clamped against the WINDOW: the region
+    // may narrow until it is a panel rather than a bar, and
+    // no further.
+    final bottomInset =
+        _bottomInsetFor(constraints.maxWidth)
+            .clamp(
+              0.0,
+              math.max(
+                0.0,
+                (constraints.maxWidth -
+                        _minBottomRegionWidth) /
+                    2,
               ),
-            ),
-            _docks.buildEdgeDock(
-              EditorWorkspace.toolRightGroupId,
-              EditorPanelDockSide.right,
-            ),
-          ],
-        );
-      },
+            )
+            .toDouble();
+    // 🚨★★★ONE VALUE PER BOUNDARY. `_detented` must aim
+    // at the same number `_railPassesBottom` compares
+    // against, or the pass-through state is not
+    // reachable at all.
+    //
+    // ⛔An earlier draft split this into raw and
+    // quantized, feeding the grips the raw span while
+    // the gate compared the quantized one — and the two
+    // rails quantize in OPPOSITE directions (the left
+    // floors, the right ceils, because the right is
+    // derived from a snapped far edge). Measured, one
+    // driven drag: 28 of 45 steps asymmetric at 1.125
+    // and at 1.35, with the rails 355 logical px apart
+    // at the detent — and the magnet pulls the user
+    // INTO that state, which is its whole job. Zero at
+    // 1.25 and 1.75, where `position` happens to be the
+    // identity for these numbers.
+    //
+    // ⛔And the reason that draft gave was FALSE. It
+    // cited this file's own "the detent ate the drag"
+    // defect, but R3 #2 already made that unreachable:
+    // the accumulator is `_bottomInsetDragRaw` and the
+    // reported travel is `raw - before`, neither of
+    // which can see this span. Measured travel ratio
+    // 1.000000 on both grips at every ratio, with the
+    // magnet releasing exactly on schedule. ⇒ Snapping
+    // the span costs no travel; splitting it broke a
+    // gate.
+    final leftRailSpanRaw = room.hasLeftDock
+        ? leftWidth + _railGroupGap
+        : 0.0;
+    final rightRailSpanRaw = room.hasRightDock
+        ? rightWidth + _railGroupGap
+        : 0.0;
+    final leftRailSpan = grid.position(leftRailSpanRaw);
+    // ⚠️The RIGHT span is a distance from the FAR edge,
+    // so snapping it as if it were measured from the
+    // origin puts the content's right boundary between
+    // two pixels. Snap the boundary itself — one run
+    // across the axis — and derive the span from it.
+    // `constraints.maxWidth × ratio` is integral by
+    // construction (the window's physical size is), so
+    // an integer minus an integer stays one.
+    final rightRailSpan = room.hasRightDock
+        ? constraints.maxWidth -
+              grid.position(
+                constraints.maxWidth - rightRailSpanRaw,
+              )
+        : 0.0;
+    // Which edge the region is on. Everything below reads
+    // this and nothing anywhere else has to.
+    final onTop = _regionOnTop;
+    final regionSpan = room.hasBottomDock
+        ? bottomHeight + DockEdgeSplitter.thickness
+        : 0.0;
+    // What the panels hide from the artwork. The floor reads
+    // this and nothing else has to know it exists.
+    final floorCover = EdgeInsets.only(
+      left: leftRailSpan,
+      right: rightRailSpan,
+      top: onTop ? regionSpan : 0,
+      bottom: onTop ? 0 : regionSpan,
+    );
+    // ★What the region occupies against OTHER PANELS,
+    // which is a different question from what it hides
+    // from the artwork (⑫).
+    //
+    // The folded row lies ON the drawing on purpose — no
+    // ground, no fill — so it is deliberately absent from
+    // `floorCover`. That reading leaked into the rails,
+    // and a rail grown while the panel was folded stopped
+    // 23px INSIDE the row: it was standing in another
+    // panel's space because nobody had said the space was
+    // a panel's (유저 ⑫, 「옆에 패널들은 간편오버레이를
+    // 침범해서 자리차지함」).
+    //
+    // A `max` rather than a sum: the splitter's thickness
+    // is the room the region already claims above itself,
+    // and the folded row occupies that same band and then
+    // some. Reading BOTH from one number is what makes a
+    // taller fold later need no second edit (유저: 「그래야
+    // 수정했을때 아무것도 안고치고 반영되니까」).
+    final regionPanelSpan = room.hasBottomDock
+        ? bottomHeight +
+              math.max(
+                DockEdgeSplitter.thickness,
+                _bottomDockCollapsed
+                    ? _collapsedRows.collapsedRowHeight()
+                    : 0.0,
+              )
+        : 0.0;
+    // ★ Whether each column runs past the floating region or
+    // stops on its edge — one comparison per side, because the
+    // two rails can be different widths and the answer is
+    // about whether THIS one has room.
+    double columnStop(double railSpan) =>
+        room.hasBottomDock &&
+            !_WorkspaceRail.railPassesBottom(
+              bottomInset: bottomInset,
+              railWidth: railSpan,
+            )
+        ? regionPanelSpan
+        : 0.0;
+    // 🚨★★★RAW on BOTH sides. This gate is a semantic
+    // question — "is the region wide enough to reach
+    // past the rail" — and the answer must not depend
+    // on which way each side happens to snap.
+    //
+    // ⛔The two spans quantize in OPPOSITE directions:
+    // the left FLOORS (it is a distance from the
+    // origin) and the right CEILS (it is derived from
+    // a snapped far edge). Comparing one raw inset
+    // against those gives different answers for the
+    // two rails at the same inset — measured, 28 of 45
+    // drag steps behaved differently at 1.125 and 1.35
+    // while 1.25 and 1.75 were untouched, because
+    // `position` is the identity for those numbers.
+    // The detent magnet then pulls the user into that
+    // window, which is its whole job.
+    final leftStop = columnStop(leftRailSpanRaw);
+    final rightStop = columnStop(rightRailSpanRaw);
+
+    final frame = _WorkspaceFrame(
+      grid: grid,
+      constraints: constraints,
+      onTop: onTop,
+      hasLeftDock: room.hasLeftDock,
+      hasRightDock: room.hasRightDock,
+      hasBottomDock: room.hasBottomDock,
+      leftWidth: leftWidth,
+      rightWidth: rightWidth,
+      ceiling: ceiling,
+      bottomHeight: bottomHeight,
+      bottomInset: bottomInset,
+      leftRailSpanRaw: leftRailSpanRaw,
+      rightRailSpanRaw: rightRailSpanRaw,
+      leftRailSpan: leftRailSpan,
+      rightRailSpan: rightRailSpan,
+      floorCover: floorCover,
+      leftStop: leftStop,
+      rightStop: rightStop,
+    );
+    return Stack(
+      children: [
+        // ★ THE FLOOR. Everything below this line is drawn on
+        // top of the drawing.
+        _floor(frame, floor),
+        // ★ The rails FLOAT. A gap of pasteboard between
+        // the strip and the panel, another above the
+        // first panel, and each panel its own rounded
+        // object — the same kind of thing the timeline
+        // is, rather than a slab bolted to the strip.
+        // Their width grips ride their own inner edges
+        // inside the column.
+        _leftRailColumn(frame, room.leftRailHosts),
+        _rightRailColumn(frame, room.rightRailHosts),
+        // ★The collapsed row, over the artwork and OUTSIDE
+        // the region's clip. It has to be a sibling: the
+        // region is inside a `SuperellipseClip`, so an
+        // overlay mounted in there could never reach up
+        // onto the canvas. It also has to come BEFORE the
+        // region in this stack — the region paints over
+        // it, which is what keeps the row from spilling
+        // onto the sill when the two meet.
+        if (room.hasBottomDock && _bottomDockCollapsed)
+          _collapsedRowOverlay(frame),
+        _bottomDock(frame, room.bottomContent),
+      ],
     );
   }
 
@@ -2404,4 +2427,26 @@ class _WorkspaceFrame {
   final EdgeInsets floorCover;
   final double leftStop;
   final double rightStop;
+}
+
+/// What one workspace build settled before laying out the floor: which
+/// rails and the bottom dock are there, the rail hosts (built ONCE above
+/// the extent builder and merely referenced inside it), and the bottom
+/// dock's content. The floor reads it instead of six captured locals.
+class _WorkspaceRoom {
+  const _WorkspaceRoom({
+    required this.hasLeftDock,
+    required this.hasRightDock,
+    required this.hasBottomDock,
+    required this.leftRailHosts,
+    required this.rightRailHosts,
+    required this.bottomContent,
+  });
+
+  final bool hasLeftDock;
+  final bool hasRightDock;
+  final bool hasBottomDock;
+  final Map<String, Widget> leftRailHosts;
+  final Map<String, Widget> rightRailHosts;
+  final Widget? bottomContent;
 }
