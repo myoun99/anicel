@@ -1213,7 +1213,10 @@ class _LayerStackPaintPass {
   /// per batch (correct, unpatched). The flat's patch mechanism exists
   /// ([ActiveLayerFlatProjection.patchOrNull]) and lands with the dirty
   /// channel wiring.
-  _DisplayBuffer? _composeScaledBuffer(Rect rect) {
+  /// The scale the knee path renders [rect] at — min(1, zoom · dpr),
+  /// shrunk further when even that overflows the buffer cap — or null
+  /// when the view is rotated or flipped (the walk draws those).
+  double? _kneeScale(Rect rect) {
     if (_painter.viewport.rotationDegrees != 0 ||
         _painter.viewport.flipHorizontal ||
         _painter.viewport.flipVertical) {
@@ -1228,6 +1231,50 @@ class _LayerStackPaintPass {
       // A screen so large even zoom·dpr overflows the cap: shrink further.
       // Still one uniform resample — softer, never seamed.
       s = _LayerStackPainter._maxBufferSide / longSide;
+    }
+    return s;
+  }
+
+  /// [rect] recorded at scale [s] into a [size] image — the PICTURE route
+  /// through the very same walk the s=1 buffer records, with [flat] as
+  /// the active layer's one image.
+  ui.Image _recordScaled(
+    Rect rect,
+    double s,
+    ActiveLayerFlatImage? flat,
+    ({int width, int height}) size,
+  ) {
+    final recorder = ui.PictureRecorder();
+    final into = Canvas(recorder);
+    into.scale(s);
+    into.translate(-rect.left, -rect.top);
+    _painter._activeFlatForRecording = flat;
+    // #15 — one buffer pixel, expressed in the canvas units the paper
+    // draws in.
+    _painter._paperInsetForRecording = 1 / s;
+    try {
+      // The PICTURE route through the very same walk the s=1 buffer
+      // records — one body, so folders, adjustments, effects and the
+      // float cannot drift between the two resolutions.
+      _paintContent(into, rasterRect: null, rasterScale: s);
+    } finally {
+      _painter._activeFlatForRecording = null;
+      _painter._paperInsetForRecording = null;
+    }
+    final picture = recorder.endRecording();
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(size.width, size.height);
+    } finally {
+      picture.dispose();
+    }
+    return image;
+  }
+
+  _DisplayBuffer? _composeScaledBuffer(Rect rect) {
+    final s = _kneeScale(rect);
+    if (s == null) {
+      return null;
     }
     final width = (rect.width * s).ceil();
     final height = (rect.height * s).ceil();
@@ -1262,30 +1309,7 @@ class _LayerStackPaintPass {
     // projection ever let one through). A refusal must leave it untouched
     // or the probe claims a run that fell back to the walk.
     _painter.bufferCache?.lastBufferScale = s;
-    final recorder = ui.PictureRecorder();
-    final into = Canvas(recorder);
-    into.scale(s);
-    into.translate(-rect.left, -rect.top);
-    _painter._activeFlatForRecording = flat;
-    // #15 — one buffer pixel, expressed in the canvas units the paper
-    // draws in.
-    _painter._paperInsetForRecording = 1 / s;
-    try {
-      // The PICTURE route through the very same walk the s=1 buffer
-      // records — one body, so folders, adjustments, effects and the
-      // float cannot drift between the two resolutions.
-      _paintContent(into, rasterRect: null, rasterScale: s);
-    } finally {
-      _painter._activeFlatForRecording = null;
-      _painter._paperInsetForRecording = null;
-    }
-    final picture = recorder.endRecording();
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(width, height);
-    } finally {
-      picture.dispose();
-    }
+    final image = _recordScaled(rect, s, flat, (width: width, height: height));
     if (flat != null) {
       // The recording holds its reference through the deferred raster;
       // direct dispose is the one-frame black-flash race.
