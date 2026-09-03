@@ -675,71 +675,96 @@ class TimelineRowCellsPainter extends CustomPainter {
         _paintCellSubstrate(canvas, frameIndex);
       }
     } else {
-      // TILE substrate pass (UI-R18 O7 T2): the span grid rides the
-      // SHARED window policy — a fresh tile is one drawImageRect; a
-      // cold/stale span keeps the classic paint underneath (no flash)
-      // while its raster lands off-frame.
-      final span = timelineFrameWindowSpanFor(frameCellExtent);
-      final tilePaint = Paint()..filterQuality = FilterQuality.low;
-      var tile = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
-      for (; tile * span < window.endIndexExclusive; tile += 1) {
-        final spanStart = tile * span;
-        final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
-        if (spanEnd <= spanStart) {
-          continue;
-        }
-        final image = store.tileFor(
-          painter: this,
-          spanStartIndex: spanStart,
-          spanEndIndexExclusive: spanEnd,
-          devicePixelRatio: devicePixelRatio,
-        );
-        if (image != null) {
-          final origin = cellRectFor(spanStart);
-          final mainExtent = (spanEnd - spanStart) * frameCellExtent;
-          final dst = axis == Axis.horizontal
-              ? Rect.fromLTWH(origin.left, 0, mainExtent, crossAxisExtent)
-              : Rect.fromLTWH(0, origin.top, crossAxisExtent, mainExtent);
-          canvas.drawImageRect(
-            image,
-            Rect.fromLTWH(
-              0,
-              0,
-              image.width.toDouble(),
-              image.height.toDouble(),
-            ),
-            dst,
-            tilePaint,
-          );
-          tiledSpans.add((spanStart, spanEnd));
-          continue;
-        }
-        final fallbackStart = math.max(spanStart, window.startIndex);
-        final fallbackEnd = math.min(spanEnd, window.endIndexExclusive);
-        for (var frame = fallbackStart; frame < fallbackEnd; frame += 1) {
-          _paintCellSubstrate(canvas, frame);
-        }
+      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store));
+    }
+    _paintForegrounds(canvas, window, tiledSpans);
+
+    // The 6f/24f beat lines moved to ONE grid-wide overlay
+    // (TimelineBeatLinesPainter, UI-R13 #7) so they span every row —
+    // SE, camera and lane rows included — not just the painterized
+    // drawing rows.
+  }
+
+  /// The substrate through the tile store: a fresh tile is one
+  /// drawImageRect, a cold or stale span keeps the classic paint
+  /// underneath while its raster lands off-frame, and the two spans past
+  /// the window are asked for so a scroll finds them warm. Answers the
+  /// spans whose fresh tile already carries the foreground ink.
+  List<(int, int)> _paintTiledSubstrate(
+    Canvas canvas,
+    ({int startIndex, int endIndexExclusive}) window,
+    TimelineGridTileStore store,
+  ) {
+    final tiledSpans = <(int, int)>[];
+    // TILE substrate pass (UI-R18 O7 T2): the span grid rides the
+    // SHARED window policy — a fresh tile is one drawImageRect; a
+    // cold/stale span keeps the classic paint underneath (no flash)
+    // while its raster lands off-frame.
+    final span = timelineFrameWindowSpanFor(frameCellExtent);
+    final tilePaint = Paint()..filterQuality = FilterQuality.low;
+    var tile = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
+    for (; tile * span < window.endIndexExclusive; tile += 1) {
+      final spanStart = tile * span;
+      final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
+      if (spanEnd <= spanStart) {
+        continue;
       }
-      // PREFETCH one span beyond both window edges (scroll warm-up):
-      // requesting is enough — the raster lands before the crossing
-      // reveals it, so steady scrolling never hits the fallback.
-      for (final neighbor in [
-        (window.startIndex ~/ span) - 1,
-        tile, // one past the loop's last drawn tile
-      ]) {
-        final spanStart = neighbor * span;
-        final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
-        if (spanStart < 0 || spanEnd <= spanStart) {
-          continue;
-        }
-        store.tileFor(
-          painter: this,
-          spanStartIndex: spanStart,
-          spanEndIndexExclusive: spanEnd,
-          devicePixelRatio: devicePixelRatio,
+      final image = store.tileFor(
+        painter: this,
+        spanStartIndex: spanStart,
+        spanEndIndexExclusive: spanEnd,
+        devicePixelRatio: devicePixelRatio,
+      );
+      if (image != null) {
+        final origin = cellRectFor(spanStart);
+        final mainExtent = (spanEnd - spanStart) * frameCellExtent;
+        final dst = axis == Axis.horizontal
+            ? Rect.fromLTWH(origin.left, 0, mainExtent, crossAxisExtent)
+            : Rect.fromLTWH(0, origin.top, crossAxisExtent, mainExtent);
+        canvas.drawImageRect(
+          image,
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+          dst,
+          tilePaint,
         );
+        tiledSpans.add((spanStart, spanEnd));
+        continue;
+      }
+      final fallbackStart = math.max(spanStart, window.startIndex);
+      final fallbackEnd = math.min(spanEnd, window.endIndexExclusive);
+      for (var frame = fallbackStart; frame < fallbackEnd; frame += 1) {
+        _paintCellSubstrate(canvas, frame);
       }
     }
+    // PREFETCH one span beyond both window edges (scroll warm-up):
+    // requesting is enough — the raster lands before the crossing
+    // reveals it, so steady scrolling never hits the fallback.
+    for (final neighbor in [
+      (window.startIndex ~/ span) - 1,
+      tile, // one past the loop's last drawn tile
+    ]) {
+      final spanStart = neighbor * span;
+      final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
+      if (spanStart < 0 || spanEnd <= spanStart) {
+        continue;
+      }
+      store.tileFor(
+        painter: this,
+        spanStartIndex: spanStart,
+        spanEndIndexExclusive: spanEnd,
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    return tiledSpans;
+  }
+
+  /// The Dart glyph/dash pass over every cell in [window] whose span no
+  /// fresh tile covers (T3: a tiled span already carries its ink).
+  void _paintForegrounds(
+    Canvas canvas,
+    ({int startIndex, int endIndexExclusive}) window,
+    List<(int, int)> tiledSpans,
+  ) {
     for (
       var frameIndex = window.startIndex;
       frameIndex < window.endIndexExclusive;
@@ -757,11 +782,6 @@ class TimelineRowCellsPainter extends CustomPainter {
       }
       _paintCellForeground(canvas, frameIndex);
     }
-
-    // The 6f/24f beat lines moved to ONE grid-wide overlay
-    // (TimelineBeatLinesPainter, UI-R13 #7) so they span every row —
-    // SE, camera and lane rows included — not just the painterized
-    // drawing rows.
   }
 
   /// The cell's dense, mostly-static part: the paper-block fill and its
