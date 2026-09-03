@@ -377,6 +377,111 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   ///
   /// Off-window cuts are absent by construction, which is also what keeps
   /// [thumbnailFor] from being asked for pictures nobody can see.
+  /// One cut's block, or null when it lies outside the visible window:
+  /// its rect and bands, the cells with their names and comma labels (only
+  /// when the top band is open), the selection and hover state, the title
+  /// and layer label, the total when the block is wide enough, and the
+  /// thumbnails when they are shown.
+  StoryboardCutBlockVisual? _visualFor(
+    StoryboardTimelineLayoutEntry entry, {
+    required ({int startIndex, int endIndexExclusive}) window,
+    required TrackFrameRangeSelection? selection,
+    required CutId? hovered,
+  }) {
+    final left = _left(entry.startFrame);
+    final width = _widthFor(entry.duration);
+    // A block reaches at least [minBlockWidth], so its visible end is
+    // measured in pixels, not in the cut's own frames.
+    final endFrame = _cellExtent <= 0
+        ? entry.endFrame
+        : entry.startFrame + (width / _cellExtent).ceil();
+    if (endFrame <= window.startIndex ||
+        entry.startFrame >= window.endIndexExclusive) {
+      return null;
+    }
+    final layerName = storyboardLayerNames[entry.cutId];
+    final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
+    final bands = _bandsOf(rect);
+    final cells = storyboardCellsByCut[entry.cutId] ?? const [];
+    // The panels' writing (#15): frame name + comma count per cell, the
+    // timeline row's conventions (`○` unnamed head — `●` would read as
+    // an inbetween mark). Safe to resolve here — the row lookup no
+    // longer throws on duplicates (#760). A folded block carries no
+    // writing at all: folding that far means watching the cuts.
+    final folded = bands.top.height <= 0;
+    final frameNames = <FrameId, String?>{
+      if (!folded)
+        for (final frame
+            in storyboardLayerForCut(entry.cut)?.frames ?? const <Frame>[])
+          frame.id: frame.name,
+    };
+    return StoryboardCutBlockVisual(
+      cutId: entry.cutId,
+      rect: rect,
+      topBand: bands.top,
+      strip: bands.strip,
+      bottomBand: bands.bottom,
+      cells: cells,
+      cellNames: [
+        if (!folded)
+          for (final cell in cells)
+            cell.frameId == null
+                ? ''
+                : ((frameNames[cell.frameId] ?? '').isEmpty
+                      ? '○'
+                      : frameNames[cell.frameId]!),
+      ],
+      cellCommaLabels: [
+        if (!folded)
+          for (final cell in cells)
+            // D23: a 1-comma panel prints nothing — the shared
+            // predicate, through the existing empty-string convention
+            // the paint path already skips. (The bottom-right `total`
+            // below is a running END frame, not a comma length — it
+            // stays un-gated on purpose.)
+            cell.frameId == null ||
+                    !timelineCommaLabelVisibleFor(
+                      cell.endIndexExclusive - cell.startIndex,
+                    )
+                ? ''
+                : timelineDurationLabel(
+                    cell.endIndexExclusive - cell.startIndex,
+                    showSeconds: showSeconds,
+                    countingBase: countingBase,
+                  ),
+      ],
+      isActive: entry.cutId == activeCutId,
+      isRangeSelected:
+          selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
+      isHovered: entry.cutId == hovered,
+      title: entry.cut.name,
+      // D27: no explanatory copy — an empty layer slot reads as ''.
+      layerLabel: layerName ?? '',
+      hasStoryboardLayer: layerName != null,
+      total: width >= totalLabelMinWidth
+          ? timelineDurationLabel(
+              entry.endFrame,
+              showSeconds: showSeconds,
+              countingBase: countingBase,
+            )
+          : null,
+      // Asked ONLY here, for blocks the window keeps: the row used to
+      // request every cut's picture on every build. One per PANEL now,
+      // each at the frame that panel is about.
+      thumbnails: [
+        if (showThumbnails && thumbnailFor != null)
+          for (final cell in cells)
+            thumbnailFor!(
+              entry.cut,
+              storyboardCellPictureFrame(
+                cell,
+                pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
+              ),
+            ),
+      ],
+    );
+  }
+
   List<StoryboardCutBlockVisual> blocks() {
     final window = visibleFrameWindow();
     final selectionValue = selectedRange?.value;
@@ -387,100 +492,15 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     final hovered = hoveredCutId.value;
     final visuals = <StoryboardCutBlockVisual>[];
     for (final entry in entries) {
-      final left = _left(entry.startFrame);
-      final width = _widthFor(entry.duration);
-      // A block reaches at least [minBlockWidth], so its visible end is
-      // measured in pixels, not in the cut's own frames.
-      final endFrame = _cellExtent <= 0
-          ? entry.endFrame
-          : entry.startFrame + (width / _cellExtent).ceil();
-      if (endFrame <= window.startIndex ||
-          entry.startFrame >= window.endIndexExclusive) {
-        continue;
-      }
-      final layerName = storyboardLayerNames[entry.cutId];
-      final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
-      final bands = _bandsOf(rect);
-      final cells = storyboardCellsByCut[entry.cutId] ?? const [];
-      // The panels' writing (#15): frame name + comma count per cell, the
-      // timeline row's conventions (`○` unnamed head — `●` would read as
-      // an inbetween mark). Safe to resolve here — the row lookup no
-      // longer throws on duplicates (#760). A folded block carries no
-      // writing at all: folding that far means watching the cuts.
-      final folded = bands.top.height <= 0;
-      final frameNames = <FrameId, String?>{
-        if (!folded)
-          for (final frame
-              in storyboardLayerForCut(entry.cut)?.frames ?? const <Frame>[])
-            frame.id: frame.name,
-      };
-      visuals.add(
-        StoryboardCutBlockVisual(
-          cutId: entry.cutId,
-          rect: rect,
-          topBand: bands.top,
-          strip: bands.strip,
-          bottomBand: bands.bottom,
-          cells: cells,
-          cellNames: [
-            if (!folded)
-              for (final cell in cells)
-                cell.frameId == null
-                    ? ''
-                    : ((frameNames[cell.frameId] ?? '').isEmpty
-                          ? '○'
-                          : frameNames[cell.frameId]!),
-          ],
-          cellCommaLabels: [
-            if (!folded)
-              for (final cell in cells)
-                // D23: a 1-comma panel prints nothing — the shared
-                // predicate, through the existing empty-string convention
-                // the paint path already skips. (The bottom-right `total`
-                // below is a running END frame, not a comma length — it
-                // stays un-gated on purpose.)
-                cell.frameId == null ||
-                        !timelineCommaLabelVisibleFor(
-                          cell.endIndexExclusive - cell.startIndex,
-                        )
-                    ? ''
-                    : timelineDurationLabel(
-                        cell.endIndexExclusive - cell.startIndex,
-                        showSeconds: showSeconds,
-                        countingBase: countingBase,
-                      ),
-          ],
-          isActive: entry.cutId == activeCutId,
-          isRangeSelected:
-              selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
-          isHovered: entry.cutId == hovered,
-          title: entry.cut.name,
-          // D27: no explanatory copy — an empty layer slot reads as ''.
-          layerLabel: layerName ?? '',
-          hasStoryboardLayer: layerName != null,
-          total: width >= totalLabelMinWidth
-              ? timelineDurationLabel(
-                  entry.endFrame,
-                  showSeconds: showSeconds,
-                  countingBase: countingBase,
-                )
-              : null,
-          // Asked ONLY here, for blocks the window keeps: the row used to
-          // request every cut's picture on every build. One per PANEL now,
-          // each at the frame that panel is about.
-          thumbnails: [
-            if (showThumbnails && thumbnailFor != null)
-              for (final cell in cells)
-                thumbnailFor!(
-                  entry.cut,
-                  storyboardCellPictureFrame(
-                    cell,
-                    pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
-                  ),
-                ),
-          ],
-        ),
+      final visual = _visualFor(
+        entry,
+        window: window,
+        selection: selection,
+        hovered: hovered,
       );
+      if (visual != null) {
+        visuals.add(visual);
+      }
     }
     return visuals;
   }
