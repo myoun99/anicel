@@ -43,7 +43,7 @@ void main() {
     session.updateFrameRangeSelectionDrag(
       layerId: base.id,
       anchorIndex: 0,
-      headIndex: 3,
+      headIndex: 6,
       headLayerId: mirror.id,
       spanRows: [LayerRowAddress(base.id), LayerRowAddress(mirror.id)],
     );

@@ -84,6 +84,18 @@ void main() {
     return data!.buffer.asUint8List();
   }
 
+  /// How much of the strip is painted at all. The substrate FILLS its
+  /// cells; the foreground only draws thin glyphs and dashes, so a strip
+  /// with no substrate is nearly empty however many glyphs it carries.
+  double paintedFraction(Uint8List bytes) {
+    var painted = 0;
+    final total = size.width.round() * size.height.round();
+    for (var i = 3; i < bytes.length; i += 4) {
+      if (bytes[i] > 0) painted += 1;
+    }
+    return painted / total;
+  }
+
   int alphaAt(Uint8List bytes, int x, int y) =>
       bytes[(y * size.width.round() + x) * 4 + 3];
 
@@ -115,8 +127,8 @@ void main() {
     await tester.runAsync(() async {
       final bytes = await paintBytes(painterFor());
       expect(
-        alphaAt(bytes, 2, crossExtent ~/ 2),
-        greaterThan(0),
+        paintedFraction(bytes),
+        greaterThan(0.5),
         reason:
             'the substrate reaches the cell edge — with the substrate '
             'pass gone the row is transparent there',
@@ -141,8 +153,8 @@ void main() {
         painterFor(store: TimelineGridTileStore.instance),
       );
       expect(
-        alphaAt(bytes, 2, crossExtent ~/ 2),
-        greaterThan(0),
+        paintedFraction(bytes),
+        greaterThan(0.5),
         reason:
             'the cold-span fallback paints the classic substrate — '
             'without it a row waiting for its tile shows nothing at all',
