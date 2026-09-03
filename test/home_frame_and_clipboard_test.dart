@@ -2,7 +2,6 @@
 // Split from widget_test.dart (2026-09-04) so the suite runs across
 // isolates; the shared probes live in helpers/home_page_probes.dart.
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
