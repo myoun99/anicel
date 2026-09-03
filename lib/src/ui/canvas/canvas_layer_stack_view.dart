@@ -927,7 +927,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       widget.canvasSize,
       widget.paintPaper,
       widget.paperBackground,
-      _LayerStackPainter.treeSignature(nodes),
+      _treeSignature(nodes),
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
@@ -1045,6 +1045,24 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 /// The painter's own node shape: the request tree with images resolved.
 sealed class _PaintNode {
   const _PaintNode();
+
+  /// Whether [other] draws the same picture as this node — the repaint
+  /// gate's question, field by field, images by IDENTITY.
+  bool matches(_PaintNode other);
+
+  /// 🚨(v) — [matches] as a VALUE, for the bake's key.
+  ///
+  /// ⛔It must fold in exactly what [matches] compares, and it lives on the
+  /// same node so the two are read together: a field added to a node and
+  /// to [matches] but not to this one makes the recordings outlive the
+  /// change they should have ended. A new node type has to write both —
+  /// the sealed class demands them — which is the tripwire the comparison's
+  /// `default:` arm used to be (R6b).
+  ///
+  /// ⚠️Images fold in by IDENTITY (`identityHashCode`), matching
+  /// `identical()` in [matches] — two different decodes of the same
+  /// artwork are two different pictures to draw.
+  int get signature;
 }
 
 /// How many ops the engine replays to draw [list] — one per leaf, one
@@ -1084,6 +1102,33 @@ final class _PaintImage extends _PaintNode {
   final CanvasPoint? anchorPoint;
   final int? tint;
   final List<ResolvedLayerEffect> effects;
+
+  @override
+  bool matches(_PaintNode other) =>
+      other is _PaintImage &&
+      identical(image, other.image) &&
+      worldRect == other.worldRect &&
+      opacity == other.opacity &&
+      blendMode == other.blendMode &&
+      pose == other.pose &&
+      anchorPoint == other.anchorPoint &&
+      tint == other.tint &&
+      // R6: an effect edit changes the pixels and nothing else — leaving
+      // it out here would repaint nothing (the whole tree still "matches")
+      // and the canvas would go stale.
+      listEquals(effects, other.effects);
+
+  @override
+  int get signature => Object.hash(
+    identityHashCode(image),
+    worldRect,
+    opacity,
+    blendMode,
+    pose,
+    anchorPoint,
+    tint,
+    Object.hashAll(effects),
+  );
 }
 
 /// The first-activation stand-in: the just-deactivated route's layer image,
@@ -1224,6 +1269,23 @@ final class _PaintActiveSurface extends _PaintNode {
   /// activation rebuild; the latch dies exactly when a decode notifies),
   /// and the bake never records the slot it is drawn in.
   final _ActiveLayerStandIn? standIn;
+
+  // ㊱: the alpha belongs in the repaint gate too — a slider drag changes
+  // NOTHING else about this node, so leaving it out would paint the new
+  // value only when some unrelated fact moved (the ㉘/㉞ shape: the value
+  // is right and the gate says "unchanged").
+  @override
+  bool matches(_PaintNode other) =>
+      other is _PaintActiveSurface &&
+      opacity == other.opacity &&
+      blendMode == other.blendMode &&
+      pose == other.pose &&
+      anchorPoint == other.anchorPoint &&
+      listEquals(effects, other.effects);
+
+  @override
+  int get signature =>
+      Object.hash(opacity, blendMode, pose, anchorPoint, Object.hashAll(effects));
 }
 
 final class _PaintGroup extends _PaintNode {
@@ -1238,6 +1300,22 @@ final class _PaintGroup extends _PaintNode {
   final double opacity;
   final LayerBlendMode blendMode;
   final List<ResolvedLayerEffect> effects;
+
+  @override
+  bool matches(_PaintNode other) =>
+      other is _PaintGroup &&
+      opacity == other.opacity &&
+      blendMode == other.blendMode &&
+      listEquals(effects, other.effects) &&
+      _treesMatch(children, other.children);
+
+  @override
+  int get signature => Object.hash(
+    opacity,
+    blendMode,
+    Object.hashAll(effects),
+    _treeSignature(children),
+  );
 }
 
 final class _PaintAdjustment extends _PaintNode {
@@ -1250,6 +1328,17 @@ final class _PaintAdjustment extends _PaintNode {
   final List<_PaintNode> children;
   final List<ResolvedLayerEffect> effects;
   final double mix;
+
+  @override
+  bool matches(_PaintNode other) =>
+      other is _PaintAdjustment &&
+      mix == other.mix &&
+      listEquals(effects, other.effects) &&
+      _treesMatch(children, other.children);
+
+  @override
+  int get signature =>
+      Object.hash(mix, Object.hashAll(effects), _treeSignature(children));
 }
 
 /// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
@@ -1758,139 +1847,30 @@ class _LayerStackPainter extends CustomPainter {
         !identical(oldDelegate.activeSurfacePainter, activeSurfacePainter) ||
         !_treesMatch(oldDelegate.nodes, nodes);
   }
+}
 
-  static bool _treesMatch(List<_PaintNode> a, List<_PaintNode> b) {
-    if (a.length != b.length) {
+/// Whether [a] and [b] draw the same picture, node for node
+/// ([_PaintNode.matches]).
+bool _treesMatch(List<_PaintNode> a, List<_PaintNode> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var index = 0; index < a.length; index += 1) {
+    if (!a[index].matches(b[index])) {
       return false;
     }
-    for (var index = 0; index < a.length; index += 1) {
-      final x = a[index];
-      final y = b[index];
-      switch ((x, y)) {
-        case (_PaintImage(), _PaintImage()):
-          x as _PaintImage;
-          y as _PaintImage;
-          if (!identical(x.image, y.image) ||
-              x.worldRect != y.worldRect ||
-              x.opacity != y.opacity ||
-              x.blendMode != y.blendMode ||
-              x.pose != y.pose ||
-              x.anchorPoint != y.anchorPoint ||
-              x.tint != y.tint ||
-              // R6: an effect edit changes the pixels and nothing else —
-              // leaving it out here would repaint nothing (the whole tree
-              // still "matches") and the canvas would go stale.
-              !listEquals(x.effects, y.effects)) {
-            return false;
-          }
-        case (_PaintActiveSurface(), _PaintActiveSurface()):
-          x as _PaintActiveSurface;
-          y as _PaintActiveSurface;
-          // ㊱: the alpha belongs in the repaint gate too — a slider drag
-          // changes NOTHING else about this node, so leaving it out would
-          // paint the new value only when some unrelated fact moved (the
-          // ㉘/㉞ shape: the value is right and the gate says "unchanged").
-          if (x.opacity != y.opacity ||
-              x.blendMode != y.blendMode ||
-              x.pose != y.pose ||
-              x.anchorPoint != y.anchorPoint ||
-              !listEquals(x.effects, y.effects)) {
-            return false;
-          }
-        case (_PaintGroup(), _PaintGroup()):
-          x as _PaintGroup;
-          y as _PaintGroup;
-          if (x.opacity != y.opacity ||
-              x.blendMode != y.blendMode ||
-              !listEquals(x.effects, y.effects) ||
-              !_treesMatch(x.children, y.children)) {
-            return false;
-          }
-        case (_PaintAdjustment(), _PaintAdjustment()):
-          x as _PaintAdjustment;
-          y as _PaintAdjustment;
-          // A new variant that falls to the default arm below would make
-          // shouldRepaint answer true on EVERY frame the node is present —
-          // a silent perf regression with no compile error. R6b's arm.
-          if (x.mix != y.mix ||
-              !listEquals(x.effects, y.effects) ||
-              !_treesMatch(x.children, y.children)) {
-            return false;
-          }
-        default:
-          return false;
-      }
-    }
-    return true;
   }
+  return true;
+}
 
-  /// 🚨(v) — [_treesMatch] as a VALUE, for the bake's key.
-  ///
-  /// ⛔It must fold in exactly what [_treesMatch] compares, and it lives
-  /// here rather than beside the cache so the two are read together: a
-  /// field added to a node and to `_treesMatch` but not to this one makes
-  /// the recordings outlive the change they should have ended. The
-  /// `default:` arm below is the same tripwire the comparison's is.
-  ///
-  /// ⚠️Images fold in by IDENTITY (`identityHashCode`), matching
-  /// `identical()` above — two different decodes of the same artwork are
-  /// two different pictures to draw.
-  static int treeSignature(List<_PaintNode> list) {
-    var hash = list.length;
-    for (final node in list) {
-      hash = Object.hash(hash, switch (node) {
-        _PaintImage(
-          :final image,
-          :final worldRect,
-          :final opacity,
-          :final blendMode,
-          :final pose,
-          :final anchorPoint,
-          :final tint,
-          :final effects,
-        ) =>
-          Object.hash(
-            identityHashCode(image),
-            worldRect,
-            opacity,
-            blendMode,
-            pose,
-            anchorPoint,
-            tint,
-            Object.hashAll(effects),
-          ),
-        _PaintActiveSurface(
-          :final opacity,
-          :final blendMode,
-          :final pose,
-          :final anchorPoint,
-          :final effects,
-        ) =>
-          Object.hash(
-            opacity,
-            blendMode,
-            pose,
-            anchorPoint,
-            Object.hashAll(effects),
-          ),
-        _PaintGroup(
-          :final opacity,
-          :final blendMode,
-          :final effects,
-          :final children,
-        ) =>
-          Object.hash(
-            opacity,
-            blendMode,
-            Object.hashAll(effects),
-            treeSignature(children),
-          ),
-        _PaintAdjustment(:final mix, :final effects, :final children) =>
-          Object.hash(mix, Object.hashAll(effects), treeSignature(children)),
-      });
-    }
-    return hash;
+/// [_treesMatch] as a VALUE, for the bake's key — the nodes' signatures
+/// folded in order ([_PaintNode.signature]).
+int _treeSignature(List<_PaintNode> list) {
+  var hash = list.length;
+  for (final node in list) {
+    hash = Object.hash(hash, node.signature);
   }
+  return hash;
 }
 
 /// How many paints have fallen to the SCREEN-resolution buffer because a
