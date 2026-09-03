@@ -409,6 +409,24 @@ class _LaneVerbs {
     return changed;
   }
 
+  /// What every lane verb settles first: the row the lane range names (an
+  /// attach row stands down), the lanes the verb targets, and whether those
+  /// are EFFECT lanes (parameter tracks) or the layer's own TRANSFORM lanes.
+  ({Layer layer, List<String> targets, bool effectLanes})? _laneVerbScope(
+    TimelineLaneSelection lane,
+  ) {
+    final layer = _laneVerbLayerFor(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return null;
+    }
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    return (
+      layer: layer,
+      targets: targets,
+      effectLanes: targets.any((laneId) => parseEffectLaneId(laneId) != null),
+    );
+  }
+
   /// The names the LANE RANGE's keys carry — one entry per key, null for an
   /// unnamed one. Empty when the range holds no key at all.
   ///
@@ -419,13 +437,14 @@ class _LaneVerbs {
     if (lane == null) {
       return const {};
     }
-    final layer = _laneVerbLayerFor(lane.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    final scope = _laneVerbScope(lane);
+    if (scope == null) {
       return const {};
     }
-    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final layer = scope.layer;
+    final targets = scope.targets;
     final names = <String?>{};
-    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+    if (scope.effectLanes) {
       for (final laneId in targets) {
         final address = parseEffectLaneId(laneId);
         final parameterId = address?.parameterId;
@@ -514,16 +533,17 @@ class _LaneVerbs {
     if (lane == null) {
       return false;
     }
-    final layer = _laneVerbLayerFor(lane.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    final scope = _laneVerbScope(lane);
+    if (scope == null) {
       return false;
     }
+    final layer = scope.layer;
     final cutId = _session._editingSession.activeCutId;
-    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final targets = scope.targets;
     final preferred = _laneVerbFrameFor(lane.layerId);
     final why = name == null ? 'Unname keys' : 'Name keys';
 
-    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+    if (scope.effectLanes) {
       var effects = layer.effects;
       var changed = false;
       for (final laneId in targets) {
@@ -709,14 +729,15 @@ class _LaneVerbs {
 
   /// value on every unkeyed frame of the range — one undo.
   void createLaneKeysForSelection(TimelineLaneSelection lane) {
-    final layer = _laneVerbLayerFor(lane.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    final scope = _laneVerbScope(lane);
+    if (scope == null) {
       return;
     }
-    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final layer = scope.layer;
+    final targets = scope.targets;
     // R6: an EFFECT-lane selection freezes keys on the effect chain
     // instead — same rule, same single undo.
-    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+    if (scope.effectLanes) {
       var effects = layer.effects;
       var effectsChanged = false;
       for (final laneId in targets) {
