@@ -22,6 +22,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -247,6 +248,65 @@ void main() {
       greaterThan(0),
       reason: 'the extent moved and overlapped, so the buffer was carried '
           'rather than composited whole',
+    );
+  });
+
+  testWidgets('a POSED live layer never carries — the change cannot be '
+      'located, so the pan composites whole', (tester) async {
+    // A survivor of the mutation campaign (2026-09-04, the display-buffer
+    // cut): `canScroll` lost its `located` half and every test stayed
+    // green — none of them panned while the live surface sat somewhere
+    // other than its own coordinates. A pose is exactly that case.
+    final cache = await warmCache(tester);
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+    final posed = <CanvasLayerStackNode>[
+      CanvasLayerImageNode(
+        CanvasLayerImageRequest(frameKey: keyFor('under'), opacity: 1),
+      ),
+      CanvasActiveLayerNode(
+        opacity: 1,
+        pose: TransformPose(center: CanvasPoint(x: 3, y: 2)),
+      ),
+    ];
+    Future<void> pumpAt(CanvasViewport viewport) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: CanvasLayerStackView(
+                  nodes: posed,
+                  imageCache: cache,
+                  debugBufferCache: buffers,
+                  canvasSize: canvasSize,
+                  viewport: viewport,
+                  activeSurfacePainter: live,
+                  paintPaper: true,
+                  paperBackground: ProjectBackground.defaultBackground,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpAt(CanvasViewport(zoom: 2, panX: 0, panY: 0));
+    final fullBefore = buffers.fullCount;
+    await pumpAt(CanvasViewport(zoom: 2, panX: 5, panY: 4));
+    expect(
+      buffers.scrolledCount,
+      0,
+      reason: 'a live layer that cannot say where it changed is never carried',
+    );
+    expect(
+      buffers.fullCount,
+      greaterThan(fullBefore),
+      reason: 'the moved extent was composited whole instead',
     );
   });
 
