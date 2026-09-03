@@ -316,7 +316,62 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       _builtTabIds.add(active.id);
     }
 
-    final strip = widget.chromeless
+    final strip = _strip(context, colorScheme, tabs, active);
+
+    return MouseRegion(
+      opaque: false,
+      onEnter: (_) => _panelHovered.value = true,
+      onExit: (_) => _panelHovered.value = false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (strip != null && !widget.stripAtBottom) strip,
+          // The content area shares the selected tab's background so the tab
+          // reads as part of the panel, not a floating chip above it. Built
+          // keep-alive tabs stay in the stack offstage (state, scroll
+          // positions and caches survive the switch).
+          Expanded(
+            // A panel's content may not paint outside the panel.
+            //
+            // It always could: the content box is a Stack, which does not
+            // clip, and a host that lays out a little taller than the room it
+            // was given simply spilled past the bottom. That was invisible
+            // while the strip was on TOP — the spill went off the region's
+            // bottom edge, which was the window's bottom edge. With the strip
+            // on the bottom inner edge the spill goes UNDER the 문턱, where it
+            // is still hit-testable but permanently covered: a long-press
+            // aimed at the sheet's last row switched the panel instead.
+            child: ClipRect(
+              child: ColoredBox(
+                color: colorScheme.surface,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    for (final tab in tabs)
+                      if (tab.id == active.id || _builtTabIds.contains(tab.id))
+                        _tabHost(tab, active),
+                    if (widget.flash != null) _flashOverlay(tabs),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (strip != null && widget.stripAtBottom) strip,
+        ],
+      ),
+    );
+  }
+
+  /// The tab strip — none when chromeless: the tail drop region, the
+  /// seam, the tab buttons that fit (an overflow button holds the rest),
+  /// and the sill's trailing controls.
+  Widget? _strip(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<EditorPanelTab> tabs,
+    EditorPanelTab active,
+  ) {
+    return widget.chromeless
         ? null
         : Container(
             // A link in the chain to the RAIL-DOCKED canvas: everything in
@@ -443,132 +498,88 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
               ],
             ),
           );
-
-    return MouseRegion(
-      opaque: false,
-      onEnter: (_) => _panelHovered.value = true,
-      onExit: (_) => _panelHovered.value = false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (strip != null && !widget.stripAtBottom) strip,
-          // The content area shares the selected tab's background so the tab
-          // reads as part of the panel, not a floating chip above it. Built
-          // keep-alive tabs stay in the stack offstage (state, scroll
-          // positions and caches survive the switch).
-          Expanded(
-            // A panel's content may not paint outside the panel.
-            //
-            // It always could: the content box is a Stack, which does not
-            // clip, and a host that lays out a little taller than the room it
-            // was given simply spilled past the bottom. That was invisible
-            // while the strip was on TOP — the spill went off the region's
-            // bottom edge, which was the window's bottom edge. With the strip
-            // on the bottom inner edge the spill goes UNDER the 문턱, where it
-            // is still hit-testable but permanently covered: a long-press
-            // aimed at the sheet's last row switched the panel instead.
-            child: ClipRect(
-              child: ColoredBox(
-                color: colorScheme.surface,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    for (final tab in tabs)
-                      if (tab.id == active.id || _builtTabIds.contains(tab.id))
-                        Offstage(
-                          key: ValueKey<String>('panel-content-${tab.id}'),
-                          // A collapsed region whose active tab declared no
-                          // collapsed form shows NOTHING — not a crop of the
-                          // panel, not a sliver of its top. That is the whole
-                          // contract, and offstage is how it is kept: the
-                          // subtree stays mounted (a keep-alive tab must not
-                          // lose its state to a fold) and simply does not lay
-                          // out.
-                          offstage:
-                              tab.id != active.id ||
-                              (widget.collapsed && tab.collapsedExtent <= 0),
-                          // 🚨결정 3 (유저 2026-08-22, 세 번째 요청) — **A
-                          // TICKER RUNS WHERE THE PANEL SHOWS.**
-                          //
-                          // > 「아직도 접기 직전의 인덱스 상태 기준으로
-                          // > 활성/비활성 **색**. **내부 로직 자체는 제대로
-                          // > 작동**하니 **겉모습만** 갱신 안 되는 듯. 그리고
-                          // > **3번째 말하는 것 같은데** 접고나서 **버튼 호버시
-                          // > 바탕 흰색** 되는 게 사라진다」
-                          //
-                          // ⛔This read `&& !widget.collapsed`, which muted a
-                          // tab that had DECLARED a collapsed form — a
-                          // surface the line directly above keeps ON SCREEN.
-                          // Every `IconButton`'s colour crosses an
-                          // `AnimatedTheme` and every hover wash is an
-                          // `InkHighlight` fade; both are driven by tickers,
-                          // so both froze at the value they held when the
-                          // fold happened. That is exactly "the logic is
-                          // right and only the look is stale", and it is why
-                          // the two complaints were one bug.
-                          //
-                          // ★The condition is the offstage one, negated —
-                          // said once, so a button cannot need a rule of its
-                          // own to look right in a place it is visible. A tab
-                          // with no collapsed form is still muted, which is
-                          // what the mute was for.
-                          child: TickerMode(
-                            enabled:
-                                tab.id == active.id &&
-                                !(widget.collapsed && tab.collapsedExtent <= 0),
-                            child: PanelVisibilityScope(
-                              visible: _visibilityFor(
-                                tab.id,
-                                visible: tab.id == active.id,
-                              ),
-                              // OUTSIDE the content cache on purpose: the
-                              // cached widget instance never changes, and an
-                              // inherited dependency marks its dependents
-                              // dirty directly — so folding reaches a
-                              // keep-alive panel without dropping the cache
-                              // that makes tab switches instant.
-                              child: PanelCollapsedScope(
-                                collapsed:
-                                    widget.collapsed && tab.id == active.id,
-                                child: tab.keepAlive
-                                    ? (_contentCache[tab.id] ??=
-                                          _buildTabContent(tab))
-                                    : _buildTabContent(tab),
-                              ),
-                            ),
-                          ),
-                        ),
-                    // The reveal blink (UI-R17 #5): fires when the flash
-                    // channel names a tab this group hosts.
-                    if (widget.flash != null)
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: ValueListenableBuilder<PanelFlashRequest?>(
-                            valueListenable: widget.flash!.requests,
-                            builder: (context, request, _) {
-                              if (request == null ||
-                                  !tabs.any((tab) => tab.id == request.tabId)) {
-                                return const SizedBox.shrink();
-                              }
-                              return PanelFlashOverlay(
-                                key: ValueKey<String>(
-                                  'panel-flash-${request.tabId}-${request.seq}',
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (strip != null && widget.stripAtBottom) strip,
-        ],
-      ),
-    );
   }
+
+  /// One tab's content, hosted offstage unless it is the active one (or
+  /// the group is collapsed to nothing): kept-alive tabs stay built and
+  /// cached, the ticker and the visibility scope follow the active tab.
+  Widget _tabHost(EditorPanelTab tab, EditorPanelTab active) => Offstage(
+    key: ValueKey<String>('panel-content-${tab.id}'),
+    // A collapsed region whose active tab declared no
+    // collapsed form shows NOTHING — not a crop of the
+    // panel, not a sliver of its top. That is the whole
+    // contract, and offstage is how it is kept: the
+    // subtree stays mounted (a keep-alive tab must not
+    // lose its state to a fold) and simply does not lay
+    // out.
+    offstage:
+        tab.id != active.id || (widget.collapsed && tab.collapsedExtent <= 0),
+    // 🚨결정 3 (유저 2026-08-22, 세 번째 요청) — **A
+    // TICKER RUNS WHERE THE PANEL SHOWS.**
+    //
+    // > 「아직도 접기 직전의 인덱스 상태 기준으로
+    // > 활성/비활성 **색**. **내부 로직 자체는 제대로
+    // > 작동**하니 **겉모습만** 갱신 안 되는 듯. 그리고
+    // > **3번째 말하는 것 같은데** 접고나서 **버튼 호버시
+    // > 바탕 흰색** 되는 게 사라진다」
+    //
+    // ⛔This read `&& !widget.collapsed`, which muted a
+    // tab that had DECLARED a collapsed form — a
+    // surface the line directly above keeps ON SCREEN.
+    // Every `IconButton`'s colour crosses an
+    // `AnimatedTheme` and every hover wash is an
+    // `InkHighlight` fade; both are driven by tickers,
+    // so both froze at the value they held when the
+    // fold happened. That is exactly "the logic is
+    // right and only the look is stale", and it is why
+    // the two complaints were one bug.
+    //
+    // ★The condition is the offstage one, negated —
+    // said once, so a button cannot need a rule of its
+    // own to look right in a place it is visible. A tab
+    // with no collapsed form is still muted, which is
+    // what the mute was for.
+    child: TickerMode(
+      enabled:
+          tab.id == active.id &&
+          !(widget.collapsed && tab.collapsedExtent <= 0),
+      child: PanelVisibilityScope(
+        visible: _visibilityFor(tab.id, visible: tab.id == active.id),
+        // OUTSIDE the content cache on purpose: the
+        // cached widget instance never changes, and an
+        // inherited dependency marks its dependents
+        // dirty directly — so folding reaches a
+        // keep-alive panel without dropping the cache
+        // that makes tab switches instant.
+        child: PanelCollapsedScope(
+          collapsed: widget.collapsed && tab.id == active.id,
+          child: tab.keepAlive
+              ? (_contentCache[tab.id] ??= _buildTabContent(tab))
+              : _buildTabContent(tab),
+        ),
+      ),
+    ),
+  );
+
+  /// The reveal blink (UI-R17 #5): fires when the flash channel names a
+  /// tab this group hosts.
+  Widget _flashOverlay(List<EditorPanelTab> tabs) => Positioned.fill(
+    child: IgnorePointer(
+      child: ValueListenableBuilder<PanelFlashRequest?>(
+        valueListenable: widget.flash!.requests,
+        builder: (context, request, _) {
+          if (request == null || !tabs.any((tab) => tab.id == request.tabId)) {
+            return const SizedBox.shrink();
+          }
+          return PanelFlashOverlay(
+            key: ValueKey<String>(
+              'panel-flash-${request.tabId}-${request.seq}',
+            ),
+          );
+        },
+      ),
+    ),
+  );
 
   /// The sill's right-hand group: the ACTIVE tab's own controls, then the
   /// group's ([EditorPanelTabs.trailing]).
