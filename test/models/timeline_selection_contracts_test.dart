@@ -25,12 +25,13 @@ void main() {
   test('two lane selections with the same fields are equal', () {
     // Not `const`: a const selection canonicalises to ONE object and the
     // identity shortcut would answer for the field comparison under test.
+    // A runtime-built list keeps the constructor call non-constant.
     TimelineLaneSelection build() => TimelineLaneSelection(
-      layerId: LayerId('l${''}'),
+      layerId: const LayerId('l'),
       laneId: 'lane',
       startIndex: 2,
       endIndexExclusive: 6,
-      laneIds: ['lane', 'other'],
+      laneIds: List.of(['lane', 'other']),
     );
     final a = build();
     final b = build();

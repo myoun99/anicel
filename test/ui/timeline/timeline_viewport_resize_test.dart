@@ -188,22 +188,26 @@ void main() {
 
     // Let the raster drains converge: a landing repaints the rows, which
     // re-request whatever the capped queue dropped — pump and wait until
-    // the landings go quiet.
+    // the store has nothing queued and nothing in flight.
     //
-    // 🚨★★★**SILENCE IS ACCEPTED ONLY AFTER A LANDING.** This used to
-    // break on「nothing changed in the last 50ms」, and on a loaded
-    // machine that reads「the drains have not STARTED」just as often as
-    // 「the drains are done」. It then probed a cold store and got null —
-    // which is why this file went red in bulk runs and green on its own,
-    // the same family as #1361/#1362.
+    // 🚨★★★**IDLE IS THE STORE'S WORD, NOT A SILENCE.** This used to break
+    // on「nothing changed in the last 50ms」, and on a loaded machine that
+    // reads「the drains have not STARTED」just as often as「the drains are
+    // done」. Then it accepted one quiet round after a landing, which on a
+    // loaded machine reads「the drain is slow」as「the drain is done」and
+    // probed a cold store — red in bulk runs, green alone, twice on
+    // 2026-09-03. Now the store says whether a request is queued or in
+    // flight (`debugBusy`), and the wait ends on positive evidence: at
+    // least one landing AND an idle store.
     //
     // ⛔The fix is never a longer delay: a delay tuned on an idle machine
     // is a bet on how busy the machine will be, and the bulk run is
-    // exactly when it is busiest. Requiring positive evidence costs
-    // nothing when the machine is fast and cannot misread "not yet".
+    // exactly when it is busiest. The cap below is only the failure
+    // deadline; a fast machine never waits for it.
     final store = TimelineGridTileStore.instance;
     var landed = false;
-    for (var round = 0; round < 40; round += 1) {
+    var idle = false;
+    for (var round = 0; round < 600 && !idle; round += 1) {
       final before = store.revision.value;
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
@@ -211,12 +215,16 @@ void main() {
       await tester.pump();
       if (store.revision.value != before) {
         landed = true;
-        continue;
       }
-      if (landed) {
-        break;
-      }
+      idle = landed && !store.debugBusy;
     }
+    expect(
+      idle,
+      isTrue,
+      reason:
+          'fixture: the store never went idle — a request stayed queued or '
+          'in flight for 30 s',
+    );
     expect(
       landed,
       isTrue,

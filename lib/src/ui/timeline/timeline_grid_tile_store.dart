@@ -67,6 +67,19 @@ class TimelineGridTileStore {
   final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
   bool _drainScheduled = false;
 
+  /// A raster in flight: from the moment the drain takes a request off the
+  /// queue until its upload lands (or is discarded). With [_pending] this is
+  /// the store's whole notion of "busy".
+  bool _draining = false;
+
+  /// Whether anything is queued or in flight. ⚠️TEST ONLY — the quiescence
+  /// signal for tests that wait on tiles: waiting for SILENCE (no landing
+  /// for N ms) misreads a slow drain on a loaded machine as a finished one,
+  /// which is how `timeline_viewport_resize_test` went red in bulk runs and
+  /// green alone (2026-09-03). Idle is the store's word, not a timer's.
+  @visibleForTesting
+  bool get debugBusy => _draining || _pending.isNotEmpty;
+
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineRowCellsPainter.substrateGeneration] a [tileFor] call has
   /// seen. Paints only happen for the live state, so the last generation
@@ -211,52 +224,57 @@ class TimelineGridTileStore {
       _pending.clear();
       return;
     }
-    while (_pending.isNotEmpty) {
-      final key = _pending.keys.first;
-      final request = _pending.remove(key)!;
-      // A dead-generation request is discarded, not rastered: its
-      // painter's resolvers answer from the live session, which no longer
-      // describes its rows. ⛔This check and the resolver reads are one
-      // synchronous block — `_raster` emits the substrate and collects
-      // the glyph cells before its first await — so nothing can change
-      // the session between the check and the answers it guards.
-      if (request.painter.substrateGeneration != _liveGeneration) {
-        continue;
+    _draining = true;
+    try {
+      while (_pending.isNotEmpty) {
+        final key = _pending.keys.first;
+        final request = _pending.remove(key)!;
+        // A dead-generation request is discarded, not rastered: its
+        // painter's resolvers answer from the live session, which no longer
+        // describes its rows. ⛔This check and the resolver reads are one
+        // synchronous block — `_raster` emits the substrate and collects
+        // the glyph cells before its first await — so nothing can change
+        // the session between the check and the answers it guards.
+        if (request.painter.substrateGeneration != _liveGeneration) {
+          continue;
+        }
+        final rastered = await _raster(engine, request);
+        if (rastered == null) {
+          continue;
+        }
+        _entries.remove(key)?.image.dispose();
+        _entries[key] = _TileEntry(
+          substrateGeneration: request.painter.substrateGeneration,
+          layer: request.painter.layer,
+          coverageIdentity: request.painter.coverageIdentity,
+          frameCellExtent: request.painter.frameCellExtent,
+          crossAxisExtent: request.painter.crossAxisExtent,
+          colorScheme: request.painter.colorScheme,
+          exposureStateForLayer: request.painter.exposureStateForLayer,
+          frameNameForLayer: request.painter.frameNameForLayer,
+          celHasContentForLayer: request.painter.celHasContentForLayer,
+          // ⛔The revision the RASTER sampled, never a live read. `_raster`
+          // suspends between its content reads and this landing (the glyph
+          // A8 bake, the ImmutableBuffer upload are real awaits), so a
+          // crossing that bumps the revision inside that window would give
+          // pixels of revision N a stamp of N+1 — and `matches()` compares
+          // the NUMBER, so the poisoned tile was served as fresh forever
+          // (the LRU survives cut trips and the 'projectId:cutId' string is
+          // reproduced exactly on return; only the NEXT bump healed it).
+          celContentRevision: rastered.celContentRevision,
+          baseTextStyle: request.painter.baseTextStyle,
+          spanEndIndexExclusive: request.spanEndIndexExclusive,
+          devicePixelRatio: request.devicePixelRatio,
+          framesPerSecond: request.painter.framesPerSecond,
+          image: rastered.image,
+        );
+        while (_entries.length > capacity) {
+          _entries.remove(_entries.keys.first)!.image.dispose();
+        }
+        revision.value += 1;
       }
-      final rastered = await _raster(engine, request);
-      if (rastered == null) {
-        continue;
-      }
-      _entries.remove(key)?.image.dispose();
-      _entries[key] = _TileEntry(
-        substrateGeneration: request.painter.substrateGeneration,
-        layer: request.painter.layer,
-        coverageIdentity: request.painter.coverageIdentity,
-        frameCellExtent: request.painter.frameCellExtent,
-        crossAxisExtent: request.painter.crossAxisExtent,
-        colorScheme: request.painter.colorScheme,
-        exposureStateForLayer: request.painter.exposureStateForLayer,
-        frameNameForLayer: request.painter.frameNameForLayer,
-        celHasContentForLayer: request.painter.celHasContentForLayer,
-        // ⛔The revision the RASTER sampled, never a live read. `_raster`
-        // suspends between its content reads and this landing (the glyph
-        // A8 bake, the ImmutableBuffer upload are real awaits), so a
-        // crossing that bumps the revision inside that window would give
-        // pixels of revision N a stamp of N+1 — and `matches()` compares
-        // the NUMBER, so the poisoned tile was served as fresh forever
-        // (the LRU survives cut trips and the 'projectId:cutId' string is
-        // reproduced exactly on return; only the NEXT bump healed it).
-        celContentRevision: rastered.celContentRevision,
-        baseTextStyle: request.painter.baseTextStyle,
-        spanEndIndexExclusive: request.spanEndIndexExclusive,
-        devicePixelRatio: request.devicePixelRatio,
-        framesPerSecond: request.painter.framesPerSecond,
-        image: rastered.image,
-      );
-      while (_entries.length > capacity) {
-        _entries.remove(_entries.keys.first)!.image.dispose();
-      }
-      revision.value += 1;
+    } finally {
+      _draining = false;
     }
   }
 
