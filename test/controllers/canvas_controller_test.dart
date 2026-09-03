@@ -254,6 +254,29 @@ void main() {
       },
     );
 
+    test('a redone stroke keeps its frame: the next undo from elsewhere still '
+        'moves there first', () {
+      // A survivor of the mutation campaign (2026-09-03): the redo entry's
+      // freshness check (`redoCount != history.redoCount`) became `==`,
+      // so a redo never re-armed the frame bookkeeping and the undo after
+      // it removed the stroke from wherever the playhead stood.
+      final fixture = _createFixture();
+
+      fixture.timelineController.selectFrameIndex(0);
+      _drawStroke(fixture.controller);
+      fixture.controller.undo();
+      fixture.controller.redo();
+      fixture.timelineController.selectFrameIndex(5);
+
+      fixture.controller.undo();
+
+      expect(fixture.timelineController.currentFrameIndex, 0);
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        hasLength(1),
+        reason: 'the first undo from another frame only moves there',
+      );
+    });
     test('undo on same timeline frame removes stroke immediately', () {
       final fixture = _createFixture();
 

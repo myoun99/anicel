@@ -41,8 +41,7 @@ class CanvasController {
 
   int _strokeSequence = 0;
 
-  FrameId get currentFrameId =>
-      _resolveCurrentFrameId(createIfMissing: false) ?? _frameId;
+  FrameId get currentFrameId => _resolveCurrentFrameId() ?? _frameId;
 
   List<Stroke> get strokes {
     if (_layerController != null && _timelineController != null) {
@@ -85,7 +84,7 @@ class CanvasController {
       brushSettings: _brushSettings,
     );
 
-    final frameId = _resolveCurrentFrameId(createIfMissing: true);
+    final frameId = _resolveCurrentFrameId();
     if (frameId == null) {
       _activePoints.clear();
       return;
@@ -257,7 +256,7 @@ class CanvasController {
     return timelineController.resolveFrameForLayer(layer: layer);
   }
 
-  FrameId? _resolveCurrentFrameId({required bool createIfMissing}) {
+  FrameId? _resolveCurrentFrameId() {
     final layerController = _layerController;
     final timelineController = _timelineController;
     if (layerController == null || timelineController == null) {
@@ -272,10 +271,6 @@ class CanvasController {
     final resolvedFrame = timelineController.resolveFrameForLayer(layer: layer);
     if (resolvedFrame != null) {
       return resolvedFrame.id;
-    }
-
-    if (!createIfMissing) {
-      return null;
     }
 
     return null;
