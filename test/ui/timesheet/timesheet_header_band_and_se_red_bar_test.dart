@@ -105,4 +105,30 @@ void main() {
     expect(r - g, greaterThan(60), reason: 'red, not a grey rule');
     expect(r - b, greaterThan(60), reason: 'red, not a grey rule');
   });
+
+  // The bar is the block's CLOSE, not its decoration: a bar on every held
+  // row reads as three blocks where there is one. The case above only ever
+  // looked at the last row, so a red bar drawn on every row of the block
+  // passed it (the cells-pass split's surviving mutant, 2026-09-04).
+  testWidgets('the red bar closes the block ONCE — the rows before its end '
+      'carry no bar', (tester) async {
+    final pixels = await rasterize(tester);
+    final column = document.columns.indexWhere(
+      (c) =>
+          c.kind == TimesheetColumnKind.se && c.layerId == const LayerId('s'),
+    );
+    final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
+    final columnWidth = layout.columnWidthFor(TimesheetColumnKind.se);
+    for (final row in [0, 1]) {
+      final y = layout.frameRowTop(row) + TimesheetDocumentLayout.rowHeight - 1;
+      final (r, g, b) = rgbAt(pixels, left + columnWidth / 2, y);
+      expect(
+        r - g < 60 || r - b < 60,
+        isTrue,
+        reason:
+            'row $row is inside the block, not its end — a bar here '
+            'would read as a block closing on every comma',
+      );
+    }
+  });
 }
