@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/controllers/editing_session_state.dart';
+import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';

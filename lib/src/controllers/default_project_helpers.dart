@@ -4,8 +4,8 @@ import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
-import 'default_cut_helpers.dart';
-import 'default_layer_helpers.dart';
+import '../services/editing/default_cut_helpers.dart';
+import '../services/editing/default_layer_helpers.dart';
 
 Project createDefaultProject({DateTime? createdAt}) {
   return Project(

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';

@@ -1,6 +1,6 @@
-import '../models/cut_id.dart';
-import '../models/project.dart';
-import '../models/track.dart';
+import '../../models/cut_id.dart';
+import '../../models/project.dart';
+import '../../models/track.dart';
 import 'cut_list_helpers.dart';
 
 /// The empty frames a deleted cut leaves standing in its place, and who

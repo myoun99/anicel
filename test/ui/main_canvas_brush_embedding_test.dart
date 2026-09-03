@@ -5,7 +5,7 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/main.dart';
-import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';

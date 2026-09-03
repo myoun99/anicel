@@ -1,7 +1,7 @@
-import '../models/cut_id.dart';
-import '../models/project.dart';
-import '../models/track.dart';
-import '../models/track_id.dart';
+import '../../models/cut_id.dart';
+import '../../models/project.dart';
+import '../../models/track.dart';
+import '../../models/track_id.dart';
 
 CutId defaultActiveCutIdFor(Project project) {
   for (final track in project.tracks) {

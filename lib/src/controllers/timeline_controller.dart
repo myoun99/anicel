@@ -11,7 +11,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
-import 'cut_duplicate_helpers.dart' show duplicateFrameContent;
+import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_splice.dart';

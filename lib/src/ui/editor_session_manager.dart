@@ -7,9 +7,9 @@ import 'dart:ui' as ui show ImageByteFormat;
 
 import 'package:flutter/foundation.dart';
 
-import '../controllers/default_cut_helpers.dart'
+import '../services/editing/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize;
-import '../controllers/default_layer_helpers.dart';
+import '../services/editing/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
@@ -64,8 +64,8 @@ import 'session/drags/transition_edge_drag.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import 'theme/app_accents.dart';
-import '../controllers/active_cut_helpers.dart';
-import '../controllers/editing_session_state.dart';
+import '../services/editing/active_cut_helpers.dart';
+import '../services/editing/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/attached_layer_mount.dart';
@@ -127,7 +127,7 @@ import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
-import '../controllers/cut_duplicate_helpers.dart' show duplicateFrameContent;
+import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_splice.dart';
 import '../models/delete_subject.dart';
 import '../models/edit_instance_subject.dart';

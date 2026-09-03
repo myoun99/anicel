@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/controllers/cut_duplicate_helpers.dart';
+import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';

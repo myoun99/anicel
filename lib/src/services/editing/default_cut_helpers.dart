@@ -1,11 +1,11 @@
-import '../models/canvas_size.dart';
-import '../models/cut.dart';
-import '../models/cut_id.dart';
-import '../models/layer.dart';
-import '../models/layer_id.dart';
-import '../models/layer_kind.dart';
-import '../models/layer_section_defaults.dart';
-import '../core/timeline/timeline_defaults.dart';
+import '../../models/canvas_size.dart';
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/layer_section_defaults.dart';
+import '../../core/timeline/timeline_defaults.dart';
 import 'default_layer_helpers.dart';
 
 const defaultCutCanvasSize = CanvasSize(width: 2340, height: 1654);

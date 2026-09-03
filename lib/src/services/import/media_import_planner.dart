@@ -1,6 +1,6 @@
 import 'dart:collection';
 
-import '../../controllers/default_cut_helpers.dart';
+import '../editing/default_cut_helpers.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/canvas_size.dart';

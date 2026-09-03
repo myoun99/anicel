@@ -1,5 +1,5 @@
-import '../../controllers/default_cut_helpers.dart';
-import '../../controllers/editing_session_state.dart';
+import '../editing/default_cut_helpers.dart';
+import '../editing/editing_session_state.dart';
 import '../../core/collection_equality.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';

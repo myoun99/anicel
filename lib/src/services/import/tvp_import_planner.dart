@@ -22,7 +22,7 @@ library;
 import 'dart:collection';
 import 'dart:math' as math;
 
-import '../../controllers/default_cut_helpers.dart';
+import '../editing/default_cut_helpers.dart';
 import '../../models/camera_pose.dart';
 import '../../models/audio_clip.dart';
 import '../../models/canvas_point.dart';

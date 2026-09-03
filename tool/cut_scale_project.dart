@@ -38,8 +38,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/controllers/default_cut_helpers.dart';
-import 'package:anicel/src/controllers/default_layer_helpers.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/editing/default_layer_helpers.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/timeline/timeline_defaults.dart';
 import 'package:anicel/src/models/cut.dart';

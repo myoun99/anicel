@@ -1,10 +1,10 @@
-import '../models/cut.dart';
-import '../models/frame.dart';
-import '../models/frame_id.dart';
-import '../models/layer.dart';
-import '../models/layer_id.dart';
-import '../models/layer_kind.dart';
-import '../models/timeline_exposure.dart';
+import '../../models/cut.dart';
+import '../../models/frame.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timeline_exposure.dart';
 
 LayerId defaultLayerIdForSequence(int sequence) {
   if (sequence < 1) {

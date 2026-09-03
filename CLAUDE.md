@@ -44,6 +44,9 @@
 
 `core` · `models` · `services` · `controllers` 는
 **`ui/` 도, 위젯 프레임워크(`material` / `widgets` / `cupertino`) 도 import 하지 않는다.**
+넷은 **이 순서로 안쪽만** import 한다(2026-09-03 실측 후 확정 — 장부 0으로 시작):
+바깥 층이 필요해지면 그 조각을 **안쪽으로 옮긴다**(헬퍼 뭉치가 `services/editing/` 으로 간 것이 그 예).
+파일 import 순환은 `test/architecture/no_import_cycles_test.dart` 의 장부 둘뿐이다.
 
 예외는 `test/architecture/layer_dependency_direction_test.dart` 의 장부에 **이유와 함께** 적는다.
 늘리려면 이유를 쓰고, 줄이면 총 개수도 같이 고친다. `native/` 는 플랫폼 어댑터라 **일부러 제외**돼 있다 —

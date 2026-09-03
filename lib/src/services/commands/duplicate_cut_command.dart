@@ -1,5 +1,5 @@
-import '../../controllers/cut_duplicate_helpers.dart';
-import '../../controllers/editing_session_state.dart';
+import '../editing/cut_duplicate_helpers.dart';
+import '../editing/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';

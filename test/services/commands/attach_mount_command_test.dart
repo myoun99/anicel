@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/controllers/editing_session_state.dart';
+import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/models/attached_layer_mount.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';

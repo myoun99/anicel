@@ -1,6 +1,6 @@
-import '../models/cut_id.dart';
-import '../models/project.dart';
-import '../models/track_id.dart';
+import '../../models/cut_id.dart';
+import '../../models/project.dart';
+import '../../models/track_id.dart';
 import 'active_cut_helpers.dart';
 
 class EditingSessionState {

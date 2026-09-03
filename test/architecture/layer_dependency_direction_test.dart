@@ -31,11 +31,25 @@
 // Adding a new outward edge is not forbidden — it is forbidden SILENTLY. Put
 // the pair in `_ledger` with the reason you could not avoid it, and the next
 // reader gets your argument instead of a mystery.
+//
+// 2026-09-03 (audit, Round 4): the inner layers are also ORDERED. core sits
+// inside models, models inside services, services inside controllers, and a
+// file may import only the layers inside its own. This was MEASURED before
+// it was pinned: zero edges ran outward except eight services files
+// importing a helper cluster (`editing_session_state`, `default_cut_helpers`
+// and five more) that held no controller at all — a type in the wrong
+// folder, the same shape as the ledger below — and that cluster moved to
+// `services/editing/` in the commit that added the test. So the ordering has
+// no ledger: the debt was zero on the day it was counted.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/import_graph.dart';
+
 /// The layers that must not know what the app looks like.
+///
+/// ⚠️IN ORDER, innermost first: the ordering test reads the index.
 ///
 /// `native` is deliberately absent: it is the platform adapter, the outermost
 /// ring on that side, and nobody has ever stated a direction for it. Inventing
@@ -177,6 +191,36 @@ void main() {
       );
     });
 
+    test('each inner layer imports only the layers inside it', () {
+      final outward = <String>[];
+
+      for (final file in _innerDartFiles()) {
+        final path = _normalise(file.path);
+        final ring = _innerLayers.indexOf(_layerOf(path)!);
+
+        for (final target in _importsOf(file)) {
+          final targetLayer = _layerOf(_resolvedTarget(path, target));
+          if (targetLayer == null) {
+            continue;
+          }
+          if (_innerLayers.indexOf(targetLayer) <= ring) {
+            continue;
+          }
+          outward.add('$path -> $target');
+        }
+      }
+
+      expect(
+        outward,
+        isEmpty,
+        reason:
+            'These files import a layer OUTSIDE their own (core < models < '
+            'services < controllers). The fix that has always worked is to '
+            'move the imported piece inward — it is a type in the wrong '
+            'folder, not a layer that needs the outer one:\n  '
+            '${outward.join('\n  ')}',
+      );
+    });
     test('the ledger has no entries that were already paid off', () {
       final stale = <String>[];
 
@@ -251,3 +295,28 @@ Iterable<String> _importsOf(File file) =>
     _importLine.allMatches(file.readAsStringSync()).map((m) => m.group(1)!);
 
 String _normalise(String path) => path.replaceAll('\\', '/');
+
+/// Which inner layer [path] (repo-relative, `/`-separated) lives in, or null.
+String? _layerOf(String path) {
+  const prefix = 'lib/src/';
+  if (!path.startsWith(prefix)) {
+    return null;
+  }
+  final layer = path.substring(prefix.length).split('/').first;
+  return _innerLayers.contains(layer) ? layer : null;
+}
+
+/// [target] as written in [path]'s import line, as a repo-relative path.
+///
+/// `dart:` and third-party `package:` targets come back as written; they are
+/// in no layer of ours and [_layerOf] says so.
+String _resolvedTarget(String path, String target) {
+  const own = 'package:anicel/';
+  if (target.startsWith(own)) {
+    return 'lib/${target.substring(own.length)}';
+  }
+  if (target.contains(':')) {
+    return target;
+  }
+  return normalisePath('${dirOf(path)}/$target');
+}

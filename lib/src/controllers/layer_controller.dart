@@ -8,7 +8,7 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../services/command.dart';
-import 'default_layer_helpers.dart';
+import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/commands/cut_command_input_planner.dart';
 import '../services/commands/update_layer_display_command.dart';

@@ -1,5 +1,5 @@
-import '../../controllers/default_cut_helpers.dart';
-import '../../controllers/editing_session_state.dart';
+import '../editing/default_cut_helpers.dart';
+import '../editing/editing_session_state.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';

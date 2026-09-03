@@ -1,4 +1,4 @@
-import '../../controllers/editing_session_state.dart';
+import '../editing/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
