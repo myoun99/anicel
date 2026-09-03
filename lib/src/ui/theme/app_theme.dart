@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../text/app_strings.dart';
 
-import 'app_accents.dart';
+import '../../models/app_accents.dart';
 
 /// The app-wide dark palette (TVPaint/OpenToonz-style flat charcoal).
 ///

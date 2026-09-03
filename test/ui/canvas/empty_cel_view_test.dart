@@ -10,12 +10,12 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;

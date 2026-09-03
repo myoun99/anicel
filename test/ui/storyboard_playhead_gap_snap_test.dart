@@ -5,7 +5,7 @@ import 'package:anicel/src/models/track_frame_axis.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// R14-① (was R10-⑤b) + UI-R9 #3/#4: the editing playhead LANDS in cut
 /// gaps — and a gap landing means NO CUT IS SELECTED (activeCutId null,

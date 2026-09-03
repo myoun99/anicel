@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
-import '../theme/app_accents.dart';
+import '../../models/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';

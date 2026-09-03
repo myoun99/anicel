@@ -15,7 +15,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 import 'timeline_cell_probe.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';

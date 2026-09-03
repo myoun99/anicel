@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
-import '../input/app_input_settings.dart' show AppInput;
+import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../debug/input_inspector.dart' show InputInspector;
 import '../widgets/instant_tap_region.dart' show InstantTapRegion;

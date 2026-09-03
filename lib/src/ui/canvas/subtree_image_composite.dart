@@ -4,7 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
 import 'colour_key_shader.dart';
-import 'composite_effect_paint.dart';
+import '../../services/composite_effect_paint.dart';
 
 /// The largest side a sub-tree's own raster may have, in device pixels.
 ///

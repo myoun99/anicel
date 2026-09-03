@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';

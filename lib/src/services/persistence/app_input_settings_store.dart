@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../../ui/input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import 'app_support_path.dart';
 
 /// Loads and saves the pointer-input policy (UI-R22 #6). Editor/app

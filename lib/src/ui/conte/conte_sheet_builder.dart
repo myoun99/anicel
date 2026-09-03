@@ -9,7 +9,7 @@ import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track.dart';
 import '../storyboard_layer_policy.dart';
-import '../storyboard_timeline_layout.dart';
+import '../../models/storyboard_timeline_layout.dart';
 
 /// Reads a project as a conte sheet.
 ///

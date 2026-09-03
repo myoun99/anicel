@@ -10,7 +10,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
-import '../input/app_input_settings.dart' show AppInput;
+import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
 import 'layer_label_controls.dart';

@@ -1,7 +1,7 @@
-import '../models/cut.dart';
-import '../models/cut_id.dart';
-import '../models/project.dart';
-import '../models/track_id.dart';
+import 'cut.dart';
+import 'cut_id.dart';
+import 'project.dart';
+import 'track_id.dart';
 
 class StoryboardTimelineLayoutEntry {
   const StoryboardTimelineLayoutEntry({

@@ -30,7 +30,7 @@ import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/paint_tool_state_notifier.dart';
-import 'theme/app_workspace_colors.dart';
+import '../models/app_workspace_colors.dart';
 import 'debug/input_inspector.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';

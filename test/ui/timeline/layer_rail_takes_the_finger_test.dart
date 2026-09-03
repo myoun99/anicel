@@ -14,7 +14,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// **F-8 — the layer area answers a finger the way the frame area does.**
 ///

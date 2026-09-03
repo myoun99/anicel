@@ -39,7 +39,7 @@ import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// 🚨★★★ SCRUB ↔ STILL PARITY (device report B2, 2026-08-17).
 ///

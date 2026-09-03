@@ -21,7 +21,7 @@ import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../audio/audio_conform_store.dart';
-import '../storyboard_timeline_layout.dart';
+import '../../models/storyboard_timeline_layout.dart';
 
 /// A clip laid out on the playlist-global frame axis, end clamped at the
 /// contiguous run's boundary.

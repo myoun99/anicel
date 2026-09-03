@@ -21,7 +21,7 @@ import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// The multitrack display path's canvas content: every track's covered cut
 /// stacks as one camera projection per track (bottom letterboxes + paper,

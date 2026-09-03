@@ -5,7 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../input/wheel_law.dart';
 import '../../models/viewport_point.dart';
 import 'canvas_touch_contacts.dart';

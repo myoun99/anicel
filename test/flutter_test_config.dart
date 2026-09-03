@@ -7,7 +7,7 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).

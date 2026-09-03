@@ -11,9 +11,9 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:anicel/src/ui/canvas/layer_pose_paint.dart';
+import 'package:anicel/src/services/layer_pose_paint.dart';
 
 /// The draw-through wrap (R3 ⑩): wrapping the interactive view in
 /// `Transform(layerPoseViewportWrapMatrix(...))` shows the active layer

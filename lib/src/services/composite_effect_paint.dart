@@ -2,11 +2,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
 
-import '../../core/color_matrix.dart';
-import '../../core/draw_space.dart';
-import '../../models/layer_blend_mode.dart';
-import '../../models/layer_effect.dart';
-import '../../services/cel_source_effect_pass.dart';
+import '../core/color_matrix.dart';
+import '../core/draw_space.dart';
+import '../models/layer_blend_mode.dart';
+import '../models/layer_effect.dart';
+import 'cel_source_effect_pass.dart';
 
 /// How much a blur RADIUS parameter spreads, as a Gaussian sigma. A radius
 /// is the visible reach of the blur; three sigma covers it, so a radius of

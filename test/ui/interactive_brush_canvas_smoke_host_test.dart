@@ -9,7 +9,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_canvas_smoke_host.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';

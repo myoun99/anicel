@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
-import 'package:anicel/src/ui/theme/app_accents.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// UI-R22 #5: the program accent is customizable and persists.

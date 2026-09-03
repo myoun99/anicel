@@ -10,10 +10,10 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// R26 #5: the finger census is APP-WIDE. The timesheet mounts one ink
 /// view per sheet window, so a two-finger pinch lands one contact on each

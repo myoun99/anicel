@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import '../input/value_control_pointers.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
     show layerFxSlotWidth, layerOnionSlotWidth, layerVisibilitySlotWidth;

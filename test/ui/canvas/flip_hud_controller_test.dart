@@ -7,7 +7,7 @@ import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// The flip HUD's state: ONE haptic rule, and a window that never owns
 /// the cursor.

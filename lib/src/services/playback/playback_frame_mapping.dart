@@ -3,7 +3,7 @@ import '../../models/cut_id.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
-import '../../ui/storyboard_timeline_layout.dart';
+import '../../models/storyboard_timeline_layout.dart';
 
 /// Wall-clock elapsed time → global frame index at [rate]. Elapsed-based
 /// mapping is what makes playback drop frames instead of slowing down.

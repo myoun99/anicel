@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
-import 'package:anicel/src/ui/theme/app_accents.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';

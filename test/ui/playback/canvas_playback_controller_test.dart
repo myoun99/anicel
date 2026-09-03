@@ -9,7 +9,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 void main() {
   Cut cut(String id, int duration) => Cut(

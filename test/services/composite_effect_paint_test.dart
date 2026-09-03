@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/core/color_matrix.dart';
 import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart';
 
 /// The ONE translation from resolved effect samples to paint state (R6).
 /// Every composite route calls this, so its contract is where the routes

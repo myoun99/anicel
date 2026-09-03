@@ -10,7 +10,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 
 /// 🚨★★★ORDER IS FREE, AND IT MEANS WHAT IT SAYS.

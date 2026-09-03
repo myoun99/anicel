@@ -6,7 +6,7 @@ import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
 import '../../models/canvas_shape_kind.dart';
-import '../canvas/brush_edit_canvas_input_settings.dart';
+import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_hand_settings_store.dart' show BrushHandSettings;
 
 /// The strip's standing hand settings — the group whose members a tool

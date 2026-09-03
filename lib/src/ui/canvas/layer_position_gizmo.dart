@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../theme/app_theme.dart';
 
 /// The on-canvas Position drag gizmo: a crosshair handle at the active

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter/widgets.dart' show Offset;
 
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import 'flip_hud_model.dart';
 
 /// Which axis the flip locked to.

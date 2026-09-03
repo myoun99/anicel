@@ -21,13 +21,13 @@ import '../../services/playback/playback_frame_mapping.dart'
         sourceOverWeights,
         trackGroupSourceOverWeights;
 import '../camera/camera_frame_render_service.dart';
-import '../canvas/composite_effect_paint.dart'
+import '../../services/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
 import '../canvas/subtree_image_composite.dart' show steppedForChain;
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
 import '../track_effect_paint_policy.dart';
-import '../storyboard_timeline_layout.dart';
+import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
 import 'export_plan.dart';
 

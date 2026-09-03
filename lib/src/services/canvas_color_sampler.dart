@@ -11,9 +11,9 @@ import '../models/layer_kind.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
-import '../ui/canvas/composite_effect_paint.dart'
+import 'composite_effect_paint.dart'
     show resolveColorMatrixIgnoringSpatial;
-import '../ui/canvas/layer_pose_paint.dart' show layerPoseMatrix;
+import 'layer_pose_paint.dart' show layerPoseMatrix;
 import 'cel_source_effect_pass.dart';
 import 'cut_frame_composite_plan.dart';
 

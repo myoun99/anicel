@@ -10,7 +10,7 @@ import '../models/brush_edit_session_commit_result.dart';
 import '../models/canvas_surface_state.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
-import '../ui/dev_profile.dart';
+import '../core/dev_profile.dart';
 import 'brush_bitmap_materialization_history_entry_builder.dart';
 import 'brush_surface_edit_builder.dart';
 import 'canvas_surface_state_edit.dart';

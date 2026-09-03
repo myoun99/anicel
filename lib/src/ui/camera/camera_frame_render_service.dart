@@ -13,7 +13,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/composite_effect_paint.dart';
+import '../../services/composite_effect_paint.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';

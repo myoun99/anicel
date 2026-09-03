@@ -4,7 +4,7 @@ import '../widgets/instant_tap_region.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../input/app_input_settings.dart' show AppInput;
+import '../../models/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_exposure_state.dart';

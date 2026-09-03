@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../native/qa_tablet_bridge.dart';
-import '../../ui/input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 
 /// The Wintab pen stream (pen program, PEN-2) — the CSP-style second
 /// tablet backend, as a PRESSURE SIDECAR:

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
-import '../input/app_input_settings.dart' show AppInput;
+import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 

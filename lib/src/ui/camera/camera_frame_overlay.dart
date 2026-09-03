@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart'
     show DragStartBehavior, PanGestureRecognizer, PointerDeviceKind;
 import 'package:flutter/material.dart';
 
-import '../input/app_input_settings.dart' show AppInput;
+import '../../models/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart' show AppColors;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';

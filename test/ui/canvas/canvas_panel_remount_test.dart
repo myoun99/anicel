@@ -8,7 +8,7 @@ import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../../helpers/panel_finders.dart';
 

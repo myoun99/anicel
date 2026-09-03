@@ -21,7 +21,7 @@ import 'dart:math' as math;
 
 import '../../native/qa_native_engine.dart';
 import '../dialogs/app_confirm_dialog.dart';
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../text/app_strings.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';

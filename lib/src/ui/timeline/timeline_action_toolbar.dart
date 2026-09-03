@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../input/app_input_settings.dart' show AppInput, AppInputSettings;
+import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';

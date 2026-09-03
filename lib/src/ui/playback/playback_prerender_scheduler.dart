@@ -8,7 +8,7 @@ import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
 import '../../models/playback_quality.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
-import '../dev_profile.dart';
+import '../../core/dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
 
 /// How much of the requested warm range is composited already.

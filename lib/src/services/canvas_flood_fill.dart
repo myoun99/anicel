@@ -13,7 +13,7 @@ import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
-import '../ui/dev_profile.dart';
+import '../core/dev_profile.dart';
 import 'canvas_color_sampler.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';

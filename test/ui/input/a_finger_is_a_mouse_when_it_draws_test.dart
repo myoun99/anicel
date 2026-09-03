@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// 🚨결정 10 (유저 확정 2026-08-22) — **A FINGER IS A MOUSE WHEN IT DRAWS.**
 ///

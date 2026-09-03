@@ -17,7 +17,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/layer_position_gizmo.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
 const _gizmoKey = ValueKey<String>('layer-position-gizmo');

@@ -10,9 +10,9 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:anicel/src/ui/canvas/layer_pose_paint.dart';
+import 'package:anicel/src/services/layer_pose_paint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

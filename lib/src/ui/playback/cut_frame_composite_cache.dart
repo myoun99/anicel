@@ -11,7 +11,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../core/draw_space.dart';
-import '../canvas/composite_effect_paint.dart';
+import '../../services/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';

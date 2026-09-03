@@ -10,7 +10,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/onion_skin_plan.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart';
 
 /// I-8-Q5 — 유저 2026-08-27 chose "the ghost shows the pixels the screen
 /// shows". The old exception was not a design: the Colors tint was written

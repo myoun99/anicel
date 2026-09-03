@@ -12,7 +12,7 @@ import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
@@ -44,7 +44,7 @@ import '../../services/guide_stroke_input.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
-import 'brush_edit_canvas_input_settings.dart';
+import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 import 'canvas_touch_contacts.dart';
 

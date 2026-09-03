@@ -11,7 +11,7 @@ import '../../models/project_id.dart';
 import '../../models/track_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/cache_invalidation_executor.dart';
-import 'brush_edit_canvas_input_settings.dart';
+import '../../models/brush_edit_canvas_input_settings.dart';
 import 'interactive_brush_edit_canvas_view.dart';
 
 class InteractiveBrushCanvasSmokeHost extends StatefulWidget {

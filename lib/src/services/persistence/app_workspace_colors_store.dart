@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../../ui/theme/app_workspace_colors.dart';
+import '../../models/app_workspace_colors.dart';
 import 'app_support_path.dart';
 
 /// Loads and saves the workspace surface colors (R28 #9) — the

@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';

@@ -18,7 +18,7 @@ import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart'    show        CompositeEffectPaint,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
+import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// The V row's EFFECT CHAIN: a layer's fx one level up, filtering the whole

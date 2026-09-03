@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
-import '../dev_profile.dart';
+import '../../core/dev_profile.dart';
 import 'bitmap_tile_image_cache.dart';
 
 /// A composed surface image plus the CANVAS-SPACE rect it covers.

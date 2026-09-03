@@ -16,7 +16,7 @@ import '../models/dirty_tile_set.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
-import '../ui/dev_profile.dart';
+import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
 import 'brush_stroke_blend.dart';
 

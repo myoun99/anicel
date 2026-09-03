@@ -33,7 +33,7 @@ import 'audio/waveform_painter.dart';
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_layer_policy.dart';
-import 'storyboard_timeline_layout.dart';
+import '../models/storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
@@ -72,7 +72,7 @@ import 'timeline/transform_lane_policy.dart'
         transformGroupHeader,
         transformGroupHeaderLane,
         transformPropertyLanes;
-import 'input/app_input_settings.dart' show AppInput;
+import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
     show TimelineBeatLinesPainter, TimelineGridLaw, timelineGridRowSeamInk;

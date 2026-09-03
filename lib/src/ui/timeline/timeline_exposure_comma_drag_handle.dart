@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerDeviceKind;
 import 'package:flutter/material.dart';
 
-import '../input/app_input_settings.dart' show AppInput;
+import '../../models/app_input_settings.dart' show AppInput;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';

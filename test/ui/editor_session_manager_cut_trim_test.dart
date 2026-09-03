@@ -6,7 +6,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 void main() {

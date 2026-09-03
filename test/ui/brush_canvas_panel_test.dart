@@ -12,7 +12,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_cursor_overlay.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';

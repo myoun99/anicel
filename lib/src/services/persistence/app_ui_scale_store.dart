@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../../ui/ui_scale.dart';
+import '../../models/app_ui_scale.dart';
 import 'app_support_path.dart';
 
 /// Loads and saves the UI scale. Editor/app state, not project data — an

@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// 🚨★★★터치 묘화 ON ⇒ A FINGER IS THE POINTER, PRESS AND ALL.
 ///

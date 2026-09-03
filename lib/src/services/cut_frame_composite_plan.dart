@@ -12,7 +12,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
-import '../ui/canvas/layer_pose_paint.dart';
+import 'layer_pose_paint.dart';
 import 'cel_source_effect_pass.dart';
 
 /// One paintable layer of a composited cut frame, bottom → top order.

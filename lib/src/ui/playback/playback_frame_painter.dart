@@ -11,11 +11,11 @@ import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
-import '../canvas/composite_effect_paint.dart'
+import '../../services/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
 import '../canvas/subtree_image_composite.dart' show steppedForChain;
 import '../canvas/display_resample.dart';
-import '../canvas/layer_pose_paint.dart';
+import '../../services/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/se_name_tag_paint.dart';

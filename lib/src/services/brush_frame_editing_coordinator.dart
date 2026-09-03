@@ -6,7 +6,7 @@ import 'package:anicel/src/models/layer_tile_cache_key.dart';
 
 import 'package:anicel/src/models/playback_preview_cache_key.dart';
 
-import '../ui/dev_profile.dart';
+import '../core/dev_profile.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';

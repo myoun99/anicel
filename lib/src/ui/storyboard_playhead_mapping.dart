@@ -7,7 +7,7 @@ library;
 import '../models/track_frame_axis.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
-import 'storyboard_timeline_layout.dart';
+import '../models/storyboard_timeline_layout.dart';
 
 /// The SELECTED track's layout entries (every entry as fallback when that
 /// track holds no cuts). Reads the session's first-class track selection

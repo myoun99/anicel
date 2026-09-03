@@ -7,7 +7,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/canvas/layer_pose_paint.dart';
+import 'package:anicel/src/services/layer_pose_paint.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
 /// P8 painter-parity pins: the shared paint matrix must speak EXACTLY the

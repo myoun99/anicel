@@ -19,7 +19,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
-import 'brush_edit_canvas_input_settings.dart';
+import '../../models/brush_edit_canvas_input_settings.dart';
 import 'interactive_brush_canvas_smoke_host.dart';
 import '../input/control_press_claim.dart';
 

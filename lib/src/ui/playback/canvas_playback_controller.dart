@@ -9,7 +9,7 @@ import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
 import '../../services/playback/playback_frame_mapping.dart';
-import '../storyboard_timeline_layout.dart';
+import '../../models/storyboard_timeline_layout.dart';
 
 /// What plays: the active cut (timeline context) or every cut of the active
 /// track in sequence (storyboard context).

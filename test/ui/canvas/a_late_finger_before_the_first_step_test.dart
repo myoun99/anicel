@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// 🚨★★★H30 — A SECOND FINGER THAT LANDS AFTER THE FIRST HAS MOVED.
 ///

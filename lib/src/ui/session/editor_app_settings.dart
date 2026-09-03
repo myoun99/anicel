@@ -12,12 +12,12 @@ import '../../services/persistence/app_save_settings_store.dart';
 import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../playback/audio_sync_settings.dart';
 import '../text/app_strings.dart';
-import '../theme/app_accents.dart';
+import '../../models/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors;
-import '../theme/app_workspace_colors.dart';
+import '../../models/app_workspace_colors.dart';
 import '../ui_scale.dart';
 
 /// The APP-level settings an editor session restores once at construction and

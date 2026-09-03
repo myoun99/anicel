@@ -3,7 +3,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/theme/app_workspace_colors.dart';
+import 'package:anicel/src/models/app_workspace_colors.dart';
 
 /// R3b: the stage's colors on the project — backdrop (opaque by
 /// contract), pasteboard (RGBA), paper (alpha absorbed the old

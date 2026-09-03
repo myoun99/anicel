@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 
 /// 🚨★★★THE TOUCH RULES ARE UNCHANGED BY THE DEVICE UNIFICATION.
 ///

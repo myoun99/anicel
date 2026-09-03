@@ -29,9 +29,9 @@ import '../../models/canvas_size.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/transform_track.dart';
-import 'composite_effect_paint.dart';
+import '../../services/composite_effect_paint.dart';
 import 'subtree_image_composite.dart';
-import 'layer_pose_paint.dart';
+import '../../services/layer_pose_paint.dart';
 
 /// Runs [body] under [pose].
 ///

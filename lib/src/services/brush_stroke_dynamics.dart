@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import '../models/brush_dab.dart';
 import '../models/brush_tip_rotation_mode.dart';
 import '../models/canvas_point.dart';
-import '../ui/canvas/brush_edit_canvas_input_settings.dart';
+import '../models/brush_edit_canvas_input_settings.dart';
 
 /// Applies placement-time stroke dynamics — scatter, size/opacity/angle
 /// jitter, and direction-following tip rotation — to interpolated dabs.

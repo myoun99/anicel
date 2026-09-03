@@ -13,7 +13,7 @@ import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
-import 'storyboard_timeline_layout.dart';
+import '../models/storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/timeline_cell_style.dart';
 import 'timeline/timeline_frame_geometry.dart';

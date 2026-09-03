@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart';
 
 /// 🚨★★★ONE COMPOSITE PAINT — the half #1304 left hand-written.
 ///

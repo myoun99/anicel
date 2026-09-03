@@ -7,7 +7,7 @@ import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
 
 /// SAVE-1: the unified Preferences dialog — sections switch in place and

@@ -1,19 +1,17 @@
 import 'dart:ui';
 
-import 'package:flutter/widgets.dart' show Matrix4;
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
+import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
+import '../models/canvas_viewport.dart';
+import '../models/drawing_guide.dart';
+import '../models/transform_track.dart';
+import 'guide_geometry.dart';
+import 'layer_pose_matrix.dart';
+import 'viewport_transform_matrix.dart';
 
-import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
-import '../../models/canvas_viewport.dart';
-import '../../models/drawing_guide.dart';
-import '../../models/transform_track.dart';
-import '../../services/guide_geometry.dart';
-import '../../services/layer_pose_matrix.dart';
-import 'viewport_canvas_transform.dart';
-
-export '../../services/layer_pose_matrix.dart'
-    show LayerPoseSample, layerPoseMatrix;
+export 'layer_pose_matrix.dart' show LayerPoseSample, layerPoseMatrix;
 
 /// Applies a layer's transform pose to [canvas] before its image draws at
 /// the origin — see [layerPoseMatrix] for the mapping.

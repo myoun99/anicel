@@ -28,7 +28,7 @@ import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 
 /// ⛔**A TRIPWIRE, and it now pins the OPPOSITE of what it used to.** No

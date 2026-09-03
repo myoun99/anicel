@@ -1,4 +1,4 @@
-import '../ui/storyboard_timeline_layout.dart';
+import 'storyboard_timeline_layout.dart';
 import 'cut_id.dart';
 import 'range_snap.dart';
 

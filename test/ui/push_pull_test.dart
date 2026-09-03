@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// Design D: the rigid shove a drag used to do, as a verb you aim. One rule
 /// for two axes — the arithmetic is shared, only the commit differs.

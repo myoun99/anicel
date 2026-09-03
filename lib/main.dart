@@ -19,7 +19,7 @@ import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
-import 'src/ui/input/app_input_settings.dart' show AppInput;
+import 'src/models/app_input_settings.dart' show AppInput;
 import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/text/app_strings.dart';

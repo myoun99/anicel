@@ -31,7 +31,7 @@ import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
-import 'storyboard_timeline_layout.dart';
+import '../models/storyboard_timeline_layout.dart';
 import 'timeline/timeline_frame_range_gesture.dart' show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';

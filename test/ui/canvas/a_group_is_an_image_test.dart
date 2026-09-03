@@ -17,7 +17,7 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 

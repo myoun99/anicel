@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/input/wintab_pen_service.dart';
 import '../editor_session_manager.dart';
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import '../text/app_strings.dart';

@@ -9,7 +9,7 @@ import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../dev_profile.dart';
+import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/tiled_surface_compose.dart';
 

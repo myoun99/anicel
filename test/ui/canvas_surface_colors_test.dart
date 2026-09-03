@@ -12,7 +12,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
-import 'package:anicel/src/ui/theme/app_workspace_colors.dart';
+import 'package:anicel/src/models/app_workspace_colors.dart';
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 
 import '../helpers/brush_canvas_fixture.dart';

@@ -8,7 +8,7 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 
 void main() {
   group('BrushToolState', () {

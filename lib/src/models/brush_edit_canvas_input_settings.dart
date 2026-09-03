@@ -1,9 +1,9 @@
-import '../../models/brush_blend_mode.dart';
-import '../../models/brush_pressure_curve.dart';
-import '../../models/brush_shape.dart';
-import '../../models/brush_tip_mask.dart';
-import '../../models/brush_tip_rotation_mode.dart';
-import '../../models/brush_tip_shape.dart';
+import 'brush_blend_mode.dart';
+import 'brush_pressure_curve.dart';
+import 'brush_shape.dart';
+import 'brush_tip_mask.dart';
+import 'brush_tip_rotation_mode.dart';
+import 'brush_tip_shape.dart';
 
 class BrushEditCanvasInputSettings {
   factory BrushEditCanvasInputSettings({

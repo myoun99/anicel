@@ -37,7 +37,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 

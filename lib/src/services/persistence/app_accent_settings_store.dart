@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../../ui/theme/app_accents.dart';
+import '../../models/app_accents.dart';
 import 'app_support_path.dart';
 
 /// Loads and saves the two program accents (UI-R22 #5). Editor/app

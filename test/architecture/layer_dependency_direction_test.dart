@@ -67,20 +67,9 @@ const _widgetFrameworkImports = <String>[
   'package:flutter/cupertino.dart',
 ];
 
-const _devProfile =
-    'Debug profiling flags. Nothing about them is visual — the file sits under '
-    'ui/ because that is where the first caller happened to be.';
-const _handSettings =
-    'Hand settings (stabilizer, pointer devices) are policy the app owns; the '
-    'file lives under ui/ because the settings panel edits it.';
 const _settingsStore =
     'The store persists a settings VALUE whose type is declared under ui/. '
     'Moving the value type inward would take this edge with it.';
-const _paintHelper =
-    'Pose/effect matrices are geometry the compositor needs; they are declared '
-    'beside the painter that first used them.';
-const _layoutMath =
-    'Storyboard layout math under ui/ is pure arithmetic over frame indices.';
 
 /// Every outward dependency that exists TODAY, with the reason it exists.
 ///
@@ -95,61 +84,14 @@ const _ledger = <String, List<_Debt>>{
           '(the file says so at the top). The enum is data; the icon is not.',
     ),
   ],
-  'lib/src/models/track_frame_axis.dart': [
-    _Debt(
-      '../ui/storyboard_timeline_layout.dart',
-      'Storyboard layout math lives under ui/ but is pure geometry — the axis '
-          'needs the numbers, not the widgets.',
-    ),
-  ],
   'lib/src/controllers/canvas_controller.dart': [
     _Debt(
       'package:flutter/widgets.dart',
       'The controller drives a canvas surface and holds widget-side handles.',
     ),
   ],
-  'lib/src/services/bitmap_surface_brush_commit.dart': [
-    _Debt('../ui/dev_profile.dart', _devProfile),
-  ],
-  'lib/src/services/brush_edit_session_commit.dart': [
-    _Debt('../ui/dev_profile.dart', _devProfile),
-  ],
-  'lib/src/services/brush_frame_editing_coordinator.dart': [
-    _Debt('../ui/dev_profile.dart', _devProfile),
-  ],
-  'lib/src/services/canvas_flood_fill.dart': [
-    _Debt('../ui/dev_profile.dart', _devProfile),
-  ],
-  'lib/src/services/brush_stroke_dynamics.dart': [
-    _Debt('../ui/canvas/brush_edit_canvas_input_settings.dart', _handSettings),
-  ],
-  'lib/src/services/canvas_color_sampler.dart': [
-    _Debt('../ui/canvas/composite_effect_paint.dart', _paintHelper),
-    _Debt('../ui/canvas/layer_pose_paint.dart', _paintHelper),
-  ],
-  'lib/src/services/cut_frame_composite_plan.dart': [
-    _Debt('../ui/canvas/layer_pose_paint.dart', _paintHelper),
-  ],
-  'lib/src/services/input/wintab_pen_service.dart': [
-    _Debt('../../ui/input/app_input_settings.dart', _handSettings),
-  ],
-  'lib/src/services/persistence/app_accent_settings_store.dart': [
-    _Debt('../../ui/theme/app_accents.dart', _settingsStore),
-  ],
-  'lib/src/services/persistence/app_input_settings_store.dart': [
-    _Debt('../../ui/input/app_input_settings.dart', _settingsStore),
-  ],
-  'lib/src/services/persistence/app_ui_scale_store.dart': [
-    _Debt('../../ui/ui_scale.dart', _settingsStore),
-  ],
-  'lib/src/services/persistence/app_workspace_colors_store.dart': [
-    _Debt('../../ui/theme/app_workspace_colors.dart', _settingsStore),
-  ],
   'lib/src/services/persistence/audio_sync_settings_store.dart': [
     _Debt('../../ui/playback/audio_sync_settings.dart', _settingsStore),
-  ],
-  'lib/src/services/playback/playback_frame_mapping.dart': [
-    _Debt('../../ui/storyboard_timeline_layout.dart', _layoutMath),
   ],
 };
 
@@ -254,7 +196,7 @@ void main() {
       final edges = _ledger.values.fold<int>(0, (sum, l) => sum + l.length);
       expect(
         edges,
-        18,
+        3,
         reason:
             'The outward-edge count changed. Going DOWN is the point — update '
             'this number and say so in the commit. Going UP needs an argument.',

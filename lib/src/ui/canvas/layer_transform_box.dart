@@ -6,9 +6,9 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
-import '../input/app_input_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../theme/app_theme.dart';
-import 'layer_pose_paint.dart';
+import '../../services/layer_pose_paint.dart';
 
 /// Which member of the Transform group a box drag drives (R5 #10, the
 /// user's rule: "그 관련된 동작을 하면 관련된 멤버가 키찍고 값 바꾸도록").

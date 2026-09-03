@@ -4,7 +4,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/canvas/layer_pose_paint.dart';
+import 'package:anicel/src/services/layer_pose_paint.dart';
 
 const _canvasSize = CanvasSize(width: 1280, height: 720);
 
