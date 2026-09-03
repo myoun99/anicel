@@ -1,5 +1,14 @@
 part of '../canvas_layer_stack_view.dart';
 
+/// What a display-buffer miss can start from — the carried base to patch
+/// (with the live dirty rect), the previous buffer to scroll, or neither.
+typedef _MissPlan = ({
+  ({ui.Image image, Rect rect})? base,
+  Rect? dirty,
+  ({ui.Image image, Rect rect})? scroll,
+  bool canScroll,
+});
+
 /// Who paints a node's children under a walk — the plain walk, or the split
 /// walk that descends the chain enclosing the active layer and replays a
 /// recording for the rest.
@@ -890,23 +899,7 @@ class _LayerStackPaintPass {
     }
     if (width > _LayerStackPainter._maxBufferSide ||
         height > _LayerStackPainter._maxBufferSide) {
-      // 🚨THE ONE PLACE THE EDITING CANVAS STOPS COMPOSITING AT CANVAS
-      // RESOLUTION. Counted so a test can say whether a view still reaches
-      // it: bounding the buffer by CONTENT instead of by the view is what
-      // keeps an ordinary page (2340×1654) under the cap no matter how far
-      // you zoom out, and the count is how that claim is checked rather
-      // than argued.
-      debugCappedFallbacks += 1;
-      // ⓔ 5단계 — the region past the old cap is the KNEE'S UNDERSIDE. The
-      // direct-walk fallback here was T21 territory: each layer resampled
-      // separately, the active one at nearest beside its neighbours at
-      // bilinear. A SCREEN-SPACE buffer draws every layer as one image
-      // under one filter and costs what the screen costs, not what the
-      // canvas costs (유저 확정 ①: 무릎 아래는 균일 필터, 겹침 색차 수용).
-      // Null keeps the walk — rotation/flip, or an active layer the flat
-      // projection refuses (settling, stand-ins, stamp, cold truth). The
-      // walk was always correct; the buffer is only ever an optimisation.
-      return _composeScaledBuffer(rect);
+      return _pastTheCap(rect);
     }
     // ⓔ 6단계 A/B ([MeasurementMode.kneeAtOne]) — the knee moved from the
     // cap to 1: WITHIN the cap, any view where the artwork has more
@@ -934,18 +927,115 @@ class _LayerStackPaintPass {
     // times dearer. One image cannot do that.
     final cache = _painter.bufferCache;
     final key = cache == null ? null : _painter._bufferKey();
+    final kept = _keptBuffer(cache, key, rect);
+    if (kept != null) {
+      return kept;
+    }
+    return _composeMiss(rect, cache, key);
+  }
+
+  /// The display buffer for [image] over [rect] — whole-pixel by
+  /// construction, so the pixel size is the rect's. [owned] says whether the
+  /// caller disposes the image after drawing it (false while the cache
+  /// keeps it for the next paint).
+  _DisplayBuffer _bufferOf(ui.Image image, Rect rect, {required bool owned}) =>
+      _DisplayBuffer(
+        image: image,
+        rect: rect,
+        pixelWidth: rect.width,
+        pixelHeight: rect.height,
+        owned: owned,
+      );
+
+  /// Past the cap: the screen-space buffer, or null to keep the walk.
+  _DisplayBuffer? _pastTheCap(Rect rect) {
+    // 🚨THE ONE PLACE THE EDITING CANVAS STOPS COMPOSITING AT CANVAS
+    // RESOLUTION. Counted so a test can say whether a view still reaches
+    // it: bounding the buffer by CONTENT instead of by the view is what
+    // keeps an ordinary page (2340×1654) under the cap no matter how far
+    // you zoom out, and the count is how that claim is checked rather
+    // than argued.
+    debugCappedFallbacks += 1;
+    // ⓔ 5단계 — the region past the old cap is the KNEE'S UNDERSIDE. The
+    // direct-walk fallback here was T21 territory: each layer resampled
+    // separately, the active one at nearest beside its neighbours at
+    // bilinear. A SCREEN-SPACE buffer draws every layer as one image
+    // under one filter and costs what the screen costs, not what the
+    // canvas costs (유저 확정 ①: 무릎 아래는 균일 필터, 겹침 색차 수용).
+    // Null keeps the walk — rotation/flip, or an active layer the flat
+    // projection refuses (settling, stand-ins, stamp, cold truth). The
+    // walk was always correct; the buffer is only ever an optimisation.
+    return _composeScaledBuffer(rect);
+  }
+
+  /// The buffer the cache still holds for [key] over [rect], or null.
+  _DisplayBuffer? _keptBuffer(
+    DisplayBufferCache? cache,
+    Object? key,
+    Rect rect,
+  ) {
     if (cache != null && key != null) {
       final kept = cache.imageFor(key, rect);
       if (kept != null) {
-        return _DisplayBuffer(
-          image: kept,
-          rect: rect,
-          pixelWidth: width.toDouble(),
-          pixelHeight: height.toDouble(),
-          owned: false,
-        );
+        return _bufferOf(kept, rect, owned: false);
       }
     }
+    return null;
+  }
+
+  /// A miss: the buffer recomposed — patched over the carried base, scrolled
+  /// from the previous buffer, or rastered whole — and stored when the
+  /// cache can keep it.
+  _DisplayBuffer _composeMiss(
+    Rect rect,
+    DisplayBufferCache? cache,
+    Object? key,
+  ) {
+    final width = rect.width.round();
+    final height = rect.height.round();
+    final miss = _planMiss(rect, cache, key);
+    final base = miss.base;
+    final dirty = miss.dirty;
+    final scroll = miss.scroll;
+    final canScroll = miss.canScroll;
+    final recorder = ui.PictureRecorder();
+    final into = Canvas(recorder);
+    into.translate(-rect.left, -rect.top);
+    if (base != null && dirty != null) {
+      _blitPatched(into, base.image, rect, dirty);
+    } else if (scroll != null && canScroll) {
+      cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
+    } else {
+      // The canvas-resolution buffer records with a translate only.
+      _paintContent(into, rasterRect: rect, rasterScale: 1);
+    }
+    final picture = recorder.endRecording();
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(width, height);
+    } finally {
+      picture.dispose();
+    }
+    if (cache != null && key != null) {
+      cache.store(
+        key,
+        _painter.compositeKey,
+        rect,
+        image,
+        patched: base != null && dirty != null,
+      );
+      if (canScroll) {
+        cache.scrolledCount += 1;
+      }
+      return _bufferOf(image, rect, owned: false);
+    }
+    return _bufferOf(image, rect, owned: true);
+  }
+
+  /// What a miss can start from: the carried base to patch (with the live
+  /// dirty rect), or the previous buffer to scroll; both null means a
+  /// full raster. Records the live dirty rect on the cache as it asks.
+  _MissPlan _planMiss(Rect rect, DisplayBufferCache? cache, Object? key) {
     // 🚨★★★A MISS DOES NOT HAVE TO START FROM NOTHING. When the only thing
     // that moved is the LIVE surface — which is every step of a stroke —
     // the previous buffer is right everywhere the stroke did not touch, so
@@ -973,9 +1063,6 @@ class _LayerStackPaintPass {
     // for a carry and used to be indistinguishable from the worst.
     final dirty = change.dirty;
     cache?.lastDirtyRect = dirty;
-    final recorder = ui.PictureRecorder();
-    final into = Canvas(recorder);
-    into.translate(-rect.left, -rect.top);
     // 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD. A moved extent is not a wrong
     // buffer, it is an OFFSET one: the buffer is canvas resolution, so one
     // buffer pixel is one canvas pixel at every zoom and the overlap belongs
@@ -994,112 +1081,91 @@ class _LayerStackPaintPass {
     // the overlap would carry a stale live layer with it, and nothing else
     // in the key would notice.
     final canScroll = scroll != null && change.located;
-    if (base != null && dirty != null) {
-      into.drawImageRect(
-        base.image,
-        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-        rect,
-        Paint()
-          ..filterQuality = ui.FilterQuality.none
-          ..isAntiAlias = false,
-      );
-      into.save();
-      into.clipRect(dirty);
-      // ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
-      // and ink that is not fully opaque would blend with its own previous
-      // frame — a stroke would darken as it was redrawn.
-      into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
-      // The canvas-resolution buffer records with a translate only.
-      _paintContent(into, rasterRect: rect, rasterScale: 1);
-      into.restore();
-    } else if (canScroll) {
-      final was = scroll.rect;
-      final overlap = was.intersect(rect);
-      into.drawImageRect(
-        scroll.image,
-        // The overlap in the OLD image's own pixels: 1:1, so this is just
-        // the offset between the two rects.
-        Rect.fromLTWH(
-          overlap.left - was.left,
-          overlap.top - was.top,
-          overlap.width,
-          overlap.height,
-        ),
-        overlap,
-        Paint()
-          ..filterQuality = ui.FilterQuality.none
-          ..isAntiAlias = false,
-      );
-      into.save();
-      // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
-      // the old one did not reach — plus the live dirty rect, because the
-      // carried pixels are as old as the last composite.
-      //
-      // 🚨A LIST RATHER THAN AN EVEN-ODD PATH, and a mutation is why: with
-      // the path form, dropping the subtraction left the clip covering the
-      // whole rect — correct pixels, no saving, and every test green. The
-      // clip and the AREA now come from the same list, so a band that stops
-      // being excluded stops being counted.
-      final bands = <Rect>[
-        if (overlap.top > rect.top)
-          Rect.fromLTRB(rect.left, rect.top, rect.right, overlap.top),
-        if (overlap.bottom < rect.bottom)
-          Rect.fromLTRB(rect.left, overlap.bottom, rect.right, rect.bottom),
-        if (overlap.left > rect.left)
-          Rect.fromLTRB(rect.left, overlap.top, overlap.left, overlap.bottom),
-        if (overlap.right < rect.right)
-          Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
-        if (dirty != null && !dirty.intersect(overlap).isEmpty)
-          dirty.intersect(overlap),
-      ];
-      final exposed = Path();
-      var area = 0.0;
-      for (final band in bands) {
-        exposed.addRect(band);
-        area += band.width * band.height;
-      }
-      cache!.lastComposedArea = area;
-      // ⛔NO ANTIALIAS on the clip: a soft edge would blend the band into
-      // the carried pixels and leave a seam of its own.
-      into.clipPath(exposed, doAntiAlias: false);
-      _paintContent(into, rasterRect: rect, rasterScale: 1);
-      into.restore();
-    } else {
-      // The canvas-resolution buffer records with a translate only.
-      _paintContent(into, rasterRect: rect, rasterScale: 1);
-    }
-    final picture = recorder.endRecording();
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(width, height);
-    } finally {
-      picture.dispose();
-    }
-    if (cache != null && key != null) {
-      cache.store(
-        key,
-        _painter.compositeKey,
-        rect,
-        image,
-        patched: base != null && dirty != null,
-      );
-      if (canScroll) {
-        cache.scrolledCount += 1;
-      }
-      return _DisplayBuffer(
-        image: image,
-        rect: rect,
-        pixelWidth: width.toDouble(),
-        pixelHeight: height.toDouble(),
-        owned: false,
-      );
-    }
-    return _DisplayBuffer(
-      image: image,
-      rect: rect,
-      pixelWidth: width.toDouble(),
-      pixelHeight: height.toDouble(),
+    return (base: base, dirty: dirty, scroll: scroll, canScroll: canScroll);
+  }
+
+  /// Recomposes only [dirty] over the carried [base]: the old pixels are
+  /// blitted 1:1, the dirty rect cleared and repainted.
+  void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
+    into.drawImageRect(
+      base,
+      Rect.fromLTWH(0, 0, rect.width, rect.height),
+      rect,
+      Paint()
+        ..filterQuality = ui.FilterQuality.none
+        ..isAntiAlias = false,
     );
+    into.save();
+    into.clipRect(dirty);
+    // ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
+    // and ink that is not fully opaque would blend with its own previous
+    // frame — a stroke would darken as it was redrawn.
+    into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
+    // The canvas-resolution buffer records with a translate only.
+    _paintContent(into, rasterRect: rect, rasterScale: 1);
+    into.restore();
+  }
+
+  /// Carries the overlap of the previous buffer ([scroll]) into [rect]
+  /// and repaints only the bands the pan exposed, plus [dirty]; answers
+  /// the area repainted.
+  double _blitScrolled(
+    Canvas into,
+    ({ui.Image image, Rect rect}) scroll,
+    Rect rect,
+    Rect? dirty,
+  ) {
+    final was = scroll.rect;
+    final overlap = was.intersect(rect);
+    into.drawImageRect(
+      scroll.image,
+      // The overlap in the OLD image's own pixels: 1:1, so this is just
+      // the offset between the two rects.
+      Rect.fromLTWH(
+        overlap.left - was.left,
+        overlap.top - was.top,
+        overlap.width,
+        overlap.height,
+      ),
+      overlap,
+      Paint()
+        ..filterQuality = ui.FilterQuality.none
+        ..isAntiAlias = false,
+    );
+    into.save();
+    // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
+    // the old one did not reach — plus the live dirty rect, because the
+    // carried pixels are as old as the last composite.
+    //
+    // 🚨A LIST RATHER THAN AN EVEN-ODD PATH, and a mutation is why: with
+    // the path form, dropping the subtraction left the clip covering the
+    // whole rect — correct pixels, no saving, and every test green. The
+    // clip and the AREA now come from the same list, so a band that stops
+    // being excluded stops being counted.
+    final bands = <Rect>[
+      if (overlap.top > rect.top)
+        Rect.fromLTRB(rect.left, rect.top, rect.right, overlap.top),
+      if (overlap.bottom < rect.bottom)
+        Rect.fromLTRB(rect.left, overlap.bottom, rect.right, rect.bottom),
+      if (overlap.left > rect.left)
+        Rect.fromLTRB(rect.left, overlap.top, overlap.left, overlap.bottom),
+      if (overlap.right < rect.right)
+        Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
+      if (dirty != null && !dirty.intersect(overlap).isEmpty)
+        dirty.intersect(overlap),
+    ];
+    final exposed = Path();
+    var area = 0.0;
+    for (final band in bands) {
+      exposed.addRect(band);
+      area += band.width * band.height;
+    }
+    // ⛔NO ANTIALIAS on the clip: a soft edge would blend the band into
+    // the carried pixels and leave a seam of its own.
+    into.clipPath(exposed, doAntiAlias: false);
+    _paintContent(into, rasterRect: rect, rasterScale: 1);
+    into.restore();
+    return area;
   }
 
   /// ⓔ 5단계 — the buffer BELOW the knee: [rect] rendered at
@@ -1215,19 +1281,8 @@ class _LayerStackPaintPass {
     }
     if (cache != null && key != null) {
       cache.store(key, _painter.compositeKey, rect, image, patched: false);
-      return _DisplayBuffer(
-        image: image,
-        rect: rect,
-        pixelWidth: width.toDouble(),
-        pixelHeight: height.toDouble(),
-        owned: false,
-      );
+      return _bufferOf(image, rect, owned: false);
     }
-    return _DisplayBuffer(
-      image: image,
-      rect: rect,
-      pixelWidth: width.toDouble(),
-      pixelHeight: height.toDouble(),
-    );
+    return _bufferOf(image, rect, owned: true);
   }
 }
