@@ -96,9 +96,6 @@ void main() {
     return painted / total;
   }
 
-  int alphaAt(Uint8List bytes, int x, int y) =>
-      bytes[(y * size.width.round() + x) * 4 + 3];
-
   /// How many DISTINCT colours the first cell holds. A cell with only its
   /// substrate is one flat fill (plus its border); a cell with a glyph on
   /// top holds the ink and its antialiasing too.

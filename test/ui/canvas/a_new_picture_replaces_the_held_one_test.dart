@@ -54,7 +54,7 @@ void main() {
       pixels[i + (red ? 0 : 2)] = 0xFF;
       pixels[i + 3] = 0xFF;
     }
-    final coord = TileCoord(x: 0, y: 0);
+    const coord = TileCoord(x: 0, y: 0);
     return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: tileSize,
