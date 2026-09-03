@@ -156,4 +156,56 @@ void main() {
     expect(redAtTheFarRight(hit), greaterThan(0));
     expect(miss, equals(hit), reason: 'the miss and the hit draw one picture');
   });
+
+  testWidgets('with NO cache at all the knee paint is still whole — the '
+      'uncached return takes the same pixel size', (tester) async {
+    final surface = farRightInk();
+    await tester.runAsync(() => decodeAll(surface));
+    // No debugBufferCache: every paint composes afresh and returns the
+    // image the caller disposes. That return is a separate line from the
+    // cached one, and it was the one the mutation campaign found unpinned.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: screen.width,
+              height: screen.height,
+              child: CanvasLayerStackView(
+                nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
+                canvasSize: canvasSize,
+                viewport: CanvasViewport(zoom: 0.025),
+                activeSurfacePainter: BitmapSurfacePainter(
+                  surface: surface,
+                  showTransparentBackground: false,
+                ),
+                paintPaper: true,
+                paperBackground: ProjectBackground.defaultBackground,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final painter = tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(CanvasLayerStackView),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .where((paint) => paint.painter != null)
+        .first
+        .painter!;
+    final bytes = await paintBytes(tester, painter);
+    expect(
+      redAtTheFarRight(bytes),
+      greaterThan(0),
+      reason:
+          'the far-right tile reaches the far right with no cache in '
+          'the picture — the uncached return is its own line',
+    );
+  });
 }
