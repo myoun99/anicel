@@ -720,7 +720,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       final fallbackStart = math.max(spanStart, window.startIndex);
       final fallbackEnd = math.min(spanEnd, window.endIndexExclusive);
       for (var frame = fallbackStart; frame < fallbackEnd; frame += 1) {
-        _paintCellSubstrate(canvas, frame);
+        /*P4*/
       }
     }
     // PREFETCH one span beyond both window edges (scroll warm-up):

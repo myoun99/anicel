@@ -183,8 +183,8 @@ class TimelineFrameCell extends StatelessWidget {
                       emptyRunStart: false,
                       frameName: frameName,
                     ),
-              semanticsLabel: _semanticsLabelForCell(
-                layer: layer,
+              semanticsLabel: timelineCellSemanticsLabel(
+                layerKind: layer.kind,
                 exposureState: exposureState,
                 frameName: frameName,
               ),
@@ -258,53 +258,6 @@ BoxDecoration _timelineCellDecoration({
   return BoxDecoration(
     color: backgroundColor,
     border: Border.all(color: borderColor, width: borderWidth),
-    borderRadius: _timelineCellBorderRadius(exposureBlockSegment, axis),
+    borderRadius: timelineCellBorderRadius(exposureBlockSegment, axis),
   );
-}
-
-BorderRadius? _timelineCellBorderRadius(
-  TimelineExposureBlockVisualSegment exposureBlockSegment,
-  Axis axis,
-) {
-  if (!exposureBlockSegment.isBlock) {
-    return null;
-  }
-
-  const blockRadius = Radius.circular(6);
-  final startRadius = exposureBlockSegment.continuesFromPrevious
-      ? Radius.zero
-      : blockRadius;
-  final endRadius = exposureBlockSegment.continuesToNext
-      ? Radius.zero
-      : blockRadius;
-  return switch (axis) {
-    Axis.horizontal => BorderRadius.horizontal(
-      left: startRadius,
-      right: endRadius,
-    ),
-    Axis.vertical => BorderRadius.vertical(top: startRadius, bottom: endRadius),
-  };
-}
-
-String? _semanticsLabelForCell({
-  required Layer layer,
-  required TimelineCellExposureState exposureState,
-  String? frameName,
-}) {
-  // Instruction spans carry their own semantics on the row overlay.
-  if (layerKindBandIsInstructionsOnly(layer.kind)) {
-    return null;
-  }
-  return switch (exposureState) {
-    TimelineCellExposureState.uncovered => null,
-    TimelineCellExposureState.drawingStart =>
-      layer.kind == LayerKind.camera
-          ? 'camera keyframe'
-          : frameName == null || frameName.isEmpty
-          ? 'drawing start'
-          : 'drawing start $frameName',
-    TimelineCellExposureState.held => 'held exposure',
-    TimelineCellExposureState.markHeld ||
-    TimelineCellExposureState.markUncovered => 'inbetween mark',
-  };
 }
