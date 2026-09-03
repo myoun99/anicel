@@ -1526,27 +1526,35 @@ class _LayerStackPainter extends CustomPainter {
       // painter can be asked to paint more than once.
       _LayerStackPaintPass(this).paint(canvas, size);
 
-  /// Everything the composite depends on that the bake's key does not
-  /// already carry — or null when this stack must not be cached at all.
+  /// The coordinates whose token moved from [last] to [now]: one [now]
+  /// holds under a different token (or newly), and one [now] no longer
+  /// holds at all.
   ///
-  /// 🚨The bake deliberately leaves the live surface out: it never records
-  /// it, so a stroke step cannot stale a recording. The BUFFER holds the
-  /// live surface, so it needs every way that surface's pixels can move:
-  ///
-  ///  * the committed tiles, by identity — `BitmapSurface` is immutable, so
-  ///    an edit is a new instance;
-  ///  * their DECODED images, because a decode ARRIVING changes the screen
-  ///    while the tile it came from never moved;
-  ///  * the overlay's tile images and its stamp, by identity, which is how
-  ///    an in-flight stroke reaches the canvas at all;
-  ///  * the stand-in and settling passes, which redraw on their own clock.
-  ///
-  /// ⛔And null when the painter says it draws from state it does not
-  /// publish ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
-  /// comparison here can be right, so nothing is kept. That is the same
-  /// question the tiled buffer had to ask, and the answer that makes a
-  /// cache honest: ask the thing you are caching where it changed, and do
-  /// not cache what cannot say.
+  /// Identity per coordinate — for the overlay's tile images and the
+  /// committed tiles alike. The overlay's tiles carry the stroke in
+  /// flight, but they ACCUMULATE for the stroke's whole life (nothing
+  /// leaves the map until pen-up), so "every overlay coordinate" is the
+  /// bounding box of the WHOLE STROKE by the third dab: a long line paid
+  /// its full length again on every step. The overlay replaces a tile's
+  /// image only when a dab touched it, so an unchanged image object IS
+  /// "this tile did not move". A coordinate the overlay LEFT has to lose
+  /// its ink (pen-up, reset).
+  static Iterable<TileCoord> _movedCoords(
+    Map<Object, Object> last,
+    Map<Object, Object> now,
+  ) sync* {
+    for (final entry in now.entries) {
+      if (!identical(last[entry.key], entry.value)) {
+        yield entry.key as TileCoord;
+      }
+    }
+    for (final coord in last.keys) {
+      if (!now.containsKey(coord)) {
+        yield coord as TileCoord;
+      }
+    }
+  }
+
   /// Where the LIVE surface changed since the kept buffer was made, in
   /// canvas space — or null when that cannot be answered.
   ///
@@ -1594,37 +1602,25 @@ class _LayerStackPainter extends CustomPainter {
     // below — the overlay replaces a tile's image only when a dab touched
     // it, so an unchanged image object IS "this tile did not move".
     final cacheState = bufferCache!;
-    final overlayNow = <TileCoord, Object>{};
-    final overlayImages =
-        overlay?.tileImages ?? const <TileCoord, ui.Image>{};
-    for (final entry in overlayImages.entries) {
-      overlayNow[entry.key] = entry.value;
-      if (!identical(cacheState.lastOverlayTokens[entry.key], entry.value)) {
-        add(rectOf(entry.key));
-      }
-    }
-    // A coordinate the overlay LEFT has to lose its ink (pen-up, reset).
-    for (final coord in cacheState.lastOverlayTokens.keys) {
-      if (!overlayNow.containsKey(coord)) {
-        add(rectOf(coord as TileCoord));
-      }
+    final overlayNow = <TileCoord, Object>{
+      ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
+    };
+    for (final coord in _movedCoords(
+      cacheState.lastOverlayTokens,
+      overlayNow,
+    )) {
+      add(rectOf(coord));
     }
     cacheState.lastOverlayTokens = overlayNow;
     // Committed tiles: a commit replaces the tile, and a decode replaces its
     // image. Both are identity changes on the same coordinate.
     final cache = surfacePainter.tileImageCache;
-    final seen = <TileCoord, Object>{};
-    for (final entry in surfacePainter.surface.tiles.entries) {
-      final token = cache.imageFor(entry.value) ?? entry.value;
-      seen[entry.key] = token;
-      if (!identical(cacheState.lastTileTokens[entry.key], token)) {
-        add(rectOf(entry.key));
-      }
-    }
-    for (final coord in cacheState.lastTileTokens.keys) {
-      if (!seen.containsKey(coord)) {
-        add(rectOf(coord as TileCoord));
-      }
+    final seen = <TileCoord, Object>{
+      for (final entry in surfacePainter.surface.tiles.entries)
+        entry.key: cache.imageFor(entry.value) ?? entry.value,
+    };
+    for (final coord in _movedCoords(cacheState.lastTileTokens, seen)) {
+      add(rectOf(coord));
     }
     final hadTokens = cacheState.lastTileTokens.isNotEmpty;
     cacheState.lastTileTokens = seen;
@@ -1635,6 +1631,27 @@ class _LayerStackPainter extends CustomPainter {
     return (located: true, dirty: dirty?.inflate(1));
   }
 
+  /// Everything the composite depends on that the bake's key does not
+  /// already carry — or null when this stack must not be cached at all.
+  ///
+  /// 🚨The bake deliberately leaves the live surface out: it never records
+  /// it, so a stroke step cannot stale a recording. The BUFFER holds the
+  /// live surface, so it needs every way that surface's pixels can move:
+  ///
+  ///  * the committed tiles, by identity — `BitmapSurface` is immutable, so
+  ///    an edit is a new instance;
+  ///  * their DECODED images, because a decode ARRIVING changes the screen
+  ///    while the tile it came from never moved;
+  ///  * the overlay's tile images and its stamp, by identity, which is how
+  ///    an in-flight stroke reaches the canvas at all;
+  ///  * the stand-in and settling passes, which redraw on their own clock.
+  ///
+  /// ⛔And null when the painter says it draws from state it does not
+  /// publish ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
+  /// comparison here can be right, so nothing is kept. That is the same
+  /// question the tiled buffer had to ask, and the answer that makes a
+  /// cache honest: ask the thing you are caching where it changed, and do
+  /// not cache what cannot say.
   Object? _bufferKey() {
     // ⛔A FLOATING SELECTION IS DRAWN INSIDE THIS BUFFER and moves under the
     // hand without touching anything else the key can see, so while one
