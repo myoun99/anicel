@@ -20,7 +20,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// ceiling is the refined scan's count for this tree (the same scan gave
 /// 673 at the round-2 commit that set 2157).
 void main() {
-  const ceiling = 671;
+  const ceiling = 660;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
