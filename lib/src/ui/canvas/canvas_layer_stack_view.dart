@@ -606,6 +606,25 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     labProbe('layerStackSyncSweep(${widget.layers.length})', _syncSweepBody);
   }
 
+  /// Holds [image] for [key] unless it is the one already held — the pin,
+  /// the clone and the revision together — and says whether the held set
+  /// changed. The sync sweep and the async pass both adopt through here.
+  bool _adoptImage(BrushFrameKey key, LayerFrameImage image, int? revision) {
+    final held = _images[key];
+    if (held != null && identical(held.source, image.image)) {
+      return false;
+    }
+    if (held != null) _dropImage(key, held);
+    widget.imageCache.retainPin(key, PlaybackQuality.full);
+    _holdImage(key, (
+      source: image.image,
+      clone: image.image.clone(),
+      worldRect: image.worldRect,
+      revision: revision,
+    ));
+    return true;
+  }
+
   void _syncSweepBody() {
     final wanted = <BrushFrameKey>{
       for (final layer in widget.layers) layer.frameKey,
@@ -686,18 +705,61 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         }
         continue;
       }
-      final held = _images[layer.frameKey];
-      if (held == null || !identical(held.source, image.image)) {
-        if (held != null) _dropImage(layer.frameKey, held);
-        widget.imageCache.retainPin(layer.frameKey, PlaybackQuality.full);
-        _holdImage(layer.frameKey, (
-          source: image.image,
-          clone: image.image.clone(),
-          worldRect: image.worldRect,
-          revision: revision,
-        ));
-      }
+      _adoptImage(layer.frameKey, image, revision);
     }
+  }
+
+  /// 🚨ONE ROW'S FAILURE IS ONE ROW'S. This walk is serial and the
+  /// future it runs in is nobody's to await, so a throw here used
+  /// to abandon the whole pass: every LATER layer's prepare was
+  /// never called, and nothing said so. What the user sees is a
+  /// stack where the first rows are drawn and the rest are blank
+  /// until something happens to rebuild past the bad one — and
+  /// which rows those are moves with the walk order.
+  ///
+  /// The prepare reaches STORAGE: a file-backed cel whose .anicel
+  /// has moved throws from inside this call. That is a reason for
+  /// one row to be missing, never a reason to stop drawing the
+  /// others.
+  /// Null when the view unmounted mid-await; else whether the held
+  /// image for [layer] changed.
+  Future<bool?> _refreshLayerImage(CanvasLayerImageRequest layer) async {
+    if (_shouldSkipFailed(layer.frameKey)) {
+      return false;
+    }
+    // Read BEFORE the await — see the sync twin for why the order is
+    // the law and not a detail.
+    final revision = _revisionOf(layer.frameKey);
+    final LayerFrameImage? image;
+    try {
+      image = await widget.imageCache.prepare(
+        key: layer.frameKey,
+        canvasSize: widget.canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: layer.sourceEffects,
+      );
+    } on Object catch (error, stack) {
+      if (!mounted) {
+        return null;
+      }
+      _noteFailure(layer.frameKey, error, stack, 'async pass');
+      return false;
+    }
+    // Same as the sync twin: a success retires the note.
+    _failedRevisions.remove(layer.frameKey);
+    if (!mounted) {
+      return null;
+    }
+    final held = _images[layer.frameKey];
+    if (image == null) {
+      if (held != null) {
+        _dropImage(layer.frameKey, held);
+        _images.remove(layer.frameKey);
+        return true;
+      }
+      return false;
+    }
+    return _adoptImage(layer.frameKey, image, revision);
   }
 
   Future<void> _ensureImages() async {
@@ -715,67 +777,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         final wanted = <BrushFrameKey>{};
         for (final layer in List.of(widget.layers)) {
           wanted.add(layer.frameKey);
-          // 🚨ONE ROW'S FAILURE IS ONE ROW'S. This walk is serial and the
-          // future it runs in is nobody's to await, so a throw here used
-          // to abandon the whole pass: every LATER layer's prepare was
-          // never called, and nothing said so. What the user sees is a
-          // stack where the first rows are drawn and the rest are blank
-          // until something happens to rebuild past the bad one — and
-          // which rows those are moves with the walk order.
-          //
-          // The prepare reaches STORAGE: a file-backed cel whose .anicel
-          // has moved throws from inside this call. That is a reason for
-          // one row to be missing, never a reason to stop drawing the
-          // others.
-          if (_shouldSkipFailed(layer.frameKey)) {
-            continue;
-          }
-          // Read BEFORE the await — see the sync twin for why the order is
-          // the law and not a detail.
-          final revision = _revisionOf(layer.frameKey);
-          final LayerFrameImage? image;
-          try {
-            image = await widget.imageCache.prepare(
-              key: layer.frameKey,
-              canvasSize: widget.canvasSize,
-              quality: PlaybackQuality.full,
-              sourceEffects: layer.sourceEffects,
-            );
-          } on Object catch (error, stack) {
-            if (!mounted) {
-              return;
-            }
-            _noteFailure(layer.frameKey, error, stack, 'async pass');
-            continue;
-          }
-          // Same as the sync twin: a success retires the note.
-          _failedRevisions.remove(layer.frameKey);
-          if (!mounted) {
+          final refreshed = await _refreshLayerImage(layer);
+          if (refreshed == null) {
             return;
           }
-          final held = _images[layer.frameKey];
-          if (image == null) {
-            if (held != null) {
-              _dropImage(layer.frameKey, held);
-              _images.remove(layer.frameKey);
-              changed = true;
-            }
-            continue;
-          }
-          if (held == null || !identical(held.source, image.image)) {
-            if (held != null) _dropImage(layer.frameKey, held);
-            widget.imageCache.retainPin(
-              layer.frameKey,
-              PlaybackQuality.full,
-            );
-            _holdImage(layer.frameKey, (
-              source: image.image,
-              clone: image.image.clone(),
-              worldRect: image.worldRect,
-              revision: revision,
-            ));
-            changed = true;
-          }
+          changed = changed || refreshed;
         }
         final standInHold = _activeStandIn?.frameKey;
         if (standInHold != null) {
