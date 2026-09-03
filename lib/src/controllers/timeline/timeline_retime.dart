@@ -49,19 +49,7 @@ class _TimelineRetime {
       return null;
     }
 
-    var prevOldEnd = blocks[firstRetimed].endIndexExclusive;
-    var prevNewEnd = newStarts[firstRetimed] + newLengths[firstRetimed];
-    for (var i = firstRetimed + 1; i < blocks.length; i += 1) {
-      final block = blocks[i];
-      final glued = block.startIndex == prevOldEnd;
-      var start = glued ? prevNewEnd : block.startIndex;
-      if (start < prevNewEnd) {
-        start = prevNewEnd;
-      }
-      newStarts[i] = start;
-      prevOldEnd = block.endIndexExclusive;
-      prevNewEnd = start + newLengths[i];
-    }
+    _relayBlocksAfter(blocks, newStarts, newLengths, firstRetimed);
 
     final next = SplayTreeMap<int, TimelineExposure>();
     for (var i = 0; i < blocks.length; i += 1) {
@@ -199,5 +187,30 @@ class _TimelineRetime {
       }
     }
     _controller._executeCommands(commands, description: description);
+  }
+}
+
+/// Re-lays the blocks after [from] once its start or length changed: a
+/// block glued to its predecessor's OLD end follows the NEW end, any other
+/// keeps its start unless the new end pushes it. The one law the comma
+/// edge and the retime move neighbours by — each used to spell it.
+void _relayBlocksAfter(
+  List<TimelineDrawingBlock> blocks,
+  List<int> newStarts,
+  List<int> newLengths,
+  int from,
+) {
+  var prevOldEnd = blocks[from].endIndexExclusive;
+  var prevNewEnd = newStarts[from] + newLengths[from];
+  for (var i = from + 1; i < blocks.length; i += 1) {
+    final block = blocks[i];
+    final glued = block.startIndex == prevOldEnd;
+    var start = glued ? prevNewEnd : block.startIndex;
+    if (start < prevNewEnd) {
+      start = prevNewEnd;
+    }
+    newStarts[i] = start;
+    prevOldEnd = block.endIndexExclusive;
+    prevNewEnd = start + newLengths[i];
   }
 }

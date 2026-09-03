@@ -161,19 +161,7 @@ class _TimelineExposureEdge {
     // Ripple following blocks (end-edge resizes and front shrinks change
     // where the target ends; contact rules: glued blocks stay glued,
     // separated blocks move only when overlapped).
-    var prevOldEnd = target.endIndexExclusive;
-    var prevNewEnd = newStarts[targetIndex] + newLengths[targetIndex];
-    for (var i = targetIndex + 1; i < blocks.length; i += 1) {
-      final block = blocks[i];
-      final glued = block.startIndex == prevOldEnd;
-      var start = glued ? prevNewEnd : block.startIndex;
-      if (start < prevNewEnd) {
-        start = prevNewEnd;
-      }
-      newStarts[i] = start;
-      prevOldEnd = block.endIndexExclusive;
-      prevNewEnd = start + block.length;
-    }
+    _relayBlocksAfter(blocks, newStarts, newLengths, targetIndex);
 
     // Ripple preceding blocks (start-edge moves): mirror of the above.
     var nextOldStart = target.startIndex;
