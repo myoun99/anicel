@@ -247,6 +247,44 @@ class _FrameRangeMoveDrag {
       return false;
     }
     _rangeMoveTrackSelectionBefore = live;
+    final (:sources, :instructionSources) = _castTrackSources(live);
+    if (sources.isEmpty && instructionSources.isEmpty) {
+      return false;
+    }
+    _rangeMoveGrabLayerId = grabLayerId;
+    _rangeMoveSourceBefore = null;
+    _rangeMoveGroupStart = null;
+    _rangeMovePlan = null;
+    _rangeMoveMultiPlans = null;
+    _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
+    _rangeMoveCameraBefore = null;
+    _rangeMoveCameraLayerId = null;
+    _rangeMoveInstructionSources = instructionSources.isEmpty
+        ? null
+        : instructionSources;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
+    _rangeMoveMultiSources = sources;
+    _rangeMoveSelectionBefore = _rangeMoveSelection;
+    return _rangeMoveSelectionBefore != null;
+  }
+
+  /// Whether [block] is a real (non-ghost) block lying WHOLE inside
+  /// [start, endExclusive) — the one rule every begin uses to decide which
+  /// rows carry something to move (the cross-layer slide's rule, UI-R18 #1).
+  bool _wholeBlockIn(TimelineDrawingBlock block, int start, int endExclusive) =>
+      !block.entry.ghost &&
+      block.startIndex >= start &&
+      block.endIndexExclusive <= endExclusive;
+
+  /// The rows of [live] that source a move on the track axis — one COMMIT
+  /// form per owning layer that carries a whole block inside the range —
+  /// and the transition row's spans as instruction sources.
+  ({List<({Layer commit, int offset})> sources, List<Layer> instructionSources})
+  _castTrackSources(TrackFrameRangeSelection live) {
     final sources = <({Layer commit, int offset})>[];
     // C1 (2026-08-17): the TRANSITION row is a movable subject on THIS
     // axis — its spans live global, and this rail is their one author
@@ -286,36 +324,13 @@ class _FrameRangeMoveDrag {
       // — the cross-layer slide's rule, unchanged.
       final hasBlock = drawingBlocks(commit.timeline).any(
         (block) =>
-            !block.entry.ghost &&
-            block.startIndex >= live.startFrame &&
-            block.endIndexExclusive <= live.endFrameExclusive,
+            _wholeBlockIn(block, live.startFrame, live.endFrameExclusive),
       );
       if (hasBlock) {
         sources.add((commit: commit, offset: 0));
       }
     }
-    if (sources.isEmpty && instructionSources.isEmpty) {
-      return false;
-    }
-    _rangeMoveGrabLayerId = grabLayerId;
-    _rangeMoveSourceBefore = null;
-    _rangeMoveGroupStart = null;
-    _rangeMovePlan = null;
-    _rangeMoveMultiPlans = null;
-    _rangeMoveMultiRowPlan = null;
-    _rangeMoveMultiSeRowChanges = null;
-    _rangeMoveCameraBefore = null;
-    _rangeMoveCameraLayerId = null;
-    _rangeMoveInstructionSources = instructionSources.isEmpty
-        ? null
-        : instructionSources;
-    _rangeMoveCameraShifted = null;
-    _rangeMoveInstructionShifted = null;
-    _rangeMoveSeRowChange = null;
-    _rangeMoveInstructionRowChange = null;
-    _rangeMoveMultiSources = sources;
-    _rangeMoveSelectionBefore = _rangeMoveSelection;
-    return _rangeMoveSelectionBefore != null;
+    return (sources: sources, instructionSources: instructionSources);
   }
 
   bool beginFrameRangeMoveDrag([LayerId? grabLayerId]) {
@@ -421,10 +436,11 @@ class _FrameRangeMoveDrag {
         continue;
       }
       final hasBlock = drawingBlocks(display.timeline).any(
-        (block) =>
-            !block.entry.ghost &&
-            block.startIndex >= selection.startIndex &&
-            block.endIndexExclusive <= selection.endIndexExclusive,
+        (block) => _wholeBlockIn(
+          block,
+          selection.startIndex,
+          selection.endIndexExclusive,
+        ),
       );
       if (hasBlock) {
         sources.add((
@@ -473,11 +489,11 @@ class _FrameRangeMoveDrag {
     }
     int? groupStart;
     for (final block in drawingBlocks(layer.timeline)) {
-      if (block.entry.ghost) {
-        continue;
-      }
-      if (block.startIndex >= selection.startIndex &&
-          block.endIndexExclusive <= selection.endIndexExclusive) {
+      if (_wholeBlockIn(
+        block,
+        selection.startIndex,
+        selection.endIndexExclusive,
+      )) {
         groupStart = block.startIndex;
         break;
       }
@@ -766,9 +782,20 @@ class _FrameRangeMoveDrag {
       riders.camera,
       riders.instructions,
     );
-    // The outline rides the rigid shift to the target rows (rows that
-    // carried nothing — off the lattice or shifted off it — drop out of
-    // the outline; only the moved frames' landings read selected).
+    _landMultiRowOutline(step, targetLayerId, frameDelta, rowDelta);
+    return true;
+  }
+
+  /// The outline rides the rigid shift to the target rows (rows that
+  /// carried nothing — off the lattice or shifted off it — drop out of
+  /// the outline; only the moved frames' landings read selected).
+  void _landMultiRowOutline(
+    _MultiRowStep step,
+    LayerId targetLayerId,
+    int frameDelta,
+    int rowDelta,
+  ) {
+    final selection = step.selection;
     final landedLayerIds = _landedLayerIds(
       step.lattices.lattice,
       step.lattices.seLattice,
@@ -784,7 +811,6 @@ class _FrameRangeMoveDrag {
         layerIds: landedLayerIds,
       );
     }
-    return true;
   }
 
   /// The span sorted by what each row can DO with the hop, or null when a
@@ -1317,37 +1343,11 @@ class _FrameRangeMoveDrag {
     // them fresh below.
     _rangeMoveCameraShifted = null;
     _rangeMoveInstructionShifted = null;
-    // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
-    // frame delta on itself; any illegal landing HOLDS the last valid
-    // preview (all-or-nothing, the single-layer discipline). KEY
-    // sources (P3b-2) join the same contract: camera keys and
-    // instruction spans shift by the same delta or the whole move
-    // voids.
-    var illegal = false;
-    final plans = <DrawingBlockMovePlan>[];
-    for (final source in multiSources) {
-      final plan = planDrawingRangeMove(
-        source: source.commit,
-        target: source.commit,
-        rangeStartIndex: selection.startIndex + source.offset,
-        rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
-        frameDelta: frameDelta,
-        cutFrameCount: _session._activeCutFrameCount,
-      );
-      if (plan == null) {
-        illegal = true;
-        plans.clear();
-        break;
-      }
-      plans.add(plan);
-    }
-    if (multiSources.isEmpty && frameDelta == 0) {
-      illegal = true;
-    }
-    final riders = illegal
+    final plans = _planSlide(multiSources, selection, frameDelta);
+    final riders = plans == null
         ? null
         : _shiftFrameAxisRiders(selection, frameDelta);
-    if (riders == null) {
+    if (plans == null || riders == null) {
       // UI-R23 #10: a blocked landing HOLDS the last valid preview,
       // outline and stored plans — no snap-back to the origin.
       return;
@@ -1359,6 +1359,85 @@ class _FrameRangeMoveDrag {
     _rangeMoveInstructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
+    _publishSlidePreview(plans, riders);
+    final newStart = selection.startIndex + frameDelta;
+    if (newStart >= 0) {
+      _rangeMoveSelection = TimelineFrameRangeSelection(
+        layerId: selection.layerId,
+        startIndex: newStart,
+        endIndexExclusive: selection.endIndexExclusive + frameDelta,
+        layerIds: selection.layerIds,
+      );
+    }
+    return;
+  }
+
+  /// Forgets the drag — every stored source, plan and rider shift — and
+  /// clears the preview channels it published to. The end and the cancel
+  /// both forget through here (they were two copies of this list).
+  void _clearRangeMoveState() {
+    _rangeMoveSourceBefore = null;
+    _rangeMoveSelectionBefore = null;
+    _rangeMoveGrabLayerId = null;
+    _rangeMoveGroupStart = null;
+    _rangeMovePlan = null;
+    _rangeMoveMultiSources = null;
+    _rangeMoveMultiPlans = null;
+    _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
+    _rangeMoveCameraBefore = null;
+    _rangeMoveCameraLayerId = null;
+    _rangeMoveInstructionSources = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
+    _session._camera._cameraKeysDragPreview = null;
+    _session.dragPreview.value = null;
+    _session.transitionEdgeDragPreview.value = null;
+  }
+
+  /// Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
+  /// frame delta on itself; any illegal landing HOLDS the last valid
+  /// preview (all-or-nothing, the single-layer discipline). KEY
+  /// sources (P3b-2) join the same contract: camera keys and
+  /// instruction spans shift by the same delta or the whole move
+  /// voids.
+  List<DrawingBlockMovePlan>? _planSlide(
+    List<({Layer commit, int offset})> multiSources,
+    TimelineFrameRangeSelection selection,
+    int frameDelta,
+  ) {
+    if (multiSources.isEmpty && frameDelta == 0) {
+      return null;
+    }
+    final plans = <DrawingBlockMovePlan>[];
+    for (final source in multiSources) {
+      final plan = planDrawingRangeMove(
+        source: source.commit,
+        target: source.commit,
+        rangeStartIndex: selection.startIndex + source.offset,
+        rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
+        frameDelta: frameDelta,
+        cutFrameCount: _session._activeCutFrameCount,
+      );
+      if (plan == null) {
+        return null;
+      }
+      plans.add(plan);
+    }
+    return plans;
+  }
+
+  /// Publishes a valid slide step: every plan's commit form (windowed for
+  /// the track-SE rows), the shifted instruction rows, the camera keys on
+  /// their own channel, and the transition on its own.
+  void _publishSlidePreview(
+    List<DrawingBlockMovePlan> plans,
+    _FrameAxisRiders riders,
+  ) {
+    final cameraShifted = riders.camera;
+    final instructionShifted = riders.instructions;
     _session._camera._cameraKeysDragPreview = cameraShifted;
     final cameraMarker = cameraShifted == null
         ? null
@@ -1411,41 +1490,6 @@ class _FrameRangeMoveDrag {
     // channel — the SAME one its edge drags publish to, which is what
     // the storyboard's transition strip already renders live.
     _publishRangeMoveTransitionPreview(instructionShifted);
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: selection.layerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        layerIds: selection.layerIds,
-      );
-    }
-    return;
-  }
-
-  /// Forgets the drag — every stored source, plan and rider shift — and
-  /// clears the preview channels it published to. The end and the cancel
-  /// both forget through here (they were two copies of this list).
-  void _clearRangeMoveState() {
-    _rangeMoveSourceBefore = null;
-    _rangeMoveSelectionBefore = null;
-    _rangeMoveGrabLayerId = null;
-    _rangeMoveGroupStart = null;
-    _rangeMovePlan = null;
-    _rangeMoveMultiSources = null;
-    _rangeMoveMultiPlans = null;
-    _rangeMoveMultiRowPlan = null;
-    _rangeMoveMultiSeRowChanges = null;
-    _rangeMoveCameraBefore = null;
-    _rangeMoveCameraLayerId = null;
-    _rangeMoveInstructionSources = null;
-    _rangeMoveCameraShifted = null;
-    _rangeMoveInstructionShifted = null;
-    _rangeMoveSeRowChange = null;
-    _rangeMoveInstructionRowChange = null;
-    _session._camera._cameraKeysDragPreview = null;
-    _session.dragPreview.value = null;
-    _session.transitionEdgeDragPreview.value = null;
   }
 
   /// Commits the range move as ONE undo step (layer updates + the brush
