@@ -295,4 +295,60 @@ void main() {
     s.undo();
     expect(layerOf(s, layerId).timeline[1]!.length, cutEnd - 1);
   });
+
+  test('a setting replaces ONLY its own (run, side) — the other edge and '
+      'the other run keep theirs', () {
+    // Two runs, four edges. The case above re-sets one edge of one run, so
+    // a replacement that took out the opposite side, or another run's
+    // behaviour, looked exactly the same (the run-edge split's surviving
+    // mutants, 2026-09-04).
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final layerId = s.activeLayer!.id;
+    for (final frame in [0, 4]) {
+      s.selectFrameIndex(frame);
+      s.createDrawingAtCurrentFrame();
+    }
+    for (final start in [0, 4]) {
+      for (final side in TimelineRunEdgeSide.values) {
+        s.setRunEdgeBehavior(
+          layerId: layerId,
+          blockStartIndex: start,
+          side: side,
+          mode: TimelineRunEdgeMode.hold,
+        );
+      }
+    }
+    expect(
+      layerOf(s, layerId).runBehaviors,
+      hasLength(4),
+      reason: 'engagement first: two runs, both edges each',
+    );
+
+    // Re-set ONE of them. The other three are untouched.
+    s.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.repeat,
+    );
+    final after = layerOf(s, layerId).runBehaviors;
+    expect(
+      after,
+      hasLength(4),
+      reason:
+          'a setting replaces one behaviour, it does not clear others — '
+          'ignoring the SIDE takes out the opposite edge, and ignoring the '
+          'RUN takes out the other run',
+    );
+    expect(
+      after.where((b) => b.mode == TimelineRunEdgeMode.repeat),
+      hasLength(1),
+      reason: 'exactly the one that was re-set',
+    );
+    expect(
+      after.where((b) => b.mode == TimelineRunEdgeMode.hold),
+      hasLength(3),
+    );
+  });
 }
