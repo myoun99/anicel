@@ -1920,6 +1920,10 @@ class _FrameRangeMoveDrag {
     return edgeAnchor;
   }
 
+  /// The pattern anchor a Repeat edge takes from the frame-range selection
+  /// (UI-R19 #2, "Repeat selection"): null unless the mode is Repeat, the
+  /// flyout asked for the selection, and the selection sits on this row and
+  /// covers the run's edge block.
   FrameId? _repeatPatternAnchor(
     TimelineRunEdgeMode? mode,
     bool scopeToSelection,
@@ -1928,36 +1932,69 @@ class _FrameRangeMoveDrag {
     ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
     Layer before,
   ) {
-    FrameId? patternAnchor;
-    if (mode == TimelineRunEdgeMode.repeat && scopeToSelection) {
-      final selection = _session.frameRangeSelection.value;
-      if (selection != null && selection.layerId == layerId) {
-        if (side == TimelineRunEdgeSide.end &&
-            selection.contains(run.endIndexExclusive - 1) &&
-            selection.startIndex > run.startIndex) {
-          // Pattern = first block at/after the selection start → run end.
-          for (final entry in before.timeline.entries) {
-            if (!entry.value.ghost &&
-                entry.key >= selection.startIndex &&
-                entry.key < run.endIndexExclusive) {
-              patternAnchor = entry.value.frameId;
-              break;
-            }
-          }
-        } else if (side == TimelineRunEdgeSide.start &&
-            selection.contains(run.startIndex) &&
-            selection.endIndexExclusive < run.endIndexExclusive) {
-          // Pattern = run start → the last block ending by the selection.
-          for (final entry in before.timeline.entries) {
-            if (entry.value.ghost ||
-                entry.key < run.startIndex ||
-                entry.key >= selection.endIndexExclusive) {
-              continue;
-            }
-            patternAnchor = entry.value.frameId;
-          }
-        }
+    if (mode != TimelineRunEdgeMode.repeat || !scopeToSelection) {
+      return null;
+    }
+    final selection = _session.frameRangeSelection.value;
+    if (selection == null || selection.layerId != layerId) {
+      return null;
+    }
+    return switch (side) {
+      TimelineRunEdgeSide.end => _patternFromSelectionStart(
+        selection,
+        run,
+        before,
+      ),
+      TimelineRunEdgeSide.start => _patternToSelectionEnd(
+        selection,
+        run,
+        before,
+      ),
+    };
+  }
+
+  /// End side: the pattern runs from the first block at/after the selection
+  /// start to the run's end — when the selection covers the run's last
+  /// block and starts inside the run.
+  FrameId? _patternFromSelectionStart(
+    TimelineFrameRangeSelection selection,
+    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
+    Layer before,
+  ) {
+    if (!selection.contains(run.endIndexExclusive - 1) ||
+        selection.startIndex <= run.startIndex) {
+      return null;
+    }
+    for (final entry in before.timeline.entries) {
+      if (!entry.value.ghost &&
+          entry.key >= selection.startIndex &&
+          entry.key < run.endIndexExclusive) {
+        return entry.value.frameId;
       }
+    }
+    return null;
+  }
+
+  /// Start side: the pattern runs from the run's start to the last block
+  /// ending by the selection's end — when the selection covers the run's
+  /// first block and ends inside the run.
+  FrameId? _patternToSelectionEnd(
+    TimelineFrameRangeSelection selection,
+    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
+    Layer before,
+  ) {
+    if (!selection.contains(run.startIndex) ||
+        selection.endIndexExclusive >= run.endIndexExclusive) {
+      return null;
+    }
+    FrameId? patternAnchor;
+    for (final entry in before.timeline.entries) {
+      if (entry.value.ghost ||
+          entry.key < run.startIndex ||
+          entry.key >= selection.endIndexExclusive) {
+        continue;
+      }
+      patternAnchor = entry.value.frameId;
     }
     return patternAnchor;
   }
