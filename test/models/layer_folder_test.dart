@@ -116,6 +116,17 @@ void main() {
       );
     });
 
+    test('a folder row listed twice is reported before anything else', () {
+      expect(
+        folderStructureProblem([
+          cel('m', folderId: 'a'),
+          folder('a'),
+          folder('a'),
+        ]),
+        contains('Duplicate folder row'),
+      );
+    });
+
     test('attach folders: a pure organizer and the shared outer folder '
         'pass; a folder mixing attach rows with other rows is reported', () {
       Layer attach(String id, {required String base, String? folderId}) =>

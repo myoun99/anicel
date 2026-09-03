@@ -1,5 +1,47 @@
 part of '../editor_session_manager.dart';
 
+/// The rows a rigid multi-row step can hop across: the display rows the
+/// pointer travels, the drawing lattice and the track-SE lattice.
+typedef _MultiRowLattices = ({
+  List<Layer> rows,
+  List<Layer> lattice,
+  List<Layer> seLattice,
+});
+
+/// A multi-row span sorted by what each row can DO with a hop: the rows
+/// that travel the drawing lattice, and the track-SE rows riding theirs.
+typedef _MultiRowSpanCast = ({
+  List<LayerId> drawingSourceIds,
+  List<LayerId> sePassengerIds,
+});
+
+/// One rigid multi-row drag step's subjects, read once per step.
+typedef _MultiRowStep = ({
+  TimelineFrameRangeSelection selection,
+  _MultiRowSpanCast cast,
+  _MultiRowLattices lattices,
+});
+
+/// The frame-axis riders shifted with a move: the camera keys (null when
+/// no camera row rides) and each instruction source's events by row.
+typedef _FrameAxisRiders = ({
+  Map<int, CameraPose>? camera,
+  Map<LayerId, Map<int, InstructionEvent>> instructions,
+});
+
+/// No rider moves: a PURE row hop (frameDelta 0) leaves every key where
+/// it is, so the riders simply hold.
+const _FrameAxisRiders _noRiders = (camera: null, instructions: {});
+
+/// The KEY sources a frame-range move carries (P3b-2): the camera keys
+/// (with the camera row's id) and the instruction rows that own spans in
+/// the range.
+typedef _KeySources = ({
+  Map<int, CameraPose>? cameraBefore,
+  LayerId? cameraLayerId,
+  List<Layer> instructionSources,
+});
+
 /// The frame-range MOVE DRAG — a selection of cells picked up and put
 /// down on the frame axis, previewed live and committed once — as its
 /// own object: its state (what was picked up, the plans, the previews)
@@ -298,11 +340,25 @@ class _FrameRangeMoveDrag {
     _rangeMoveInstructionShifted = null;
     _rangeMoveSeRowChange = null;
     _rangeMoveInstructionRowChange = null;
-    // KEY sources (P3b-2, #2 second half): camera keys, instruction
-    // spans AND the layers' own transform-track keys (P3c, #13) inside
-    // the selection move with the blocks — same delta, one rigid group.
-    // SYNCED attach mirrors stay PASSENGERS (P3b-1): the base's slide
-    // carries them by derivation.
+    final keys = _castKeySources(selection);
+    // Multi-layer spans, SE rows and KEY sources route through the
+    // frame-axis slide (UI-R18 #1): per-layer plans on the COMMIT forms;
+    // row-change drops stay the single-anim path below.
+    if (selection.spanLayerIds.length > 1 ||
+        _session.isTrackSeLayerId(selection.layerId) ||
+        keys.cameraBefore != null ||
+        keys.instructionSources.isNotEmpty) {
+      return _beginMultiSourceRangeMove(selection, keys);
+    }
+    return _beginSingleRowRangeMove(selection);
+  }
+
+  /// KEY sources (P3b-2, #2 second half): camera keys, instruction
+  /// spans AND the layers' own transform-track keys (P3c, #13) inside
+  /// the selection move with the blocks — same delta, one rigid group.
+  /// SYNCED attach mirrors stay PASSENGERS (P3b-1): the base's slide
+  /// carries them by derivation.
+  _KeySources _castKeySources(TimelineFrameRangeSelection selection) {
     Map<int, CameraPose>? cameraBefore;
     LayerId? cameraLayerId;
     final instructionSources = <Layer>[];
@@ -332,60 +388,73 @@ class _FrameRangeMoveDrag {
       // selection domain; camera keys and instruction spans (a camera /
       // instruction row's OWN content) still ride below.
     }
-    // Multi-layer spans, SE rows and KEY sources route through the
-    // frame-axis slide (UI-R18 #1): per-layer plans on the COMMIT forms;
-    // row-change drops stay the single-anim path below.
-    if (selection.spanLayerIds.length > 1 ||
-        _session.isTrackSeLayerId(selection.layerId) ||
-        cameraBefore != null ||
-        instructionSources.isNotEmpty) {
-      final sources = <({Layer commit, int offset})>[];
-      for (final id in selection.spanLayerIds) {
-        // SYNCED attach rows never source a move (their commit form owns
-        // no timing) — they stay PASSENGERS, carried by the base's slide
-        // through derivation. Id-gated: the synced-block UI stopped
-        // marking mirror entries ghost, so the block filter below no
-        // longer excludes them. SINGLE-CEL (image) rows stand down too:
-        // their covering block is pinned by the write normalization.
-        if (_session._folders.isSyncedAttachedLayerId(id) ||
-            _session._isSingleCelLayerId(id)) {
-          continue;
-        }
-        final display = _session._rangeLayerById(id);
-        final commit = _session._commitLayerById(id);
-        if (display == null || commit == null) {
-          continue;
-        }
-        final hasBlock = drawingBlocks(display.timeline).any(
-          (block) =>
-              !block.entry.ghost &&
-              block.startIndex >= selection.startIndex &&
-              block.endIndexExclusive <= selection.endIndexExclusive,
-        );
-        if (hasBlock) {
-          sources.add((
-            commit: commit,
-            offset: _rangeMoveCommitOffset(id, selection.startIndex),
-          ));
-        }
+    return (
+      cameraBefore: cameraBefore,
+      cameraLayerId: cameraLayerId,
+      instructionSources: instructionSources,
+    );
+  }
+
+  /// Begins the frame-axis slide (UI-R18 #1) for a multi-layer span, an
+  /// SE row or a span carrying KEY sources: every eligible row's COMMIT
+  /// form becomes a source, planned with the same delta as one rigid
+  /// group.
+  bool _beginMultiSourceRangeMove(
+    TimelineFrameRangeSelection selection,
+    _KeySources keys,
+  ) {
+    final sources = <({Layer commit, int offset})>[];
+    for (final id in selection.spanLayerIds) {
+      // SYNCED attach rows never source a move (their commit form owns
+      // no timing) — they stay PASSENGERS, carried by the base's slide
+      // through derivation. Id-gated: the synced-block UI stopped
+      // marking mirror entries ghost, so the block filter below no
+      // longer excludes them. SINGLE-CEL (image) rows stand down too:
+      // their covering block is pinned by the write normalization.
+      if (_session._folders.isSyncedAttachedLayerId(id) ||
+          _session._isSingleCelLayerId(id)) {
+        continue;
       }
-      if (sources.isEmpty &&
-          cameraBefore == null &&
-          instructionSources.isEmpty) {
-        // An all-synced span dies here — say why at the cursor, like the
-        // single-row path does.
-        _session._folders._noticeSyncedAttachRefusal(selection.layerId);
-        return false;
+      final display = _session._rangeLayerById(id);
+      final commit = _session._commitLayerById(id);
+      if (display == null || commit == null) {
+        continue;
       }
-      _rangeMoveMultiSources = sources;
-      _rangeMoveCameraBefore = cameraBefore;
-      _rangeMoveCameraLayerId = cameraLayerId;
-      _rangeMoveInstructionSources = instructionSources.isEmpty
-          ? null
-          : instructionSources;
-      _rangeMoveSelectionBefore = selection;
-      return true;
+      final hasBlock = drawingBlocks(display.timeline).any(
+        (block) =>
+            !block.entry.ghost &&
+            block.startIndex >= selection.startIndex &&
+            block.endIndexExclusive <= selection.endIndexExclusive,
+      );
+      if (hasBlock) {
+        sources.add((
+          commit: commit,
+          offset: _rangeMoveCommitOffset(id, selection.startIndex),
+        ));
+      }
     }
+    if (sources.isEmpty &&
+        keys.cameraBefore == null &&
+        keys.instructionSources.isEmpty) {
+      // An all-synced span dies here — say why at the cursor, like the
+      // single-row path does.
+      _session._folders._noticeSyncedAttachRefusal(selection.layerId);
+      return false;
+    }
+    _rangeMoveMultiSources = sources;
+    _rangeMoveCameraBefore = keys.cameraBefore;
+    _rangeMoveCameraLayerId = keys.cameraLayerId;
+    _rangeMoveInstructionSources = keys.instructionSources.isEmpty
+        ? null
+        : keys.instructionSources;
+    _rangeMoveSelectionBefore = selection;
+    return true;
+  }
+
+  /// Begins the single-row move: the row's first whole block inside the
+  /// selection anchors the group; nothing but empty cells means nothing
+  /// to move.
+  bool _beginSingleRowRangeMove(TimelineFrameRangeSelection selection) {
     // A SYNCED attach row's blocks are borrowed exposures — the move
     // refuses with the "edit the owner" pill (the synced-block UI made
     // the row look grabbable; before it, the all-ghost timeline fell out
@@ -657,28 +726,90 @@ class _FrameRangeMoveDrag {
     if (selection.spanLayerIds.length <= 1) {
       return false;
     }
-    bool anyKeyIn(Iterable<int> keys) => keys.any(
-      (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
+    final cast = _castMultiRowSpan(selection);
+    if (cast == null) {
+      return false;
+    }
+    final step = (
+      selection: selection,
+      cast: cast,
+      lattices: _multiRowLattices(),
     );
+    final hop = _agreedRowHop(step, targetLayerId);
+    final rowDelta = hop.rowDelta;
+    if (rowDelta == null) {
+      return hop.holds;
+    }
+    final landing = _planMultiRowLanding(step, frameDelta, rowDelta);
+    if (landing == null) {
+      return true;
+    }
+    if (landing.plan == null && landing.sePlans.isEmpty) {
+      return false; // Nothing to carry — the plain slide owns the step.
+    }
+    // R27 #8: the frame-axis riders shift with the same frame delta. A
+    // rider that cannot shift voids the move like any other passenger.
+    // A PURE row hop (frameDelta 0) moves no frames, so the riders simply
+    // hold — the shifters answer null for "nothing to shift" (the R28 #5
+    // conflation) and reading that as "blocked" killed every vertical
+    // step of a mixed span.
+    final riders = frameDelta == 0
+        ? _noRiders
+        : _shiftFrameAxisRiders(selection, frameDelta);
+    if (riders == null) {
+      return true;
+    }
+    // A valid rigid landing supersedes the slide / row-change plans.
+    _publishMultiRowMovePreview(
+      landing.plan,
+      landing.sePlans,
+      riders.camera,
+      riders.instructions,
+    );
+    // The outline rides the rigid shift to the target rows (rows that
+    // carried nothing — off the lattice or shifted off it — drop out of
+    // the outline; only the moved frames' landings read selected).
+    final landedLayerIds = _landedLayerIds(
+      step.lattices.lattice,
+      step.lattices.seLattice,
+      selection,
+      rowDelta,
+    );
+    final newStart = selection.startIndex + frameDelta;
+    if (newStart >= 0) {
+      _rangeMoveSelection = TimelineFrameRangeSelection(
+        layerId: targetLayerId,
+        startIndex: newStart,
+        endIndexExclusive: selection.endIndexExclusive + frameDelta,
+        layerIds: landedLayerIds,
+      );
+    }
+    return true;
+  }
+
+  /// The span sorted by what each row can DO with the hop, or null when a
+  /// row that cannot hop still carries content (the plain slide owns the
+  /// step then).
+  ///
+  /// R27 #8: sort the span by what each row can DO with the hop. Drawing
+  /// rows and track-SE rows travel across their own lattice; the camera
+  /// and instruction rows have no row axis to travel, so their keys ride
+  /// the FRAME delta and stay put. Empty rows contribute nothing at all.
+  ///
+  /// The old code made a key-carrying camera/instruction row veto the
+  /// whole move ("keys ride the frame axis only" → `return false`). That
+  /// is the "임시처방" the user called out: selecting a CAM row next to a
+  /// sound block made the sound unmovable, even though its landing row
+  /// was empty. A row that cannot change rows now simply doesn't.
+  _MultiRowSpanCast? _castMultiRowSpan(TimelineFrameRangeSelection selection) {
     bool carriesBlockInRange(Layer layer) => drawingBlocks(layer.timeline).any(
       (block) =>
           !block.entry.ghost &&
           block.startIndex < selection.endIndexExclusive &&
           block.endIndexExclusive > selection.startIndex,
     );
-    // R27 #8: sort the span by what each row can DO with the hop. Drawing
-    // rows and track-SE rows travel across their own lattice; the camera
-    // and instruction rows have no row axis to travel, so their keys ride
-    // the FRAME delta and stay put. Empty rows contribute nothing at all.
-    //
-    // The old code made a key-carrying camera/instruction row veto the
-    // whole move ("keys ride the frame axis only" → `return false`). That
-    // is the "임시처방" the user called out: selecting a CAM row next to a
-    // sound block made the sound unmovable, even though its landing row
-    // was empty. A row that cannot change rows now simply doesn't.
     final drawingSourceIds = <LayerId>[];
     final sePassengerIds = <LayerId>[];
-    var cameraRides = false;
     for (final id in selection.spanLayerIds) {
       if (_session._blockMoveEligible(id)) {
         final layer = _session._layerById(id);
@@ -698,21 +829,15 @@ class _FrameRangeMoveDrag {
       if (layer == null) {
         continue;
       }
-      if (layer.kind == LayerKind.camera) {
-        final keyframes = _session.activeCutOrNull?.camera.keyframes;
-        if (keyframes != null && anyKeyIn(keyframes.keys)) {
-          cameraRides = true;
-        }
-        continue;
-      }
-      // Instruction rows (the transition included, via its display clone)
-      // are frame-axis riders — WHO rides was decided at begin
-      // (_rangeMoveInstructionSources, the same list the plain slide
-      // consumes). Re-deriving them here is the copy that silently
-      // dropped the TRANSITION on rigid steps (C④): its clone's kind
-      // matched no arm, so the spans snapped home the moment the pointer
-      // crossed a row.
-      if (layer.kind == LayerKind.instruction ||
+      // The camera and instruction rows (the transition included, via its
+      // display clone) are frame-axis riders — WHO rides was decided at
+      // begin (_rangeMoveCameraBefore and _rangeMoveInstructionSources,
+      // the same answers the plain slide consumes). Re-deriving them here
+      // is the copy that silently dropped the TRANSITION on rigid steps
+      // (C④): its clone's kind matched no arm, so the spans snapped home
+      // the moment the pointer crossed a row.
+      if (layer.kind == LayerKind.camera ||
+          layer.kind == LayerKind.instruction ||
           layer.kind == LayerKind.transition) {
         continue;
       }
@@ -720,58 +845,89 @@ class _FrameRangeMoveDrag {
       // (a SYNCED attach row) still routes the step to the plain slide
       // when it carries content: its timing belongs to its base.
       if (carriesBlockInRange(layer)) {
-        return false;
+        return null;
       }
     }
-    final lattice = _blockMoveLattice();
-    final seLattice = _session.activeTrack.seLayers;
-    final rows = _rangeRowOrder();
+    return (drawingSourceIds: drawingSourceIds, sePassengerIds: sePassengerIds);
+  }
+
+  /// The row orders a rigid step reads: the display rows (where the
+  /// pointer is), the drawing lattice and the track-SE lattice (where
+  /// rows can land).
+  _MultiRowLattices _multiRowLattices() => (
+    rows: _rangeRowOrder(),
+    lattice: _blockMoveLattice(),
+    seLattice: _session.activeTrack.seLayers,
+  );
+
+  /// The rigid row hop for this step: `rowDelta` when the whole span
+  /// agrees on one, else null with `holds` — true HOLDS the last valid
+  /// preview, false hands the step to the plain frame slide.
+  ({int? rowDelta, bool holds}) _agreedRowHop(
+    _MultiRowStep step,
+    LayerId targetLayerId,
+  ) {
+    final cast = step.cast;
+    final lattices = step.lattices;
     final displayDelta = _displayRowDelta(
-      rows,
-      _rangeMoveGrabLayerId ?? selection.layerId,
+      lattices.rows,
+      _rangeMoveGrabLayerId ?? step.selection.layerId,
       targetLayerId,
     );
     if (displayDelta == null) {
       // The pointer left the rows entirely. When something in the span
       // CAN travel, HOLD the last valid preview (UI-R23 #10); otherwise
       // the plain slide owns the step.
-      return drawingSourceIds.isNotEmpty || sePassengerIds.isNotEmpty;
+      return (
+        rowDelta: null,
+        holds:
+            cast.drawingSourceIds.isNotEmpty || cast.sePassengerIds.isNotEmpty,
+      );
     }
     if (displayDelta == 0) {
       // No row change this step — the plain frame slide owns it.
-      return false;
+      return (rowDelta: null, holds: false);
     }
     final drawingHop = _agreedLatticeHop(
-      rows: rows,
-      lattice: lattice,
-      ids: drawingSourceIds,
+      rows: lattices.rows,
+      lattice: lattices.lattice,
+      ids: cast.drawingSourceIds,
       displayDelta: displayDelta,
     );
     final seHop = _agreedLatticeHop(
-      rows: rows,
-      lattice: seLattice,
-      ids: sePassengerIds,
+      rows: lattices.rows,
+      lattice: lattices.seLattice,
+      ids: cast.sePassengerIds,
       displayDelta: displayDelta,
     );
     if (drawingHop.blocked || seHop.blocked) {
       // A content-bearing row has nowhere to land (or two rows would need
       // different hops): all-or-nothing, HOLD the last valid preview.
-      return true;
+      return (rowDelta: null, holds: true);
     }
     // A hop of 0 alongside a non-zero one would tear the rigid move apart
     // — the slide owns those steps instead.
     final rowDelta = drawingHop.delta ?? seHop.delta;
     if (rowDelta == null || rowDelta == 0) {
-      return false;
+      return (rowDelta: null, holds: false);
     }
     if ((drawingHop.delta ?? rowDelta) != rowDelta ||
         (seHop.delta ?? rowDelta) != rowDelta) {
-      return false;
+      return (rowDelta: null, holds: false);
     }
+    return (rowDelta: rowDelta, holds: true);
+  }
+
+  /// The rigid landing's plans — the drawing rows' plan and the SE
+  /// passengers' pairs — or null when a row cannot land, which HOLDS the
+  /// last valid preview (R23 #10).
+  ({MultiRowRangeMovePlan? plan, List<SeRowMovePair> sePlans})?
+  _planMultiRowLanding(_MultiRowStep step, int frameDelta, int rowDelta) {
+    final selection = step.selection;
     MultiRowRangeMovePlan? plan;
-    if (drawingSourceIds.isNotEmpty) {
+    if (step.cast.drawingSourceIds.isNotEmpty) {
       plan = planMultiRowRangeMove(
-        orderedLayers: lattice,
+        orderedLayers: step.lattices.lattice,
         sourceLayerIds: selection.spanLayerIds,
         rangeStartIndex: selection.startIndex,
         rangeEndIndexExclusive: selection.endIndexExclusive,
@@ -780,76 +936,68 @@ class _FrameRangeMoveDrag {
       );
       if (plan == null) {
         // An illegal rigid landing HOLDS the last valid preview (R23 #10).
-        return true;
+        return null;
       }
     }
-    final sePlans = sePassengerIds.isEmpty
+    final sePlans = step.cast.sePassengerIds.isEmpty
         ? const <SeRowMovePair>[]
         : _planMultiRowSePassengers(
-            seSourceIds: sePassengerIds,
-            seLattice: seLattice,
+            seSourceIds: step.cast.sePassengerIds,
+            seLattice: step.lattices.seLattice,
             selection: selection,
             frameDelta: frameDelta,
             rowDelta: rowDelta,
           );
     if (sePlans == null) {
-      return true; // An SE passenger cannot land — the whole move voids.
+      return null; // An SE passenger cannot land — the whole move voids.
     }
-    if (plan == null && sePlans.isEmpty) {
-      return false; // Nothing to carry — the plain slide owns the step.
-    }
-    // R27 #8: the frame-axis riders shift with the same frame delta. A
-    // rider that cannot shift voids the move like any other passenger.
-    // A PURE row hop (frameDelta 0) moves no frames, so the riders simply
-    // hold — the shifters answer null for "nothing to shift" (the R28 #5
-    // conflation) and reading that as "blocked" killed every vertical
-    // step of a mixed span.
+    return (plan: plan, sePlans: sePlans);
+  }
+
+  /// The frame-axis riders shifted by [frameDelta] — the camera keys when
+  /// a camera row rides, and every instruction source's events — or null
+  /// when a rider cannot shift, which voids the whole move (P3b-2: KEY
+  /// sources join the all-or-nothing contract). WHO rides was decided at
+  /// begin; the plain slide and the rigid row hop both ask here.
+  _FrameAxisRiders? _shiftFrameAxisRiders(
+    TimelineFrameRangeSelection selection,
+    int frameDelta,
+  ) {
+    final cameraBefore = _rangeMoveCameraBefore;
     Map<int, CameraPose>? cameraShifted;
-    if (cameraRides && frameDelta != 0) {
+    if (cameraBefore != null) {
       cameraShifted = shiftCameraKeysInRange(
-        keyframes: _session.activeCutOrNull?.camera.keyframes ?? const {},
+        keyframes: cameraBefore,
         rangeStartIndex: selection.startIndex,
         rangeEndIndexExclusive: selection.endIndexExclusive,
         frameDelta: frameDelta,
       );
       if (cameraShifted == null) {
-        return true;
+        return null;
       }
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
-    if (frameDelta != 0) {
-      for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
-        final shifted = shiftInstructionEventsInRange(
-          events: layer.instructions,
-          rangeStartIndex: selection.startIndex,
-          rangeEndIndexExclusive: selection.endIndexExclusive,
-          frameDelta: frameDelta,
-        );
-        if (shifted == null) {
-          return true;
-        }
-        instructionShifted[layer.id] = shifted;
-      }
-    }
-    // A valid rigid landing supersedes the slide / row-change plans.
-    _publishMultiRowMovePreview(plan, sePlans, cameraShifted, instructionShifted);
-    // The outline rides the rigid shift to the target rows (rows that
-    // carried nothing — off the lattice or shifted off it — drop out of
-    // the outline; only the moved frames' landings read selected).
-    final landedLayerIds = _landedLayerIds(lattice, seLattice, selection, rowDelta);
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: targetLayerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        layerIds: landedLayerIds,
+    for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
+      final shifted = shiftInstructionEventsInRange(
+        events: layer.instructions,
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
       );
+      if (shifted == null) {
+        return null;
+      }
+      instructionShifted[layer.id] = shifted;
     }
-    return true;
+    return (camera: cameraShifted, instructions: instructionShifted);
   }
 
-  List<LayerId> _landedLayerIds(List<Layer> lattice, List<Layer> seLattice, TimelineFrameRangeSelection selection, int rowDelta) {
+  List<LayerId> _landedLayerIds(
+    List<Layer> lattice,
+    List<Layer> seLattice,
+    TimelineFrameRangeSelection selection,
+    int rowDelta,
+  ) {
     final indexById = {
       for (var i = 0; i < lattice.length; i += 1) lattice[i].id: i,
     };
@@ -868,7 +1016,12 @@ class _FrameRangeMoveDrag {
     return landedLayerIds;
   }
 
-  void _publishMultiRowMovePreview(MultiRowRangeMovePlan? plan, List<SeRowMovePair> sePlans, Map<int, CameraPose>? cameraShifted, Map<LayerId, Map<int, InstructionEvent>> instructionShifted) {
+  void _publishMultiRowMovePreview(
+    MultiRowRangeMovePlan? plan,
+    List<SeRowMovePair> sePlans,
+    Map<int, CameraPose>? cameraShifted,
+    Map<LayerId, Map<int, InstructionEvent>> instructionShifted,
+  ) {
     _rangeMoveMultiRowPlan = plan;
     _rangeMoveMultiSeRowChanges = sePlans.isEmpty ? null : sePlans;
     _rangeMoveMultiPlans = null;
@@ -1060,7 +1213,12 @@ class _FrameRangeMoveDrag {
       // sibling SE row, an instruction selection on a sibling
       // instruction row — the handler owns the step then (an incompatible
       // hover HOLDS the last valid landing, UI-R23 #10).
-      _updateMultiSourceRangeMove(targetLayerId, selection, frameDelta, multiSources);
+      _updateMultiSourceRangeMove(
+        targetLayerId,
+        selection,
+        frameDelta,
+        multiSources,
+      );
       return;
     }
 
@@ -1127,7 +1285,12 @@ class _FrameRangeMoveDrag {
     }
   }
 
-  void _updateMultiSourceRangeMove(LayerId? targetLayerId, TimelineFrameRangeSelection selection, int frameDelta, List<({Layer commit, int offset})> multiSources) {
+  void _updateMultiSourceRangeMove(
+    LayerId? targetLayerId,
+    TimelineFrameRangeSelection selection,
+    int frameDelta,
+    List<({Layer commit, int offset})> multiSources,
+  ) {
     if (targetLayerId != null &&
         targetLayerId != selection.layerId &&
         selection.spanLayerIds.length == 1 &&
@@ -1181,38 +1344,16 @@ class _FrameRangeMoveDrag {
     if (multiSources.isEmpty && frameDelta == 0) {
       illegal = true;
     }
-    final cameraBefore = _rangeMoveCameraBefore;
-    Map<int, CameraPose>? cameraShifted;
-    if (!illegal && cameraBefore != null) {
-      cameraShifted = shiftCameraKeysInRange(
-        keyframes: cameraBefore,
-        rangeStartIndex: selection.startIndex,
-        rangeEndIndexExclusive: selection.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      illegal = cameraShifted == null;
-    }
-    final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
-    if (!illegal) {
-      for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
-        final shifted = shiftInstructionEventsInRange(
-          events: layer.instructions,
-          rangeStartIndex: selection.startIndex,
-          rangeEndIndexExclusive: selection.endIndexExclusive,
-          frameDelta: frameDelta,
-        );
-        if (shifted == null) {
-          illegal = true;
-          break;
-        }
-        instructionShifted[layer.id] = shifted;
-      }
-    }
-    if (illegal) {
+    final riders = illegal
+        ? null
+        : _shiftFrameAxisRiders(selection, frameDelta);
+    if (riders == null) {
       // UI-R23 #10: a blocked landing HOLDS the last valid preview,
       // outline and stored plans — no snap-back to the origin.
       return;
     }
+    final cameraShifted = riders.camera;
+    final instructionShifted = riders.instructions;
     _rangeMoveMultiPlans = plans.isEmpty ? null : plans;
     _rangeMoveCameraShifted = cameraShifted;
     _rangeMoveInstructionShifted = instructionShifted.isEmpty
@@ -1262,9 +1403,7 @@ class _FrameRangeMoveDrag {
     _session.dragPreview.value = BlockMoveDragPreview(
       previewLayers: previewLayers,
       previewGlobalLayers: previewGlobalLayers,
-      cameraCutId: cameraShifted == null
-          ? null
-          : _session.activeCutOrNull?.id,
+      cameraCutId: cameraShifted == null ? null : _session.activeCutOrNull?.id,
       cameraKeyframes: cameraShifted,
       cameraMarkerLayer: cameraMarker,
     );
@@ -1284,21 +1423,10 @@ class _FrameRangeMoveDrag {
     return;
   }
 
-  /// Commits the range move as ONE undo step (layer updates + the brush
-  /// re-key on cross-layer carries), mirroring the block-move commit.
-  void endFrameRangeMoveDrag() {
-    final source = _rangeMoveSourceBefore;
-    final selection = _rangeMoveSelectionBefore;
-    final plan = _rangeMovePlan;
-    final multiPlans = _rangeMoveMultiPlans;
-    final multiSources = _rangeMoveMultiSources;
-    final cameraShifted = _rangeMoveCameraShifted;
-    final instructionShifted = _rangeMoveInstructionShifted;
-    final seRowChange = _rangeMoveSeRowChange;
-    final instructionRowChange = _rangeMoveInstructionRowChange;
-    final multiRowPlan = _rangeMoveMultiRowPlan;
-    final multiSeRowChanges = _rangeMoveMultiSeRowChanges;
-    final landedSelection = _rangeMoveSelection;
+  /// Forgets the drag — every stored source, plan and rider shift — and
+  /// clears the preview channels it published to. The end and the cancel
+  /// both forget through here (they were two copies of this list).
+  void _clearRangeMoveState() {
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
     _rangeMoveGrabLayerId = null;
@@ -1318,6 +1446,24 @@ class _FrameRangeMoveDrag {
     _session._camera._cameraKeysDragPreview = null;
     _session.dragPreview.value = null;
     _session.transitionEdgeDragPreview.value = null;
+  }
+
+  /// Commits the range move as ONE undo step (layer updates + the brush
+  /// re-key on cross-layer carries), mirroring the block-move commit.
+  void endFrameRangeMoveDrag() {
+    final source = _rangeMoveSourceBefore;
+    final selection = _rangeMoveSelectionBefore;
+    final plan = _rangeMovePlan;
+    final multiPlans = _rangeMoveMultiPlans;
+    final multiSources = _rangeMoveMultiSources;
+    final cameraShifted = _rangeMoveCameraShifted;
+    final instructionShifted = _rangeMoveInstructionShifted;
+    final seRowChange = _rangeMoveSeRowChange;
+    final instructionRowChange = _rangeMoveInstructionRowChange;
+    final multiRowPlan = _rangeMoveMultiRowPlan;
+    final multiSeRowChanges = _rangeMoveMultiSeRowChanges;
+    final landedSelection = _rangeMoveSelection;
+    _clearRangeMoveState();
     // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
     // one composite undo; the selection follows the landing row.
     if (selection != null && seRowChange != null) {
@@ -1325,7 +1471,11 @@ class _FrameRangeMoveDrag {
       return;
     }
     if (selection != null && instructionRowChange != null) {
-      _commitInstructionRowMove(instructionRowChange, landedSelection, selection);
+      _commitInstructionRowMove(
+        instructionRowChange,
+        landedSelection,
+        selection,
+      );
       return;
     }
     if (selection != null &&
@@ -1334,14 +1484,28 @@ class _FrameRangeMoveDrag {
       // rewrites in one composite undo, and each cross-row cel re-keys its
       // brush frame to the target row. Track-SE passengers (R26 #2) join
       // the SAME undo step through their global-form layer pair.
-      _commitMultiRowMove(multiSeRowChanges, multiRowPlan, instructionShifted, cameraShifted, selection, landedSelection);
+      _commitMultiRowMove(
+        multiSeRowChanges,
+        multiRowPlan,
+        instructionShifted,
+        cameraShifted,
+        selection,
+        landedSelection,
+      );
       return;
     }
     if (selection != null && multiSources != null) {
       // Cross-layer slide commit (UI-R18 #1) + key shifts (P3b-2): one
       // composite undo across blocks, camera keys and instruction spans.
       // (UI-R23 #3: the layer transform track no longer rides the slide.)
-      _commitMultiSourceMove(multiPlans, multiSources, instructionShifted, cameraShifted, selection, landedSelection);
+      _commitMultiSourceMove(
+        multiPlans,
+        multiSources,
+        instructionShifted,
+        cameraShifted,
+        selection,
+        landedSelection,
+      );
       return;
     }
     if (source == null || selection == null) {
@@ -1367,7 +1531,14 @@ class _FrameRangeMoveDrag {
     _session._notifyChanged();
   }
 
-  void _commitMultiSourceMove(List<DrawingBlockMovePlan>? multiPlans, List<({Layer commit, int offset})> multiSources, Map<LayerId, Map<int, InstructionEvent>>? instructionShifted, Map<int, CameraPose>? cameraShifted, TimelineFrameRangeSelection selection, TimelineFrameRangeSelection? landedSelection) {
+  void _commitMultiSourceMove(
+    List<DrawingBlockMovePlan>? multiPlans,
+    List<({Layer commit, int offset})> multiSources,
+    Map<LayerId, Map<int, InstructionEvent>>? instructionShifted,
+    Map<int, CameraPose>? cameraShifted,
+    TimelineFrameRangeSelection selection,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
     final cut = _session.activeCutOrNull;
     final commands = <Command>[
       if (multiPlans != null)
@@ -1408,7 +1579,14 @@ class _FrameRangeMoveDrag {
     return;
   }
 
-  void _commitMultiRowMove(List<SeRowMovePair>? multiSeRowChanges, MultiRowRangeMovePlan? multiRowPlan, Map<LayerId, Map<int, InstructionEvent>>? instructionShifted, Map<int, CameraPose>? cameraShifted, TimelineFrameRangeSelection selection, TimelineFrameRangeSelection? landedSelection) {
+  void _commitMultiRowMove(
+    List<SeRowMovePair>? multiSeRowChanges,
+    MultiRowRangeMovePlan? multiRowPlan,
+    Map<LayerId, Map<int, InstructionEvent>>? instructionShifted,
+    Map<int, CameraPose>? cameraShifted,
+    TimelineFrameRangeSelection selection,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
     final cut = _session.activeCutOrNull;
     final commands = <Command>[];
     for (final se in multiSeRowChanges ?? const <SeRowMovePair>[]) {
@@ -1502,7 +1680,17 @@ class _FrameRangeMoveDrag {
     return;
   }
 
-  void _commitInstructionRowMove(({Map<int, InstructionEvent> sourceAfter, LayerId sourceId, Map<int, InstructionEvent> targetAfter, LayerId targetId}) instructionRowChange, TimelineFrameRangeSelection? landedSelection, TimelineFrameRangeSelection selection) {
+  void _commitInstructionRowMove(
+    ({
+      Map<int, InstructionEvent> sourceAfter,
+      LayerId sourceId,
+      Map<int, InstructionEvent> targetAfter,
+      LayerId targetId,
+    })
+    instructionRowChange,
+    TimelineFrameRangeSelection? landedSelection,
+    TimelineFrameRangeSelection selection,
+  ) {
     final cut = _session.activeCutOrNull;
     if (cut != null) {
       _session._historyManager.execute(
@@ -1536,7 +1724,18 @@ class _FrameRangeMoveDrag {
     return;
   }
 
-  void _commitSeRowMove(({Layer sourceAfter, Layer sourceBefore, LayerId sourceId, Layer targetAfter, Layer targetBefore, LayerId targetId}) seRowChange, TimelineFrameRangeSelection? landedSelection) {
+  void _commitSeRowMove(
+    ({
+      Layer sourceAfter,
+      Layer sourceBefore,
+      LayerId sourceId,
+      Layer targetAfter,
+      Layer targetBefore,
+      LayerId targetId,
+    })
+    seRowChange,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
     _session._historyManager.execute(
       CompositeCommand(
         description: 'Move frame range',
@@ -1564,25 +1763,7 @@ class _FrameRangeMoveDrag {
   /// Drops an in-flight range-move preview, restoring the selection.
   void cancelFrameRangeMoveDrag() {
     final selection = _rangeMoveSelectionBefore;
-    _rangeMoveSourceBefore = null;
-    _rangeMoveSelectionBefore = null;
-    _rangeMoveGrabLayerId = null;
-    _rangeMoveGroupStart = null;
-    _rangeMovePlan = null;
-    _rangeMoveMultiSources = null;
-    _rangeMoveMultiPlans = null;
-    _rangeMoveMultiRowPlan = null;
-    _rangeMoveMultiSeRowChanges = null;
-    _rangeMoveCameraBefore = null;
-    _rangeMoveCameraLayerId = null;
-    _rangeMoveInstructionSources = null;
-    _rangeMoveCameraShifted = null;
-    _rangeMoveInstructionShifted = null;
-    _rangeMoveSeRowChange = null;
-    _rangeMoveInstructionRowChange = null;
-    _session._camera._cameraKeysDragPreview = null;
-    _session.dragPreview.value = null;
-    _session.transitionEdgeDragPreview.value = null;
+    _clearRangeMoveState();
     if (selection != null) {
       _rangeMoveSelection = selection;
     }
@@ -1637,7 +1818,14 @@ class _FrameRangeMoveDrag {
       return false;
     }
 
-    final patternAnchor = _repeatPatternAnchor(mode, scopeToSelection, layerId, side, run, before);
+    final patternAnchor = _repeatPatternAnchor(
+      mode,
+      scopeToSelection,
+      layerId,
+      side,
+      run,
+      before,
+    );
 
     // The behavior anchors to its EDGE block (UI-R10 #4): the end side to
     // the run's LAST block, the start side to the FIRST — splitting the
@@ -1669,7 +1857,11 @@ class _FrameRangeMoveDrag {
     _session._notifyChanged();
   }
 
-  FrameId _edgeAnchorOf(({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run, TimelineRunEdgeSide side, Layer before) {
+  FrameId _edgeAnchorOf(
+    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
+    TimelineRunEdgeSide side,
+    Layer before,
+  ) {
     var edgeAnchor = run.anchorFrameId;
     if (side == TimelineRunEdgeSide.end) {
       for (final entry in before.timeline.entries) {
@@ -1684,7 +1876,14 @@ class _FrameRangeMoveDrag {
     return edgeAnchor;
   }
 
-  FrameId? _repeatPatternAnchor(TimelineRunEdgeMode? mode, bool scopeToSelection, LayerId layerId, TimelineRunEdgeSide side, ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run, Layer before) {
+  FrameId? _repeatPatternAnchor(
+    TimelineRunEdgeMode? mode,
+    bool scopeToSelection,
+    LayerId layerId,
+    TimelineRunEdgeSide side,
+    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
+    Layer before,
+  ) {
     FrameId? patternAnchor;
     if (mode == TimelineRunEdgeMode.repeat && scopeToSelection) {
       final selection = _session.frameRangeSelection.value;
