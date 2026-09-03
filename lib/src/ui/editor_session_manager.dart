@@ -66,6 +66,7 @@ import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
 import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
+import '../services/editing/layer_standing_after_change.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/attached_layer_mount.dart';
@@ -125,9 +126,11 @@ import '../models/se_name_tag.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
+import '../models/timeline_empty_gaps.dart';
 import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
-import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
+import '../services/editing/cut_duplicate_helpers.dart'
+    show duplicateFrameContent;
 import '../models/timeline_splice.dart';
 import '../models/delete_subject.dart';
 import '../models/edit_instance_subject.dart';
@@ -1584,27 +1587,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// The active cut's global start frame on its track (cumulative cut
   /// durations — the storyboard layout's number for this cut).
   int get activeCutGlobalStartFrame =>
-      _cutGlobalStartFrameIn(activeTrack, _editingSession.activeCutId) ?? 0;
-
-  /// [cutId]'s global start on [track]'s axis, or null when the track does
-  /// not hold it. ONE cumulative walk — the same one
-  /// [buildStoryboardTimelineLayout] makes (gap, then duration), kept in a
-  /// single place so the SE tags and the SE window can never disagree with
-  /// the storyboard about where a cut begins.
-  int? _cutGlobalStartFrameIn(Track track, CutId? cutId) {
-    if (cutId == null) {
-      return null;
-    }
-    var start = 0;
-    for (final cut in track.cuts) {
-      start += cut.leadingGapFrames;
-      if (cut.id == cutId) {
-        return start;
-      }
-      start += cut.duration;
-    }
-    return null;
-  }
+      cutGlobalStartFrameIn(activeTrack, _editingSession.activeCutId) ?? 0;
 
   // ── the track SE display: its own object, in its own file ───────────
   //
@@ -2559,7 +2542,11 @@ class EditorSessionManager extends ChangeNotifier {
               layerAcceptsBrushInput(entry.layer)) {
             activeLayerOpacity = !entry.layer.isVisible
                 ? 0.0
-                : _opacity.stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
+                : _opacity.stackLayerOpacity(
+                    entry.layer,
+                    stackCut.layers,
+                    frameIndex,
+                  );
             activeSourceEffects = splitSourceEffects(entry.effects).source;
             return CanvasActiveLayerNode(
               opacity: entry.opacity,
@@ -3182,7 +3169,7 @@ class EditorSessionManager extends ChangeNotifier {
     final previousFrameIndex = _timelineController.currentFrameIndex;
 
     _historyManager.undo();
-    final preferredLayerId = _preferredLayerAfterLayerListChange(
+    final preferredLayerId = preferredLayerAfterLayerListChange(
       beforeLayers: beforeLayers,
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
@@ -3202,7 +3189,7 @@ class EditorSessionManager extends ChangeNotifier {
     final previousFrameIndex = _timelineController.currentFrameIndex;
 
     _historyManager.redo();
-    final preferredLayerId = _preferredLayerAfterLayerListChange(
+    final preferredLayerId = preferredLayerAfterLayerListChange(
       beforeLayers: beforeLayers,
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
@@ -3333,54 +3320,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  LayerId? _stableLayerIdAfterDeleting({
-    required List<Layer> beforeLayers,
-    required LayerId deletedLayerId,
-  }) {
-    final deletedIndex = beforeLayers.indexWhere(
-      (layer) => layer.id == deletedLayerId,
-    );
-    if (deletedIndex == -1) {
-      return null;
-    }
-
-    final remainingLayers = beforeLayers
-        .where((layer) => layer.id != deletedLayerId)
-        .toList(growable: false);
-    if (remainingLayers.isEmpty) {
-      return null;
-    }
-    if (deletedIndex < remainingLayers.length) {
-      return remainingLayers[deletedIndex].id;
-    }
-    return remainingLayers[deletedIndex - 1].id;
-  }
-
-  LayerId? _preferredLayerAfterLayerListChange({
-    required List<Layer> beforeLayers,
-    required List<Layer> afterLayers,
-    required LayerId? previousActiveLayerId,
-  }) {
-    final afterIds = afterLayers.map((layer) => layer.id).toSet();
-    final beforeIds = beforeLayers.map((layer) => layer.id).toSet();
-    final insertedLayers = afterLayers
-        .where((layer) => !beforeIds.contains(layer.id))
-        .toList(growable: false);
-    if (insertedLayers.isNotEmpty) {
-      return insertedLayers.first.id;
-    }
-
-    if (previousActiveLayerId != null &&
-        !afterIds.contains(previousActiveLayerId)) {
-      return _stableLayerIdAfterDeleting(
-        beforeLayers: beforeLayers,
-        deletedLayerId: previousActiveLayerId,
-      );
-    }
-
-    return previousActiveLayerId;
-  }
-
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
   /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
@@ -3435,9 +3374,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// Read-only-in-cut rows are the exception, and they are the same ones
   /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
   /// inside a cut is not this cut's to edit.
-  List<LayerId> renameableSelectedLayerIds() => _selectedLayerIdsWhere(
-    (layer) => !layerKindIsReadOnlyInCut(layer.kind),
-  );
+  List<LayerId> renameableSelectedLayerIds() =>
+      _selectedLayerIdsWhere((layer) => !layerKindIsReadOnlyInCut(layer.kind));
 
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {
@@ -6436,42 +6374,11 @@ class EditorSessionManager extends ChangeNotifier {
   List<({int startIndex, int length})> _emptyGapsInRange(
     Layer layer,
     TimelineFrameRangeSelection selection,
-  ) => _emptyGapsBetween(
+  ) => emptyGapsBetween(
     layer,
     selection.startIndex,
     selection.endIndexExclusive,
   );
-
-  /// The uncovered runs of [layer]'s timeline inside `[start, end)` — the
-  /// index space is whatever the timeline's own keys speak (cut-local for
-  /// cut layers, GLOBAL for track SE rows), which is what lets #16's
-  /// track rung and the cell path share one walk.
-  List<({int startIndex, int length})> _emptyGapsBetween(
-    Layer layer,
-    int startIndex,
-    int endIndexExclusive,
-  ) {
-    final gaps = <({int startIndex, int length})>[];
-    int? gapStart;
-    for (var index = startIndex; index <= endIndexExclusive; index += 1) {
-      final block = index >= endIndexExclusive || index < 0
-          ? null
-          : coveringDrawingBlockAt(layer.timeline, index);
-      final covered =
-          index >= endIndexExclusive ||
-          index < 0 ||
-          (block != null && !block.entry.ghost);
-      if (!covered) {
-        gapStart ??= index;
-        continue;
-      }
-      if (gapStart != null) {
-        gaps.add((startIndex: gapStart, length: index - gapStart));
-        gapStart = null;
-      }
-    }
-    return gaps;
-  }
 
   /// 🚨T3 신설 — 잘라내기: the same lift the paste does, with the clip going
   /// to the clipboard instead of a row.
@@ -6856,7 +6763,9 @@ class EditorSessionManager extends ChangeNotifier {
         // at all produced no span — which cleared the selection instead of
         // making one. Its blocks are instruction events rather than exposures,
         // so the material differs and the shape does not.
-        final transition = _transitions.trackTransitionOwner(layerId)?.transitionLayer;
+        final transition = _transitions
+            .trackTransitionOwner(layerId)
+            ?.transitionLayer;
         if (transition == null) {
           return null;
         }
@@ -6975,7 +6884,8 @@ class EditorSessionManager extends ChangeNotifier {
   bool _blockMoveEligible(LayerId layerId) {
     // Synced attach rows own no timing; FREE attach rows move blocks
     // like any drawing layer (UI-R21 #3).
-    if (_folders.isSyncedAttachedLayerId(layerId) || isTrackSeLayerId(layerId)) {
+    if (_folders.isSyncedAttachedLayerId(layerId) ||
+        isTrackSeLayerId(layerId)) {
       return false;
     }
     final layer = _layerById(layerId);
@@ -7474,7 +7384,8 @@ class EditorSessionManager extends ChangeNotifier {
       LaneRowAddress(:final layerId) => layerId,
       TrackRowAddress() => activeLayerId,
     };
-    if (rowLayerId == null || !_rangeSelections.rangeSelectionEligible(rowLayerId)) {
+    if (rowLayerId == null ||
+        !_rangeSelections.rangeSelectionEligible(rowLayerId)) {
       return null;
     }
     final layer = _rangeLayerById(rowLayerId);
@@ -8040,6 +7951,7 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<bool> selectionInteractionActive = ValueNotifier<bool>(
     false,
   );
+
   /// R15-⑤: any live editing interaction (brush stroke, selection drag)
   /// blocks frame seeks, scrubs and cut switches entirely — the playhead
   /// moves when the pen lifts, never under it.

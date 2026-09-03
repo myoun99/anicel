@@ -204,7 +204,7 @@ class _LayerVerbs {
 
     if (activeLayer.kind == LayerKind.se) {
       final beforeSe = _session.activeTrack.seLayers;
-      final nextActiveLayerId = _session._stableLayerIdAfterDeleting(
+      final nextActiveLayerId = stableLayerIdAfterDeleting(
         beforeLayers: beforeSe,
         deletedLayerId: activeLayer.id,
       );
@@ -223,7 +223,7 @@ class _LayerVerbs {
     }
 
     final beforeLayers = List<Layer>.of(_session.requireActiveCut.layers);
-    final nextActiveLayerId = _session._stableLayerIdAfterDeleting(
+    final nextActiveLayerId = stableLayerIdAfterDeleting(
       beforeLayers: beforeLayers,
       deletedLayerId: activeLayer.id,
     );
@@ -258,7 +258,7 @@ class _LayerVerbs {
     };
     final ordered = [...ids]
       ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
-    final nextActiveLayerId = _session._stableLayerIdAfterDeleting(
+    final nextActiveLayerId = stableLayerIdAfterDeleting(
       beforeLayers: List<Layer>.of(cut.layers),
       deletedLayerId: ordered.last,
     );

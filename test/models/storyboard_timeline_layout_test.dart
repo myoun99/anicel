@@ -9,6 +9,30 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 void main() {
+  test('cutGlobalStartFrameIn reads the same walk the layout makes', () {
+    // The session manager kept a second copy of this walk until 2026-09-03;
+    // one loop now, and this pin says the two askers agree by construction.
+    final track = Track(
+      id: const TrackId('track-a'),
+      name: 'Track A',
+      cuts: [
+        _cut('cut-a', duration: 24, leadingGap: 3),
+        _cut('cut-b', duration: 12),
+        _cut('cut-c', duration: 36, leadingGap: 5),
+      ],
+    );
+    final layout = buildStoryboardTimelineLayout(_project([track]));
+    expect(layout, hasLength(3));
+    for (final entry in layout) {
+      expect(
+        cutGlobalStartFrameIn(track, entry.cutId),
+        entry.startFrame,
+        reason: '${entry.cutId}',
+      );
+    }
+    expect(cutGlobalStartFrameIn(track, const CutId('zz')), isNull);
+    expect(cutGlobalStartFrameIn(track, null), isNull);
+  });
   test('single track with one cut starts at zero and ends at duration', () {
     final cut = _cut('cut-a', duration: 24);
     final project = _project([

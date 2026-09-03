@@ -72,7 +72,7 @@ class _SeEntries {
       // Cheap gate: most tracks hold no SE writing at all, and this runs
       // per painted frame per covered track.
       if (track.seLayers.isNotEmpty) {
-        final start = _session._cutGlobalStartFrameIn(track, cut.id);
+        final start = cutGlobalStartFrameIn(track, cut.id);
         if (start != null) {
           return resolveSeNameTagsAt(
             trackSeLayers: track.seLayers,

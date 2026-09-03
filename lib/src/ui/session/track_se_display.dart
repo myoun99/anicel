@@ -146,7 +146,7 @@ class _TrackSeDisplay {
       if (!targetIds.contains(layer.id)) {
         continue;
       }
-      final layerGaps = _session._emptyGapsBetween(
+      final layerGaps = emptyGapsBetween(
         layer,
         range.startFrame,
         range.endFrameExclusive,
