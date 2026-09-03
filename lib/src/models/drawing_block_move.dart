@@ -70,23 +70,9 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   required int frameDelta,
   int? cutFrameCount,
 }) {
-  // Plan on ghost-free timelines: derived repeat/hold ghosts neither move
-  // nor obstruct, and (sharing the moved cel's frameId) must never count
-  // as an external link — the caller re-derives the run behaviors after
-  // the slide (UI-R23 #5, matching planDrawingRangeMove).
-  SplayTreeMap<int, TimelineExposure> baseTimeline(Layer layer) {
-    final base = SplayTreeMap<int, TimelineExposure>();
-    layer.timeline.forEach((index, entry) {
-      if (!(entry.isDrawing && entry.ghost)) {
-        base[index] = entry;
-      }
-    });
-    return base;
-  }
-
   final sameLayer = source.id == target.id;
-  final sourceBase = baseTimeline(source);
-  final targetBase = sameLayer ? sourceBase : baseTimeline(target);
+  final sourceBase = ghostFreeTimeline(source);
+  final targetBase = sameLayer ? sourceBase : ghostFreeTimeline(target);
 
   final entry = sourceBase[blockStartIndex];
   if (entry == null || !entry.isDrawing) {
@@ -208,19 +194,8 @@ DrawingBlockMovePlan? planDrawingRangeMove({
     return null;
   }
 
-  // Plan on ghost-free timelines: derived entries neither move nor block.
-  SplayTreeMap<int, TimelineExposure> baseTimeline(Layer layer) {
-    final base = SplayTreeMap<int, TimelineExposure>();
-    layer.timeline.forEach((index, entry) {
-      if (!(entry.isDrawing && entry.ghost)) {
-        base[index] = entry;
-      }
-    });
-    return base;
-  }
-
-  final sourceBase = baseTimeline(source);
-  final targetBase = sameLayer ? sourceBase : baseTimeline(target);
+  final sourceBase = ghostFreeTimeline(source);
+  final targetBase = sameLayer ? sourceBase : ghostFreeTimeline(target);
 
   final moved = <TimelineDrawingBlock>[];
   for (final block in drawingBlocks(sourceBase)) {
@@ -489,4 +464,21 @@ SplayTreeMap<int, TimelineExposure> _timelineWithPushes(
     timeline[push.newStart] = push.block.entry;
   }
   return timeline;
+}
+
+/// [layer]'s timeline without its ghosts — the base a block move plans on.
+///
+/// Derived repeat/hold ghosts neither move nor obstruct, and (sharing the
+/// moved cel's frameId) must never count as an external link — the caller
+/// re-derives the run behaviors after the slide (UI-R23 #5). Both planners
+/// read this one function; until 2026-09-03 each kept its own copy, and the
+/// mutation campaign found a copy nobody tested.
+SplayTreeMap<int, TimelineExposure> ghostFreeTimeline(Layer layer) {
+  final base = SplayTreeMap<int, TimelineExposure>();
+  layer.timeline.forEach((index, entry) {
+    if (!(entry.isDrawing && entry.ghost)) {
+      base[index] = entry;
+    }
+  });
+  return base;
 }
