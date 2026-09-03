@@ -24,17 +24,12 @@ class _XSheetGridReveal {
   void _revealSelection() {
     final cell = _state._metrics.frameCellWidth;
     if (_state._frameScrollController.hasClients && cell > 0) {
-      final position = _state._frameScrollController.position;
-      final target = revealScrollOffset(
-        offset: position.pixels,
-        viewport: position.viewportDimension,
+      jumpToReveal(
+        _state._frameScrollController,
         start: _state.widget.hooks.frameCursor.value * cell,
         extent: cell,
         margin: cell,
-      ).clamp(position.minScrollExtent, position.maxScrollExtent);
-      if (target != position.pixels) {
-        _state._frameScrollController.jumpTo(target);
-      }
+      );
     }
     final columnWidth = _state._metrics.layerRowHeight;
     final activeId = _state.widget.hooks.activeLayerId;
@@ -49,16 +44,11 @@ class _XSheetGridReveal {
     if (at < 0) {
       return;
     }
-    final position = _state._layerScrollController.position;
-    final target = revealScrollOffset(
-      offset: position.pixels,
-      viewport: position.viewportDimension,
+    jumpToReveal(
+      _state._layerScrollController,
       start: at * columnWidth,
       extent: columnWidth,
       margin: columnWidth,
-    ).clamp(position.minScrollExtent, position.maxScrollExtent);
-    if (target != position.pixels) {
-      _state._layerScrollController.jumpTo(target);
-    }
+    );
   }
 }

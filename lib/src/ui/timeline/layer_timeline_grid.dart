@@ -402,17 +402,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   void _revealSelection() {
     final cell = _metrics.frameCellWidth;
     if (_horizontalScrollController.hasClients && cell > 0) {
-      final position = _horizontalScrollController.position;
-      final target = revealScrollOffset(
-        offset: position.pixels,
-        viewport: position.viewportDimension,
+      jumpToReveal(
+        _horizontalScrollController,
         start: widget.hooks.frameCursor.value * cell,
         extent: cell,
         margin: cell,
-      ).clamp(position.minScrollExtent, position.maxScrollExtent);
-      if (target != position.pixels) {
-        _horizontalScrollController.jumpTo(target);
-      }
+      );
     }
     final rowHeight = _metrics.layerRowHeight;
     final rowIndex = _railRows.selectedRowIndex();
@@ -421,17 +416,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         rowHeight <= 0) {
       return;
     }
-    final position = _verticalScrollController.position;
-    final target = revealScrollOffset(
-      offset: position.pixels,
-      viewport: position.viewportDimension,
+    jumpToReveal(
+      _verticalScrollController,
       start: rowIndex * rowHeight,
       extent: rowHeight,
       margin: rowHeight,
-    ).clamp(position.minScrollExtent, position.maxScrollExtent);
-    if (target != position.pixels) {
-      _verticalScrollController.jumpTo(target);
-    }
+    );
   }
 
   // ── the lanes: their own object, in their own file ──────────────────

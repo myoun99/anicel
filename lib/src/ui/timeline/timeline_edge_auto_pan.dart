@@ -56,6 +56,28 @@ double revealScrollOffset({
   return offset;
 }
 
+/// Jumps [controller] the least it can ([revealScrollOffset]) so the item
+/// at [start] with [extent] is on screen with [margin] of its neighbour,
+/// within the scrollable's own range — and not at all when it already is.
+void jumpToReveal(
+  ScrollController controller, {
+  required double start,
+  required double extent,
+  required double margin,
+}) {
+  final position = controller.position;
+  final target = revealScrollOffset(
+    offset: position.pixels,
+    viewport: position.viewportDimension,
+    start: start,
+    extent: extent,
+    margin: margin,
+  ).clamp(position.minScrollExtent, position.maxScrollExtent);
+  if (target != position.pixels) {
+    controller.jumpTo(target);
+  }
+}
+
 double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
   if (extent <= 0) {
     return 0;

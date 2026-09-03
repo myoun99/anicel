@@ -1106,17 +1106,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (frame == null || cell <= 0) {
         return;
       }
-      final position = _horizontalController.position;
-      final target = revealScrollOffset(
-        offset: position.pixels,
-        viewport: position.viewportDimension,
+      jumpToReveal(
+        _horizontalController,
         start: frame * cell,
         extent: cell,
         margin: cell,
-      ).clamp(position.minScrollExtent, position.maxScrollExtent);
-      if (target != position.pixels) {
-        _horizontalController.jumpTo(target);
-      }
+      );
     });
   }
 
