@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'dart:ui' show Offset;
 
 import '../models/brush_settings.dart';
 import '../models/cut_id.dart';
@@ -42,8 +42,7 @@ class CanvasController {
   int _strokeSequence = 0;
 
   FrameId get currentFrameId =>
-      _resolveCurrentFrameId(createIfMissing: false) ??
-      _frameId;
+      _resolveCurrentFrameId(createIfMissing: false) ?? _frameId;
 
   List<Stroke> get strokes {
     if (_layerController != null && _timelineController != null) {

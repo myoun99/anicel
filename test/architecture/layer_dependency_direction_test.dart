@@ -84,12 +84,6 @@ const _ledger = <String, List<_Debt>>{
           '(the file says so at the top). The enum is data; the icon is not.',
     ),
   ],
-  'lib/src/controllers/canvas_controller.dart': [
-    _Debt(
-      'package:flutter/widgets.dart',
-      'The controller drives a canvas surface and holds widget-side handles.',
-    ),
-  ],
   'lib/src/services/persistence/audio_sync_settings_store.dart': [
     _Debt('../../ui/playback/audio_sync_settings.dart', _settingsStore),
   ],
@@ -196,7 +190,7 @@ void main() {
       final edges = _ledger.values.fold<int>(0, (sum, l) => sum + l.length);
       expect(
         edges,
-        3,
+        2,
         reason:
             'The outward-edge count changed. Going DOWN is the point — update '
             'this number and say so in the commit. Going UP needs an argument.',
