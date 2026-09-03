@@ -3152,115 +3152,8 @@ class _StoryboardSeRow extends StatelessWidget {
     final layer = this.layer;
     if (layer != null) {
       final blocks = drawingBlocks(layer.timeline);
-      // Paper blocks first — the storyboard SE row has no cells
-      // underneath, so each block paints its own paper span (SePaperSpan)
-      // at its TRUE global extent; waveforms go above the paper, the
-      // writing on top.
-      for (final block in blocks) {
-        spans.add(
-          _paperSpan(block, layer),
-        );
-      }
-      // Waveforms above the paper (painted UNDER the SE writing): sounds
-      // are FRAME-LINKED — each carrying block windows its waveform,
-      // clamped to the block and the file length (cut ends no longer
-      // clip — the block may cross them).
-      final audioPeaksFor = this.audioPeaksFor;
-      if (audioPeaksFor != null) {
-        for (final span in seAudioSpans(layer)) {
-          final peaks = audioPeaksFor(span.clip.filePath);
-          if (peaks == null) {
-            continue;
-          }
-          // The offset trim shrinks the audible tail (same as the
-          // timeline rows and playback).
-          final endExclusive = math.min(
-            span.startFrame +
-                peaks.durationFrames(projectFrameRate) -
-                span.clip.offsetFrames,
-            span.endFrameExclusive,
-          );
-          if (endExclusive <= span.startFrame) {
-            continue;
-          }
-          spans.add(
-            _waveformSpan(span, endExclusive, layer, peaks),
-          );
-        }
-      }
-      // The sheet's writing on the paper blocks.
-      for (final block in blocks) {
-        final frame = layer.frameById(block.frameId);
-        final dialogue = frame?.name;
-        final seName = frame?.seName;
-        spans.add(
-          _dialogueSpan(block, layer, dialogue, seName),
-        );
-      }
-      // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
-      // the WHOLE flow — blocks simply run across cut boundaries; the
-      // cut-scoped timeline view carries the continuation marks instead.
-      // Timeline parity: ONE row-wide press selects the row and seeks to
-      // the frame under the pointer. It used to be a tap zone per BLOCK,
-      // which meant an empty cell answered nothing and a block always
-      // landed the playhead on its START — neither is what a timeline cell
-      // does. Translucent and mounted BEFORE the grips, so the edges keep
-      // comma-drag priority…
-      // The selection wash — colour only, over the row's content the way
-      // the timeline's selected cells tint their paper (0.12, their very
-      // value: the shared range band rides ABOVE this at 0.18, and the two
-      // must sum to the timeline's look, not double it).
-      final seSelect = this.seSelect;
-      if (seSelect != null) {
-        spans.add(
-          _selectionWash(layer, seSelect),
-        );
-      }
-      if (onRowFramePress != null || onEditSeEntry != null) {
-        final onEditSeEntry = this.onEditSeEntry;
-        int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
-            ? null
-            : (local.dx / timelineScale.pixelsPerFrame).floor();
-        spans.add(
-          _pressLayer(layer, frameAt, onEditSeEntry),
-        );
-      }
-      // THE range gesture — the timeline's, the same one the cut row
-      // mounts, addressed to this LAYER row. It states track-global frames
-      // because that is the axis this row draws in: the cut-local display
-      // clone the timeline shows is windowed to the active cut, so a sound
-      // two cuts away has no local index to be selected by. Mounted UNDER
-      // the grips so the edges keep comma-drag priority.
-      final geometry = frameGeometry;
-      if (seSelect != null && geometry != null) {
-        spans.add(
-          _rangeGestureLayer(layer, geometry, seSelect),
-        );
-      }
-      // …and EVERY block carries the timeline's own comma edge grips
-      // (UI-R7 #5: the active-cut gate is gone — the strip is the whole
-      // flow, so any cut's sound edits in place). Block starts pass
-      // GLOBAL frames; the host's callbacks flag them as such
-      // (blockStartIsGlobal) so the session skips the active-cut window.
-      final seCommaDrag = this.seCommaDrag;
-      if (seCommaDrag != null) {
-        final grips = <Widget>[];
-        var ordinal = 0;
-        for (final block in blocks) {
-          final blockOrdinal = ordinal;
-          ordinal += 1;
-          for (final edge in TimelineBlockEdge.values) {
-            grips.add(
-              _edgeGrip(edge, block, layer, blockOrdinal, seCommaDrag),
-            );
-          }
-        }
-        if (grips.isNotEmpty) {
-          spans.add(
-            _gripLayer(grips),
-          );
-        }
-      }
+      spans.addAll(_contentSpans(layer, blocks));
+      spans.addAll(_interactionLayers(layer, blocks));
     }
 
     return SizedBox(
@@ -3269,6 +3162,135 @@ class _StoryboardSeRow extends StatelessWidget {
       height: _seRowHeight,
       child: Stack(children: spans),
     );
+  }
+
+  /// What the row shows: each block's paper, the waveform where a clip's
+  /// peaks are known, and the dialogue / SE name over each block.
+  List<Widget> _contentSpans(
+    Layer layer,
+    List<TimelineDrawingBlock> blocks,
+  ) {
+    final spans = <Widget>[];
+    // Paper blocks first — the storyboard SE row has no cells
+    // underneath, so each block paints its own paper span (SePaperSpan)
+    // at its TRUE global extent; waveforms go above the paper, the
+    // writing on top.
+    for (final block in blocks) {
+      spans.add(
+        _paperSpan(block, layer),
+      );
+    }
+    // Waveforms above the paper (painted UNDER the SE writing): sounds
+    // are FRAME-LINKED — each carrying block windows its waveform,
+    // clamped to the block and the file length (cut ends no longer
+    // clip — the block may cross them).
+    final audioPeaksFor = this.audioPeaksFor;
+    if (audioPeaksFor != null) {
+      for (final span in seAudioSpans(layer)) {
+        final peaks = audioPeaksFor(span.clip.filePath);
+        if (peaks == null) {
+          continue;
+        }
+        // The offset trim shrinks the audible tail (same as the
+        // timeline rows and playback).
+        final endExclusive = math.min(
+          span.startFrame +
+              peaks.durationFrames(projectFrameRate) -
+              span.clip.offsetFrames,
+          span.endFrameExclusive,
+        );
+        if (endExclusive <= span.startFrame) {
+          continue;
+        }
+        spans.add(
+          _waveformSpan(span, endExclusive, layer, peaks),
+        );
+      }
+    }
+    // The sheet's writing on the paper blocks.
+    for (final block in blocks) {
+      final frame = layer.frameById(block.frameId);
+      final dialogue = frame?.name;
+      final seName = frame?.seName;
+      spans.add(
+        _dialogueSpan(block, layer, dialogue, seName),
+      );
+    }
+    return spans;
+  }
+
+  /// What the row answers to: the selection wash, the press layer, the
+  /// range gesture, and the comma grips on each block's edges.
+  List<Widget> _interactionLayers(
+    Layer layer,
+    List<TimelineDrawingBlock> blocks,
+  ) {
+    final spans = <Widget>[];
+    // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
+    // the WHOLE flow — blocks simply run across cut boundaries; the
+    // cut-scoped timeline view carries the continuation marks instead.
+    // Timeline parity: ONE row-wide press selects the row and seeks to
+    // the frame under the pointer. It used to be a tap zone per BLOCK,
+    // which meant an empty cell answered nothing and a block always
+    // landed the playhead on its START — neither is what a timeline cell
+    // does. Translucent and mounted BEFORE the grips, so the edges keep
+    // comma-drag priority…
+    // The selection wash — colour only, over the row's content the way
+    // the timeline's selected cells tint their paper (0.12, their very
+    // value: the shared range band rides ABOVE this at 0.18, and the two
+    // must sum to the timeline's look, not double it).
+    final seSelect = this.seSelect;
+    if (seSelect != null) {
+      spans.add(
+        _selectionWash(layer, seSelect),
+      );
+    }
+    if (onRowFramePress != null || onEditSeEntry != null) {
+      final onEditSeEntry = this.onEditSeEntry;
+      int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
+          ? null
+          : (local.dx / timelineScale.pixelsPerFrame).floor();
+      spans.add(
+        _pressLayer(layer, frameAt, onEditSeEntry),
+      );
+    }
+    // THE range gesture — the timeline's, the same one the cut row
+    // mounts, addressed to this LAYER row. It states track-global frames
+    // because that is the axis this row draws in: the cut-local display
+    // clone the timeline shows is windowed to the active cut, so a sound
+    // two cuts away has no local index to be selected by. Mounted UNDER
+    // the grips so the edges keep comma-drag priority.
+    final geometry = frameGeometry;
+    if (seSelect != null && geometry != null) {
+      spans.add(
+        _rangeGestureLayer(layer, geometry, seSelect),
+      );
+    }
+    // …and EVERY block carries the timeline's own comma edge grips
+    // (UI-R7 #5: the active-cut gate is gone — the strip is the whole
+    // flow, so any cut's sound edits in place). Block starts pass
+    // GLOBAL frames; the host's callbacks flag them as such
+    // (blockStartIsGlobal) so the session skips the active-cut window.
+    final seCommaDrag = this.seCommaDrag;
+    if (seCommaDrag != null) {
+      final grips = <Widget>[];
+      var ordinal = 0;
+      for (final block in blocks) {
+        final blockOrdinal = ordinal;
+        ordinal += 1;
+        for (final edge in TimelineBlockEdge.values) {
+          grips.add(
+            _edgeGrip(edge, block, layer, blockOrdinal, seCommaDrag),
+          );
+        }
+      }
+      if (grips.isNotEmpty) {
+        spans.add(
+          _gripLayer(grips),
+        );
+      }
+    }
+    return spans;
   }
 
   Positioned _gripLayer(List<Widget> grips) {
@@ -4418,14 +4440,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
                   onPointerDown: (event) {
-                    if (_pressDownGated(event)) {
-                      return;
-                    }
-                    _handlePressDown(event);
-                    // The create judges the PRE-press snapshot (the
-                    // painter this build drew), so running after the
-                    // press's activation cannot widen it (D30).
-                    _maybeCreateStoryboardLayer(blocksPainter, event);
+                    _onCutPressDown(event, blocksPainter);
                   },
                 ),
               ),
@@ -4494,47 +4509,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                   child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
                     valueListenable: stripSelect.selection,
                     builder: (context, selection, _) {
-                      if (selection == null ||
-                          timelineScale.pixelsPerFrame <= 0) {
-                        return const SizedBox.shrink();
-                      }
-                      StoryboardTimelineLayoutEntry? anchor;
-                      for (final entry in layoutEntries) {
-                        if (storyboardLayerForCut(entry.cut)?.id ==
-                            selection.layerId) {
-                          anchor = entry;
-                          break;
-                        }
-                      }
-                      if (anchor == null) {
-                        return const SizedBox.shrink();
-                      }
-                      return Stack(
-                        children: [
-                          Positioned(
-                            left: timelineScale.leftForFrame(
-                              anchor.startFrame + selection.startIndex,
-                            ),
-                            top: 0,
-                            bottom: 0,
-                            width:
-                                timelineScale.pixelsPerFrame *
-                                (selection.endIndexExclusive -
-                                    selection.startIndex),
-                            child: Semantics(
-                              key: const ValueKey<String>(
-                                'storyboard-strip-range-selection',
-                              ),
-                              label: AppText.strings.tlSelectedPanelRange,
-                              container: true,
-                              child: DecoratedBox(
-                                decoration:
-                                    timelineRangeSelectionBandDecoration,
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
+                      return _stripRangeOutline(selection);
                     },
                   ),
                 ),
@@ -4652,6 +4627,69 @@ class _StoryboardTrackRow extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// The strip's range-selection band: the selected panels of the cut
+  /// whose storyboard layer the selection names, or nothing when no
+  /// entry carries that layer.
+  Widget _stripRangeOutline(TimelineFrameRangeSelection? selection) {
+    if (selection == null ||
+        timelineScale.pixelsPerFrame <= 0) {
+      return const SizedBox.shrink();
+    }
+    StoryboardTimelineLayoutEntry? anchor;
+    for (final entry in layoutEntries) {
+      if (storyboardLayerForCut(entry.cut)?.id ==
+          selection.layerId) {
+        anchor = entry;
+        break;
+      }
+    }
+    if (anchor == null) {
+      return const SizedBox.shrink();
+    }
+    return Stack(
+      children: [
+        Positioned(
+          left: timelineScale.leftForFrame(
+            anchor.startFrame + selection.startIndex,
+          ),
+          top: 0,
+          bottom: 0,
+          width:
+              timelineScale.pixelsPerFrame *
+              (selection.endIndexExclusive -
+                  selection.startIndex),
+          child: Semantics(
+            key: const ValueKey<String>(
+              'storyboard-strip-range-selection',
+            ),
+            label: AppText.strings.tlSelectedPanelRange,
+            container: true,
+            child: DecoratedBox(
+              decoration:
+                  timelineRangeSelectionBandDecoration,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A press on the cut blocks: gated first, then the press itself, then
+  /// the storyboard-layer create judged on the painter this build drew.
+  void _onCutPressDown(
+    PointerDownEvent event,
+    StoryboardCutBlocksPainter blocksPainter,
+  ) {
+    if (_pressDownGated(event)) {
+      return;
+    }
+    _handlePressDown(event);
+    // The create judges the PRE-press snapshot (the
+    // painter this build drew), so running after the
+    // press's activation cannot widen it (D30).
+    _maybeCreateStoryboardLayer(blocksPainter, event);
   }
 
   double _timelineWidthFor(
