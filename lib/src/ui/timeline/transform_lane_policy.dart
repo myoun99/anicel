@@ -1,3 +1,4 @@
+import 'lane_span_in_order.dart';
 import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
@@ -233,17 +234,8 @@ List<String> get transformLaneSelectionOrder => [
 /// (R26 #3 — the cell selection's Excel span rule applied to lane rows,
 /// within one layer's lane group). Ids outside the canonical order fall
 /// back to the anchor lane alone.
-List<String> transformLaneSpan(String anchorLaneId, String headLaneId) {
-  final order = transformLaneSelectionOrder;
-  final anchor = order.indexOf(anchorLaneId);
-  final head = order.indexOf(headLaneId);
-  if (anchor < 0 || head < 0) {
-    return [anchorLaneId];
-  }
-  final low = anchor < head ? anchor : head;
-  final high = anchor < head ? head : anchor;
-  return order.sublist(low, high + 1);
-}
+List<String> transformLaneSpan(String anchorLaneId, String headLaneId) =>
+    laneSpanInOrder(transformLaneSelectionOrder, anchorLaneId, headLaneId);
 
 /// Whether the lane selection covers [laneId]'s BAND ROW on [layerId]
 /// (R26 #3) — member lanes read the span directly; the group HEADER row

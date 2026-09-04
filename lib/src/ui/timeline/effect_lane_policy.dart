@@ -1,3 +1,4 @@
+import 'lane_span_in_order.dart';
 import 'dart:ui' show Offset;
 
 import '../../models/layer_effect.dart';
@@ -176,15 +177,11 @@ List<String>? effectLaneSpan(
   if (head == null || head.effectId != effectId) {
     return [anchorLaneId];
   }
-  final order = effectLaneSelectionOrder(owner);
-  final anchorIndex = order.indexOf(anchorLaneId);
-  final headIndex = order.indexOf(headLaneId);
-  if (anchorIndex < 0 || headIndex < 0) {
-    return [anchorLaneId];
-  }
-  final low = anchorIndex < headIndex ? anchorIndex : headIndex;
-  final high = anchorIndex < headIndex ? headIndex : anchorIndex;
-  return order.sublist(low, high + 1);
+  return laneSpanInOrder(
+    effectLaneSelectionOrder(owner),
+    anchorLaneId,
+    headLaneId,
+  );
 }
 
 /// Whether a lane selection covering [spanLaneIds] should wash an effect's
