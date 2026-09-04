@@ -1,5 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
+import 'versioned_settings_file.dart';
 
 import '../../models/app_workspace_colors.dart';
 import 'app_support_path.dart';
@@ -19,28 +18,15 @@ class AppWorkspaceColorsStore {
 
   static const int version = 1;
 
-  Future<AppWorkspaceColors?> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return null;
-      }
-      return AppWorkspaceColors.fromJson(decoded);
-    } on Object {
-      return null;
-    }
-  }
+  Future<AppWorkspaceColors?> load() => loadVersionedSettings(
+    filePath: filePath,
+    version: version,
+    fromJson: AppWorkspaceColors.fromJson,
+  );
 
-  Future<void> save(AppWorkspaceColors settings) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({'version': version, ...settings.toJson()}),
-    );
-  }
+  Future<void> save(AppWorkspaceColors settings) => saveVersionedSettings(
+    filePath: filePath,
+    version: version,
+    json: settings.toJson(),
+  );
 }

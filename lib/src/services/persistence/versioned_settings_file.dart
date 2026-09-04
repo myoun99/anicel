@@ -1,0 +1,51 @@
+/// Reading and writing the app's own settings files — the small versioned
+/// JSON documents beside the project data, not project data itself.
+///
+/// ⛔TWELVE STORES WROTE THIS OUT. The exists check, the decode, the
+/// version gate and the catch-everything were copied per settings kind,
+/// which is twelve places for one of them to start THROWING where its
+/// neighbours return the defaults — and a settings file that cannot be
+/// read must never stop the app from starting.
+library;
+
+import 'dart:convert';
+import 'dart:io';
+
+/// The document in [filePath], or null when it is missing, unreadable, or
+/// stamped with a version this build does not know.
+///
+/// ⚠️Null means "use the defaults", for every reason at once, ON PURPOSE:
+/// a corrupt settings file and a missing one are the same situation to
+/// every caller, and telling them apart would only invite one of them to
+/// be handled and the other forgotten.
+Future<T?> loadVersionedSettings<T>({
+  required String filePath,
+  required int version,
+  required T Function(Map<String, dynamic> json) fromJson,
+}) async {
+  try {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      return null;
+    }
+    final decoded =
+        jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    if ((decoded['version'] as int? ?? 0) > version) {
+      return null;
+    }
+    return fromJson(decoded);
+  } on Object {
+    return null;
+  }
+}
+
+/// Writes [json] to [filePath] under [version], creating the directory.
+Future<void> saveVersionedSettings({
+  required String filePath,
+  required int version,
+  required Map<String, dynamic> json,
+}) async {
+  final file = File(filePath);
+  await file.parent.create(recursive: true);
+  await file.writeAsString(jsonEncode({'version': version, ...json}));
+}

@@ -1,3 +1,4 @@
+import 'persistence/versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -90,11 +91,9 @@ class ColorPaletteFileService {
     }
   }
 
-  Future<void> save(ColorPaletteState state) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({'version': version, ...state.toJson()}),
-    );
-  }
+  Future<void> save(ColorPaletteState state) => saveVersionedSettings(
+    filePath: filePath,
+    version: version,
+    json: state.toJson(),
+  );
 }

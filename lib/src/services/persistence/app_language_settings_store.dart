@@ -1,3 +1,4 @@
+import 'versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -37,11 +38,9 @@ class AppLanguageSettingsStore {
     }
   }
 
-  Future<void> save(AppLanguageSettings settings) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({'version': version, ...settings.toJson()}),
-    );
-  }
+  Future<void> save(AppLanguageSettings settings) => saveVersionedSettings(
+    filePath: filePath,
+    version: version,
+    json: settings.toJson(),
+  );
 }

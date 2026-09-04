@@ -1,5 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
+import 'versioned_settings_file.dart';
 
 import '../../models/app_input_settings.dart';
 import 'app_support_path.dart';
@@ -18,28 +17,16 @@ class AppInputSettingsStore {
 
   static const int version = 1;
 
-  Future<AppInputSettings?> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return null;
-      }
-      return AppInputSettings.fromJson(decoded);
-    } on Object {
-      return null;
-    }
-  }
+  Future<AppInputSettings?> load() => loadVersionedSettings(
+    filePath: filePath,
+    version: version,
+    fromJson: AppInputSettings.fromJson,
+  );
 
-  Future<void> save(AppInputSettings settings) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({'version': version, ...settings.toJson()}),
-    );
-  }
+  Future<void> save(AppInputSettings settings) =>
+      saveVersionedSettings(
+        filePath: filePath,
+        version: version,
+        json: settings.toJson(),
+      );
 }
