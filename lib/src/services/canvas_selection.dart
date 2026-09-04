@@ -317,6 +317,37 @@ Float64List? solveHomography(List<CanvasPoint> from, List<CanvasPoint> to) {
   return h;
 }
 
+/// The dab a warp answers with when every control point moved by the SAME
+/// delta — or null when the warp is a real one.
+///
+/// ⛔BOTH WARP PATHS SHORT-CIRCUIT HERE, AND NOT FOR SPEED. Dragging the
+/// whole quad, or the whole grid, is reachable — and without this it would
+/// run the per-pixel vote: solveHomography's elimination leaves a ~1e-15
+/// residue, so the kernel's own whole-pixel-translation circuit never
+/// fires here no matter how exactly the user dragged.
+BrushDab? stampDabMovedWholesale(
+  BrushDab stampDab,
+  List<CanvasPoint> base,
+  List<CanvasPoint> moved,
+) {
+  final deltaX = moved[0].x - base[0].x;
+  final deltaY = moved[0].y - base[0].y;
+  for (var i = 1; i < base.length; i += 1) {
+    if (moved[i].x - base[i].x != deltaX || moved[i].y - base[i].y != deltaY) {
+      return null;
+    }
+  }
+  if (deltaX == 0 && deltaY == 0) {
+    return stampDab;
+  }
+  return stampDab.copyWith(
+    center: CanvasPoint(
+      x: stampDab.center.x + deltaX,
+      y: stampDab.center.y + deltaY,
+    ),
+  );
+}
+
 /// The lifted stamp through a free QUAD (R20-D2 perspective transform,
 /// the PS Ctrl+corner mode): [corners] are the destination positions of
 /// the stamp rect's TL/TR/BR/BL corners in canvas space. Resamples through
@@ -343,31 +374,9 @@ BrushDab transformStampDabQuad(
     CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
     CanvasPoint(x: srcLeft, y: srcTop + stamp.height),
   ];
-  // Identity, and the pure translation that the affine path short-circuits
-  // at the top. Dragging the whole quad is reachable, and without this it
-  // would run the per-pixel vote: solveHomography's elimination leaves a
-  // ~1e-15 residue, so the kernel's own whole-pixel-translation circuit
-  // never fires here no matter how exactly the user dragged.
-  final deltaX = corners[0].x - base[0].x;
-  final deltaY = corners[0].y - base[0].y;
-  var translationOnly = true;
-  for (var i = 1; i < 4; i += 1) {
-    if (corners[i].x - base[i].x != deltaX ||
-        corners[i].y - base[i].y != deltaY) {
-      translationOnly = false;
-      break;
-    }
-  }
-  if (translationOnly) {
-    if (deltaX == 0 && deltaY == 0) {
-      return stampDab;
-    }
-    return stampDab.copyWith(
-      center: CanvasPoint(
-        x: stampDab.center.x + deltaX,
-        y: stampDab.center.y + deltaY,
-      ),
-    );
+  final moved = stampDabMovedWholesale(stampDab, base, corners);
+  if (moved != null) {
+    return moved;
   }
   // dst → src directly: no matrix inversion, one solve.
   final h = solveHomography(corners, base);
@@ -435,31 +444,13 @@ BrushDab transformStampDabMesh(
     y: srcTop + row * cellHeight,
   );
 
-  // Identity and pure translation, for the same reason the quad path has
-  // both: dragging the whole grid is reachable and must not resample.
-  final deltaX = points[0].x - baseAt(0, 0).x;
-  final deltaY = points[0].y - baseAt(0, 0).y;
-  var translationOnly = true;
-  for (var row = 0; row <= rows && translationOnly; row += 1) {
-    for (var column = 0; column <= columns; column += 1) {
-      final base = baseAt(column, row);
-      final point = points[row * (columns + 1) + column];
-      if (point.x - base.x != deltaX || point.y - base.y != deltaY) {
-        translationOnly = false;
-        break;
-      }
-    }
-  }
-  if (translationOnly) {
-    if (deltaX == 0 && deltaY == 0) {
-      return stampDab;
-    }
-    return stampDab.copyWith(
-      center: CanvasPoint(
-        x: stampDab.center.x + deltaX,
-        y: stampDab.center.y + deltaY,
-      ),
-    );
+  final baseGrid = [
+    for (var row = 0; row <= rows; row += 1)
+      for (var column = 0; column <= columns; column += 1) baseAt(column, row),
+  ];
+  final moved = stampDabMovedWholesale(stampDab, baseGrid, points);
+  if (moved != null) {
+    return moved;
   }
 
   final out = selectionWarpOutputRect(points);
