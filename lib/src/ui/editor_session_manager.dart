@@ -8,7 +8,7 @@ import 'dart:ui' as ui show ImageByteFormat;
 import 'package:flutter/foundation.dart';
 
 import '../services/editing/default_cut_helpers.dart'
-    show createDefaultCut, defaultCutCanvasSize;
+    show createDefaultCut, defaultCutCanvasSize, importedCut;
 import '../services/editing/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvpp_convert.dart';
@@ -4044,13 +4044,10 @@ class EditorSessionManager extends ChangeNotifier {
         layerId: mint.nextLayerId(),
         canvasSize: canvasSize,
       );
-      final fixtureLayers = [
-        for (final fixture in defaultCut.layers)
-          if (fixture.kind != LayerKind.animation) fixture,
-      ];
-      final cut = defaultCut.copyWith(
+      final cut = importedCut(
+        defaultCut: defaultCut,
+        layers: [layer],
         duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
-        layers: [layer, ...fixtureLayers],
       );
       _historyManager.execute(
         ImportMediaCommand(
@@ -4188,13 +4185,10 @@ class EditorSessionManager extends ChangeNotifier {
         layerId: mint.nextLayerId(),
         canvasSize: canvasSize,
       );
-      final fixtureLayers = [
-        for (final fixture in defaultCut.layers)
-          if (fixture.kind != LayerKind.animation) fixture,
-      ];
-      final cut = defaultCut.copyWith(
+      final cut = importedCut(
+        defaultCut: defaultCut,
+        layers: [...expansion.layers],
         duration: duration,
-        layers: [...expansion.layers, ...fixtureLayers],
       );
       _historyManager.execute(
         ImportMediaCommand(
@@ -4354,13 +4348,10 @@ class EditorSessionManager extends ChangeNotifier {
           layerId: mint.nextLayerId(),
           canvasSize: canvasSize,
         );
-        final fixtureLayers = [
-          for (final fixture in defaultCut.layers)
-            if (fixture.kind != LayerKind.animation) fixture,
-        ];
-        final cut = defaultCut.copyWith(
+        final cut = importedCut(
+          defaultCut: defaultCut,
+          layers: [layer],
           duration: spanCount > 1 ? _sequenceLength(layer) : project.fps,
-          layers: [layer, ...fixtureLayers],
         );
         _historyManager.execute(
           ImportMediaCommand(

@@ -15,6 +15,7 @@ library;
 
 import 'dart:math' as math;
 import 'dart:typed_data';
+import '../../models/audio_pcm_scale.dart';
 
 /// One volume-envelope point (AUDIO-PRO R1) — mirrors the C
 /// `qa_audio_envelope_key`: at [sample] (clip-local, from the clip's
@@ -297,17 +298,7 @@ Float32List audioBusToFloat(Float64List bus, {Float32List? into}) {
 Int16List audioBusToInt16(Float64List bus, {Int16List? into}) {
   final out = into ?? Int16List(bus.length);
   for (var index = 0; index < bus.length; index += 1) {
-    var value = bus[index];
-    if (value > 1.0) {
-      value = 1.0;
-    } else if (value < -1.0) {
-      value = -1.0;
-    }
-    var scaled = (value * 32768.0).round();
-    if (scaled > 32767) {
-      scaled = 32767;
-    }
-    out[index] = scaled;
+    out[index] = int16FromUnitSample(bus[index]);
   }
   return out;
 }

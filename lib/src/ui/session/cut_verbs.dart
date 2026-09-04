@@ -103,43 +103,35 @@ class _CutVerbs {
     return position;
   }
 
-  bool get canMoveActiveCutLeft {
+  bool get canMoveActiveCutLeft => _canMoveActiveCut(CutMoveDirection.left);
+
+  bool get canMoveActiveCutRight => _canMoveActiveCut(CutMoveDirection.right);
+
+  void moveActiveCutLeft() => _moveActiveCut(CutMoveDirection.left);
+
+  void moveActiveCutRight() => _moveActiveCut(CutMoveDirection.right);
+
+  bool _canMoveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPositionOrNull;
     return position != null &&
-        _session._cutReorderPlanner.canMoveLeft(position);
+        _session._cutReorderPlanner.canMove(position, direction);
   }
 
-  bool get canMoveActiveCutRight {
-    final position = _activeCutPositionOrNull;
-    return position != null &&
-        _session._cutReorderPlanner.canMoveRight(position);
-  }
-
-  void moveActiveCutLeft() {
+  /// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
+  /// and command and refresh each, so a step that stopped refreshing after
+  /// the reorder would have done it in one direction only.
+  void _moveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPosition;
-    if (!_session._cutReorderPlanner.canMoveLeft(position)) {
+    if (!_session._cutReorderPlanner.canMove(position, direction)) {
       return;
     }
-
     _session._cutCommandCoordinator.reorderCut(
       trackId: position.trackId,
       cutId: position.cutId,
-      newIndex: _session._cutReorderPlanner.moveLeftTargetIndex(position),
-    );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
-  }
-
-  void moveActiveCutRight() {
-    final position = _activeCutPosition;
-    if (!_session._cutReorderPlanner.canMoveRight(position)) {
-      return;
-    }
-
-    _session._cutCommandCoordinator.reorderCut(
-      trackId: position.trackId,
-      cutId: position.cutId,
-      newIndex: _session._cutReorderPlanner.moveRightTargetIndex(position),
+      newIndex: _session._cutReorderPlanner.moveTargetIndex(
+        position,
+        direction,
+      ),
     );
     _session._refreshAfterCutCommand();
     _session._notifyChanged();

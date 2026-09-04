@@ -37,6 +37,7 @@
 library;
 
 import 'dart:typed_data';
+import '../../models/audio_pcm_scale.dart';
 
 /// What a conformed file records about the source it came from, so a
 /// replaced original is detected rather than silently played stale.
@@ -400,18 +401,11 @@ Uint8List encodeConform({
   final view = ByteData.sublistView(out, ConformHeader.length);
   final count = header.frames * channels;
   for (var index = 0; index < count; index += 1) {
-    var value = samples[index];
-    if (value > 1.0) {
-      value = 1.0;
-    } else if (value < -1.0) {
-      value = -1.0;
-    }
-    // 32768, not 32767 — see the note on the decoder below.
-    var scaled = (value * 32768.0).round();
-    if (scaled > 32767) {
-      scaled = 32767;
-    }
-    view.setInt16(index * 2, scaled, Endian.little);
+    view.setInt16(
+      index * 2,
+      int16FromUnitSample(samples[index]),
+      Endian.little,
+    );
   }
   return out;
 }

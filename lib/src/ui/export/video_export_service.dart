@@ -11,6 +11,7 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_encoder.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
+import '../../models/audio_pcm_scale.dart';
 
 /// The ABI v21 integers the native encoder speaks (qa_video_encode.c).
 extension ExportVideoContainerAbi on ExportVideoContainer {
@@ -328,14 +329,8 @@ class VideoExportService {
         final frameCount = window.samples.length ~/ reader.channels;
         final pcm = Int16List(window.samples.length);
         for (var i = 0; i < window.samples.length; i += 1) {
-          // The exact inverse of the WAV decode's /32768 — lossless.
-          var value = (window.samples[i] * 32768.0).round();
-          if (value > 32767) {
-            value = 32767;
-          } else if (value < -32768) {
-            value = -32768;
-          }
-          pcm[i] = value;
+          // The exact inverse of the WAV decode - see int16FromUnitSample.
+          pcm[i] = int16FromUnitSample(window.samples[i]);
         }
         if (!encoder.writeAudio(pcm, frameCount)) {
           return false;

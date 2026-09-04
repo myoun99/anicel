@@ -68,32 +68,52 @@ void main() {
       );
     });
 
-    test('canMoveLeft and canMoveRight reflect first middle and last Cuts', () {
+    test('canMove reflects first middle and last Cuts, both ways', () {
       final positions = _positionsForThreeCuts();
 
-      expect(planner.canMoveLeft(positions[0]), isFalse);
-      expect(planner.canMoveRight(positions[0]), isTrue);
-      expect(planner.canMoveLeft(positions[1]), isTrue);
-      expect(planner.canMoveRight(positions[1]), isTrue);
-      expect(planner.canMoveLeft(positions[2]), isTrue);
-      expect(planner.canMoveRight(positions[2]), isFalse);
+      expect(planner.canMove(positions[0], CutMoveDirection.left), isFalse);
+      expect(planner.canMove(positions[0], CutMoveDirection.right), isTrue);
+      expect(planner.canMove(positions[1], CutMoveDirection.left), isTrue);
+      expect(planner.canMove(positions[1], CutMoveDirection.right), isTrue);
+      expect(planner.canMove(positions[2], CutMoveDirection.left), isTrue);
+      expect(planner.canMove(positions[2], CutMoveDirection.right), isFalse);
     });
 
     test('calculates target indexes for a middle Cut', () {
       final middlePosition = _positionsForThreeCuts()[1];
 
-      expect(planner.moveLeftTargetIndex(middlePosition), 0);
-      expect(planner.moveRightTargetIndex(middlePosition), 2);
+      expect(planner.moveTargetIndex(middlePosition, CutMoveDirection.left), 0);
+      expect(
+        planner.moveTargetIndex(middlePosition, CutMoveDirection.right),
+        2,
+      );
     });
 
     test('fails clearly for edge target indexes', () {
       final positions = _positionsForThreeCuts();
 
-      expect(() => planner.moveLeftTargetIndex(positions[0]), throwsStateError);
       expect(
-        () => planner.moveRightTargetIndex(positions[2]),
+        () => planner.moveTargetIndex(positions[0], CutMoveDirection.left),
         throwsStateError,
       );
+      expect(
+        () => planner.moveTargetIndex(positions[2], CutMoveDirection.right),
+        throwsStateError,
+      );
+    });
+
+    test('a one-cut track cannot move either way', () {
+      // The guards used to be two sentences; a lone cut is where they both
+      // have to say no.
+      final first = _positionsForThreeCuts()[0];
+      final only = CutPosition(
+        trackId: first.trackId,
+        cutId: first.cutId,
+        cutIndex: 0,
+        cutCount: 1,
+      );
+      expect(planner.canMove(only, CutMoveDirection.left), isFalse);
+      expect(planner.canMove(only, CutMoveDirection.right), isFalse);
     });
   });
 }
