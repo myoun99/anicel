@@ -6,6 +6,14 @@ import '../command.dart';
 /// cross-layer block move (R10-④b), composed with the layer timeline
 /// updates into one undo step. Undo replays the pairs reversed, so the
 /// drawings land back under their original keys.
+///
+/// ⚠️THE PAIRS ARE DISJOINT, by construction rather than by a check: a
+/// frameId names one cel, so a cel appears in exactly one pair and no
+/// `to` is another pair's `from`. That is what makes reversing each pair
+/// enough — an OVERLAPPING chain (a → b, b → c) would need the replay to
+/// reverse the list ORDER too, and the undo as written would drop the
+/// drawing that landed on b. Measured 2026-09-05 while pinning this; no
+/// caller builds one, and a caller that starts to must fix the replay.
 class RekeyBrushFramesCommand implements Command {
   RekeyBrushFramesCommand({required this.store, required this.pairs});
 
