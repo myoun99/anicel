@@ -269,15 +269,15 @@ class CanvasViewport {
     );
   }
 
-  CanvasPoint viewportToCanvas(ViewportPoint point) {
-    if (!hasRotationOrFlip) {
-      return CanvasPoint(
-        x: (point.x - panX) / zoom,
-        y: (point.y - panY) / zoom,
-      );
-    }
-    final ux = (point.x - panX) / zoom;
-    final uy = (point.y - panY) / zoom;
+  /// The rotation and flip half of both viewport→canvas conversions,
+  /// applied to an already-unzoomed vector.
+  ///
+  /// ⛔TWO CONVERSIONS SHARE IT — the point (which subtracts pan first)
+  /// and the DELTA (which does not, because a delta has no origin) — and
+  /// the six lines of trigonometry were written twice. A sign flipped in
+  /// one of them and not the other is a drag that fights the pointer only
+  /// while the canvas is turned.
+  CanvasPoint _rotatedFlipped(double ux, double uy) {
     final radians = rotationRadians;
     final cos = math.cos(radians);
     final sin = math.sin(radians);
@@ -287,6 +287,16 @@ class CanvasViewport {
       x: flipHorizontal ? -rx : rx,
       y: flipVertical ? -ry : ry,
     );
+  }
+
+  CanvasPoint viewportToCanvas(ViewportPoint point) {
+    if (!hasRotationOrFlip) {
+      return CanvasPoint(
+        x: (point.x - panX) / zoom,
+        y: (point.y - panY) / zoom,
+      );
+    }
+    return _rotatedFlipped((point.x - panX) / zoom, (point.y - panY) / zoom);
   }
 
   /// Maps a viewport-space pointer DELTA into canvas space (the linear
@@ -300,17 +310,7 @@ class CanvasViewport {
     if (!hasRotationOrFlip) {
       return CanvasPoint(x: dx / zoom, y: dy / zoom);
     }
-    final ux = dx / zoom;
-    final uy = dy / zoom;
-    final radians = rotationRadians;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-    final rx = ux * cos + uy * sin;
-    final ry = -ux * sin + uy * cos;
-    return CanvasPoint(
-      x: flipHorizontal ? -rx : rx,
-      y: flipVertical ? -ry : ry,
-    );
+    return _rotatedFlipped(dx / zoom, dy / zoom);
   }
 
   Map<String, dynamic> toJson() => {
