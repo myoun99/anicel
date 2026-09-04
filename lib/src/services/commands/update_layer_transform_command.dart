@@ -1,7 +1,5 @@
 import '../../models/cut_id.dart';
-import '../../models/layer_id.dart';
 import '../../models/transform_track.dart';
-import '../project_repository.dart';
 import 'layer_field_command.dart';
 
 /// Replaces a layer's whole transform track in one undo step (lane edits
@@ -9,14 +7,12 @@ import 'layer_field_command.dart';
 /// mirrors the instruction and camera-track commands).
 class UpdateLayerTransformCommand extends LayerFieldCommand<TransformTrack> {
   UpdateLayerTransformCommand({
-    required ProjectRepository repository,
+    required super.repository,
     required CutId cutId,
-    required LayerId layerId,
+    required super.layerId,
     required TransformTrack transformTrack,
     String description = 'Edit layer transform',
   }) : super(
-         repository: repository,
-         layerId: layerId,
          value: transformTrack,
          field: (
            name: 'transform',

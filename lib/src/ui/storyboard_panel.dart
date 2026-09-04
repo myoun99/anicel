@@ -117,7 +117,7 @@ import 'timeline/timeline_frame_span_layout.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_coordinate_policy.dart'
-    show frameIndexFromLocalX, FrameScrubDedupe;
+    show FrameScrubDedupe, frameIndexFromLocalX;
 import 'timeline/timeline_frame_range_policy.dart'
     show endlessViewportFillFrames;
 import '../models/layer_kind.dart';
