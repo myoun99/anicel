@@ -3,6 +3,35 @@ import 'dart:ui' as ui;
 
 import '../native/qa_native_engine.dart';
 
+/// Straight-alpha [rgba] premultiplied for the display upload, with the
+/// native scratch that owns those bytes when the engine took the pass —
+/// release it once the decode is done, and never before.
+///
+/// ⛔THE NATIVE PASS AND THE DART FALLBACK ARE ONE DECISION, not two. The
+/// second site to want premultiplied pixels wrote both branches out again,
+/// which is how a rounding rule (`+127`, round-to-nearest, matching the C)
+/// came to live in two places where only one of them said why.
+({Uint8List pixels, QaStampScratch? scratch}) premultipliedStraightRgba(
+  Uint8List rgba,
+) {
+  final native = QaNativeEngine.instance;
+  if (native != null) {
+    final scratch = native.premultipliedStampCopy(rgba);
+    return (pixels: scratch.view, scratch: scratch);
+  }
+  final premultiplied = Uint8List.fromList(rgba);
+  for (var i = 0; i < premultiplied.length; i += 4) {
+    final alpha = premultiplied[i + 3];
+    if (alpha == 255) {
+      continue;
+    }
+    premultiplied[i] = (premultiplied[i] * alpha + 127) ~/ 255;
+    premultiplied[i + 1] = (premultiplied[i + 1] * alpha + 127) ~/ 255;
+    premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
+  }
+  return (pixels: premultiplied, scratch: null);
+}
+
 /// Uploads STRAIGHT-alpha [rgba] as a display image.
 ///
 /// Straight alpha is the app's storage convention and stays that way:
@@ -42,24 +71,9 @@ void decodeStraightRgbaImage({
   int? targetWidth,
   int? targetHeight,
 }) {
-  final native = QaNativeEngine.instance;
-  final Uint8List premultiplied;
-  QaStampScratch? scratch;
-  if (native != null) {
-    scratch = native.premultipliedStampCopy(rgba);
-    premultiplied = scratch.view;
-  } else {
-    premultiplied = Uint8List.fromList(rgba);
-    for (var i = 0; i < premultiplied.length; i += 4) {
-      final alpha = premultiplied[i + 3];
-      if (alpha == 255) {
-        continue;
-      }
-      premultiplied[i] = (premultiplied[i] * alpha + 127) ~/ 255;
-      premultiplied[i + 1] = (premultiplied[i + 1] * alpha + 127) ~/ 255;
-      premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
-    }
-  }
+  final premultipliedCopy = premultipliedStraightRgba(rgba);
+  final premultiplied = premultipliedCopy.pixels;
+  final scratch = premultipliedCopy.scratch;
   ui.decodeImageFromPixels(
     premultiplied,
     width,

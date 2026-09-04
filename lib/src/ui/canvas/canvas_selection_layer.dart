@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/straight_rgba_image.dart' show premultipliedStraightRgba;
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
@@ -19,7 +20,6 @@ import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
-import '../../native/qa_native_engine.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../../models/app_input_settings.dart';
 import '../text/app_strings.dart';
@@ -1872,24 +1872,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // allocation and a second full traversal on every frame of a drag,
     // which on a whole-picture transform is tens of megabytes per pointer
     // move. The scratch is freed in the decode callback, on every path.
-    final native = QaNativeEngine.instance;
-    final Uint8List premultiplied;
-    QaStampScratch? scratch;
-    if (native != null) {
-      scratch = native.premultipliedStampCopy(stamp.rgba);
-      premultiplied = scratch.view;
-    } else {
-      premultiplied = Uint8List.fromList(stamp.rgba);
-      for (var i = 0; i < premultiplied.length; i += 4) {
-        final alpha = premultiplied[i + 3];
-        if (alpha == 255) {
-          continue;
-        }
-        premultiplied[i] = (premultiplied[i] * alpha + 127) ~/ 255;
-        premultiplied[i + 1] = (premultiplied[i + 1] * alpha + 127) ~/ 255;
-        premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
-      }
-    }
+    final premultipliedCopy = premultipliedStraightRgba(stamp.rgba);
+    final premultiplied = premultipliedCopy.pixels;
+    final scratch = premultipliedCopy.scratch;
     final request = ++_resampleImageRequest;
     _resampleInFlight = true;
     ui.decodeImageFromPixels(
