@@ -260,7 +260,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     isMounted: () => mounted,
   );
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
-  int? _lastRulerScrubbedFrameIndex;
+  final FrameScrubDedupe _rulerScrubbedFrame = FrameScrubDedupe();
 
   /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
   /// laid on this rail's own width.

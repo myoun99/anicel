@@ -295,7 +295,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     isMounted: () => mounted,
   );
   final GlobalKey _railScrubViewportKey = GlobalKey();
-  int? _lastRailScrubbedFrameIndex;
+  final FrameScrubDedupe _railScrubbedFrame = FrameScrubDedupe();
 
   TimelineGridMetrics get _metrics => widget.metrics;
 

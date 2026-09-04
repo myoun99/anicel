@@ -58,3 +58,34 @@ double frameRangeVisibleWidth({
 }) {
   return math.max(0, endFrameIndexExclusive - startFrameIndex) * frameCellWidth;
 }
+
+/// A scrub's per-gesture frame dedupe.
+///
+/// ⛔THE DEDUPE IS THE LAW, AND THE USER NAMED IT (feedback #13:
+/// 「로직도 똑같이 통일하라는거니까」). A scrub reports per POINTER MOVE,
+/// so without it the same frame is re-selected dozens of times a second
+/// and every listener downstream — the composite warmer included — re-runs
+/// on a selection that did not change.
+///
+/// Three scrubs kept their own `int?` field and their own `== last` line:
+/// the timeline ruler, the X-sheet rail and the storyboard strip.
+class FrameScrubDedupe {
+  int? _last;
+
+  /// [frame] when it differs from the last one reported, remembering it —
+  /// else null, a null [frame] included.
+  int? next(int? frame) {
+    if (frame == null || frame == _last) {
+      return null;
+    }
+    _last = frame;
+    return frame;
+  }
+
+  /// Forgets the last frame, so the next gesture reports from scratch.
+  ///
+  /// ⚠️NOT called on a scrub's release: the ruler's trailing `onTap` fires
+  /// after the pointer is up, and resetting there would let it report the
+  /// frame the drag just reported.
+  void reset() => _last = null;
+}

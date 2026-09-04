@@ -117,7 +117,7 @@ import 'timeline/timeline_frame_span_layout.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_coordinate_policy.dart'
-    show frameIndexFromLocalX;
+    show frameIndexFromLocalX, FrameScrubDedupe;
 import 'timeline/timeline_frame_range_policy.dart'
     show endlessViewportFillFrames;
 import '../models/layer_kind.dart';
@@ -2081,9 +2081,9 @@ class _StoryboardRuler extends StatefulWidget {
 class _StoryboardRulerState extends State<_StoryboardRuler> {
   /// Per-gesture dedupe (the timeline's `_lastRulerScrubbedFrameIndex`):
   /// same-frame moves report once.
-  int? _lastScrubbedFrame;
+  final FrameScrubDedupe _scrubbedFrame = FrameScrubDedupe();
 
-  void _resetScrubTracking() => _lastScrubbedFrame = null;
+  void _resetScrubTracking() => _scrubbedFrame.reset();
 
   /// The scrub's VIEWPORT-local x for a pointer at [globalPosition], or
   /// null before this row has a box (the timeline's
@@ -2119,16 +2119,17 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
     // THE shared frame policy, the one the timeline ruler and the X-sheet
     // already call — viewport-local x plus the live offset (feedback #13:
     // "로직도 똑같이 통일하라는거니까").
-    final frame = frameIndexFromLocalX(
-      localX: localX,
-      horizontalScrollOffset: widget.viewportOffset.value,
-      frameCellWidth: widget.timelineScale.pixelsPerFrame,
-      visibleFrameCount: widget.renderedFrames,
+    final frame = _scrubbedFrame.next(
+      frameIndexFromLocalX(
+        localX: localX,
+        horizontalScrollOffset: widget.viewportOffset.value,
+        frameCellWidth: widget.timelineScale.pixelsPerFrame,
+        visibleFrameCount: widget.renderedFrames,
+      ),
     );
-    if (frame == null || frame == _lastScrubbedFrame) {
+    if (frame == null) {
       return;
     }
-    _lastScrubbedFrame = frame;
     (widget.onScrubGlobalFrame ?? widget.onSeekGlobalFrame)?.call(frame);
   }
 

@@ -24,18 +24,17 @@ class _LayerGridRulerScrub {
   void selectClampedFrameFromRuler(int frameIndex) {
     // The endless runway IS the selectable tail now (UI-R10 #23 retired
     // the fixed safety frames): clamp against the BUILT extent.
-    final clampedFrameIndex = clampFrameIndex(
-      frameIndex: frameIndex,
-      visibleFrameCount: _state._renderedFrameCount,
+    final frame = _state._rulerScrubbedFrame.next(
+      clampFrameIndex(
+        frameIndex: frameIndex,
+        visibleFrameCount: _state._renderedFrameCount,
+      ),
     );
-    if (clampedFrameIndex == null ||
-        clampedFrameIndex == _state._lastRulerScrubbedFrameIndex) {
+    if (frame == null) {
       return;
     }
-
-    _state._lastRulerScrubbedFrameIndex = clampedFrameIndex;
     (_state.widget.hooks.onScrubFrame ?? _state.widget.hooks.onSelectFrame)(
-      clampedFrameIndex,
+      frame,
     );
   }
 
@@ -90,6 +89,6 @@ class _LayerGridRulerScrub {
   }
 
   void resetRulerScrubTracking() {
-    _state._lastRulerScrubbedFrameIndex = null;
+    _state._rulerScrubbedFrame.reset();
   }
 }

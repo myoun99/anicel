@@ -29,18 +29,17 @@ class _XSheetGridRailScrub {
   void selectClampedFrameFromRail(int frameIndex) {
     // The endless runway IS the selectable tail now (UI-R10 #23 retired
     // the fixed safety frames): clamp against the BUILT extent.
-    final clampedFrameIndex = clampFrameIndex(
-      frameIndex: frameIndex,
-      visibleFrameCount: _state._frameScroll.renderedFrameCount,
+    final frame = _state._railScrubbedFrame.next(
+      clampFrameIndex(
+        frameIndex: frameIndex,
+        visibleFrameCount: _state._frameScroll.renderedFrameCount,
+      ),
     );
-    if (clampedFrameIndex == null ||
-        clampedFrameIndex == _state._lastRailScrubbedFrameIndex) {
+    if (frame == null) {
       return;
     }
-
-    _state._lastRailScrubbedFrameIndex = clampedFrameIndex;
     (_state.widget.hooks.onScrubFrame ?? _state.widget.hooks.onSelectFrame)(
-      clampedFrameIndex,
+      frame,
     );
   }
 
@@ -94,6 +93,6 @@ class _XSheetGridRailScrub {
   }
 
   void resetRailScrubTracking() {
-    _state._lastRailScrubbedFrameIndex = null;
+    _state._railScrubbedFrame.reset();
   }
 }
