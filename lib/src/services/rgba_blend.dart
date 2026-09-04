@@ -11,20 +11,41 @@ double effectiveSourceAlpha({
   return (source.a / 255.0) * opacity * flow;
 }
 
+/// The source alpha a blend actually applies — validating [opacity] and
+/// [flow] on the way, and answering null where the source contributes
+/// nothing and the destination stands unchanged.
+///
+/// ⛔EVERY BLEND OPENS THIS WAY. Both ops validated, then guarded, then
+/// derived the alpha in three copied statements; the guard is exactly
+/// "the effective alpha is zero", and saying it twice is how one op would
+/// keep validating an argument the other had stopped checking.
+double? _contributingSourceAlpha({
+  required RgbaColor source,
+  required double opacity,
+  required double flow,
+}) {
+  final alpha = effectiveSourceAlpha(
+    source: source,
+    opacity: opacity,
+    flow: flow,
+  );
+  return alpha == 0.0 ? null : alpha;
+}
+
 RgbaColor rgbaSourceOver({
   required RgbaColor source,
   required RgbaColor destination,
   required double opacity,
   required double flow,
 }) {
-  _validateUnitIntervalFinite(opacity, 'opacity');
-  _validateUnitIntervalFinite(flow, 'flow');
-
-  if (source.a == 0 || opacity == 0.0 || flow == 0.0) {
+  final sourceAlpha = _contributingSourceAlpha(
+    source: source,
+    opacity: opacity,
+    flow: flow,
+  );
+  if (sourceAlpha == null) {
     return destination;
   }
-
-  final sourceAlpha = (source.a / 255.0) * opacity * flow;
   final destinationAlpha = destination.a / 255.0;
   final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
 
@@ -64,14 +85,14 @@ RgbaColor rgbaDestinationOut({
   required double opacity,
   required double flow,
 }) {
-  _validateUnitIntervalFinite(opacity, 'opacity');
-  _validateUnitIntervalFinite(flow, 'flow');
-
-  if (source.a == 0 || opacity == 0.0 || flow == 0.0) {
+  final sourceAlpha = _contributingSourceAlpha(
+    source: source,
+    opacity: opacity,
+    flow: flow,
+  );
+  if (sourceAlpha == null) {
     return destination;
   }
-
-  final sourceAlpha = (source.a / 255.0) * opacity * flow;
   final destinationAlpha = destination.a / 255.0;
   final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
 
