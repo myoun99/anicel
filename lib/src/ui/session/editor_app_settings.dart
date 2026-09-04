@@ -69,6 +69,32 @@ class EditorAppSettings {
   /// Injectable persistence; null (tests) keeps the in-memory default.
   final AppUiScaleStore? _uiScaleStore;
 
+  /// Publishes [next] on [live] and persists it through [save] — and does
+  /// NOTHING when the value is already there.
+  ///
+  /// ⛔SEVEN SETTINGS WROTE THIS WALK OUT. The unchanged guard is not an
+  /// optimization: these notifiers are app-wide, so firing on a value
+  /// that did not change rebuilds the whole app, and the write behind it
+  /// is a disk touch per step of a slider drag.
+  ///
+  /// ⚠️THE SAVE IS UNAWAITED ON PURPOSE — a settings write must not make
+  /// the caller wait on the disk, and the notifier has already published
+  /// what the app draws from. [save] is null in tests (no store injected),
+  /// which keeps the in-memory defaults.
+  static void _publish<T>(
+    ValueNotifier<T> live,
+    T next,
+    Future<void> Function(T value)? save,
+  ) {
+    if (next == live.value) {
+      return;
+    }
+    live.value = next;
+    if (save != null) {
+      unawaited(save(next));
+    }
+  }
+
   /// ⚠️**Persist only — there is no `_restoreUiScale` above.** Every other
   /// setting here restores asynchronously and the app repaints when it
   /// lands; the UI scale decides how large the window's contents are laid
@@ -78,17 +104,8 @@ class EditorAppSettings {
   ///
   /// Snapped on the way in: the value has to be one the settings row can
   /// show as selected.
-  void setUiScale(double scale) {
-    final snapped = AppUiScale.snap(scale);
-    if (snapped == AppUiScale.value.value) {
-      return;
-    }
-    AppUiScale.value.value = snapped;
-    final store = _uiScaleStore;
-    if (store != null) {
-      unawaited(store.save(snapped));
-    }
-  }
+  void setUiScale(double scale) =>
+      _publish(AppUiScale.value, AppUiScale.snap(scale), _uiScaleStore?.save);
 
   // --- Language settings (UI-R10 #7) ----------------------------------------
 
@@ -116,16 +133,8 @@ class EditorAppSettings {
     }
   }
 
-  void setLanguageSettings(AppLanguageSettings settings) {
-    if (settings == languageSettings.value) {
-      return;
-    }
-    languageSettings.value = settings;
-    final store = _languageSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setLanguageSettings(AppLanguageSettings settings) =>
+      _publish(languageSettings, settings, _languageSettingsStore?.save);
 
   // --- Accent settings (UI-R22 #5) ------------------------------------------
 
@@ -141,16 +150,8 @@ class EditorAppSettings {
     }
   }
 
-  void setAccentSettings(AppAccentSettings settings) {
-    if (settings == AppColors.accentSettings.value) {
-      return;
-    }
-    AppColors.accentSettings.value = settings;
-    final store = _accentSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setAccentSettings(AppAccentSettings settings) =>
+      _publish(AppColors.accentSettings, settings, _accentSettingsStore?.save);
 
   // --- Workspace colors (R28 #9) --------------------------------------------
 
@@ -174,19 +175,11 @@ class EditorAppSettings {
   ///
   /// The PROJECT's own pasteboard is written by the session's
   /// `setPasteboardColor`, which is the undoable half of the same verb.
-  void rememberPasteboardDefault(int argb) {
-    final next = AppWorkspaceColors.settings.value.copyWith(
-      pasteboardArgb: argb,
-    );
-    if (next == AppWorkspaceColors.settings.value) {
-      return;
-    }
-    AppWorkspaceColors.settings.value = next;
-    final store = _workspaceColorsStore;
-    if (store != null) {
-      unawaited(store.save(next));
-    }
-  }
+  void rememberPasteboardDefault(int argb) => _publish(
+    AppWorkspaceColors.settings,
+    AppWorkspaceColors.settings.value.copyWith(pasteboardArgb: argb),
+    _workspaceColorsStore?.save,
+  );
 
   // --- Input settings (UI-R22 #6) -------------------------------------------
 
@@ -204,16 +197,8 @@ class EditorAppSettings {
     }
   }
 
-  void setInputSettings(AppInputSettings settings) {
-    if (settings == AppInput.settings.value) {
-      return;
-    }
-    AppInput.settings.value = settings;
-    final store = _inputSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setInputSettings(AppInputSettings settings) =>
+      _publish(AppInput.settings, settings, _inputSettingsStore?.save);
 
   // --- Save settings (SAVE-1) -----------------------------------------------
 
@@ -227,16 +212,8 @@ class EditorAppSettings {
     }
   }
 
-  void setSaveSettings(AppSaveSettings settings) {
-    if (settings == AppSave.settings.value) {
-      return;
-    }
-    AppSave.settings.value = settings;
-    final store = _saveSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setSaveSettings(AppSaveSettings settings) =>
+      _publish(AppSave.settings, settings, _saveSettingsStore?.save);
 
   // --- A/V offset (audio program 2D) ----------------------------------------
 
@@ -256,16 +233,8 @@ class EditorAppSettings {
     }
   }
 
-  void setAudioSyncSettings(AudioSyncSettings settings) {
-    if (settings == audioSyncSettings.value) {
-      return;
-    }
-    audioSyncSettings.value = settings;
-    final store = _audioSyncSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setAudioSyncSettings(AudioSyncSettings settings) =>
+      _publish(audioSyncSettings, settings, _audioSyncSettingsStore?.save);
 
   /// [languageSettings] is NOT disposed here: it lives on [AppText],
   /// app-wide, and outlives this session (as the accent settings do). The
