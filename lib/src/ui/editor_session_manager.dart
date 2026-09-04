@@ -5110,8 +5110,17 @@ class EditorSessionManager extends ChangeNotifier {
   /// that records one passes it through here first.
   static String _normalizedPath(String path) => path.replaceAll('\\', '/');
 
-  /// Removes the [clipIndex]th clip of [layerId]; one undo step.
-  void removeAudioClipAt(LayerId layerId, int clipIndex) {
+  /// ⛔THE SHAPE EVERY AUDIO-CLIP EDIT HAS, WRITTEN ONCE. Seven of them
+  /// spelled out the same guard — an SE row, an index inside its clip list
+  /// — and the same write, and one of them checked the no-op inside the
+  /// guard while its neighbours checked it after. [change] returns the new
+  /// clip list, or null for "nothing moved".
+  void _editAudioClips(
+    LayerId layerId,
+    int clipIndex,
+    String description,
+    List<AudioClip>? Function(List<AudioClip> clips) change,
+  ) {
     final layer = _layerById(layerId);
     if (layer == null ||
         layer.kind != LayerKind.se ||
@@ -5119,40 +5128,51 @@ class EditorSessionManager extends ChangeNotifier {
         clipIndex >= layer.audioClips.length) {
       return;
     }
-    final next = [...layer.audioClips]..removeAt(clipIndex);
+    final next = change(layer.audioClips);
+    if (next == null) {
+      return;
+    }
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: next,
-      description: 'Remove audio',
+      description: description,
     );
     notifyListeners();
   }
+
+  /// [_editAudioClips] for the six edits that replace ONE clip.
+  void _editAudioClip(
+    LayerId layerId,
+    int clipIndex,
+    String description,
+    AudioClip? Function(AudioClip clip) change,
+  ) => _editAudioClips(layerId, clipIndex, description, (clips) {
+    final changed = change(clips[clipIndex]);
+    return changed == null ? null : ([...clips]..[clipIndex] = changed);
+  });
+
+  /// Removes the [clipIndex]th clip of [layerId]; one undo step.
+  void removeAudioClipAt(LayerId layerId, int clipIndex) => _editAudioClips(
+    layerId,
+    clipIndex,
+    'Remove audio',
+    (clips) => [...clips]..removeAt(clipIndex),
+  );
 
   /// Sets the [clipIndex]th clip's offset trim (frames skipped into the
   /// file where its block starts) — the audio lane's slide edit; one undo
   /// step, clamped non-negative, no-op when unchanged.
   void setAudioClipOffset(LayerId layerId, int clipIndex, int offsetFrames) {
-    final layer = _layerById(layerId);
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        clipIndex < 0 ||
-        clipIndex >= layer.audioClips.length) {
-      return;
-    }
     final clamped = offsetFrames < 0 ? 0 : offsetFrames;
-    if (layer.audioClips[clipIndex].offsetFrames == clamped) {
-      return;
-    }
-    final next = [...layer.audioClips];
-    next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: next,
-      description: 'Slide sound',
+    _editAudioClip(
+      layerId,
+      clipIndex,
+      'Slide sound',
+      (clip) => clip.offsetFrames == clamped
+          ? null
+          : clip.copyWith(offsetFrames: clamped),
     );
-    notifyListeners();
   }
 
   // --- Audio offset live drags (comma-drag idiom) --------------------------
@@ -5215,56 +5235,32 @@ class EditorSessionManager extends ChangeNotifier {
     required int fadeInFrames,
     required int fadeOutFrames,
   }) {
-    final layer = _layerById(layerId);
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        clipIndex < 0 ||
-        clipIndex >= layer.audioClips.length) {
-      return;
-    }
     final clampedIn = fadeInFrames < 0 ? 0 : fadeInFrames;
     final clampedOut = fadeOutFrames < 0 ? 0 : fadeOutFrames;
-    final clip = layer.audioClips[clipIndex];
-    if (clip.fadeInFrames == clampedIn && clip.fadeOutFrames == clampedOut) {
-      return;
-    }
-    final next = [...layer.audioClips];
-    next[clipIndex] = clip.copyWith(
-      fadeInFrames: clampedIn,
-      fadeOutFrames: clampedOut,
+    _editAudioClip(
+      layerId,
+      clipIndex,
+      'Fade sound',
+      (clip) =>
+          clip.fadeInFrames == clampedIn && clip.fadeOutFrames == clampedOut
+          ? null
+          : clip.copyWith(
+              fadeInFrames: clampedIn,
+              fadeOutFrames: clampedOut,
+            ),
     );
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: next,
-      description: 'Fade sound',
-    );
-    notifyListeners();
   }
 
   /// Sets the [clipIndex]th clip's gain (the audio lane's volume dialog);
   /// one undo step, clamped non-negative, no-op when unchanged.
   void setAudioClipGain(LayerId layerId, int clipIndex, double gain) {
-    final layer = _layerById(layerId);
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        clipIndex < 0 ||
-        clipIndex >= layer.audioClips.length) {
-      return;
-    }
     final clamped = gain < 0 ? 0.0 : gain;
-    if (layer.audioClips[clipIndex].gain == clamped) {
-      return;
-    }
-    final next = [...layer.audioClips];
-    next[clipIndex] = next[clipIndex].copyWith(gain: clamped);
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: next,
-      description: 'Sound gain',
+    _editAudioClip(
+      layerId,
+      clipIndex,
+      'Sound gain',
+      (clip) => clip.gain == clamped ? null : clip.copyWith(gain: clamped),
     );
-    notifyListeners();
   }
 
   /// Sets the [clipIndex]th clip's fade curve (AUDIO-PRO R1); one undo
@@ -5273,25 +5269,12 @@ class EditorSessionManager extends ChangeNotifier {
     LayerId layerId,
     int clipIndex,
     AudioFadeCurve curve,
-  ) {
-    final layer = _layerById(layerId);
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        clipIndex < 0 ||
-        clipIndex >= layer.audioClips.length ||
-        layer.audioClips[clipIndex].fadeCurve == curve) {
-      return;
-    }
-    final next = [...layer.audioClips];
-    next[clipIndex] = next[clipIndex].copyWith(fadeCurve: curve);
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: next,
-      description: 'Sound fade curve',
-    );
-    notifyListeners();
-  }
+  ) => _editAudioClip(
+    layerId,
+    clipIndex,
+    'Sound fade curve',
+    (clip) => clip.fadeCurve == curve ? null : clip.copyWith(fadeCurve: curve),
+  );
 
   /// Sets the [clipIndex]th clip's volume envelope (AUDIO-PRO R1); one
   /// undo step. [keys] arrive sorted from the editor; an empty list
@@ -5300,24 +5283,12 @@ class EditorSessionManager extends ChangeNotifier {
     LayerId layerId,
     int clipIndex,
     List<AudioVolumeKey> keys,
-  ) {
-    final layer = _layerById(layerId);
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        clipIndex < 0 ||
-        clipIndex >= layer.audioClips.length) {
-      return;
-    }
-    final next = [...layer.audioClips];
-    next[clipIndex] = next[clipIndex].copyWith(volumeKeys: keys);
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: next,
-      description: 'Sound envelope',
-    );
-    notifyListeners();
-  }
+  ) => _editAudioClip(
+    layerId,
+    clipIndex,
+    'Sound envelope',
+    (clip) => clip.copyWith(volumeKeys: keys),
+  );
 
   /// The project's media pool, in pool order (the browser panel's list).
   List<MediaAsset> get mediaAssets => _repository.requireProject().mediaAssets;
