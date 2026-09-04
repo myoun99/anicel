@@ -3937,6 +3937,63 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
+  /// Lands imported [layers] where [destination] says: as rows in the cut
+  /// that is already there, or as a NEW cut built from the default.
+  ///
+  /// ⛔THREE IMPORTERS, ONE LANDING. Image, PSD and PDF each wrote both
+  /// arms out with their own ImportMediaCommand, so a field the command
+  /// grew reached one importer's new cut and not another's — and the two
+  /// arms have to agree about the description the undo stack shows, which
+  /// is the only thing the user sees of either.
+  void _landImportedLayers(
+    ImportDestination destination,
+    List<Layer> layers, {
+    required ({
+      CutId cutId,
+      String displayName,
+      CanvasSize canvasSize,
+      int duration,
+      ImportIdMint mint,
+    })
+    asCut,
+    List<MediaAsset> assets = const [],
+  }) {
+    final description = 'Import ${asCut.displayName}';
+    if (destination == ImportDestination.activeCutLayer) {
+      _historyManager.execute(
+        ImportMediaCommand(
+          repository: _repository,
+          editingSession: _editingSession,
+          targetCutId: asCut.cutId,
+          newLayers: layers,
+          assetAdditions: assets,
+          description: description,
+        ),
+      );
+      return;
+    }
+    final cut = importedCut(
+      defaultCut: createDefaultCut(
+        cutId: asCut.cutId,
+        name: asCut.displayName,
+        layerId: asCut.mint.nextLayerId(),
+        canvasSize: asCut.canvasSize,
+      ),
+      layers: layers,
+      duration: asCut.duration,
+    );
+    _historyManager.execute(
+      ImportMediaCommand(
+        repository: _repository,
+        editingSession: _editingSession,
+        trackId: selectedTrackId,
+        newCuts: [cut],
+        assetAdditions: assets,
+        description: description,
+      ),
+    );
+  }
+
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) copies into
   /// `.assets/Media/`, registers the asset and stamps
@@ -4053,40 +4110,20 @@ class EditorSessionManager extends ChangeNotifier {
       assets = plan.assets;
     }
 
-    if (destination == ImportDestination.activeCutLayer) {
-      _historyManager.execute(
-        ImportMediaCommand(
-          repository: _repository,
-          editingSession: _editingSession,
-          targetCutId: cutId,
-          newLayers: [layer],
-          assetAdditions: assets,
-          description: 'Import $displayName',
-        ),
-      );
-    } else {
-      final defaultCut = createDefaultCut(
+    _landImportedLayers(
+      destination,
+      [layer],
+      asCut: (
         cutId: cutId,
-        name: displayName,
-        layerId: mint.nextLayerId(),
+        displayName: displayName,
         canvasSize: canvasSize,
-      );
-      final cut = importedCut(
-        defaultCut: defaultCut,
-        layers: [layer],
-        duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
-      );
-      _historyManager.execute(
-        ImportMediaCommand(
-          repository: _repository,
-          editingSession: _editingSession,
-          trackId: selectedTrackId,
-          newCuts: [cut],
-          assetAdditions: assets,
-          description: 'Import $displayName',
-        ),
-      );
-    }
+        duration: decoded.length > 1
+            ? _sequenceLength(layer)
+            : stillDuration,
+        mint: mint,
+      ),
+      assets: assets,
+    );
     // 🔑 AFTER the registration, and only when there IS one. The bytes were
     // read to decode them so the hash costs no I/O — but it is not free of
     // CPU, and a RASTERIZING import registers no asset at all (§3: absorbed
@@ -4195,38 +4232,17 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
 
-    if (destination == ImportDestination.activeCutLayer) {
-      _historyManager.execute(
-        ImportMediaCommand(
-          repository: _repository,
-          editingSession: _editingSession,
-          targetCutId: cutId,
-          newLayers: expansion.layers,
-          description: 'Import $displayName',
-        ),
-      );
-    } else {
-      final defaultCut = createDefaultCut(
+    _landImportedLayers(
+      destination,
+      expansion.layers,
+      asCut: (
         cutId: cutId,
-        name: displayName,
-        layerId: mint.nextLayerId(),
+        displayName: displayName,
         canvasSize: canvasSize,
-      );
-      final cut = importedCut(
-        defaultCut: defaultCut,
-        layers: [...expansion.layers],
         duration: duration,
-      );
-      _historyManager.execute(
-        ImportMediaCommand(
-          repository: _repository,
-          editingSession: _editingSession,
-          trackId: selectedTrackId,
-          newCuts: [cut],
-          description: 'Import $displayName',
-        ),
-      );
-    }
+        mint: mint,
+      ),
+    );
 
     // Pixels after the structure, like every other import: the cel keys
     // resolve their owner through the cut that now exists.
@@ -4356,41 +4372,18 @@ class EditorSessionManager extends ChangeNotifier {
         assets = plan.assets;
       }
 
-      if (destination == ImportDestination.activeCutLayer) {
-        _historyManager.execute(
-          ImportMediaCommand(
-            repository: _repository,
-            editingSession: _editingSession,
-            targetCutId: cutId,
-            newLayers: [layer],
-            assetAdditions: assets,
-            description: 'Import $displayName',
-          ),
-        );
-      } else {
-        final canvasSize = activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
-        final defaultCut = createDefaultCut(
+      _landImportedLayers(
+        destination,
+        [layer],
+        asCut: (
           cutId: cutId,
-          name: displayName,
-          layerId: mint.nextLayerId(),
-          canvasSize: canvasSize,
-        );
-        final cut = importedCut(
-          defaultCut: defaultCut,
-          layers: [layer],
+          displayName: displayName,
+          canvasSize: activeCutOrNull?.canvasSize ?? defaultCutCanvasSize,
           duration: spanCount > 1 ? _sequenceLength(layer) : project.fps,
-        );
-        _historyManager.execute(
-          ImportMediaCommand(
-            repository: _repository,
-            editingSession: _editingSession,
-            trackId: selectedTrackId,
-            newCuts: [cut],
-            assetAdditions: assets,
-            description: 'Import $displayName',
-          ),
-        );
-      }
+          mint: mint,
+        ),
+        assets: assets,
+      );
       // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
       // page precisely so a hundred-page conte never lands in memory at
       // once; reading it whole to hash it would undo the one thing this
