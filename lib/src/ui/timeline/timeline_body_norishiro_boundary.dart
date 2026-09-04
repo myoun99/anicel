@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'timeline_cut_end_boundary_line.dart';
 
 /// The のりしろ boundary in the row BODY — the same mark
 /// [TimelineRulerNoriShiroBoundary] draws in the ruler, minus the letters.
@@ -40,14 +41,10 @@ class TimelineBodyNoriShiroBoundary extends StatelessWidget {
     if (left <= cutEnd) {
       return const SizedBox.shrink();
     }
-    final line = IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: AppColors.noriShiro),
-      ),
+    return timelineCutEndBoundaryLine(
+      left: left,
+      axis: axis,
+      color: AppColors.noriShiro,
     );
-    if (axis == Axis.vertical) {
-      return Positioned(top: left, left: 0, right: 0, height: 2, child: line);
-    }
-    return Positioned(left: left, top: 0, bottom: 0, width: 2, child: line);
   }
 }
