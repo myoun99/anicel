@@ -312,13 +312,11 @@ final class QaAudioNative {
     final bus = calloc<Double>(busSamples.length);
     final out = calloc<Float>(busSamples.length);
     try {
-      for (var index = 0; index < busSamples.length; index += 1) {
-        bus[index] = busSamples[index];
-      }
+      // Bulk copies, like [denoise] above — the element loops these two
+      // used to run were the same twenty lines written twice.
+      bus.asTypedList(busSamples.length).setAll(0, busSamples);
       _busToFloat(bus, busSamples.length, out);
-      for (var index = 0; index < busSamples.length; index += 1) {
-        result[index] = out[index];
-      }
+      result.setAll(0, out.asTypedList(busSamples.length));
       return result;
     } finally {
       calloc.free(out);
@@ -335,13 +333,9 @@ final class QaAudioNative {
     final bus = calloc<Double>(busSamples.length);
     final out = calloc<Int16>(busSamples.length);
     try {
-      for (var index = 0; index < busSamples.length; index += 1) {
-        bus[index] = busSamples[index];
-      }
+      bus.asTypedList(busSamples.length).setAll(0, busSamples);
       _busToInt16(bus, busSamples.length, out);
-      for (var index = 0; index < busSamples.length; index += 1) {
-        result[index] = out[index];
-      }
+      result.setAll(0, out.asTypedList(busSamples.length));
       return result;
     } finally {
       calloc.free(out);
