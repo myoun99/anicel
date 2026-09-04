@@ -256,37 +256,16 @@ final class QaAudioDevice {
     final offsetArray = calloc<Int64>(offsets.isEmpty ? 1 : offsets.length);
     // The clips' envelopes flatten into one shared key array, exactly as
     // the mixer FFI does (the C copies it beside the PCM).
-    var envelopeTotal = 0;
-    for (final clip in clips) {
-      envelopeTotal += clip.envelope.length;
-    }
+    final envelopeTotal = qaAudioEnvelopeTotal(clips);
     final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
       envelopeTotal <= 0 ? 1 : envelopeTotal,
     );
     try {
-      var envelopeCursor = 0;
-      for (var index = 0; index < clips.length; index += 1) {
-        final clip = clips[index];
-        final target = clipArray[index];
-        target.gain = clip.gain;
-        target.panLeft = clip.panLeft;
-        target.panRight = clip.panRight;
-        target.startSample = clip.startSample;
-        target.endSample = clip.endSample;
-        target.sourceOffset = clip.sourceOffset;
-        target.fadeInSamples = clip.fadeInSamples;
-        target.fadeOutSamples = clip.fadeOutSamples;
-        target.sourceIndex = clip.sourceIndex;
-        target.fadeCurve = clip.fadeCurve;
-        target.envelopeOffset = envelopeCursor;
-        target.envelopeCount = clip.envelope.length;
-        for (final point in clip.envelope) {
-          final key = envelopeArray[envelopeCursor];
-          key.sample = point.sample;
-          key.gain = point.gain;
-          envelopeCursor += 1;
-        }
-      }
+      qaAudioWriteClips(
+        clips: clips,
+        clipArray: clipArray,
+        envelopeArray: envelopeArray,
+      );
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
         final target = sourceArray[index];

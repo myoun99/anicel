@@ -216,39 +216,18 @@ final class QaAudioNative {
     );
     // Every clip's envelope points flatten into ONE shared array; the
     // clips reference their slice by offset/count (mirrors the C layout).
-    var envelopeTotal = 0;
-    for (final clip in clips) {
-      envelopeTotal += clip.envelope.length;
-    }
+    final envelopeTotal = qaAudioEnvelopeTotal(clips);
     final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
       envelopeTotal <= 0 ? 1 : envelopeTotal,
     );
     final sampleBuffers = <Pointer<Float>>[];
     final bus = calloc<Double>(total);
     try {
-      var envelopeCursor = 0;
-      for (var index = 0; index < clips.length; index += 1) {
-        final clip = clips[index];
-        final target = clipArray[index];
-        target.gain = clip.gain;
-        target.panLeft = clip.panLeft;
-        target.panRight = clip.panRight;
-        target.startSample = clip.startSample;
-        target.endSample = clip.endSample;
-        target.sourceOffset = clip.sourceOffset;
-        target.fadeInSamples = clip.fadeInSamples;
-        target.fadeOutSamples = clip.fadeOutSamples;
-        target.sourceIndex = clip.sourceIndex;
-        target.fadeCurve = clip.fadeCurve;
-        target.envelopeOffset = envelopeCursor;
-        target.envelopeCount = clip.envelope.length;
-        for (final point in clip.envelope) {
-          final key = envelopeArray[envelopeCursor];
-          key.sample = point.sample;
-          key.gain = point.gain;
-          envelopeCursor += 1;
-        }
-      }
+      qaAudioWriteClips(
+        clips: clips,
+        clipArray: clipArray,
+        envelopeArray: envelopeArray,
+      );
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
         final samples = calloc<Float>(
@@ -428,6 +407,54 @@ extension QaAudioNativeResampling on QaAudioNative {
   }
 }
 
+
+/// How many envelope keys [clips] carry between them — the length the
+/// flattened key array has to be.
+int qaAudioEnvelopeTotal(List<AudioMixClip> clips) {
+  var total = 0;
+  for (final clip in clips) {
+    total += clip.envelope.length;
+  }
+  return total;
+}
+
+/// Copies [clips] into [clipArray] and flattens their envelopes into
+/// [envelopeArray], returning how many keys were written.
+///
+/// ⛔BOTH FFI PATHS HAND THE C SIDE THIS EXACT LAYOUT — the device's
+/// schedule and the one-shot mixer — and each used to write it out itself,
+/// twelve fields and the envelope walk, twice. A field added to the struct
+/// on one side only is the failure that shape invites, and it is silent:
+/// the C reads whatever the calloc left there.
+void qaAudioWriteClips({
+  required List<AudioMixClip> clips,
+  required Pointer<QaAudioClipStruct> clipArray,
+  required Pointer<QaAudioEnvelopeKeyStruct> envelopeArray,
+}) {
+  var envelopeCursor = 0;
+  for (var index = 0; index < clips.length; index += 1) {
+    final clip = clips[index];
+    final target = clipArray[index];
+    target.gain = clip.gain;
+    target.panLeft = clip.panLeft;
+    target.panRight = clip.panRight;
+    target.startSample = clip.startSample;
+    target.endSample = clip.endSample;
+    target.sourceOffset = clip.sourceOffset;
+    target.fadeInSamples = clip.fadeInSamples;
+    target.fadeOutSamples = clip.fadeOutSamples;
+    target.sourceIndex = clip.sourceIndex;
+    target.fadeCurve = clip.fadeCurve;
+    target.envelopeOffset = envelopeCursor;
+    target.envelopeCount = clip.envelope.length;
+    for (final point in clip.envelope) {
+      final key = envelopeArray[envelopeCursor];
+      key.sample = point.sample;
+      key.gain = point.gain;
+      envelopeCursor += 1;
+    }
+  }
+}
 /// Mirrors the C `qa_audio_clip`: doubles, then int64s, then an even
 /// number of int32s — natural alignment with no implicit padding on any
 /// supported ABI. The loader cross-checks `sizeof` before enabling the
