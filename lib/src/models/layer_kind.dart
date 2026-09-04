@@ -182,6 +182,13 @@ bool layerKindAcceptsBrushInput(LayerKind kind) {
 // at ~35 call sites, which meant each new "layer that is not quite a drawing
 // layer" had to re-walk all of them. They are named for what the caller
 // actually MEANS, so a new kind answers each question once, here.
+//
+// ⛔THE CLONE SCAN FLAGS THESE AGAINST EACH OTHER AND THEY ARE NOT COPIES
+// (audit, 2026-09-04, seventeen candidates read one by one). They share a
+// SHAPE — an exhaustive switch over one enum returning a bool — and not an
+// algorithm: each names a different fact, and the exhaustiveness is the
+// point. Folding them into `Set<LayerKind>` constants would be shorter and
+// would take away the compile error that makes a new kind answer here.
 // ---------------------------------------------------------------------------
 
 /// Whether [kind] takes part in the composited picture at all — the walk

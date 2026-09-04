@@ -68,6 +68,76 @@ class ProjectRepository {
     _currentProject = _reconcileAttachedMirrors(update(requireProject()));
   }
 
+  // ⛔THE FIVE BELOW ARE ONE LAW WRITTEN ONCE: find the entity, change it,
+  // and say so when it was not there. Thirty-five mutations in this class
+  // wrote that out by hand, which is why the same not-found message
+  // existed in eleven spellings and one of them said `${track.id}` where
+  // its neighbours said `$trackId`.
+  //
+  // ⚠️`project_tree_editor` returns null ON PURPOSE so the caller names the
+  // error (its own doc says so, and a caller that throws before assigning
+  // leaves the source untouched). These helpers ARE that name for the
+  // ordinary case — they do not replace the editor. A mutation that needs
+  // a different message, or that must report WHAT it removed, still calls
+  // the editor itself: [removeTrack], [removeCut], [reorderCut] and
+  // [deleteLayer] each do, and each says why where it does it.
+
+  void _mutateTrack(TrackId trackId, Track Function(Track track) update) {
+    updateProject((project) {
+      final next = updateTrackById(project, trackId, update);
+      if (next == null) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
+  void _mutateCut(CutId cutId, Cut Function(Cut cut) update) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, update);
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  void _mutateLayer(LayerId layerId, Layer Function(Layer layer) update) {
+    updateProject((project) {
+      final next = updateLayerAnywhere(project, layerId, update);
+      if (next == null) {
+        throw StateError('Layer not found: $layerId');
+      }
+      return next;
+    });
+  }
+
+  void _mutateFrame(FrameId frameId, Frame Function(Frame frame) update) {
+    updateProject((project) {
+      final next = updateFrameAnywhere(project, frameId, update);
+      if (next == null) {
+        throw StateError('Frame not found: $frameId');
+      }
+      return next;
+    });
+  }
+
+  /// The layer lookup that is SCOPED to one cut — a different question from
+  /// [_mutateLayer]'s global one, and it says so in its own message.
+  void _mutateLayerInCut(
+    CutId cutId,
+    LayerId layerId,
+    Layer Function(Layer layer) update,
+  ) {
+    _mutateCut(cutId, (cut) {
+      final next = updateLayerInCut(cut, layerId, update);
+      if (next == null) {
+        throw StateError('Layer not found in cut $cutId: $layerId');
+      }
+      return next;
+    });
+  }
+
   /// Export scope/delta state (출력 UI): PROJECT data — it travels with
   /// the film — but not a document edit, so writes land directly with no
   /// history entry (the visibility-toggle precedent).
@@ -225,15 +295,11 @@ class ProjectRepository {
   }
 
   void replaceTrack(Track track) {
-    updateProject((project) {
-      final next = updateTrackById(project, track.id, (_) => track);
-      if (next == null) {
-        throw StateError('Track not found: ${track.id}');
-      }
-      return next;
-    });
+    _mutateTrack(track.id, (_) => track);
   }
 
+  /// ⚠️Not [_mutateTrack]: this REMOVES, so there is no track to hand an
+  /// update, and the miss shows up as a length that did not change.
   void removeTrack(TrackId trackId) {
     updateProject((project) {
       final tracks = project.tracks
@@ -256,20 +322,14 @@ class ProjectRepository {
     // A cut built elsewhere — an importer's plan, a duplicate — arrives
     // with run-edge SPECS and no ghosts. See [_withDerivedRunEdges].
     final derived = _withDerivedRunEdges(cut);
-    updateProject((project) {
-      final next = updateTrackById(project, trackId, (track) {
-        final cuts = [...track.cuts];
-        if (index == null) {
-          cuts.add(derived);
-        } else {
-          cuts.insert(index, derived);
-        }
-        return track.copyWith(cuts: cuts);
-      });
-      if (next == null) {
-        throw StateError('Track not found: $trackId');
+    _mutateTrack(trackId, (track) {
+      final cuts = [...track.cuts];
+      if (index == null) {
+        cuts.add(derived);
+      } else {
+        cuts.insert(index, derived);
       }
-      return next;
+      return track.copyWith(cuts: cuts);
     });
   }
 
@@ -299,21 +359,15 @@ class ProjectRepository {
   /// be a permutation of the track's cut ids; a partial or foreign list is
   /// a programming error, not a silent drop.
   void setCutOrder({required TrackId trackId, required List<CutId> order}) {
-    updateProject((project) {
-      final next = updateTrackById(project, trackId, (track) {
-        return track.copyWith(
-          cuts: reorderedByIds(
-            track.cuts,
-            order,
-            idOf: (cut) => cut.id,
-            orderName: 'Cut order for track $trackId',
-          ),
-        );
-      });
-      if (next == null) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
+    _mutateTrack(trackId, (track) {
+      return track.copyWith(
+        cuts: reorderedByIds(
+          track.cuts,
+          order,
+          idOf: (cut) => cut.id,
+          orderName: 'Cut order for track $trackId',
+        ),
+      );
     });
   }
 
@@ -346,34 +400,14 @@ class ProjectRepository {
   }
 
   void renameCut({required CutId cutId, required String name}) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(name: name),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(cutId, (cut) => cut.copyWith(name: name));
   }
 
   void updateCutCanvasSize({
     required CutId cutId,
     required CanvasSize canvasSize,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(canvasSize: canvasSize),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(cutId, (cut) => cut.copyWith(canvasSize: canvasSize));
   }
 
   /// D5 (R7): a resize's ONE model write per cut — the new canvas size
@@ -389,40 +423,26 @@ class ProjectRepository {
     required double centreDx,
     required double centreDy,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => translateCutContentModel(
-          cut,
-          dx: dx,
-          dy: dy,
-          centreDx: centreDx,
-          centreDy: centreDy,
-        ).copyWith(canvasSize: canvasSize),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(
+      cutId,
+      (cut) => translateCutContentModel(
+        cut,
+        dx: dx,
+        dy: dy,
+        centreDx: centreDx,
+        centreDy: centreDy,
+      ).copyWith(canvasSize: canvasSize),
+    );
   }
 
   void updateCutLeadingGap({
     required CutId cutId,
     required int leadingGapFrames,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(leadingGapFrames: leadingGapFrames),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(
+      cutId,
+      (cut) => cut.copyWith(leadingGapFrames: leadingGapFrames),
+    );
   }
 
   /// Every layer of [cut] with its run-edge ghosts derived from [cut]'s
@@ -451,48 +471,21 @@ class ProjectRepository {
   );
 
   void updateCutDuration({required CutId cutId, required int duration}) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        // Hold/repeat run edges fill ghosts TO THE CUT END, so a duration
-        // change re-derives every layer — the only rederive trigger that
-        // is not a layer edit.
-        (cut) => _withDerivedRunEdges(cut.copyWith(duration: duration)),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(
+      cutId,
+      // Hold/repeat run edges fill ghosts TO THE CUT END, so a duration
+      // change re-derives every layer — the only rederive trigger that
+      // is not a layer edit.
+      (cut) => _withDerivedRunEdges(cut.copyWith(duration: duration)),
+    );
   }
 
   void updateCutGuides({required CutId cutId, required CutGuides guides}) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(guides: guides),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(cutId, (cut) => cut.copyWith(guides: guides));
   }
 
   void updateCutCamera({required CutId cutId, required CutCamera camera}) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(camera: camera),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(cutId, (cut) => cut.copyWith(camera: camera));
   }
 
   // `updateTrackTransform` retired with the V row's transform: there is no
@@ -508,25 +501,10 @@ class ProjectRepository {
     required TrackId trackId,
     required Layer transitionLayer,
   }) {
-    updateProject((project) {
-      var found = false;
-      final next = project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            if (track.id == trackId)
-              (() {
-                found = true;
-                return track.copyWith(transitionLayer: transitionLayer);
-              })()
-            else
-              track,
-        ],
-      );
-      if (!found) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
-    });
+    _mutateTrack(
+      trackId,
+      (track) => track.copyWith(transitionLayer: transitionLayer),
+    );
   }
 
   /// The V track's EFFECT CHAIN — the V row's fx over the composited cut,
@@ -535,25 +513,7 @@ class ProjectRepository {
     required TrackId trackId,
     required List<LayerEffect> effects,
   }) {
-    updateProject((project) {
-      var found = false;
-      final next = project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            if (track.id == trackId)
-              (() {
-                found = true;
-                return track.copyWith(effects: effects);
-              })()
-            else
-              track,
-        ],
-      );
-      if (!found) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
-    });
+    _mutateTrack(trackId, (track) => track.copyWith(effects: effects));
   }
 
   /// The V track's DISPLAY properties (R9 #21): its static opacity and its
@@ -564,42 +524,17 @@ class ProjectRepository {
     double? opacity,
     bool? fxEnabled,
   }) {
-    updateProject((project) {
-      var found = false;
-      final next = project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            if (track.id == trackId)
-              (() {
-                found = true;
-                return track.copyWith(opacity: opacity, fxEnabled: fxEnabled);
-              })()
-            else
-              track,
-        ],
-      );
-      if (!found) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
-    });
+    _mutateTrack(
+      trackId,
+      (track) => track.copyWith(opacity: opacity, fxEnabled: fxEnabled),
+    );
   }
 
   void updateCutMetadata({
     required CutId cutId,
     required CutMetadata metadata,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(metadata: metadata),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateCut(cutId, (cut) => cut.copyWith(metadata: metadata));
   }
 
   void addLayer({required CutId cutId, required Layer layer}) {
@@ -639,20 +574,14 @@ class ProjectRepository {
     required Layer layer,
     int? index,
   }) {
-    updateProject((project) {
-      final next = updateTrackById(project, trackId, (track) {
-        final seLayers = [...track.seLayers];
-        if (index == null) {
-          seLayers.add(layer);
-        } else {
-          seLayers.insert(index.clamp(0, seLayers.length).toInt(), layer);
-        }
-        return track.copyWith(seLayers: seLayers);
-      });
-      if (next == null) {
-        throw StateError('Track not found: $trackId');
+    _mutateTrack(trackId, (track) {
+      final seLayers = [...track.seLayers];
+      if (index == null) {
+        seLayers.add(layer);
+      } else {
+        seLayers.insert(index.clamp(0, seLayers.length).toInt(), layer);
       }
-      return next;
+      return track.copyWith(seLayers: seLayers);
     });
   }
 
@@ -660,18 +589,12 @@ class ProjectRepository {
     required TrackId trackId,
     required LayerId layerId,
   }) {
-    updateProject((project) {
-      final next = updateTrackById(project, trackId, (track) {
-        return track.copyWith(
-          seLayers: track.seLayers
-              .where((layer) => layer.id != layerId)
-              .toList(growable: false),
-        );
-      });
-      if (next == null) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
+    _mutateTrack(trackId, (track) {
+      return track.copyWith(
+        seLayers: track.seLayers
+            .where((layer) => layer.id != layerId)
+            .toList(growable: false),
+      );
     });
   }
 
@@ -692,27 +615,21 @@ class ProjectRepository {
     required List<LayerId> order,
     Map<LayerId, LayerId?> folderIds = const {},
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        return cut.copyWith(
-          layers: [
-            for (final layer in reorderedByIds(
-              cut.layers,
-              order,
-              idOf: (layer) => layer.id,
-              orderName: 'Layer order for cut $cutId',
-            ))
-              if (folderIds.containsKey(layer.id))
-                layer.copyWith(folderId: folderIds[layer.id])
-              else
-                layer,
-          ],
-        );
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
+    _mutateCut(cutId, (cut) {
+      return cut.copyWith(
+        layers: [
+          for (final layer in reorderedByIds(
+            cut.layers,
+            order,
+            idOf: (layer) => layer.id,
+            orderName: 'Layer order for cut $cutId',
+          ))
+            if (folderIds.containsKey(layer.id))
+              layer.copyWith(folderId: folderIds[layer.id])
+            else
+              layer,
+        ],
+      );
     });
   }
 
@@ -723,21 +640,15 @@ class ProjectRepository {
     required TrackId trackId,
     required List<LayerId> order,
   }) {
-    updateProject((project) {
-      final next = updateTrackById(project, trackId, (track) {
-        return track.copyWith(
-          seLayers: reorderedByIds(
-            track.seLayers,
-            order,
-            idOf: (layer) => layer.id,
-            orderName: 'SE order for track $trackId',
-          ),
-        );
-      });
-      if (next == null) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
+    _mutateTrack(trackId, (track) {
+      return track.copyWith(
+        seLayers: reorderedByIds(
+          track.seLayers,
+          order,
+          idOf: (layer) => layer.id,
+          orderName: 'SE order for track $trackId',
+        ),
+      );
     });
   }
 
@@ -768,26 +679,17 @@ class ProjectRepository {
   }
 
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        // The cut is only known here, and its length is what the ghosts
-        // fill to. See [_withDerivedRunEdges].
-        final derived = rederiveRunBehaviors(
-          layer,
-          cutFrameCount: cut.duration,
-        );
-        final layers = [...cut.layers];
-        if (index == null) {
-          layers.add(derived);
-        } else {
-          layers.insert(index.clamp(0, layers.length).toInt(), derived);
-        }
-        return cut.copyWith(layers: layers);
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
+    _mutateCut(cutId, (cut) {
+      // The cut is only known here, and its length is what the ghosts
+      // fill to. See [_withDerivedRunEdges].
+      final derived = rederiveRunBehaviors(layer, cutFrameCount: cut.duration);
+      final layers = [...cut.layers];
+      if (index == null) {
+        layers.add(derived);
+      } else {
+        layers.insert(index.clamp(0, layers.length).toInt(), derived);
       }
-      return next;
+      return cut.copyWith(layers: layers);
     });
   }
 
@@ -799,13 +701,7 @@ class ProjectRepository {
     required LayerId layerId,
     required Layer Function(Layer layer) update,
   }) {
-    updateProject((project) {
-      final next = updateLayerAnywhere(project, layerId, update);
-      if (next == null) {
-        throw StateError('Layer not found: $layerId');
-      }
-      return next;
-    });
+    _mutateLayer(layerId, update);
   }
 
   // The layer-flag updates below route through the ANYWHERE lookup (cut
@@ -864,23 +760,11 @@ class ProjectRepository {
     required LayerId layerId,
     required Map<int, InstructionEvent> instructions,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(
-          cut,
-          layerId,
-          (layer) => layer.copyWith(instructions: instructions),
-        );
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    _mutateLayerInCut(
+      cutId,
+      layerId,
+      (layer) => layer.copyWith(instructions: instructions),
+    );
   }
 
   void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
@@ -940,58 +824,42 @@ class ProjectRepository {
     );
   }
 
+  /// ⚠️Not [_mutateLayerInCut]: the check reads the CUT (no second
+  /// storyboard row), so the closure needs what that helper does not hand
+  /// it. One site — not three — so the helper stays as it is.
   void updateLayerKind({
     required CutId cutId,
     required LayerId layerId,
     required LayerKind kind,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(cut, layerId, (layer) {
-          if (kind == LayerKind.storyboard &&
-              layer.kind != LayerKind.storyboard &&
-              cut.layers.any((other) => other.kind == LayerKind.storyboard)) {
-            throw StateError('Cut $cutId already has a storyboard layer.');
-          }
-          return layer.copyWith(kind: kind);
-        });
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
+    _mutateCut(cutId, (cut) {
+      final updatedCut = updateLayerInCut(cut, layerId, (layer) {
+        if (kind == LayerKind.storyboard &&
+            layer.kind != LayerKind.storyboard &&
+            cut.layers.any((other) => other.kind == LayerKind.storyboard)) {
+          throw StateError('Cut $cutId already has a storyboard layer.');
         }
-        return updatedCut;
+        return layer.copyWith(kind: kind);
       });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
+      if (updatedCut == null) {
+        throw StateError('Layer not found in cut $cutId: $layerId');
       }
-      return next;
+      return updatedCut;
     });
   }
 
   void addFrame({required LayerId layerId, required Frame frame}) {
-    updateProject((project) {
-      final next = updateLayerAnywhere(
-        project,
-        layerId,
-        (layer) => layer.copyWith(frames: [...layer.frames, frame]),
-      );
-      if (next == null) {
-        throw StateError('Layer not found: $layerId');
-      }
-      return next;
-    });
+    _mutateLayer(
+      layerId,
+      (layer) => layer.copyWith(frames: [...layer.frames, frame]),
+    );
   }
 
   void updateFrame({
     required FrameId frameId,
     required Frame Function(Frame frame) update,
   }) {
-    updateProject((project) {
-      final next = updateFrameAnywhere(project, frameId, update);
-      if (next == null) {
-        throw StateError('Frame not found: $frameId');
-      }
-      return next;
-    });
+    _mutateFrame(frameId, update);
   }
 
   /// Writes the memo of the exposure BLOCK starting at [blockStartIndex].
@@ -1004,51 +872,32 @@ class ProjectRepository {
     required int blockStartIndex,
     required ExposureMemo? memo,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(cut, layerId, (layer) {
-          final entry = layer.timeline[blockStartIndex];
-          if (entry == null || !entry.isDrawing) {
-            throw StateError(
-              'No exposure block starts at $blockStartIndex on $layerId.',
-            );
-          }
-          if (entry.ghost) {
-            throw StateError(
-              'A ghost exposure is rederived, so it cannot hold a memo '
-              '($layerId at $blockStartIndex).',
-            );
-          }
-          return layer.copyWith(
-            timeline: {
-              ...layer.timeline,
-              blockStartIndex: entry.copyWith(memo: () => memo),
-            },
-          );
-        });
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
+    _mutateLayerInCut(cutId, layerId, (layer) {
+      final entry = layer.timeline[blockStartIndex];
+      if (entry == null || !entry.isDrawing) {
+        throw StateError(
+          'No exposure block starts at $blockStartIndex on $layerId.',
+        );
       }
-      return next;
+      if (entry.ghost) {
+        throw StateError(
+          'A ghost exposure is rederived, so it cannot hold a memo '
+          '($layerId at $blockStartIndex).',
+        );
+      }
+      return layer.copyWith(
+        timeline: {
+          ...layer.timeline,
+          blockStartIndex: entry.copyWith(memo: () => memo),
+        },
+      );
     });
   }
 
   void addStroke({required FrameId frameId, required Stroke stroke}) {
-    updateProject((project) {
-      final next = updateFrameAnywhere(
-        project,
-        frameId,
-        (frame) => frame.copyWith(strokes: [...frame.strokes, stroke]),
-      );
-      if (next == null) {
-        throw StateError('Frame not found: $frameId');
-      }
-      return next;
-    });
+    _mutateFrame(
+      frameId,
+      (frame) => frame.copyWith(strokes: [...frame.strokes, stroke]),
+    );
   }
 }
