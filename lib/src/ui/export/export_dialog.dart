@@ -716,9 +716,14 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// One envelope image, with the ink composed and freed around it.
+  ///
+  /// ⛔THE EXPORT AND THE PREVIEW RENDER THROUGH HERE. They differ only in
+  /// [outputSize] (the preview fits its pane); rendered separately, the
+  /// preview showed a picture the file would not have been.
   Future<ui.Image> _renderEnvelope(
     ExportEnvelopeTask task, {
     required Set<SheetPaintLayer> layers,
+    ({int width, int height})? outputSize,
   }) async {
     final wantsInk = layers.contains(SheetPaintLayer.ink);
     final ink = wantsInk
@@ -731,6 +736,7 @@ class ExportDialogState extends State<ExportDialog> {
         layers: layers,
         inkKeyFor: (boxId) => envelopeInkBoxKey(task.owner.id, boxId),
         inkImageFor: (key) => ink[key],
+        outputSize: outputSize,
       );
     } finally {
       for (final image in ink.values) {
@@ -793,38 +799,59 @@ class ExportDialogState extends State<ExportDialog> {
     return null;
   }
 
-  /// Renders every cell's picture once, camera-framed at [width] — fresh
-  /// composites straight from the brush store (the storyboard thumbnail
-  /// rule: the cache is panel-resolution, an export re-renders).
+  /// Renders each cell picture the conte [pages] name, once, camera-framed
+  /// at [size] — fresh composites straight from the brush store (the
+  /// storyboard thumbnail rule: the cache is panel-resolution, an export
+  /// re-renders). [have] says which keys the caller already holds, and
+  /// [take] receives each image and owns it from then on.
+  ///
+  /// ⛔ONE WALK FOR BOTH CONTE EXPORTS. The sheets and the PDF each wrote
+  /// out the page/cell nesting, the (cut, frame) dedupe key, the cancel
+  /// check and the missing-cut skip; the picture a cell names is one
+  /// question, and asking it twice is how one exporter starts framing a
+  /// different picture than the other.
+  Future<void> _forEachContePicture(
+    List<ContePageLayout> pages, {
+    required CanvasSize size,
+    required bool Function((String, int) key) have,
+    required Future<void> Function((String, int) key, ui.Image image) take,
+  }) async {
+    final renderer = ExportFrameRenderer(session: _session);
+    for (final page in pages) {
+      for (final cell in page.cells) {
+        final key = (cell.cutId, cell.source.pictureFrame);
+        if (have(key) || _cancelRequested) {
+          continue;
+        }
+        final cut = _conteCutById(cell.cutId);
+        if (cut == null) {
+          continue;
+        }
+        await take(
+          key,
+          await renderer.renderComposite(
+            ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
+            ExportSizeMode.camera,
+            outputSize: size,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Renders every cell's picture once, camera-framed at [width].
   Future<Map<(String, int), ui.Image>> _renderContePictures(
     List<ContePageLayout> pages, {
     required int width,
   }) async {
-    final renderer = ExportFrameRenderer(session: _session);
-    final cameraSize = _session.cameraFrameSize;
-    final height = math.max(
-      1,
-      (width * cameraSize.height / cameraSize.width).round(),
-    );
     final images = <(String, int), ui.Image>{};
     try {
-      for (final page in pages) {
-        for (final cell in page.cells) {
-          final key = (cell.cutId, cell.source.pictureFrame);
-          if (images.containsKey(key) || _cancelRequested) {
-            continue;
-          }
-          final cut = _conteCutById(cell.cutId);
-          if (cut == null) {
-            continue;
-          }
-          images[key] = await renderer.renderComposite(
-            ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
-            ExportSizeMode.camera,
-            outputSize: CanvasSize(width: width, height: height),
-          );
-        }
-      }
+      await _forEachContePicture(
+        pages,
+        size: _session.cameraFrameSize.scaledToWidth(width),
+        have: images.containsKey,
+        take: (key, image) async => images[key] = image,
+      );
     } on Object {
       // A failed render must not strand the ones already made.
       for (final image in images.values) {
@@ -1108,27 +1135,13 @@ class ExportDialogState extends State<ExportDialog> {
               '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
               '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}',
           caption: 'CUT${task.owner.name}',
-          render: () async {
-            final ink = layers.contains(SheetPaintLayer.ink)
-                ? await _renderEnvelopeInk(task)
-                : const <BrushFrameKey, ui.Image>{};
-            try {
-              return await renderCutEnvelopeImage(
-                layout: task.layout,
-                source: task.source,
-                layers: layers,
-                inkKeyFor: (boxId) => envelopeInkBoxKey(task.owner.id, boxId),
-                inkImageFor: (key) => ink[key],
-                outputSize: fitted == null
-                    ? null
-                    : (width: fitted.width, height: fitted.height),
-              );
-            } finally {
-              for (final image in ink.values) {
-                image.dispose();
-              }
-            }
-          },
+          render: () => _renderEnvelope(
+            task,
+            layers: layers,
+            outputSize: fitted == null
+                ? null
+                : (width: fitted.width, height: fitted.height),
+          ),
         );
     }
   }
@@ -1820,29 +1833,14 @@ class ExportDialogState extends State<ExportDialog> {
     // before the next renders — only the raw copies (the document's own
     // material) live to the end.
     _reportProgress(0, pages.length + 1);
-    final renderer = ExportFrameRenderer(session: _session);
     final cameraSize = _session.cameraFrameSize;
     const pictureWidth = 640;
-    final pictureHeight = math.max(
-      1,
-      (pictureWidth * cameraSize.height / cameraSize.width).round(),
-    );
     final pdfPictures = <(String, int), ContePdfPicture>{};
-    for (final page in pages) {
-      for (final cell in page.cells) {
-        final key = (cell.cutId, cell.source.pictureFrame);
-        if (pdfPictures.containsKey(key) || _cancelRequested) {
-          continue;
-        }
-        final cut = _conteCutById(cell.cutId);
-        if (cut == null) {
-          continue;
-        }
-        final image = await renderer.renderComposite(
-          ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
-          ExportSizeMode.camera,
-          outputSize: CanvasSize(width: pictureWidth, height: pictureHeight),
-        );
+    await _forEachContePicture(
+      pages,
+      size: cameraSize.scaledToWidth(pictureWidth),
+      have: pdfPictures.containsKey,
+      take: (key, image) async {
         try {
           final picture = await ContePdfPicture.fromImage(image);
           if (picture != null) {
@@ -1851,8 +1849,8 @@ class ExportDialogState extends State<ExportDialog> {
         } finally {
           image.dispose();
         }
-      }
-    }
+      },
+    );
     if (_cancelRequested) {
       return 'Export cancelled.';
     }

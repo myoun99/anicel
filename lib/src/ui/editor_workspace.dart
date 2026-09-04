@@ -11,7 +11,6 @@ import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
-import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
@@ -1341,17 +1340,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     int thumbnailWidth,
   ) {
     final cameraSize = widget.session.cameraFrameSize;
-    final height = math.max(
-      1,
-      (thumbnailWidth * cameraSize.height / cameraSize.width).round(),
-    );
+    final output = cameraSize.scaledToWidth(thumbnailWidth);
     return ExportFrameRenderer(session: widget.session).renderComposite(
       ExportFrameTask(
         cut: cut,
         frameIndex: frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
       ),
       ExportSizeMode.camera,
-      outputSize: CanvasSize(width: thumbnailWidth, height: height),
+      outputSize: output,
     );
   }
 
