@@ -307,20 +307,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise the leading-edge frame anchors.
-    final oldCell = oldWidget.metrics.frameCellWidth;
-    final newCell = widget.metrics.frameCellWidth;
-    if (oldCell != newCell && _horizontalScrollController.hasClients) {
-      _horizontalScrollController.jumpTo(
-        zoomAnchoredScrollOffset(
-          oldOffset: _horizontalScrollController.offset,
-          oldPixelsPerFrame: oldCell,
-          newPixelsPerFrame: newCell,
-          viewportExtent:
-              _horizontalScrollController.position.viewportDimension,
-          anchorFrame: widget.hooks.frameCursor.value,
-        ),
-      );
-    }
+    applyZoomAnchoredScroll(
+      _horizontalScrollController,
+      oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
+      newPixelsPerFrame: widget.metrics.frameCellWidth,
+      anchorFrame: widget.hooks.frameCursor.value,
+    );
   }
 
   @override

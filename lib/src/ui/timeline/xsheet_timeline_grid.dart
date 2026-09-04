@@ -330,19 +330,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
     // anchors. Same policy as the horizontal timeline (Axis rule).
-    final oldCell = oldWidget.metrics.frameCellWidth;
-    final newCell = widget.metrics.frameCellWidth;
-    if (oldCell != newCell && _frameScrollController.hasClients) {
-      _frameScrollController.jumpTo(
-        zoomAnchoredScrollOffset(
-          oldOffset: _frameScrollController.offset,
-          oldPixelsPerFrame: oldCell,
-          newPixelsPerFrame: newCell,
-          viewportExtent: _frameScrollController.position.viewportDimension,
-          anchorFrame: widget.hooks.frameCursor.value,
-        ),
-      );
-    }
+    applyZoomAnchoredScroll(
+      _frameScrollController,
+      oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
+      newPixelsPerFrame: widget.metrics.frameCellWidth,
+      anchorFrame: widget.hooks.frameCursor.value,
+    );
   }
 
   @override
