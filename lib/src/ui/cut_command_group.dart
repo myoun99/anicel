@@ -1,3 +1,4 @@
+import 'timeline/layer_name_commands.dart';
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,6 @@ import 'cut/cut_note_dialog.dart';
 import 'editor_command_actions.dart';
 import 'dialogs/app_progress_dialog.dart';
 import 'dialogs/canvas_size_dialog.dart';
-import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
 import 'widgets/command_pill.dart';
@@ -40,20 +40,12 @@ class CutCommandGroup extends StatefulWidget {
 class _CutCommandGroupState extends State<CutCommandGroup> {
   EditorSessionManager get session => widget.session;
 
-  Future<void> _renameActiveCut() async {
-    final cut = session.activeCutOrNull;
-    if (cut == null) {
-      return; // Gap state: no cut to rename.
-    }
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => RenameCutDialog(initialName: cut.name),
-    );
-    if (!mounted || nextName == null || nextName.trim().isEmpty) {
-      return;
-    }
-    session.renameActiveCut(nextName);
-  }
+  /// ⛔The free function is the home, and it says why at its own head: the
+  /// pill is mounted on BOTH frame panels and a private `State` method is
+  /// reachable from exactly one of them. This copy had already drifted —
+  /// it checked `mounted` where the other checks `context.mounted`.
+  Future<void> _renameActiveCut() =>
+      renameActiveCutWithDialog(context, session);
 
   Future<void> _editActiveCutNote() async {
     final initialNote = session.activeCutNote;
