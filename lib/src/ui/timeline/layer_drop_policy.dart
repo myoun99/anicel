@@ -1069,3 +1069,28 @@ List<LayerId>? resolveTrackSeDrop({
   rest.insert(insertAt > from ? insertAt - 1 : insertAt, seLayers[from]);
   return [for (final layer in rest) layer.id];
 }
+
+/// The slot an fx chain's header at [slot] lands in once a drag has
+/// crossed [steps] rows, given the chain's [headers] in display order.
+///
+/// ⛔ONE ANSWER FOR BOTH AXES. The horizontal rail and the vertical sheet
+/// each wrote out the same three nested calls, and a chain that reorders
+/// one way in the timeline and another in the sheet is one chain
+/// disagreeing with itself. Both also hand [EffectRowDragHooks.onEffectUpdate]
+/// the same effect-id list, which is why it is built here too.
+({int slot, List<EffectId> effectIds}) effectChainAfterCrossing(
+  List<({int rowIndex, EffectId effectId})> headers,
+  int slot,
+  int steps,
+) => (
+  slot: slotForSteps(
+    slot,
+    rowStepsBetween(
+      [for (final header in headers) header.rowIndex],
+      headers[slot].rowIndex,
+      steps,
+    ),
+    headers.length,
+  ),
+  effectIds: [for (final header in headers) header.effectId],
+);

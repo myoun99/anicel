@@ -78,8 +78,6 @@ class _LayerGridRowDrags {
         child,
       );
     }
-    final displayEffects = [for (final header in headers) header.effectId];
-    final myRowIndex = headers[slot].rowIndex;
     return LayerRowDragTarget(
       subject: EffectRowSubject(row.layer.id, parsed.effectId),
       slotBefore: slot,
@@ -96,19 +94,10 @@ class _LayerGridRowDrags {
       // An fx chain has no "inside a row" to drop into — an effect holds
       // nothing — so the on-row band is ignored here and the caret stays
       // the only answer (R5 #15).
-      onCrossed: (steps, _, _) => hooks.onEffectUpdate(
-        row.layer.id,
-        displayEffects,
-        slotForSteps(
-          slot,
-          rowStepsBetween(
-            [for (final header in headers) header.rowIndex],
-            myRowIndex,
-            steps,
-          ),
-          headers.length,
-        ),
-      ),
+      onCrossed: (steps, _, _) {
+        final landed = effectChainAfterCrossing(headers, slot, steps);
+        hooks.onEffectUpdate(row.layer.id, landed.effectIds, landed.slot);
+      },
       // B4-3: the SELECT half, the same one every layer row already had.
       onSelectCrossed: hooks.onSelectBegin == null
           ? null

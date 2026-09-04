@@ -84,7 +84,6 @@ class _XSheetGridHeaders {
     if (slot < 0) {
       return selectOnly();
     }
-    final myRowIndex = headers[slot].rowIndex;
     return LayerRowDragTarget(
       subject: EffectRowSubject(entry.layer.id, parsed.effectId),
       slotBefore: slot,
@@ -92,19 +91,10 @@ class _XSheetGridHeaders {
       axis: Axis.vertical,
       hooks: hooks,
       isLastRow: slot == headers.length - 1,
-      onCrossed: (steps, _, _) => hooks.onEffectUpdate(
-        entry.layer.id,
-        [for (final header in headers) header.effectId],
-        slotForSteps(
-          slot,
-          rowStepsBetween(
-            [for (final header in headers) header.rowIndex],
-            myRowIndex,
-            steps,
-          ),
-          headers.length,
-        ),
-      ),
+      onCrossed: (steps, _, _) {
+        final landed = effectChainAfterCrossing(headers, slot, steps);
+        hooks.onEffectUpdate(entry.layer.id, landed.effectIds, landed.slot);
+      },
       // B4-3: the SELECT half, the same one every other row already had.
       onSelectCrossed: hooks.onSelectBegin == null
           ? null
