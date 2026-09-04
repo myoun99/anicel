@@ -368,6 +368,43 @@ class ExportDialogState extends State<ExportDialog> {
     });
   }
 
+  /// One accordion, ONE state key. Twenty-four call sites wrote the key
+  /// (and its fallback) twice — once to read the expansion and once to
+  /// toggle it — which is two chances to disagree about which panel is
+  /// being opened. They agreed, and now they cannot stop agreeing.
+  Widget _module({
+    required String stateKey,
+    required String title,
+    required String summary,
+    required Widget child,
+    bool fallback = false,
+    bool? resetEnabled,
+    VoidCallback? onReset,
+  }) => ExportAccordion(
+    title: title,
+    summary: summary,
+    expanded: _expandedFor(stateKey, fallback: fallback),
+    onToggle: () => _toggleExpanded(stateKey, fallback: fallback),
+    resetEnabled: resetEnabled,
+    onReset: onReset,
+    child: child,
+  );
+
+  /// A format/scale chip that is DEAD while an export runs. Thirteen sites
+  /// wrote that guard out; it is the same law each time — a run in flight
+  /// owns the spec — so one place says it.
+  Widget _chip({
+    required String keyValue,
+    required String label,
+    required bool selected,
+    required VoidCallback onPick,
+  }) => ExportChip(
+    key: ValueKey<String>(keyValue),
+    label: label,
+    selected: selected,
+    onTap: _isExporting ? null : onPick,
+  );
+
   // --- plans ----------------------------------------------------------------
 
   Cut get _activeCut => _anchorCut!;
@@ -2676,11 +2713,11 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.sequence;
     final projectScope = spec.scope == ExportScopeKind.project;
     return [
-      ExportAccordion(
+      _module(
         title: AppText.strings.exFormat,
         summary: ExportFormatModule.summarize(spec.format),
-        expanded: _expandedFor('format', fallback: true),
-        onToggle: () => _toggleExpanded('format', fallback: true),
+        stateKey: 'format',
+        fallback: true,
         resetEnabled: spec.format != const ExportFormatSelection(),
         onReset: () =>
             _updateSpec(spec.copyWith(format: const ExportFormatSelection())),
@@ -2710,11 +2747,11 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
-        expanded: _expandedFor('scope', fallback: true),
-        onToggle: () => _toggleExpanded('scope', fallback: true),
+        stateKey: 'scope',
+        fallback: true,
         child: ExportScopeModule(
           scope: spec.scope,
           enabled: !_isExporting,
@@ -2735,11 +2772,11 @@ class ExportDialogState extends State<ExportDialog> {
               : null,
         ),
       ),
-      ExportAccordion(
+      _module(
         title: 'Size',
         summary: ExportSizeModule.summarize(spec.sizeMode),
-        expanded: _expandedFor('size', fallback: true),
-        onToggle: () => _toggleExpanded('size', fallback: true),
+        stateKey: 'size',
+        fallback: true,
         child: ExportSizeModule(
           sizeMode: spec.sizeMode,
           cameraSize: _session.cameraFrameSize,
@@ -2750,13 +2787,12 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       if (spec.format.isVideo)
-        ExportAccordion(
+        _module(
           title: AppText.strings.exAudio,
           summary: spec.includeAudio
               ? 'SE muxed · ${spec.format.videoCodec.isProRes ? 'PCM' : 'AAC'}'
               : 'Off',
-          expanded: _expandedFor('audio'),
-          onToggle: () => _toggleExpanded('audio'),
+          stateKey: 'audio',
           child: ExportToggleRow(
             widgetKey: const ValueKey<String>('export-audio-toggle'),
             label: AppText.strings.exMuxSeMix,
@@ -2767,14 +2803,13 @@ class ExportDialogState extends State<ExportDialog> {
           ),
         ),
       if (spec.format.isStill)
-        ExportAccordion(
+        _module(
           title: AppText.strings.exNaming,
           summary: ExportSequenceNamingModule.summarize(
             spec.naming,
             spec.format.stillFormat.fileExtension,
           ),
-          expanded: _expandedFor('naming'),
-          onToggle: () => _toggleExpanded('naming'),
+          stateKey: 'naming',
           resetEnabled: spec.naming != const ExportSequenceNaming(),
           onReset: () {
             _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
@@ -2787,11 +2822,10 @@ class ExportDialogState extends State<ExportDialog> {
             onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
           ),
         ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exOptions,
         summary: spec.applyLayerFx ? 'FX on' : 'FX off',
-        expanded: _expandedFor('options'),
-        onToggle: () => _toggleExpanded('options'),
+        stateKey: 'options',
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-apply-fx-toggle'),
           label: AppText.strings.exApplyLayerFxHelp,
@@ -2826,11 +2860,11 @@ class ExportDialogState extends State<ExportDialog> {
   List<Widget> _imageModules() {
     final spec = _specs.image;
     return [
-      ExportAccordion(
+      _module(
         title: AppText.strings.exFormat,
         summary: ExportFormatModule.summarize(spec.format),
-        expanded: _expandedFor('format', fallback: true),
-        onToggle: () => _toggleExpanded('format', fallback: true),
+        stateKey: 'format',
+        fallback: true,
         child: ExportFormatModule(
           selection: spec.format,
           capabilities: ExportFormatCapabilities(
@@ -2845,11 +2879,11 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: 'Size',
         summary: ExportSizeModule.summarize(spec.sizeMode),
-        expanded: _expandedFor('size', fallback: true),
-        onToggle: () => _toggleExpanded('size', fallback: true),
+        stateKey: 'size',
+        fallback: true,
         child: ExportSizeModule(
           sizeMode: spec.sizeMode,
           cameraSize: _session.cameraFrameSize,
@@ -2859,11 +2893,10 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exOptions,
         summary: spec.applyLayerFx ? 'FX on' : 'FX off',
-        expanded: _expandedFor('options'),
-        onToggle: () => _toggleExpanded('options'),
+        stateKey: 'options',
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-image-fx-toggle'),
           label: AppText.strings.exApplyLayerFx,
@@ -3178,21 +3211,21 @@ class ExportDialogState extends State<ExportDialog> {
         delta.layerOverrides.keys.any((id) => !labelLevelIds.contains(id));
     final currentLabel = _currentCelLabel();
     return [
-      ExportAccordion(
+      _module(
         title: AppText.strings.exCels,
         summary: '${_celGroupPlan().length} files',
-        expanded: _expandedFor('cels', fallback: true),
-        onToggle: () => _toggleExpanded('cels', fallback: true),
+        stateKey: 'cels',
+        fallback: true,
         resetEnabled: hasLabelDelta,
         onReset: () => _clearOverridesFor(labelLevelIds),
         child: _celsAccordionBody(),
       ),
       if (currentLabel != null)
-        ExportAccordion(
+        _module(
           title: 'Layers · ${currentLabel.name}',
           summary: '',
-          expanded: _expandedFor('layers', fallback: true),
-          onToggle: () => _toggleExpanded('layers', fallback: true),
+          stateKey: 'layers',
+          fallback: true,
           resetEnabled: hasMemberDelta,
           onReset: () => _clearOverridesFor({
             for (final layer in _activeCut.layers)
@@ -3200,11 +3233,11 @@ class ExportDialogState extends State<ExportDialog> {
           }),
           child: _celsLayersAccordionBody(currentLabel),
         ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exFormat,
         summary: ExportFormatModule.summarize(spec.format),
-        expanded: _expandedFor('format', fallback: true),
-        onToggle: () => _toggleExpanded('format', fallback: true),
+        stateKey: 'format',
+        fallback: true,
         child: ExportFormatModule(
           selection: spec.format,
           capabilities: ExportFormatCapabilities(
@@ -3219,11 +3252,10 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exFilter,
         summary: spec.onTimesheetOnly ? 'Sheet only' : 'All visible',
-        expanded: _expandedFor('filter'),
-        onToggle: () => _toggleExpanded('filter'),
+        stateKey: 'filter',
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cel-timesheet-only-toggle'),
           label: AppText.strings.exOnTimesheetOnly,
@@ -3233,11 +3265,10 @@ class ExportDialogState extends State<ExportDialog> {
               : (value) => _updateSpec(spec.copyWith(onTimesheetOnly: value)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: 'Size',
         summary: ExportSizeModule.summarize(spec.sizeMode),
-        expanded: _expandedFor('size'),
-        onToggle: () => _toggleExpanded('size'),
+        stateKey: 'size',
         child: ExportSizeModule(
           sizeMode: spec.sizeMode,
           cameraSize: _session.cameraFrameSize,
@@ -3247,11 +3278,10 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exNaming,
         summary: ExportCelNamingModule.summarize(spec.naming),
-        expanded: _expandedFor('naming'),
-        onToggle: () => _toggleExpanded('naming'),
+        stateKey: 'naming',
         resetEnabled: spec.naming != const ExportCelNaming(),
         onReset: () {
           _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
@@ -3264,11 +3294,10 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
-        expanded: _expandedFor('scope'),
-        onToggle: () => _toggleExpanded('scope'),
+        stateKey: 'scope',
         child: ExportScopeModule(
           scope: spec.scope,
           enabled: !_isExporting,
@@ -3283,11 +3312,10 @@ class ExportDialogState extends State<ExportDialog> {
       // 유저 2026-08-27 made it a choice. Same accordion, same toggle row,
       // same key prefix as the Sequence and Image tabs — one control, three
       // places, rather than a fourth idea of what this question looks like.
-      ExportAccordion(
+      _module(
         title: AppText.strings.exOptions,
         summary: spec.applyLayerFx ? 'FX on' : 'FX off',
-        expanded: _expandedFor('options'),
-        onToggle: () => _toggleExpanded('options'),
+        stateKey: 'options',
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cels-apply-fx-toggle'),
           label: AppText.strings.exApplyLayerFxHelp,
@@ -3306,40 +3334,34 @@ class ExportDialogState extends State<ExportDialog> {
   List<Widget> _timesheetModules() {
     final spec = _specs.timesheet;
     return [
-      ExportAccordion(
+      _module(
         title: AppText.strings.exFormat,
         summary: spec.format == ExportTimesheetFormat.sheetImage
             ? 'Sheet PNG · ${spec.sheetScale}x'
             : 'XDTS',
-        expanded: _expandedFor('format', fallback: true),
-        onToggle: () => _toggleExpanded('format', fallback: true),
+        stateKey: 'format',
+        fallback: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Wrap(
               spacing: 5,
               children: [
-                ExportChip(
-                  key: const ValueKey<String>('export-tsformat-sheet'),
+                _chip(
+                  keyValue: 'export-tsformat-sheet',
                   label: AppText.strings.exSheetPng,
                   selected: spec.format == ExportTimesheetFormat.sheetImage,
-                  onTap: _isExporting
-                      ? null
-                      : () => _updateSpec(
-                          spec.copyWith(
-                            format: ExportTimesheetFormat.sheetImage,
-                          ),
-                        ),
+                  onPick: () => _updateSpec(
+                    spec.copyWith(format: ExportTimesheetFormat.sheetImage),
+                  ),
                 ),
-                ExportChip(
-                  key: const ValueKey<String>('export-tsformat-xdts'),
+                _chip(
+                  keyValue: 'export-tsformat-xdts',
                   label: 'XDTS',
                   selected: spec.format == ExportTimesheetFormat.xdts,
-                  onTap: _isExporting
-                      ? null
-                      : () => _updateSpec(
-                          spec.copyWith(format: ExportTimesheetFormat.xdts),
-                        ),
+                  onPick: () => _updateSpec(
+                    spec.copyWith(format: ExportTimesheetFormat.xdts),
+                  ),
                 ),
               ],
             ),
@@ -3351,14 +3373,12 @@ class ExportDialogState extends State<ExportDialog> {
                   spacing: 5,
                   children: [
                     for (final scale in const [1, 2, 3, 4])
-                      ExportChip(
-                        key: ValueKey<String>('export-tsscale-$scale'),
+                      _chip(
+                        keyValue: 'export-tsscale-$scale',
                         label: '${scale}x',
                         selected: spec.sheetScale == scale,
-                        onTap: _isExporting
-                            ? null
-                            : () =>
-                                  _updateSpec(spec.copyWith(sheetScale: scale)),
+                        onPick: () =>
+                            _updateSpec(spec.copyWith(sheetScale: scale)),
                       ),
                   ],
                 ),
@@ -3378,11 +3398,11 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
-        expanded: _expandedFor('scope', fallback: true),
-        onToggle: () => _toggleExpanded('scope', fallback: true),
+        stateKey: 'scope',
+        fallback: true,
         child: ExportScopeModule(
           scope: spec.scope,
           enabled: !_isExporting,
@@ -3397,38 +3417,33 @@ class ExportDialogState extends State<ExportDialog> {
   List<Widget> _conteModules() {
     final spec = _specs.conte;
     return [
-      ExportAccordion(
+      _module(
         title: AppText.strings.exFormat,
         summary: spec.format == ExportConteFormat.pdf
             ? 'Vector PDF'
             : 'Page PNG · ${spec.sheetScale}x',
-        expanded: _expandedFor('format', fallback: true),
-        onToggle: () => _toggleExpanded('format', fallback: true),
+        stateKey: 'format',
+        fallback: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Wrap(
               spacing: 5,
               children: [
-                ExportChip(
-                  key: const ValueKey<String>('export-conteformat-pdf'),
+                _chip(
+                  keyValue: 'export-conteformat-pdf',
                   label: 'PDF',
                   selected: spec.format == ExportConteFormat.pdf,
-                  onTap: _isExporting
-                      ? null
-                      : () => _updateSpec(
-                          spec.copyWith(format: ExportConteFormat.pdf),
-                        ),
+                  onPick: () =>
+                      _updateSpec(spec.copyWith(format: ExportConteFormat.pdf)),
                 ),
-                ExportChip(
-                  key: const ValueKey<String>('export-conteformat-png'),
+                _chip(
+                  keyValue: 'export-conteformat-png',
                   label: AppText.strings.exSheetPng,
                   selected: spec.format == ExportConteFormat.pageImage,
-                  onTap: _isExporting
-                      ? null
-                      : () => _updateSpec(
-                          spec.copyWith(format: ExportConteFormat.pageImage),
-                        ),
+                  onPick: () => _updateSpec(
+                    spec.copyWith(format: ExportConteFormat.pageImage),
+                  ),
                 ),
               ],
             ),
@@ -3440,14 +3455,12 @@ class ExportDialogState extends State<ExportDialog> {
                   spacing: 5,
                   children: [
                     for (final scale in const [1, 2, 3, 4])
-                      ExportChip(
-                        key: ValueKey<String>('export-contescale-$scale'),
+                      _chip(
+                        keyValue: 'export-contescale-$scale',
                         label: '${scale}x',
                         selected: spec.sheetScale == scale,
-                        onTap: _isExporting
-                            ? null
-                            : () =>
-                                  _updateSpec(spec.copyWith(sheetScale: scale)),
+                        onPick: () =>
+                            _updateSpec(spec.copyWith(sheetScale: scale)),
                       ),
                   ],
                 ),
@@ -3473,56 +3486,50 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.envelope;
     final cutPaper = spec.paperMode == CutEnvelopePaperMode.cut;
     return [
-      ExportAccordion(
+      _module(
         title: 'Form',
         summary: CutEnvelopePresets.byId(spec.formId).name,
-        expanded: _expandedFor('envelope-form', fallback: true),
-        onToggle: () => _toggleExpanded('envelope-form', fallback: true),
+        stateKey: 'envelope-form',
+        fallback: true,
         child: Wrap(
           spacing: 5,
           children: [
             for (final form in CutEnvelopePresets.all)
-              ExportChip(
-                key: ValueKey<String>('export-envelope-form-${form.id}'),
+              _chip(
+                keyValue: 'export-envelope-form-${form.id}',
                 label: form.name,
                 selected: spec.formId == form.id,
-                onTap: _isExporting
-                    ? null
-                    : () => _updateSpec(spec.copyWith(formId: form.id)),
+                onPick: () => _updateSpec(spec.copyWith(formId: form.id)),
               ),
           ],
         ),
       ),
-      ExportAccordion(
+      _module(
         title: 'Paper',
         summary: cutPaper ? 'Cut size' : 'Sheet · ${spec.sheetWidth}px',
-        expanded: _expandedFor('envelope-paper', fallback: true),
-        onToggle: () => _toggleExpanded('envelope-paper', fallback: true),
+        stateKey: 'envelope-paper',
+        fallback: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Wrap(
               spacing: 5,
               children: [
-                ExportChip(
-                  key: const ValueKey<String>('export-envelope-paper-cut'),
+                _chip(
+                  keyValue: 'export-envelope-paper-cut',
                   label: 'Cut size',
                   selected: cutPaper,
-                  onTap: _isExporting
-                      ? null
-                      : () => _updateSpec(
-                          spec.copyWith(paperMode: CutEnvelopePaperMode.cut),
-                        ),
+                  onPick: () => _updateSpec(
+                    spec.copyWith(paperMode: CutEnvelopePaperMode.cut),
+                  ),
                 ),
-                ExportChip(
-                  key: const ValueKey<String>('export-envelope-paper-sheet'),
+                _chip(
+                  keyValue: 'export-envelope-paper-sheet',
                   label: 'Real sheet',
                   selected: !cutPaper,
-                  onTap: _isExporting
-                      ? null
-                      : () => _updateSpec(
-                          spec.copyWith(paperMode: CutEnvelopePaperMode.sheet),
-                        ),
+                  onPick: () => _updateSpec(
+                    spec.copyWith(paperMode: CutEnvelopePaperMode.sheet),
+                  ),
                 ),
               ],
             ),
@@ -3534,14 +3541,12 @@ class ExportDialogState extends State<ExportDialog> {
                   spacing: 5,
                   children: [
                     for (final width in const [1240, 2480, 3508])
-                      ExportChip(
-                        key: ValueKey<String>('export-envelope-width-$width'),
+                      _chip(
+                        keyValue: 'export-envelope-width-$width',
                         label: '${width}px',
                         selected: spec.sheetWidth == width,
-                        onTap: _isExporting
-                            ? null
-                            : () =>
-                                  _updateSpec(spec.copyWith(sheetWidth: width)),
+                        onPick: () =>
+                            _updateSpec(spec.copyWith(sheetWidth: width)),
                       ),
                   ],
                 ),
@@ -3560,13 +3565,13 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ),
       ),
-      ExportAccordion(
+      _module(
         title: 'Layers',
         summary: spec.separateLayerFiles
             ? '${spec.orderedLayers.length} separate PNGs'
             : '${spec.orderedLayers.length} of 4, flat',
-        expanded: _expandedFor('envelope-layers', fallback: true),
-        onToggle: () => _toggleExpanded('envelope-layers', fallback: true),
+        stateKey: 'envelope-layers',
+        fallback: true,
         resetEnabled:
             spec.layers.length != EnvelopeExportSpec.defaultLayers.length,
         onReset: () => _updateSpec(
@@ -3579,10 +3584,8 @@ class ExportDialogState extends State<ExportDialog> {
               spacing: 5,
               children: [
                 for (final layer in SheetPaintLayer.values)
-                  ExportChip(
-                    key: ValueKey<String>(
-                      'export-envelope-layer-${layer.jsonValue}',
-                    ),
+                  _chip(
+                    keyValue: 'export-envelope-layer-${layer.jsonValue}',
                     label: switch (layer) {
                       SheetPaintLayer.paper => 'Paper',
                       SheetPaintLayer.form => 'Form',
@@ -3590,11 +3593,9 @@ class ExportDialogState extends State<ExportDialog> {
                       SheetPaintLayer.ink => 'Ink',
                     },
                     selected: spec.layers.contains(layer),
-                    onTap: _isExporting
-                        ? null
-                        : () => _updateSpec(
-                            spec.withLayer(layer, !spec.layers.contains(layer)),
-                          ),
+                    onPick: () => _updateSpec(
+                      spec.withLayer(layer, !spec.layers.contains(layer)),
+                    ),
                   ),
               ],
             ),
@@ -3604,27 +3605,19 @@ class ExportDialogState extends State<ExportDialog> {
               child: Wrap(
                 spacing: 5,
                 children: [
-                  ExportChip(
-                    key: const ValueKey<String>('export-envelope-files-flat'),
+                  _chip(
+                    keyValue: 'export-envelope-files-flat',
                     label: 'One image',
                     selected: !spec.separateLayerFiles,
-                    onTap: _isExporting
-                        ? null
-                        : () => _updateSpec(
-                            spec.copyWith(separateLayerFiles: false),
-                          ),
+                    onPick: () =>
+                        _updateSpec(spec.copyWith(separateLayerFiles: false)),
                   ),
-                  ExportChip(
-                    key: const ValueKey<String>(
-                      'export-envelope-files-layered',
-                    ),
+                  _chip(
+                    keyValue: 'export-envelope-files-layered',
                     label: 'One per layer',
                     selected: spec.separateLayerFiles,
-                    onTap: _isExporting
-                        ? null
-                        : () => _updateSpec(
-                            spec.copyWith(separateLayerFiles: true),
-                          ),
+                    onPick: () =>
+                        _updateSpec(spec.copyWith(separateLayerFiles: true)),
                   ),
                 ],
               ),
@@ -3639,13 +3632,13 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ),
       ),
-      ExportAccordion(
+      _module(
         title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
         // Open by default: "this cut or the whole film" is the first thing
         // anyone asks of a per-cut document.
-        expanded: _expandedFor('envelope-scope', fallback: true),
-        onToggle: () => _toggleExpanded('envelope-scope', fallback: true),
+        stateKey: 'envelope-scope',
+        fallback: true,
         child: ExportScopeModule(
           scope: spec.scope,
           enabled: !_isExporting,
