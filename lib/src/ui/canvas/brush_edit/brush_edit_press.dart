@@ -52,49 +52,58 @@ class _BrushEditPress {
     _state._overlay.resetOverlay();
   }
 
+  /// The APP-WIDE touch census's verdict on this press: true when it takes
+  /// the press and nothing further down happens.
+  bool _touchCensusTakesThePress(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch) {
+      return false;
+    }
+    // PEN-12 #4: a finger draws exactly when the ONE-FINGER touch slot
+    // says draw (the old control/draw mode collapsed into the slot);
+    // otherwise the panel's gesture layer owns every touch.
+    if (!AppInput.touchDraws) {
+      return true;
+    }
+    _activeTouchPointers.add(event.pointer);
+    CanvasTouchContacts.add(event.pointer);
+    // R26 #5: the census is APP-WIDE — the timesheet mounts one ink
+    // view per sheet window, so the second finger often lands on a
+    // SIBLING view. Counting locally let both of them draw.
+    if (CanvasTouchContacts.count < 2) {
+      return false;
+    }
+    final drawingPointer = _state._activeDrawingPointer;
+    final touchStroke =
+        drawingPointer != null && _activeTouchPointers.contains(drawingPointer);
+    // PEN-12 #4: a COMMITTED stroke survives extra fingers — palm
+    // rests and habitual pinches must never vanish a live line. The
+    // newcomer is simply ignored (no navigation, no modifier).
+    if (touchStroke && _state._touchStrokeCommitted) {
+      return true;
+    }
+    _multiTouchNavigation = true;
+    // A waiting FILL tap goes with them, and for the same reason: the
+    // first finger turned out to be the start of a pinch. Nothing was
+    // drawn and nothing entered history, so this is a forget rather
+    // than an undo — which is the whole point of making the fill wait.
+    _state._fill.forgetFillTap();
+    // Discard only a SUB-SLOP touch stroke — the first finger turned
+    // out to be the start of a pinch, not a stroke (both fingers
+    // landed together). A stylus/mouse stroke keeps drawing: extra
+    // touch contacts alongside it are palm rests.
+    if (touchStroke) {
+      _state._stroke.endStrokeInput();
+      _state._overlay.resetOverlay();
+    }
+    return true;
+  }
+
   void pointerDown(PointerDownEvent event) {
     // (No deferred stroke commit to land first: pen-up commits inside its
     // own event now — R25-④'s one-frame deferral existed to hide a
     // synchronous re-materialize that the promotion round deleted.)
-    if (event.kind == PointerDeviceKind.touch) {
-      // PEN-12 #4: a finger draws exactly when the ONE-FINGER touch slot
-      // says draw (the old control/draw mode collapsed into the slot);
-      // otherwise the panel's gesture layer owns every touch.
-      if (!AppInput.touchDraws) {
-        return;
-      }
-      _activeTouchPointers.add(event.pointer);
-      CanvasTouchContacts.add(event.pointer);
-      // R26 #5: the census is APP-WIDE — the timesheet mounts one ink
-      // view per sheet window, so the second finger often lands on a
-      // SIBLING view. Counting locally let both of them draw.
-      if (CanvasTouchContacts.count >= 2) {
-        final drawingPointer = _state._activeDrawingPointer;
-        final touchStroke =
-            drawingPointer != null &&
-            _activeTouchPointers.contains(drawingPointer);
-        // PEN-12 #4: a COMMITTED stroke survives extra fingers — palm
-        // rests and habitual pinches must never vanish a live line. The
-        // newcomer is simply ignored (no navigation, no modifier).
-        if (touchStroke && _state._touchStrokeCommitted) {
-          return;
-        }
-        _multiTouchNavigation = true;
-        // A waiting FILL tap goes with them, and for the same reason: the
-        // first finger turned out to be the start of a pinch. Nothing was
-        // drawn and nothing entered history, so this is a forget rather
-        // than an undo — which is the whole point of making the fill wait.
-        _state._fill.forgetFillTap();
-        // Discard only a SUB-SLOP touch stroke — the first finger turned
-        // out to be the start of a pinch, not a stroke (both fingers
-        // landed together). A stylus/mouse stroke keeps drawing: extra
-        // touch contacts alongside it are palm rests.
-        if (touchStroke) {
-          _state._stroke.endStrokeInput();
-          _state._overlay.resetOverlay();
-        }
-        return;
-      }
+    if (_touchCensusTakesThePress(event)) {
+      return;
     }
 
     if (!_state.widget.editable) {
