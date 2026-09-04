@@ -330,13 +330,23 @@ class EditorVoiceRecording {
   /// Stopped-⏺ count-in beeps: the same standalone device path as the
   /// test tone — [seconds] beeps a second apart, then the device closes
   /// so the transport can take it for the roll.
-  void _playCountInBeeps(int seconds) {
+  /// The audio device, opened for a short cue, or null when it cannot be.
+  ///
+  /// ⛔TWO CUES OPENED IT — the count-in beeps and the output test tone —
+  /// with the same four refusals and the same FALLBACK: a saved device
+  /// that will not open drops back to the system default rather than
+  /// leaving the user with silence and no reason. Written twice, the
+  /// fallback is one edit away from existing on only one of them.
+  ///
+  /// ⚠️Refuses under FLUTTER_TEST: a widget test must never bind a real
+  /// output, and the gate belongs with the opening, not at each caller.
+  QaAudioDevice? _openDeviceForCue() {
     if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return;
+      return null;
     }
     final device = QaAudioDevice.instance;
     if (device == null || playback.isActive || device.isOpen) {
-      return;
+      return null;
     }
     final index = audioOutputDeviceIndexByName(
       device,
@@ -350,7 +360,12 @@ class EditorVoiceRecording {
     if (opened == 0 && index >= 0) {
       opened = device.open(sampleRate: 48000, channels: 2);
     }
-    if (opened == 0) {
+    return opened == 0 ? null : device;
+  }
+
+  void _playCountInBeeps(int seconds) {
+    final device = _openDeviceForCue();
+    if (device == null) {
       return;
     }
     final sampleRate = device.sampleRate;
@@ -441,26 +456,8 @@ class EditorVoiceRecording {
   /// run holds the device (it is busy making real sound). Returns false
   /// when nothing could open; the button stays quiet then.
   bool playOutputTestTone() {
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return false;
-    }
-    final device = QaAudioDevice.instance;
-    if (device == null || playback.isActive || device.isOpen) {
-      return false;
-    }
-    final index = audioOutputDeviceIndexByName(
-      device,
-      audioSyncSettings.value.outputDeviceName,
-    );
-    var opened = device.open(
-      sampleRate: 48000,
-      channels: 2,
-      deviceIndex: index,
-    );
-    if (opened == 0 && index >= 0) {
-      opened = device.open(sampleRate: 48000, channels: 2);
-    }
-    if (opened == 0) {
+    final device = _openDeviceForCue();
+    if (device == null) {
       return false;
     }
     final sampleRate = device.sampleRate;
