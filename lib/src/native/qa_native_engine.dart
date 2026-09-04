@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
 
 import 'qa_engine_abi.dart';
+import 'native_scratch.dart';
 
 /// The native engine core's FFI bindings (R18 A-track).
 ///
@@ -52,10 +53,12 @@ class QaNativeEngine {
   /// ordered layer blends into grow-only native arrays and fans the
   /// tiles across the worker pool in ONE call (the per-tile serial FFI
   /// compose was the fill's largest remaining serial slice).
-  Pointer<QaComposeTileItemStruct> _composeItems = nullptr;
-  int _composeItemCapacity = 0;
-  Pointer<QaComposeBlendStruct> _composeBlends = nullptr;
-  int _composeBlendCapacity = 0;
+  final _composeItems = NativeScratch<QaComposeTileItemStruct>(
+    (n) => calloc<QaComposeTileItemStruct>(n),
+  );
+  final _composeBlends = NativeScratch<QaComposeBlendStruct>(
+    (n) => calloc<QaComposeBlendStruct>(n),
+  );
 
   void fillComposeBatch({
     required int rasterWidth,
@@ -91,23 +94,13 @@ class QaNativeEngine {
     if (tiles.isEmpty) {
       return;
     }
-    if (_composeItemCapacity < tiles.length) {
-      if (_composeItems != nullptr) {
-        calloc.free(_composeItems);
-      }
-      _composeItems = calloc<QaComposeTileItemStruct>(tiles.length);
-      _composeItemCapacity = tiles.length;
-    }
-    if (_composeBlendCapacity < blends.length && blends.isNotEmpty) {
-      if (_composeBlends != nullptr) {
-        calloc.free(_composeBlends);
-      }
-      _composeBlends = calloc<QaComposeBlendStruct>(blends.length);
-      _composeBlendCapacity = blends.length;
+    _composeItems.ensure(tiles.length);
+    if (blends.isNotEmpty) {
+      _composeBlends.ensure(blends.length);
     }
     for (var i = 0; i < tiles.length; i += 1) {
       final tile = tiles[i];
-      final item = _composeItems + i;
+      final item = _composeItems.pointer + i;
       item.ref.tileLeft = tile.left;
       item.ref.tileTop = tile.top;
       item.ref.tileRightExclusive = tile.rightExclusive;
@@ -117,7 +110,7 @@ class QaNativeEngine {
     }
     for (var i = 0; i < blends.length; i += 1) {
       final blend = blends[i];
-      final entry = _composeBlends + i;
+      final entry = _composeBlends.pointer + i;
       entry.ref.tilePixels = blend.pixels;
       entry.ref.tileSize = blend.tileSize;
       entry.ref.baseX = blend.baseX;
@@ -130,14 +123,14 @@ class QaNativeEngine {
       entry.ref.reserved = 0;
     }
     _fillComposeBatch(
-      _floodRgb,
+      _floodRgb.pointer,
       rasterWidth,
       paperR,
       paperG,
       paperB,
-      _composeItems,
+      _composeItems.pointer,
       tiles.length,
-      _composeBlends,
+      _composeBlends.pointer,
     );
   }
 
@@ -241,10 +234,8 @@ class QaNativeEngine {
   _fillGapCloseRun;
 
   // Grow-only work buffers for the close-gap fill (R20-C1).
-  Pointer<Uint8> _gapFillable = nullptr;
-  int _gapFillableLength = 0;
-  Pointer<Uint16> _gapDist = nullptr;
-  int _gapDistLength = 0;
+  final _gapFillable = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _gapDist = NativeScratch<Uint16>((n) => calloc<Uint16>(n));
   Pointer<Int32> _gapStack = nullptr;
   static const int _gapStackCapacity = 4 * 1024 * 1024;
 
@@ -266,21 +257,9 @@ class QaNativeEngine {
     final width = handles.width;
     final height = handles.height;
     final pixelCount = width * height;
-    _floodFilled = _ensureUint8(_floodFilled, _floodFilledLength, pixelCount);
-    if (_floodFilledLength < pixelCount) {
-      _floodFilledLength = pixelCount;
-    }
-    _gapFillable = _ensureUint8(_gapFillable, _gapFillableLength, pixelCount);
-    if (_gapFillableLength < pixelCount) {
-      _gapFillableLength = pixelCount;
-    }
-    if (_gapDistLength < pixelCount) {
-      if (_gapDist != nullptr) {
-        calloc.free(_gapDist);
-      }
-      _gapDist = calloc<Uint16>(pixelCount);
-      _gapDistLength = pixelCount;
-    }
+    _floodFilled.ensure(pixelCount);
+    _gapFillable.ensure(pixelCount);
+    _gapDist.ensure(pixelCount);
     if (_gapStack == nullptr) {
       _gapStack = calloc<Int32>(_gapStackCapacity);
     }
@@ -289,7 +268,7 @@ class QaNativeEngine {
       _floodBounds = calloc<Int32>(4);
     }
     final gap = _fillGapCloseRun(
-      _floodRgb,
+      _floodRgb.pointer,
       width,
       height,
       seedX,
@@ -299,9 +278,9 @@ class QaNativeEngine {
       seedB,
       tolerance,
       gapClosePx,
-      _gapFillable,
-      _gapDist,
-      _floodFilled,
+      _gapFillable.pointer,
+      _gapDist.pointer,
+      _floodFilled.pointer,
       _gapStack,
       _gapStackCapacity,
       _floodBounds,
@@ -596,10 +575,7 @@ class QaNativeEngine {
       return false;
     }
     final source = uploadStampBytes(src);
-    _resampleDst = _ensureUint8(_resampleDst, _resampleDstLength, byteLength);
-    if (_resampleDstLength < byteLength) {
-      _resampleDstLength = byteLength;
-    }
+    _resampleDst.ensure(byteLength);
     if (_resampleInverse == nullptr) {
       _resampleInverse = malloc<Double>(9);
     }
@@ -608,7 +584,7 @@ class QaNativeEngine {
       src: source,
       srcWidth: srcWidth,
       srcHeight: srcHeight,
-      dst: _resampleDst,
+      dst: _resampleDst.pointer,
       dstWidth: dstWidth,
       dstHeight: dstHeight,
       inverse: _resampleInverse,
@@ -620,12 +596,11 @@ class QaNativeEngine {
     if (status != 0) {
       return false;
     }
-    dst.setRange(0, byteLength, _resampleDst.asTypedList(byteLength));
+    dst.setRange(0, byteLength, _resampleDst.pointer.asTypedList(byteLength));
     return true;
   }
 
-  Pointer<Uint8> _resampleDst = nullptr;
-  int _resampleDstLength = 0;
+  final _resampleDst = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   Pointer<Double> _resampleInverse = nullptr;
 
   /// Copy-in/copy-out convenience over [resampleRgba] for callers (and the
@@ -1289,28 +1264,13 @@ class QaNativeEngine {
   // fill runs at a time (a fill tap is synchronous and single-shot), so
   // the lazy raster and the stepper share these across calls.
 
-  Pointer<Uint8> _floodRgb = nullptr;
-  int _floodRgbLength = 0;
-  Pointer<Uint8> _floodComposed = nullptr;
-  int _floodComposedLength = 0;
-  Pointer<Uint8> _floodFilled = nullptr;
-  int _floodFilledLength = 0;
-  Pointer<Int32> _floodStack = nullptr;
-  int _floodStackCapacity = 0;
-  Pointer<Int32> _floodCandidates = nullptr;
-  int _floodCandidatesCapacity = 0;
+  final _floodRgb = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _floodComposed = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _floodFilled = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _floodStack = NativeScratch<Int32>((n) => calloc<Int32>(n));
+  final _floodCandidates = NativeScratch<Int32>((n) => calloc<Int32>(n));
   Pointer<Int32> _floodStackSize = nullptr;
   Pointer<Int32> _floodBounds = nullptr;
-
-  Pointer<Uint8> _ensureUint8(Pointer<Uint8> current, int have, int need) {
-    if (have >= need) {
-      return current;
-    }
-    if (current != nullptr) {
-      calloc.free(current);
-    }
-    return calloc<Uint8>(need);
-  }
 
   /// Acquires the shared lazy-raster buffers for one fill:
   /// [QaFloodNativeHandles.rgbView] (`width*height*4` RGBX — R22-D; the
@@ -1332,24 +1292,14 @@ class QaNativeEngine {
     final tilesY = (height + composeTileSize - 1) ~/ composeTileSize;
 
     final rgbLength = width * height * 4;
-    _floodRgb = _ensureUint8(_floodRgb, _floodRgbLength, rgbLength);
-    if (_floodRgbLength < rgbLength) {
-      _floodRgbLength = rgbLength;
-    }
+    _floodRgb.ensure(rgbLength);
     final composedLength = tilesX * tilesY;
-    _floodComposed = _ensureUint8(
-      _floodComposed,
-      _floodComposedLength,
-      composedLength,
-    );
-    if (_floodComposedLength < composedLength) {
-      _floodComposedLength = composedLength;
-    }
-    final composedView = _floodComposed.asTypedList(composedLength);
+    _floodComposed.ensure(composedLength);
+    final composedView = _floodComposed.pointer.asTypedList(composedLength);
     composedView.fillRange(0, composedLength, 0);
 
     return QaFloodNativeHandles._(
-      rgbView: _floodRgb.asTypedList(rgbLength),
+      rgbView: _floodRgb.pointer.asTypedList(rgbLength),
       composedView: composedView,
       width: width,
       height: height,
@@ -1362,29 +1312,13 @@ class QaNativeEngine {
   /// extended (pasteboard) fill grows them ~9× and they are high-water
   /// pinned otherwise; the next canvas fill re-allocs at canvas size.
   void trimFloodRasterArena({required int keepBytes}) {
-    if (_floodRgbLength <= keepBytes) {
+    if (_floodRgb.length <= keepBytes) {
       return;
     }
-    if (_floodRgb != nullptr) {
-      calloc.free(_floodRgb);
-      _floodRgb = nullptr;
-    }
-    _floodRgbLength = 0;
-    if (_floodFilled != nullptr) {
-      calloc.free(_floodFilled);
-      _floodFilled = nullptr;
-    }
-    _floodFilledLength = 0;
-    if (_gapFillable != nullptr) {
-      calloc.free(_gapFillable);
-      _gapFillable = nullptr;
-    }
-    _gapFillableLength = 0;
-    if (_floodComposed != nullptr) {
-      calloc.free(_floodComposed);
-      _floodComposed = nullptr;
-    }
-    _floodComposedLength = 0;
+    _floodRgb.release();
+    _floodFilled.release();
+    _gapFillable.release();
+    _floodComposed.release();
   }
 
   /// Fills a rect of the native fill raster with the paper color
@@ -1400,7 +1334,7 @@ class QaNativeEngine {
     required int paperB,
   }) {
     _fillPaperRect(
-      _floodRgb,
+      _floodRgb.pointer,
       handles.width,
       left,
       top,
@@ -1429,7 +1363,7 @@ class QaNativeEngine {
     required int opacityInt,
   }) {
     _fillComposeTile(
-      _floodRgb,
+      _floodRgb.pointer,
       handles.width,
       tilePixels,
       tileSize,
@@ -1468,22 +1402,16 @@ class QaNativeEngine {
     final height = handles.height;
     final pixelCount = width * height;
 
-    _floodFilled = _ensureUint8(_floodFilled, _floodFilledLength, pixelCount);
-    if (_floodFilledLength < pixelCount) {
-      _floodFilledLength = pixelCount;
-    }
-    final filledView = _floodFilled.asTypedList(pixelCount);
+    _floodFilled.ensure(pixelCount);
+    final filledView = _floodFilled.pointer.asTypedList(pixelCount);
     filledView.fillRange(0, pixelCount, 0);
 
-    var stackCapacity = _floodStackCapacity;
-    if (stackCapacity < width + 4096) {
-      stackCapacity = width * 4 + 65536;
-      if (_floodStack != nullptr) {
-        calloc.free(_floodStack);
-      }
-      _floodStack = calloc<Int32>(stackCapacity);
-      _floodStackCapacity = stackCapacity;
+    // ⚠️The stack grows in JUMPS, not to the ask: a fill that needs one
+    // more row would otherwise re-allocate on every call.
+    if (_floodStack.length < width + 4096) {
+      _floodStack.ensure(width * 4 + 65536);
     }
+
     // The wave engine can surface a whole composed-region perimeter of
     // crossings in ONE call — capacity is the total tile-edge pixel
     // count, which caps per-call emissions by construction (a pixel
@@ -1495,13 +1423,7 @@ class QaNativeEngine {
     if (waveCapacity > candidatesCapacity) {
       candidatesCapacity = waveCapacity;
     }
-    if (_floodCandidatesCapacity < candidatesCapacity) {
-      if (_floodCandidates != nullptr) {
-        calloc.free(_floodCandidates);
-      }
-      _floodCandidates = calloc<Int32>(candidatesCapacity);
-      _floodCandidatesCapacity = candidatesCapacity;
-    }
+    _floodCandidates.ensure(candidatesCapacity);
     if (_floodStackSize == nullptr) {
       _floodStackSize = calloc<Int32>(1);
       _floodBounds = calloc<Int32>(4);
@@ -1509,7 +1431,7 @@ class QaNativeEngine {
 
     final seedIndex = seedY * width + seedX;
     filledView[seedIndex] = 255;
-    _floodStack.value = seedIndex;
+    _floodStack.pointer.value = seedIndex;
     _floodStackSize.value = 1;
     final bounds = _floodBounds.asTypedList(4);
     bounds[0] = seedX;
@@ -1521,9 +1443,9 @@ class QaNativeEngine {
     final composedView = handles.composedView;
     while (true) {
       final candidateCount = _floodFillWave(
-        _floodRgb,
-        _floodFilled,
-        _floodComposed,
+        _floodRgb.pointer,
+        _floodFilled.pointer,
+        _floodComposed.pointer,
         width,
         height,
         handles.composeTileShift,
@@ -1532,10 +1454,10 @@ class QaNativeEngine {
         seedG,
         seedB,
         tolerance,
-        _floodStack,
+        _floodStack.pointer,
         _floodStackSize,
-        _floodCandidates,
-        _floodCandidatesCapacity,
+        _floodCandidates.pointer,
+        _floodCandidates.length,
         _floodBounds,
       );
       if (candidateCount < 0) {
@@ -1544,7 +1466,7 @@ class QaNativeEngine {
         return null;
       }
       if (candidateCount > 0) {
-        final candidates = _floodCandidates.asTypedList(candidateCount);
+        final candidates = _floodCandidates.pointer.asTypedList(candidateCount);
         // R25-③: one pooled compose for the whole candidate round
         // (per-candidate serial FFI compose was the fill's largest
         // remaining serial slice).
@@ -1576,10 +1498,11 @@ class QaNativeEngine {
               (rgbView[base + 1] - seedG).abs() <= tolerance &&
               (rgbView[base + 2] - seedB).abs() <= tolerance) {
             filledView[index] = 255;
-            if (stackSize >= _floodStackCapacity) {
+            if (stackSize >= _floodStack.length) {
               _growFloodStack(stackSize);
             }
-            _floodStack.asTypedList(_floodStackCapacity)[stackSize] = index;
+            _floodStack.pointer.asTypedList(_floodStack.length)[stackSize] =
+                index;
             stackSize += 1;
           }
         }
@@ -1603,10 +1526,8 @@ class QaNativeEngine {
   }
 
   /// Grow-only region scratches for [finishFillMask]'s double buffer.
-  Pointer<Uint8> _maskScratchA = nullptr;
-  int _maskScratchALength = 0;
-  Pointer<Uint8> _maskScratchB = nullptr;
-  int _maskScratchBLength = 0;
+  final _maskScratchA = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _maskScratchB = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
   /// Crop + expand + anti-alias over the native flood mask (A-2d) —
   /// byte-identical to the Dart tail. Returns a fresh heap mask the
@@ -1621,22 +1542,10 @@ class QaNativeEngine {
     required bool antiAlias,
   }) {
     final regionLength = regionWidth * regionHeight;
-    if (_maskScratchALength < regionLength) {
-      if (_maskScratchA != nullptr) {
-        calloc.free(_maskScratchA);
-      }
-      _maskScratchA = calloc<Uint8>(regionLength);
-      _maskScratchALength = regionLength;
-    }
-    if (_maskScratchBLength < regionLength) {
-      if (_maskScratchB != nullptr) {
-        calloc.free(_maskScratchB);
-      }
-      _maskScratchB = calloc<Uint8>(regionLength);
-      _maskScratchBLength = regionLength;
-    }
+    _maskScratchA.ensure(regionLength);
+    _maskScratchB.ensure(regionLength);
     _fillFinishMask(
-      _floodFilled,
+      _floodFilled.pointer,
       canvasWidth,
       cropLeft,
       cropTop,
@@ -1644,26 +1553,24 @@ class QaNativeEngine {
       regionHeight,
       expandPx,
       antiAlias ? 1 : 0,
-      _maskScratchA,
-      _maskScratchB,
+      _maskScratchA.pointer,
+      _maskScratchB.pointer,
     );
-    return Uint8List.fromList(_maskScratchA.asTypedList(regionLength));
+    return Uint8List.fromList(_maskScratchA.pointer.asTypedList(regionLength));
   }
 
   void _growFloodStack(int liveEntries) {
-    final newCapacity = _floodStackCapacity * 2;
-    final grown = calloc<Int32>(newCapacity);
-    grown
-        .asTypedList(newCapacity)
-        .setRange(0, liveEntries, _floodStack.asTypedList(liveEntries));
-    calloc.free(_floodStack);
-    _floodStack = grown;
-    _floodStackCapacity = newCapacity;
+    _floodStack.grow(
+      _floodStack.length * 2,
+      keep: liveEntries,
+      copy: (from, to, elements) => to
+          .asTypedList(elements)
+          .setRange(0, elements, from.asTypedList(elements)),
+    );
   }
 
   /// Persistent grow-only scratch for [premultiplyRgba]'s round trip.
-  Pointer<Uint8> _premultiplyScratch = nullptr;
-  int _premultiplyScratchLength = 0;
+  final _premultiplyScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
   /// Premultiplies [pixels] (straight-alpha RGBA) IN PLACE through the
   /// native kernel — byte-identical to the Dart reference (Skia
@@ -1671,46 +1578,28 @@ class QaNativeEngine {
   /// replace the 65k-iteration Dart loop per tile (A-2a).
   void premultiplyRgba(Uint8List pixels) {
     _ensurePremultiplyScratch(pixels.length);
-    final view = _premultiplyScratch.asTypedList(pixels.length);
+    final view = _premultiplyScratch.pointer.asTypedList(pixels.length);
     view.setAll(0, pixels);
-    _premultiplyRgba(_premultiplyScratch, pixels.length ~/ 4);
+    _premultiplyRgba(_premultiplyScratch.pointer, pixels.length ~/ 4);
     pixels.setAll(0, view);
   }
 
   void _ensurePremultiplyScratch(int length) {
-    if (_premultiplyScratchLength < length) {
-      if (_premultiplyScratch != nullptr) {
-        calloc.free(_premultiplyScratch);
-      }
-      _premultiplyScratch = calloc<Uint8>(length);
-      _premultiplyScratchLength = length;
-    }
+    _premultiplyScratch.ensure(length);
   }
 
   /// Grow-only batch buffers (R18 A-3a): the tile spans of one dab and
   /// the per-tile changed flags, staged once per dab and fanned across
   /// the C worker pool.
-  Pointer<QaTileSpanStruct> _tileSpans = nullptr;
-  int _tileSpanCapacity = 0;
-  Pointer<Uint8> _batchChanged = nullptr;
-  int _batchChangedCapacity = 0;
+  final _tileSpans = NativeScratch<QaTileSpanStruct>(
+    (n) => calloc<QaTileSpanStruct>(n),
+  );
+  final _batchChanged = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
   /// Makes room for [count] spans in the current batch.
   void ensureTileSpanBatch(int count) {
-    if (_tileSpanCapacity < count) {
-      if (_tileSpans != nullptr) {
-        calloc.free(_tileSpans);
-      }
-      _tileSpans = calloc<QaTileSpanStruct>(count);
-      _tileSpanCapacity = count;
-    }
-    if (_batchChangedCapacity < count) {
-      if (_batchChanged != nullptr) {
-        calloc.free(_batchChanged);
-      }
-      _batchChanged = calloc<Uint8>(count);
-      _batchChangedCapacity = count;
-    }
+    _tileSpans.ensure(count);
+    _batchChanged.ensure(count);
   }
 
   /// Stages the [index]-th span of the batch ([ensureTileSpanBatch] first).
@@ -1730,7 +1619,7 @@ class QaNativeEngine {
     Pointer<Uint8>? maskPixels,
     Pointer<Uint8>? premulOut,
   }) {
-    final span = _tileSpans[index];
+    final span = _tileSpans.pointer[index];
     span.tilePixels = tilePixels;
     span.tileLeft = tileLeft;
     span.tileTop = tileTop;
@@ -1760,8 +1649,15 @@ class QaNativeEngine {
     required int kind,
     int mode = 0,
   }) {
-    _preBlendTiles(_tileSpans, count, tileSize, kind, mode, _batchChanged);
-    return _batchChanged.asTypedList(count);
+    _preBlendTiles(
+      _tileSpans.pointer,
+      count,
+      tileSize,
+      kind,
+      mode,
+      _batchChanged.pointer,
+    );
+    return _batchChanged.pointer.asTypedList(count);
   }
 
   static const int preBlendKindSrcOver = 0;
@@ -1773,8 +1669,14 @@ class QaNativeEngine {
   /// are byte-identical to the sequential loop). Returns the per-tile
   /// changed flags (valid until the next batch).
   Uint8List dabBlendTiles({required int count, required int tileSize}) {
-    _dabBlendTiles(_tileSpans, count, tileSize, _spec, _batchChanged);
-    return _batchChanged.asTypedList(count);
+    _dabBlendTiles(
+      _tileSpans.pointer,
+      count,
+      tileSize,
+      _spec,
+      _batchChanged.pointer,
+    );
+    return _batchChanged.pointer.asTypedList(count);
   }
 
   /// The stamp counterpart of [dabBlendTiles].
@@ -1789,7 +1691,7 @@ class QaNativeEngine {
     required bool erase,
   }) {
     _stampBlendTiles(
-      _tileSpans,
+      _tileSpans.pointer,
       count,
       tileSize,
       stampBytes,
@@ -1798,9 +1700,9 @@ class QaNativeEngine {
       stampTop,
       opacity,
       erase ? 1 : 0,
-      _batchChanged,
+      _batchChanged.pointer,
     );
-    return _batchChanged.asTypedList(count);
+    return _batchChanged.pointer.asTypedList(count);
   }
 
   /// BB-N1: blends the stroke buffer into every staged span in ONE call,
@@ -1818,7 +1720,7 @@ class QaNativeEngine {
     required int mode,
   }) {
     _strokeBlendTiles(
-      _tileSpans,
+      _tileSpans.pointer,
       count,
       tileSize,
       strokeBytes,
@@ -1826,9 +1728,9 @@ class QaNativeEngine {
       strokeLeft,
       strokeTop,
       mode,
-      _batchChanged,
+      _batchChanged.pointer,
     );
-    return _batchChanged.asTypedList(count);
+    return _batchChanged.pointer.asTypedList(count);
   }
 
   /// Grow-only out buffer for [alphaBoundsTiles] (4 int32 per tile).
@@ -1848,7 +1750,7 @@ class QaNativeEngine {
       _alphaBoundsOut = calloc<Int32>(count * 4);
       _alphaBoundsCapacity = count * 4;
     }
-    _alphaBoundsTiles(_tileSpans, count, tileSize, _alphaBoundsOut);
+    _alphaBoundsTiles(_tileSpans.pointer, count, tileSize, _alphaBoundsOut);
     return _alphaBoundsOut.asTypedList(count * 4);
   }
 
