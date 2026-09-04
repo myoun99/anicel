@@ -3390,75 +3390,81 @@ class _StoryboardSeRow extends StatelessWidget {
     );
   }
 
-  Positioned _dialogueSpan(TimelineDrawingBlock block, Layer layer, String? dialogue, String? seName) {
-    return Positioned(
-      left: timelineScale.leftForFrame(block.startIndex),
-      top: 0,
-      bottom: 0,
-      width:
-          (block.endIndexExclusive - block.startIndex) *
-          timelineScale.pixelsPerFrame,
-      child: IgnorePointer(
-        key: ValueKey<String>(
-          'storyboard-se-span-${layer.id}-${block.startIndex}',
-        ),
-        child: SeSpanVisual(
-          axis: Axis.horizontal,
-          dialogue: dialogue ?? '',
-          seName: seName,
-        ),
-      ),
-    );
-  }
+  /// A full-height strip over the frames `[startFrame, endExclusive)`.
+  ///
+  /// ⛔THREE SPANS ON THIS ROW placed themselves: the dialogue, the paper
+  /// and the waveform. Each worked the left edge and the width out of the
+  /// same scale, and each wrapped its child in the same ignored pointer —
+  /// three chances for one of them to place a strip a frame off the others
+  /// on the row it shares.
+  Positioned _frameSpan({
+    required int startFrame,
+    required int endExclusive,
+    required Key key,
+    required Widget child,
+  }) => Positioned(
+    left: timelineScale.leftForFrame(startFrame),
+    top: 0,
+    bottom: 0,
+    width: (endExclusive - startFrame) * timelineScale.pixelsPerFrame,
+    child: IgnorePointer(key: key, child: child),
+  );
 
-  Positioned _waveformSpan(SeAudioSpan span, int endExclusive, Layer layer, AudioPeaks peaks) {
-    return Positioned(
-      left: timelineScale.leftForFrame(span.startFrame),
-      top: 0,
-      bottom: 0,
-      width:
-          (endExclusive - span.startFrame) *
-          timelineScale.pixelsPerFrame,
-      child: IgnorePointer(
-        key: ValueKey<String>(
-          'storyboard-audio-clip-${layer.id}'
-          '-${span.clipIndex}-b${span.startFrame}',
-        ),
-        child: CustomPaint(
-          painter: WaveformPainter(
-            peaks: peaks,
-            frameRate: projectFrameRate,
-            pixelsPerFrame: timelineScale.pixelsPerFrame,
-            // Ink on the paper spans, like the timeline SE rows.
-            color: timelineDrawingInkColor.withValues(alpha: 0.22),
-            leadingFrames: span.clip.offsetFrames,
-          ),
-        ),
-      ),
-    );
-  }
+  Positioned _dialogueSpan(
+    TimelineDrawingBlock block,
+    Layer layer,
+    String? dialogue,
+    String? seName,
+  ) => _frameSpan(
+    startFrame: block.startIndex,
+    endExclusive: block.endIndexExclusive,
+    key: ValueKey<String>(
+      'storyboard-se-span-${layer.id}-${block.startIndex}',
+    ),
+    child: SeSpanVisual(
+      axis: Axis.horizontal,
+      dialogue: dialogue ?? '',
+      seName: seName,
+    ),
+  );
 
-  Positioned _paperSpan(TimelineDrawingBlock block, Layer layer) {
-    return Positioned(
-      left: timelineScale.leftForFrame(block.startIndex),
-      top: 0,
-      bottom: 0,
-      width:
-          (block.endIndexExclusive - block.startIndex) *
-          timelineScale.pixelsPerFrame,
-      child: IgnorePointer(
-        key: ValueKey<String>(
-          'storyboard-se-paper-${layer.id}-${block.startIndex}',
-        ),
-        child: SePaperSpan(
-          axis: Axis.horizontal,
-          frameCellExtent: timelineScale.pixelsPerFrame,
-          // ⑲: the block is its layer's colour label.
-          paper: layerMarkColor(layer.mark),
-        ),
+  Positioned _waveformSpan(
+    SeAudioSpan span,
+    int endExclusive,
+    Layer layer,
+    AudioPeaks peaks,
+  ) => _frameSpan(
+    startFrame: span.startFrame,
+    endExclusive: endExclusive,
+    key: ValueKey<String>(
+      'storyboard-audio-clip-${layer.id}'
+      '-${span.clipIndex}-b${span.startFrame}',
+    ),
+    child: CustomPaint(
+      painter: WaveformPainter(
+        peaks: peaks,
+        frameRate: projectFrameRate,
+        pixelsPerFrame: timelineScale.pixelsPerFrame,
+        // Ink on the paper spans, like the timeline SE rows.
+        color: timelineDrawingInkColor.withValues(alpha: 0.22),
+        leadingFrames: span.clip.offsetFrames,
       ),
-    );
-  }
+    ),
+  );
+
+  Positioned _paperSpan(TimelineDrawingBlock block, Layer layer) => _frameSpan(
+    startFrame: block.startIndex,
+    endExclusive: block.endIndexExclusive,
+    key: ValueKey<String>(
+      'storyboard-se-paper-${layer.id}-${block.startIndex}',
+    ),
+    child: SePaperSpan(
+      axis: Axis.horizontal,
+      frameCellExtent: timelineScale.pixelsPerFrame,
+      // ⑲: the block is its layer's colour label.
+      paper: layerMarkColor(layer.mark),
+    ),
+  );
 }
 
 /// The twirled-down S row's enlarged waveform strip: the timeline Audio
