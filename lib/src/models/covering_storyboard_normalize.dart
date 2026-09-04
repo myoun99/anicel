@@ -60,7 +60,7 @@ bool _hasDivisionOutsideCut(Layer layer, int cutDuration) {
     if (!entry.value.isDrawing || entry.value.ghost) {
       continue;
     }
-    if (entry.key < 0 || entry.key >= cutDuration) {
+    if (entry.key >= cutDuration) {
       return true;
     }
   }
