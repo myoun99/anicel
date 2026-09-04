@@ -56,13 +56,16 @@ class _XSheetGridHeaders {
     Widget selectOnly() => laneSelectOnlyDragTarget(
       (row: entry, laneId: lane.laneId),
       hooks,
-      (axis: Axis.vertical, rowExtent: _state._metrics.layerRowHeight),
-      onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
-          ? null
-          : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
-              _state._dragRows,
-              rowDelta,
-            ),
+      (
+        axis: Axis.vertical,
+        rowExtent: _state._metrics.layerRowHeight,
+        onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
+            ? null
+            : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
+                _state._dragRows,
+                rowDelta,
+              ),
+      ),
       child: child,
     );
 

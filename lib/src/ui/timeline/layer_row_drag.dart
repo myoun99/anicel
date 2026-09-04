@@ -1093,18 +1093,19 @@ Widget layerRowDragWrapper({
 Widget laneSelectOnlyDragTarget(
   ({TimelineDisplayRow row, String laneId}) lane,
   TimelineRowDragHooks hooks,
-  ({Axis axis, double rowExtent}) geometry, {
-  required void Function(int rowDelta)? onSelectCrossed,
+  ({Axis axis, double rowExtent, void Function(int rowDelta)? onSelectCrossed})
+  wiring, {
   required Widget child,
 }) {
+  final onSelectCrossed = wiring.onSelectCrossed;
   if (hooks.onSelectBegin == null || onSelectCrossed == null) {
     return child;
   }
   return LayerRowDragTarget(
     subject: LaneRowSubject(lane.row.layer.id, lane.laneId),
     slotBefore: lane.row.layerIndex,
-    rowExtent: geometry.rowExtent,
-    axis: geometry.axis,
+    rowExtent: wiring.rowExtent,
+    axis: wiring.axis,
     hooks: hooks,
     isLastRow: false,
     onCrossed: (_, _, _) {},

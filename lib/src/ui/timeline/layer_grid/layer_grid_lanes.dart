@@ -55,13 +55,16 @@ class _LayerGridLanes {
   ) => laneSelectOnlyDragTarget(
     (row: row, laneId: laneId),
     hooks,
-    (axis: Axis.horizontal, rowExtent: _state._metrics.layerRowHeight),
-    onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
-        ? null
-        : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
-            _state._dragRows,
-            rowDelta,
-          ),
+    (
+      axis: Axis.horizontal,
+      rowExtent: _state._metrics.layerRowHeight,
+      onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
+          ? null
+          : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
+              _state._dragRows,
+              rowDelta,
+            ),
+    ),
     child: child,
   );
 }
