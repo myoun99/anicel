@@ -247,6 +247,39 @@ class CreateLinkedCutCommandInputPlan {
 /// fixtures.
 bool _linksIntoLinkedCut(LayerKind kind) => layerKindLinksIntoLinkedCut(kind);
 
+/// A fresh layer id and a fresh link-group id for each of [sources],
+/// minted against what [project] and [ids] already hold.
+///
+/// ⛔THE TWO MAPS MUST BE KEYED BY THE SAME SOURCES. The command reads one
+/// to build the copy and the other to register the link, so a planner that
+/// walked its sources twice — filtering each time — could register a group
+/// for a layer it never copied the moment the two filters drifted apart.
+/// Both link planners did exactly that walk.
+({Map<LayerId, LayerId> layerIdMap, Map<LayerId, String> newGroupIdBySource})
+_mintLinkIds(
+  Project project,
+  _ProjectIdSnapshot ids,
+  Iterable<Layer> sources,
+) {
+  final usedGroupIds = <String>{
+    for (final group in project.linkRegistry.groups) group.id,
+  };
+  final layerIdMap = <LayerId, LayerId>{};
+  final newGroupIdBySource = <LayerId, String>{};
+  for (final source in sources) {
+    final copyId = LayerId(
+      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
+    );
+    ids.layerIds.add(copyId.value);
+    layerIdMap[source.id] = copyId;
+
+    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
+    usedGroupIds.add(groupId);
+    newGroupIdBySource[source.id] = groupId;
+  }
+  return (layerIdMap: layerIdMap, newGroupIdBySource: newGroupIdBySource);
+}
+
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
 /// row of [sourceCut] (drawing layers and their folders), and registry
 /// group ids. FrameIds are NOT mapped — identity is the link.
@@ -258,35 +291,15 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   final newCutId = CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds));
   ids.cutIds.add(newCutId.value);
 
-  final layerIdMap = <LayerId, LayerId>{};
-  for (final layer in sourceCut.layers) {
-    if (!_linksIntoLinkedCut(layer.kind)) {
-      continue;
-    }
-    final copyId = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(copyId.value);
-    layerIdMap[layer.id] = copyId;
-  }
-
-  final usedGroupIds = <String>{
-    for (final group in project.linkRegistry.groups) group.id,
-  };
-  final newGroupIdBySource = <LayerId, String>{};
-  for (final layer in sourceCut.layers) {
-    if (!_linksIntoLinkedCut(layer.kind)) {
-      continue;
-    }
-    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
-    usedGroupIds.add(groupId);
-    newGroupIdBySource[layer.id] = groupId;
-  }
+  final minted = _mintLinkIds(project, ids, [
+    for (final layer in sourceCut.layers)
+      if (_linksIntoLinkedCut(layer.kind)) layer,
+  ]);
 
   return CreateLinkedCutCommandInputPlan(
     newCutId: newCutId,
-    layerIdMap: layerIdMap,
-    newGroupIdBySource: newGroupIdBySource,
+    layerIdMap: minted.layerIdMap,
+    newGroupIdBySource: minted.newGroupIdBySource,
   );
 }
 
@@ -384,28 +397,11 @@ LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
     attachedGroupEndIndex(baseId, cut.layers),
   );
 
-  final layerIdMap = <LayerId, LayerId>{};
-  for (final member in members) {
-    final copyId = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(copyId.value);
-    layerIdMap[member.id] = copyId;
-  }
-
-  final usedGroupIds = <String>{
-    for (final group in project.linkRegistry.groups) group.id,
-  };
-  final newGroupIdBySource = <LayerId, String>{};
-  for (final member in members) {
-    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
-    usedGroupIds.add(groupId);
-    newGroupIdBySource[member.id] = groupId;
-  }
+  final minted = _mintLinkIds(project, ids, members);
 
   return LinkDuplicateLayerCommandInputPlan(
-    layerIdMap: layerIdMap,
-    newGroupIdBySource: newGroupIdBySource,
+    layerIdMap: minted.layerIdMap,
+    newGroupIdBySource: minted.newGroupIdBySource,
   );
 }
 
