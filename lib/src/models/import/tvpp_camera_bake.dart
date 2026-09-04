@@ -224,6 +224,17 @@ class TvppCameraProfilePoint {
   final double bezierAfterY;
 }
 
+/// The `[cameradata]` block's `key=value` lines as a map.
+///
+/// ⛔TWO READERS PARSED IT. The profile baker wants the mpoint channels
+/// and the clip parser wants the camera points, and both start from the
+/// same flat map — an `=` at index 0 is not a key, and everything after
+/// the FIRST `=` is the value (a value may contain one).
+Map<String, String> tvppCameraDataValues(String cameraDataText) {
+  final values = tvppCameraDataValues(cameraDataText);
+  return values;
+}
+
 /// Parses every key's four channel profiles from the raw `[cameradata]`
 /// text (kept on [TvppClip.cameraDataText]).
 TvppCameraChannels parseTvppCameraProfiles(String cameraDataText) {

@@ -1,3 +1,4 @@
+import 'tvpp_camera_bake.dart' show tvppCameraDataValues;
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -793,13 +794,7 @@ List<TvppCameraPoint> _cameraPoints(String cameraDataText) {
   if (cameraDataText.isEmpty) {
     return const [];
   }
-  final values = <String, String>{};
-  for (final line in cameraDataText.split('\n')) {
-    final eq = line.indexOf('=');
-    if (eq > 0) {
-      values[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
-    }
-  }
+  final values = tvppCameraDataValues(cameraDataText);
   double num(int i, String key, [double orElse = 0]) =>
       double.tryParse(values['mpoints-$i-$key'] ?? '') ?? orElse;
   final points = <TvppCameraPoint>[];
