@@ -1,8 +1,8 @@
 part of '../interactive_brush_edit_canvas_view.dart';
 
-/// THE STROKE — advancing it to the next point (through the guides that
-/// snap it), the spacing the active brush wants, ending its input and
-/// committing it — as its own object.
+/// THE STROKE — beginning it under the press, advancing it to the next
+/// point (through the guides that snap it), the spacing the active brush
+/// wants, ending its input and committing it — as its own object.
 ///
 /// 🚨A collaborator carved out of `_InteractiveBrushEditCanvasViewState`
 /// (the audit's SRP cut, 2026-09-02). It reaches the State through
@@ -11,6 +11,137 @@ class _BrushEditStroke {
   _BrushEditStroke(this._state);
 
   final _InteractiveBrushEditCanvasViewState _state;
+
+  /// A stroke begins under [event]: the pointer is ours, the settings are
+  /// the tool's (or the eraser's on a mapped tail), the stabiliser, the
+  /// snap session, the symmetry, the dynamics and the ground mixer are
+  /// armed, the overlay opens, and the first dabs go out.
+  void beginStroke(
+    PointerDownEvent event,
+    CanvasPoint canvasPosition, {
+    required bool startsInsidePasteboard,
+    required bool mappedErase,
+  }) {
+    _state._activeDrawingPointer = event.pointer;
+    // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
+    // touch slop a simultaneous second finger may still turn the pair
+    // into navigation (cancelling only an invisible dot); once committed
+    // the stroke owns the screen and extra fingers are ignored.
+    _state._touchStrokeDownPosition = event.kind == PointerDeviceKind.touch
+        ? event.localPosition
+        : null;
+    _state._touchStrokeCommitted = false;
+    // The stroke's settings snapshot — every downstream dab reads it, so
+    // the mapped-eraser substitution here flips the WHOLE stroke. The
+    // substitution forces the BLEND to erase too (R27 #4 in passing): the
+    // eraser tool locks its mode, but this path kept the brush's — a
+    // mapped-erase press with a separable brush blend would have taken
+    // the commit's blend branch and PAINTED instead of erasing.
+    final strokeSettings = mappedErase
+        ? _state.widget.inputSettings.copyWith(
+            erase: true,
+            blendMode: BrushBlendMode.erase,
+          )
+        : _state.widget.inputSettings;
+    _state._activeStrokeInputSettings = strokeSettings;
+    _state._currentPressure = _state._pressure.normalizedPressure(event);
+    _state.widget.onActiveStrokeChanged?.call(true);
+    _state._nextSequence = 0;
+    _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
+    _state._previousRawCanvasPosition = canvasPosition;
+    _state._lastPenPosition = canvasPosition;
+    final stabilizerStrength = strokeSettings.stabilizerStrength;
+    _state._stabilizer = stabilizerStrength > 0
+        ? StrokeStabilizer(
+            ropeLength: stabilizerStrength / _state.widget.viewport.zoom,
+            start: canvasPosition,
+          )
+        : null;
+    // Guides are read ONCE per stroke. Both are frozen here rather than
+    // consulted per sample so an edit landing mid-stroke cannot bend the
+    // line that is already down.
+    _state._snapSession = PerspectiveSnapSession.maybeStart(
+      guides: _state.widget.guides,
+      start: canvasPosition,
+      zoom: _state.widget.viewport.zoom,
+    );
+    final symmetry = _state.widget.guides.actingSymmetry;
+    _state._symmetryTransforms = symmetry == null
+        ? const []
+        : symmetryTransforms(symmetry);
+    _state._strokeDynamics = BrushStrokeDynamics(settings: strokeSettings);
+    _state._lastDirectionDegrees = null;
+    _state._previousBaseDab = null;
+    _state._groundMixer = strokeSettings.shape.mixesGroundColor
+        ? BrushGroundColorMixer(shape: strokeSettings.shape)
+        : null;
+    _state._overlay.beginStrokeOverlay();
+    // Overlay stroke configuration AFTER the reset — reset() clears
+    // preBlendBase, so setting it earlier silently disabled the whole
+    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
+    // bug: every parity test staged the model manually and never caught
+    // it). The overlay must display in the stroke's blend mode from the
+    // first dab.
+    final strokeSurface = _state.widget.sessionState.canvasState.currentSurface;
+    _state._groundSampler = _state._groundMixer == null
+        ? null
+        : bitmapSurfaceGroundSampler(strokeSurface);
+    _state._overlay._overlayModel.configureTileSize(strokeSurface.tileSize);
+    _state._overlay._overlayModel.erase = strokeSettings.erase;
+    _state._overlay._overlayModel.blendMode = strokeSettings.blendMode;
+    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
+    // own kernels against the cel as it stands (user rule 07-23: ONE
+    // display pipeline for all modes — color included). The GPU never
+    // computes a pixel of the stroke composite, so pen-up cannot move a
+    // byte in any mode. Revert switch if stroke feel regresses on
+    // device: gate this on `blendMode != color` to give plain strokes
+    // their classic stroke-only GPU-srcOver overlay back.
+    _state._overlay._overlayModel.preBlendBase = strokeSurface;
+    _state._collectedDabs.clear();
+    _state._prepareLiveRasterizer();
+    if (!startsInsidePasteboard) {
+      return;
+    }
+    final initialDabs = _state._pressure.withPressureDynamics(
+      const BrushDabInterpolator().interpolate(
+        previous: null,
+        nextRaw: _state._dabFromPosition(
+          canvasPosition,
+          sequence: _state._nextSequence,
+        ),
+        firstSequence: _state._nextSequence,
+        spacingRatio: activeStrokeSpacing,
+      ),
+    );
+    if (initialDabs.isNotEmpty) {
+      _state._previousBaseDab = initialDabs.last;
+    }
+    // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
+    // — the overlay, the commit, undo replay and the .anicel all see the
+    // same resolved (quantized, prerotated-mask) dabs.
+    //
+    // ⚠️ Symmetry replicates HERE TOO. This is the stroke's FIRST dab, laid
+    // at pointer-down rather than through [advanceStrokeTo], and it is a
+    // separate emission site — replicating only the move path left every
+    // symmetric stroke's copies one dab short at the start, a notch right
+    // where the pen landed.
+    final emitted = BrushTipStampCache.instance.resolveDabs(
+      replicateDabs(
+        _state._withGroundMixing(
+          _state._strokeDynamics!.apply(
+            initialDabs,
+            firstSequence: _state._nextSequence,
+            directionDegrees: null,
+          ),
+        ),
+        _state._symmetryTransforms,
+        firstSequence: _state._nextSequence,
+      ),
+    );
+    _state._collectedDabs.addAll(emitted);
+    _state._overlay.queueOverlayDabs(emitted);
+    _state._nextSequence += emitted.length;
+  }
 
   /// Stabilized point → perspective snap → the stroke.
   ///

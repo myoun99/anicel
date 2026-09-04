@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -32,6 +31,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../helpers/library_source.dart';
 import 'brush_canvas_test_helpers.dart';
 
 void main() {
@@ -2043,11 +2043,11 @@ Future<void> _pressureStroke(
   await tester.pump();
 }
 
-String _readInteractiveSource() {
-  return File(
-    'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
-  ).readAsStringSync();
-}
+/// The whole LIBRARY, not the host file: the SRP cuts moved the pointer
+/// router and the stroke into parts beside it, and a scan naming one file
+/// stops covering what a cut carried away (Round 7, 2026-09-05).
+String _readInteractiveSource() =>
+    librarySource('lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart');
 
 bool _isStrictlyIncreasing(Iterable<int> values) {
   int? previous;

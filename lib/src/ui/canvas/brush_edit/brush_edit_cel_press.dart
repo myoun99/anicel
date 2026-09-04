@@ -56,6 +56,6 @@ class _BrushEditCelPress {
       return;
     }
     _pendingCelPress = null;
-    _state._handlePointerDown(pending);
+    _state._press.pointerDown(pending);
   }
 }

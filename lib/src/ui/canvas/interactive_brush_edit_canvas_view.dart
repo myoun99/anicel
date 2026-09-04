@@ -55,6 +55,7 @@ part 'brush_edit/brush_edit_overlay.dart';
 part 'brush_edit/brush_edit_settling.dart';
 part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
+part 'brush_edit/brush_edit_press.dart';
 
 /// The inclusive tile-coordinate box [bounds] touches on a [tileSize] grid.
 ///
@@ -273,6 +274,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
+  // ── what a pointer means: its own object, in its own file ────────────
+  //
+  // A collaborator (canvas/brush_edit/brush_edit_press.dart, a part of
+  // this library). The four Listener callbacks below are its entry
+  // points; the State keeps only the fields its siblings also read.
+  late final _BrushEditPress _press = _BrushEditPress(this);
+
   int? _activeDrawingPointer;
 
   // The press that makes its cel first (Round 6).
@@ -284,12 +292,6 @@ class _InteractiveBrushEditCanvasViewState
   Offset? _touchStrokeDownPosition;
   bool _touchStrokeCommitted = false;
 
-  /// Live touch contacts. A second finger switches the interaction to
-  /// viewport navigation (handled by the panel's gesture layer): the
-  /// in-progress stroke is cancelled without committing, and no new stroke
-  /// starts until every finger lifts — a quick pinch never leaves marks.
-  final Set<int> _activeTouchPointers = <int>{};
-  bool _multiTouchNavigation = false;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
@@ -307,13 +309,6 @@ class _InteractiveBrushEditCanvasViewState
   /// The contact that started as an ALT pick (TS7), so its moves keep
   /// sampling.
   ///
-  /// 유저 확정 — one law for every dropper: 「클릭중이면 색 바뀌도록 …
-  /// 같은법으로. 드래그중 계속샘플」. The mapped hold above has always done
-  /// this ('누르는 동안 해당 색을 뽑는다', PEN-7a) and the eyedropper TOOL now
-  /// does it on the tap layer; Alt was the third door, and it was the one
-  /// still picking once per press.
-  int? _altPickPointer;
-
   /// Placement dynamics (scatter/jitter/direction rotation) for the active
   /// stroke; created at pointer-down from the stroke's settings snapshot.
   BrushStrokeDynamics? _strokeDynamics;
@@ -404,25 +399,7 @@ class _InteractiveBrushEditCanvasViewState
   void initState() {
     super.initState();
     BitmapTileImageCache.instance.addListener(_onTileImagesChanged);
-    CanvasTouchContacts.addMultiTouchListener(_handleSharedMultiTouch);
-  }
-
-  /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
-  /// on a sibling view, whose pointer this view will never see. A live
-  /// sub-slop touch stroke here is really the first half of a pinch, so
-  /// it stands down exactly as it would for a local second contact.
-  void _handleSharedMultiTouch() {
-    final drawingPointer = _activeDrawingPointer;
-    if (drawingPointer == null ||
-        !_activeTouchPointers.contains(drawingPointer)) {
-      return; // No touch stroke here (a pen stroke keeps drawing).
-    }
-    if (_touchStrokeCommitted) {
-      return; // A committed line survives extra fingers (PEN-12 #4).
-    }
-    _multiTouchNavigation = true;
-    _stroke.endStrokeInput();
-    _overlay.resetOverlay();
+    CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
   }
 
   @override
@@ -470,8 +447,8 @@ class _InteractiveBrushEditCanvasViewState
     _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
     // R26 #5: a view disposed mid-touch never sees its pointer-up — its
     // contacts must leave the app-wide census or ink stays blocked.
-    CanvasTouchContacts.removeAll(_activeTouchPointers);
-    CanvasTouchContacts.removeMultiTouchListener(_handleSharedMultiTouch);
+    _press.releaseTouchContacts();
+    CanvasTouchContacts.removeMultiTouchListener(_press.handleSharedMultiTouch);
     super.dispose();
   }
 
@@ -509,10 +486,10 @@ class _InteractiveBrushEditCanvasViewState
             behavior: widget.editable
                 ? HitTestBehavior.opaque
                 : HitTestBehavior.translucent,
-            onPointerDown: _handlePointerDown,
-            onPointerMove: _handlePointerMove,
-            onPointerUp: _handlePointerUp,
-            onPointerCancel: _handlePointerCancel,
+            onPointerDown: _press.pointerDown,
+            onPointerMove: _press.pointerMove,
+            onPointerUp: _press.pointerUp,
+            onPointerCancel: _press.pointerCancel,
             onPointerHover: _hold.handlePointerHover,
             // paintsContent false: the merged stack painter draws this
             // surface in TREE order (inside whatever folder buffer holds
@@ -543,540 +520,11 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
-  void _handlePointerDown(PointerDownEvent event) {
-    // (No deferred stroke commit to land first: pen-up commits inside its
-    // own event now — R25-④'s one-frame deferral existed to hide a
-    // synchronous re-materialize that the promotion round deleted.)
-    if (event.kind == PointerDeviceKind.touch) {
-      // PEN-12 #4: a finger draws exactly when the ONE-FINGER touch slot
-      // says draw (the old control/draw mode collapsed into the slot);
-      // otherwise the panel's gesture layer owns every touch.
-      if (!AppInput.touchDraws) {
-        return;
-      }
-      _activeTouchPointers.add(event.pointer);
-      CanvasTouchContacts.add(event.pointer);
-      // R26 #5: the census is APP-WIDE — the timesheet mounts one ink
-      // view per sheet window, so the second finger often lands on a
-      // SIBLING view. Counting locally let both of them draw.
-      if (CanvasTouchContacts.count >= 2) {
-        final drawingPointer = _activeDrawingPointer;
-        final touchStroke =
-            drawingPointer != null &&
-            _activeTouchPointers.contains(drawingPointer);
-        // PEN-12 #4: a COMMITTED stroke survives extra fingers — palm
-        // rests and habitual pinches must never vanish a live line. The
-        // newcomer is simply ignored (no navigation, no modifier).
-        if (touchStroke && _touchStrokeCommitted) {
-          return;
-        }
-        _multiTouchNavigation = true;
-        // A waiting FILL tap goes with them, and for the same reason: the
-        // first finger turned out to be the start of a pinch. Nothing was
-        // drawn and nothing entered history, so this is a forget rather
-        // than an undo — which is the whole point of making the fill wait.
-        _fill.forgetFillTap();
-        // Discard only a SUB-SLOP touch stroke — the first finger turned
-        // out to be the start of a pinch, not a stroke (both fingers
-        // landed together). A stylus/mouse stroke keeps drawing: extra
-        // touch contacts alongside it are palm rests.
-        if (touchStroke) {
-          _stroke.endStrokeInput();
-          _overlay.resetOverlay();
-        }
-        return;
-      }
-    }
-
-    if (!widget.editable) {
-      _celPress.pressAsksForACel(event);
-      return;
-    }
-
-    // PEN-7a: the CANVAS mapping for standard secondary inputs. Pen
-    // side/barrel buttons, the S-Pen button and the mouse right button
-    // all arrive as the RIGHT-CLICK bit; the pen upper button and the
-    // wheel click as the MIDDLE bit. On canvas the user assigns what
-    // they do (Input Settings ▸ Canvas); everywhere else the OS meaning
-    // of the input rules untouched. The hold temporarily switches the
-    // TOOL (the shared tool-switch path — cursor/panels follow free);
-    // release springs back or keeps it per the mapping.
-    // The pen TAIL settles first: it is a state rather than a press, and
-    // a live tail hold suppresses the button rows below. Its erase has to
-    // reach this stroke's settings snapshot directly — the tool switch it
-    // requests is asynchronous, and the stroke starts now.
-    _overlay.syncPenTailMapping();
-    var mappedErase = _overlay.penTailErases;
-    final mapping = _hold.mappedPointerActionFor(event);
-    if (mapping != null) {
-      if (_multiTouchNavigation ||
-          _activeDrawingPointer != null ||
-          _hold._mappedHoldPointer != null) {
-        return;
-      }
-      switch (_pressAsMappedAction(mapping, event)) {
-        case _MappedPress.consumed:
-          return;
-        case _MappedPress.erase:
-          mappedErase = true;
-      }
-    }
-
-    if (!mappedErase &&
-        (_multiTouchNavigation ||
-            _activeDrawingPointer != null ||
-            !_isPrimaryButton(_hold.effectiveButtons(event)))) {
-      return;
-    }
-
-    final canvasPosition = _canvasPositionFromLocal(event.localPosition);
-    // The pasteboard is EVERY tool's input boundary (user feedback +
-    // Flash parity): strokes, the eyedropper and fill taps all work on
-    // off-canvas artwork; only the pasteboard wall stops them.
-    final startsInsidePasteboard = _isInsidePasteboard(canvasPosition);
-
-    // Alt+click = temporary eyedropper (P5): pick, never stroke.
-    final onAltPick = widget.onAltPick;
-    if (onAltPick != null && HardwareKeyboard.instance.isAltPressed) {
-      // TS7: remembered, so the drag that follows keeps sampling.
-      _altPickPointer = event.pointer;
-      if (startsInsidePasteboard) {
-        onAltPick(canvasPosition);
-      }
-      return;
-    }
-
-    // FILL tap (R22-A / R23): the flood's stamp becomes ONE overlay
-    // image at the commit's exact placement, and the commit itself
-    // DEFERS past the tap frame — the finished fill shows while the
-    // heavy commit (~0.5s at 8K) runs behind a complete-looking
-    // picture; settling then holds the overlay until the committed
-    // tiles decode. (The R22-A live-raster blend re-snapshotted and
-    // re-decoded thousands of 128px overlay tiles — the 8K
-    // settle-frame stall.)
-    if (_pressAsFillTap(
-      event,
-      canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
-    )) {
-      return;
-    }
-
-    _beginStroke(
-      event,
-      canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
-      mappedErase: mappedErase,
-    );
-  }
-
-  /// A stroke begins under [event]: the pointer is ours, the settings are
-  /// the tool's (or the eraser's on a mapped tail), the stabiliser, the
-  /// snap session, the symmetry, the dynamics and the ground mixer are
-  /// armed, the overlay opens, and the first dabs go out.
-  void _beginStroke(
-    PointerDownEvent event,
-    CanvasPoint canvasPosition, {
-    required bool startsInsidePasteboard,
-    required bool mappedErase,
-  }) {
-    _activeDrawingPointer = event.pointer;
-    // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
-    // touch slop a simultaneous second finger may still turn the pair
-    // into navigation (cancelling only an invisible dot); once committed
-    // the stroke owns the screen and extra fingers are ignored.
-    _touchStrokeDownPosition = event.kind == PointerDeviceKind.touch
-        ? event.localPosition
-        : null;
-    _touchStrokeCommitted = false;
-    // The stroke's settings snapshot — every downstream dab reads it, so
-    // the mapped-eraser substitution here flips the WHOLE stroke. The
-    // substitution forces the BLEND to erase too (R27 #4 in passing): the
-    // eraser tool locks its mode, but this path kept the brush's — a
-    // mapped-erase press with a separable brush blend would have taken
-    // the commit's blend branch and PAINTED instead of erasing.
-    final strokeSettings = mappedErase
-        ? widget.inputSettings.copyWith(
-            erase: true,
-            blendMode: BrushBlendMode.erase,
-          )
-        : widget.inputSettings;
-    _activeStrokeInputSettings = strokeSettings;
-    _currentPressure = _pressure.normalizedPressure(event);
-    widget.onActiveStrokeChanged?.call(true);
-    _nextSequence = 0;
-    _breakCurrentVisibleSegment = !startsInsidePasteboard;
-    _previousRawCanvasPosition = canvasPosition;
-    _lastPenPosition = canvasPosition;
-    final stabilizerStrength = strokeSettings.stabilizerStrength;
-    _stabilizer = stabilizerStrength > 0
-        ? StrokeStabilizer(
-            ropeLength: stabilizerStrength / widget.viewport.zoom,
-            start: canvasPosition,
-          )
-        : null;
-    // Guides are read ONCE per stroke. Both are frozen here rather than
-    // consulted per sample so an edit landing mid-stroke cannot bend the
-    // line that is already down.
-    _snapSession = PerspectiveSnapSession.maybeStart(
-      guides: widget.guides,
-      start: canvasPosition,
-      zoom: widget.viewport.zoom,
-    );
-    final symmetry = widget.guides.actingSymmetry;
-    _symmetryTransforms = symmetry == null
-        ? const []
-        : symmetryTransforms(symmetry);
-    _strokeDynamics = BrushStrokeDynamics(settings: strokeSettings);
-    _lastDirectionDegrees = null;
-    _previousBaseDab = null;
-    _groundMixer = strokeSettings.shape.mixesGroundColor
-        ? BrushGroundColorMixer(shape: strokeSettings.shape)
-        : null;
-    _overlay.beginStrokeOverlay();
-    // Overlay stroke configuration AFTER the reset — reset() clears
-    // preBlendBase, so setting it earlier silently disabled the whole
-    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
-    // bug: every parity test staged the model manually and never caught
-    // it). The overlay must display in the stroke's blend mode from the
-    // first dab.
-    final strokeSurface = widget.sessionState.canvasState.currentSurface;
-    _groundSampler = _groundMixer == null
-        ? null
-        : bitmapSurfaceGroundSampler(strokeSurface);
-    _overlay._overlayModel.configureTileSize(strokeSurface.tileSize);
-    _overlay._overlayModel.erase = strokeSettings.erase;
-    _overlay._overlayModel.blendMode = strokeSettings.blendMode;
-    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
-    // own kernels against the cel as it stands (user rule 07-23: ONE
-    // display pipeline for all modes — color included). The GPU never
-    // computes a pixel of the stroke composite, so pen-up cannot move a
-    // byte in any mode. Revert switch if stroke feel regresses on
-    // device: gate this on `blendMode != color` to give plain strokes
-    // their classic stroke-only GPU-srcOver overlay back.
-    _overlay._overlayModel.preBlendBase = strokeSurface;
-    _collectedDabs.clear();
-    _prepareLiveRasterizer();
-    if (!startsInsidePasteboard) {
-      return;
-    }
-    final initialDabs = _pressure.withPressureDynamics(
-      const BrushDabInterpolator().interpolate(
-        previous: null,
-        nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
-        firstSequence: _nextSequence,
-        spacingRatio: _stroke.activeStrokeSpacing,
-      ),
-    );
-    if (initialDabs.isNotEmpty) {
-      _previousBaseDab = initialDabs.last;
-    }
-    // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
-    // — the overlay, the commit, undo replay and the .anicel all see the
-    // same resolved (quantized, prerotated-mask) dabs.
-    //
-    // ⚠️ Symmetry replicates HERE TOO. This is the stroke's FIRST dab, laid
-    // at pointer-down rather than through [_advanceStrokeTo], and it is a
-    // separate emission site — replicating only the move path left every
-    // symmetric stroke's copies one dab short at the start, a notch right
-    // where the pen landed.
-    final emitted = BrushTipStampCache.instance.resolveDabs(
-      replicateDabs(
-        _withGroundMixing(
-          _strokeDynamics!.apply(
-            initialDabs,
-            firstSequence: _nextSequence,
-            directionDegrees: null,
-          ),
-        ),
-        _symmetryTransforms,
-        firstSequence: _nextSequence,
-      ),
-    );
-    _collectedDabs.addAll(emitted);
-    _overlay.queueOverlayDabs(emitted);
-    _nextSequence += emitted.length;
-  }
-
-  /// A press the pen tail or a mapped button turned into an action: pan
-  /// and the history verbs consume it, the eyedropper hold consumes it
-  /// after picking, and the eraser hold turns the stroke that follows into
-  /// an erase — every mapped press is one of the two.
-  _MappedPress _pressAsMappedAction(
-    CanvasPointerMapping mapping,
-    PointerDownEvent event,
-  ) {
-    switch (mapping.action) {
-      case CanvasPointerAction.none:
-      // Pan belongs to the panel's viewport gesture layer — this view
-      // only stands down so no stroke competes with it.
-      case CanvasPointerAction.pan:
-        return _MappedPress.consumed;
-      case CanvasPointerAction.undo:
-        // Skip when the button press already fired during hover (the
-        // hover edge below) and the tip then touched with it held.
-        if (!_hold.mappedButtonHeldSinceHover(event)) {
-          widget.onInvokeAction?.call('edit-undo');
-        }
-        return _MappedPress.consumed;
-      case CanvasPointerAction.redo:
-        if (!_hold.mappedButtonHeldSinceHover(event)) {
-          widget.onInvokeAction?.call('edit-redo');
-        }
-        return _MappedPress.consumed;
-      case CanvasPointerAction.eyedropper:
-        _hold._mappedHoldPointer = event.pointer;
-        _hold._mappedHoldRelease = mapping.release;
-        _hold._mappedHoldIsEyedropper = true;
-        // The contact takes over a hover-engaged hold (R26 #19/#20):
-        // one hold session, one release.
-        _hold._hoverToolHoldActive = false;
-        _hold._hoverToolHoldRelease = null;
-        _hold._hoverToolHoldButton = 0;
-        widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
-        final pickPosition = _canvasPositionFromLocal(event.localPosition);
-        // The eyedropper picks anywhere on the pasteboard, like Flash
-        // (off-canvas artwork is real artwork).
-        if (_isInsidePasteboard(pickPosition)) {
-          widget.onAltPick?.call(pickPosition);
-        }
-        return _MappedPress.consumed;
-      case CanvasPointerAction.eraser:
-        _hold._mappedHoldPointer = event.pointer;
-        _hold._mappedHoldRelease = mapping.release;
-        _hold._mappedHoldIsEyedropper = false;
-        widget.onTemporaryToolHold?.call(CanvasTool.eraser);
-        return _MappedPress.erase;
-      // Falls through into the normal stroke start below with the
-      // erase-substituted settings snapshot.
-    }
-  }
-
-  /// With the fill tool armed the press IS the fill: off the pasteboard
-  /// it does nothing, on touch it waits for the release (a two-finger
-  /// navigation may follow), else it runs at once. True when consumed.
-  bool _pressAsFillTap(
-    PointerDownEvent event,
-    CanvasPoint canvasPosition, {
-    required bool startsInsidePasteboard,
-  }) {
-    final fillDabAt = widget.fillDabAt;
-    if (fillDabAt != null) {
-      // Off-canvas fill taps flow through: the default (stage-bounded)
-      // raster answers null for them, the extended raster fills — the
-      // fill's own boundary options decide, not the pointer.
-      // The busy half of this used to be here too; it now lives in
-      // [_runFillTap], which is the only place that can be sure.
-      if (!startsInsidePasteboard) {
-        return true;
-      }
-      // The seed and the axis come from the same pair the STROKE path uses
-      // — this view's own position and its own guides, both already in the
-      // space the pointer is in. Reading the symmetry from the project
-      // instead would put the mirror where the pen is not under a pose.
-      // 🚨★★★A TOUCH FILL RESOLVES ON THE LIFT, NOT ON THE TOUCH.
-      //
-      // 유저 2026-08-27, iPhone: 「필 툴인 채로 … undo가 작동안함. 브러시툴
-      // 에서는 잘 작동함. 1핑거 플립모드로 전환하면 또 잘 작동함」 — a
-      // two-finger undo tap put its FIRST finger down, the fill committed a
-      // history entry nobody asked for, and the undo that followed spent
-      // itself on that instead of on the user's work.
-      //
-      // ★The law is already here, thirty lines up: when a second finger
-      // arrives, a touch stroke that has not passed slop is DISCARDED —
-      // "the first finger turned out to be the start of a pinch, not a
-      // stroke". That branch is exactly why the brush tool works and this
-      // one did not: a zero-length stroke has nothing to commit, while the
-      // fill had already flooded, revealed and queued its commit.
-      //
-      // ⛔The fix cannot be 「commit, then undo it when the second finger
-      // shows」 — [[no-optimistic-commit-then-revert]], 유저: 「한 프레임
-      // 보이는 건 무조건 걸린다」. So the REVEAL waits with the commit; a
-      // tap that turns out to be a pinch never draws anything at all.
-      //
-      // Pen and mouse are untouched: they cannot be half of a pinch, and
-      // the instant reveal is the whole point of R22-A.
-      if (event.kind == PointerDeviceKind.touch) {
-        _fillTapPointer = event.pointer;
-        _fillTapSeed = canvasPosition;
-        return true;
-      }
-      _fill.runFillTap(canvasPosition);
-      return true;
-    }
-    return false;
-  }
-
-  void _handlePointerMove(PointerMoveEvent event) {
-    _celPress.resumePressThatMadeTheCel(event.pointer);
-    if (!widget.editable) {
-      return; // Standing down: inert, exactly as when nothing was built.
-    }
-    // R27 #17: a mapped button can also rise DURING contact — some pen
-    // drivers report the barrel bit a moment after the tip lands rather
-    // than on the down event, and the hover edge above never sees it
-    // then. Only picked up while nothing is drawing yet, so a live
-    // stroke is never hijacked mid-line.
-    _hold.handleMappedButtonRiseDuringContact(event);
-    // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
-    // '누르는 동안 해당 색을 뽑는다').
-    if (event.pointer == _hold._mappedHoldPointer && _hold._mappedHoldIsEyedropper) {
-      final pickPosition = _canvasPositionFromLocal(event.localPosition);
-      if (_isInsidePasteboard(pickPosition)) {
-        widget.onAltPick?.call(pickPosition);
-      }
-      return;
-    }
-    // TS7: the ALT pick does the same. Alt is re-read rather than assumed —
-    // letting go of the key mid-drag ends the sampling, which is the same
-    // moment the crosshair goes away.
-    if (event.pointer == _altPickPointer) {
-      if (!HardwareKeyboard.instance.isAltPressed) {
-        return;
-      }
-      final pickPosition = _canvasPositionFromLocal(event.localPosition);
-      if (_isInsidePasteboard(pickPosition)) {
-        widget.onAltPick?.call(pickPosition);
-      }
-      return;
-    }
-    if (event.pointer != _activeDrawingPointer) {
-      return;
-    }
-    final touchStrokeDown = _touchStrokeDownPosition;
-    if (!_touchStrokeCommitted &&
-        touchStrokeDown != null &&
-        (event.localPosition - touchStrokeDown).distance >=
-            InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop) {
-      _touchStrokeCommitted = true;
-    }
-
-    _currentPressure = _pressure.normalizedPressure(event);
-    final penPosition = _canvasPositionFromLocal(event.localPosition);
-    _lastPenPosition = penPosition;
-    // The stabilizer smooths BEFORE clipping/interpolation, so every
-    // downstream consumer (overlay, commit, replay) sees one chain — the
-    // three-route parity holds by construction (P7).
-    _stroke.advanceStrokeThroughGuides(
-      _stabilizer?.follow(penPosition) ?? penPosition,
-    );
-  }
-
   // ── the stroke: its own object, in its own file ─────────────────────
   //
   // A collaborator (canvas/brush_edit/brush_edit_stroke.dart, a part of this library).
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
-
-  void _handlePointerUp(PointerUpEvent event) {
-    // A TAP on an empty cel is a dot, so the press still begins here — and
-    // then this same event ends it: one dab, one undo entry.
-    _celPress.resumePressThatMadeTheCel(event.pointer);
-    if (_celPress._pendingCelPress?.pointer == event.pointer) {
-      _celPress._pendingCelPress = null; // Never resumed; nothing is left to draw.
-    }
-    if (!widget.editable) {
-      return;
-    }
-    _hold._lastContactButtons.remove(event.pointer);
-    _forgetTouchPointer(event.pointer);
-    _hold.releaseMappedHold(event.pointer);
-    if (event.pointer == _altPickPointer) {
-      _altPickPointer = null;
-    }
-    // The lone finger lifted with nobody having joined it: the tap was this
-    // fill's after all. ⛔BEFORE the drawing-pointer gate below — a fill tap
-    // never becomes the drawing pointer, so that gate would drop it.
-    final fillSeed = _fillTapSeed;
-    if (event.pointer == _fillTapPointer && fillSeed != null) {
-      _fill.runFillTap(fillSeed);
-      return;
-    }
-    if (event.pointer != _activeDrawingPointer) {
-      return;
-    }
-
-    // Stabilizer catch-up (P7): the brush trails the pen by up to a rope
-    // length — pen-up closes the gap with one straight segment through
-    // the normal pipeline, so line ends land where the pen lifted.
-    final lastPen = _lastPenPosition;
-    if (_stabilizer != null && lastPen != null) {
-      _stroke.advanceStrokeThroughGuides(lastPen);
-    }
-    // A stroke can lift before it travelled far enough to name a ray; the
-    // snap settles on the best guess it has rather than swallowing a short
-    // flick. Runs AFTER the catch-up so the extra travel counts towards the
-    // decision.
-    final session = _snapSession;
-    if (session != null) {
-      for (final snapped in session.finish()) {
-        _stroke.advanceStrokeTo(snapped);
-      }
-    }
-
-    final hadDabs = _collectedDabs.isNotEmpty;
-    if (hadDabs) {
-      // The commit reads the rasterizer's tiles — blend any dabs still
-      // waiting on the per-frame flush first.
-      _overlay.flushPendingOverlayDabs();
-      _stroke.commitStroke();
-    }
-
-    _stroke.endStrokeInput();
-    if (!hadDabs) {
-      _overlay.resetOverlay();
-    }
-  }
-
-  void _handlePointerCancel(PointerCancelEvent event) {
-    if (_celPress._pendingCelPress?.pointer == event.pointer) {
-      _celPress._pendingCelPress = null;
-    }
-    if (!widget.editable) {
-      return;
-    }
-    _hold._lastContactButtons.remove(event.pointer);
-    if (event.pointer == _fillTapPointer) {
-      _fill.forgetFillTap();
-    }
-    _forgetTouchPointer(event.pointer);
-    _hold.releaseMappedHold(event.pointer);
-    if (event.pointer == _altPickPointer) {
-      _altPickPointer = null;
-    }
-    if (event.pointer != _activeDrawingPointer) {
-      return;
-    }
-
-    _stroke.endStrokeInput();
-    _overlay.resetOverlay();
-  }
-
-  void _forgetTouchPointer(int pointer) {
-    _activeTouchPointers.remove(pointer);
-    CanvasTouchContacts.remove(pointer);
-    if (_activeTouchPointers.isEmpty) {
-      _multiTouchNavigation = false;
-    }
-  }
-
-  /// The mapping a set of non-primary [bits] drives: the wheel click owns
-  /// the tertiary bit, and everything else reads as the secondary — the
-  /// barrel button, whichever bit the driver puts it on.
-  CanvasPointerMapping? _mappingForButtons(int bits) {
-    // A live tail hold owns the tool: the two mappings share one hold
-    // slot, and whichever engaged first keeps it. Letting a barrel press
-    // take the tool mid-flip would leave the tail with nothing to spring
-    // back to when the pen is finally turned upright.
-    if (bits == 0 || _penTailActive) {
-      return null;
-    }
-    final settings = AppInput.settings.value;
-    if ((bits & kTertiaryButton) != 0) {
-      return settings.canvasWheelClick;
-    }
-    return settings.canvasRightClick;
-  }
 
   /// Whether the pen-tail mapping is engaged (the pen is turned
   /// tail-down). Not a button hold: it spans strokes until the pen is
@@ -1165,14 +613,6 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Whether [buttons] is a drawing contact.
   ///
-  /// R28: a MASK test, not equality. A barrel button held while the tip
-  /// touches down reports `primary | barrel`, and the old `== primary`
-  /// test read that as "not drawing" — so on a driver that does ride the
-  /// barrel bit into contact, the pen went dead instead of picking. The
-  /// mapped-press path runs first and claims those pointers, so anything
-  /// still reaching here with the primary bit down is a real stroke.
-  bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
-
   void _onTileImagesChanged() {
     // BEFORE the settle gate: a stand-in outlives the window that made
     // it, so once a new stroke is live this is the only thing that lets
@@ -1244,14 +684,4 @@ class _InteractiveBrushEditCanvasViewState
 
   int _fillOverlayToken = 0;
 
-}
-
-/// What a mapped press did with the pointer-down (see
-/// [_InteractiveBrushEditCanvasViewState._pressAsMappedAction]).
-enum _MappedPress {
-  /// The mapping ate the press: nothing else happens on this down.
-  consumed,
-
-  /// An eraser hold began: the stroke that follows erases.
-  erase,
 }

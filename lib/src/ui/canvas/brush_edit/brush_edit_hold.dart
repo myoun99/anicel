@@ -45,7 +45,7 @@ class _BrushEditHold {
     if (event.kind == PointerDeviceKind.touch) {
       return null;
     }
-    return _state._mappingForButtons(
+    return _state._press.mappingForButtons(
       _mappedButtonBits(effectiveButtons(event)),
     );
   }
@@ -116,7 +116,7 @@ class _BrushEditHold {
     // arrives.
     _state._overlay.syncPenTailMapping();
     final pressedBits = _mappedButtonBits(pressed);
-    final mapping = _state._mappingForButtons(pressedBits);
+    final mapping = _state._press.mappingForButtons(pressedBits);
     if (mapping == null) {
       return;
     }
@@ -162,7 +162,7 @@ class _BrushEditHold {
         _state._activeDrawingPointer != null) {
       return;
     }
-    final mapping = _state._mappingForButtons(_mappedButtonBits(pressed));
+    final mapping = _state._press.mappingForButtons(_mappedButtonBits(pressed));
     if (mapping == null || mapping.action != CanvasPointerAction.eyedropper) {
       return;
     }
