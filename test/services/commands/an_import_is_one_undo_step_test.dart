@@ -206,10 +206,10 @@ void main() {
       );
 
       command.execute();
-      expect(trackOf(repository).transitionLayer?.id, const LayerId('after'));
+      expect(trackOf(repository).transitionLayer.id, const LayerId('after'));
 
       command.undo();
-      expect(trackOf(repository).transitionLayer?.id, const LayerId('before'));
+      expect(trackOf(repository).transitionLayer.id, const LayerId('before'));
     });
 
     test('🚨the description is a DEBUG line, not a label — no UI reads it, '
