@@ -1,3 +1,4 @@
+import '../../core/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data' show Uint8List;
@@ -630,19 +631,7 @@ class TimelineGridTileStore {
     int tileWidth,
     int tileHeight,
   ) async {
-    final buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
-    final descriptor = ui.ImageDescriptor.raw(
-      buffer,
-      width: tileWidth,
-      height: tileHeight,
-      pixelFormat: ui.PixelFormat.rgba8888,
-    );
-    final codec = await descriptor.instantiateCodec();
-    final frame = await codec.getNextFrame();
-    codec.dispose();
-    descriptor.dispose();
-    buffer.dispose();
-    return frame.image;
+    return uploadRawRgba(pixels, width: tileWidth, height: tileHeight);
   }
 }
 

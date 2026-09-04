@@ -1,3 +1,4 @@
+import '../../core/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:isolate';
@@ -111,19 +112,7 @@ class BrushStrokePreviewCache {
       rgba[base + 2] = value;
       rgba[base + 3] = value;
     }
-    final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
-    final descriptor = ui.ImageDescriptor.raw(
-      buffer,
-      width: width,
-      height: height,
-      pixelFormat: ui.PixelFormat.rgba8888,
-    );
-    final codec = await descriptor.instantiateCodec();
-    final frame = await codec.getNextFrame();
-    codec.dispose();
-    descriptor.dispose();
-    buffer.dispose();
-    return frame.image;
+    return uploadRawRgba(rgba, width: width, height: height);
   }
 
   Future<void> _acquireRasterSlot() {

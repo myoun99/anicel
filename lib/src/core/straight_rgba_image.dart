@@ -87,3 +87,34 @@ void decodeStraightRgbaImage({
     },
   );
 }
+
+/// Uploads PREMULTIPLIED raw RGBA as a `ui.Image`, disposing every
+/// intermediate on the way.
+///
+/// ⛔THE FOUR DISPOSES ARE THE POINT. A codec, a descriptor and an
+/// immutable buffer each hold engine memory until they are released, and
+/// the two callers that wrote this out — the stroke preview and the
+/// timeline tile store — each had to remember all four. One of them
+/// forgetting is a leak that only shows up as growth.
+///
+/// ⚠️STRAIGHT alpha goes through [premultipliedStraightRgba] first: this
+/// takes what the engine will draw, not what the app stores.
+Future<ui.Image> uploadRawRgba(
+  Uint8List rgba, {
+  required int width,
+  required int height,
+}) async {
+  final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
+  final descriptor = ui.ImageDescriptor.raw(
+    buffer,
+    width: width,
+    height: height,
+    pixelFormat: ui.PixelFormat.rgba8888,
+  );
+  final codec = await descriptor.instantiateCodec();
+  final frame = await codec.getNextFrame();
+  codec.dispose();
+  descriptor.dispose();
+  buffer.dispose();
+  return frame.image;
+}
