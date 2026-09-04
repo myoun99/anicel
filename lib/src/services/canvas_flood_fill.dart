@@ -239,15 +239,29 @@ class LazyCanvasRasterRgb {
   final List<({BitmapSurface surface, double opacity})> _layers = [];
 
   /// Guarantees the tile containing pixel [index] (row-major) is composed.
+  /// The tile a pixel [index] sits in, and where that tile starts.
+  ///
+  /// ⛔THE ROUTES MUST AGREE ON WHICH TILE A PIXEL IS IN. The per-pixel
+  /// path and the batch path each wrote this arithmetic out; a route that
+  /// computed a different tile would mark one composed and compose
+  /// another, and the flood would then read paper where a layer is.
+  ({int tileIndex, int left, int top}) _tileOf(int index) {
+    final tileX = (index % width) ~/ _tileSize;
+    final tileY = (index ~/ width) ~/ _tileSize;
+    return (
+      tileIndex: tileY * _tilesX + tileX,
+      left: tileX * _tileSize,
+      top: tileY * _tileSize,
+    );
+  }
+
   void ensureComposedAt(int index) {
-    final x = index % width;
-    final y = index ~/ width;
-    final tileIndex = (y ~/ _tileSize) * _tilesX + (x ~/ _tileSize);
-    if (_composed[tileIndex] != 0) {
+    final tile = _tileOf(index);
+    if (_composed[tile.tileIndex] != 0) {
       return;
     }
-    _composed[tileIndex] = 1;
-    _composeTile((x ~/ _tileSize) * _tileSize, (y ~/ _tileSize) * _tileSize);
+    _composed[tile.tileIndex] = 1;
+    _composeTile(tile.left, tile.top);
   }
 
   /// R25-③: composes every still-uncomposed tile that [pixelIndices]
@@ -293,15 +307,13 @@ class LazyCanvasRasterRgb {
           })
         >[];
     for (final index in pixelIndices) {
-      final x = index % width;
-      final y = index ~/ width;
-      final tileIndex = (y ~/ _tileSize) * _tilesX + (x ~/ _tileSize);
-      if (_composed[tileIndex] != 0) {
+      final tile = _tileOf(index);
+      if (_composed[tile.tileIndex] != 0) {
         continue;
       }
-      _composed[tileIndex] = 1;
-      final left = (x ~/ _tileSize) * _tileSize;
-      final top = (y ~/ _tileSize) * _tileSize;
+      _composed[tile.tileIndex] = 1;
+      final left = tile.left;
+      final top = tile.top;
       final right = math.min(left + _tileSize, width);
       final bottom = math.min(top + _tileSize, height);
       final firstBlend = blends.length;
