@@ -427,6 +427,42 @@ Future<void> _editTextCel(
 /// Instruction cells: covered cells edit/delete the covering event in the
 /// dialog; EMPTY cells create a default one-frame event DIRECTLY (UI-R25 #2).
 /// The vocabulary editor is reachable from the picker.
+/// The instruction dialog, opened on a span that already exists.
+///
+/// ⛔BOTH EDITORS PASS THE SAME SIX FIELDS off the covering span — the
+/// camera row's events and the transition row's — so a field added to the
+/// dialog would otherwise have to be remembered in two places, and the
+/// one that forgot would silently open on a blank.
+///
+/// The set and the span travel together because neither means anything
+/// alone: an instruction id is only readable against its own set.
+///
+/// ⚠️[span]`.editsSet` is NOT decoration: the camera editor offers a way
+/// into the instruction set and the transition editor does not, and
+/// folding them without carrying that would have grown the transition
+/// dialog a button nobody asked for.
+Future<InstructionEventDialogResult?> _showInstructionEditor(
+  BuildContext context,
+  EditorSessionManager session,
+  Axis previewAxis,
+  ({CameraInstructionSet set, InstructionEvent covering, bool editsSet}) span,
+) => showDialog<InstructionEventDialogResult>(
+  context: context,
+  builder: (dialogContext) => InstructionEventDialog(
+    instructionSet: span.set,
+    initialInstructionId: span.covering.instructionId,
+    initialText: span.covering.text,
+    initialValueA: span.covering.valueA,
+    initialValueB: span.covering.valueB,
+    initialMemo: span.covering.memo,
+    editing: true,
+    onEditInstructionSet: span.editsSet
+        ? () => _editInstructionSet(dialogContext, session)
+        : null,
+    previewAxis: previewAxis,
+  ),
+);
+
 Future<void> _editInstructionEvent(
   BuildContext context,
   EditorSessionManager session,
@@ -440,20 +476,11 @@ Future<void> _editInstructionEvent(
     return;
   }
 
-  final result = await showDialog<InstructionEventDialogResult>(
-    context: context,
-    builder: (dialogContext) => InstructionEventDialog(
-      instructionSet: session.cameraInstructionSet,
-      initialInstructionId: covering.value.instructionId,
-      initialText: covering.value.text,
-      initialValueA: covering.value.valueA,
-      initialValueB: covering.value.valueB,
-      initialMemo: covering.value.memo,
-      editing: true,
-      onEditInstructionSet: () => _editInstructionSet(dialogContext, session),
-      previewAxis: previewAxis,
-    ),
-  );
+  final result = await _showInstructionEditor(context, session, previewAxis, (
+    set: session.cameraInstructionSet,
+    covering: covering.value,
+    editsSet: true,
+  ));
   if (!context.mounted || result == null) {
     return;
   }
@@ -510,19 +537,11 @@ Future<void> editTransitionSpanInstance(
     session.createTransitionSpanAtPlayhead();
     return;
   }
-  final result = await showDialog<InstructionEventDialogResult>(
-    context: context,
-    builder: (dialogContext) => InstructionEventDialog(
-      instructionSet: session.transitionInstructionSet,
-      initialInstructionId: covering.value.instructionId,
-      initialText: covering.value.text,
-      initialValueA: covering.value.valueA,
-      initialValueB: covering.value.valueB,
-      initialMemo: covering.value.memo,
-      editing: true,
-      previewAxis: previewAxis,
-    ),
-  );
+  final result = await _showInstructionEditor(context, session, previewAxis, (
+    set: session.transitionInstructionSet,
+    covering: covering.value,
+    editsSet: false,
+  ));
   if (!context.mounted || result == null) {
     return;
   }
