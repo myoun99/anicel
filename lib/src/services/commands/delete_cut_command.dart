@@ -170,9 +170,7 @@ class DeleteCutCommand implements Command {
     }
     final registryBefore = _registryBefore;
     if (registryBefore != null) {
-      repository.updateProject(
-        (current) => current.copyWith(linkRegistry: registryBefore),
-      );
+      repository.restoreLinkRegistry(registryBefore);
     }
     editingSession.setActiveCutId(previousActiveCutId);
   }

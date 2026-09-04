@@ -161,8 +161,6 @@ class CreateFolderCommand implements Command {
         repository.deleteLayer(cutId: entry.key, layerId: entry.value);
       }
     }
-    repository.updateProject(
-      (current) => current.copyWith(linkRegistry: registryBefore),
-    );
+    repository.restoreLinkRegistry(registryBefore);
   }
 }

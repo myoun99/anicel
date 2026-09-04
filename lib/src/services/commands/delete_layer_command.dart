@@ -100,8 +100,6 @@ class DeleteLayerCommand implements Command {
         index: target.index,
       );
     }
-    repository.updateProject(
-      (current) => current.copyWith(linkRegistry: registryBefore),
-    );
+    repository.restoreLinkRegistry(registryBefore);
   }
 }

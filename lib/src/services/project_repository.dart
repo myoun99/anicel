@@ -36,6 +36,7 @@ import '../models/track.dart';
 import '../models/track_id.dart';
 import 'project_tree_editor.dart';
 import '../core/inserted_at.dart';
+import '../models/layer_link_registry.dart';
 
 class ProjectRepository {
   ProjectRepository({Project? initialProject})
@@ -67,6 +68,19 @@ class ProjectRepository {
 
   void updateProject(Project Function(Project project) update) {
     _currentProject = _reconcileAttachedMirrors(update(requireProject()));
+  }
+
+  /// Puts the link registry back to [registry] — what every link-touching
+  /// command's undo owes.
+  ///
+  /// ⛔SIX UNDOS WROTE THIS OUT (create/dissolve folder, delete layer,
+  /// delete cut, unlink, convert-to-linked). The registry is the ONE place
+  /// that says which rows are the same layer seen from different cuts, so
+  /// an undo that restores the rows and forgets the registry leaves the
+  /// project holding links to layers that no longer exist — a state the
+  /// mirror walks then read as real.
+  void restoreLinkRegistry(LayerLinkRegistry registry) {
+    updateProject((current) => current.copyWith(linkRegistry: registry));
   }
 
   // ⛔THE FIVE BELOW ARE ONE LAW WRITTEN ONCE: find the entity, change it,

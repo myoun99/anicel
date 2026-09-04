@@ -125,9 +125,7 @@ class UnlinkLayerCommand implements Command {
         BitmapSurface(canvasSize: surface.canvasSize),
       );
     }
-    repository.updateProject(
-      (current) => current.copyWith(linkRegistry: registryBefore),
-    );
+    repository.restoreLinkRegistry(registryBefore);
   }
 
 }

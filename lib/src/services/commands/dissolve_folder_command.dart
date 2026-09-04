@@ -116,8 +116,6 @@ class DissolveFolderCommand implements Command {
         );
       }
     }
-    repository.updateProject(
-      (current) => current.copyWith(linkRegistry: registryBefore),
-    );
+    repository.restoreLinkRegistry(registryBefore);
   }
 }
