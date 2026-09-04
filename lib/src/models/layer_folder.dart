@@ -3,6 +3,28 @@ import 'layer_blend_mode.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 
+/// The folder chain above [folderId], NEAREST FIRST, resolved through
+/// [folderById].
+///
+/// ⛔THE `seen` SET IS NOT DEFENSIVE PROGRAMMING. A folder chain that
+/// loops back on itself — a bad file, a half-applied move — would spin
+/// here forever, and this walk runs inside the composite plan's per-layer
+/// resolve. The plain queries and the cached index both walked it; a copy
+/// that lost the set is a HANG, not a wrong answer.
+List<Layer> folderChainAbove(
+  LayerId? folderId,
+  Layer? Function(LayerId? id) folderById,
+) {
+  final chain = <Layer>[];
+  final seen = <LayerId>{};
+  var current = folderById(folderId);
+  while (current != null && seen.add(current.id)) {
+    chain.add(current);
+    current = folderById(current.folderId);
+  }
+  return chain;
+}
+
 /// Folder queries over a cut's flat layer stack.
 ///
 /// A folder is a LAYER ([LayerKind.folder]) — "그림만 못 그릴 뿐인 레이어"
@@ -41,16 +63,8 @@ extension LayerFolderQueries on List<Layer> {
 
   /// [folderId]'s chain up to the top level, NEAREST FIRST. Safe on
   /// malformed stacks: stops if a parent is missing or a cycle appears.
-  List<Layer> ancestryOf(LayerId? folderId) {
-    final chain = <Layer>[];
-    final seen = <LayerId>{};
-    var current = folderById(folderId);
-    while (current != null && seen.add(current.id)) {
-      chain.add(current);
-      current = folderById(current.folderId);
-    }
-    return chain;
-  }
+  List<Layer> ancestryOf(LayerId? folderId) =>
+      folderChainAbove(folderId, folderById);
 
   /// Whether [folderId] is [ancestorId] or sits anywhere under it.
   bool isInsideFolder(LayerId? folderId, LayerId ancestorId) =>
@@ -181,21 +195,8 @@ class LayerFolderIndex {
 
   /// See [LayerFolderQueries.ancestryOf]. The returned list is SHARED and
   /// must not be mutated.
-  List<Layer> ancestryOf(LayerId? folderId) {
-    final cached = _ancestry[folderId];
-    if (cached != null) {
-      return cached;
-    }
-    final chain = <Layer>[];
-    final seen = <LayerId>{};
-    var current = folderById(folderId);
-    while (current != null && seen.add(current.id)) {
-      chain.add(current);
-      current = folderById(current.folderId);
-    }
-    _ancestry[folderId] = chain;
-    return chain;
-  }
+  List<Layer> ancestryOf(LayerId? folderId) =>
+      _ancestry[folderId] ??= folderChainAbove(folderId, folderById);
 
   /// How deep [folderId] sits — the chain length, without building one.
   int depthOf(LayerId? folderId) => ancestryOf(folderId).length;
