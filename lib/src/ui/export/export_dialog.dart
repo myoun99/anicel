@@ -853,6 +853,17 @@ class ExportDialogState extends State<ExportDialog> {
 
   String _plural(int count, String noun) => count == 1 ? noun : '${noun}s';
 
+  /// The two sentences EVERY export ends with. Six routines wrote the
+  /// cancelled one out and four the finished one, which is how one of them
+  /// came to count files while it named frames — so the wording, and the
+  /// pluralisation that goes with it, lives here once.
+  String _exportCancelled(int written, String noun, {String tail = ''}) =>
+      'Export cancelled after $written ${_plural(written, noun)}$tail.';
+
+  String _exportDone(int written, String noun, {String? kind}) =>
+      'Exported $written ${kind == null ? '' : '$kind '}'
+      '${_plural(written, noun)}.';
+
   // --- preview (EX3) --------------------------------------------------------
 
   /// One flat position axis over the group plan: cels first, then the
@@ -1704,11 +1715,9 @@ class ExportDialogState extends State<ExportDialog> {
       onProgress: _reportProgress,
     );
     if (summary.processed < plan.length) {
-      return 'Export cancelled after ${summary.written} '
-          '${_plural(summary.written, 'page')}.';
+      return _exportCancelled(summary.written, 'page');
     }
-    return 'Exported ${summary.written} sheet '
-        '${_plural(summary.written, 'page')}.';
+    return _exportDone(summary.written, 'page', kind: 'sheet');
   }
 
   /// The envelopes, one PNG per (sheet, layer) — streamed like every image
@@ -1733,11 +1742,9 @@ class ExportDialogState extends State<ExportDialog> {
       onProgress: _reportProgress,
     );
     if (summary.processed < files.length) {
-      return 'Export cancelled after ${summary.written} '
-          '${_plural(summary.written, 'file')}.';
+      return _exportCancelled(summary.written, 'file');
     }
-    return 'Exported ${summary.written} envelope '
-        '${_plural(summary.written, 'file')}.';
+    return _exportDone(summary.written, 'file', kind: 'envelope');
   }
 
   Future<String> _exportConte() async {
@@ -1777,11 +1784,9 @@ class ExportDialogState extends State<ExportDialog> {
         onProgress: _reportProgress,
       );
       if (summary.processed < pages.length) {
-        return 'Export cancelled after ${summary.written} '
-            '${_plural(summary.written, 'page')}.';
+        return _exportCancelled(summary.written, 'page');
       }
-      return 'Exported ${summary.written} conte '
-          '${_plural(summary.written, 'page')}.';
+      return _exportDone(summary.written, 'page', kind: 'conte');
     }
     // Vector PDF: one document, the layout's own points as page geometry.
     // Each cell renders, converts to raw bytes and FREES its ui.Image
@@ -1894,8 +1899,11 @@ class ExportDialogState extends State<ExportDialog> {
       if (summary.processed < plan.length) {
         return summary.written == 0
             ? 'Export cancelled.'
-            : 'Export cancelled after ${summary.written} '
-                  '${_plural(summary.written, 'frame')} (partial video kept).';
+            : _exportCancelled(
+                summary.written,
+                'frame',
+                tail: ' (partial video kept)',
+              );
       }
       return 'Exported video (${summary.written} '
           '${_plural(summary.written, 'frame')}).';
@@ -1928,11 +1936,9 @@ class ExportDialogState extends State<ExportDialog> {
       onProgress: _reportProgress,
     );
     if (summary.processed < plan.length) {
-      return 'Export cancelled after ${summary.written} '
-          '${_plural(summary.written, 'file')}.';
+      return _exportCancelled(summary.written, 'file');
     }
-    return 'Exported ${summary.written} '
-        '${_plural(summary.written, 'frame')}.';
+    return _exportDone(summary.written, 'frame');
   }
 
   Future<String> _exportCurrentFrame() async {
@@ -2008,8 +2014,7 @@ class ExportDialogState extends State<ExportDialog> {
       onProgress: _reportProgress,
     );
     if (summary.processed < entries.length) {
-      return 'Export cancelled after ${summary.written} '
-          '${_plural(summary.written, 'file')}.';
+      return _exportCancelled(summary.written, 'file');
     }
     final skipped = summary.processed - summary.written;
     final cels = '${summary.written} ${_plural(summary.written, 'cel')}';
