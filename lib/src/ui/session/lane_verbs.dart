@@ -356,12 +356,13 @@ class _LaneVerbs {
   /// mirror of [createLaneKeysForSelection], one undo. Returns whether
   /// anything was there to remove.
   bool removeLaneKeysForSelection(TimelineLaneSelection lane) {
-    final layer = _laneVerbLayerFor(lane.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    final scope = _laneVerbScope(lane);
+    if (scope == null) {
       return false;
     }
-    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
-    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+    final layer = scope.layer;
+    final targets = scope.targets;
+    if (scope.effectLanes) {
       var effects = layer.effects;
       var changed = false;
       for (final laneId in targets) {
