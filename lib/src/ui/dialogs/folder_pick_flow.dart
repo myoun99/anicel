@@ -206,17 +206,7 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
     }
   }
   if (refused.isNotEmpty) {
-    final strings = AppText.strings;
-    await showAppNotice(
-      context,
-      title: strings.unsupportedFileTitle,
-      message: strings.unsupportedFileMessageTemplate.replaceAll(
-        '{kinds}',
-        supportedExtensions.map((extension) => '.$extension').join(', '),
-      ),
-      details: refused,
-      windowKey: const ValueKey<String>('unsupported-file-notice'),
-    );
+    await noticeUnsupportedFiles(context, refused, supportedExtensions);
   }
   return accepted;
 }

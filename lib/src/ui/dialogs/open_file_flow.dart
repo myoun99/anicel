@@ -32,6 +32,31 @@ typedef LooseFilePicker = Future<List<String>> Function();
 ///
 /// ⚠️[supportedExtensions] is lower-case and without dots. An empty list
 /// accepts anything, for a caller that judges the CONTENT rather than the
+
+/// Tells the user which files were turned away, and why.
+///
+/// ⛔ONE NOTICE, TWO PICKERS. The folder-grant flow and the open flow each
+/// refused the same way and each had to name the same window key; only one
+/// of them said why the paths go in the disclosure rather than the
+/// sentence.
+///
+/// ⚠️The paths go in [AppNoticeDetails], not the message: one refusal
+/// reads the same as forty, and forty do not push the buttons off screen.
+Future<void> noticeUnsupportedFiles(
+  BuildContext context,
+  List<String> refused,
+  List<String> supportedExtensions,
+) => showAppNotice(
+  context,
+  title: AppText.strings.unsupportedFileTitle,
+  message: AppText.strings.unsupportedFileMessageTemplate.replaceAll(
+    '{kinds}',
+    supportedExtensions.map((extension) => '.$extension').join(', '),
+  ),
+  details: refused,
+  windowKey: const ValueKey<String>('unsupported-file-notice'),
+);
+
 /// name.
 Future<List<String>> openSupportedFiles(
   BuildContext context, {
@@ -52,20 +77,7 @@ Future<List<String>> openSupportedFiles(
     (fileIsSupported(path, supportedExtensions) ? accepted : refused).add(path);
   }
   if (refused.isNotEmpty) {
-    final strings = AppText.strings;
-    await showAppNotice(
-      context,
-      title: strings.unsupportedFileTitle,
-      message: strings.unsupportedFileMessageTemplate.replaceAll(
-        '{kinds}',
-        supportedExtensions.map((extension) => '.$extension').join(', '),
-      ),
-      // The paths go in the disclosure rather than the sentence: one
-      // refusal reads the same as forty, and forty do not push the buttons
-      // off the screen.
-      details: refused,
-      windowKey: const ValueKey<String>('unsupported-file-notice'),
-    );
+    await noticeUnsupportedFiles(context, refused, supportedExtensions);
   }
   return accepted;
 }
