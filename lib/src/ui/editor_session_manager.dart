@@ -6127,22 +6127,17 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
-  /// with audio attached and attach rows own no timing — both stand down.
-  /// SINGLE-CEL rows (image) stand down too: their one covering block is
-  /// immovable by definition, and a cel dropped ONTO one would collide
-  /// with the covering normalization (two entries, one survives — silent
-  /// cel loss).
+  /// with audio attached; the rest of the standing-down is the shared
+  /// retime law ([_standsDownFromRetime]).
   bool _blockMoveEligible(LayerId layerId) {
-    // Synced attach rows own no timing; FREE attach rows move blocks
-    // like any drawing layer (UI-R21 #3).
-    if (_folders.isSyncedAttachedLayerId(layerId) ||
-        isTrackSeLayerId(layerId)) {
+    // FREE attach rows move blocks like any drawing layer (UI-R21 #3) —
+    // only the SYNCED ones stand down, which the shared law knows.
+    if (_standsDownFromRetime(layerId) || isTrackSeLayerId(layerId)) {
       return false;
     }
     final layer = _layerById(layerId);
     return layer != null &&
         layerKindHoldsDrawings(layer.kind) &&
-        !layerKindHoldsSingleCel(layer.kind) &&
         layer.kind != LayerKind.se;
   }
 
@@ -6186,15 +6181,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final selection = frameRangeSelection.value;
     if (selection != null) {
-      // SYNCED attach rows shift by DERIVATION (the base's shift carries
-      // the mirror); committing their display clone would write the
-      // derived timeline onto the stored-empty row. SINGLE-CEL (image)
-      // rows' covering block is pinned by the write normalization.
+      // Rows whose timing is not their own stand down —
+      // [_standsDownFromRetime].
       final rows = [
         for (final id in selection.spanLayerIds)
-          if (!_folders.isSyncedAttachedLayerId(id) &&
-              !_isSingleCelLayerId(id) &&
-              _rangeLayerById(id) != null)
+          if (!_standsDownFromRetime(id) && _rangeLayerById(id) != null)
             id,
       ];
       return rows.isEmpty
@@ -6220,8 +6211,7 @@ class EditorSessionManager extends ChangeNotifier {
     final index = _timelineController.currentFrameIndex;
     if (layerId == null ||
         index < 0 ||
-        _folders.isSyncedAttachedLayerId(layerId) ||
-        _isSingleCelLayerId(layerId) ||
+        _standsDownFromRetime(layerId) ||
         _rangeLayerById(layerId) == null) {
       return null;
     }
@@ -6819,6 +6809,25 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return null;
   }
+
+  /// Whether a RESHAPING verb — bulk retime, range move, push/pull, comma
+  /// set, X-here — must stand [layerId] down, because the row's timing is
+  /// not its own to move.
+  ///
+  /// ⛔ONE ANSWER FOR FIVE ASKS (the audit's clone scan, 2026-09-04; the
+  /// range-selection gate below already called the others "the three
+  /// downstream copies of this filter"). SYNCED attach rows follow their
+  /// base by DERIVATION, so committing their display clone would write the
+  /// derived timeline onto the stored-empty row. SINGLE-CEL (image) rows
+  /// have their one covering block pinned by the write normalization, so a
+  /// verb would PREVIEW the stretch and have the same write snap it back —
+  /// the move-then-revert flicker the project bans outright.
+  ///
+  /// Both are ID-gated: the synced-block UI stopped marking mirror entries
+  /// ghost, so the non-ghost block scans downstream no longer exclude them.
+  bool _standsDownFromRetime(LayerId layerId) =>
+      _folders.isSyncedAttachedLayerId(layerId) ||
+      _isSingleCelLayerId(layerId);
 
   /// Whether [layerId] names a SINGLE-CEL (image) row of the active cut:
   /// its one covering block is pinned by the write normalization, so the

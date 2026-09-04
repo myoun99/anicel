@@ -631,14 +631,9 @@ class _RangeSelections {
       // this gate a mirror-only selection would light up delete/comma
       // verbs that then no-op against the stored-empty row.
       //
-      // SINGLE-CEL (image) rows are the same shape of answer (D22): their
-      // one block is pinned by the covering normalization, so no selection
-      // verb can edit it. Stating that HERE rather than in each verb is
-      // what keeps the button and the dispatch reading one answer — the
-      // three downstream copies of this filter used to leave every `can…`
-      // gate lighting up for a row nothing would touch.
-      if (_session._folders.isSyncedAttachedLayerId(id) ||
-          _session._isSingleCelLayerId(id)) {
+      // and SINGLE-CEL (image) rows with them — see
+      // [EditorSessionManager._standsDownFromRetime].
+      if (_session._standsDownFromRetime(id)) {
         continue;
       }
       final layer = _session._rangeLayerById(id);

@@ -192,16 +192,40 @@ class LayerFrameImageCache {
       );
     }
 
-    _dropEntry((key, quality));
+    return _bank((key, quality), positioned, (
+      revision: revision,
+      canvasSize: canvasSize,
+      sourceEffects: sourceEffects,
+    ));
+  }
+
+  /// Banks a freshly composed image as the entry for [at], replacing
+  /// whatever sat there.
+  ///
+  /// ⛔BOTH COMPOSE PATHS BANK HERE. The async prepare and the sync
+  /// handoff twin have to record the SAME revision, canvas size and
+  /// source-effect signature, or the validity check reads one path's
+  /// entry as stale and recomposes on every frame.
+  LayerFrameImage _bank(
+    (BrushFrameKey, PlaybackQuality) at,
+    PositionedSurfaceImage positioned,
+    ({
+      int revision,
+      CanvasSize canvasSize,
+      List<ResolvedLayerEffect> sourceEffects,
+    })
+    source,
+  ) {
+    _dropEntry(at);
     final result = LayerFrameImage(
       image: positioned.image,
       worldRect: positioned.worldRect,
     );
-    _entries[(key, quality)] = _LayerFrameImageEntry(
+    _entries[at] = _LayerFrameImageEntry(
       positioned: result,
-      sourceRevision: revision,
-      canvasSize: canvasSize,
-      sourceEffectSignature: celSourceEffectSignature(sourceEffects),
+      sourceRevision: source.revision,
+      canvasSize: source.canvasSize,
+      sourceEffectSignature: celSourceEffectSignature(source.sourceEffects),
       lastUsed: ++_useCounter,
     );
     return result;
@@ -264,19 +288,11 @@ class LayerFrameImageCache {
       return null;
     }
 
-    _dropEntry((key, quality));
-    final result = LayerFrameImage(
-      image: positioned.image,
-      worldRect: positioned.worldRect,
-    );
-    _entries[(key, quality)] = _LayerFrameImageEntry(
-      positioned: result,
-      sourceRevision: revision,
+    return _bank((key, quality), positioned, (
+      revision: revision,
       canvasSize: canvasSize,
-      sourceEffectSignature: celSourceEffectSignature(sourceEffects),
-      lastUsed: ++_useCounter,
-    );
-    return result;
+      sourceEffects: sourceEffects,
+    ));
   }
 
   /// Eagerly drops every quality of one layer frame (sink-event eviction).

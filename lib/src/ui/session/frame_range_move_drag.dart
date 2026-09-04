@@ -439,14 +439,9 @@ class _FrameRangeMoveDrag {
   ) {
     final sources = <({Layer commit, int offset})>[];
     for (final id in selection.spanLayerIds) {
-      // SYNCED attach rows never source a move (their commit form owns
-      // no timing) — they stay PASSENGERS, carried by the base's slide
-      // through derivation. Id-gated: the synced-block UI stopped
-      // marking mirror entries ghost, so the block filter below no
-      // longer excludes them. SINGLE-CEL (image) rows stand down too:
-      // their covering block is pinned by the write normalization.
-      if (_session._folders.isSyncedAttachedLayerId(id) ||
-          _session._isSingleCelLayerId(id)) {
+      // Rows whose timing is not their own stand down — see
+      // [EditorSessionManager._standsDownFromRetime].
+      if (_session._standsDownFromRetime(id)) {
         continue;
       }
       final display = _session._rangeLayerById(id);

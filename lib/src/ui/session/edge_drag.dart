@@ -446,20 +446,9 @@ class _EdgeDrag {
     final startsByLayer = <LayerId, List<int>>{};
     final beforeByLayer = <LayerId, Layer>{};
     for (final id in selection.spanLayerIds) {
-      // SYNCED attach rows never join a bulk retime: their commit form is
-      // the DISPLAY CLONE, and committing it would write the derived
-      // timeline onto the stored-empty row (the mirror follows the base's
-      // retime by derivation anyway). Id-gated — the synced-block UI
-      // stopped marking mirror entries ghost, so the non-ghost block scan
-      // below no longer excludes them.
-      //
-      // SINGLE-CEL (image) rows stand down for the same reason the move
-      // sources do (D22): their one block is pinned by the write
-      // normalization, so a bulk retime would PREVIEW the picture
-      // stretching and then have it snapped back by the same write — the
-      // move-then-revert flicker the project bans outright.
-      if (_session._folders.isSyncedAttachedLayerId(id) ||
-          _session._isSingleCelLayerId(id)) {
+      // Rows whose timing is not their own stand down — see
+      // [EditorSessionManager._standsDownFromRetime].
+      if (_session._standsDownFromRetime(id)) {
         continue;
       }
       final display = _session._rangeLayerById(id);
