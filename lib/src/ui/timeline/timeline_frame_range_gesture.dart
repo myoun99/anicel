@@ -18,6 +18,30 @@ import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
+/// A range drag that finished under the finger: tell the session how it
+/// ended, and hand the grip back.
+///
+/// ⛔THE GRIP GOES BACK WHETHER IT ENDED OR WAS CANCELLED. Four methods
+/// wrote this out — end and cancel, in each of the two gesture layers —
+/// and a grip that is not handed back pins its row with nothing left on
+/// screen to release it.
+///
+/// The caller clears its own mode FIRST and passes what it was: a
+/// callback that rebuilds must not see a mode the drag has left.
+void reportRangeDragFinished({
+  required bool dragging,
+  required bool moving,
+  required VoidCallback onMoveFinished,
+  required VoidCallback releaseGrip,
+}) {
+  if (moving) {
+    onMoveFinished();
+  }
+  if (dragging) {
+    releaseGrip();
+  }
+}
+
 /// Session-level hooks for the frame-range MOVE drag (UI-R8) — the grid
 /// resolves the pointer's row into [onUpdate]'s target layer before
 /// forwarding, exactly like the block-move callbacks it succeeds.
@@ -397,25 +421,29 @@ class _TimelineFrameRangeGestureLayerState
   void _endDrag() {
     final mode = _mode;
     _mode = _RangeDragMode.none;
-    if (mode == _RangeDragMode.move) {
-      setState(() {});
-      widget.callbacks.onMoveEnd();
-    }
-    if (mode != _RangeDragMode.none) {
-      widget.callbacks.onGripReleased?.call(widget.row);
-    }
+    reportRangeDragFinished(
+      dragging: mode != _RangeDragMode.none,
+      moving: mode == _RangeDragMode.move,
+      onMoveFinished: () {
+        setState(() {});
+        widget.callbacks.onMoveEnd();
+      },
+      releaseGrip: () => widget.callbacks.onGripReleased?.call(widget.row),
+    );
   }
 
   void _cancelDrag() {
     final mode = _mode;
     _mode = _RangeDragMode.none;
-    if (mode == _RangeDragMode.move) {
-      setState(() {});
-      widget.callbacks.onMoveCancel();
-    }
-    if (mode != _RangeDragMode.none) {
-      widget.callbacks.onGripReleased?.call(widget.row);
-    }
+    reportRangeDragFinished(
+      dragging: mode != _RangeDragMode.none,
+      moving: mode == _RangeDragMode.move,
+      onMoveFinished: () {
+        setState(() {});
+        widget.callbacks.onMoveCancel();
+      },
+      releaseGrip: () => widget.callbacks.onGripReleased?.call(widget.row),
+    );
   }
 
   @override
@@ -782,23 +810,27 @@ class _TimelineLaneRangeGestureLayerState
   void _endDrag() {
     final mode = _mode;
     _mode = _RangeDragMode.none;
-    if (mode == _RangeDragMode.move) {
-      widget.callbacks.onMoveEnd();
-    }
-    if (mode != _RangeDragMode.none) {
-      widget.callbacks.onGripReleased?.call(_rowAddress);
-    }
+    reportRangeDragFinished(
+      dragging: mode != _RangeDragMode.none,
+      moving: mode == _RangeDragMode.move,
+      onMoveFinished: () {
+        widget.callbacks.onMoveEnd();
+      },
+      releaseGrip: () => widget.callbacks.onGripReleased?.call(_rowAddress),
+    );
   }
 
   void _cancelDrag() {
     final mode = _mode;
     _mode = _RangeDragMode.none;
-    if (mode == _RangeDragMode.move) {
-      widget.callbacks.onMoveCancel();
-    }
-    if (mode != _RangeDragMode.none) {
-      widget.callbacks.onGripReleased?.call(_rowAddress);
-    }
+    reportRangeDragFinished(
+      dragging: mode != _RangeDragMode.none,
+      moving: mode == _RangeDragMode.move,
+      onMoveFinished: () {
+        widget.callbacks.onMoveCancel();
+      },
+      releaseGrip: () => widget.callbacks.onGripReleased?.call(_rowAddress),
+    );
   }
 
   @override
