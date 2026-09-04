@@ -261,13 +261,11 @@ class TimelineFrameRulerPainter extends CustomPainter {
       }
 
       // Top line: the second index on fps boundaries (UI-R10 #27).
-      paintSecondsCorner(
-        canvas,
-        rect,
+      paintSecondsCorner(canvas, rect, (
         text: model.secondsLabel,
         fontSize: 9,
         color: colorScheme.onSurfaceVariant,
-      );
+      ));
     }
 
     // The strip's structural BASELINE (the ruler/body divider) — full

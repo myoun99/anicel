@@ -84,16 +84,18 @@ void paintTimelineGlyphOnGround(
 /// 28px (R10 R6) and prints a point smaller than the horizontal ruler.
 void paintSecondsCorner(
   Canvas canvas,
-  Rect rect, {
-  required String text,
-  required double fontSize,
-  required Color color,
-}) {
-  if (text.isEmpty) {
+  Rect rect,
+  ({String text, double fontSize, Color color}) seconds,
+) {
+  if (seconds.text.isEmpty) {
     return;
   }
   timelineGlyphPainter(
-    text,
-    TextStyle(fontSize: fontSize, fontWeight: FontWeight.w700, color: color),
+    seconds.text,
+    TextStyle(
+      fontSize: seconds.fontSize,
+      fontWeight: FontWeight.w700,
+      color: seconds.color,
+    ),
   ).paint(canvas, Offset(rect.left + 2, rect.top + 1));
 }

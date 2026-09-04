@@ -164,7 +164,10 @@ void main() {
 /// src and dst are the same size: a 1:1 blit that owns `FilterQuality.none`
 /// and `isAntiAlias: false` on its own Paint, exactly like the patch path's
 /// base blit beside it.
-const int _knownRawDraws = 40;
+/// **39** since the conte page and the cut envelope stopped each drawing
+/// their own ink window: `paintSheetInkWindow` is the one clipped draw for
+/// both sheets, and it owns its medium filter.
+const int _knownRawDraws = 39;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

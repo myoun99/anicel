@@ -353,13 +353,11 @@ class FlipHudPainter extends CustomPainter {
           isRunHead: isHead,
         );
       }
-      _paintGrid(
-        canvas,
-        stripRect,
+      _paintGrid(canvas, stripRect, (
         axis: Axis.horizontal,
         origin: originX,
         step: slotWidth,
-      );
+      ));
       _paintSelection(
         canvas,
         Rect.fromLTWH(
@@ -415,13 +413,11 @@ class FlipHudPainter extends CustomPainter {
           isRunHead: true,
         );
       }
-      _paintGrid(
-        canvas,
-        stripRect,
+      _paintGrid(canvas, stripRect, (
         axis: Axis.vertical,
         origin: originY,
         step: extent,
-      );
+      ));
       _paintSelection(
         canvas,
         Rect.fromLTWH(
@@ -668,19 +664,18 @@ class FlipHudPainter extends CustomPainter {
   /// used to be written out, which is a law stated twice about one grid.
   void _paintGrid(
     Canvas canvas,
-    Rect rect, {
-    required Axis axis,
-    required double origin,
-    required double step,
-  }) {
+    Rect rect,
+    ({Axis axis, double origin, double step}) grid,
+  ) {
     final paint = Paint()
-      ..color = timelineBaseGridInk(colorScheme, frameCellExtent: step)
+      ..color = timelineBaseGridInk(colorScheme, frameCellExtent: grid.step)
       ..strokeWidth = 1;
-    final horizontal = axis == Axis.horizontal;
+    final horizontal = grid.axis == Axis.horizontal;
     final from = horizontal ? rect.left : rect.top;
     final to = horizontal ? rect.right : rect.bottom;
-    var at = origin + (((from - origin) / step).ceil()) * step;
-    for (; at <= to; at += step) {
+    var at =
+        grid.origin + (((from - grid.origin) / grid.step).ceil()) * grid.step;
+    for (; at <= to; at += grid.step) {
       canvas.drawLine(
         horizontal ? Offset(at, rect.top) : Offset(rect.left, at),
         horizontal ? Offset(at, rect.bottom) : Offset(rect.right, at),

@@ -1382,13 +1382,11 @@ class XSheetFrameRailPainter extends CustomPainter {
       // placement (`rect.left + 2, rect.top + 1` there) and the 11pt base.
       // ⚠️A point smaller than the horizontal ruler: the rail narrowed to
       // 28px (R10 R6). The CORNER is the shared answer, the size is not.
-      paintSecondsCorner(
-        canvas,
-        rect,
+      paintSecondsCorner(canvas, rect, (
         text: model.secondsLabel,
         fontSize: 8,
         color: colorScheme.onSurfaceVariant,
-      );
+      ));
 
       if (model.label.isNotEmpty) {
         // R9 #4: the number SHRINKS to fit its row before it thins out —
