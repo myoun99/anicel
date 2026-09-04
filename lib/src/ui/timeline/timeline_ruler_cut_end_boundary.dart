@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import 'timeline_cut_end_boundary_line.dart';
 
 class TimelineRulerCutEndBoundary extends StatelessWidget {
   const TimelineRulerCutEndBoundary({
@@ -18,13 +18,6 @@ class TimelineRulerCutEndBoundary extends StatelessWidget {
   final Axis axis;
 
   @override
-  Widget build(BuildContext context) {
-    const line = IgnorePointer(
-      child: DecoratedBox(decoration: BoxDecoration(color: AppColors.danger)),
-    );
-    if (axis == Axis.vertical) {
-      return Positioned(top: left, left: 0, right: 0, height: 2, child: line);
-    }
-    return Positioned(left: left, top: 0, bottom: 0, width: 2, child: line);
-  }
+  Widget build(BuildContext context) =>
+      timelineCutEndBoundaryLine(left: left, axis: axis);
 }
