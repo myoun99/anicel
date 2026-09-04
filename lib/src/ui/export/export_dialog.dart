@@ -1596,12 +1596,14 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {});
   }
 
-  /// A queued job clicked: its setup returns to the window for editing
-  /// and the job leaves the queue (수정 후 재등록 — the v10 flow).
-  void _restoreJob(ExportJob job) {
-    if (job.status != ExportJobStatus.queued || _isExporting) {
-      return;
-    }
+  /// Puts [job]'s setup into the live form, so the window honestly shows
+  /// what is about to render (or what is being edited).
+  ///
+  /// ⛔THE ONE PLACE A JOB BECOMES THE FORM. Editing a queued job and
+  /// running the queue both land here; when they each wrote this out, a
+  /// field added to a job reached one of them and silently rendered the
+  /// other's stale value.
+  void _loadJobIntoForm(ExportJob job) {
     setState(() {
       _tab = job.tab;
       _specs = _specs.withSpec(job.spec);
@@ -1613,6 +1615,15 @@ class ExportDialogState extends State<ExportDialog> {
       }
       _syncControllersFromSpecs();
     });
+  }
+
+  /// A queued job clicked: its setup returns to the window for editing
+  /// and the job leaves the queue (수정 후 재등록 — the v10 flow).
+  void _restoreJob(ExportJob job) {
+    if (job.status != ExportJobStatus.queued || _isExporting) {
+      return;
+    }
+    _loadJobIntoForm(job);
     _queue.remove(job.id);
     _persist();
     _preview.clear();
@@ -1657,17 +1668,7 @@ class ExportDialogState extends State<ExportDialog> {
           job.id,
           (current) => current.copyWith(status: ExportJobStatus.running),
         );
-        setState(() {
-          _tab = job.tab;
-          _specs = _specs.withSpec(job.spec);
-          _setLocation(job.outputDirectory);
-          final controller = _fileControllerFor(job.tab);
-          final fileName = job.fileName;
-          if (controller != null && fileName != null) {
-            controller.text = fileName;
-          }
-          _syncControllersFromSpecs();
-        });
+        _loadJobIntoForm(job);
         _refreshPreview();
         try {
           final message = await _runCurrentTabExport();
