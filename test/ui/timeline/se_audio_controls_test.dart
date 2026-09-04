@@ -317,4 +317,117 @@ void main() {
     await tester.pumpAndSettle();
     expect(_seLayer(repository).audioClips.single.offsetFrames, 10);
   });
+
+  /// 🚨THE GUARD AND THE CLAMPS EVERY CLIP EDIT SHARES.
+  ///
+  /// Seven edits wrote these out separately until the audit folded them
+  /// into one helper, and the mutation campaign then found all four
+  /// surviving (2026-09-04): nothing asked what happens on a row that is
+  /// not SE, on an index past the end, or with a negative number. A shared
+  /// guard nobody tests is worse than seven, because one edit silently
+  /// covers for the rest.
+  test('a clip edit refuses a non-SE row, a bad index, and negatives', () {
+    final session = EditorSessionManager(initialProject: _project());
+    addTearDown(session.dispose);
+
+    Layer seLayer() => _seLayer(session.repository);
+    Layer celLayer() => session.repository
+        .requireProject()
+        .tracks
+        .expand((track) => track.cuts)
+        .expand((cut) => cut.layers)
+        .firstWhere((layer) => layer.id == const LayerId('sea-cel'));
+
+    // A DRAWING row has no clips to edit — and asking must not create one.
+    session.setAudioClipGain(const LayerId('sea-cel'), 0, 0.5);
+    expect(celLayer().audioClips, isEmpty);
+    expect(
+      session.canUndo,
+      isFalse,
+      reason: 'a refused edit is not an undo step',
+    );
+
+    // An index past the end is refused, not clamped to the last clip.
+    session.setAudioClipGain(_seLayerId, 7, 0.5);
+    expect(seLayer().audioClips.single.gain, 1.0);
+    expect(session.canUndo, isFalse);
+
+    // Negative numbers clamp to zero rather than reaching the model.
+    session.setAudioClipOffset(_seLayerId, 0, -4);
+    expect(
+      seLayer().audioClips.single.offsetFrames,
+      0,
+      reason: 'a negative slide is zero, not a negative offset',
+    );
+    session.setAudioClipGain(_seLayerId, 0, -2);
+    expect(
+      seLayer().audioClips.single.gain,
+      0.0,
+      reason: 'a negative gain is silence, not a negative multiplier',
+    );
+  });
+
+  /// A DRAWING row that CARRIES clips — the state a kind change leaves
+  /// behind — is refused BY ITS KIND. An empty clip list would be caught
+  /// by the index check instead, which is how the first version of this
+  /// case passed against a disabled kind guard (2026-09-04).
+  test('a clip edit refuses a row that is not SE, even when it has clips', () {
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('sea-project'),
+        name: 'SEA Project',
+        createdAt: DateTime.utc(2026, 7, 10),
+        tracks: [
+          Track(
+            id: const TrackId('sea-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('sea-cut'),
+                name: 'SEA Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: const LayerId('sea-cel'),
+                    name: 'A',
+                    frames: [
+                      Frame(
+                        id: const FrameId('sea-f1'),
+                        duration: 3,
+                        strokes: const [],
+                      ),
+                    ],
+                    audioClips: const [
+                      AudioClip(
+                        filePath: 'steps.wav',
+                        frameId: FrameId('sea-f1'),
+                        gain: 0.75,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+
+    Layer celLayer() => session.repository
+        .requireProject()
+        .tracks
+        .expand((track) => track.cuts)
+        .expand((cut) => cut.layers)
+        .firstWhere((layer) => layer.id == const LayerId('sea-cel'));
+
+    session.setAudioClipGain(const LayerId('sea-cel'), 0, 0.25);
+    expect(
+      celLayer().audioClips.single.gain,
+      0.75,
+      reason: 'the row is a drawing row, so its clips are not editable here',
+    );
+    expect(session.canUndo, isFalse);
+  });
 }
