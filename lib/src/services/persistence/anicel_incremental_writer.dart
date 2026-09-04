@@ -177,6 +177,28 @@ int anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
   );
 }
 
+/// The ZIP64 extra field (id 0x0001) inside an extra block: where its
+/// payload starts and how long that payload says it is, or null when the
+/// block does not carry one.
+///
+/// ⛔THREE READERS WALKED FOR IT SEPARATELY — the central record's offset
+/// and its size, and a local header's size — and they did not agree on the
+/// bounds: one checked the payload's own declared length before reading a
+/// value out of it and the other only checked the block's end. They share
+/// this walk now, and each states its own bound against BOTH.
+({int at, int length})? _zip64Extra(ByteData data, int start, int end) {
+  var walk = start;
+  while (walk + 4 <= end) {
+    final id = data.getUint16(walk, Endian.little);
+    final size = data.getUint16(walk + 2, Endian.little);
+    if (id == _zip64ExtraId) {
+      return (at: walk + 4, length: size);
+    }
+    walk += 4 + size;
+  }
+  return null;
+}
+
 /// The local header offset a central record names, following its ZIP64
 /// extra field when the fixed field is all-ones.
 int _centralLocalOffset(
@@ -189,30 +211,24 @@ int _centralLocalOffset(
   if (fixed != _zip32Max) {
     return fixed;
   }
-  // Walk the extra fields for id 0x0001. The 64-bit values inside appear
-  // in a FIXED order — uncompressed size, compressed size, local header
-  // offset — and only for the fields that were all-ones. Since the ZIP64
-  // size round (유저 08-26: 4GB 초과도 품는다) this writer flags sizes
-  // too, so the sizes are skipped by looking at what is flagged.
-  var walk = extraStart;
+  // The 64-bit values appear in a FIXED order — uncompressed size,
+  // compressed size, local header offset — and only for the fields that
+  // were all-ones. Since the ZIP64 size round (유저 08-26: 4GB 초과도
+  // 품는다) this writer flags sizes too, so the sizes are skipped by
+  // looking at what is flagged.
   final end = extraStart + extraLength;
-  while (walk + 4 <= end) {
-    final id = data.getUint16(walk, Endian.little);
-    final size = data.getUint16(walk + 2, Endian.little);
-    if (id == _zip64ExtraId) {
-      var at = walk + 4;
-      if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
-        at += 8; // uncompressed size
-      }
-      if (data.getUint32(cursor + 20, Endian.little) == _zip32Max) {
-        at += 8; // compressed size
-      }
-      if (at + 8 <= end) {
-        return data.getUint64(at, Endian.little);
-      }
-      break;
+  final extra = _zip64Extra(data, extraStart, end);
+  if (extra != null) {
+    var at = extra.at;
+    if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
+      at += 8; // uncompressed size
     }
-    walk += 4 + size;
+    if (data.getUint32(cursor + 20, Endian.little) == _zip32Max) {
+      at += 8; // compressed size
+    }
+    if (at + 8 <= extra.at + extra.length && at + 8 <= end) {
+      return data.getUint64(at, Endian.little);
+    }
   }
   throw const FormatException(
     'Central record flags a ZIP64 offset with '
@@ -225,19 +241,11 @@ int _centralLocalOffset(
 /// either is flagged (spec), uncompressed first.
 int? _localZip64CompressedSize(Uint8List extraBytes) {
   final data = ByteData.sublistView(extraBytes);
-  var walk = 0;
-  while (walk + 4 <= extraBytes.length) {
-    final id = data.getUint16(walk, Endian.little);
-    final size = data.getUint16(walk + 2, Endian.little);
-    if (id == _zip64ExtraId) {
-      if (size >= 16 && walk + 4 + 16 <= extraBytes.length) {
-        return data.getUint64(walk + 12, Endian.little);
-      }
-      return null;
-    }
-    walk += 4 + size;
+  final extra = _zip64Extra(data, 0, extraBytes.length);
+  if (extra == null || extra.length < 16 || extra.at + 16 > extraBytes.length) {
+    return null;
   }
-  return null;
+  return data.getUint64(extra.at + 8, Endian.little);
 }
 
 /// The entry length a central record names, following its ZIP64 extra
@@ -253,24 +261,18 @@ int _centralEntryLength(
   if (fixed != _zip32Max) {
     return fixed;
   }
-  var walk = extraStart;
+  // Fixed order: uncompressed size (when flagged), compressed size. This
+  // writer flags both together, but a foreign file may flag one.
   final end = extraStart + extraLength;
-  while (walk + 4 <= end) {
-    final id = data.getUint16(walk, Endian.little);
-    final size = data.getUint16(walk + 2, Endian.little);
-    if (id == _zip64ExtraId) {
-      // Fixed order: uncompressed size (when flagged), compressed size.
-      // This writer flags both together, but a foreign file may flag one.
-      var at = walk + 4;
-      if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
-        at += 8; // uncompressed size
-      }
-      if (at + 8 <= walk + 4 + size && at + 8 <= end) {
-        return data.getUint64(at, Endian.little);
-      }
-      break;
+  final extra = _zip64Extra(data, extraStart, end);
+  if (extra != null) {
+    var at = extra.at;
+    if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
+      at += 8; // uncompressed size
     }
-    walk += 4 + size;
+    if (at + 8 <= extra.at + extra.length && at + 8 <= end) {
+      return data.getUint64(at, Endian.little);
+    }
   }
   throw const FormatException(
     'Central record flags a ZIP64 size with '
