@@ -165,6 +165,27 @@ class CutFrameCompositeCache {
     return entry.image;
   }
 
+  /// The lookup both prepare paths share: the signature this (cut, frame,
+  /// quality) composites to, the index key that points at it, and the
+  /// cached image when one is already held (touched as used, and the index
+  /// repointed, exactly as a hit has always done).
+  ({
+    CutFrameCompositeSignature signature,
+    (CutId, int, PlaybackQuality) indexKey,
+    ui.Image? hit,
+  })
+  _lookup(Cut cut, int frameIndex, PlaybackQuality quality) {
+    final signature = _signatureFor(cut, frameIndex, quality);
+    final indexKey = (cut.id, frameIndex, quality);
+    final existing = _images[signature];
+    if (existing == null) {
+      return (signature: signature, indexKey: indexKey, hit: null);
+    }
+    _pointIndexAt(indexKey, signature);
+    existing.lastUsed = ++_useCounter;
+    return (signature: signature, indexKey: indexKey, hit: existing.image);
+  }
+
   /// Returns a valid composite, building it when missing or stale. Frames
   /// with no drawn content composite to a fully transparent image.
   Future<ui.Image> prepareComposite({
@@ -172,18 +193,14 @@ class CutFrameCompositeCache {
     required int frameIndex,
     required PlaybackQuality quality,
   }) async {
-    final signature = _signatureFor(cut, frameIndex, quality);
-    final indexKey = (cut.id, frameIndex, quality);
-
-    final existing = _images[signature];
-    if (existing != null) {
-      _pointIndexAt(indexKey, signature);
-      existing.lastUsed = ++_useCounter;
-      return existing.image;
+    final found = _lookup(cut, frameIndex, quality);
+    final hit = found.hit;
+    if (hit != null) {
+      return hit;
     }
 
-    final image = await _composeImage(cut, signature);
-    return _storeComposed(indexKey, signature, image!);
+    final image = await _composeImage(cut, found.signature);
+    return _storeComposed(found.indexKey, found.signature, image!);
   }
 
   /// [prepareComposite] that can stand down mid-build: [shouldAbort] is
@@ -198,17 +215,17 @@ class CutFrameCompositeCache {
     required PlaybackQuality quality,
     required bool Function() shouldAbort,
   }) async {
-    final signature = _signatureFor(cut, frameIndex, quality);
-    final indexKey = (cut.id, frameIndex, quality);
-
-    final existing = _images[signature];
-    if (existing != null) {
-      _pointIndexAt(indexKey, signature);
-      existing.lastUsed = ++_useCounter;
-      return existing.image;
+    final found = _lookup(cut, frameIndex, quality);
+    final hit = found.hit;
+    if (hit != null) {
+      return hit;
     }
 
-    final image = await _composeImage(cut, signature, shouldAbort: shouldAbort);
+    final image = await _composeImage(
+      cut,
+      found.signature,
+      shouldAbort: shouldAbort,
+    );
     if (image == null) {
       return null;
     }
@@ -218,7 +235,7 @@ class CutFrameCompositeCache {
       DeferredImageDisposer.instance.retire(image);
       return null;
     }
-    return _storeComposed(indexKey, signature, image);
+    return _storeComposed(found.indexKey, found.signature, image);
   }
 
   /// The store step both prepare paths share. The compose awaited, so a
