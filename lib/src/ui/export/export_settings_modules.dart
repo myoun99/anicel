@@ -26,23 +26,28 @@ class ExportAccordion extends StatelessWidget {
     super.key,
     required this.title,
     required this.summary,
-    required this.expanded,
-    required this.onToggle,
+    required this.expansion,
     required this.child,
-    this.resetEnabled,
-    this.onReset,
+    this.reset,
   });
 
   final String title;
   final String summary;
-  final bool expanded;
-  final VoidCallback onToggle;
+
+  /// Whether the module is open, and what opens or closes it — ONE value,
+  /// because they are answered by one state key and the dialog used to
+  /// write that key twice per accordion.
+  final ({bool expanded, VoidCallback onToggle}) expansion;
+
   final Widget child;
 
   /// Non-null shows the header Reset chip (disabled while the module sits
-  /// at its defaults — the v10 Reset grammar).
-  final bool? resetEnabled;
-  final VoidCallback? onReset;
+  /// at its defaults — the v10 Reset grammar). Enabled-ness and the action
+  /// travel together because neither means anything alone.
+  final ({bool enabled, VoidCallback onTap})? reset;
+
+  bool get expanded => expansion.expanded;
+  VoidCallback get onToggle => expansion.onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -81,8 +86,11 @@ class ExportAccordion extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (resetEnabled != null) ...[
-                      _ResetChip(enabled: resetEnabled!, onPressed: onReset),
+                    if (reset != null) ...[
+                      _ResetChip(
+                        enabled: reset!.enabled,
+                        onPressed: reset!.onTap,
+                      ),
                       const SizedBox(width: 6),
                     ],
                     Icon(

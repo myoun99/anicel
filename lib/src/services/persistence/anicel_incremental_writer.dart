@@ -280,6 +280,12 @@ int _centralEntryLength(
   );
 }
 
+/// The buffer a central directory is being read out of: two views of the
+/// SAME bytes and how far they go. The whole archive for the in-memory
+/// parse, the central directory alone for the streaming one — one thing
+/// either way, which is why it travels as one.
+typedef _CentralBlock = ({ByteData data, Uint8List bytes, int limit});
+
 /// One central-directory record at [cursor], and where the next one starts.
 ///
 /// ⛔BOUNDS FIRST, READS SECOND. A garbage length or offset behind a
@@ -288,21 +294,19 @@ int _centralEntryLength(
 /// `on FormatException` IS the recovery — and never as a RangeError that
 /// escapes them and refuses a salvageable file.
 ///
-/// [data] and [bytes] are two views of the SAME buffer: the whole archive
-/// for the in-memory parse, the central directory alone for the streaming
-/// one, with [cursor] and [limit] in that buffer's own coordinates.
-/// [fileLength] is the archive's full length either way, because a local
-/// header offset is always absolute. [localHeaderLengths] is the one thing
-/// the two parsers genuinely do differently: one already holds the whole
-/// file, the other seeks and reads four bytes.
-({AnicelZipEntry entry, int nextCursor}) _readCentralEntry({
-  required ByteData data,
-  required Uint8List bytes,
-  required int cursor,
-  required int limit,
+/// [cursor] is in [block]'s own coordinates; [fileLength] is the archive's
+/// full length either way, because a local header offset is always
+/// absolute. [localHeaderLengths] is the one thing the two parsers
+/// genuinely do differently: one already holds the whole file, the other
+/// seeks and reads four bytes.
+({AnicelZipEntry entry, int nextCursor}) _readCentralEntry(
+  _CentralBlock block,
+  int cursor, {
   required int fileLength,
   required int Function(int localOffset) localHeaderLengths,
 }) {
+  final data = block.data;
+  final limit = block.limit;
   if (cursor < 0 ||
       cursor + 46 > limit ||
       data.getUint32(cursor, Endian.little) != _centralSignature) {
@@ -328,7 +332,7 @@ int _centralEntryLength(
     extraLength,
   );
   final name = String.fromCharCodes(
-    bytes.sublist(cursor + 46, cursor + 46 + nameLength),
+    block.bytes.sublist(cursor + 46, cursor + 46 + nameLength),
   );
   // Local header: fixed 30 bytes + its own name/extra lengths.
   if (localOffset < 0 || localOffset + 30 > fileLength) {
@@ -378,10 +382,8 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
   var cursor = centralOffset;
   for (var i = 0; i < entryCount; i += 1) {
     final read = _readCentralEntry(
-      data: data,
-      bytes: bytes,
-      cursor: cursor,
-      limit: bytes.length,
+      (data: data, bytes: bytes, limit: bytes.length),
+      cursor,
       fileLength: bytes.length,
       localHeaderLengths: (localOffset) =>
           data.getUint16(localOffset + 26, Endian.little) +
@@ -444,10 +446,8 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
     var cursor = 0;
     for (var i = 0; i < entryCount; i += 1) {
       final read = _readCentralEntry(
-        data: data,
-        bytes: central,
-        cursor: cursor,
-        limit: central.length,
+        (data: data, bytes: central, limit: central.length),
+        cursor,
         fileLength: fileLength,
         localHeaderLengths: (localOffset) {
           raf.setPositionSync(localOffset + 26);
