@@ -674,6 +674,42 @@ class AnicelStreamedEntry {
   final int Function(Uint8List buffer, int position, int size) readInto;
 }
 
+/// Reads [entry] to its end in chunks and returns its CRC-32, handing
+/// every chunk to [onChunk] on the way past when one is given.
+///
+/// ⛔ONE WALK, TWO CALLERS. The append checksums BEFORE the file is
+/// touched — a source that turns out to be unreadable must not have
+/// truncated the archive to find that out — while the full write
+/// checksums WHILE writing and patches the header afterwards. The read,
+/// the short-read error and the chunk size are the same either way, and
+/// the CRC is updated before the chunk goes out on both.
+int _streamedEntryCrc(
+  AnicelStreamedEntry entry, {
+  void Function(Uint8List buffer, int read)? onChunk,
+}) {
+  var running = anicelCrc32Start;
+  final buffer = Uint8List(_streamChunkBytes);
+  var position = 0;
+  while (position < entry.length) {
+    final wanted = entry.length - position;
+    final read = entry.readInto(
+      buffer,
+      position,
+      wanted < buffer.length ? wanted : buffer.length,
+    );
+    if (read <= 0) {
+      throw StateError(
+        'media entry "${entry.name}" ended after $position of '
+        '${entry.length} bytes',
+      );
+    }
+    running = anicelCrc32Update(running, buffer, read);
+    onChunk?.call(buffer, read);
+    position += read;
+  }
+  return anicelCrc32Finish(running);
+}
+
 AnicelZipLayout appendAnicelEntries({
   required String path,
   required Map<String, Uint8List> newEntries,
@@ -720,26 +756,7 @@ AnicelZipLayout appendAnicelEntries({
   // must not have already truncated the archive to find that out.
   final streamedCrcs = <int>[];
   for (final entry in streamedEntries) {
-    var running = anicelCrc32Start;
-    final buffer = Uint8List(_streamChunkBytes);
-    var position = 0;
-    while (position < entry.length) {
-      final wanted = entry.length - position;
-      final read = entry.readInto(
-        buffer,
-        position,
-        wanted < buffer.length ? wanted : buffer.length,
-      );
-      if (read <= 0) {
-        throw StateError(
-          'media entry "${entry.name}" ended after $position of '
-          '${entry.length} bytes',
-        );
-      }
-      running = anicelCrc32Update(running, buffer, read);
-      position += read;
-    }
-    streamedCrcs.add(anicelCrc32Finish(running));
+    streamedCrcs.add(_streamedEntryCrc(entry));
   }
 
   var streamOffset = writeOffset;
@@ -868,27 +885,10 @@ AnicelZipLayout writeAnicelArchiveFile({
       raf.writeFromSync(placeholder);
       offset += placeholder.length;
 
-      var running = anicelCrc32Start;
-      final buffer = Uint8List(_streamChunkBytes);
-      var position = 0;
-      while (position < entry.length) {
-        final wanted = entry.length - position;
-        final read = entry.readInto(
-          buffer,
-          position,
-          wanted < buffer.length ? wanted : buffer.length,
-        );
-        if (read <= 0) {
-          throw StateError(
-            'media entry "${entry.name}" ended after $position of '
-            '${entry.length} bytes',
-          );
-        }
-        running = anicelCrc32Update(running, buffer, read);
-        raf.writeFromSync(buffer, 0, read);
-        position += read;
-      }
-      final crc = anicelCrc32Finish(running);
+      final crc = _streamedEntryCrc(
+        entry,
+        onChunk: (buffer, read) => raf.writeFromSync(buffer, 0, read),
+      );
       final resume = raf.positionSync();
       raf.setPositionSync(headerOffset + 14);
       raf.writeFromSync(_uint32(crc));
