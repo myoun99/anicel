@@ -2,14 +2,19 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 
-/// The layer whose row sits [rowDelta] display rows away from
-/// [sourceLayerId]'s cells row — the block-move drop target. Lane rows
-/// resolve to their owning layer; out-of-range deltas clamp to the ends.
-LayerId? resolveBlockMoveTargetLayer({
-  required List<TimelineDisplayRow> rows,
-  required LayerId sourceLayerId,
-  required int rowDelta,
-}) {
+/// The row [rowDelta] display rows from [sourceLayerId]'s CELLS row,
+/// clamped to the ends — the walk BOTH resolvers make before they answer
+/// their own question. Null when the list is empty or the source row is
+/// not on screen.
+///
+/// ⚠️The two verbs stay two functions (see [resolveSelectionSpanHead]'s
+/// head): a mode flag would make one function answer both "which row" and
+/// "what may a drag stop on". Only the walk is shared.
+TimelineDisplayRow? _rowAtDelta(
+  List<TimelineDisplayRow> rows,
+  LayerId sourceLayerId,
+  int rowDelta,
+) {
   if (rows.isEmpty) {
     return null;
   }
@@ -23,9 +28,17 @@ LayerId? resolveBlockMoveTargetLayer({
   if (sourceIndex < 0) {
     return null;
   }
-  final targetIndex = (sourceIndex + rowDelta).clamp(0, rows.length - 1);
-  return rows[targetIndex].layer.id;
+  return rows[(sourceIndex + rowDelta).clamp(0, rows.length - 1)];
 }
+
+/// The layer whose row sits [rowDelta] display rows away from
+/// [sourceLayerId]'s cells row — the block-move drop target. Lane rows
+/// resolve to their owning layer; out-of-range deltas clamp to the ends.
+LayerId? resolveBlockMoveTargetLayer({
+  required List<TimelineDisplayRow> rows,
+  required LayerId sourceLayerId,
+  required int rowDelta,
+}) => _rowAtDelta(rows, sourceLayerId, rowDelta)?.layer.id;
 
 /// The display row a cell SELECT drag has reached: its layer, plus the
 /// lane id when the pointer is over a property-lane row (R27 #14 —
@@ -42,20 +55,10 @@ LayerId? resolveBlockMoveTargetLayer({
   required LayerId sourceLayerId,
   required int rowDelta,
 }) {
-  if (rows.isEmpty) {
+  final target = _rowAtDelta(rows, sourceLayerId, rowDelta);
+  if (target == null) {
     return null;
   }
-  var sourceIndex = -1;
-  for (var index = 0; index < rows.length; index += 1) {
-    if (!rows[index].isLane && rows[index].layer.id == sourceLayerId) {
-      sourceIndex = index;
-      break;
-    }
-  }
-  if (sourceIndex < 0) {
-    return null;
-  }
-  final target = rows[(sourceIndex + rowDelta).clamp(0, rows.length - 1)];
   return (layerId: target.layer.id, laneId: target.lane?.laneId);
 }
 
