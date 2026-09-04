@@ -5,6 +5,7 @@ import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
+import '../../services/audio/audio_mixer_reference.dart' show envelopeGainAt;
 import 'audio_playback_schedule.dart';
 import 'canvas_playback_controller.dart';
 
@@ -249,28 +250,15 @@ class AudioPlaybackSync {
   static double _rampShape(double ramp, AudioFadeCurve curve) =>
       curve == AudioFadeCurve.equalPower ? math.sqrt(ramp) : ramp;
 
-  /// Frame-domain twin of the mixer's envelope: linear between keys, held
-  /// past the ends.
-  static double _envelopeGainAt(List<AudioVolumeKey> keys, int position) {
-    if (position <= keys.first.frame) {
-      return keys.first.gain;
-    }
-    if (position >= keys.last.frame) {
-      return keys.last.gain;
-    }
-    for (var index = 0; index < keys.length - 1; index += 1) {
-      final a = keys[index];
-      final b = keys[index + 1];
-      if (position < b.frame) {
-        final span = (b.frame - a.frame).toDouble();
-        if (span <= 0) {
-          return b.gain;
-        }
-        return a.gain + (b.gain - a.gain) * ((position - a.frame) / span);
-      }
-    }
-    return keys.last.gain;
-  }
+  /// Frame-domain twin of the mixer's envelope: [envelopeGainAt] with the
+  /// frame as the position, so both domains read the same law.
+  static double _envelopeGainAt(List<AudioVolumeKey> keys, int position) =>
+      envelopeGainAt(
+        keys,
+        position,
+        at: (key) => key.frame,
+        gain: (key) => key.gain,
+      );
 
   /// Sends the ramp to every playing clip whose volume moved this tick.
   void _updateVolumes(int frame) {

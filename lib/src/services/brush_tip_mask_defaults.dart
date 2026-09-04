@@ -37,6 +37,13 @@ const int _maskSize = 64;
 
 /// Grainy disc: a soft round footprint whose interior is modulated by
 /// noise, leaving chalk-like speckle and ragged edges.
+/// ⚠️[_generateChalkMask] and [_generateGrainMask] walk the same seeded
+/// disc — the clone scan pairs them, and the audit read both (2026-09-04).
+/// They are HELD, not merged: only two tips share it (the bristle runs a
+/// per-row pre-pass, the sponge walks blobs, the weave has no noise at
+/// all), and a per-pixel callback for two callers buys a closure call per
+/// pixel and one more indirection to read through. A THIRD speckled disc
+/// is what makes this worth a `_seededDiscMask(id, seed, valueAt)`.
 BrushTipMask _generateChalkMask() {
   final alpha = Uint8List(_maskSize * _maskSize);
   var seed = 0x9E3779B9;

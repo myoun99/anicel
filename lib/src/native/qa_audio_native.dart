@@ -303,6 +303,13 @@ final class QaAudioNative {
     }
   }
 
+  /// ⚠️This and [busToInt16] keep the same allocate/call/free skeleton and
+  /// the clone scan pairs them (audit 2026-09-04, read and HELD). A generic
+  /// over the output pointer cannot work: `asTypedList` has no common
+  /// interface across `Pointer<Float>` and `Pointer<Int16>`, so the shared
+  /// version would need a read callback per type — more indirection than
+  /// the six lines it saves, for two callers. A THIRD output stage is what
+  /// changes that.
   /// Output stage: the mix bus to 32-bit float device samples.
   Float32List busToFloat(Float64List busSamples) {
     final result = Float32List(busSamples.length);

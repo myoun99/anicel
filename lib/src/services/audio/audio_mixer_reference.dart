@@ -103,32 +103,58 @@ double audioFadeRamp(double ramp, int curve) {
   return curve == 1 ? math.sqrt(clamped) : clamped;
 }
 
-/// The envelope's value at [position] (clip-local samples) — mirrors the C
-/// `qa_audio_envelope_at` expression for expression.
-double audioEnvelopeAt(List<AudioEnvelopePoint> points, int position) {
-  if (points.isEmpty) {
+/// The envelope's value at [position]: linear between keys, held past
+/// either end, 1.0 when there are none.
+///
+/// ⛔ONE LAW, TWO DOMAINS. The mixer asks in clip-local SAMPLES and the
+/// playback sync asks in FRAMES, so the position comes through [at] rather
+/// than through a point type. The twin in `audio_playback_sync.dart` said
+/// "frame-domain twin of the mixer's envelope" in its own doc and drifted
+/// anyway — one guarded a zero span with `<= 0.0` and the other with
+/// `<= 0`.
+///
+/// ⚠️The arithmetic is UNCHANGED from the C `qa_audio_envelope_at`, which
+/// [audioEnvelopeAt] mirrors expression for expression: the accessors move
+/// where the numbers come from, never the order they are combined in.
+double envelopeGainAt<T>(
+  List<T> keys,
+  int position, {
+  required int Function(T key) at,
+  required double Function(T key) gain,
+}) {
+  if (keys.isEmpty) {
     return 1.0;
   }
-  if (position <= points.first.sample) {
-    return points.first.gain;
+  if (position <= at(keys.first)) {
+    return gain(keys.first);
   }
-  if (position >= points.last.sample) {
-    return points.last.gain;
+  if (position >= at(keys.last)) {
+    return gain(keys.last);
   }
-  for (var index = 0; index < points.length - 1; index += 1) {
-    final a = points[index];
-    final b = points[index + 1];
-    if (position < b.sample) {
-      final span = (b.sample - a.sample).toDouble();
+  for (var index = 0; index < keys.length - 1; index += 1) {
+    final a = keys[index];
+    final b = keys[index + 1];
+    if (position < at(b)) {
+      final span = (at(b) - at(a)).toDouble();
       if (span <= 0.0) {
-        return b.gain;
+        return gain(b);
       }
-      final t = (position - a.sample) / span;
-      return a.gain + (b.gain - a.gain) * t;
+      final t = (position - at(a)) / span;
+      return gain(a) + (gain(b) - gain(a)) * t;
     }
   }
-  return points.last.gain;
+  return gain(keys.last);
 }
+
+/// The envelope's value at [position] (clip-local samples) — mirrors the C
+/// `qa_audio_envelope_at` expression for expression.
+double audioEnvelopeAt(List<AudioEnvelopePoint> points, int position) =>
+    envelopeGainAt(
+      points,
+      position,
+      at: (point) => point.sample,
+      gain: (point) => point.gain,
+    );
 
 /// A block of decoded samples, interleaved by channel — mirrors the C
 /// `qa_audio_source`.
