@@ -268,6 +268,53 @@ bool anicelSnapshotIsOverlay(String path) {
 class AnicelFileService {
   const AnicelFileService();
 
+  /// The main store and its aux stores, their snapshots, and those
+  /// snapshots merged.
+  ///
+  /// ⛔THE AUX STORES RIDE THE SAME ARCHIVE (the conte sheet ink, R5):
+  /// their keys live in their own namespace, so the snapshots merge
+  /// without collision and each store adopts back exactly its own refs.
+  /// The save and the recovery overlay both need that, and only one of
+  /// them used to say why. The per-store snapshots come back too, because
+  /// adopting back is per store — the merge is for writing, the list is
+  /// for handing each store its own.
+  static ({
+    List<BrushFrameStore> stores,
+    List<
+      ({
+        Map<BrushFrameKey, BitmapSurface> hot,
+        Map<BrushFrameKey, AnicelCelBlob> cold,
+        Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
+        Map<BrushFrameKey, int> dirtyTicks,
+      })
+    >
+    snapshots,
+    ({
+      Map<BrushFrameKey, BitmapSurface> hot,
+      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
+    })
+    baked,
+  })
+  _bakedAcrossStores(
+    BrushFrameStore brushFrameStore,
+    List<BrushFrameStore> auxCelStores,
+  ) {
+    final stores = [brushFrameStore, ...auxCelStores];
+    final snapshots = [
+      for (final store in stores) store.bakedSnapshotForSave(),
+    ];
+    return (
+      stores: stores,
+      snapshots: snapshots,
+      baked: (
+        hot: {for (final s in snapshots) ...s.hot},
+        cold: {for (final s in snapshots) ...s.cold},
+        fileRefs: {for (final s in snapshots) ...s.fileRefs},
+      ),
+    );
+  }
+
   /// A full rewrite is forced when shadowed/removed garbage exceeds this
   /// fraction of the file.
   static const double _compactionGarbageRatio = 0.5;
@@ -344,15 +391,9 @@ class AnicelFileService {
     /// out until a drive is remounted and relink picks the wrong picture.
     required Map<String, Object?> mediaCrcs,
   }) async {
-    final stores = [brushFrameStore, ...auxCelStores];
-    final snapshots = [
-      for (final store in stores) store.bakedSnapshotForSave(),
-    ];
-    final baked = (
-      hot: {for (final s in snapshots) ...s.hot},
-      cold: {for (final s in snapshots) ...s.cold},
-      fileRefs: {for (final s in snapshots) ...s.fileRefs},
-    );
+    final saveSnapshot = _bakedAcrossStores(brushFrameStore, auxCelStores);
+    final stores = saveSnapshot.stores;
+    final baked = saveSnapshot.baked;
     final dirty = <BrushFrameKey>{
       for (final store in stores) ...store.dirtyCelKeysSinceSave,
     };
@@ -530,15 +571,10 @@ class AnicelFileService {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
     // collision and each store adopts back exactly its own refs.
-    final stores = [brushFrameStore, ...auxCelStores];
-    final snapshots = [
-      for (final store in stores) store.bakedSnapshotForSave(),
-    ];
-    final baked = (
-      hot: {for (final s in snapshots) ...s.hot},
-      cold: {for (final s in snapshots) ...s.cold},
-      fileRefs: {for (final s in snapshots) ...s.fileRefs},
-    );
+    final saveSnapshot = _bakedAcrossStores(brushFrameStore, auxCelStores);
+    final stores = saveSnapshot.stores;
+    final snapshots = saveSnapshot.snapshots;
+    final baked = saveSnapshot.baked;
     final dirtySets = [for (final store in stores) store.dirtyCelKeysSinceSave];
     final dirty = <BrushFrameKey>{for (final set in dirtySets) ...set};
     final saveDirectory = _parentDirectory(filePath);
