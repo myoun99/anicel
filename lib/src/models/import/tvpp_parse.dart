@@ -1,4 +1,4 @@
-import 'tvpp_camera_bake.dart' show tvppCameraDataValues;
+import 'tvpp_camera_data_values.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -322,7 +322,8 @@ bool _isFourCc(Uint8List bytes, int at) {
   }
   for (var k = 0; k < 4; k++) {
     final c = bytes[at + k];
-    final ok = (c >= 0x41 && c <= 0x5a) ||
+    final ok =
+        (c >= 0x41 && c <= 0x5a) ||
         (c >= 0x61 && c <= 0x7a) ||
         (c >= 0x30 && c <= 0x39);
     if (!ok) {
@@ -366,11 +367,11 @@ String _nameFrom(Uint8List bytes, int at, int length) {
 }
 
 TvpEdgeBehavior _edgeBehavior(int wire) => switch (wire) {
-      1 => TvpEdgeBehavior.repeat,
-      2 => TvpEdgeBehavior.pingPong,
-      3 => TvpEdgeBehavior.hold,
-      _ => TvpEdgeBehavior.none,
-    };
+  1 => TvpEdgeBehavior.repeat,
+  2 => TvpEdgeBehavior.pingPong,
+  3 => TvpEdgeBehavior.hold,
+  _ => TvpEdgeBehavior.none,
+};
 
 // ---------------------------------------------------------------------------
 // Parse
@@ -410,9 +411,7 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
     final start = clipStarts[c];
     final end = c + 1 < clipStarts.length ? clipStarts[c + 1] : bytes.length;
     final nameFrom = c == 0 ? 0 : clipStarts[c - 1];
-    clips.add(
-      _parseClip(bytes, start, end, nameFrom, c, warnings),
-    );
+    clips.add(_parseClip(bytes, start, end, nameFrom, c, warnings));
   }
   return TvppParseResult(
     clips: clips,
@@ -492,8 +491,11 @@ String _clipName(Uint8List bytes, int from, int until, int clipIndex) {
   final chars = <int>[];
   for (var i = 0; i < n && valueAt + 2 + i * 2 + 2 <= until; i++) {
     chars.add(
-      ByteData.sublistView(bytes, valueAt + 2 + i * 2, valueAt + 4 + i * 2)
-          .getUint16(0),
+      ByteData.sublistView(
+        bytes,
+        valueAt + 2 + i * 2,
+        valueAt + 4 + i * 2,
+      ).getUint16(0),
     );
   }
   final name = String.fromCharCodes(chars);
@@ -532,8 +534,9 @@ TvppClip _parseClip(
       return;
     }
     final v = header != null ? ByteData.sublistView(header!) : null;
-    int field(int index) =>
-        v != null && header!.length >= (index + 1) * 4 ? v.getUint32(index * 4) : 0;
+    int field(int index) => v != null && header!.length >= (index + 1) * 4
+        ? v.getUint32(index * 4)
+        : 0;
     layers.add(
       TvppLayer(
         kind: kind,
@@ -568,9 +571,7 @@ TvppClip _parseClip(
   var closed = false;
   while (p + 8 <= end && !closed) {
     if (!_isFourCc(bytes, p)) {
-      warnings.add(
-        '클립 ${clipIndex + 1}: @$p 에서 청크 열이 끊겼다 — 이후 데이터는 버린다.',
-      );
+      warnings.add('클립 ${clipIndex + 1}: @$p 에서 청크 열이 끊겼다 — 이후 데이터는 버린다.');
       break;
     }
     final chunk = String.fromCharCodes(bytes, p, p + 4);

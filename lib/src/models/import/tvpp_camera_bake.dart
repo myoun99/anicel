@@ -1,3 +1,4 @@
+import 'tvpp_camera_data_values.dart';
 import 'dart:math' as math;
 
 import 'tvp_import_model.dart';
@@ -49,9 +50,7 @@ List<TvpCameraPose> bakeTvppCamera(
   final nominal = points.last.instant - first;
   final poses = <TvpCameraPose>[];
   for (var frame = 0; frame < frameCount; frame++) {
-    final p = nominal <= 0
-        ? 0.0
-        : (frame - first) * nominal / (nominal + 1);
+    final p = nominal <= 0 ? 0.0 : (frame - first) * nominal / (nominal + 1);
     final (x, y) = _positionAt(points, channels, p);
     poses.add(
       TvpCameraPose(
@@ -203,7 +202,10 @@ class TvppCameraProfile {
 
 double _bez(double u, double c0, double c1, double c2, double c3) {
   final v = 1 - u;
-  return v * v * v * c0 + 3 * v * v * u * c1 + 3 * v * u * u * c2 + u * u * u * c3;
+  return v * v * v * c0 +
+      3 * v * v * u * c1 +
+      3 * v * u * u * c2 +
+      u * u * u * c3;
 }
 
 class TvppCameraProfilePoint {
@@ -224,23 +226,6 @@ class TvppCameraProfilePoint {
   final double bezierAfterY;
 }
 
-/// The `[cameradata]` block's `key=value` lines as a map.
-///
-/// ⛔TWO READERS PARSED IT. The profile baker wants the mpoint channels
-/// and the clip parser wants the camera points, and both start from the
-/// same flat map — an `=` at index 0 is not a key, and everything after
-/// the FIRST `=` is the value (a value may contain one).
-Map<String, String> tvppCameraDataValues(String cameraDataText) {
-  final values = <String, String>{};
-  for (final line in cameraDataText.split('\n')) {
-    final eq = line.indexOf('=');
-    if (eq > 0) {
-      values[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
-    }
-  }
-  return values;
-}
-
 /// Parses every key's four channel profiles from the raw `[cameradata]`
 /// text (kept on [TvppClip.cameraDataText]).
 TvppCameraChannels parseTvppCameraProfiles(String cameraDataText) {
@@ -253,9 +238,11 @@ TvppCameraChannels parseTvppCameraProfiles(String cameraDataText) {
     final profiles = <TvppCameraProfile>[];
     for (var n = 0; values.containsKey('mpoints-$n-x'); n++) {
       final pts = <TvppCameraProfilePoint>[];
-      for (var m = 0;
-          values.containsKey('mpoints-$n-${name}profile-point-$m-x');
-          m++) {
+      for (
+        var m = 0;
+        values.containsKey('mpoints-$n-${name}profile-point-$m-x');
+        m++
+      ) {
         final k = 'mpoints-$n-${name}profile-point-$m';
         pts.add(
           TvppCameraProfilePoint(
@@ -317,8 +304,7 @@ List<int> _keyedIndices(List<TvppCameraPoint> points, int bit) {
     return null;
   }
   var s = 0;
-  while (s + 2 < keyed.length &&
-      points[keyed[s + 1]].instant - first <= p) {
+  while (s + 2 < keyed.length && points[keyed[s + 1]].instant - first <= p) {
     s++;
   }
   final ai = keyed[s];
@@ -329,8 +315,9 @@ List<int> _keyedIndices(List<TvppCameraPoint> points, int bit) {
     return null;
   }
   final t = (p - a) / (b - a);
-  final eased =
-      bi < profiles.length ? profiles[bi].progressAt(t) : t.clamp(0.0, 1.0);
+  final eased = bi < profiles.length
+      ? profiles[bi].progressAt(t)
+      : t.clamp(0.0, 1.0);
   return (ai, bi, eased);
 }
 
@@ -379,7 +366,8 @@ double _scalarAt(
 /// straight line and this is a plain lerp (feeding the fraction in as
 /// the bezier parameter would add a phantom ease on top of the profile).
 (double, double) _alongPath(TvppCameraPoint a, TvppCameraPoint b, double s) {
-  final straight = a.bezierAfterX == 0 &&
+  final straight =
+      a.bezierAfterX == 0 &&
       a.bezierAfterY == 0 &&
       b.bezierBeforeX == 0 &&
       b.bezierBeforeY == 0;
