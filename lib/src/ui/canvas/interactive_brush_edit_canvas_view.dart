@@ -56,6 +56,23 @@ part 'brush_edit/brush_edit_settling.dart';
 part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
 
+/// The inclusive tile-coordinate box [bounds] touches on a [tileSize] grid.
+///
+/// ⛔FLOORDIV, NOT `~/`. Stroke bounds reach NEGATIVE (pasteboard) space,
+/// and truncation maps pixel -1 to tile 0 — which reads the wrong tile at
+/// the left and top walls. Both settling walks below derived this by hand,
+/// and a walk that lost the floorDiv would hold the wrong tiles at exactly
+/// the edge where a stroke leaves the canvas.
+({int minX, int maxX, int minY, int maxY}) _tileBoxFor(
+  DirtyRegion bounds,
+  int tileSize,
+) => (
+  minX: floorDiv(bounds.left, tileSize),
+  maxX: floorDiv(bounds.rightExclusive - 1, tileSize),
+  minY: floorDiv(bounds.top, tileSize),
+  maxY: floorDiv(bounds.bottomExclusive - 1, tileSize),
+);
+
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
 /// handoff, so a just-committed stroke never trades its overlay for stale
@@ -68,18 +85,13 @@ List<BitmapTile> settlingTilesForBounds({
   if (bounds == null) {
     return surface.tiles.values.toList();
   }
-  final tileSize = surface.tileSize;
-  // floorDiv: stroke bounds reach negative (pasteboard) space.
-  final minX = floorDiv(bounds.left, tileSize);
-  final maxX = floorDiv(bounds.rightExclusive - 1, tileSize);
-  final minY = floorDiv(bounds.top, tileSize);
-  final maxY = floorDiv(bounds.bottomExclusive - 1, tileSize);
+  final box = _tileBoxFor(bounds, surface.tileSize);
   return [
     for (final tile in surface.tiles.values)
-      if (tile.coord.x >= minX &&
-          tile.coord.x <= maxX &&
-          tile.coord.y >= minY &&
-          tile.coord.y <= maxY)
+      if (tile.coord.x >= box.minX &&
+          tile.coord.x <= box.maxX &&
+          tile.coord.y >= box.minY &&
+          tile.coord.y <= box.maxY)
         tile,
   ];
 }
@@ -104,16 +116,11 @@ Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
   if (bounds == null) {
     return {for (final tile in surface.tiles.values) tile.coord: tile};
   }
-  final tileSize = surface.tileSize;
-  // floorDiv: stroke bounds reach negative (pasteboard) space.
-  final minX = floorDiv(bounds.left, tileSize);
-  final maxX = floorDiv(bounds.rightExclusive - 1, tileSize);
-  final minY = floorDiv(bounds.top, tileSize);
-  final maxY = floorDiv(bounds.bottomExclusive - 1, tileSize);
+  final box = _tileBoxFor(bounds, surface.tileSize);
   final tiles = surface.tiles;
   return {
-    for (var y = minY; y <= maxY; y += 1)
-      for (var x = minX; x <= maxX; x += 1)
+    for (var y = box.minY; y <= box.maxY; y += 1)
+      for (var x = box.minX; x <= box.maxX; x += 1)
         TileCoord(x: x, y: y): tiles[TileCoord(x: x, y: y)],
   };
 }
