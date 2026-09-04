@@ -2790,20 +2790,16 @@ class ExportDialogState extends State<ExportDialog> {
           ),
         ),
       if (spec.format.isStill)
-        ExportAccordion(
-          title: AppText.strings.exNaming,
+        _namingAccordion(
           summary: ExportSequenceNamingModule.summarize(
             spec.naming,
             spec.format.stillFormat.fileExtension,
           ),
-          expansion: _expansion('naming'),
-          reset: (
-            enabled: spec.naming != const ExportSequenceNaming(),
-            onTap: () {
-              _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
-              _namingBaseController.text = 'frame';
-            },
-          ),
+          isDefault: spec.naming == const ExportSequenceNaming(),
+          onReset: () {
+            _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
+            _namingBaseController.text = 'frame';
+          },
           child: ExportSequenceNamingModule(
             naming: spec.naming,
             enabled: !_isExporting,
@@ -3266,17 +3262,13 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
         ),
       ),
-      ExportAccordion(
-        title: AppText.strings.exNaming,
+      _namingAccordion(
         summary: ExportCelNamingModule.summarize(spec.naming),
-        expansion: _expansion('naming'),
-        reset: (
-          enabled: spec.naming != const ExportCelNaming(),
-          onTap: () {
-            _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
-            _celSuffixController.text = '';
-          },
-        ),
+        isDefault: spec.naming == const ExportCelNaming(),
+        onReset: () {
+          _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
+          _celSuffixController.text = '';
+        },
         child: ExportCelNamingModule(
           naming: spec.naming,
           enabled: !_isExporting,
@@ -3354,25 +3346,12 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ],
             ),
-            if (spec.format == ExportTimesheetFormat.sheetImage) ...[
-              const SizedBox(height: 6),
-              ExportModuleRow(
-                label: AppText.strings.brScale,
-                child: Wrap(
-                  spacing: 5,
-                  children: [
-                    for (final scale in const [1, 2, 3, 4])
-                      _chip(
-                        keyValue: 'export-tsscale-$scale',
-                        label: '${scale}x',
-                        selected: spec.sheetScale == scale,
-                        onPick: () =>
-                            _updateSpec(spec.copyWith(sheetScale: scale)),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+            ..._sheetScaleRow(
+              shown: spec.format == ExportTimesheetFormat.sheetImage,
+              keyPrefix: 'export-tsscale',
+              scale: spec.sheetScale,
+              onPick: (step) => _updateSpec(spec.copyWith(sheetScale: step)),
+            ),
             const SizedBox(height: 5),
             exportModuleNote(
               context,
@@ -3434,25 +3413,12 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ],
             ),
-            if (spec.format == ExportConteFormat.pageImage) ...[
-              const SizedBox(height: 6),
-              ExportModuleRow(
-                label: AppText.strings.brScale,
-                child: Wrap(
-                  spacing: 5,
-                  children: [
-                    for (final scale in const [1, 2, 3, 4])
-                      _chip(
-                        keyValue: 'export-contescale-$scale',
-                        label: '${scale}x',
-                        selected: spec.sheetScale == scale,
-                        onPick: () =>
-                            _updateSpec(spec.copyWith(sheetScale: scale)),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+            ..._sheetScaleRow(
+              shown: spec.format == ExportConteFormat.pageImage,
+              keyPrefix: 'export-contescale',
+              scale: spec.sheetScale,
+              onPick: (step) => _updateSpec(spec.copyWith(sheetScale: step)),
+            ),
             const SizedBox(height: 5),
             exportModuleNote(
               context,
@@ -3468,6 +3434,59 @@ class ExportDialogState extends State<ExportDialog> {
       ),
     ];
   }
+
+  /// The scale row a sheet-image export offers, or nothing while the
+  /// picked format does not rasterize.
+  ///
+  /// ⛔ONE SCALE ROW. The timesheet and the conte each wrote it out — the
+  /// same four scales, the same label, the same reserved gap — so a fifth
+  /// scale, or a changed step, reached one export and not the other.
+  List<Widget> _sheetScaleRow({
+    required bool shown,
+    required String keyPrefix,
+    required int scale,
+    required void Function(int scale) onPick,
+  }) => [
+    if (shown) ...[
+      const SizedBox(height: 6),
+      ExportModuleRow(
+        label: AppText.strings.brScale,
+        child: Wrap(
+          spacing: 5,
+          children: [
+            for (final step in const [1, 2, 3, 4])
+              _chip(
+                keyValue: '$keyPrefix-$step',
+                label: '${step}x',
+                selected: scale == step,
+                onPick: () => onPick(step),
+              ),
+          ],
+        ),
+      ),
+    ],
+  ];
+
+  /// The naming accordion an export tab offers: the same title, the same
+  /// `naming` fold key, and a reset that puts BOTH the spec field and its
+  /// text controller back.
+  ///
+  /// ⛔THE RESET IS THE PART THAT DRIFTS. Each tab wrote this out, and the
+  /// reset has two halves — the spec's default and the controller's text.
+  /// A tab that reset one and not the other shows a field the export no
+  /// longer uses, which is the setting that lies.
+  ExportAccordion _namingAccordion({
+    required String summary,
+    required bool isDefault,
+    required VoidCallback onReset,
+    required Widget child,
+  }) => ExportAccordion(
+    title: AppText.strings.exNaming,
+    summary: summary,
+    expansion: _expansion('naming'),
+    reset: (enabled: !isDefault, onTap: onReset),
+    child: child,
+  );
 
   List<Widget> _envelopeModules() {
     final spec = _specs.envelope;
