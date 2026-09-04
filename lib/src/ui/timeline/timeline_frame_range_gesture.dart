@@ -418,7 +418,12 @@ class _TimelineFrameRangeGestureLayerState
     }
   }
 
-  void _endDrag() {
+  void _endDrag() => _finishDrag(widget.callbacks.onMoveEnd);
+
+  /// ⛔END AND CANCEL DIFFER BY ONE CALLBACK. Both clear the mode first —
+  /// the rebuild below must not see a mode the drag has left — and both
+  /// hand the grip back.
+  void _finishDrag(VoidCallback onMoveFinished) {
     final mode = _mode;
     _mode = _RangeDragMode.none;
     reportRangeDragFinished(
@@ -426,25 +431,13 @@ class _TimelineFrameRangeGestureLayerState
       moving: mode == _RangeDragMode.move,
       onMoveFinished: () {
         setState(() {});
-        widget.callbacks.onMoveEnd();
+        onMoveFinished();
       },
       releaseGrip: () => widget.callbacks.onGripReleased?.call(widget.row),
     );
   }
 
-  void _cancelDrag() {
-    final mode = _mode;
-    _mode = _RangeDragMode.none;
-    reportRangeDragFinished(
-      dragging: mode != _RangeDragMode.none,
-      moving: mode == _RangeDragMode.move,
-      onMoveFinished: () {
-        setState(() {});
-        widget.callbacks.onMoveCancel();
-      },
-      releaseGrip: () => widget.callbacks.onGripReleased?.call(widget.row),
-    );
-  }
+  void _cancelDrag() => _finishDrag(widget.callbacks.onMoveCancel);
 
   @override
   void dispose() {
@@ -807,31 +800,23 @@ class _TimelineLaneRangeGestureLayerState
     }
   }
 
-  void _endDrag() {
+  void _endDrag() => _finishDrag(widget.callbacks.onMoveEnd);
+
+  /// ⛔END AND CANCEL DIFFER BY ONE CALLBACK. Both clear the mode first —
+  /// a listener that rebuilds must not see a mode the drag has left — and
+  /// both hand the grip back.
+  void _finishDrag(VoidCallback onMoveFinished) {
     final mode = _mode;
     _mode = _RangeDragMode.none;
     reportRangeDragFinished(
       dragging: mode != _RangeDragMode.none,
       moving: mode == _RangeDragMode.move,
-      onMoveFinished: () {
-        widget.callbacks.onMoveEnd();
-      },
+      onMoveFinished: onMoveFinished,
       releaseGrip: () => widget.callbacks.onGripReleased?.call(_rowAddress),
     );
   }
 
-  void _cancelDrag() {
-    final mode = _mode;
-    _mode = _RangeDragMode.none;
-    reportRangeDragFinished(
-      dragging: mode != _RangeDragMode.none,
-      moving: mode == _RangeDragMode.move,
-      onMoveFinished: () {
-        widget.callbacks.onMoveCancel();
-      },
-      releaseGrip: () => widget.callbacks.onGripReleased?.call(_rowAddress),
-    );
-  }
+  void _cancelDrag() => _finishDrag(widget.callbacks.onMoveCancel);
 
   @override
   void dispose() {
