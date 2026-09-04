@@ -19,6 +19,34 @@ import '../models/track_id.dart';
 /// mutation in `ProjectRepository`. It is deliberately not a general optics /
 /// lens library — just the handful of traversals this project needs.
 
+/// One step of every walk below: [items] with the single element whose id
+/// is [id] replaced by [update], and [onFound] called when it was there.
+///
+/// ⛔SEVEN PLACES WROTE THIS OUT — a track, a cut, two layer lists, the
+/// transition row and frames in two places — and each carried its own
+/// `found = true`. A step that forgets to flag returns a REBUILT project
+/// that reports "nothing matched", so the caller throws over an edit that
+/// actually landed. The flag and the replacement are one step here, which
+/// is the only way they cannot come apart.
+List<T> _replacingOne<T, I>(
+  Iterable<T> items,
+  I id,
+  I Function(T item) idOf,
+  T Function(T item) update,
+  void Function() onFound,
+) {
+  final out = <T>[];
+  for (final item in items) {
+    if (idOf(item) != id) {
+      out.add(item);
+      continue;
+    }
+    onFound();
+    out.add(update(item));
+  }
+  return out;
+}
+
 /// Replaces the track with [trackId] via [update]. Returns `null` if no track
 /// matched.
 Project? updateTrackById(
@@ -27,15 +55,13 @@ Project? updateTrackById(
   Track Function(Track track) update,
 ) {
   var found = false;
-  final tracks = project.tracks
-      .map((track) {
-        if (track.id != trackId) {
-          return track;
-        }
-        found = true;
-        return update(track);
-      })
-      .toList(growable: false);
+  final tracks = _replacingOne(
+    project.tracks,
+    trackId,
+    (track) => track.id,
+    update,
+    () => found = true,
+  );
   return found ? project.copyWith(tracks: tracks) : null;
 }
 
@@ -47,41 +73,19 @@ Project? updateCutAnywhere(
   Cut Function(Cut cut) update,
 ) {
   var found = false;
-  final tracks = project.tracks
-      .map((track) {
-        final cuts = track.cuts
-            .map((cut) {
-              if (cut.id != cutId) {
-                return cut;
-              }
-              found = true;
-              return update(cut);
-            })
-            .toList(growable: false);
-        return track.copyWith(cuts: cuts);
-      })
-      .toList(growable: false);
+  final tracks = [
+    for (final track in project.tracks)
+      track.copyWith(
+        cuts: _replacingOne(
+          track.cuts,
+          cutId,
+          (cut) => cut.id,
+          update,
+          () => found = true,
+        ),
+      ),
+  ];
   return found ? project.copyWith(tracks: tracks) : null;
-}
-
-/// Replaces the layer matching [layerId] within [cut] via [update]. Returns
-/// `null` if the cut has no such layer.
-Cut? updateLayerInCut(
-  Cut cut,
-  LayerId layerId,
-  Layer Function(Layer layer) update,
-) {
-  var found = false;
-  final layers = cut.layers
-      .map((layer) {
-        if (layer.id != layerId) {
-          return layer;
-        }
-        found = true;
-        return update(layer);
-      })
-      .toList(growable: false);
-  return found ? cut.copyWith(layers: layers) : null;
 }
 
 /// Replaces the first layer matching [layerId] — searching every cut AND
@@ -95,47 +99,24 @@ Project? updateLayerAnywhere(
   Layer Function(Layer layer) update,
 ) {
   var found = false;
-  final tracks = project.tracks
-      .map((track) {
-        final cuts = track.cuts
-            .map((cut) {
-              final layers = cut.layers
-                  .map((layer) {
-                    if (layer.id != layerId) {
-                      return layer;
-                    }
-                    found = true;
-                    return update(layer);
-                  })
-                  .toList(growable: false);
-              return cut.copyWith(layers: layers);
-            })
-            .toList(growable: false);
-        final seLayers = track.seLayers
-            .map((layer) {
-              if (layer.id != layerId) {
-                return layer;
-              }
-              found = true;
-              return update(layer);
-            })
-            .toList(growable: false);
+  void mark() => found = true;
+  List<Layer> replaced(Iterable<Layer> layers) =>
+      _replacingOne(layers, layerId, (layer) => layer.id, update, mark);
+
+  final tracks = [
+    for (final track in project.tracks)
+      track.copyWith(
+        cuts: [
+          for (final cut in track.cuts)
+            cut.copyWith(layers: replaced(cut.layers)),
+        ],
+        seLayers: replaced(track.seLayers),
         // The TRANSITION row lives on the track beside the SE rows and
         // reaches a cut's row list as a display clone, so a flag command
         // (eye, mark, timesheet) sweeping the visible rows can name it.
-        final transition = track.transitionLayer.id == layerId
-            ? (() {
-                found = true;
-                return update(track.transitionLayer);
-              })()
-            : track.transitionLayer;
-        return track.copyWith(
-          cuts: cuts,
-          seLayers: seLayers,
-          transitionLayer: transition,
-        );
-      })
-      .toList(growable: false);
+        transitionLayer: replaced([track.transitionLayer]).single,
+      ),
+  ];
   return found ? project.copyWith(tracks: tracks) : null;
 }
 
@@ -148,34 +129,43 @@ Project? updateFrameAnywhere(
   Frame Function(Frame frame) update,
 ) {
   var found = false;
-  Layer updateFrames(Layer layer) {
-    final frames = layer.frames
-        .map((frame) {
-          if (frame.id != frameId) {
-            return frame;
-          }
-          found = true;
-          return update(frame);
-        })
-        .toList(growable: false);
-    return layer.copyWith(frames: frames);
-  }
+  Layer updateFrames(Layer layer) => layer.copyWith(
+    frames: _replacingOne(
+      layer.frames,
+      frameId,
+      (frame) => frame.id,
+      update,
+      () => found = true,
+    ),
+  );
 
-  final tracks = project.tracks
-      .map((track) {
-        final cuts = track.cuts
-            .map((cut) {
-              final layers = cut.layers
-                  .map(updateFrames)
-                  .toList(growable: false);
-              return cut.copyWith(layers: layers);
-            })
-            .toList(growable: false);
-        final seLayers = track.seLayers
-            .map(updateFrames)
-            .toList(growable: false);
-        return track.copyWith(cuts: cuts, seLayers: seLayers);
-      })
-      .toList(growable: false);
+  final tracks = [
+    for (final track in project.tracks)
+      track.copyWith(
+        cuts: [
+          for (final cut in track.cuts)
+            cut.copyWith(layers: cut.layers.map(updateFrames).toList()),
+        ],
+        seLayers: track.seLayers.map(updateFrames).toList(),
+      ),
+  ];
   return found ? project.copyWith(tracks: tracks) : null;
+}
+
+/// Replaces the layer matching [layerId] within [cut] via [update]. Returns
+/// `null` if the cut has no such layer.
+Cut? updateLayerInCut(
+  Cut cut,
+  LayerId layerId,
+  Layer Function(Layer layer) update,
+) {
+  var found = false;
+  final layers = _replacingOne(
+    cut.layers,
+    layerId,
+    (layer) => layer.id,
+    update,
+    () => found = true,
+  );
+  return found ? cut.copyWith(layers: layers) : null;
 }
