@@ -183,6 +183,7 @@ class BrushDabPlan {
 
     final (
       :radius,
+      :minorRadius,
       :hardRadius,
       :isRound,
       :tipMask,
@@ -238,7 +239,7 @@ class BrushDabPlan {
       radius: radius,
       hardRadius: hardRadius,
       edgeSpan: radius - hardRadius,
-      minorRadius: radius * dab.roundness,
+      minorRadius: minorRadius,
       radiusSqSkip: radius * radius * (1.0 + 1e-12),
       tipCos: tipCos,
       tipSin: tipSin,

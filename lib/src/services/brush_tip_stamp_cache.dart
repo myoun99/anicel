@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
-import 'brush_tip_mask_sampling.dart';
+import 'brush_dab_tip_geometry.dart';
 
 /// The prerendered tip-stamp cache (R20-B — the CSP/Photoshop brush
 /// architecture): every tip, analytic circles included, renders ONCE per
@@ -160,14 +160,14 @@ class BrushTipStampCache {
       maskSize = math.max(maskSize, math.min(sourceTip.size, 512));
     }
 
-    final angleRadians = angleDegrees * (math.pi / 180.0);
-    final tipCos = math.cos(angleRadians);
-    final tipSin = math.sin(angleRadians);
-    final inverseRoundness = 1.0 / roundness;
-    final hardRadius = radius * hardness;
-    final edgeSpan = radius - hardRadius;
-    final minorRadius = radius * roundness;
-    final isRound = tipShape == BrushTipShape.round;
+    final tip = brushTipGeometry((
+      size: radius * 2.0,
+      hardness: hardness,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
+      tipShape: tipShape,
+      tipMask: sourceTip,
+    ));
 
     // The consumer maps texel i to tip-space (canvas-offset) coordinates
     // through sampleBrushTipMaskCoverage's grid: mask [0, S) spans
@@ -182,47 +182,15 @@ class BrushTipStampCache {
         double coverage;
         if (sourceTip != null) {
           // Raster tip: today's rotated sampling, evaluated once here.
-          final tipU = dx * tipCos - dy * tipSin;
-          final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-          if (tipU.abs() > radius || tipV.abs() > radius) {
-            continue;
-          }
-          coverage = sampleBrushTipMaskCoverage(
-            mask: sourceTip,
-            tipU: tipU,
-            tipV: tipV,
-            radius: radius,
-          );
-        } else if (isRound) {
+          coverage = rotatedTipMaskCoverage(tip, sourceTip, dx, dy);
+        } else if (tip.isRound) {
           // Analytic circle/ellipse with the hardness falloff — the same
-          // math the materializer ran per canvas pixel.
-          double distance;
-          if (roundness < 1.0) {
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-            distance = math.sqrt(tipU * tipU + tipV * tipV);
-          } else {
-            distance = math.sqrt(dx * dx + dy * dy);
-          }
-          if (distance > radius) {
-            continue;
-          }
-          if (distance <= hardRadius || edgeSpan <= 0.0) {
-            coverage = 1.0;
-          } else {
-            coverage = (1.0 - ((distance - hardRadius) / edgeSpan)).clamp(
-              0.0,
-              1.0,
-            );
-          }
+          // law the materializer runs per canvas pixel.
+          coverage = analyticRoundTipCoverage(tip, dx, dy);
         } else {
           // Analytic square / rotated rectangle: full coverage inside.
-          if (roundness < 1.0 || angleDegrees != 0.0) {
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = dx * tipSin + dy * tipCos;
-            if (tipU.abs() > radius || tipV.abs() > minorRadius) {
-              continue;
-            }
+          if (tip.isRotatedRect && rotatedRectTipMisses(tip, dx, dy)) {
+            continue;
           }
           coverage = 1.0;
         }
