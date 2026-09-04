@@ -95,13 +95,23 @@ Layer createInstructionLayer({required CutId cutId, String? name}) {
   );
 }
 
-/// Names an additional direction row: Direction 2, Direction 3, … skipping
-/// names the cut already uses.
-String nextInstructionLayerName(List<Layer> layers) {
+/// The first name [nameForIndex] makes that no layer in [layers] already
+/// wears, counting up from [firstIndex].
+///
+/// ⛔FIVE ROW KINDS NAME THEMSELVES THIS WAY — direction rows, text rows,
+/// fx rows, SE rows and cels. "Skip the names already in use" is the whole
+/// of it, and each wrote its own `while (true)`: the one that stopped
+/// skipping hands two rows the same name, which the timesheet then prints
+/// twice with nothing to tell them apart.
+String firstUnusedLayerName(
+  List<Layer> layers,
+  String Function(int index) nameForIndex, {
+  int firstIndex = 1,
+}) {
   final usedNames = layers.map((layer) => layer.name).toSet();
-  var index = 1;
+  var index = firstIndex;
   while (true) {
-    final name = instructionLayerName(index);
+    final name = nameForIndex(index);
     if (!usedNames.contains(name)) {
       return name;
     }
@@ -109,34 +119,21 @@ String nextInstructionLayerName(List<Layer> layers) {
   }
 }
 
+/// Names an additional direction row: Direction 2, Direction 3, … skipping
+/// names the cut already uses.
+String nextInstructionLayerName(List<Layer> layers) =>
+    firstUnusedLayerName(layers, instructionLayerName);
+
 /// Names a new TEXT row: T1, T2, … skipping names the cut already uses
 /// (the SE scheme's grammar in the drawing section).
-String nextTextLayerName(List<Layer> layers) {
-  final usedNames = layers.map((layer) => layer.name).toSet();
-  var index = 1;
-  while (true) {
-    final name = 'T$index';
-    if (!usedNames.contains(name)) {
-      return name;
-    }
-    index += 1;
-  }
-}
+String nextTextLayerName(List<Layer> layers) =>
+    firstUnusedLayerName(layers, (index) => 'T$index');
 
 /// Names a new ADJUSTMENT row: FX1, FX2, … skipping names the cut already
 /// uses (R6b). The row's job is its effect chain, so the name is a label,
 /// not a cel address.
-String nextAdjustmentLayerName(List<Layer> layers) {
-  final usedNames = layers.map((layer) => layer.name).toSet();
-  var index = 1;
-  while (true) {
-    final name = 'FX$index';
-    if (!usedNames.contains(name)) {
-      return name;
-    }
-    index += 1;
-  }
-}
+String nextAdjustmentLayerName(List<Layer> layers) =>
+    firstUnusedLayerName(layers, (index) => 'FX$index');
 
 /// A fresh ADJUSTMENT row (R6b): no cels, no timeline, no transform — an
 /// empty effect chain the user then fills. It filters everything below it
@@ -155,17 +152,8 @@ Layer createAdjustmentLayer({required LayerId id, required String name}) {
 
 /// Names an additional SE row: S1, S2, S3, … skipping names the cut
 /// already uses (S1 selected + Add Layer → S3 when S1·S2 exist).
-String nextSeLayerName(List<Layer> layers) {
-  final usedNames = layers.map((layer) => layer.name).toSet();
-  var index = 1;
-  while (true) {
-    final name = 'S$index';
-    if (!usedNames.contains(name)) {
-      return name;
-    }
-    index += 1;
-  }
-}
+String nextSeLayerName(List<Layer> layers) =>
+    firstUnusedLayerName(layers, (index) => 'S$index');
 
 /// Backfills the instruction fixture a cut is expected to carry: at least
 /// one instruction row. (SE rows moved to the track — see

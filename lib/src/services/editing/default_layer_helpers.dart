@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_section_defaults.dart' show firstUnusedLayerName;
 import '../../models/timeline_exposure.dart';
 
 LayerId defaultLayerIdForSequence(int sequence) {
@@ -37,17 +38,12 @@ String celLayerNameForIndex(int index) {
   return name;
 }
 
-String nextCelLayerNameForCut(Cut cut) {
-  final usedNames = cut.layers.map((layer) => layer.name).toSet();
-  var index = 0;
-  while (true) {
-    final name = celLayerNameForIndex(index);
-    if (!usedNames.contains(name)) {
-      return name;
-    }
-    index += 1;
-  }
-}
+String nextCelLayerNameForCut(Cut cut) => firstUnusedLayerName(
+  cut.layers,
+  celLayerNameForIndex,
+  // Cels count from A, which is index ZERO — the other rows start at 1.
+  firstIndex: 0,
+);
 
 Layer createDefaultAnimationLayer({
   required LayerId layerId,

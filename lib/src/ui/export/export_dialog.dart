@@ -1732,11 +1732,38 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  Future<String> _exportSheetImages() async {
+  /// Runs an image export over [count] items and reports it the one way:
+  /// cancelled when fewer landed than were asked for, done otherwise.
+  ///
+  /// ⛔THE FIXED ARGUMENTS ARE THE POINT. Every image export writes into
+  /// the picked location, watches the same cancel flag and feeds the same
+  /// progress bar; written out per export, the one that forgets
+  /// `isCancelled` keeps rendering after the user pressed Cancel.
+  Future<String> _runImageExport({
+    required int count,
+    required Future<ui.Image> Function(int index) renderImage,
+    required String Function(int index) fileNameFor,
+    required ({String noun, String kind}) says,
+  }) async {
+    final summary = await _exportService.exportImages(
+      count: count,
+      renderImage: renderImage,
+      fileNameFor: fileNameFor,
+      directoryPath: _location!,
+      isCancelled: () => _cancelRequested,
+      onProgress: _reportProgress,
+    );
+    if (summary.processed < count) {
+      return _exportCancelled(summary.written, says.noun);
+    }
+    return _exportDone(summary.written, says.noun, kind: says.kind);
+  }
+
+  Future<String> _exportSheetImages() {
     final plan = _timesheetPagePlan();
     final scale = _specs.timesheet.sheetScale.toDouble();
     final notation = _sheetNotation;
-    final summary = await _exportService.exportImages(
+    return _runImageExport(
       count: plan.length,
       renderImage: (index) {
         final task = plan[index];
@@ -1750,21 +1777,15 @@ class ExportDialogState extends State<ExportDialog> {
         );
       },
       fileNameFor: (index) => plan[index].fileName,
-      directoryPath: _location!,
-      isCancelled: () => _cancelRequested,
-      onProgress: _reportProgress,
+      says: (noun: 'page', kind: 'sheet'),
     );
-    if (summary.processed < plan.length) {
-      return _exportCancelled(summary.written, 'page');
-    }
-    return _exportDone(summary.written, 'page', kind: 'sheet');
   }
 
   /// The envelopes, one PNG per (sheet, layer) — streamed like every image
   /// export, so only the sheet being written holds its ink rasters.
-  Future<String> _exportEnvelopes() async {
+  Future<String> _exportEnvelopes() {
     final files = _envelopeFilePlan();
-    final summary = await _exportService.exportImages(
+    return _runImageExport(
       count: files.length,
       renderImage: (index) {
         final (task, layer) = files[index];
@@ -1777,14 +1798,8 @@ class ExportDialogState extends State<ExportDialog> {
       },
       fileNameFor: (index) =>
           _envelopeFileName(files[index].$1, files[index].$2),
-      directoryPath: _location!,
-      isCancelled: () => _cancelRequested,
-      onProgress: _reportProgress,
+      says: (noun: 'file', kind: 'envelope'),
     );
-    if (summary.processed < files.length) {
-      return _exportCancelled(summary.written, 'file');
-    }
-    return _exportDone(summary.written, 'file', kind: 'envelope');
   }
 
   Future<String> _exportConte() async {
@@ -1795,7 +1810,7 @@ class ExportDialogState extends State<ExportDialog> {
       // at a time (a cut spanning two pages re-renders once per page —
       // cheaper than holding the whole film's cells).
       final cellWidth = 320 * spec.sheetScale;
-      final summary = await _exportService.exportImages(
+      return _runImageExport(
         count: pages.length,
         renderImage: (index) async {
           final page = pages[index];
@@ -1819,14 +1834,8 @@ class ExportDialogState extends State<ExportDialog> {
           }
         },
         fileNameFor: (index) => _contePageFileName(index, pages.length),
-        directoryPath: _location!,
-        isCancelled: () => _cancelRequested,
-        onProgress: _reportProgress,
+        says: (noun: 'page', kind: 'conte'),
       );
-      if (summary.processed < pages.length) {
-        return _exportCancelled(summary.written, 'page');
-      }
-      return _exportDone(summary.written, 'page', kind: 'conte');
     }
     // Vector PDF: one document, the layout's own points as page geometry.
     // Each cell renders, converts to raw bytes and FREES its ui.Image
