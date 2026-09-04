@@ -71,3 +71,29 @@ void paintTimelineGlyphOnGround(
     maxWidth: maxWidth,
   ).paint(canvas, offset);
 }
+
+/// The seconds index on a boundary cell's LEADING CORNER (UI-R10 #27):
+/// two pixels in from the corner, bold, on the surface-variant ink.
+///
+/// ⛔THE CORNER IS THE SHARED ANSWER. Both frame rails place it here, and
+/// the vertical one's comment says it "converges on the SHARED ruler's
+/// answers" — but each wrote the offset out, so the convergence was a
+/// promise rather than a fact.
+///
+/// ⚠️THE SIZE IS THE RAIL'S OWN, not shared: the vertical rail narrowed to
+/// 28px (R10 R6) and prints a point smaller than the horizontal ruler.
+void paintSecondsCorner(
+  Canvas canvas,
+  Rect rect, {
+  required String text,
+  required double fontSize,
+  required Color color,
+}) {
+  if (text.isEmpty) {
+    return;
+  }
+  timelineGlyphPainter(
+    text,
+    TextStyle(fontSize: fontSize, fontWeight: FontWeight.w700, color: color),
+  ).paint(canvas, Offset(rect.left + 2, rect.top + 1));
+}

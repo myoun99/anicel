@@ -243,7 +243,7 @@ class TimelineFrameRulerPainter extends CustomPainter {
                 color: colorScheme.onSurface,
               )
             : TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant);
-        final painter = _label(model.label, style);
+        final painter = timelineGlyphPainter(model.label, style);
         if (labelEveryFrames == 1) {
           painter.paint(
             canvas,
@@ -261,17 +261,13 @@ class TimelineFrameRulerPainter extends CustomPainter {
       }
 
       // Top line: the second index on fps boundaries (UI-R10 #27).
-      if (model.secondsLabel.isNotEmpty) {
-        final painter = _label(
-          model.secondsLabel,
-          TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        );
-        painter.paint(canvas, Offset(rect.left + 2, rect.top + 1));
-      }
+      paintSecondsCorner(
+        canvas,
+        rect,
+        text: model.secondsLabel,
+        fontSize: 9,
+        color: colorScheme.onSurfaceVariant,
+      );
     }
 
     // The strip's structural BASELINE (the ruler/body divider) — full
@@ -299,9 +295,6 @@ class TimelineFrameRulerPainter extends CustomPainter {
   // Labels come from the shared laid-out-TextPainter cache (UI-R16):
   // fresh layout per label per repaint was the priciest slice of a
   // scroll-time repaint in debug.
-  TextPainter _label(String text, TextStyle style) =>
-      timelineGlyphPainter(text, style);
-
   @override
   bool shouldRepaint(covariant TimelineFrameRulerPainter oldDelegate) =>
       oldDelegate.frameStartIndex != frameStartIndex ||

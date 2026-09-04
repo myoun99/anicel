@@ -1380,24 +1380,22 @@ class XSheetFrameRailPainter extends CustomPainter {
       // that sat beside it. Both numbers converge on the SHARED ruler's
       // answers instead of the sheet growing an exception: the corner
       // placement (`rect.left + 2, rect.top + 1` there) and the 11pt base.
-      if (model.secondsLabel.isNotEmpty) {
-        final seconds = _label(
-          model.secondsLabel,
-          TextStyle(
-            fontSize: 8,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        );
-        seconds.paint(canvas, Offset(rect.left + 2, rect.top + 1));
-      }
+      // ⚠️A point smaller than the horizontal ruler: the rail narrowed to
+      // 28px (R10 R6). The CORNER is the shared answer, the size is not.
+      paintSecondsCorner(
+        canvas,
+        rect,
+        text: model.secondsLabel,
+        fontSize: 8,
+        color: colorScheme.onSurfaceVariant,
+      );
 
       if (model.label.isNotEmpty) {
         // R9 #4: the number SHRINKS to fit its row before it thins out —
         // the horizontal ruler's rule, through the same helper. The 14 was
         // hard-coded, so a zoomed-out row printed a 14pt glyph into a 6px
         // slot.
-        final number = _label(
+        final number = timelineGlyphPainter(
           model.label,
           TextStyle(
             // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the
@@ -1438,9 +1436,6 @@ class XSheetFrameRailPainter extends CustomPainter {
 
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
   // across repaints — fresh layout per label was the debug hot spot.
-  TextPainter _label(String text, TextStyle style) =>
-      timelineGlyphPainter(text, style);
-
   @override
   bool shouldRepaint(covariant XSheetFrameRailPainter oldDelegate) =>
       oldDelegate.frameStartIndex != frameStartIndex ||
