@@ -1178,6 +1178,37 @@ class EditorSessionManager extends ChangeNotifier {
     return ids;
   }
 
+
+  /// The band answer a selection verb reaches: the swept rows whose layer
+  /// passes [accepts], handed to [inBand] as ONE ask, and `const {}` when
+  /// the band names nothing the verb can touch.
+  ///
+  /// ⚠️THE KIND FILTER LIVES IN THE VERB, NOT THE CONTROLLER — the button
+  /// (`can…`) and the dispatch have to read one answer, and the verbs'
+  /// own comments already named "three downstream copies of a filter" as
+  /// how they stop agreeing. This is the walk they share; what differs is
+  /// the predicate each verb names.
+  Map<LayerId, T> _bandRowsForSelection<T>(
+    bool Function(Layer layer) accepts,
+    Map<LayerId, T> Function(
+      List<LayerId> ids,
+      TimelineFrameRangeSelection selection,
+    )
+    inBand,
+  ) {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return const {};
+    }
+    final ids = <LayerId>[];
+    for (final id in selection.spanLayerIds) {
+      final layer = _rangeLayerById(id);
+      if (layer != null && accepts(layer)) {
+        ids.add(id);
+      }
+    }
+    return ids.isEmpty ? const {} : inBand(ids, selection);
+  }
   /// Whether the artwork carries a marquee, published by whoever owns it.
   bool Function()? canvasHasSelection;
 
@@ -2981,24 +3012,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// predicates rather than restated: a track-owned SE row has no clipboard
   /// shape, a per-cut singleton cannot have a second, and an attach row's
   /// copy would double-link its base's cels.
-  List<LayerId> duplicatableSelectedLayerIds() {
-    final byId = {for (final layer in layers) layer.id: layer};
-    final ids = <LayerId>[];
-    for (final row in rowSelection.value) {
-      if (row is! LayerRowAddress) {
-        continue;
-      }
-      final layer = byId[row.layerId];
-      if (layer != null &&
-          !ids.contains(layer.id) &&
-          layerKindIsClipboardCopyable(layer.kind) &&
-          !layerKindIsSingletonPerCut(layer.kind) &&
-          !isAttachedLayer(layer)) {
-        ids.add(layer.id);
-      }
-    }
-    return ids;
-  }
+  List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
+    (layer) =>
+        layerKindIsClipboardCopyable(layer.kind) &&
+        !layerKindIsSingletonPerCut(layer.kind) &&
+        !isAttachedLayer(layer),
+  );
 
   /// ⑨: 「이름편집은 선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」.
   ///

@@ -21,34 +21,27 @@ class _ExposureVerbs {
   /// truncates a block at the pressed frame; over a band that would blank
   /// PAST the sweep, so the swept cells go empty and the block's tail stays
   /// where it stands (see [TimelineController.blankableSpanInBand]).
+  Map<LayerId, ({int start, int endExclusive})> _blankableSpanForSelection() =>
+      _session._bandRowsForSelection(
+        _blankable,
+        (ids, selection) => _session._timelineController.blankableSpanInBand(
+          layerIds: ids,
+          startIndex: selection.startIndex,
+          endExclusive: selection.endIndexExclusive,
+        ),
+      );
+
+  /// Whether an X can blank [layer]'s exposure at all.
   ///
-  /// ⚠️The kind filters live HERE, beside the delete collector's, so the
-  /// button and the dispatch read one answer rather than two copies.
-  Map<LayerId, ({int start, int endExclusive})> _blankableSpanForSelection() {
-    final selection = _session.frameRangeSelection.value;
-    if (selection == null) {
-      return const {};
-    }
-    final ids = <LayerId>[];
-    for (final id in selection.spanLayerIds) {
-      final layer = _session._rangeLayerById(id);
-      if (layer == null ||
-          !layerKindHoldsDrawings(layer.kind) ||
-          layerKindHoldsSingleCel(layer.kind) ||
-          isSyncedAttachedLayer(layer)) {
-        continue;
-      }
-      ids.add(id);
-    }
-    if (ids.isEmpty) {
-      return const {};
-    }
-    return _session._timelineController.blankableSpanInBand(
-      layerIds: ids,
-      startIndex: selection.startIndex,
-      endExclusive: selection.endIndexExclusive,
-    );
-  }
+  /// ⛔ONE PREDICATE FOR THE BAND AND THE PLAYHEAD. SYNCED attach rows have
+  /// no timing of their own (the base owns it); free attach rows cut
+  /// exposures like any drawing layer (UI-R21 #3). SINGLE-CEL (image) rows
+  /// hold one covering block by definition — an X-here would be reverted
+  /// by the covering normalization.
+  static bool _blankable(Layer layer) =>
+      layerKindHoldsDrawings(layer.kind) &&
+      !layerKindHoldsSingleCel(layer.kind) &&
+      !isSyncedAttachedLayer(layer);
 
   bool get canBlankExposureForSelection =>
       _blankableSpanForSelection().isNotEmpty;
@@ -66,14 +59,7 @@ class _ExposureVerbs {
       return false;
     }
     final layer = _session.activeLayer;
-    // SYNCED attach rows have no timing of their own (the base owns it);
-    // free attach rows cut exposures like any drawing layer (UI-R21 #3).
-    // SINGLE-CEL (image) rows hold one covering block by definition — an
-    // X-here would be reverted by the covering normalization.
-    if (layer == null ||
-        !layerKindHoldsDrawings(layer.kind) ||
-        layerKindHoldsSingleCel(layer.kind) ||
-        isSyncedAttachedLayer(layer)) {
+    if (layer == null || !_blankable(layer)) {
       return false;
     }
 

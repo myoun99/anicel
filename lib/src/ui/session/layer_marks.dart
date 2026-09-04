@@ -70,30 +70,25 @@ class _LayerMarks {
   /// the controller, for the same reason the delete collector does it: the
   /// button and the dispatch have to read one answer, and three downstream
   /// copies of a filter is how they stop agreeing.
-  Map<LayerId, List<int>> _markableFramesForSelection() {
-    final selection = _session.frameRangeSelection.value;
-    if (selection == null) {
-      return const {};
-    }
-    final ids = <LayerId>[];
-    for (final id in selection.spanLayerIds) {
-      final layer = _session._rangeLayerById(id);
-      if (layer == null ||
-          !layerKindHoldsDrawings(layer.kind) ||
-          isSyncedAttachedLayer(layer)) {
-        continue;
-      }
-      ids.add(id);
-    }
-    if (ids.isEmpty) {
-      return const {};
-    }
-    return _session._timelineController.markableFramesInBand(
-      layerIds: ids,
-      startIndex: selection.startIndex,
-      endIndexExclusive: selection.endIndexExclusive,
-    );
-  }
+  Map<LayerId, List<int>> _markableFramesForSelection() =>
+      _session._bandRowsForSelection(
+        _markable,
+        (ids, selection) => _session._timelineController.markableFramesInBand(
+          layerIds: ids,
+          startIndex: selection.startIndex,
+          endIndexExclusive: selection.endIndexExclusive,
+        ),
+      );
+
+  /// Whether [layer] carries cell marks of its own.
+  ///
+  /// ⛔ONE PREDICATE FOR THE BAND AND THE PLAYHEAD. SYNCED attach rows
+  /// carry no cell marks (the base's sheet row does); free attach rows
+  /// mark like normal (UI-R21 #3). ⚠️Unlike the exposure verb's, a
+  /// SINGLE-CEL row IS markable: a mark is a flag on the cell, not a
+  /// change to the covering block.
+  static bool _markable(Layer layer) =>
+      layerKindHoldsDrawings(layer.kind) && !isSyncedAttachedLayer(layer);
 
   bool get canToggleMarkForSelection =>
       _markableFramesForSelection().isNotEmpty;
@@ -111,11 +106,7 @@ class _LayerMarks {
       return false;
     }
     final layer = _session.activeLayer;
-    // SYNCED attach rows carry no cell marks (the base's sheet row
-    // does); free attach rows mark like normal (UI-R21 #3).
-    if (layer == null ||
-        !layerKindHoldsDrawings(layer.kind) ||
-        isSyncedAttachedLayer(layer)) {
+    if (layer == null || !_markable(layer)) {
       return false;
     }
 
