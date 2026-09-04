@@ -29,9 +29,14 @@ typedef LayerField<T> = ({
 ///
 /// The pair that has to agree is execute's `??=` and undo's throw. The
 /// `??=` is what makes a RE-executed command keep its FIRST previous
-/// value rather than the one it just wrote — a command that used `=`
-/// there turns redo-then-undo into an undo that restores the new value,
-/// which is a history that cannot be walked back past it.
+/// value rather than the one it just wrote, so undo walks all the way
+/// back rather than restoring what the command itself put there.
+///
+/// ⚠️This doc used to say the failure was "redo-then-undo". It is not:
+/// undo puts the old value back, so the redo's read sees the same thing
+/// and `=` agrees with `??=` (measured 2026-09-05 — the mutant survives
+/// that sequence). What distinguishes them is executing again while the
+/// NEW value is standing, which is the sequence the test drives.
 ///
 /// ⚠️The anywhere lookup is deliberate: layer ids are globally unique and
 /// track-owned SE rows are not in any cut's layer list, but they carry
