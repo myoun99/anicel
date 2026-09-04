@@ -665,6 +665,29 @@ class CutCommandCoordinator {
   void setProjectPasteboardMargin(double margin) =>
       _projectSettings.setProjectPasteboardMargin(margin);
 
+  /// Executes [command] only when the layer's field does not already hold
+  /// [value].
+  ///
+  /// ⛔THE GUARD IS WHY A TOGGLE THAT IS ALREADY ON LANDS NOTHING. Three
+  /// setters wrote it out; without it, pressing a lit button banks an undo
+  /// step that changes nothing, and the user then walks back through
+  /// presses that did not do anything.
+  ///
+  /// ⚠️Anywhere lookup: every kind carries these flags now (unified layer
+  /// controls), and track-owned SE rows are not in any cut's layer list.
+  void _setLayerFieldIfChanged<T>(
+    LayerId layerId,
+    T value,
+    T Function(Layer layer) read,
+    Command Function() command,
+  ) {
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
+    if (read(layer) == value) {
+      return;
+    }
+    historyManager.execute(command());
+  }
+
   void setLayerTimesheet({
     // Nullable (B5③): the storyboard rail flips TRACK fixtures' flags from
     // a gap, where no cut is active — the write is layer-addressed and
@@ -672,64 +695,49 @@ class CutCommandCoordinator {
     required CutId? cutId,
     required LayerId layerId,
     required bool onTimesheet,
-  }) {
-    // Every kind carries the toggle now (unified layer controls): the
-    // camera layer gates the sheet's printed CAM keyframe column. Anywhere
-    // lookup — track-owned SE rows are not in the cut's layer list.
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    if (layer.onTimesheet == onTimesheet) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateLayerTimesheetCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        onTimesheet: onTimesheet,
-      ),
-    );
-  }
+  }) => _setLayerFieldIfChanged(
+    layerId,
+    onTimesheet,
+    (layer) => layer.onTimesheet,
+    () => UpdateLayerTimesheetCommand(
+      repository: repository,
+      cutId: cutId,
+      layerId: layerId,
+      onTimesheet: onTimesheet,
+    ),
+  );
 
   void setLayerFillReference({
     required CutId cutId,
     required LayerId layerId,
     required bool isFillReference,
-  }) {
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    if (layer.isFillReference == isFillReference) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateLayerFillReferenceCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        isFillReference: isFillReference,
-      ),
-    );
-  }
+  }) => _setLayerFieldIfChanged(
+    layerId,
+    isFillReference,
+    (layer) => layer.isFillReference,
+    () => UpdateLayerFillReferenceCommand(
+      repository: repository,
+      cutId: cutId,
+      layerId: layerId,
+      isFillReference: isFillReference,
+    ),
+  );
 
   void setLayerMark({
     required CutId cutId,
     required LayerId layerId,
     required LayerMark mark,
-  }) {
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    if (layer.mark == mark) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateLayerMarkCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        mark: mark,
-      ),
-    );
-  }
+  }) => _setLayerFieldIfChanged(
+    layerId,
+    mark,
+    (layer) => layer.mark,
+    () => UpdateLayerMarkCommand(
+      repository: repository,
+      cutId: cutId,
+      layerId: layerId,
+      mark: mark,
+    ),
+  );
 
   /// Replaces an instruction row's span map; one undo step, no-op when
   /// unchanged. An optional [note] rewrites the cut note in the SAME undo
