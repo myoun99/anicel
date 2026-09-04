@@ -12,6 +12,7 @@ import '../canvas/bitmap_tile_image_cache.dart';
 import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../../core/pin_counts.dart';
 
 /// One cached layer-frame render: the image plus the CANVAS-SPACE rect it
 /// covers ([worldRect] == the canvas rect unless the cel has pasteboard
@@ -324,7 +325,7 @@ class LayerFrameImageCache {
       // image the canvas is drawing back on the cold path — the "worked
       // harder, got emptier" loop PR #1065 documented. Recency cannot
       // express "someone is holding this"; only the pin can.
-      if (_pins.containsKey(entry.key)) {
+      if (_pins.isPinned(entry.key)) {
         continue;
       }
       bytes -= estimatedImageBytes(
@@ -345,28 +346,19 @@ class LayerFrameImageCache {
   // the slot, and [pinnedBytes] is the MEASURED reserve that replaces the
   // estimate.
 
-  final Map<(BrushFrameKey, PlaybackQuality), int> _pins = {};
+  final PinCounts<(BrushFrameKey, PlaybackQuality)> _pins = PinCounts<(BrushFrameKey, PlaybackQuality)>();
 
   /// Declares a holder of [key]'s image at [quality]. Balanced by
   /// [releasePin]; counts nest, because two widgets may hold the same
   /// slot's clone.
   void retainPin(BrushFrameKey key, PlaybackQuality quality) {
     final slot = (key, quality);
-    _pins[slot] = (_pins[slot] ?? 0) + 1;
+    _pins.retain(slot);
   }
 
   void releasePin(BrushFrameKey key, PlaybackQuality quality) {
     final slot = (key, quality);
-    final count = _pins[slot];
-    if (count == null) {
-      assert(false, 'releasePin without a matching retainPin: $slot');
-      return;
-    }
-    if (count <= 1) {
-      _pins.remove(slot);
-    } else {
-      _pins[slot] = count - 1;
-    }
+    _pins.release(slot);
   }
 
   /// The bytes of every pinned slot's CURRENT entry — what the screen is

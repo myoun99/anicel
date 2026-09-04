@@ -17,6 +17,7 @@ import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../debug/input_inspector.dart';
 import 'layer_frame_image_cache.dart';
+import '../../core/pin_counts.dart';
 
 /// Resolves the store key of a layer frame within [cut] (production impl
 /// lives on the session, which knows project/track ids).
@@ -533,7 +534,7 @@ class CutFrameCompositeCache {
         // playback's held frame, the parked track stack. Evicting it
         // returns no bytes and re-composites the exact picture being
         // shown.
-        if (_pins.containsKey(key)) {
+        if (_pins.isPinned(key)) {
           return true;
         }
         for (final range in protect) {
@@ -572,23 +573,15 @@ class CutFrameCompositeCache {
   // the slot, eviction refuses it, and [pinnedBytes] reports what the
   // screen is actually holding.
 
-  final Map<(CutId, int, PlaybackQuality), int> _pins = {};
+  final PinCounts<(CutId, int, PlaybackQuality)> _pins =
+      PinCounts<(CutId, int, PlaybackQuality)>();
 
   void retainPin((CutId, int, PlaybackQuality) indexKey) {
-    _pins[indexKey] = (_pins[indexKey] ?? 0) + 1;
+    _pins.retain(indexKey);
   }
 
   void releasePin((CutId, int, PlaybackQuality) indexKey) {
-    final count = _pins[indexKey];
-    if (count == null) {
-      assert(false, 'releasePin without a matching retainPin: $indexKey');
-      return;
-    }
-    if (count <= 1) {
-      _pins.remove(indexKey);
-    } else {
-      _pins[indexKey] = count - 1;
-    }
+    _pins.release(indexKey);
   }
 
   /// The bytes of every pinned slot's current image, counted once per
