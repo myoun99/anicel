@@ -1,11 +1,11 @@
 
+import '../models/tiles_covering.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/dirty_region.dart';
-import '../models/tile_coord.dart';
 
 /// BB-1 (R26 #9): the stroke-level blend kernel.
 ///
@@ -40,40 +40,25 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
     return region;
   }
   final tileSize = surface.tileSize;
-  final tileX0 = (bounds.left / tileSize).floor();
-  final tileY0 = (bounds.top / tileSize).floor();
-  final tileX1 = ((bounds.rightExclusive - 1) / tileSize).floor();
-  final tileY1 = ((bounds.bottomExclusive - 1) / tileSize).floor();
-  for (var tileY = tileY0; tileY <= tileY1; tileY += 1) {
-    for (var tileX = tileX0; tileX <= tileX1; tileX += 1) {
-      final tile = surface.tileAt(TileCoord(x: tileX, y: tileY));
-      if (tile == null) {
-        continue;
+  for (final covered in tilesCovering(surface, bounds)) {
+    final worldLeft = covered.worldLeft;
+    final worldTop = covered.worldTop;
+    final copyLeft = covered.left;
+    final copyTop = covered.top;
+    final copyRight = covered.rightExclusive;
+    final copyBottom = covered.bottomExclusive;
+    final rowBytes = (copyRight - copyLeft) * 4;
+    // Inside readPixels: the tile is the receiver, so its buffer cannot
+    // be finalized out from under these reads (see BitmapTile.readPixels).
+    covered.tile.readPixels((_, tilePixels) {
+      for (var y = copyTop; y < copyBottom; y += 1) {
+        final srcOffset =
+            ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
+        final dstOffset =
+            ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
+        region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
       }
-      final worldLeft = tileX * tileSize;
-      final worldTop = tileY * tileSize;
-      final copyLeft = math.max(bounds.left, worldLeft);
-      final copyTop = math.max(bounds.top, worldTop);
-      final copyRight = math.min(bounds.rightExclusive, worldLeft + tileSize);
-      final copyBottom = math.min(bounds.bottomExclusive, worldTop + tileSize);
-      final rowBytes = (copyRight - copyLeft) * 4;
-      // Inside readPixels: the tile is the receiver, so its buffer cannot
-      // be finalized out from under these reads (see BitmapTile.readPixels).
-      tile.readPixels((_, tilePixels) {
-        for (var y = copyTop; y < copyBottom; y += 1) {
-          final srcOffset =
-              ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
-          final dstOffset =
-              ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
-          region.setRange(
-            dstOffset,
-            dstOffset + rowBytes,
-            tilePixels,
-            srcOffset,
-          );
-        }
-      });
-    }
+    });
   }
   return region;
 }

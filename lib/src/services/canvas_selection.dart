@@ -1,7 +1,8 @@
+import '../models/dirty_region.dart';
+import '../models/tiles_covering.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/brush_dab.dart';
@@ -860,26 +861,25 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
   final rightExclusive = left + width;
   final bottomExclusive = top + height;
   var liftedAnything = false;
-  // floorDiv, not ~/: pasteboard tiles sit at negative coordinates.
-  final firstTileX = floorDiv(left, tileSize);
-  final lastTileX = floorDiv(rightExclusive - 1, tileSize);
-  final lastTileY = floorDiv(bottomExclusive - 1, tileSize);
-  for (var ty = floorDiv(top, tileSize); ty <= lastTileY; ty += 1) {
-    final tileTop = ty * tileSize;
-    final y0 = math.max(top, tileTop);
-    final y1 = math.min(bottomExclusive, tileTop + tileSize);
-    for (var tx = firstTileX; tx <= lastTileX; tx += 1) {
-      final tile = surface.tileAt(TileCoord(x: tx, y: ty));
-      if (tile == null) {
-        continue;
-      }
-      final tileLeft = tx * tileSize;
-      final x0 = math.max(left, tileLeft);
-      final x1 = math.min(rightExclusive, tileLeft + tileSize);
-      // `readPixels`, so the tile's bytes are read in place and the view
-      // never leaves the callback — that is the lifetime rule, and the
-      // `pixels` getter it replaces was the 256 KB copy.
-      tile.readPixels((_, pixels) {
+  for (final covered in tilesCovering(
+    surface,
+    DirtyRegion(
+      left: left,
+      top: top,
+      rightExclusive: rightExclusive,
+      bottomExclusive: bottomExclusive,
+    ),
+  )) {
+    final tileTop = covered.worldTop;
+    final tileLeft = covered.worldLeft;
+    final y0 = covered.top;
+    final y1 = covered.bottomExclusive;
+    final x0 = covered.left;
+    final x1 = covered.rightExclusive;
+    // `readPixels`, so the tile's bytes are read in place and the view
+    // never leaves the callback — that is the lifetime rule, and the
+    // `pixels` getter it replaces was the 256 KB copy.
+    covered.tile.readPixels((_, pixels) {
         for (var y = y0; y < y1; y += 1) {
           final rowBase = (y - top) * width;
           final sourceRowBase = (y - tileTop) * tileSize;
@@ -930,7 +930,6 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
           }
         }
       });
-    }
   }
   return (rgba: rgba, liftedAnything: liftedAnything);
 }
