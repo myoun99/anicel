@@ -24,7 +24,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// tool. A scratch counter set it to 660 on 2026-09-04 and the gate then
 /// measured 661 on the same tree: two instruments, one number apart.
 void main() {
-  const ceiling = 391;
+  const ceiling = 385;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
