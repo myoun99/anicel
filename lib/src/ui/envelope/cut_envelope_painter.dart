@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show setEquals;
@@ -11,6 +10,7 @@ import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import '../sheet_painting.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
@@ -71,32 +71,12 @@ class CutEnvelopePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final panelViewport = viewport;
     canvas.save();
-    if (panelViewport != null) {
-      // The canvas shell: crisp vector redraw at any zoom, no raster cache
-      // — and P8's ONE transform, which carries the rotation and flip a
-      // translate/scale pair drops.
-      //
-      // ⛔THE SNAP ALREADY HAPPENED, at the host: this viewport and the
-      // one the ink windows derive from are the same value, which is what
-      // keeps written ink on its box. Passing the ratio here keeps that
-      // snap idempotent rather than re-rounding to a coarser grid.
-      canvas.clipRect(Offset.zero & size);
-      applyViewportTransform(
-        canvas,
-        panelViewport,
-        devicePixelRatio: effectiveRatio,
-      );
-    } else {
-      // Fit-to-size: the export renders AT paper size (scale 1) and a
-      // preview at a fraction of it, both from these same paper units.
-      final scale = math.min(
-        size.width / layout.paperWidth,
-        size.height / layout.paperHeight,
-      );
-      canvas.scale(scale, scale);
-    }
+    enterSheetPaperSpace(canvas, size, (
+      viewport: viewport,
+      devicePixelRatio: effectiveRatio,
+      paper: Size(layout.paperWidth, layout.paperHeight),
+    ));
     if (_draws(SheetPaintLayer.paper)) {
       canvas.drawRect(
         Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
@@ -218,20 +198,7 @@ class CutEnvelopePainter extends CustomPainter {
         placed.width,
         placed.height,
       );
-      canvas.save();
-      canvas.clipRect(boxRect);
-      canvas.drawImageRect(
-        image,
-        Rect.fromLTWH(
-          0,
-          0,
-          placed.width * surfaceScale,
-          placed.height * surfaceScale,
-        ),
-        boxRect,
-        Paint()..filterQuality = FilterQuality.medium,
-      );
-      canvas.restore();
+      paintSheetInkWindow(canvas, image, boxRect, surfaceScale);
     }
   }
 

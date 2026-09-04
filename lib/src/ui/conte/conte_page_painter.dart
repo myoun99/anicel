@@ -11,6 +11,7 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import '../sheet_painting.dart';
 import 'conte_fonts.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
@@ -107,29 +108,12 @@ class ContePagePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final resolvedViewport = viewport;
     canvas.save();
-    if (resolvedViewport != null) {
-      // The canvas shell: crisp vector redraw at any zoom, no raster
-      // cache — and P8's ONE transform, which carries the rotation and
-      // flip a translate/scale pair drops.
-      //
-      // ⛔THE SNAP ALREADY HAPPENED, at the host: this viewport and the
-      // one the ink windows derive from are the same value, which is what
-      // keeps written ink on its cell.
-      canvas.clipRect(Offset.zero & size);
-      applyViewportTransform(
-        canvas,
-        resolvedViewport,
-        devicePixelRatio: effectiveRatio,
-      );
-    } else {
-      final scale = math.min(
-        size.width / metrics.pageWidth,
-        size.height / metrics.pageHeight,
-      );
-      canvas.scale(scale);
-    }
+    enterSheetPaperSpace(canvas, size, (
+      viewport: viewport,
+      devicePixelRatio: effectiveRatio,
+      paper: Size(metrics.pageWidth, metrics.pageHeight),
+    ));
     _paintPage(canvas);
     canvas.restore();
   }
@@ -214,20 +198,7 @@ class ContePagePainter extends CustomPainter {
       if (image == null) {
         return;
       }
-      canvas.save();
-      canvas.clipRect(windowRect);
-      canvas.drawImageRect(
-        image,
-        Rect.fromLTWH(
-          0,
-          0,
-          windowRect.width * conteInkScale,
-          windowRect.height * conteInkScale,
-        ),
-        windowRect,
-        Paint()..filterQuality = FilterQuality.medium,
-      );
-      canvas.restore();
+      paintSheetInkWindow(canvas, image, windowRect, conteInkScale.toDouble());
     }
 
     for (final window in conteInkWindows(page, metrics)) {
