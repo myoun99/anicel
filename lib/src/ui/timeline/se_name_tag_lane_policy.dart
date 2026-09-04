@@ -43,20 +43,6 @@ bool laneIsSeNameTag(String? laneId) =>
     laneId == seNameTagGroupLaneId ||
     (laneId != null && laneId.startsWith('name-tag:'));
 
-/// The display-ordered lane span from [anchorLaneId] to [headLaneId], the
-/// name-tag twin of `transformLaneSpan`.
-List<String> seNameTagLaneSpan(String anchorLaneId, String headLaneId) {
-  final order = seNameTagLaneSelectionOrder;
-  final anchor = order.indexOf(anchorLaneId);
-  final head = order.indexOf(headLaneId);
-  if (anchor < 0 || head < 0) {
-    return [anchorLaneId];
-  }
-  final low = anchor < head ? anchor : head;
-  final high = anchor < head ? head : anchor;
-  return order.sublist(low, high + 1);
-}
-
 /// The value shown in a member's readout at [tag]'s RESOLVED state.
 ///
 /// Colours read as `#RRGGBB` — the form the value editor parses back, and
