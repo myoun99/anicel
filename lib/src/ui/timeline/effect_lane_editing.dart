@@ -6,6 +6,7 @@
 // The chain is a LIST, so each edit finds its effect by id, rebuilds that one
 // entry and leaves the rest identical.
 
+import 'lane_span_keys_shift.dart';
 import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
 import 'effect_lane_policy.dart';
@@ -234,35 +235,15 @@ List<LayerEffect>? effectsWithLaneSpanKeysShifted(
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
-  }
-  var current = effects;
-  var movedAny = false;
-  for (final laneId in laneIds) {
-    final keys = effectLaneKeyFrames(current, laneId);
-    final hasRangedKey = keys.any(
-      (frame) => frame >= rangeStartIndex && frame < rangeEndIndexExclusive,
-    );
-    if (!hasRangedKey) {
-      continue;
-    }
-    final next = effectsWithLaneKeysShifted(
-      current,
-      laneId: laneId,
-      rangeStartIndex: rangeStartIndex,
-      rangeEndIndexExclusive: rangeEndIndexExclusive,
-      frameDelta: frameDelta,
-    );
-    if (next == null) {
-      return null; // This lane HAD keys, so null here means blocked.
-    }
-    current = next;
-    movedAny = true;
-  }
-  return movedAny ? current : null;
-}
+}) => laneSpanKeysShifted(
+  effects,
+  laneIds: laneIds,
+  rangeStartIndex: rangeStartIndex,
+  rangeEndIndexExclusive: rangeEndIndexExclusive,
+  frameDelta: frameDelta,
+  laneKeyFrames: effectLaneKeyFrames,
+  laneKeysShifted: effectsWithLaneKeysShifted,
+);
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
 Set<int> effectLaneKeyFrames(List<LayerEffect> effects, String laneId) {
