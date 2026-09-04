@@ -633,6 +633,37 @@ abstract final class FolderPicker {
     }, kind)).first;
   }
 
+  /// The shape both coordinated file calls have: honour the test seam,
+  /// answer false where there is no coordinator, else ask the channel and
+  /// report whether it landed.
+  ///
+  /// ⛔THE SEAM AND THE GUARD ARE THE SAME LAW. Written out per method,
+  /// a new coordinated call arrives with a channel invocation and no
+  /// `hasFileCoordinator` guard — which on a desktop build is a
+  /// MissingPluginException instead of a false.
+  static Future<bool> _coordinated(
+    String method,
+    Future<bool> Function({
+      required String sourcePath,
+      required String destinationPath,
+    })?
+    override, {
+    required String sourcePath,
+    required String destinationPath,
+  }) async {
+    if (override != null) {
+      return override(sourcePath: sourcePath, destinationPath: destinationPath);
+    }
+    if (!hasFileCoordinator) {
+      return false;
+    }
+    final answer = await _invoke(method, {
+      'sourcePath': sourcePath,
+      'destinationPath': destinationPath,
+    }, GrantKind.file);
+    return answer.first.isGranted;
+  }
+
   /// Test seam for [replaceFileCoordinated] — the channel is unreachable
   /// from a Dart test the same way every picker above is.
   /// ⚠️Reset in `test/flutter_test_config.dart`.
@@ -652,18 +683,12 @@ abstract final class FolderPicker {
     required String sourcePath,
     required String destinationPath,
   }) async {
-    final override = debugCoordinatedReplacer;
-    if (override != null) {
-      return override(sourcePath: sourcePath, destinationPath: destinationPath);
-    }
-    if (!hasFileCoordinator) {
-      return false;
-    }
-    final answer = await _invoke('replaceFileCoordinated', {
-      'sourcePath': sourcePath,
-      'destinationPath': destinationPath,
-    }, GrantKind.file);
-    return answer.first.isGranted;
+    return _coordinated(
+      'replaceFileCoordinated',
+      debugCoordinatedReplacer,
+      sourcePath: sourcePath,
+      destinationPath: destinationPath,
+    );
   }
 
   /// Test seam for [readFileCoordinated], for the same reason as the
@@ -687,18 +712,12 @@ abstract final class FolderPicker {
     required String sourcePath,
     required String destinationPath,
   }) async {
-    final override = debugCoordinatedReader;
-    if (override != null) {
-      return override(sourcePath: sourcePath, destinationPath: destinationPath);
-    }
-    if (!hasFileCoordinator) {
-      return false;
-    }
-    final answer = await _invoke('readFileCoordinated', {
-      'sourcePath': sourcePath,
-      'destinationPath': destinationPath,
-    }, GrantKind.file);
-    return answer.first.isGranted;
+    return _coordinated(
+      'readFileCoordinated',
+      debugCoordinatedReader,
+      sourcePath: sourcePath,
+      destinationPath: destinationPath,
+    );
   }
 
   /// ONE law for every user-picked file the app opens, whatever its

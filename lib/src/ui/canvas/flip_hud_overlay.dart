@@ -353,7 +353,13 @@ class FlipHudPainter extends CustomPainter {
           isRunHead: isHead,
         );
       }
-      _paintGridX(canvas, stripRect, originX: originX, step: slotWidth);
+      _paintGrid(
+        canvas,
+        stripRect,
+        axis: Axis.horizontal,
+        origin: originX,
+        step: slotWidth,
+      );
       _paintSelection(
         canvas,
         Rect.fromLTWH(
@@ -409,7 +415,13 @@ class FlipHudPainter extends CustomPainter {
           isRunHead: true,
         );
       }
-      _paintGridY(canvas, stripRect, originY: originY, step: extent);
+      _paintGrid(
+        canvas,
+        stripRect,
+        axis: Axis.vertical,
+        origin: originY,
+        step: extent,
+      );
       _paintSelection(
         canvas,
         Rect.fromLTWH(
@@ -650,33 +662,30 @@ class FlipHudPainter extends CustomPainter {
 
   /// ONE overlay owns every plain per-cell line, the way the timeline's
   /// grid does — a border per cell would fight the bodies that span.
-  void _paintGridX(
+  ///
+  /// [axis] is the direction the cells run in: [Axis.horizontal] steps
+  /// along x and draws vertical rules, [Axis.vertical] the mirror. Both
+  /// used to be written out, which is a law stated twice about one grid.
+  void _paintGrid(
     Canvas canvas,
     Rect rect, {
-    required double originX,
+    required Axis axis,
+    required double origin,
     required double step,
   }) {
     final paint = Paint()
       ..color = timelineBaseGridInk(colorScheme, frameCellExtent: step)
       ..strokeWidth = 1;
-    var x = originX + (((rect.left - originX) / step).ceil()) * step;
-    for (; x <= rect.right; x += step) {
-      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
-    }
-  }
-
-  void _paintGridY(
-    Canvas canvas,
-    Rect rect, {
-    required double originY,
-    required double step,
-  }) {
-    final paint = Paint()
-      ..color = timelineBaseGridInk(colorScheme, frameCellExtent: step)
-      ..strokeWidth = 1;
-    var y = originY + (((rect.top - originY) / step).ceil()) * step;
-    for (; y <= rect.bottom; y += step) {
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+    final horizontal = axis == Axis.horizontal;
+    final from = horizontal ? rect.left : rect.top;
+    final to = horizontal ? rect.right : rect.bottom;
+    var at = origin + (((from - origin) / step).ceil()) * step;
+    for (; at <= to; at += step) {
+      canvas.drawLine(
+        horizontal ? Offset(at, rect.top) : Offset(rect.left, at),
+        horizontal ? Offset(at, rect.bottom) : Offset(rect.right, at),
+        paint,
+      );
     }
   }
 
