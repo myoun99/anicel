@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
+import 'zstd_payload.dart';
 
 /// Which compressor wrote a payload.
 ///
@@ -72,17 +73,7 @@ const int anicelZstdLevel = 9;
 /// zlib error about a zstd frame.
 Uint8List decompressAnicelPayload(int codec, Uint8List payload) {
   if (codec == anicelCodecZstd) {
-    final compressor = QaCelCompressor.instance;
-    final out = compressor == null || !compressor.isSupported
-        ? null
-        : compressor.decompress(payload);
-    if (out == null) {
-      throw const FormatException(
-        'This payload was written with zstd and no engine is available to '
-        'read it.',
-      );
-    }
-    return out;
+    return decompressZstdPayload(payload, 'payload');
   }
   final List<int> inflated;
   try {

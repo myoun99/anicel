@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'app_save_settings.dart';
+import 'sweep_old_files.dart';
 
 /// One recovery snapshot on disk — a row of the Preferences list.
 class RecoverySnapshotInfo {
@@ -229,31 +230,11 @@ class ProjectAutosaveService {
   static int sweepAbandonedRecovery({
     Duration olderThan = const Duration(days: 30),
     DateTime? now,
-  }) {
-    final directory = Directory(AppSave.recoveryDirectory());
-    if (!directory.existsSync()) {
-      return 0;
-    }
-    final cutoff = (now ?? DateTime.now()).subtract(olderThan);
-    var swept = 0;
-    for (final entity in directory.listSync(followLinks: false)) {
-      if (entity is! File) {
-        continue;
-      }
-      final stat = FileStat.statSync(entity.path);
-      if (stat.type == FileSystemEntityType.notFound ||
-          !stat.modified.isBefore(cutoff)) {
-        continue;
-      }
-      try {
-        entity.deleteSync();
-        swept += 1;
-      } on Object catch (_) {
-        // Locked by a sync client or an open handle: next launch retries.
-      }
-    }
-    return swept;
-  }
+  }) => sweepFilesOlderThan(
+    Directory(AppSave.recoveryDirectory()),
+    olderThan: olderThan,
+    now: now,
+  );
 
   /// Whether [sidecarPath] holds a same-or-newer snapshot than [filePath]
   /// — the open flow's recovery prompt condition. Inclusive on ties: a

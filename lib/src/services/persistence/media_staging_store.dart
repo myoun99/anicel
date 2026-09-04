@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import 'app_support_path.dart';
 import 'media_blob_codec.dart';
+import '../persistence/sweep_old_files.dart';
 
 /// 🚨★★★**WHAT「품기」MEANS BETWEEN THE IMPORT AND THE FIRST SAVE.**
 ///
@@ -245,27 +246,11 @@ class MediaStagingStore {
   int sweepAbandoned({
     Duration olderThan = const Duration(days: 30),
     DateTime? now,
-  }) {
-    final directory = Directory(directoryPath);
-    if (!directory.existsSync()) {
-      return 0;
-    }
-    final cutoff = (now ?? DateTime.now()).subtract(olderThan);
-    var removed = 0;
-    for (final entity in directory.listSync()) {
-      if (entity is! File) {
-        continue;
-      }
-      final stat = FileStat.statSync(entity.path);
-      if (stat.type == FileSystemEntityType.notFound ||
-          !stat.modified.isBefore(cutoff)) {
-        continue;
-      }
-      entity.deleteSync();
-      removed += 1;
-    }
-    return removed;
-  }
+  }) => sweepFilesOlderThan(
+    Directory(directoryPath),
+    olderThan: olderThan,
+    now: now,
+  );
 
   /// Every staged file, for the settings list that shows what the app
   /// container holds.

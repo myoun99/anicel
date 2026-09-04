@@ -104,6 +104,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
+import 'zstd_payload.dart';
 import 'anicel_payload_codec.dart';
 
 /// Uncompressed bytes per block, for entries written from now on.
@@ -533,16 +534,5 @@ Uint8List decompressMediaBlob(Uint8List entry) {
 ///
 /// Throws when this build cannot read zstd — the file is fine, this BUILD
 /// cannot open it, and saying so beats a length mismatch further down.
-Uint8List decompressMediaBlock(Uint8List block) {
-  final compressor = QaCelCompressor.instance;
-  final out = compressor == null || !compressor.isSupported
-      ? null
-      : compressor.decompress(block);
-  if (out == null) {
-    throw const FormatException(
-      'This media was compressed with zstd and no engine is available to '
-      'read it.',
-    );
-  }
-  return out;
-}
+Uint8List decompressMediaBlock(Uint8List block) =>
+    decompressZstdPayload(block, 'media');
