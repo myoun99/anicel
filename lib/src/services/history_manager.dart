@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 
 import 'command.dart';
 import 'memory_pressure_budget.dart';
@@ -180,34 +180,49 @@ class HistoryManager extends ChangeNotifier {
   /// may execute() a fresh command; the stacks re-check after it runs.
   VoidCallback? onBeforeUndoRedo;
 
-  void undo() {
-    if (_undoStack.isEmpty) {
-      throw StateError('No commands to undo.');
+  void undo() => _step(
+    from: _undoStack,
+    to: _redoStack,
+    apply: (command) => command.undo(),
+    nothingToDo: 'No commands to undo.',
+  );
+
+  void redo() => _step(
+    from: _redoStack,
+    to: _undoStack,
+    apply: (command) => command.execute(),
+    nothingToDo: 'No commands to redo.',
+  );
+
+  /// Moves one command between the stacks: refuse when there is none,
+  /// let the hook run, RE-CHECK, then apply it and hand it to the other
+  /// stack.
+  ///
+  /// ⛔THE SECOND CHECK IS THE POINT, and it reads as redundant until you
+  /// know why: [onBeforeUndoRedo] may `execute()` a fresh command, which
+  /// pushes to undo and CLEARS redo. So the stack this step was about can
+  /// be empty by the time the hook returns, and popping it then is a
+  /// range error on a press the user is allowed to make.
+  ///
+  /// ⚠️The empty stack THROWS on entry but RETURNS after the hook — the
+  /// first is a caller that asked for something impossible, the second is
+  /// the hook doing its job.
+  void _step({
+    required List<Command> from,
+    required List<Command> to,
+    required void Function(Command command) apply,
+    required String nothingToDo,
+  }) {
+    if (from.isEmpty) {
+      throw StateError(nothingToDo);
     }
     onBeforeUndoRedo?.call();
-    if (_undoStack.isEmpty) {
+    if (from.isEmpty) {
       return;
     }
-
-    final command = _undoStack.removeLast();
-    command.undo();
-    _redoStack.add(command);
-    notifyListeners();
-  }
-
-  void redo() {
-    if (_redoStack.isEmpty) {
-      throw StateError('No commands to redo.');
-    }
-    onBeforeUndoRedo?.call();
-    if (_redoStack.isEmpty) {
-      // The hook's confirm pushed a fresh entry and cleared redo.
-      return;
-    }
-
-    final command = _redoStack.removeLast();
-    command.execute();
-    _undoStack.add(command);
+    final command = from.removeLast();
+    apply(command);
+    to.add(command);
     notifyListeners();
   }
 
