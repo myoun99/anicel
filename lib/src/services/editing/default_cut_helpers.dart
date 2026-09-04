@@ -59,3 +59,28 @@ Cut createDefaultCut({
     canvasSize: canvasSize,
   );
 }
+
+/// A default cut with [layers] standing in for its drawing row, keeping
+/// the fixtures the default brought.
+///
+/// ⛔EVERY IMPORTER BUILDS ITS CUT THIS WAY. The default cut arrives with
+/// an instruction row and a camera row as well as a blank drawing layer,
+/// and an importer replaces only the drawing: dropping the fixtures would
+/// give the imported cut no camera, which nothing downstream expects.
+///
+/// ⚠️AN EMPTY [layers] KEEPS THE DEFAULT'S OWN — an import that parsed no
+/// drawings still has to be a usable cut, not a cut with no rows at all.
+Cut importedCut({
+  required Cut defaultCut,
+  required List<Layer> layers,
+  required int duration,
+}) {
+  final fixtureLayers = [
+    for (final layer in defaultCut.layers)
+      if (layer.kind != LayerKind.animation) layer,
+  ];
+  return defaultCut.copyWith(
+    duration: duration,
+    layers: layers.isEmpty ? defaultCut.layers : [...layers, ...fixtureLayers],
+  );
+}

@@ -237,17 +237,11 @@ TvpImportPlan planTvpImport({
     layerId: mint.nextLayerId(),
     canvasSize: canvasSize,
   );
-  // Keep the fixtures (instruction + camera rows), replace the default
-  // drawing layer with the imported stack.
-  final fixtureLayers = [
-    for (final layer in defaultCut.layers)
-      if (layer.kind != LayerKind.animation) layer,
-  ];
-  final cut = defaultCut.copyWith(
+  final cut = importedCut(
+    defaultCut: defaultCut,
+    layers: layers,
     duration: duration,
-    layers: layers.isEmpty ? defaultCut.layers : [...layers, ...fixtureLayers],
-    camera: camera,
-  );
+  ).copyWith(camera: camera);
 
   return TvpImportPlan(cut: cut, bakes: bakes, warnings: warnings);
 }
