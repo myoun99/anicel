@@ -39,7 +39,7 @@ void main() {
           continue;
         }
         if (trimmed.contains('exportModuleNote(')) {
-          offenders.add('$path:${i + 1}  ${trimmed}');
+          offenders.add('$path:${i + 1}  $trimmed');
         }
       }
     }
