@@ -481,12 +481,13 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     return result;
   }
 
-  /// R16-④: measured fill taps — an EMPTY full-canvas cel (the user's
-  /// exact repro: "빈 프레임에 그냥 칠하기") alternating with a painted
-  /// one, undone between taps so every tap floods the full region. The
-  /// wall time prints per tap; the [labProbe]s inside buildFillDab print
-  /// the decomposition.
-  Future<void> _runFillTaps(
+  /// The state both fill runs start from: standing on frame 7 with a cel
+  /// under the pointer and the FILL tool picked.
+  ///
+  /// ⛔ONE SETUP. Two runs wrote it out, and a lab whose two runs start
+  /// from slightly different states measures two different things and
+  /// reports them as one comparison.
+  Future<void> _prepareFillRun(
     EditorSessionManager session,
     ValueNotifier<BrushToolState>? brushTool,
   ) async {
@@ -500,6 +501,18 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       brushTool.value = BrushToolState.defaults.copyWith(tool: CanvasTool.fill);
       await _settleFrames(2);
     }
+  }
+
+  /// R16-④: measured fill taps — an EMPTY full-canvas cel (the user's
+  /// exact repro: "빈 프레임에 그냥 칠하기") alternating with a painted
+  /// one, undone between taps so every tap floods the full region. The
+  /// wall time prints per tap; the [labProbe]s inside buildFillDab print
+  /// the decomposition.
+  Future<void> _runFillTaps(
+    EditorSessionManager session,
+    ValueNotifier<BrushToolState>? brushTool,
+  ) async {
+    await _prepareFillRun(session, brushTool);
     for (var tap = 0; tap < 6; tap += 1) {
       final frame = tap.isOdd ? 0 : 7;
       session.selectFrameIndex(frame);
@@ -554,16 +567,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     EditorSessionManager session,
     ValueNotifier<BrushToolState>? brushTool,
   ) async {
-    session.selectFrameIndex(7);
-    await _settleFrames(2);
-    if (session.activeBrushEditorSelection == null) {
-      session.createDrawingAtCurrentFrame();
-      await _settleFrames(4);
-    }
-    if (brushTool != null) {
-      brushTool.value = BrushToolState.defaults.copyWith(tool: CanvasTool.fill);
-      await _settleFrames(2);
-    }
+    await _prepareFillRun(session, brushTool);
     final canvas = _canvasView();
     if (canvas == null) {
       _log('fill-roundtrip ABORT: canvas lost');
