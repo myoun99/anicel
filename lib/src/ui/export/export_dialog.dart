@@ -2764,29 +2764,19 @@ class ExportDialogState extends State<ExportDialog> {
               _updateSpec(spec.copyWith(format: const ExportFormatSelection())),
         ),
       ),
-      ExportAccordion(
-        title: AppText.strings.exScope,
-        summary: ExportScopeModule.summarize(spec.scope),
-        expansion: _expansion('scope', open: true),
-        child: ExportScopeModule(
-          scope: spec.scope,
-          enabled: !_isExporting,
-          onChanged: (scope) => _updateSpec(
-            spec.copyWith(
-              scope: scope,
-              // The v10 coupling: a project scope renders through the
-              // camera (per-cut canvases cannot make one movie).
-              sizeMode: scope == ExportScopeKind.project
-                  ? ExportSizeMode.camera
-                  : spec.sizeMode,
-            ),
+      _scopeAccordion(
+        scope: spec.scope,
+        onChanged: (scope) => _updateSpec(
+          spec.copyWith(
+            scope: scope,
+            // The v10 coupling: a project scope renders through the
+            // camera (per-cut canvases cannot make one movie).
+            sizeMode: scope == ExportScopeKind.project
+                ? ExportSizeMode.camera
+                : spec.sizeMode,
           ),
-          // The in/out fields live on the nav bar's ends (v10) — the
-          // module keeps the scope choice alone.
-          note: projectScope
-              ? 'No cut list here — in/out alone trims the sequence.'
-              : null,
         ),
+        fold: (key: 'scope', open: true),
       ),
       ExportAccordion(
         title: 'Size',
@@ -2835,21 +2825,11 @@ class ExportDialogState extends State<ExportDialog> {
             onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
           ),
         ),
-      ExportAccordion(
-        title: AppText.strings.exOptions,
-        summary: spec.applyLayerFx ? 'FX on' : 'FX off',
-        expansion: _expansion('options'),
-        child: ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-apply-fx-toggle'),
-          label: AppText.strings.exApplyLayerFxHelp,
-          value: spec.applyLayerFx,
-          onChanged: _isExporting
-              ? null
-              : (value) {
-                  _preview.clear();
-                  _updateSpec(spec.copyWith(applyLayerFx: value));
-                },
-        ),
+      _fxAccordion(
+        keyValue: 'export-apply-fx-toggle',
+        label: AppText.strings.exApplyLayerFxHelp,
+        applyLayerFx: spec.applyLayerFx,
+        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
       ),
     ];
   }
@@ -2898,21 +2878,11 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
         ),
       ),
-      ExportAccordion(
-        title: AppText.strings.exOptions,
-        summary: spec.applyLayerFx ? 'FX on' : 'FX off',
-        expansion: _expansion('options'),
-        child: ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-image-fx-toggle'),
-          label: AppText.strings.exApplyLayerFx,
-          value: spec.applyLayerFx,
-          onChanged: _isExporting
-              ? null
-              : (value) {
-                  _preview.clear();
-                  _updateSpec(spec.copyWith(applyLayerFx: value));
-                },
-        ),
+      _fxAccordion(
+        keyValue: 'export-image-fx-toggle',
+        label: AppText.strings.exApplyLayerFx,
+        applyLayerFx: spec.applyLayerFx,
+        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
       ),
     ];
   }
@@ -3292,39 +3262,22 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
         ),
       ),
-      ExportAccordion(
-        title: AppText.strings.exScope,
-        summary: ExportScopeModule.summarize(spec.scope),
-        expansion: _expansion('scope'),
-        child: ExportScopeModule(
-          scope: spec.scope,
-          enabled: !_isExporting,
-          onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
-          // The v10 grid (Timesheet와 공용 부품): checks save with the
-          // project.
-          child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
-        ),
+      _scopeAccordion(
+        scope: spec.scope,
+        onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
+        // The v10 grid (Timesheet와 공용 부품): checks save with the project.
+        child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
       ),
       // ✅THE SWITCH THE OTHER TABS ALREADY HAD. This tab used to force FX
       // off with no way to say otherwise (see [CelsExportSpec.applyLayerFx]);
       // 유저 2026-08-27 made it a choice. Same accordion, same toggle row,
       // same key prefix as the Sequence and Image tabs — one control, three
       // places, rather than a fourth idea of what this question looks like.
-      ExportAccordion(
-        title: AppText.strings.exOptions,
-        summary: spec.applyLayerFx ? 'FX on' : 'FX off',
-        expansion: _expansion('options'),
-        child: ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-cels-apply-fx-toggle'),
-          label: AppText.strings.exApplyLayerFxHelp,
-          value: spec.applyLayerFx,
-          onChanged: _isExporting
-              ? null
-              : (value) {
-                  _preview.clear();
-                  _updateSpec(spec.copyWith(applyLayerFx: value));
-                },
-        ),
+      _fxAccordion(
+        keyValue: 'export-cels-apply-fx-toggle',
+        label: AppText.strings.exApplyLayerFxHelp,
+        applyLayerFx: spec.applyLayerFx,
+        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
       ),
     ];
   }
@@ -3382,17 +3335,12 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ),
       ),
-      ExportAccordion(
-        title: AppText.strings.exScope,
-        summary: ExportScopeModule.summarize(spec.scope),
-        expansion: _expansion('scope', open: true),
-        child: ExportScopeModule(
-          scope: spec.scope,
-          enabled: !_isExporting,
-          onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
-          // The same grid part the Cels scope uses (v10: 공용 부품).
-          child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
-        ),
+      _scopeAccordion(
+        scope: spec.scope,
+        onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
+        fold: (key: 'scope', open: true),
+        // The same grid part the Cels scope uses (v10: 공용 부품).
+        child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
       ),
     ];
   }
@@ -3502,6 +3450,61 @@ class ExportDialogState extends State<ExportDialog> {
     expansion: _expansion('naming'),
     reset: (enabled: !isDefault, onTap: onReset),
     child: child,
+  );
+
+  /// The layer-fx switch every raster tab offers — 유저 2026-08-27 made it
+  /// a choice on the Cels tab too, so it is one control on three tabs.
+  ///
+  /// ⛔THE PREVIEW CLEAR IS PART OF THE SWITCH. Flipping fx changes what
+  /// renders, and a tab that flipped the spec without clearing would keep
+  /// showing the picture the OTHER setting made. [keyValue] and [label]
+  /// stay each tab's own: the keys name their tab, and one tab's label
+  /// carries the longer help line.
+  ExportAccordion _fxAccordion({
+    required String keyValue,
+    required String label,
+    required bool applyLayerFx,
+    required void Function(bool applyLayerFx) onChanged,
+  }) => ExportAccordion(
+    title: AppText.strings.exOptions,
+    summary: applyLayerFx ? 'FX on' : 'FX off',
+    expansion: _expansion('options'),
+    child: ExportToggleRow(
+      widgetKey: ValueKey<String>(keyValue),
+      label: label,
+      value: applyLayerFx,
+      onChanged: _isExporting
+          ? null
+          : (value) {
+              _preview.clear();
+              onChanged(value);
+            },
+    ),
+  );
+
+  /// The "this cut or the whole film" accordion every tab offers.
+  ///
+  /// ⛔ONE SCOPE CONTROL. Five tabs wrote out the title, the summarize
+  /// call and the enabled pair; what actually differs is the fold key,
+  /// whether it opens by default, and what rides inside it — the cut grid
+  /// or a note.
+  ExportAccordion _scopeAccordion({
+    required ExportScopeKind scope,
+    required void Function(ExportScopeKind scope) onChanged,
+    ({String key, bool open}) fold = (key: 'scope', open: false),
+    Widget? child,
+    String? note,
+  }) => ExportAccordion(
+    title: AppText.strings.exScope,
+    summary: ExportScopeModule.summarize(scope),
+    expansion: _expansion(fold.key, open: fold.open),
+    child: ExportScopeModule(
+      scope: scope,
+      enabled: !_isExporting,
+      onChanged: onChanged,
+      note: note,
+      child: child,
+    ),
   );
 
   List<Widget> _envelopeModules() {
@@ -3653,21 +3656,16 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ),
       ),
-      ExportAccordion(
-        title: AppText.strings.exScope,
-        summary: ExportScopeModule.summarize(spec.scope),
+      _scopeAccordion(
+        scope: spec.scope,
+        onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
         // Open by default: "this cut or the whole film" is the first thing
         // anyone asks of a per-cut document.
-        expansion: _expansion('envelope-scope', open: true),
-        child: ExportScopeModule(
-          scope: spec.scope,
-          enabled: !_isExporting,
-          onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
-          note:
-              'A 겸용 cut and its siblings are ONE envelope — the folder '
-              'they share in the studio — so they write one file, not one '
-              'each.',
-        ),
+        fold: (key: 'envelope-scope', open: true),
+        note:
+            'A 겸용 cut and its siblings are ONE envelope — the folder '
+            'they share in the studio — so they write one file, not one '
+            'each.',
       ),
     ];
   }
