@@ -137,3 +137,25 @@ double edgeAutoPanApply({
   position.jumpTo(target);
   return applied;
 }
+
+/// The OVERSHOOTING twin of [edgeAutoPanApply]'s tail: pans [controller]
+/// by [delta] with no upper clamp, so a ruler or rail scrub reaches past
+/// the last built cell (UI-R12 #16) and the growth listener materializes
+/// the frames the overshot view needs — while the scrollbar and the
+/// scroll physics stay clamped at the built extent.
+///
+/// ⛔THREE SCRUBS "KEEP THEIR OWN TAIL", AND IT IS ONE TAIL. The clamped
+/// apply above cannot serve them, but "floor at zero, jump only when it
+/// moved" is the same sentence in the ruler, the rail and the
+/// storyboard strip — and the one that lost the floor would scroll to a
+/// negative offset the moment a scrub crossed the left edge.
+void edgeAutoPanOvershoot(ScrollController controller, double delta) {
+  if (delta == 0 || !controller.hasClients) {
+    return;
+  }
+  final position = controller.position;
+  final target = math.max(0.0, position.pixels + delta);
+  if (target != position.pixels) {
+    controller.jumpTo(target);
+  }
+}

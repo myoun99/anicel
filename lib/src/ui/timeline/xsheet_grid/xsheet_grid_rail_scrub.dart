@@ -84,21 +84,13 @@ class _XSheetGridRailScrub {
   /// rows ahead, the rail drag alone reaches ANY frame (the scrollbar
   /// clamps at the built extent by design).
   void _autoPanRailEdge(RenderBox viewport, double localY) {
-    if (!_state._frameScrollController.hasClients || !viewport.hasSize) {
+    if (!viewport.hasSize) {
       return;
     }
-    final delta = edgeAutoPanDelta(localY, viewport.size.height);
-    if (delta == 0) {
-      return;
-    }
-    final position = _state._frameScrollController.position;
-    // Downward the pan OVERSHOOTS the built extent (UI-R12 #16): the rail
-    // drag is THE way past the last built cell — growth materializes the
-    // frames the overshot view needs; scroll/scrollbar stay clamped.
-    final target = math.max(0.0, position.pixels + delta);
-    if (target != position.pixels) {
-      _state._frameScrollController.jumpTo(target);
-    }
+    edgeAutoPanOvershoot(
+      _state._frameScrollController,
+      edgeAutoPanDelta(localY, viewport.size.height),
+    );
   }
 
   void resetRailScrubTracking() {

@@ -1,4 +1,3 @@
-
 import '../models/brush_dab.dart';
 import '../models/brush_pixel_coverage.dart';
 import 'brush_dab_dirty_region.dart';
@@ -79,5 +78,3 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
 
   return List<BrushPixelCoverage>.unmodifiable(coverages);
 }
-
-

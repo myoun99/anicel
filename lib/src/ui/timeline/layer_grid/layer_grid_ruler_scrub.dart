@@ -78,23 +78,15 @@ class _LayerGridRulerScrub {
   /// listener materializes the frames the overshot view needs, while the
   /// scrollbar and scroll physics stay clamped at the built cells.
   void _autoPanRulerEdge(double localX) {
-    if (!_state._horizontalScrollController.hasClients) {
-      return;
-    }
     final viewport = _state._rulerScrubViewportKey.currentContext
         ?.findRenderObject();
     if (viewport is! RenderBox || !viewport.hasSize) {
       return;
     }
-    final delta = edgeAutoPanDelta(localX, viewport.size.width);
-    if (delta == 0) {
-      return;
-    }
-    final position = _state._horizontalScrollController.position;
-    final target = math.max(0.0, position.pixels + delta);
-    if (target != position.pixels) {
-      _state._horizontalScrollController.jumpTo(target);
-    }
+    edgeAutoPanOvershoot(
+      _state._horizontalScrollController,
+      edgeAutoPanDelta(localX, viewport.size.width),
+    );
   }
 
   void resetRulerScrubTracking() {

@@ -17,14 +17,6 @@ class _StoryboardScroll {
   /// deliberately OVERSHOOTS the built extent, and the growth listener
   /// materializes the frames the overshot view needs. The scrollbar and
   /// scroll physics stay clamped at the built cells.
-  void autoPanRulerEdge(double delta) {
-    if (!_state._horizontalController.hasClients) {
-      return;
-    }
-    final position = _state._horizontalController.position;
-    final target = math.max(0.0, position.pixels + delta);
-    if (target != position.pixels) {
-      _state._horizontalController.jumpTo(target);
-    }
-  }
+  void autoPanRulerEdge(double delta) =>
+      edgeAutoPanOvershoot(_state._horizontalController, delta);
 }
