@@ -54,8 +54,20 @@ class ActiveLayerFlatImage {
 }
 
 abstract final class ActiveLayerFlatProjection {
-  /// The full flatten, or null when the strict subset does not hold.
-  static ActiveLayerFlatImage? buildOrNull({
+  /// The prologue BOTH flattens share: the operand tiles, the world rect
+  /// they cover, and a recorder already translated into that rect's space.
+  ///
+  /// ⛔NULL IS THE LAW, and it was written twice: the strict subset must
+  /// hold and the tiles must have a rect, or the caller falls back to the
+  /// walk. Two guards in two places is two chances for one of them to
+  /// start answering differently.
+  static ({
+    Map<TileCoord, ui.Image> operands,
+    ui.Rect worldRect,
+    ui.PictureRecorder recorder,
+    ui.Canvas canvas,
+  })?
+  _beginFlattenOrNull({
     required BitmapSurface surface,
     required BitmapTileImageCache tileImages,
     ActiveStrokeOverlayModel? overlay,
@@ -73,12 +85,35 @@ abstract final class ActiveLayerFlatProjection {
       return null;
     }
     final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    canvas.translate(-worldRect.left, -worldRect.top);
+    final canvas = ui.Canvas(recorder)
+      ..translate(-worldRect.left, -worldRect.top);
+    return (
+      operands: operands,
+      worldRect: worldRect,
+      recorder: recorder,
+      canvas: canvas,
+    );
+  }
+
+  /// The full flatten, or null when the strict subset does not hold.
+  static ActiveLayerFlatImage? buildOrNull({
+    required BitmapSurface surface,
+    required BitmapTileImageCache tileImages,
+    ActiveStrokeOverlayModel? overlay,
+  }) {
+    final start = _beginFlattenOrNull(
+      surface: surface,
+      tileImages: tileImages,
+      overlay: overlay,
+    );
+    if (start == null) {
+      return null;
+    }
+    final canvas = start.canvas;
     final paint = ui.Paint()
       ..filterQuality = ui.FilterQuality.none
       ..isAntiAlias = false;
-    for (final entry in operands.entries) {
+    for (final entry in start.operands.entries) {
       canvas.drawImage(
         entry.value,
         ui.Offset(
@@ -88,7 +123,7 @@ abstract final class ActiveLayerFlatProjection {
         paint,
       );
     }
-    return _rasterize(recorder, worldRect);
+    return _rasterize(start.recorder, start.worldRect);
   }
 
   /// Re-flattens only [changedCoords] over [previous] — the per-dab-batch
@@ -106,21 +141,16 @@ abstract final class ActiveLayerFlatProjection {
     required BitmapTileImageCache tileImages,
     ActiveStrokeOverlayModel? overlay,
   }) {
-    final operands = _operandsOrNull(
+    final start = _beginFlattenOrNull(
       surface: surface,
       tileImages: tileImages,
       overlay: overlay,
     );
-    if (operands == null) {
+    if (start == null) {
       return null;
     }
-    final worldRect = _worldRectOf(operands.keys, surface);
-    if (worldRect == null) {
-      return null;
-    }
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    canvas.translate(-worldRect.left, -worldRect.top);
+    final operands = start.operands;
+    final canvas = start.canvas;
     // The previous flat lands first, srcOver on transparent = byte
     // pass-through, at ITS OWN placement — the extent may have grown.
     canvas.drawImage(
@@ -152,7 +182,7 @@ abstract final class ActiveLayerFlatProjection {
         clear,
       );
     }
-    return _rasterize(recorder, worldRect);
+    return _rasterize(start.recorder, start.worldRect);
   }
 
   /// The per-coordinate finished images, or null when the strict subset
