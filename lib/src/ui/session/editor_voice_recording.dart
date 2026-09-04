@@ -267,6 +267,36 @@ class EditorVoiceRecording {
     }
   }
 
+  /// THE CUE BEEP, one sample at a time: 1 kHz for 90 ms with a 5 ms ramp
+  /// at each end.
+  ///
+  /// ⛔TWO PLAYERS MADE IT — the WAV the take store plays and the PCM the
+  /// device schedules for a count-in — and each spelled out the frequency,
+  /// the length and the ramp. Two beeps that stopped agreeing would be two
+  /// different cues for one moment, which is exactly what a count-in must
+  /// not be. Only the LEVEL differs, so only the level is an argument.
+  ///
+  /// ⚠️The ramp is not decoration: a square-edged tone clicks, and the
+  /// click is louder than the beep on a small speaker.
+  static Float32List _cueBeepSamples({
+    required int sampleRate,
+    required double level,
+  }) {
+    final toneSamples = sampleRate * 9 ~/ 100;
+    final ramp = sampleRate ~/ 200;
+    final samples = Float32List(toneSamples);
+    for (var sample = 0; sample < toneSamples; sample += 1) {
+      var value = level * math.sin(2 * math.pi * 1000 * sample / sampleRate);
+      if (sample < ramp) {
+        value *= sample / ramp;
+      } else if (sample >= toneSamples - ramp) {
+        value *= (toneSamples - sample) / ramp;
+      }
+      samples[sample] = value;
+    }
+    return samples;
+  }
+
   /// The cue beep on disk (project-rate mono, ~90 ms of 1 kHz with 5 ms
   /// ramps), written once per session and registered with the conform
   /// store like any take.
@@ -277,18 +307,7 @@ class EditorVoiceRecording {
     }
     try {
       final sampleRate = audioConformStore.projectSampleRate;
-      final toneSamples = sampleRate * 9 ~/ 100;
-      final ramp = sampleRate ~/ 200;
-      final samples = Float32List(toneSamples);
-      for (var sample = 0; sample < toneSamples; sample += 1) {
-        var value = 0.5 * math.sin(2 * math.pi * 1000 * sample / sampleRate);
-        if (sample < ramp) {
-          value *= sample / ramp;
-        } else if (sample >= toneSamples - ramp) {
-          value *= (toneSamples - sample) / ramp;
-        }
-        samples[sample] = value;
-      }
+      final samples = _cueBeepSamples(sampleRate: sampleRate, level: 0.5);
       final wav = encodeConform(
         samples: samples,
         channels: 1,
@@ -336,18 +355,12 @@ class EditorVoiceRecording {
     }
     final sampleRate = device.sampleRate;
     final channels = device.channels;
-    final toneSamples = sampleRate * 9 ~/ 100;
-    final ramp = sampleRate ~/ 200;
+    final tone = _cueBeepSamples(sampleRate: sampleRate, level: 0.4);
+    final toneSamples = tone.length;
     final pcm = Float32List(toneSamples * channels);
     for (var sample = 0; sample < toneSamples; sample += 1) {
-      var value = 0.4 * math.sin(2 * math.pi * 1000 * sample / sampleRate);
-      if (sample < ramp) {
-        value *= sample / ramp;
-      } else if (sample >= toneSamples - ramp) {
-        value *= (toneSamples - sample) / ramp;
-      }
       for (var channel = 0; channel < channels; channel += 1) {
-        pcm[sample * channels + channel] = value;
+        pcm[sample * channels + channel] = tone[sample];
       }
     }
     device.setSchedule(
