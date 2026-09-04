@@ -1,3 +1,4 @@
+import '../../services/persistence/versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -23,24 +24,14 @@ class WorkspaceLayoutStore {
   static const int layoutVersion = 1;
 
   /// Reads the saved layout payload; null when missing/corrupt/newer.
-  Future<Map<String, Object?>?> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > layoutVersion) {
-        return null;
-      }
-      return decoded;
-    } on Object catch (_) {
-      // A corrupt layout must not fail the editor: the defaults win and
-      // the file is replaced on the next save.
-      return null;
-    }
-  }
+  /// ⛔`fromJson` IS THE IDENTITY here, on purpose: the layout payload has
+  /// no model of its own — the panels read their own keys out of it — so
+  /// what the file holds is what the caller gets.
+  Future<Map<String, Object?>?> load() => loadVersionedSettings(
+    filePath: filePath,
+    version: layoutVersion,
+    fromJson: (json) => json,
+  );
 
   /// Writes the layout payload, creating the app-data directory as needed.
   Future<void> save(Map<String, Object?> payload) async {

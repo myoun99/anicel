@@ -1,3 +1,4 @@
+import '../../services/persistence/versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -37,31 +38,26 @@ class BrushHandSettingsStore {
   /// The saved values by preset id; empty when missing/corrupt/newer — a
   /// brush with no entry reads the size baked into its own file, which is
   /// the other half of the user's answer.
-  Future<Map<String, BrushHandSettings>> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return const {};
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return const {};
-      }
-      final entries = decoded['brushes'] as Map<String, dynamic>? ?? const {};
-      return {
-        for (final entry in entries.entries)
-          if (entry.value is Map<String, dynamic>)
-            entry.key: (
-              size: (entry.value as Map<String, dynamic>)['size'] as double?,
-              opacity:
-                  (entry.value as Map<String, dynamic>)['opacity'] as double?,
-            ),
-      };
-    } on Object catch (_) {
-      return const {};
-    }
-  }
+  Future<Map<String, BrushHandSettings>> load() async =>
+      await loadVersionedSettings(
+        filePath: filePath,
+        version: version,
+        fromJson: (json) {
+          final entries = json['brushes'] as Map<String, dynamic>? ?? const {};
+          return {
+            for (final entry in entries.entries)
+              if (entry.value is Map<String, dynamic>)
+                entry.key: (
+                  size:
+                      (entry.value as Map<String, dynamic>)['size'] as double?,
+                  opacity:
+                      (entry.value as Map<String, dynamic>)['opacity']
+                          as double?,
+                ),
+          };
+        },
+      ) ??
+      const {};
 
   Future<void> save(Map<String, BrushHandSettings> bank) async {
     final file = File(filePath);

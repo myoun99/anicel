@@ -1,3 +1,4 @@
+import 'versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -30,26 +31,17 @@ class AppUiScaleStore {
   /// with a different ladder is the normal way an off-ladder value arrives,
   /// and a value the settings row cannot show would leave every stop
   /// looking unselected.
-  Future<double?> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return null;
-      }
-      final scale = (decoded['scale'] as num?)?.toDouble();
+  Future<double?> load() => loadVersionedSettings(
+    filePath: filePath,
+    version: version,
+    fromJson: (json) {
+      final scale = (json['scale'] as num?)?.toDouble();
       if (scale == null || !scale.isFinite || scale <= 0) {
         return null;
       }
       return AppUiScale.snap(scale);
-    } on Object {
-      return null;
-    }
-  }
+    },
+  );
 
   Future<void> save(double scale) async {
     final file = File(filePath);

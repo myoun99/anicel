@@ -1,5 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
+import '../../services/persistence/versioned_settings_file.dart';
 
 import '../../services/persistence/app_support_path.dart';
 
@@ -19,26 +18,15 @@ class ShortcutSettingsStore {
   static const int version = 1;
 
   /// The saved overrides payload; null when missing/corrupt/newer.
-  Future<Map<String, Object?>?> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return null;
-      }
-      return decoded;
-    } on Object catch (_) {
-      return null;
-    }
-  }
+  Future<Map<String, Object?>?> load() => loadVersionedSettings(
+    filePath: filePath,
+    version: version,
+    fromJson: (json) => json,
+  );
 
-  Future<void> save(Map<String, Object?> payload) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(jsonEncode({'version': version, ...payload}));
-  }
+  Future<void> save(Map<String, Object?> payload) => saveVersionedSettings(
+    filePath: filePath,
+    version: version,
+    json: payload,
+  );
 }

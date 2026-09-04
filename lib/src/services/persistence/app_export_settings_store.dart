@@ -1,3 +1,4 @@
+import 'versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -30,22 +31,11 @@ class AppExportSettingsStore {
   // stall under testWidgets' fake-async zone — the documented SAVE-1
   // gotcha — and the export dialog reads/writes this store from widget
   // code that widget tests drive directly.
-  Future<AppExportSettings?> load() async {
-    try {
-      final file = File(filePath);
-      if (!file.existsSync()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return null;
-      }
-      return AppExportSettings.fromJson(decoded);
-    } on Object {
-      return null;
-    }
-  }
+  Future<AppExportSettings?> load() async => loadVersionedSettingsSync(
+    filePath: filePath,
+    version: version,
+    fromJson: AppExportSettings.fromJson,
+  );
 
   Future<void> save(AppExportSettings settings) async {
     try {

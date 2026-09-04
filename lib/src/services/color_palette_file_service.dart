@@ -1,6 +1,4 @@
 import 'persistence/versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import 'persistence/app_support_path.dart';
 
@@ -74,22 +72,13 @@ class ColorPaletteFileService {
 
   static const int version = 1;
 
-  Future<ColorPaletteState> loadOrDefaults() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return const ColorPaletteState();
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return const ColorPaletteState();
-      }
-      return ColorPaletteState.fromJson(decoded);
-    } on Object catch (_) {
-      return const ColorPaletteState();
-    }
-  }
+  Future<ColorPaletteState> loadOrDefaults() async =>
+      await loadVersionedSettings(
+        filePath: filePath,
+        version: version,
+        fromJson: ColorPaletteState.fromJson,
+      ) ??
+      const ColorPaletteState();
 
   Future<void> save(ColorPaletteState state) => saveVersionedSettings(
     filePath: filePath,

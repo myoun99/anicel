@@ -1,3 +1,4 @@
+import 'versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -32,24 +33,15 @@ class RecentProjectsStore {
 
   static const int version = 1;
 
-  RecentProjects load() {
-    try {
-      final file = File(filePath);
-      if (!file.existsSync()) {
-        return const RecentProjects();
-      }
-      final decoded =
-          jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return const RecentProjects();
-      }
-      return RecentProjects.fromJson(decoded);
-    } on Object {
-      // A missing or corrupt list is an empty list, never an error: losing
-      // the menu is a nuisance, refusing to open the app over it is not.
-      return const RecentProjects();
-    }
-  }
+  /// ⛔A missing or corrupt list is an EMPTY list, never an error: losing
+  /// the menu is a nuisance, refusing to open the app over it is not.
+  RecentProjects load() =>
+      loadVersionedSettingsSync(
+        filePath: filePath,
+        version: version,
+        fromJson: RecentProjects.fromJson,
+      ) ??
+      const RecentProjects();
 
   void save(RecentProjects projects) {
     try {

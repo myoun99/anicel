@@ -1,6 +1,4 @@
 import 'versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import '../../models/app_language.dart';
 import 'app_support_path.dart';
@@ -19,24 +17,11 @@ class AppLanguageSettingsStore {
 
   static const int version = 1;
 
-  Future<AppLanguageSettings?> load() async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return null;
-      }
-      final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if ((decoded['version'] as int? ?? 0) > version) {
-        return null;
-      }
-      return AppLanguageSettings.fromJson(decoded);
-    } on Object catch (_) {
-      // Corrupt settings never fail the editor: defaults win, the file is
-      // replaced on the next save.
-      return null;
-    }
-  }
+  Future<AppLanguageSettings?> load() => loadVersionedSettings(
+    filePath: filePath,
+    version: version,
+    fromJson: AppLanguageSettings.fromJson,
+  );
 
   Future<void> save(AppLanguageSettings settings) => saveVersionedSettings(
     filePath: filePath,

@@ -21,7 +21,7 @@ import 'dart:io';
 Future<T?> loadVersionedSettings<T>({
   required String filePath,
   required int version,
-  required T Function(Map<String, dynamic> json) fromJson,
+  required T? Function(Map<String, dynamic> json) fromJson,
 }) async {
   try {
     final file = File(filePath);
@@ -48,4 +48,31 @@ Future<void> saveVersionedSettings({
   final file = File(filePath);
   await file.parent.create(recursive: true);
   await file.writeAsString(jsonEncode({'version': version, ...json}));
+}
+
+/// [loadVersionedSettings] without the await.
+///
+/// ⛔A SEPARATE FUNCTION, NOT A FLAG. Two stores read synchronously on
+/// purpose — the export settings because widget tests drive the dialog
+/// that reads them, the recent list because the launcher shows it before
+/// anything is awaited — and a `sync: true` argument would make one
+/// function answer "what does it read" and "when does it return" at once.
+T? loadVersionedSettingsSync<T>({
+  required String filePath,
+  required int version,
+  required T? Function(Map<String, dynamic> json) fromJson,
+}) {
+  try {
+    final file = File(filePath);
+    if (!file.existsSync()) {
+      return null;
+    }
+    final decoded = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    if ((decoded['version'] as int? ?? 0) > version) {
+      return null;
+    }
+    return fromJson(decoded);
+  } on Object {
+    return null;
+  }
 }
