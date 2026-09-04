@@ -277,6 +277,15 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
         // R28 #13: the folder bypass rides the ENTRIES (poses and opacity
         // resolve through it), so the signature self-invalidates on a
         // folder fx toggle exactly as it does on a layer's.
+        // ⛔A LIVE ROW HAS NO SIGNATURE. The cache keys STORED pixels;
+        // the live surface is not stored, and only the editing stack asks
+        // the tree for one — so a signature built over a live row would be
+        // a cache key for something about to change under it. If this route
+        // ever starts passing one, the throw says so rather than banking a
+        // composite that is already wrong.
+        CutFrameCompositeEntryLive() => throw StateError(
+          'The composite signature has no key for a live row.',
+        ),
         CutFrameCompositeEntryLeaf(:final entry) => CompositeLeafSignature(
           CompositeLayerSignature(
             layerId: entry.layer.id,

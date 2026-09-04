@@ -79,6 +79,11 @@ void main() {
     switch (node) {
       case CutFrameCompositeEntryLeaf(:final entry):
         return [entry.layer.id.value];
+      case CutFrameCompositeEntryLive(:final layer):
+        // The tree here is asked with NO live row, so this is unreachable —
+        // it is named so a live row showing up in a plain resolve reads as
+        // a wrong id rather than as a silent skip.
+        return [layer.id.value];
       case CutFrameCompositeEntryGroup(:final children):
       case CutFrameCompositeEntryAdjustment(:final children):
         return [for (final child in children) ...idsUnder(child)];

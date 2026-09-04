@@ -2340,6 +2340,25 @@ class EditorSessionManager extends ChangeNotifier {
             effects: effects,
             mix: mix,
           );
+        case CutFrameCompositeEntryLive(:final layer, :final render):
+          // The row being drawn on with NOTHING exposed at this frame — the
+          // plan still placed it, in its folder and at its z, so the first
+          // stroke lands where the picture says it should (유저 확정
+          // 2026-09-04: 재생과 똑같이). The hand-built block this replaced
+          // appended it at the top level and lost all three.
+          activeLayerOpacity = _opacity.stackLayerOpacity(
+            layer,
+            stackCut.layers,
+            frameIndex,
+          );
+          activeSourceEffects = splitSourceEffects(render.effects).source;
+          return CanvasActiveLayerNode(
+            opacity: render.opacity,
+            blendMode: render.blendMode,
+            pose: render.placement?.pose,
+            anchorPoint: render.placement?.anchorPoint,
+            effects: render.effects,
+          );
         case CutFrameCompositeEntryLeaf(:final entry):
           // A brush-banned active layer (SE/instruction, R6-④; a media
           // REFERENCE layer, §6-z23) has no interactive surface — it
@@ -2397,69 +2416,15 @@ class EditorSessionManager extends ChangeNotifier {
       for (final node in resolveCutFrameCompositeTree(
         cut: stackCut,
         frameIndex: frameIndex,
+        liveLayerId:
+            activeLayerId != null &&
+                stackCut.layers.byId(activeLayerId) != null &&
+                layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
+            ? activeLayerId
+            : null,
       ))
         ?mapNode(node),
     ];
-
-    // An ACTIVE layer with nothing exposed at this frame resolves no entry
-    // at all, so the walk above never reaches it. It still needs its node:
-    // the interactive surface is where the next stroke lands.
-    final activeStackLayer = activeLayerId == null
-        ? null
-        : stackCut.layers.byId(activeLayerId);
-    if (activeStackLayer != null &&
-        !_treeHoldsActiveLayer(nodes) &&
-        layerAcceptsBrushInput(activeStackLayer) &&
-        // 🚨THE FOLDER CHAIN, which the tree walk applies and this block does
-        // not. A row WITH a cel never reaches here — a hidden folder drops
-        // its whole subtree inside `resolveCutFrameCompositeTree`, so the
-        // node simply is not in the tree. A row with nothing exposed at this
-        // frame took this hand-built path instead and skipped that walk, so
-        // the layer you were standing on went on being drawn out of a folder
-        // the user had switched off — visible on the editing canvas and
-        // nowhere else, which is the worst shape a difference can take.
-        stackCut.layers.rowVisible(activeStackLayer)) {
-      activeLayerOpacity = _opacity.stackLayerOpacity(
-        activeStackLayer,
-        stackCut.layers,
-        frameIndex,
-      );
-      // R6: the surface you are about to draw on shows the effects the
-      // composite will apply to it, so the first stroke lands in the
-      // picture you can see. The chain comes from the FX CARRIER exactly
-      // as [resolveCutFrameCompositeEntries] resolves it for a real entry —
-      // an attach row wears its BASE's effects, and it is the base's fx
-      // switch that bypasses them. Reading the row's own would leave this
-      // one node unfiltered until its first cel exists, then snap.
-      final activeFxBase = isAttachedLayer(activeStackLayer)
-          ? attachedBaseOf(activeStackLayer, stackCut.layers)
-          : null;
-      final activeFxCarrier = activeFxBase ?? activeStackLayer;
-      activeSourceEffects = splitSourceEffects(
-        resolveLayerEffectsAt(
-          effects: activeFxCarrier.effects,
-          frameIndex: frameIndex,
-        ),
-      ).source;
-      nodes.add(
-        CanvasActiveLayerNode(
-          opacity: activeLayerOpacity,
-          // The row's own blend, since this route has no composite entry to
-          // read one from. ⚠️That is the whole problem with this block and
-          // not just with this field — it re-derives by hand what the plan
-          // already knows, which is why it also loses the folder chain, the
-          // group buffer and its z-position. Fixing THAT retires this
-          // argument along with the rest of the block.
-          blendMode: activeStackLayer.blendMode,
-          // No master gate here: each effect's own switch gates it inside
-          // the resolve, so this route cannot forget one (R8).
-          effects: resolveLayerEffectsAt(
-            effects: activeFxCarrier.effects,
-            frameIndex: frameIndex,
-          ),
-        ),
-      );
-    }
 
     // Track-owned SE rows join as their cut-local display clones — they
     // composite read-only like before the ownership move (their transform
@@ -2497,22 +2462,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  static bool _treeHoldsActiveLayer(List<CanvasLayerStackNode> nodes) {
-    for (final node in nodes) {
-      switch (node) {
-        case CanvasActiveLayerNode():
-          return true;
-        case CanvasLayerGroupNode(:final children):
-        case CanvasLayerAdjustmentNode(:final children):
-          if (_treeHoldsActiveLayer(children)) {
-            return true;
-          }
-        case CanvasLayerImageNode():
-          break;
-      }
-    }
-    return false;
-  }
 
   // ── the opacity verbs: their own object, in their own file ──────────
   //

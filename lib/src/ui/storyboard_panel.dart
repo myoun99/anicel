@@ -1108,9 +1108,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       }
       jumpToReveal(
         _horizontalController,
-        start: frame * cell,
-        extent: cell,
-        margin: cell,
+        (
+          start: frame * cell,
+          extent: cell,
+          margin: cell,
+        ),
       );
     });
   }

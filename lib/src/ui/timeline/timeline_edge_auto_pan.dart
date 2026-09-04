@@ -35,44 +35,41 @@ import 'package:flutter/widgets.dart';
 /// which is what makes a walk read as a walk rather than as a series of
 /// jumps to the very edge. A margin the viewport cannot afford stands down
 /// instead of fighting itself.
-double revealScrollOffset({
-  required double offset,
-  required double viewport,
-  required double start,
-  required double extent,
-  double margin = 0,
-}) {
-  if (viewport <= 0) {
-    return offset;
+/// The window a reveal measures against: where it is scrolled to, and how
+/// long it is.
+typedef ScrollWindow = ({double offset, double viewport});
+
+/// The item a reveal is for: where it starts, how long it is, and how much
+/// of its neighbour to keep visible past it.
+typedef RevealedItem = ({double start, double extent, double margin});
+
+double revealScrollOffset(ScrollWindow window, RevealedItem item) {
+  if (window.viewport <= 0) {
+    return window.offset;
   }
-  final pad = math.min(margin, math.max(0.0, (viewport - extent) / 2));
-  if (start - pad < offset) {
-    return start - pad;
+  final pad = math.min(
+    item.margin,
+    math.max(0.0, (window.viewport - item.extent) / 2),
+  );
+  if (item.start - pad < window.offset) {
+    return item.start - pad;
   }
-  final end = start + extent + pad;
-  if (end > offset + viewport) {
-    return end - viewport;
+  final end = item.start + item.extent + pad;
+  if (end > window.offset + window.viewport) {
+    return end - window.viewport;
   }
-  return offset;
+  return window.offset;
 }
 
-/// Jumps [controller] the least it can ([revealScrollOffset]) so the item
-/// at [start] with [extent] is on screen with [margin] of its neighbour,
-/// within the scrollable's own range — and not at all when it already is.
-void jumpToReveal(
-  ScrollController controller, {
-  required double start,
-  required double extent,
-  required double margin,
-}) {
+/// Jumps [controller] the least it can ([revealScrollOffset]) so [item] is
+/// on screen with its margin of the neighbour, within the scrollable's own
+/// range — and not at all when it already is.
+void jumpToReveal(ScrollController controller, RevealedItem item) {
   final position = controller.position;
-  final target = revealScrollOffset(
+  final target = revealScrollOffset((
     offset: position.pixels,
     viewport: position.viewportDimension,
-    start: start,
-    extent: extent,
-    margin: margin,
-  ).clamp(position.minScrollExtent, position.maxScrollExtent);
+  ), item).clamp(position.minScrollExtent, position.maxScrollExtent);
   if (target != position.pixels) {
     controller.jumpTo(target);
   }

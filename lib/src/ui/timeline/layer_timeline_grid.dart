@@ -396,9 +396,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (_horizontalScrollController.hasClients && cell > 0) {
       jumpToReveal(
         _horizontalScrollController,
-        start: widget.hooks.frameCursor.value * cell,
-        extent: cell,
-        margin: cell,
+        (
+          start: widget.hooks.frameCursor.value * cell,
+          extent: cell,
+          margin: cell,
+        ),
       );
     }
     final rowHeight = _metrics.layerRowHeight;
@@ -410,9 +412,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
     jumpToReveal(
       _verticalScrollController,
-      start: rowIndex * rowHeight,
-      extent: rowHeight,
-      margin: rowHeight,
+        (
+          start: rowIndex * rowHeight,
+          extent: rowHeight,
+          margin: rowHeight,
+        ),
     );
   }
 

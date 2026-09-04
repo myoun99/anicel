@@ -180,6 +180,49 @@ final class CutFrameCompositeEntryLeaf extends CutFrameCompositeEntryNode {
   final CutFrameCompositeEntry entry;
 }
 
+/// What the plan resolved about HOW a row draws, apart from its pixels —
+/// the folded opacity, the blend it composites with, the pose the folder
+/// chain composed outside it, and the effect chain from its fx carrier.
+typedef ResolvedRowRender = ({
+  double opacity,
+  LayerBlendMode blendMode,
+
+  /// The pose the folder chain composed outside the row, with its anchor —
+  /// the pair travels together everywhere ([LayerPoseSample]); null =
+  /// identity.
+  LayerPoseSample? placement,
+  List<ResolvedLayerEffect> effects,
+});
+
+/// The row being DRAWN ON, standing in the tree at its own place with no
+/// stored frame behind it — its pixels come from the live surface the
+/// editing canvas owns.
+///
+/// ⛔THE PLAN PLACES IT; THE CANVAS ONLY FILLS IT. A row with nothing
+/// exposed at this frame resolves no entry, and the editing stack used to
+/// append its node at the TOP LEVEL by hand — losing the folder chain, the
+/// group buffer and its z-position. So a stroke inside a 20% folder drew
+/// at full strength on the canvas and at 20% in playback, and a stroke
+/// inside a folder the user had switched off went on being drawn on the
+/// canvas and nowhere else (유저 확정 2026-09-04, ARCH-active-node: 재생과
+/// 똑같이).
+///
+/// ⚠️ONLY THE EDITING STACK ASKS FOR ONE. Playback, export and the cache
+/// signature pass no live row, so they never see this node — but they
+/// switch over it, because a route that started drawing live pixels would
+/// otherwise do it silently.
+final class CutFrameCompositeEntryLive extends CutFrameCompositeEntryNode {
+  const CutFrameCompositeEntryLive({
+    required this.layer,
+    required this.render,
+  });
+
+  final Layer layer;
+
+  /// Resolved exactly as an entry's is — same gates, same folds.
+  final ResolvedRowRender render;
+}
+
 /// A FOLDER's GROUP BUFFER (R27 #29, 유저 확정: "그룹 한번합쳐서 한번
 /// 블렌드"). [children] compose into one buffer, and only then does the
 /// folder's [opacity] and [blendMode] apply — once, to that buffer. So
@@ -479,121 +522,157 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
   bool foldBufferedFolders = true,
-}) {
-  final entries = <CutFrameCompositeEntry>[];
-  for (final layer in cut.layers) {
-    // Folder rows composite their MEMBERS, not a surface of their own —
-    // their eye/opacity/blend/FX reach the picture through
-    // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
-    if (!layerKindPaintsArtwork(layer.kind)) {
-      continue;
+}) => [
+  for (final layer in cut.layers)
+    if (_resolveLayerNode(cut, layer, (
+          frameIndex: frameIndex,
+          foldBufferedFolders: foldBufferedFolders,
+          liveLayerId: null,
+        ))
+        case CutFrameCompositeEntryLeaf(:final entry))
+      entry,
+];
+
+/// What one layer contributes at a frame: its resolved [CutFrameCompositeEntry]
+/// as a leaf, a [CutFrameCompositeEntryLive] when it is the LIVE row and has
+/// no cel exposed here, or null when it contributes nothing.
+///
+/// ⛔EVERY GATE IS IN THIS ONE FUNCTION — the eye, the static opacity, the
+/// folder chain's visibility and its opacity factor, the dangling attach
+/// link. The editing stack used to place the live row by hand instead, and
+/// so it skipped every one of them: a stroke inside a folder the user had
+/// switched off went on being drawn on the canvas and nowhere else, and a
+/// stroke inside a 20% folder drew at full strength while playback showed
+/// it at 20%.
+CutFrameCompositeEntryNode? _resolveLayerNode(
+  Cut cut,
+  Layer layer,
+  ({int frameIndex, bool foldBufferedFolders, LayerId? liveLayerId}) at,
+) {
+  final frameIndex = at.frameIndex;
+  // Folder rows composite their MEMBERS, not a surface of their own —
+  // their eye/opacity/blend/FX reach the picture through
+  // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
+  if (!layerKindPaintsArtwork(layer.kind)) {
+    return null;
+  }
+  final base = isAttachedLayer(layer)
+      ? attachedBaseOf(layer, cut.layers)
+      : null;
+  if (isAttachedLayer(layer) && base == null) {
+    // Dangling attach link (base gone): the row contributes nothing.
+    return null;
+  }
+  // Each row's OWN eye and static opacity gate it — the base's eye
+  // never cascades (UI-R24 #5: hiding the base hides only the base's
+  // own picture; its attach rows stay independent).
+  if (!layer.isVisible || layer.opacity <= 0) {
+    return null;
+  }
+  // Folder gates: a hidden ancestor hides the subtree; folder opacity
+  // folds into the member's, folder poses ride the entry.
+  final folderChain = resolveFolderChainAt(
+    cut: cut,
+    layer: layer,
+    frameIndex: frameIndex,
+    foldBufferedFolders: at.foldBufferedFolders,
+  );
+  if (!folderChain.visible) {
+    return null;
+  }
+  final fxCarrier = base ?? layer;
+  final fxEnabled = fxCarrier.transformEnabled;
+  final opacity =
+      ((fxEnabled
+                  ? layer.opacity *
+                        resolveOpacityTrackAt(
+                          fxCarrier.transformTrack.opacity,
+                          frameIndex,
+                        )
+                  : layer.opacity) *
+              folderChain.opacityFactor)
+          .clamp(0.0, 1.0)
+          .toDouble();
+  if (opacity <= 0) {
+    return null;
+  }
+
+  // SYNCED attach cels resolve through the base's exposure + the cell
+  // links; FREE attach rows (UI-R21 #3) expose their OWN timeline like
+  // a normal layer — the base still carries eye cascade and FX above.
+  final frame = base == null || !isSyncedAttachedLayer(layer)
+      ? resolveExposedFrameAt(layer, frameIndex)
+      : resolveAttachedFrameAt(
+          attached: layer,
+          base: base,
+          frameIndex: frameIndex,
+        );
+
+  final layerPose = fxEnabled
+      ? resolveLayerPoseAt(
+          layer: fxCarrier,
+          canvasSize: cut.canvasSize,
+          frameIndex: frameIndex,
+        )
+      : null;
+  // R6: effects ride the FX carrier exactly like the pose and the
+  // animated opacity — an attach row wears its base's chain, and the
+  // carrier's fx switch bypasses it.
+  // R8: NOT gated on fxEnabled — that switch is the TRANSFORM group's.
+  // Each effect carries its own ([LayerEffect.enabled]) and the master
+  // writes them all, so gating here too would make the row switch reach
+  // effects it had not turned off.
+  final effects = resolveLayerEffectsAt(
+    effects: fxCarrier.effects,
+    frameIndex: frameIndex,
+  );
+  final combined = composeFolderAndLayerPose(
+    folderPoses: folderChain.poses,
+    layerSample: layerPose == null
+        ? null
+        : (
+            pose: layerPose,
+            anchorPoint: fxEnabled
+                ? resolveLayerAnchorPointAt(
+                    layer: fxCarrier,
+                    frameIndex: frameIndex,
+                  )
+                : null,
+          ),
+    canvasSize: cut.canvasSize,
+  );
+  // The blend is the ROW's own (attach rows keep theirs — their pixels
+  // are independent even when timing rides the base); a member that sets
+  // none inherits its folder's (R27 #29).
+  final blendMode = layer.blendMode == LayerBlendMode.normal
+      ? folderChain.blendMode
+      : layer.blendMode;
+
+  if (frame == null) {
+    if (layer.id != at.liveLayerId) {
+      return null;
     }
-    final base = isAttachedLayer(layer)
-        ? attachedBaseOf(layer, cut.layers)
-        : null;
-    if (isAttachedLayer(layer) && base == null) {
-      // Dangling attach link (base gone): the row contributes nothing.
-      continue;
-    }
-    // Each row's OWN eye and static opacity gate it — the base's eye
-    // never cascades (UI-R24 #5: hiding the base hides only the base's
-    // own picture; its attach rows stay independent).
-    if (!layer.isVisible || layer.opacity <= 0) {
-      continue;
-    }
-    // Folder gates: a hidden ancestor hides the subtree; folder opacity
-    // folds into the member's, folder poses ride the entry.
-    final folderChain = resolveFolderChainAt(
-      cut: cut,
+    return CutFrameCompositeEntryLive(
       layer: layer,
-      frameIndex: frameIndex,
-      foldBufferedFolders: foldBufferedFolders,
-    );
-    if (!folderChain.visible) {
-      continue;
-    }
-    final fxCarrier = base ?? layer;
-    final fxEnabled = fxCarrier.transformEnabled;
-    final opacity =
-        ((fxEnabled
-                    ? layer.opacity *
-                          resolveOpacityTrackAt(
-                            fxCarrier.transformTrack.opacity,
-                            frameIndex,
-                          )
-                    : layer.opacity) *
-                folderChain.opacityFactor)
-            .clamp(0.0, 1.0)
-            .toDouble();
-    if (opacity <= 0) {
-      continue;
-    }
-
-    // SYNCED attach cels resolve through the base's exposure + the cell
-    // links; FREE attach rows (UI-R21 #3) expose their OWN timeline like
-    // a normal layer — the base still carries eye cascade and FX above.
-    final frame = base == null || !isSyncedAttachedLayer(layer)
-        ? resolveExposedFrameAt(layer, frameIndex)
-        : resolveAttachedFrameAt(
-            attached: layer,
-            base: base,
-            frameIndex: frameIndex,
-          );
-    if (frame == null) {
-      continue;
-    }
-
-    final layerPose = fxEnabled
-        ? resolveLayerPoseAt(
-            layer: fxCarrier,
-            canvasSize: cut.canvasSize,
-            frameIndex: frameIndex,
-          )
-        : null;
-    // R6: effects ride the FX carrier exactly like the pose and the
-    // animated opacity — an attach row wears its base's chain, and the
-    // carrier's fx switch bypasses it.
-    // R8: NOT gated on fxEnabled — that switch is the TRANSFORM group's.
-    // Each effect carries its own ([LayerEffect.enabled]) and the master
-    // writes them all, so gating here too would make the row switch reach
-    // effects it had not turned off.
-    final effects = resolveLayerEffectsAt(
-      effects: fxCarrier.effects,
-      frameIndex: frameIndex,
-    );
-    final combined = composeFolderAndLayerPose(
-      folderPoses: folderChain.poses,
-      layerSample: layerPose == null
-          ? null
-          : (
-              pose: layerPose,
-              anchorPoint: fxEnabled
-                  ? resolveLayerAnchorPointAt(
-                      layer: fxCarrier,
-                      frameIndex: frameIndex,
-                    )
-                  : null,
-            ),
-      canvasSize: cut.canvasSize,
-    );
-    entries.add(
-      CutFrameCompositeEntry(
-        layer: layer,
-        frame: frame,
+      render: (
         opacity: opacity,
-        // The blend is the ROW's own (attach rows keep theirs — their
-        // pixels are independent even when timing rides the base); a
-        // member that sets none inherits its folder's (R27 #29).
-        blendMode: layer.blendMode == LayerBlendMode.normal
-            ? folderChain.blendMode
-            : layer.blendMode,
-        pose: combined?.pose,
-        anchorPoint: combined?.anchorPoint,
+        blendMode: blendMode,
+        placement: combined,
         effects: effects,
       ),
     );
   }
-  return entries;
+  return CutFrameCompositeEntryLeaf(
+    CutFrameCompositeEntry(
+      layer: layer,
+      frame: frame,
+      opacity: opacity,
+      blendMode: blendMode,
+      pose: combined?.pose,
+      anchorPoint: combined?.anchorPoint,
+      effects: effects,
+    ),
+  );
 }
 
 /// Lowers an ADJUSTMENT row into the tree being built (R6b): the node that
@@ -697,16 +776,12 @@ _adjustmentScopeNode({
 List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
+  /// The row being DRAWN ON, when there is one. It stands in the tree even
+  /// with no cel exposed at [frameIndex], as a [CutFrameCompositeEntryLive]
+  /// — see that class for why the plan and not the canvas places it. Null
+  /// for every route that composites stored pixels only.
+  LayerId? liveLayerId,
 }) {
-  final entryByLayerId = {
-    for (final entry in resolveCutFrameCompositeEntries(
-      cut: cut,
-      frameIndex: frameIndex,
-      foldBufferedFolders: false,
-    ))
-      entry.layer.id: entry,
-  };
-
   // folder id (null = top level) → the nodes gathered under it so far.
   final childrenOf = <LayerId?, List<CutFrameCompositeEntryNode>>{};
   void addTo(LayerId? folderId, CutFrameCompositeEntryNode node) =>
@@ -771,9 +846,13 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
       );
       continue;
     }
-    final entry = entryByLayerId[layer.id];
-    if (entry != null) {
-      addTo(layer.folderId, CutFrameCompositeEntryLeaf(entry));
+    final node = _resolveLayerNode(cut, layer, (
+      frameIndex: frameIndex,
+      foldBufferedFolders: false,
+      liveLayerId: liveLayerId,
+    ));
+    if (node != null) {
+      addTo(layer.folderId, node);
     }
   }
   return List.unmodifiable(
@@ -881,6 +960,14 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
     final out = <CutFrameCompositeSurfaceNode>[];
     for (final node in nodes) {
       switch (node) {
+        case CutFrameCompositeEntryLive():
+          // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
+          // tree for a live row, and only it owns the surface to fill the
+          // slot with; every other route resolves surfaces from stored
+          // frames. Reached here it would be a caller handing a live row to
+          // a route that cannot draw it, so it contributes nothing rather
+          // than guessing.
+          continue;
         case CutFrameCompositeEntryLeaf(:final entry):
           final surface = surfaceResolver(entry.layer, entry.frame);
           if (surface == null) {
