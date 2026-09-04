@@ -18,6 +18,12 @@ import 'dart:io';
 /// a corrupt settings file and a missing one are the same situation to
 /// every caller, and telling them apart would only invite one of them to
 /// be handled and the other forgotten.
+///
+/// ⚠️The exists check is a FAST PATH, not the thing that answers null: a
+/// missing file is the ordinary first-run case and reading one throws, so
+/// the catch below would answer null without it. Measured 2026-09-05 — a
+/// mutant that deletes the check survives, which is why this says so
+/// rather than leaving the next reader to decide it is redundant.
 Future<T?> loadVersionedSettings<T>({
   required String filePath,
   required int version,
