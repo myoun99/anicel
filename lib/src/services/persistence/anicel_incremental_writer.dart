@@ -674,20 +674,18 @@ class AnicelStreamedEntry {
   final int Function(Uint8List buffer, int position, int size) readInto;
 }
 
-/// Reads [entry] to its end in chunks and returns its CRC-32, handing
-/// every chunk to [onChunk] on the way past when one is given.
+/// Reads [entry] to its end in chunks, handing every one to [onChunk].
 ///
-/// ⛔ONE WALK, TWO CALLERS. The append checksums BEFORE the file is
-/// touched — a source that turns out to be unreadable must not have
-/// truncated the archive to find that out — while the full write
-/// checksums WHILE writing and patches the header afterwards. The read,
-/// the short-read error and the chunk size are the same either way, and
-/// the CRC is updated before the chunk goes out on both.
-int _streamedEntryCrc(
-  AnicelStreamedEntry entry, {
-  void Function(Uint8List buffer, int read)? onChunk,
-}) {
-  var running = anicelCrc32Start;
+/// ⛔THREE PLACES STREAM AN ENTRY and they must read it the same way: the
+/// append checksums before the file is touched, the append's write pass
+/// only writes (the CRC is already known), and the full write does both
+/// at once. One buffer, reused, whatever the asset weighs — and a source
+/// that ends early is a [StateError] naming how far it got, not a silent
+/// short file.
+void _readStreamedEntry(
+  AnicelStreamedEntry entry,
+  void Function(Uint8List buffer, int read) onChunk,
+) {
   final buffer = Uint8List(_streamChunkBytes);
   var position = 0;
   while (position < entry.length) {
@@ -703,10 +701,26 @@ int _streamedEntryCrc(
         '${entry.length} bytes',
       );
     }
-    running = anicelCrc32Update(running, buffer, read);
-    onChunk?.call(buffer, read);
+    onChunk(buffer, read);
     position += read;
   }
+}
+
+/// [entry]'s CRC-32, with every chunk handed to [onChunk] on the way past.
+///
+/// ⛔THE CRC UPDATES BEFORE THE CHUNK GOES OUT. The full write patches the
+/// header from this afterwards, so a writer that emitted first and
+/// checksummed later would still be correct — but only by accident, and
+/// the append relies on the order to checksum WITHOUT writing at all.
+int _streamedEntryCrc(
+  AnicelStreamedEntry entry, {
+  void Function(Uint8List buffer, int read)? onChunk,
+}) {
+  var running = anicelCrc32Start;
+  _readStreamedEntry(entry, (buffer, read) {
+    running = anicelCrc32Update(running, buffer, read);
+    onChunk?.call(buffer, read);
+  });
   return anicelCrc32Finish(running);
 }
 
@@ -797,25 +811,10 @@ AnicelZipLayout appendAnicelEntries({
       raf.writeFromSync(
         _localHeaderBytes(entry.name, entry.length, streamedCrcs[i]),
       );
-      // Chunked on purpose: one buffer, reused, whatever the asset weighs.
-      final buffer = Uint8List(_streamChunkBytes);
-      var position = 0;
-      while (position < entry.length) {
-        final wanted = entry.length - position;
-        final read = entry.readInto(
-          buffer,
-          position,
-          wanted < buffer.length ? wanted : buffer.length,
-        );
-        if (read <= 0) {
-          throw StateError(
-            'media entry "${entry.name}" ended after $position of '
-            '${entry.length} bytes',
-          );
-        }
-        raf.writeFromSync(buffer, 0, read);
-        position += read;
-      }
+      _readStreamedEntry(
+        entry,
+        (buffer, read) => raf.writeFromSync(buffer, 0, read),
+      );
     }
     raf.writeFromSync(centralBytes);
     raf.writeFromSync(eocd);
