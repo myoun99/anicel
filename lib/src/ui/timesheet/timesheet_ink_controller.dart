@@ -72,18 +72,28 @@ class TimesheetInkController extends ChangeNotifier {
     );
   }
 
-  final BrushFrameStore _stripStore = BrushFrameStore();
-  final BrushFrameStore _pageStore = BrushFrameStore();
-  BrushFrameEditingCoordinator? _strip;
-  BrushFrameEditingCoordinator? _page;
+  static const BrushFrameKey _initKey = BrushFrameKey(
+    projectId: inkProjectId,
+    trackId: inkTrackId,
+    cutId: CutId('timesheet-ink-init'),
+    layerId: stripLayerId,
+    frameId: FrameId('timesheet-ink-init'),
+  );
+
+  final InkPlaneSlot _strip = InkPlaneSlot(
+    store: BrushFrameStore(),
+    initialFrameKey: _initKey,
+  );
+  final InkPlaneSlot _page = InkPlaneSlot(
+    store: BrushFrameStore(),
+    initialFrameKey: _initKey,
+  );
 
   /// One page band of frame rows × the half column width, at [inkScale].
-  CanvasSize? get stripBandSurfaceSize => _stripBandSize;
-  CanvasSize? _stripBandSize;
+  CanvasSize? get stripBandSurfaceSize => _strip.size;
 
   /// The whole PAGED paper, at [inkScale].
-  CanvasSize? get pageSurfaceSize => _pageSize;
-  CanvasSize? _pageSize;
+  CanvasSize? get pageSurfaceSize => _page.size;
 
   /// Adopts the sheet geometry from the PAGED layout (both view modes
   /// share it — the paper never resizes with the view toggle). Geometry
@@ -93,51 +103,25 @@ class TimesheetInkController extends ChangeNotifier {
   /// Never notifies: callers run this during build.
   void syncGeometry(TimesheetDocumentLayout pagedLayout) {
     final document = pagedLayout.document;
-    final stripBandSize = CanvasSize(
-      width: (pagedLayout.halfWidth * inkScale).ceil(),
-      height:
-          (document.pageFrameCount * TimesheetDocumentLayout.rowHeight).ceil() *
-          inkScale,
+    _strip.syncTo(
+      CanvasSize(
+        width: (pagedLayout.halfWidth * inkScale).ceil(),
+        height:
+            (document.pageFrameCount * TimesheetDocumentLayout.rowHeight)
+                .ceil() *
+            inkScale,
+      ),
     );
-    final pageSize = CanvasSize(
-      width: (pagedLayout.paperWidth * inkScale).ceil(),
-      height: (pagedLayout.paperHeight * inkScale).ceil(),
+    _page.syncTo(
+      CanvasSize(
+        width: (pagedLayout.paperWidth * inkScale).ceil(),
+        height: (pagedLayout.paperHeight * inkScale).ceil(),
+      ),
     );
-
-    if (_strip == null || stripBandSize != _stripBandSize) {
-      _stripBandSize = stripBandSize;
-      _strip = _syncCoordinator(_strip, _stripStore, stripBandSize);
-    }
-    if (_page == null || pageSize != _pageSize) {
-      _pageSize = pageSize;
-      _page = _syncCoordinator(_page, _pageStore, pageSize);
-    }
   }
 
-  BrushFrameEditingCoordinator _syncCoordinator(
-    BrushFrameEditingCoordinator? coordinator,
-    BrushFrameStore store,
-    CanvasSize canvasSize,
-  ) => inkCoordinatorSynced(
-    coordinator,
-    store: store,
-    canvasSize: canvasSize,
-    initialFrameKey: const BrushFrameKey(
-      projectId: inkProjectId,
-      trackId: inkTrackId,
-      cutId: CutId('timesheet-ink-init'),
-      layerId: stripLayerId,
-      frameId: FrameId('timesheet-ink-init'),
-    ),
-  );
-
-  BrushFrameEditingCoordinator _coordinatorFor(TimesheetInkPlane plane) {
-    final coordinator = plane == TimesheetInkPlane.strip ? _strip : _page;
-    if (coordinator == null) {
-      throw StateError('syncGeometry must run before ink access.');
-    }
-    return coordinator;
-  }
+  BrushFrameEditingCoordinator _coordinatorFor(TimesheetInkPlane plane) =>
+      (plane == TimesheetInkPlane.strip ? _strip : _page).coordinator;
 
   /// The session surface for one band/page window (created blank on first
   /// access).
@@ -175,7 +159,7 @@ class TimesheetInkController extends ChangeNotifier {
   /// P3b: the baked raster is the content; undo restores surfaces, so
   /// "count" collapses to has-content).
   bool hasInkFor(TimesheetInkPlane plane, BrushFrameKey key) {
-    final store = plane == TimesheetInkPlane.strip ? _stripStore : _pageStore;
+    final store = (plane == TimesheetInkPlane.strip ? _strip : _page).store;
     return store.celHasRenderableContent(key);
   }
 }

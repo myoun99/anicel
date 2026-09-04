@@ -26,17 +26,24 @@ import '../sheet/sheet_ink_controller.dart';
 /// annotations from a form the user re-shapes.
 class CutEnvelopeInkController extends SheetInkController<Null> {
   CutEnvelopeInkController({BrushFrameStore? store})
-    : _store = store ?? BrushFrameStore();
+    : _plane = InkPlaneSlot(
+        store: store ?? BrushFrameStore(),
+        initialFrameKey: const BrushFrameKey(
+          projectId: envelopeInkProjectId,
+          trackId: envelopeInkTrackId,
+          cutId: CutId('envelope-ink-init'),
+          layerId: envelopeInkLayerId,
+          frameId: FrameId('envelope-ink-init'),
+        ),
+      );
 
-  final BrushFrameStore _store;
-  BrushFrameEditingCoordinator? _coordinator;
+  final InkPlaneSlot _plane;
 
   /// One box surface's size, in FORM space at [envelopeInkSurfaceWidth].
   /// Every box in the plane shares one geometry (the coordinator's rule)
   /// and each box's window exposes its own slice; the tile-sparse store
   /// makes the remainder free.
-  CanvasSize? get surfaceSize => _surfaceSize;
-  CanvasSize? _surfaceSize;
+  CanvasSize? get surfaceSize => _plane.size;
 
   /// Adopts the FORM's geometry — deliberately not the paper's.
   ///
@@ -53,43 +60,19 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
   /// Never notifies: callers run this during build.
   void syncGeometry({required double aspectRatio}) {
     final ratio = aspectRatio <= 0 ? 1.0 : aspectRatio;
-    final size = CanvasSize(
-      width: envelopeInkSurfaceWidth.ceil(),
-      height: (envelopeInkSurfaceWidth / ratio).ceil().clamp(1, 1 << 16),
+    _plane.syncTo(
+      CanvasSize(
+        width: envelopeInkSurfaceWidth.ceil(),
+        height: (envelopeInkSurfaceWidth / ratio).ceil().clamp(1, 1 << 16),
+      ),
     );
-    if (_coordinator == null || size != _surfaceSize) {
-      _surfaceSize = size;
-      _coordinator = _syncCoordinator(_coordinator, size);
-    }
-  }
-
-  BrushFrameEditingCoordinator _syncCoordinator(
-    BrushFrameEditingCoordinator? coordinator,
-    CanvasSize canvasSize,
-  ) => inkCoordinatorSynced(
-    coordinator,
-    store: _store,
-    canvasSize: canvasSize,
-    initialFrameKey: const BrushFrameKey(
-      projectId: envelopeInkProjectId,
-      trackId: envelopeInkTrackId,
-      cutId: CutId('envelope-ink-init'),
-      layerId: envelopeInkLayerId,
-      frameId: FrameId('envelope-ink-init'),
-    ),
-  );
-
-  @override
-  BrushFrameEditingCoordinator coordinatorFor(Null plane) {
-    final coordinator = _coordinator;
-    if (coordinator == null) {
-      throw StateError('syncGeometry must run before ink access.');
-    }
-    return coordinator;
   }
 
   @override
-  BrushFrameStore storeFor(Null plane) => _store;
+  BrushFrameEditingCoordinator coordinatorFor(Null plane) => _plane.coordinator;
+
+  @override
+  BrushFrameStore storeFor(Null plane) => _plane.store;
 }
 
 /// The smallest on-screen extent worth an ink window.

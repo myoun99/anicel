@@ -176,3 +176,53 @@ BrushFrameEditingCoordinator inkCoordinatorSynced(
     ),
   );
 }
+
+/// One ink PLANE: its coordinator, the canvas size that coordinator was
+/// built for, and the store behind it.
+///
+/// ⛔THREE CONTROLLERS KEPT THOSE THREE AS LOOSE FIELDS — the conte's page
+/// and row, the timesheet's strip and page, the envelope's one — and each
+/// re-wrote the same guard: rebuild when the coordinator is missing OR the
+/// size moved, and remember the new size. Five copies of a three-field
+/// invariant is five chances to update the size and not the coordinator.
+///
+/// [coordinator] throws rather than returning null: asking before the
+/// geometry is known is a programming error, not a state to render around
+/// — and that is the message all three already threw.
+class InkPlaneSlot {
+  InkPlaneSlot({required this.store, required this.initialFrameKey});
+
+  final BrushFrameStore store;
+  final BrushFrameKey initialFrameKey;
+
+  BrushFrameEditingCoordinator? _coordinator;
+  CanvasSize? _size;
+
+  /// The size the coordinator was built for, or null before the first
+  /// [syncTo] — the surface size the controllers expose.
+  CanvasSize? get size => _size;
+
+  /// Whether the plane has been given its geometry yet.
+  bool get isReady => _coordinator != null;
+
+  BrushFrameEditingCoordinator get coordinator {
+    final coordinator = _coordinator;
+    if (coordinator == null) {
+      throw StateError('syncGeometry must run before ink access.');
+    }
+    return coordinator;
+  }
+
+  void syncTo(CanvasSize canvasSize) {
+    if (_coordinator != null && canvasSize == _size) {
+      return;
+    }
+    _size = canvasSize;
+    _coordinator = inkCoordinatorSynced(
+      _coordinator,
+      store: store,
+      canvasSize: canvasSize,
+      initialFrameKey: initialFrameKey,
+    );
+  }
+}

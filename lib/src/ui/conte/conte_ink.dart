@@ -45,8 +45,22 @@ enum ConteInkPlane {
 /// namespace).
 class ConteInkController extends SheetInkController<ConteInkPlane> {
   ConteInkController({BrushFrameStore? rowStore, BrushFrameStore? pageStore})
-    : _rowStore = rowStore ?? BrushFrameStore(),
-      _pageStore = pageStore ?? BrushFrameStore();
+    : _row = InkPlaneSlot(
+        store: rowStore ?? BrushFrameStore(),
+        initialFrameKey: _initKey,
+      ),
+      _page = InkPlaneSlot(
+        store: pageStore ?? BrushFrameStore(),
+        initialFrameKey: _initKey,
+      );
+
+  static const BrushFrameKey _initKey = BrushFrameKey(
+    projectId: conteInkProjectId,
+    trackId: conteInkTrackId,
+    cutId: CutId('conte-ink-init'),
+    layerId: conteInkPageLayerId,
+    frameId: FrameId('conte-ink-init'),
+  );
 
   /// Ink resolution multiplier over document space (the timesheet's 4×).
   static const int inkScale = 4;
@@ -58,73 +72,43 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
   static BrushFrameKey rowKey(CutId cutId, FrameId frameId) =>
       conteInkRowKey(cutId, frameId);
 
-  final BrushFrameStore _rowStore;
-  final BrushFrameStore _pageStore;
-  BrushFrameEditingCoordinator? _row;
-  BrushFrameEditingCoordinator? _page;
+  final InkPlaneSlot _row;
+  final InkPlaneSlot _page;
 
   /// One conte page of paper, at [inkScale].
-  CanvasSize? get pageSurfaceSize => _pageSize;
-  CanvasSize? _pageSize;
+  CanvasSize? get pageSurfaceSize => _page.size;
 
   /// One row-plane surface, at [inkScale]: the page BODY's size for every
   /// cell (the coordinator shares one geometry per plane). A cell's window
   /// exposes only its own band's slice — the tile-sparse store makes the
   /// unused remainder free, and a cell that GROWS (rowSpan) simply reveals
   /// more of the same surface with its ink intact.
-  CanvasSize? get rowSurfaceSize => _rowSize;
-  CanvasSize? _rowSize;
+  CanvasSize? get rowSurfaceSize => _row.size;
 
   /// Adopts the sheet geometry (every page shares one metrics). Never
   /// notifies: callers run this during build.
   void syncGeometry(ConteSheetMetrics metrics) {
-    final pageSize = CanvasSize(
-      width: (metrics.pageWidth * inkScale).ceil(),
-      height: (metrics.pageHeight * inkScale).ceil(),
+    _page.syncTo(
+      CanvasSize(
+        width: (metrics.pageWidth * inkScale).ceil(),
+        height: (metrics.pageHeight * inkScale).ceil(),
+      ),
     );
-    final rowSize = CanvasSize(
-      width: (metrics.bodyWidth * inkScale).ceil(),
-      height: (metrics.bodyHeight * inkScale).ceil(),
+    _row.syncTo(
+      CanvasSize(
+        width: (metrics.bodyWidth * inkScale).ceil(),
+        height: (metrics.bodyHeight * inkScale).ceil(),
+      ),
     );
-    if (_page == null || pageSize != _pageSize) {
-      _pageSize = pageSize;
-      _page = _syncCoordinator(_page, _pageStore, pageSize);
-    }
-    if (_row == null || rowSize != _rowSize) {
-      _rowSize = rowSize;
-      _row = _syncCoordinator(_row, _rowStore, rowSize);
-    }
   }
-
-  BrushFrameEditingCoordinator _syncCoordinator(
-    BrushFrameEditingCoordinator? coordinator,
-    BrushFrameStore store,
-    CanvasSize canvasSize,
-  ) => inkCoordinatorSynced(
-    coordinator,
-    store: store,
-    canvasSize: canvasSize,
-    initialFrameKey: const BrushFrameKey(
-      projectId: conteInkProjectId,
-      trackId: conteInkTrackId,
-      cutId: CutId('conte-ink-init'),
-      layerId: conteInkPageLayerId,
-      frameId: FrameId('conte-ink-init'),
-    ),
-  );
 
   @override
-  BrushFrameEditingCoordinator coordinatorFor(ConteInkPlane plane) {
-    final coordinator = plane == ConteInkPlane.row ? _row : _page;
-    if (coordinator == null) {
-      throw StateError('syncGeometry must run before ink access.');
-    }
-    return coordinator;
-  }
+  BrushFrameEditingCoordinator coordinatorFor(ConteInkPlane plane) =>
+      (plane == ConteInkPlane.row ? _row : _page).coordinator;
 
   @override
   BrushFrameStore storeFor(ConteInkPlane plane) =>
-      plane == ConteInkPlane.row ? _rowStore : _pageStore;
+      (plane == ConteInkPlane.row ? _row : _page).store;
 }
 
 /// The ink windows for one page, bottom-of-stack first: page ink lies
