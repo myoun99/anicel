@@ -45,6 +45,28 @@ List<T> _replacingOne<T, I>(
   return out;
 }
 
+/// [items] without the one [picks] names, and the element that left.
+///
+/// ⛔REMOVING IS NOT REPLACING, which is why this is not [_replacingOne]:
+/// a remover has to hand the element BACK — the caller undoes with it, and
+/// the two removers in `ProjectRepository` each wrote the find, the
+/// capture and the removal out again to get it.
+({List<T> items, T? removed}) _withoutOne<T, I>(
+  Iterable<T> items,
+  ({I id, I Function(T item) of}) picks,
+) {
+  final out = <T>[];
+  T? removed;
+  for (final item in items) {
+    if (removed == null && picks.of(item) == picks.id) {
+      removed = item;
+      continue;
+    }
+    out.add(item);
+  }
+  return (items: out, removed: removed);
+}
+
 /// Replaces the track with [trackId] via [update]. Returns `null` if no track
 /// matched.
 Project? updateTrackById(
@@ -164,4 +186,41 @@ Cut? updateLayerInCut(
     () => found = true,
   );
   return found ? cut.copyWith(layers: layers) : null;
+}
+
+/// Removes the cut matching [cutId] from whichever track holds it, and
+/// hands it back. `removed` is null when no track held it.
+({Project project, Cut? removed}) removeCutAnywhere(
+  Project project,
+  CutId cutId,
+) {
+  Cut? removed;
+  final tracks = [
+    for (final track in project.tracks)
+      if (removed != null)
+        track
+      else
+        () {
+          final without = _withoutOne(track.cuts, (
+            id: cutId,
+            of: (Cut cut) => cut.id,
+          ));
+          removed = without.removed;
+          return removed == null ? track : track.copyWith(cuts: without.items);
+        }(),
+  ];
+  return (project: project.copyWith(tracks: tracks), removed: removed);
+}
+
+/// Removes the layer matching [layerId] from [cut] and hands it back.
+/// `removed` is null when the cut had no such layer.
+({Cut cut, Layer? removed}) removeLayerFromCut(Cut cut, LayerId layerId) {
+  final without = _withoutOne(cut.layers, (
+    id: layerId,
+    of: (Layer layer) => layer.id,
+  ));
+  return (
+    cut: without.removed == null ? cut : cut.copyWith(layers: without.items),
+    removed: without.removed,
+  );
 }

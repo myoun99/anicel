@@ -371,31 +371,18 @@ class ProjectRepository {
     });
   }
 
+  /// ⚠️Not [_mutateCut]: this REMOVES, so there is nothing to hand an
+  /// update — and the caller needs the cut BACK, to undo with.
   Cut removeCut({required CutId cutId}) {
     Cut? removedCut;
-
     updateProject((project) {
-      final tracks = project.tracks
-          .map((track) {
-            final cutIndex = track.cuts.indexWhere((cut) => cut.id == cutId);
-            if (cutIndex == -1) {
-              return track;
-            }
-
-            removedCut = track.cuts[cutIndex];
-            final cuts = [...track.cuts]..removeAt(cutIndex);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
+      final without = removeCutAnywhere(project, cutId);
+      removedCut = without.removed;
       if (removedCut == null) {
         throw StateError('Cut not found: $cutId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return without.project;
     });
-
     return removedCut!;
   }
 
@@ -541,29 +528,18 @@ class ProjectRepository {
     insertLayer(cutId: cutId, layer: layer);
   }
 
+  /// ⚠️Not [_mutateLayerInCut]: this REMOVES, and the caller needs the
+  /// layer BACK to undo with.
   Layer deleteLayer({required CutId cutId, required LayerId layerId}) {
     Layer? deletedLayer;
-
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final index = cut.layers.indexWhere((layer) => layer.id == layerId);
-        if (index == -1) {
-          return cut;
-        }
-
-        deletedLayer = cut.layers[index];
-        final layers = [...cut.layers]..removeAt(index);
-        return cut.copyWith(layers: layers);
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
+    _mutateCut(cutId, (cut) {
+      final without = removeLayerFromCut(cut, layerId);
+      deletedLayer = without.removed;
       if (deletedLayer == null) {
         throw StateError('Layer not found in cut $cutId: $layerId');
       }
-      return next;
+      return without.cut;
     });
-
     return deletedLayer!;
   }
 
