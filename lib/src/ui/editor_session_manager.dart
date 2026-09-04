@@ -1179,6 +1179,33 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
 
+
+  /// The ladder every band verb climbs at the PLAYHEAD: the band answers
+  /// first ([bandAnswers]), a band that names rows this press would miss
+  /// ENDS it, and only then is the active row asked.
+  ///
+  /// ⛔THE MIDDLE RUNG IS THE ONE THAT MATTERS. A live band holding
+  /// nothing the verb can touch makes the press a NO-OP — never a
+  /// redirect onto whatever row happens to be active. A cell drag never
+  /// moves the active layer, so those are routinely different rows, and a
+  /// verb that skipped this rung would edit a row nobody swept.
+  ///
+  /// ⚠️Not every button climbs it: `＋` CREATES and is deliberately
+  /// band-free.
+  bool bandOrActiveRow(
+    bool bandAnswers,
+    bool Function(Layer layer) accepts,
+    bool Function(Layer layer) atPlayhead,
+  ) {
+    if (bandAnswers) {
+      return true;
+    }
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
+    final layer = activeLayer;
+    return layer != null && accepts(layer) && atPlayhead(layer);
+  }
   /// The band answer a selection verb reaches: the swept rows whose layer
   /// passes [accepts], handed to [inBand] as ONE ask, and `const {}` when
   /// the band names nothing the verb can touch.

@@ -93,28 +93,14 @@ class _LayerMarks {
   bool get canToggleMarkForSelection =>
       _markableFramesForSelection().isNotEmpty;
 
-  bool get canToggleMarkAtCurrentFrame {
-    if (canToggleMarkForSelection) {
-      return true;
-    }
-    // ⛔A band that names rows this press would miss still ENDS the ladder.
-    // The band rung above is the whole of the new reach: a band holding
-    // nothing markable makes the press a no-op, never a redirect onto
-    // whatever row happens to be active (a cell drag never moves the active
-    // layer, so those are routinely different rows).
-    if (_session.bandNamesRowsThisPressWouldMiss) {
-      return false;
-    }
-    final layer = _session.activeLayer;
-    if (layer == null || !_markable(layer)) {
-      return false;
-    }
-
-    return _session._timelineController.canToggleMarkAt(
+  bool get canToggleMarkAtCurrentFrame => _session.bandOrActiveRow(
+    canToggleMarkForSelection,
+    _markable,
+    (layer) => _session._timelineController.canToggleMarkAt(
       layer: layer,
       frameIndex: _session._timelineController.currentFrameIndex,
-    );
-  }
+    ),
+  );
 
   void toggleMarkAtCurrentFrame() {
     final banded = _markableFramesForSelection();

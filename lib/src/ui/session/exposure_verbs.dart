@@ -46,28 +46,14 @@ class _ExposureVerbs {
   bool get canBlankExposureForSelection =>
       _blankableSpanForSelection().isNotEmpty;
 
-  bool get canBlankExposureAtCurrentFrame {
-    if (canBlankExposureForSelection) {
-      return true;
-    }
-    // A live band CLAIMS this press exactly as it claims Delete's and the
-    // comma's — X edits an EXISTING hold, so a band that resolves to
-    // nothing blankable ends the ladder rather than redirecting onto
-    // whatever row happens to be active. (⛔Not the `＋` case: that button
-    // CREATES and is deliberately band-free.)
-    if (_session.bandNamesRowsThisPressWouldMiss) {
-      return false;
-    }
-    final layer = _session.activeLayer;
-    if (layer == null || !_blankable(layer)) {
-      return false;
-    }
-
-    return _session._timelineController.canCutExposureAt(
+  bool get canBlankExposureAtCurrentFrame => _session.bandOrActiveRow(
+    canBlankExposureForSelection,
+    _blankable,
+    (layer) => _session._timelineController.canCutExposureAt(
       layer: layer,
       frameIndex: _session._timelineController.currentFrameIndex,
-    );
-  }
+    ),
+  );
 
   /// The timesheet "X here" — ⛔NOT the clipboard's cut.
   ///
