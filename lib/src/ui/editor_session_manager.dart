@@ -2893,14 +2893,22 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void undo() {
+  /// Steps history and puts the session back where the new layer list says
+  /// it should be.
+  ///
+  /// ⛔[undo] and [redo] were eighteen identical lines apart from which way
+  /// the history moved. The rule of three usually holds a pair apart, and
+  /// its reason — that a hasty merge leaves one flag answering two
+  /// questions — does not apply here: the difference becomes the ARGUMENT,
+  /// so there is no flag and nothing to read twice.
+  void _stepHistory(void Function() move) {
     final beforeLayers = List<Layer>.of(
       activeCutOrNull?.layers ?? const <Layer>[],
     );
     final previousActiveLayerId = _layerController.activeLayerId;
     final previousFrameIndex = _timelineController.currentFrameIndex;
 
-    _historyManager.undo();
+    move();
     final preferredLayerId = preferredLayerAfterLayerListChange(
       beforeLayers: beforeLayers,
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
@@ -2913,25 +2921,9 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void redo() {
-    final beforeLayers = List<Layer>.of(
-      activeCutOrNull?.layers ?? const <Layer>[],
-    );
-    final previousActiveLayerId = _layerController.activeLayerId;
-    final previousFrameIndex = _timelineController.currentFrameIndex;
+  void undo() => _stepHistory(_historyManager.undo);
 
-    _historyManager.redo();
-    final preferredLayerId = preferredLayerAfterLayerListChange(
-      beforeLayers: beforeLayers,
-      afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
-      previousActiveLayerId: previousActiveLayerId,
-    );
-    _refreshAfterCutCommand(
-      preferredActiveLayerId: preferredLayerId,
-      preferredFrameIndex: previousFrameIndex,
-    );
-    notifyListeners();
-  }
+  void redo() => _stepHistory(_historyManager.redo);
 
   // --- Layer state / commands --------------------------------------------
 
