@@ -2706,43 +2706,62 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  /// The format accordion an export tab offers: the same title, the same
+  /// `format` fold key, and the module fed the tab's own [capabilities].
+  ///
+  /// ⛔ONE FORMAT ACCORDION. Three tabs wrote out the summarize call, the
+  /// fold key and the enabled/onChanged pair; a tab that stopped passing
+  /// `enabled` keeps its format pickers live DURING a render, which is
+  /// the setting changing under the export it is feeding.
+  ExportAccordion _formatAccordion({
+    required ExportFormatSelection format,
+    required ExportFormatCapabilities capabilities,
+    required void Function(ExportFormatSelection format) onChanged,
+    ({bool enabled, VoidCallback onTap})? reset,
+  }) => ExportAccordion(
+    title: AppText.strings.exFormat,
+    summary: ExportFormatModule.summarize(format),
+    expansion: _expansion('format', open: true),
+    reset: reset,
+    child: ExportFormatModule(
+      selection: format,
+      capabilities: capabilities,
+      enabled: !_isExporting,
+      onChanged: onChanged,
+    ),
+  );
+
   List<Widget> _sequenceModules() {
     final spec = _specs.sequence;
     final projectScope = spec.scope == ExportScopeKind.project;
     return [
-      ExportAccordion(
-        title: AppText.strings.exFormat,
-        summary: ExportFormatModule.summarize(spec.format),
-        expansion: _expansion('format', open: true),
+      _formatAccordion(
+        format: spec.format,
+        capabilities: ExportFormatCapabilities(
+          stills: const [ExportStillFormat.png, ExportStillFormat.jpg],
+          video: const {
+            ExportVideoContainer.mp4: [
+              ExportVideoCodec.h264,
+              ExportVideoCodec.h265,
+            ],
+            ExportVideoContainer.mov: [
+              ExportVideoCodec.h264,
+              ExportVideoCodec.proresProxy,
+              ExportVideoCodec.proresLt,
+              ExportVideoCodec.prores422,
+              ExportVideoCodec.proresHq,
+              ExportVideoCodec.prores4444,
+            ],
+          },
+          stillEnabled: _availability.stillAllowed,
+          videoEnabled: _availability.videoAllowed,
+          videoReason: _availability.videoBlockedReason,
+        ),
+        onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
         reset: (
           enabled: spec.format != const ExportFormatSelection(),
           onTap: () =>
               _updateSpec(spec.copyWith(format: const ExportFormatSelection())),
-        ),
-        child: ExportFormatModule(
-          selection: spec.format,
-          capabilities: ExportFormatCapabilities(
-            stills: const [ExportStillFormat.png, ExportStillFormat.jpg],
-            video: const {
-              ExportVideoContainer.mp4: [
-                ExportVideoCodec.h264,
-                ExportVideoCodec.h265,
-              ],
-              ExportVideoContainer.mov: [
-                ExportVideoCodec.h264,
-                ExportVideoCodec.proresProxy,
-                ExportVideoCodec.proresLt,
-                ExportVideoCodec.prores422,
-                ExportVideoCodec.proresHq,
-                ExportVideoCodec.prores4444,
-              ],
-            },
-            stillEnabled: _availability.stillAllowed,
-            videoEnabled: _availability.videoAllowed,
-            videoReason: _availability.videoBlockedReason,
-          ),
-          enabled: !_isExporting,
-          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
         ),
       ),
       ExportAccordion(
@@ -2854,23 +2873,17 @@ class ExportDialogState extends State<ExportDialog> {
   List<Widget> _imageModules() {
     final spec = _specs.image;
     return [
-      ExportAccordion(
-        title: AppText.strings.exFormat,
-        summary: ExportFormatModule.summarize(spec.format),
-        expansion: _expansion('format', open: true),
-        child: ExportFormatModule(
-          selection: spec.format,
-          capabilities: ExportFormatCapabilities(
-            stills: const [
-              ExportStillFormat.png,
-              ExportStillFormat.jpg,
-              ExportStillFormat.psd,
-            ],
-            stillEnabled: _availability.stillAllowed,
-          ),
-          enabled: !_isExporting,
-          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
+      _formatAccordion(
+        format: spec.format,
+        capabilities: ExportFormatCapabilities(
+          stills: const [
+            ExportStillFormat.png,
+            ExportStillFormat.jpg,
+            ExportStillFormat.psd,
+          ],
+          stillEnabled: _availability.stillAllowed,
         ),
+        onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       ExportAccordion(
         title: 'Size',
@@ -3227,23 +3240,17 @@ class ExportDialogState extends State<ExportDialog> {
           ),
           child: _celsLayersAccordionBody(currentLabel),
         ),
-      ExportAccordion(
-        title: AppText.strings.exFormat,
-        summary: ExportFormatModule.summarize(spec.format),
-        expansion: _expansion('format', open: true),
-        child: ExportFormatModule(
-          selection: spec.format,
-          capabilities: ExportFormatCapabilities(
-            stills: const [
-              ExportStillFormat.png,
-              ExportStillFormat.jpg,
-              ExportStillFormat.psd,
-            ],
-            stillEnabled: _availability.stillAllowed,
-          ),
-          enabled: !_isExporting,
-          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
+      _formatAccordion(
+        format: spec.format,
+        capabilities: ExportFormatCapabilities(
+          stills: const [
+            ExportStillFormat.png,
+            ExportStillFormat.jpg,
+            ExportStillFormat.psd,
+          ],
+          stillEnabled: _availability.stillAllowed,
         ),
+        onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       ExportAccordion(
         title: AppText.strings.exFilter,
