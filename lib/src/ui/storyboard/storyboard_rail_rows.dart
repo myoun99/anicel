@@ -153,47 +153,40 @@ class _StoryboardRailRows {
       _state.widget.onToggleSeRowLane != null ||
       _state.widget.onToggleTrackLane != null;
 
-  /// The rows the legend button opens. The `contains` guards look redundant
-  /// — the button only says EXPAND while nothing is open — but they are what
-  /// makes the verb an expansion rather than a per-row toggle, and the
-  /// nested group set can leave a rail mixed. A blind sweep would close the
-  /// one row you had opened by hand while it opened its neighbours.
-  void expandAllLanes() {
-    final toggleSe = _state.widget.onToggleSeRowLane;
-    final toggleTrack = _state.widget.onToggleTrackLane;
-    for (final track in _state.widget.project.tracks) {
-      if (toggleSe != null) {
-        for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-          if (!_state.widget.expandedSeAudioRows.contains(
-            StoryboardPanel.seRowKey(track, slot),
-          )) {
-            toggleSe(track, slot);
-          }
-        }
-      }
-      if (toggleTrack != null &&
-          !_state.widget.expandedTransformTracks.contains(track.id.value)) {
-        toggleTrack(track);
-      }
-    }
-  }
+  void expandAllLanes() => _setAllLanes(expanded: true);
 
-  void collapseAllLanes() {
+  void collapseAllLanes() => _setAllLanes(expanded: false);
+
+  /// Toggles every lane row that is not already [expanded].
+  ///
+  /// ⛔THE `contains` GUARD IS THE VERB. It looks redundant — the button
+  /// only says EXPAND while nothing is open — but it is what makes this an
+  /// expansion rather than a per-row toggle, and the nested group set can
+  /// leave a rail mixed: a blind sweep would close the one row you had
+  /// opened by hand while it opened its neighbours. Written once per
+  /// direction, the two guards were the same sentence with the sense
+  /// flipped, and only one of them could be right about it.
+  void _setAllLanes({required bool expanded}) {
     final toggleSe = _state.widget.onToggleSeRowLane;
     final toggleTrack = _state.widget.onToggleTrackLane;
     for (final track in _state.widget.project.tracks) {
       if (toggleSe != null) {
         for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-          if (_state.widget.expandedSeAudioRows.contains(
+          final open = _state.widget.expandedSeAudioRows.contains(
             StoryboardPanel.seRowKey(track, slot),
-          )) {
+          );
+          if (open != expanded) {
             toggleSe(track, slot);
           }
         }
       }
-      if (toggleTrack != null &&
-          _state.widget.expandedTransformTracks.contains(track.id.value)) {
-        toggleTrack(track);
+      if (toggleTrack != null) {
+        final open = _state.widget.expandedTransformTracks.contains(
+          track.id.value,
+        );
+        if (open != expanded) {
+          toggleTrack(track);
+        }
       }
     }
   }
