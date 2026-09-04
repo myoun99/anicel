@@ -7,16 +7,26 @@ import 'dart:typed_data' show BytesBuilder;
 /// bytes piped to stdin and exits with [exitCodeValue] once stdin closes
 /// (or the service kills it).
 class FakeFfmpegProcess implements Process {
-  FakeFfmpegProcess({this.exitCodeValue = 0, this.stderrText = ''});
+  FakeFfmpegProcess({
+    this.exitCodeValue = 0,
+    this.stderrText = '',
+    this.onFrame,
+  });
 
   final int exitCodeValue;
   final String stderrText;
+
+  /// Called with the running frame count as each PNG reaches stdin — the
+  /// seam a test needs to STOP an export midway, deterministically,
+  /// instead of racing a timer against the encoder.
+  final void Function(int framesSoFar)? onFrame;
   final BytesBuilder collectedStdin = BytesBuilder();
   bool killed = false;
 
   late final _FakeStdinSink _stdin = _FakeStdinSink(
     collectedStdin,
     onClose: _completeExit,
+    onFrame: onFrame == null ? null : () => onFrame!(receivedPngCount),
   );
 
   // ZONE TRAP: this fake is usually CONSTRUCTED in a widget test's
@@ -93,16 +103,20 @@ class FakeFfmpegProcess implements Process {
 }
 
 class _FakeStdinSink implements IOSink {
-  _FakeStdinSink(this.buffer, {required this.onClose});
+  _FakeStdinSink(this.buffer, {required this.onClose, this.onFrame});
 
   final BytesBuilder buffer;
   final void Function() onClose;
+  final void Function()? onFrame;
 
   @override
   Encoding encoding = utf8;
 
   @override
-  void add(List<int> data) => buffer.add(data);
+  void add(List<int> data) {
+    buffer.add(data);
+    onFrame?.call();
+  }
 
   @override
   void addError(Object error, [StackTrace? stackTrace]) {}
