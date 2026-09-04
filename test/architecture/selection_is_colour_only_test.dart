@@ -23,7 +23,7 @@ void main() {
     final offenders = <String>[];
     final pattern = RegExp(
       r'\b(width|height|fontWeight|elevation|borderRadius|shape|thickness'
-      r'|letterSpacing|padding|size|blurRadius|spreadRadius|strokeWidth)'
+      '|letterSpacing|padding|size|blurRadius|spreadRadius|strokeWidth)'
       r':[^,]*\b(selected|isSelected|isActive)\b *\?',
     );
 
