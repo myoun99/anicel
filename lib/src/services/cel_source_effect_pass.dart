@@ -21,6 +21,7 @@
 /// projection instead, which is a different pattern with different rules.
 library;
 
+import '../core/collection_equality.dart';
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
@@ -232,7 +233,7 @@ List<double> celSourceEffectSignature(List<ResolvedLayerEffect> effects) {
 
 /// Whether two [celSourceEffectSignature] results say the same thing.
 bool sameCelSourceEffectSignature(List<double> a, List<double> b) =>
-    _sameSignature(a, b);
+    listEquals(a, b);
 
 /// The alpha ONE pixel keeps after every color key in [effects].
 ///
@@ -291,7 +292,7 @@ BitmapSurface celSurfaceWithSourceEffects(
   }
   final signature = [for (final key in keys) ...key.signature];
   final cached = _derived[surface];
-  if (cached != null && _sameSignature(cached.signature, signature)) {
+  if (cached != null && listEquals(cached.signature, signature)) {
     return cached.surface;
   }
   final result = _applyKeys(surface, keys);
@@ -330,7 +331,7 @@ BitmapSurface _applyKeys(BitmapSurface surface, List<CelColorKey> keys) {
 BitmapTile _keyedTile(BitmapTile tile, List<CelColorKey> keys, int tileSize) {
   final signature = [for (final key in keys) ...key.signature];
   final cached = _keyedTiles[tile];
-  if (cached != null && _sameSignature(cached.signature, signature)) {
+  if (cached != null && listEquals(cached.signature, signature)) {
     return cached.tile;
   }
   // Reads come from the tile's own bytes, writes go to a copy made LAZILY
@@ -400,14 +401,4 @@ final Expando<_DerivedSurface> _derived = Expando<_DerivedSurface>(
   'celSourceEffectSurfaces',
 );
 
-bool _sameSignature(List<double> a, List<double> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
+

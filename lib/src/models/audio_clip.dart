@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'frame_id.dart';
 
 /// The shape a fade ramp takes (AUDIO-PRO R1).
@@ -180,19 +181,8 @@ class AudioClip {
           other.fadeOutFrames == fadeOutFrames &&
           other.fadeCurve == fadeCurve &&
           other.clipped == clipped &&
-          _keysEqual(other.volumeKeys, volumeKeys);
+          listEquals(other.volumeKeys, volumeKeys);
 
-  static bool _keysEqual(List<AudioVolumeKey> a, List<AudioVolumeKey> b) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (var index = 0; index < a.length; index += 1) {
-      if (a[index] != b[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   @override
   int get hashCode => Object.hash(

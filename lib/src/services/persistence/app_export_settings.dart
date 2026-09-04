@@ -81,7 +81,7 @@ class AppExportSettings {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AppExportSettings &&
-          _listEquals(other.presets, presets) &&
+          listEquals(other.presets, presets) &&
           other.lastSpecs == lastSpecs &&
           other.lastLocation == lastLocation &&
           other.presetsDrawerOpen == presetsDrawerOpen &&
@@ -95,18 +95,6 @@ class AppExportSettings {
     presetsDrawerOpen,
     queueDrawerOpen,
   );
-
-  static bool _listEquals(List<ExportPreset> a, List<ExportPreset> b) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (var i = 0; i < a.length; i += 1) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
 }
 
 /// The LIVE export UI state (the [AppSave] idiom): the session restores

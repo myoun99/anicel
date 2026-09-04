@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'exposure_memo.dart';
 import 'frame_id.dart';
 import 'timeline_exposure_type.dart';
@@ -142,17 +143,6 @@ class TimelineExposure {
     );
   }
 
-  bool _sameOffsets(List<int> other) {
-    if (other.length != breakdownOffsets.length) {
-      return false;
-    }
-    for (var i = 0; i < other.length; i += 1) {
-      if (other[i] != breakdownOffsets[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   @override
   bool operator ==(Object other) =>
@@ -164,7 +154,7 @@ class TimelineExposure {
           other.ghost == ghost &&
           other.ghostOwnerId == ghostOwnerId &&
           other.memo == memo &&
-          _sameOffsets(other.breakdownOffsets);
+          listEquals(other.breakdownOffsets, breakdownOffsets);
 
   @override
   int get hashCode => Object.hash(

@@ -10,6 +10,7 @@
 /// never about WHAT plays WHEN.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
@@ -78,19 +79,7 @@ class ScheduledAudioClip {
       other.fadeOutFrames == fadeOutFrames &&
       other.pan == pan &&
       other.fadeCurve == fadeCurve &&
-      _keysEqual(other.volumeKeys, volumeKeys);
-
-  static bool _keysEqual(List<AudioVolumeKey> a, List<AudioVolumeKey> b) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (var index = 0; index < a.length; index += 1) {
-      if (a[index] != b[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
+      listEquals(other.volumeKeys, volumeKeys);
 
   @override
   int get hashCode => Object.hash(

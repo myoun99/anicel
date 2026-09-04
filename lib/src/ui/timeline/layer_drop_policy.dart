@@ -23,6 +23,7 @@
 ///   same interval.
 library;
 
+import 'package:flutter/foundation.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_placement.dart';
@@ -1022,9 +1023,9 @@ List<EffectId>? resolveEffectDrop({
     return null;
   }
   final bool reversed;
-  if (_sameOrder(displayEffects, modelEffects)) {
+  if (listEquals(displayEffects, modelEffects)) {
     reversed = false;
-  } else if (_sameOrder(displayEffects, modelEffects.reversed.toList())) {
+  } else if (listEquals(displayEffects, modelEffects.reversed.toList())) {
     reversed = true;
   } else {
     // An arrangement neither way round: refuse rather than guess which
@@ -1041,18 +1042,6 @@ List<EffectId>? resolveEffectDrop({
   final next = [...displayEffects]..removeAt(from);
   next.insert(slot > from ? slot - 1 : slot, movingId);
   return reversed ? next.reversed.toList() : next;
-}
-
-bool _sameOrder(List<EffectId> a, List<EffectId> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var index = 0; index < a.length; index += 1) {
-    if (a[index] != b[index]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /// The SE rows' plan: a flat permutation of the track's list. They carry no

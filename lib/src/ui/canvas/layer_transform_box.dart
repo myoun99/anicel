@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -326,17 +327,6 @@ class _TransformBoxPainter extends CustomPainter {
   bool shouldRepaint(covariant _TransformBoxPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.rotateHandle != rotateHandle ||
-      !_sameCorners(oldDelegate.corners, corners);
+      !listEquals(oldDelegate.corners, corners);
 
-  static bool _sameCorners(List<Offset> a, List<Offset> b) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (var i = 0; i < a.length; i += 1) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
 }

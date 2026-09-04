@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'frame_composite_cache_key.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
@@ -149,9 +150,9 @@ class CacheInvalidationPlan {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CacheInvalidationPlan &&
-          _setEquals(other._layerTiles, _layerTiles) &&
-          _setEquals(other._frameComposites, _frameComposites) &&
-          _setEquals(other._playbackPreviews, _playbackPreviews);
+          setEquals(other._layerTiles, _layerTiles) &&
+          setEquals(other._frameComposites, _frameComposites) &&
+          setEquals(other._playbackPreviews, _playbackPreviews);
 
   @override
   int get hashCode => Object.hash(
@@ -197,9 +198,4 @@ int _comparePlaybackPreviewKeys(
   final widthComparison = a.previewSize.width.compareTo(b.previewSize.width);
   if (widthComparison != 0) return widthComparison;
   return a.previewSize.height.compareTo(b.previewSize.height);
-}
-
-bool _setEquals<T>(Set<T> a, Set<T> b) {
-  if (a.length != b.length) return false;
-  return a.containsAll(b);
 }

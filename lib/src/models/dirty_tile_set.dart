@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'dirty_region.dart';
 import 'tile_coord.dart';
 
@@ -79,16 +80,11 @@ class DirtyTileSet {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is DirtyTileSet && _setEquals(other._coords, _coords);
+      other is DirtyTileSet && setEquals(other._coords, _coords);
 
   @override
   int get hashCode => Object.hashAllUnordered(_coords);
 
   @override
   String toString() => 'DirtyTileSet(length: $length, coords: $_coords)';
-}
-
-bool _setEquals(Set<TileCoord> a, Set<TileCoord> b) {
-  if (a.length != b.length) return false;
-  return a.containsAll(b);
 }
