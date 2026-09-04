@@ -199,39 +199,63 @@ int anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
   return null;
 }
 
-/// The local header offset a central record names, following its ZIP64
-/// extra field when the fixed field is all-ones.
-int _centralLocalOffset(
+/// Which 64-bit value a central record's ZIP64 extra is being asked for.
+enum _Zip64CentralField {
+  /// The entry's compressed length.
+  compressedSize('size', fixedAt: 20),
+
+  /// Where the entry's LOCAL header begins.
+  localOffset('offset', fixedAt: 42);
+
+  const _Zip64CentralField(this.noun, {required this.fixedAt});
+
+  /// What the 32-bit field is called when it has to say it is missing.
+  final String noun;
+
+  /// The 32-bit field's offset from the record's start — all-ones there
+  /// is what sends the reader to the extra.
+  final int fixedAt;
+}
+
+/// The value a central record names for [want], following its ZIP64 extra
+/// field when the fixed field is all-ones.
+///
+/// ⛔THE ORDER IS FIXED AND THE SKIPS ARE THE LAW. The 64-bit values
+/// appear as uncompressed size, compressed size, local header offset —
+/// and ONLY for the fields flagged all-ones, so a reader has to skip by
+/// what is flagged, not by what it expects. Since the ZIP64 size round
+/// (유저 08-26: 4GB 초과도 품는다) this writer flags sizes too, and a
+/// foreign file may flag one of a pair. Written out per field, the reader
+/// that forgets a skip returns the PREVIOUS field's eight bytes and calls
+/// them an offset — which points the next read into the middle of an
+/// entry.
+int _centralZip64Field(
   ByteData data,
   int cursor,
-  int extraStart,
-  int extraLength,
+  ({int start, int length}) extraField,
+  _Zip64CentralField want,
 ) {
-  final fixed = data.getUint32(cursor + 42, Endian.little);
+  final fixed = data.getUint32(cursor + want.fixedAt, Endian.little);
   if (fixed != _zip32Max) {
     return fixed;
   }
-  // The 64-bit values appear in a FIXED order — uncompressed size,
-  // compressed size, local header offset — and only for the fields that
-  // were all-ones. Since the ZIP64 size round (유저 08-26: 4GB 초과도
-  // 품는다) this writer flags sizes too, so the sizes are skipped by
-  // looking at what is flagged.
-  final end = extraStart + extraLength;
-  final extra = _zip64Extra(data, extraStart, end);
+  final end = extraField.start + extraField.length;
+  final extra = _zip64Extra(data, extraField.start, end);
   if (extra != null) {
     var at = extra.at;
     if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
       at += 8; // uncompressed size
     }
-    if (data.getUint32(cursor + 20, Endian.little) == _zip32Max) {
+    if (want == _Zip64CentralField.localOffset &&
+        data.getUint32(cursor + 20, Endian.little) == _zip32Max) {
       at += 8; // compressed size
     }
     if (at + 8 <= extra.at + extra.length && at + 8 <= end) {
       return data.getUint64(at, Endian.little);
     }
   }
-  throw const FormatException(
-    'Central record flags a ZIP64 offset with '
+  throw FormatException(
+    'Central record flags a ZIP64 ${want.noun} with '
     'no extra field to hold it.',
   );
 }
@@ -246,38 +270,6 @@ int? _localZip64CompressedSize(Uint8List extraBytes) {
     return null;
   }
   return data.getUint64(extra.at + 8, Endian.little);
-}
-
-/// The entry length a central record names, following its ZIP64 extra
-/// field when the fixed compressed-size field is all-ones — the size
-/// twin of [_centralLocalOffset], for entries past [anicelZip64FieldLimit].
-int _centralEntryLength(
-  ByteData data,
-  int cursor,
-  int extraStart,
-  int extraLength,
-) {
-  final fixed = data.getUint32(cursor + 20, Endian.little);
-  if (fixed != _zip32Max) {
-    return fixed;
-  }
-  // Fixed order: uncompressed size (when flagged), compressed size. This
-  // writer flags both together, but a foreign file may flag one.
-  final end = extraStart + extraLength;
-  final extra = _zip64Extra(data, extraStart, end);
-  if (extra != null) {
-    var at = extra.at;
-    if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
-      at += 8; // uncompressed size
-    }
-    if (at + 8 <= extra.at + extra.length && at + 8 <= end) {
-      return data.getUint64(at, Endian.little);
-    }
-  }
-  throw const FormatException(
-    'Central record flags a ZIP64 size with '
-    'no extra field to hold it.',
-  );
 }
 
 /// The buffer a central directory is being read out of: two views of the
@@ -319,17 +311,18 @@ typedef _CentralBlock = ({ByteData data, Uint8List bytes, int limit});
   if (cursor + 46 + nameLength + extraLength + commentLength > limit) {
     throw const FormatException('Corrupt central directory.');
   }
-  final compressedSize = _centralEntryLength(
+  final extraField = (start: cursor + 46 + nameLength, length: extraLength);
+  final compressedSize = _centralZip64Field(
     data,
     cursor,
-    cursor + 46 + nameLength,
-    extraLength,
+    extraField,
+    _Zip64CentralField.compressedSize,
   );
-  final localOffset = _centralLocalOffset(
+  final localOffset = _centralZip64Field(
     data,
     cursor,
-    cursor + 46 + nameLength,
-    extraLength,
+    extraField,
+    _Zip64CentralField.localOffset,
   );
   final name = String.fromCharCodes(
     block.bytes.sublist(cursor + 46, cursor + 46 + nameLength),
