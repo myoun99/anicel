@@ -53,24 +53,18 @@ class _XSheetGridHeaders {
     // 🚨B4-3: the same wiring the horizontal rail got. A lane row cannot be
     // RE-ORDERED unless it heads a chain, but every row can be SELECTED —
     // two questions, and only the first one ever needed an answer here.
-    Widget selectOnly() {
-      if (hooks.onSelectBegin == null ||
-          _state.widget.hooks.onRowSelectionSpan == null) {
-        return child;
-      }
-      return LayerRowDragTarget(
-        subject: LaneRowSubject(entry.layer.id, lane.laneId),
-        slotBefore: entry.layerIndex,
-        rowExtent: _state._metrics.layerRowHeight,
-        axis: Axis.vertical,
-        hooks: hooks,
-        isLastRow: false,
-        onCrossed: (_, _, _) {},
-        onSelectCrossed: (rowDelta) => _state.widget.hooks.onRowSelectionSpan
-            ?.call(_state._dragRows, rowDelta),
-        child: child,
-      );
-    }
+    Widget selectOnly() => laneSelectOnlyDragTarget(
+      (row: entry, laneId: lane.laneId),
+      hooks,
+      (axis: Axis.vertical, rowExtent: _state._metrics.layerRowHeight),
+      onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
+          ? null
+          : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
+              _state._dragRows,
+              rowDelta,
+            ),
+      child: child,
+    );
 
     if (!lane.isGroupHeader) {
       return selectOnly();

@@ -187,11 +187,12 @@ void main() {
         final text = source(path);
         expect(
           text,
-          contains('LaneRowSubject('),
+          contains('laneSelectOnlyDragTarget('),
           reason:
-              'a lane row that heads no fx chain used to get NO drag '
-              'target at all, so a span could neither start on it nor stop '
-              'on it',
+              'a lane row that heads no fx chain used to get NO drag target '
+              'at all, so a span could neither start on it nor stop on it. '
+              'The target itself moved to the shared law (the clone scan, '
+              '2026-09-04) — what each grid still owes is the ROUTING to it',
         );
         expect(
           RegExp('onSelectCrossed:').allMatches(text).length,
@@ -211,6 +212,28 @@ void main() {
         );
       });
     }
+
+    test('the select-only lane target is spelled ONCE, in the shared law', () {
+      // Both grids used to build it themselves, which is how one of them
+      // came to carry onCrossed and no onSelectCrossed at all.
+      final text = source('lib/src/ui/timeline/layer_row_drag.dart');
+      expect(text, contains('Widget laneSelectOnlyDragTarget('));
+      final law = text.substring(
+        text.indexOf('Widget laneSelectOnlyDragTarget('),
+      );
+      expect(
+        law,
+        contains('LaneRowSubject('),
+        reason: 'the lane row is the subject the span reads',
+      );
+      expect(
+        law,
+        contains('onSelectCrossed:'),
+        reason:
+            'the select half is the entire reason this target exists — '
+            'onCrossed is deliberately empty beside it',
+      );
+    });
 
     test(
       'and the layer row\'s target is wired ONCE, in the shared wrapper',

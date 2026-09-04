@@ -1073,3 +1073,42 @@ Widget layerRowDragWrapper({
     child: child,
   );
 }
+
+/// A lane row that can join a SELECTION but cannot be RE-ORDERED.
+///
+/// 🚨B4-3 (유저): 「행의 **다른 fx끼리 넘어서 선택범위가 불가능.** 그 너머의
+/// 다른 행 선택해야 그때서야 가능. **이런 다른규칙 삭제좀하자고.**」
+///
+/// ⛔TWO QUESTIONS, ONE ANSWER EACH. A lane row cannot be re-ordered unless
+/// it heads an fx chain, but EVERY row can be selected — and the drag
+/// target that says the first must still answer the second, or a span
+/// anchored on a lane never updates and a span anchored elsewhere cannot
+/// stop on one. [LayerRowDragTarget.onCrossed] is deliberately empty here:
+/// this target exists for the select half alone.
+///
+/// ⚠️Both grids build it — the horizontal rail and the vertical sheet — so
+/// the axis and the row extent are the caller's; everything else is the
+/// law. Written per grid, one of them had `onCrossed` and no
+/// `onSelectCrossed`, which is exactly the bug B4-3 named.
+Widget laneSelectOnlyDragTarget(
+  ({TimelineDisplayRow row, String laneId}) lane,
+  TimelineRowDragHooks hooks,
+  ({Axis axis, double rowExtent}) geometry, {
+  required void Function(int rowDelta)? onSelectCrossed,
+  required Widget child,
+}) {
+  if (hooks.onSelectBegin == null || onSelectCrossed == null) {
+    return child;
+  }
+  return LayerRowDragTarget(
+    subject: LaneRowSubject(lane.row.layer.id, lane.laneId),
+    slotBefore: lane.row.layerIndex,
+    rowExtent: geometry.rowExtent,
+    axis: geometry.axis,
+    hooks: hooks,
+    isLastRow: false,
+    onCrossed: (_, _, _) {},
+    onSelectCrossed: onSelectCrossed,
+    child: child,
+  );
+}

@@ -52,22 +52,16 @@ class _LayerGridLanes {
     String laneId,
     TimelineRowDragHooks hooks,
     Widget child,
-  ) {
-    if (hooks.onSelectBegin == null ||
-        _state.widget.hooks.onRowSelectionSpan == null) {
-      return child;
-    }
-    return LayerRowDragTarget(
-      subject: LaneRowSubject(row.layer.id, laneId),
-      slotBefore: row.layerIndex,
-      rowExtent: _state._metrics.layerRowHeight,
-      axis: Axis.horizontal,
-      hooks: hooks,
-      isLastRow: false,
-      onCrossed: (_, _, _) {},
-      onSelectCrossed: (rowDelta) => _state.widget.hooks.onRowSelectionSpan
-          ?.call(_state._dragRows, rowDelta),
-      child: child,
-    );
-  }
+  ) => laneSelectOnlyDragTarget(
+    (row: row, laneId: laneId),
+    hooks,
+    (axis: Axis.horizontal, rowExtent: _state._metrics.layerRowHeight),
+    onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
+        ? null
+        : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
+            _state._dragRows,
+            rowDelta,
+          ),
+    child: child,
+  );
 }
