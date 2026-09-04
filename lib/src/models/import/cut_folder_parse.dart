@@ -394,291 +394,11 @@ String _extensionOf(String fileName) {
 
 const Set<String> _imageExtensions = {'png', 'jpg', 'jpeg', 'webp', 'bmp'};
 
-/// Parses [folderName] + [entries] under [config]. Pure — the preview
-/// re-runs it on every knob change.
-CutFolderParseResult parseCutFolder({
-  required String folderName,
-  required List<CutFolderEntry> entries,
-  CutFolderParseConfig config = const CutFolderParseConfig(),
-  String? parentFolderName,
-}) {
-  final warnings = <String>[];
-  final excluded = <ParsedExclusion>[];
-
-  // --- Folder name --------------------------------------------------------
-  String? title;
-  String? episode;
-  final cutNumbers = <String>[];
-  var processTokens = <String>[];
-  switch (config.nameRule) {
-    case CutFolderNameRule.titleEpisodeCut:
-      final tokens = folderName.split('_');
-      final trailingProcess = <String>[];
-      var seenNumeric = false;
-      var seenTitle = false;
-      for (final token in tokens) {
-        if (_numericToken.hasMatch(token)) {
-          // The FIRST numeric is the episode only when a TITLE token
-          // preceded it — a folder starting with numbers names cuts
-          // alone (`069_077_086_loeks`, `264_lo`: the measured no-title
-          // shapes).
-          if (!seenNumeric && seenTitle) {
-            episode = token;
-          } else {
-            cutNumbers.add(token);
-          }
-          seenNumeric = true;
-        } else if (!seenNumeric) {
-          title = title == null ? token : '${title}_$token';
-          seenTitle = true;
-        } else {
-          trailingProcess.add(token);
-        }
-      }
-      // A titled folder whose ONLY numeric landed as the episode named
-      // just the cut (`kht_264`): the number is the cut.
-      final loneNumeric = episode;
-      if (cutNumbers.isEmpty && loneNumeric != null) {
-        cutNumbers.add(loneNumeric);
-        episode = null;
-      }
-      if (!config.multiCutFolders && cutNumbers.length > 1) {
-        warnings.add(
-          'Folder names ${cutNumbers.length} cuts but multi-cut folders '
-          'are off — only ${cutNumbers.first} imports.',
-        );
-        cutNumbers.removeRange(1, cutNumbers.length);
-      }
-      processTokens = _decomposeProcess(trailingProcess);
-    case CutFolderNameRule.cutNumberOnly:
-      cutNumbers.add(folderName);
-      if (config.parentFolderProcessHint && parentFolderName != null) {
-        processTokens = _decomposeProcess([parentFolderName]);
-      }
-  }
-  if (cutNumbers.isEmpty) {
-    warnings.add('No cut number found in the folder name.');
-  }
-
-  // --- Entry classification ------------------------------------------------
-  final excludeNames = {
-    for (final name in config.excludeNames) name.toLowerCase(),
-  };
-
-  // (symbol, cell label) → revisions seen, top-level cel grammar.
-  final celFiles = <String, List<({ParsedCel cel, String file})>>{};
-  final pictureFiles = <String, List<({int rank, String file})>>{};
-  final references = <ParsedReference>[];
-  final subfolderFiles = <String, List<CutFolderEntry>>{};
-
-  for (final entry in entries) {
-    final segments = entry.relativePath.split(RegExp(r'[\\/]'));
-    final topSegment = segments.first;
-    if (excludeNames.contains(topSegment.toLowerCase())) {
-      excluded.add(
-        ParsedExclusion(path: entry.relativePath, reason: 'excluded name'),
-      );
-      continue;
-    }
-    if (entry.isDirectory) {
-      continue; // Directories classify through their files.
-    }
-    if (segments.length > 1) {
-      // A process subfolder's file (rule G) — collected per subfolder.
-      (subfolderFiles[topSegment] ??= []).add(
-        CutFolderEntry(segments.sublist(1).join('/')),
-      );
-      continue;
-    }
-
-    final fileName = _fileNameOf(entry.relativePath);
-    final stem = _stemOf(fileName);
-    final extension = _extensionOf(fileName);
-
-    // Timing sheets and work files first (extension carries the truth
-    // regardless of prefixes).
-    if (extension == 'tdts' || extension == 'xdts') {
-      references.add(
-        ParsedReference(
-          file: entry.relativePath,
-          kind: ParsedReferenceKind.timingSheet,
-        ),
-      );
-      continue;
-    }
-    if (extension == 'clip' || extension == 'psd') {
-      references.add(
-        ParsedReference(
-          file: entry.relativePath,
-          kind: ParsedReferenceKind.workFile,
-        ),
-      );
-      continue;
-    }
-    if (extension == 'mov' || extension == 'mp4' || extension == 'avi') {
-      references.add(
-        ParsedReference(
-          file: entry.relativePath,
-          kind: ParsedReferenceKind.movie,
-        ),
-      );
-      continue;
-    }
-    if (extension == 'txt') {
-      excluded.add(
-        ParsedExclusion(path: entry.relativePath, reason: 'memo text'),
-      );
-      continue;
-    }
-
-    final lowerStem = stem.toLowerCase();
-    // `_TS_e`, `_085_ts_loe`, `_TS_sAc266` — timesheet scans stay
-    // references. The token must END at a boundary (`_`, end, or a
-    // digit run): `_BG_tsuki` is a picture whose name merely contains
-    // 'ts'.
-    if (RegExp(r'(^|_)ts(_|$|\d)').hasMatch(lowerStem)) {
-      if (_imageExtensions.contains(extension)) {
-        references.add(
-          ParsedReference(
-            file: entry.relativePath,
-            kind: ParsedReferenceKind.timesheetScan,
-          ),
-        );
-        continue;
-      }
-    }
-
-    if (stem.startsWith('_')) {
-      // Rule E: `_`-prefixed = not a cel. Pictures (`_BG`, `_BOOK2`,
-      // `_BG補足`, `_BG_boke`) keep their whole stem as identity, with
-      // trailing `_` marks folded as revisions.
-      if (_imageExtensions.contains(extension)) {
-        var core = stem.substring(1);
-        var rank = 0;
-        while (core.endsWith('_')) {
-          core = core.substring(0, core.length - 1);
-          rank += 1;
-        }
-        if (core.isEmpty) {
-          excluded.add(
-            ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
-          );
-          continue;
-        }
-        (pictureFiles[core] ??= []).add((
-          rank: rank,
-          file: entry.relativePath,
-        ));
-        continue;
-      }
-      excluded.add(
-        ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
-      );
-      continue;
-    }
-
-    if (_imageExtensions.contains(extension)) {
-      final match = _celFilePattern.firstMatch(stem);
-      if (match != null &&
-          match.group(1)!.length <= config.maxLayerSymbolLength) {
-        final symbol = match.group(1)!;
-        final number = int.parse(match.group(2)!);
-        final insertion = config.insertionLetters ? match.group(3)! : '';
-        if (!config.insertionLetters && match.group(3)!.isNotEmpty) {
-          excluded.add(
-            ParsedExclusion(
-              path: entry.relativePath,
-              reason: 'insertion letters off',
-            ),
-          );
-          continue;
-        }
-        final rank = _revisionRankOf(match.group(4)!);
-        final cel = ParsedCel(
-          number: number,
-          insertion: insertion,
-          revisionRank: rank,
-          file: entry.relativePath,
-        );
-        (celFiles['$symbol|$number|$insertion'] ??= []).add((
-          cel: cel,
-          file: entry.relativePath,
-        ));
-        continue;
-      }
-    }
-
-    excluded.add(
-      ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
-    );
-  }
-
-  // --- Revision folding + layer grouping -----------------------------------
-  List<ParsedCelLayer> buildLayers(
-    Map<String, List<({ParsedCel cel, String file})>> byCell,
-  ) {
-    final bySymbol = <String, List<ParsedCel>>{};
-    for (final entry in byCell.entries) {
-      final symbol = entry.key.split('|').first;
-      final revisions = [...entry.value]
-        ..sort((a, b) => a.cel.revisionRank.compareTo(b.cel.revisionRank));
-      switch (config.revisionPolicy) {
-        case CelRevisionPolicy.latestOnly:
-          final latest = revisions.last;
-          (bySymbol[symbol] ??= []).add(
-            ParsedCel(
-              number: latest.cel.number,
-              insertion: latest.cel.insertion,
-              revisionRank: latest.cel.revisionRank,
-              file: latest.file,
-              olderRevisions: [
-                for (final older in revisions)
-                  if (!identical(older, latest)) older.file,
-              ],
-            ),
-          );
-        case CelRevisionPolicy.all:
-          for (final revision in revisions) {
-            (bySymbol[symbol] ??= []).add(revision.cel);
-          }
-        case CelRevisionPolicy.originalOnly:
-          final original = revisions.first;
-          if (original.cel.revisionRank == 0) {
-            (bySymbol[symbol] ??= []).add(original.cel);
-          } else {
-            // Rule F: a cel may exist only as a revision (`A7_` with no
-            // `A7`) — originalOnly keeps the earliest so the cel does
-            // not vanish, with a warning.
-            (bySymbol[symbol] ??= []).add(original.cel);
-            warnings.add(
-              '${original.file}: no unmarked original — kept the earliest '
-              'revision.',
-            );
-          }
-      }
-    }
-    final layers = [
-      for (final entry in bySymbol.entries)
-        ParsedCelLayer(
-          symbol: entry.key,
-          cells: [...entry.value]..sort((a, b) {
-            final byNumber = a.number.compareTo(b.number);
-            if (byNumber != 0) {
-              return byNumber;
-            }
-            final byInsertion = a.insertion.compareTo(b.insertion);
-            if (byInsertion != 0) {
-              return byInsertion;
-            }
-            return a.revisionRank.compareTo(b.revisionRank);
-          }),
-        ),
-    ]..sort((a, b) => a.symbol.compareTo(b.symbol));
-    return layers;
-  }
-
-  final layers = buildLayers(celFiles);
-
+/// Rule F for the pictures: BG and BOOK revisions fold to the latest, the
+/// older ones listed beside it, sorted by name.
+List<ParsedPicture> _foldPictures(
+  Map<String, List<({int rank, String file})>> pictureFiles,
+) {
   final pictures = <ParsedPicture>[];
   for (final entry in pictureFiles.entries) {
     final revisions = [...entry.value]
@@ -696,8 +416,18 @@ CutFolderParseResult parseCutFolder({
     );
   }
   pictures.sort((a, b) => a.name.compareTo(b.name));
+  return pictures;
+}
 
-  // --- Process subfolders ---------------------------------------------------
+/// Rules G and M: a process subfolder is an ARCHIVE unless the import was
+/// told to bring it in, and what comes in arrives as its own group of
+/// layers under the process the folder is named for.
+List<ParsedProcessGroup> _processGroups({
+  required Map<String, List<CutFolderEntry>> subfolderFiles,
+  required CutFolderParseConfig config,
+  required List<ParsedExclusion> excluded,
+  required List<String> warnings,
+}) {
   final processGroups = <ParsedProcessGroup>[];
   for (final entry in subfolderFiles.entries) {
     if (!config.includeProcessSubfolders) {
@@ -747,21 +477,396 @@ CutFolderParseResult parseCutFolder({
     }
     if (subCells.isNotEmpty) {
       processGroups.add(
-        ParsedProcessGroup(process: entry.key, layers: buildLayers(subCells)),
+        ParsedProcessGroup(
+          process: entry.key,
+          layers: _buildLayers(
+            subCells,
+            revisionPolicy: config.revisionPolicy,
+            warnings: warnings,
+          ),
+        ),
       );
     }
   }
   processGroups.sort((a, b) => a.process.compareTo(b.process));
+  return processGroups;
+}
 
-  return CutFolderParseResult(
-    folderName: folderName,
+/// Rules C, D and F: the cel files of one grammar folded into layers.
+///
+/// Every cell's revisions sort by rank, the policy decides whether the
+/// older ones survive as their own cels or fold into the latest's
+/// [ParsedCel.olderRevisions], and the layers come out sorted by symbol
+/// with each layer's cels in natural order (number, then insertion
+/// letter) — the sort rule 「G3 · G3a · G3b · G4」 needs.
+List<ParsedCelLayer> _buildLayers(
+  Map<String, List<({ParsedCel cel, String file})>> byCell, {
+  required CelRevisionPolicy revisionPolicy,
+  required List<String> warnings,
+}) {
+  final bySymbol = <String, List<ParsedCel>>{};
+  for (final entry in byCell.entries) {
+    final symbol = entry.key.split('|').first;
+    final revisions = [...entry.value]
+      ..sort((a, b) => a.cel.revisionRank.compareTo(b.cel.revisionRank));
+    switch (revisionPolicy) {
+      case CelRevisionPolicy.latestOnly:
+        final latest = revisions.last;
+        (bySymbol[symbol] ??= []).add(
+          ParsedCel(
+            number: latest.cel.number,
+            insertion: latest.cel.insertion,
+            revisionRank: latest.cel.revisionRank,
+            file: latest.file,
+            olderRevisions: [
+              for (final older in revisions)
+                if (!identical(older, latest)) older.file,
+            ],
+          ),
+        );
+      case CelRevisionPolicy.all:
+        for (final revision in revisions) {
+          (bySymbol[symbol] ??= []).add(revision.cel);
+        }
+      case CelRevisionPolicy.originalOnly:
+        final original = revisions.first;
+        if (original.cel.revisionRank == 0) {
+          (bySymbol[symbol] ??= []).add(original.cel);
+        } else {
+          // Rule F: a cel may exist only as a revision (`A7_` with no
+          // `A7`) — originalOnly keeps the earliest so the cel does
+          // not vanish, with a warning.
+          (bySymbol[symbol] ??= []).add(original.cel);
+          warnings.add(
+            '${original.file}: no unmarked original — kept the earliest '
+            'revision.',
+          );
+        }
+    }
+  }
+  final layers = [
+    for (final entry in bySymbol.entries)
+      ParsedCelLayer(
+        symbol: entry.key,
+        cells: [...entry.value]..sort((a, b) {
+          final byNumber = a.number.compareTo(b.number);
+          if (byNumber != 0) {
+            return byNumber;
+          }
+          final byInsertion = a.insertion.compareTo(b.insertion);
+          if (byInsertion != 0) {
+            return byInsertion;
+          }
+          return a.revisionRank.compareTo(b.revisionRank);
+        }),
+      ),
+  ]..sort((a, b) => a.symbol.compareTo(b.symbol));
+  return layers;
+}
+
+/// WHERE EACH FILE IN THE FOLDER LANDS — rule E's table as an object.
+///
+/// A flat decision cascade: the first rule that recognises the name takes
+/// the entry, and anything nothing recognises is excluded as unrecognized
+/// rather than guessed at. Reading it top to bottom IS the specification,
+/// so it stays one run of tests rather than a tree.
+class _EntryBins {
+  _EntryBins({required this.config, required this.excluded});
+
+  final CutFolderParseConfig config;
+  final List<ParsedExclusion> excluded;
+
+  /// (symbol, cell label) → revisions seen, top-level cel grammar.
+  final celFiles = <String, List<({ParsedCel cel, String file})>>{};
+  final pictureFiles = <String, List<({int rank, String file})>>{};
+  final references = <ParsedReference>[];
+  final subfolderFiles = <String, List<CutFolderEntry>>{};
+
+  late final Set<String> excludeNames = {
+    for (final name in config.excludeNames) name.toLowerCase(),
+  };
+
+  void take(CutFolderEntry entry) {
+    final segments = entry.relativePath.split(RegExp(r'[\\/]'));
+    final topSegment = segments.first;
+    if (excludeNames.contains(topSegment.toLowerCase())) {
+      excluded.add(
+        ParsedExclusion(path: entry.relativePath, reason: 'excluded name'),
+      );
+      return;
+    }
+    if (entry.isDirectory) {
+      return; // Directories classify through their files.
+    }
+    if (segments.length > 1) {
+      // A process subfolder's file (rule G) — collected per subfolder.
+      (subfolderFiles[topSegment] ??= []).add(
+        CutFolderEntry(segments.sublist(1).join('/')),
+      );
+      return;
+    }
+
+    final fileName = _fileNameOf(entry.relativePath);
+    final stem = _stemOf(fileName);
+    final extension = _extensionOf(fileName);
+
+    // Timing sheets and work files first (extension carries the truth
+    // regardless of prefixes).
+    if (extension == 'tdts' || extension == 'xdts') {
+      references.add(
+        ParsedReference(
+          file: entry.relativePath,
+          kind: ParsedReferenceKind.timingSheet,
+        ),
+      );
+      return;
+    }
+    if (extension == 'clip' || extension == 'psd') {
+      references.add(
+        ParsedReference(
+          file: entry.relativePath,
+          kind: ParsedReferenceKind.workFile,
+        ),
+      );
+      return;
+    }
+    if (extension == 'mov' || extension == 'mp4' || extension == 'avi') {
+      references.add(
+        ParsedReference(
+          file: entry.relativePath,
+          kind: ParsedReferenceKind.movie,
+        ),
+      );
+      return;
+    }
+    if (extension == 'txt') {
+      excluded.add(
+        ParsedExclusion(path: entry.relativePath, reason: 'memo text'),
+      );
+      return;
+    }
+
+    final lowerStem = stem.toLowerCase();
+    // `_TS_e`, `_085_ts_loe`, `_TS_sAc266` — timesheet scans stay
+    // references. The token must END at a boundary (`_`, end, or a
+    // digit run): `_BG_tsuki` is a picture whose name merely contains
+    // 'ts'.
+    if (RegExp(r'(^|_)ts(_|$|\d)').hasMatch(lowerStem)) {
+      if (_imageExtensions.contains(extension)) {
+        references.add(
+          ParsedReference(
+            file: entry.relativePath,
+            kind: ParsedReferenceKind.timesheetScan,
+          ),
+        );
+        return;
+      }
+    }
+
+    if (stem.startsWith('_')) {
+      // Rule E: `_`-prefixed = not a cel. Pictures (`_BG`, `_BOOK2`,
+      // `_BG補足`, `_BG_boke`) keep their whole stem as identity, with
+      // trailing `_` marks folded as revisions.
+      if (_imageExtensions.contains(extension)) {
+        var core = stem.substring(1);
+        var rank = 0;
+        while (core.endsWith('_')) {
+          core = core.substring(0, core.length - 1);
+          rank += 1;
+        }
+        if (core.isEmpty) {
+          excluded.add(
+            ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
+          );
+          return;
+        }
+        (pictureFiles[core] ??= []).add((
+          rank: rank,
+          file: entry.relativePath,
+        ));
+        return;
+      }
+      excluded.add(
+        ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
+      );
+      return;
+    }
+
+    if (_imageExtensions.contains(extension)) {
+      final match = _celFilePattern.firstMatch(stem);
+      if (match != null &&
+          match.group(1)!.length <= config.maxLayerSymbolLength) {
+        final symbol = match.group(1)!;
+        final number = int.parse(match.group(2)!);
+        final insertion = config.insertionLetters ? match.group(3)! : '';
+        if (!config.insertionLetters && match.group(3)!.isNotEmpty) {
+          excluded.add(
+            ParsedExclusion(
+              path: entry.relativePath,
+              reason: 'insertion letters off',
+            ),
+          );
+          return;
+        }
+        final rank = _revisionRankOf(match.group(4)!);
+        final cel = ParsedCel(
+          number: number,
+          insertion: insertion,
+          revisionRank: rank,
+          file: entry.relativePath,
+        );
+        (celFiles['$symbol|$number|$insertion'] ??= []).add((
+          cel: cel,
+          file: entry.relativePath,
+        ));
+        return;
+      }
+    }
+
+    excluded.add(
+      ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
+    );
+  }
+}
+
+/// Parses [folderName] + [entries] under [config]. Pure — the preview
+/// What the folder name says, before any file is looked at.
+typedef CutFolderNameParts = ({
+  String? title,
+  String? episode,
+  List<String> cutNumbers,
+  List<String> processTokens,
+});
+
+/// Rule A walked left to right: `title_episode_cut_process`.
+///
+/// The FIRST numeric is the episode only when a TITLE token preceded it —
+/// a folder starting with numbers names cuts alone (`069_077_086_loeks`,
+/// `264_lo`: the measured no-title shapes). And a titled folder whose only
+/// numeric landed as the episode named just the cut (`kht_264`), so that
+/// number moves back.
+CutFolderNameParts _walkNameTokens(List<String> tokens) {
+  String? title;
+  String? episode;
+  final cutNumbers = <String>[];
+  final trailingProcess = <String>[];
+  var seenNumeric = false;
+  var seenTitle = false;
+  for (final token in tokens) {
+    if (_numericToken.hasMatch(token)) {
+      if (!seenNumeric && seenTitle) {
+        episode = token;
+      } else {
+        cutNumbers.add(token);
+      }
+      seenNumeric = true;
+    } else if (!seenNumeric) {
+      title = title == null ? token : '${title}_$token';
+      seenTitle = true;
+    } else {
+      trailingProcess.add(token);
+    }
+  }
+  final loneNumeric = episode;
+  if (cutNumbers.isEmpty && loneNumeric != null) {
+    cutNumbers.add(loneNumeric);
+    episode = null;
+  }
+  return (
     title: title,
     episode: episode,
     cutNumbers: cutNumbers,
-    processTokens: processTokens,
+    processTokens: _decomposeProcess(trailingProcess),
+  );
+}
+
+/// The folder name under the configured rule, warning into [warnings] for
+/// what it had to drop (a second cut with multi-cut folders off) or could
+/// not find (no cut number at all).
+CutFolderNameParts _folderNameParts({
+  required String folderName,
+  required CutFolderParseConfig config,
+  required String? parentFolderName,
+  required List<String> warnings,
+}) {
+  var parts = switch (config.nameRule) {
+    CutFolderNameRule.titleEpisodeCut => _walkNameTokens(folderName.split('_')),
+    CutFolderNameRule.cutNumberOnly => (
+      title: null,
+      episode: null,
+      cutNumbers: <String>[folderName],
+      processTokens: config.parentFolderProcessHint && parentFolderName != null
+          ? _decomposeProcess([parentFolderName])
+          : <String>[],
+    ),
+  };
+  if (!config.multiCutFolders && parts.cutNumbers.length > 1) {
+    warnings.add(
+      'Folder names ${parts.cutNumbers.length} cuts but multi-cut folders '
+      'are off — only ${parts.cutNumbers.first} imports.',
+    );
+    parts = (
+      title: parts.title,
+      episode: parts.episode,
+      cutNumbers: [parts.cutNumbers.first],
+      processTokens: parts.processTokens,
+    );
+  }
+  if (parts.cutNumbers.isEmpty) {
+    warnings.add('No cut number found in the folder name.');
+  }
+  return parts;
+}
+
+/// re-runs it on every knob change.
+CutFolderParseResult parseCutFolder({
+  required String folderName,
+  required List<CutFolderEntry> entries,
+  CutFolderParseConfig config = const CutFolderParseConfig(),
+  String? parentFolderName,
+}) {
+  final warnings = <String>[];
+  final excluded = <ParsedExclusion>[];
+
+  // --- Folder name --------------------------------------------------------
+  final name = _folderNameParts(
+    folderName: folderName,
+    config: config,
+    parentFolderName: parentFolderName,
+    warnings: warnings,
+  );
+
+  // --- Entry classification ------------------------------------------------
+  final bins = _EntryBins(config: config, excluded: excluded);
+  for (final entry in entries) {
+    bins.take(entry);
+  }
+
+  // --- Revision folding + layer grouping -----------------------------------
+  final layers = _buildLayers(
+    bins.celFiles,
+    revisionPolicy: config.revisionPolicy,
+    warnings: warnings,
+  );
+  final pictures = _foldPictures(bins.pictureFiles);
+
+  // --- Process subfolders ---------------------------------------------------
+  final processGroups = _processGroups(
+    subfolderFiles: bins.subfolderFiles,
+    config: config,
+    excluded: excluded,
+    warnings: warnings,
+  );
+
+  return CutFolderParseResult(
+    folderName: folderName,
+    title: name.title,
+    episode: name.episode,
+    cutNumbers: name.cutNumbers,
+    processTokens: name.processTokens,
     layers: layers,
     pictures: pictures,
-    references: references,
+    references: bins.references,
     processGroups: processGroups,
     excluded: excluded,
     warnings: warnings,
