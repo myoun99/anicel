@@ -278,6 +278,72 @@ int _centralEntryLength(
   );
 }
 
+/// One central-directory record at [cursor], and where the next one starts.
+///
+/// ⛔BOUNDS FIRST, READS SECOND. A garbage length or offset behind a
+/// surviving EOCD (out-of-order page writeback, external corruption) must
+/// fall out as the [FormatException] the callers catch — their
+/// `on FormatException` IS the recovery — and never as a RangeError that
+/// escapes them and refuses a salvageable file.
+///
+/// [data] and [bytes] are two views of the SAME buffer: the whole archive
+/// for the in-memory parse, the central directory alone for the streaming
+/// one, with [cursor] and [limit] in that buffer's own coordinates.
+/// [fileLength] is the archive's full length either way, because a local
+/// header offset is always absolute. [localHeaderLengths] is the one thing
+/// the two parsers genuinely do differently: one already holds the whole
+/// file, the other seeks and reads four bytes.
+({AnicelZipEntry entry, int nextCursor}) _readCentralEntry({
+  required ByteData data,
+  required Uint8List bytes,
+  required int cursor,
+  required int limit,
+  required int fileLength,
+  required int Function(int localOffset) localHeaderLengths,
+}) {
+  if (cursor < 0 ||
+      cursor + 46 > limit ||
+      data.getUint32(cursor, Endian.little) != _centralSignature) {
+    throw const FormatException('Corrupt central directory.');
+  }
+  final crc = data.getUint32(cursor + 16, Endian.little);
+  final nameLength = data.getUint16(cursor + 28, Endian.little);
+  final extraLength = data.getUint16(cursor + 30, Endian.little);
+  final commentLength = data.getUint16(cursor + 32, Endian.little);
+  if (cursor + 46 + nameLength + extraLength + commentLength > limit) {
+    throw const FormatException('Corrupt central directory.');
+  }
+  final compressedSize = _centralEntryLength(
+    data,
+    cursor,
+    cursor + 46 + nameLength,
+    extraLength,
+  );
+  final localOffset = _centralLocalOffset(
+    data,
+    cursor,
+    cursor + 46 + nameLength,
+    extraLength,
+  );
+  final name = String.fromCharCodes(
+    bytes.sublist(cursor + 46, cursor + 46 + nameLength),
+  );
+  // Local header: fixed 30 bytes + its own name/extra lengths.
+  if (localOffset < 0 || localOffset + 30 > fileLength) {
+    throw const FormatException('Corrupt central directory.');
+  }
+  return (
+    entry: AnicelZipEntry(
+      name: name,
+      localHeaderOffset: localOffset,
+      dataOffset: localOffset + 30 + localHeaderLengths(localOffset),
+      length: compressedSize,
+      crc32: crc,
+    ),
+    nextCursor: cursor + 46 + nameLength + extraLength + commentLength,
+  );
+}
+
 /// Parses the central directory of [bytes] (a complete .anicel). Throws
 /// [FormatException] whenever the tail cannot be parsed — no EOCD (torn
 /// append) OR a corrupt record behind a surviving EOCD. One exception
@@ -309,53 +375,18 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
   final entries = <AnicelZipEntry>[];
   var cursor = centralOffset;
   for (var i = 0; i < entryCount; i += 1) {
-    // Every span is bounds-checked BEFORE it is read. A garbage length or
-    // offset behind a surviving EOCD (out-of-order page writeback, external
-    // corruption) must fall out as the FormatException the callers catch,
-    // not as a RangeError that escapes them.
-    if (cursor < 0 ||
-        cursor + 46 > bytes.length ||
-        data.getUint32(cursor, Endian.little) != _centralSignature) {
-      throw const FormatException('Corrupt central directory.');
-    }
-    final crc = data.getUint32(cursor + 16, Endian.little);
-    final nameLength = data.getUint16(cursor + 28, Endian.little);
-    final extraLength = data.getUint16(cursor + 30, Endian.little);
-    final commentLength = data.getUint16(cursor + 32, Endian.little);
-    if (cursor + 46 + nameLength + extraLength + commentLength > bytes.length) {
-      throw const FormatException('Corrupt central directory.');
-    }
-    final compressedSize = _centralEntryLength(
-      data,
-      cursor,
-      cursor + 46 + nameLength,
-      extraLength,
+    final read = _readCentralEntry(
+      data: data,
+      bytes: bytes,
+      cursor: cursor,
+      limit: bytes.length,
+      fileLength: bytes.length,
+      localHeaderLengths: (localOffset) =>
+          data.getUint16(localOffset + 26, Endian.little) +
+          data.getUint16(localOffset + 28, Endian.little),
     );
-    final localOffset = _centralLocalOffset(
-      data,
-      cursor,
-      cursor + 46 + nameLength,
-      extraLength,
-    );
-    final name = String.fromCharCodes(
-      bytes.sublist(cursor + 46, cursor + 46 + nameLength),
-    );
-    // Local header: fixed 30 bytes + its own name/extra lengths.
-    if (localOffset < 0 || localOffset + 30 > bytes.length) {
-      throw const FormatException('Corrupt central directory.');
-    }
-    final localNameLength = data.getUint16(localOffset + 26, Endian.little);
-    final localExtraLength = data.getUint16(localOffset + 28, Endian.little);
-    entries.add(
-      AnicelZipEntry(
-        name: name,
-        localHeaderOffset: localOffset,
-        dataOffset: localOffset + 30 + localNameLength + localExtraLength,
-        length: compressedSize,
-        crc32: crc,
-      ),
-    );
-    cursor += 46 + nameLength + extraLength + commentLength;
+    entries.add(read.entry);
+    cursor = read.nextCursor;
   }
   return AnicelZipLayout(
     entries: entries,
@@ -410,59 +441,24 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
     final entries = <AnicelZipEntry>[];
     var cursor = 0;
     for (var i = 0; i < entryCount; i += 1) {
-      if (cursor + 46 > central.length ||
-          data.getUint32(cursor, Endian.little) != _centralSignature) {
-        throw const FormatException('Corrupt central directory.');
-      }
-      final crc = data.getUint32(cursor + 16, Endian.little);
-      final nameLength = data.getUint16(cursor + 28, Endian.little);
-      final extraLength = data.getUint16(cursor + 30, Endian.little);
-      final commentLength = data.getUint16(cursor + 32, Endian.little);
-      // Bounds first, reads second — a garbage length or offset behind a
-      // surviving EOCD must become the FormatException the callers catch
-      // (their `on FormatException` IS the recovery), not a RangeError
-      // that escapes them and refuses a salvageable file.
-      if (cursor + 46 + nameLength + extraLength + commentLength >
-          central.length) {
-        throw const FormatException('Corrupt central directory.');
-      }
-      final compressedSize = _centralEntryLength(
-        data,
-        cursor,
-        cursor + 46 + nameLength,
-        extraLength,
+      final read = _readCentralEntry(
+        data: data,
+        bytes: central,
+        cursor: cursor,
+        limit: central.length,
+        fileLength: fileLength,
+        localHeaderLengths: (localOffset) {
+          raf.setPositionSync(localOffset + 26);
+          final localLengths = ByteData.sublistView(raf.readSync(4));
+          if (localLengths.lengthInBytes < 4) {
+            throw const FormatException('Corrupt central directory.');
+          }
+          return localLengths.getUint16(0, Endian.little) +
+              localLengths.getUint16(2, Endian.little);
+        },
       );
-      final localOffset = _centralLocalOffset(
-        data,
-        cursor,
-        cursor + 46 + nameLength,
-        extraLength,
-      );
-      final name = String.fromCharCodes(
-        central.sublist(cursor + 46, cursor + 46 + nameLength),
-      );
-      if (localOffset < 0 || localOffset + 30 > fileLength) {
-        throw const FormatException('Corrupt central directory.');
-      }
-      raf.setPositionSync(localOffset + 26);
-      final localLengths = ByteData.sublistView(raf.readSync(4));
-      if (localLengths.lengthInBytes < 4) {
-        throw const FormatException('Corrupt central directory.');
-      }
-      entries.add(
-        AnicelZipEntry(
-          name: name,
-          localHeaderOffset: localOffset,
-          dataOffset:
-              localOffset +
-              30 +
-              localLengths.getUint16(0, Endian.little) +
-              localLengths.getUint16(2, Endian.little),
-          length: compressedSize,
-          crc32: crc,
-        ),
-      );
-      cursor += 46 + nameLength + extraLength + commentLength;
+      entries.add(read.entry);
+      cursor = read.nextCursor;
     }
     return AnicelZipLayout(
       entries: entries,
