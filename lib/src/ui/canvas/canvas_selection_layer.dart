@@ -988,7 +988,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// It is a scale and not a separate verb, which is why it needs no
   /// special case in any mode: the offsets ride the same affine, so a
   /// mirrored perspective box mirrors its warp with the picture.
-  void _flipTransform({required bool horizontal}) {
+  /// Opens a transform box when there is not one, applies [edit] to it,
+  /// and leaves the way every box edit leaves.
+  ///
+  /// ⛔THE ENTRY AND THE EXIT ARE THE LAW. Refuse when the row cannot be
+  /// transformed; open a box when none is up; and on the way out resample
+  /// the float AND re-run the ants. An edit that skipped the resample
+  /// would leave the ants drawn around the OLD shape while the picture
+  /// shows the new one.
+  void _editTransform(SelectionAffine Function(SelectionAffine affine) edit) {
     if (!_canEditTransform()) {
       return;
     }
@@ -1000,13 +1008,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     setState(() {
-      _transform = horizontal
-          ? affine.copyWith(sx: -affine.sx)
-          : affine.copyWith(sy: -affine.sy);
+      _transform = edit(affine);
     });
     _scheduleFloatResample();
     _syncAnts();
   }
+
+  void _flipTransform({required bool horizontal}) => _editTransform(
+    (affine) => horizontal
+        ? affine.copyWith(sx: -affine.sx)
+        : affine.copyWith(sy: -affine.sy),
+  );
 
   /// 리셋: every value (유저 확정 08-13 "리셋은 전부") — the affine AND the
   /// warp. Resetting only the numbers would leave a box that reads 100%,
@@ -1173,29 +1185,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     required double ty,
     required double rotationDegrees,
     required double scale,
-  }) {
-    if (!_canEditTransform()) {
-      return;
-    }
-    if (_transform == null) {
-      _beginTransform();
-    }
-    final transform = _transform;
-    if (transform == null) {
-      return;
-    }
-    setState(() {
-      _transform = transform.copyWith(
-        tx: tx,
-        ty: ty,
-        rotationDegrees: rotationDegrees,
-        sx: scale,
-        sy: scale,
-      );
-    });
-    _scheduleFloatResample();
-    _syncAnts();
-  }
+  }) => _editTransform(
+    (affine) => affine.copyWith(
+      tx: tx,
+      ty: ty,
+      rotationDegrees: rotationDegrees,
+      sx: scale,
+      sy: scale,
+    ),
+  );
 
   void _resetAll({bool deferDragNotify = false}) {
     final wasDragging = _dragMode != _DragMode.none;
