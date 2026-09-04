@@ -231,7 +231,13 @@ class TvppCameraProfilePoint {
 /// same flat map — an `=` at index 0 is not a key, and everything after
 /// the FIRST `=` is the value (a value may contain one).
 Map<String, String> tvppCameraDataValues(String cameraDataText) {
-  final values = tvppCameraDataValues(cameraDataText);
+  final values = <String, String>{};
+  for (final line in cameraDataText.split('\n')) {
+    final eq = line.indexOf('=');
+    if (eq > 0) {
+      values[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
+    }
+  }
   return values;
 }
 
@@ -241,13 +247,7 @@ TvppCameraChannels parseTvppCameraProfiles(String cameraDataText) {
   if (cameraDataText.isEmpty) {
     return TvppCameraChannels.none;
   }
-  final values = <String, String>{};
-  for (final line in cameraDataText.split('\n')) {
-    final eq = line.indexOf('=');
-    if (eq > 0) {
-      values[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
-    }
-  }
+  final values = tvppCameraDataValues(cameraDataText);
   double num(String key) => double.tryParse(values[key] ?? '') ?? 0;
   List<TvppCameraProfile> channel(String name) {
     final profiles = <TvppCameraProfile>[];
