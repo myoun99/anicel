@@ -182,6 +182,30 @@ class ExportFrameRenderer {
     );
   }
 
+  /// The BACKDROP ground (R3b) under a video frame — and nothing at all
+  /// when [preserveAlpha].
+  ///
+  /// ⛔THE GROUND IS THE VIDEO'S FLOOR AND THE GUARD IS THE MASTER'S. An
+  /// opaque codec bakes the stage's floor everywhere the picture leaves
+  /// uncovered — gap frames, a posed stage sliding off, a fade thinning
+  /// the stack away — while an alpha master must stay transparent. Four
+  /// renders wrote the pair out, and one that forgot the guard bakes an
+  /// opaque floor into a master somebody asked to keep clear.
+  void _paintBackdropGround(
+    ui.Canvas canvas,
+    ui.Rect bounds, {
+    required bool preserveAlpha,
+  }) {
+    if (preserveAlpha) {
+      return;
+    }
+    canvas.drawRect(
+      bounds,
+      ui.Paint()
+        ..color = ui.Color(session.repository.requireProject().backdropArgb),
+    );
+  }
+
   /// [renderComposite] with the cut-level pose and fade baked in for VIDEO
   /// frames — MP4 carries no alpha (yuv420p drops the channel without
   /// blending) and no display-time compositor, so both must land in the
@@ -225,20 +249,11 @@ class ExportFrameRenderer {
           : task.cut.canvasSize;
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder);
-      if (!preserveAlpha) {
-        canvas.drawRect(
-          ui.Rect.fromLTWH(
-            0,
-            0,
-            size.width.toDouble(),
-            size.height.toDouble(),
-          ),
-          ui.Paint()
-            ..color = ui.Color(
-              session.repository.requireProject().backdropArgb,
-            ),
-        );
-      }
+      _paintBackdropGround(
+        canvas,
+        ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
+        preserveAlpha: preserveAlpha,
+      );
       final picture = recorder.endRecording();
       try {
         return await picture.toImage(size.width, size.height);
@@ -290,13 +305,8 @@ class ExportFrameRenderer {
     );
     // The BACKDROP ground (R3b): a fade thins the frame down to it. An alpha
     // master leaves it transparent instead.
-    if (!preserveAlpha) {
-      canvas.drawRect(
-        bounds,
-        ui.Paint()
-          ..color = ui.Color(session.repository.requireProject().backdropArgb),
-      );
-    }
+    // The BACKDROP ground (R3b): a fade thins the frame down to it.
+    _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
     // The fade is transparency (R3b): the frame thins as one layer over the
     // ground; no target-color wash.
     if (fade < 1) {
@@ -395,13 +405,7 @@ class ExportFrameRenderer {
       size.width.toDouble(),
       size.height.toDouble(),
     );
-    if (!preserveAlpha) {
-      canvas.drawRect(
-        bounds,
-        ui.Paint()
-          ..color = ui.Color(session.repository.requireProject().backdropArgb),
-      );
-    }
+    _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
     final images = <ui.Image>[];
     try {
       for (var i = 0; i < contributions.length; i += 1) {
@@ -502,19 +506,13 @@ class ExportFrameRenderer {
     final size = session.cameraFrameSize;
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
-    if (!preserveAlpha) {
-      // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
-      // frames, a posed stage sliding off, a fade thinning the stack
-      // away. The stage's floor is the one ground; an alpha master stays
-      // transparent instead.
-      canvas.drawRect(
-        ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
-        ui.Paint()
-          ..color = ui.Color(
-            session.repository.requireProject().backdropArgb,
-          ),
-      );
-    }
+    // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
+    // frames, a posed stage sliding off, a fade thinning the stack away.
+    _paintBackdropGround(
+      canvas,
+      ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
+      preserveAlpha: preserveAlpha,
+    );
     final images = <ui.Image>[];
     try {
       for (var i = 0; i < positions.length; i += 1) {
