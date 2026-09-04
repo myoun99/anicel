@@ -51,7 +51,7 @@ void main() {
         canvasSize: const CanvasSize(width: 100, height: 100),
       );
 
-  final trackId = TrackId('t1');
+  const trackId = TrackId('t1');
 
   test('a cut with no SE rows comes back UNTOUCHED — the same instance', () {
     final plain = cut('c1', duration: 10);
@@ -84,7 +84,9 @@ void main() {
         layers: [
           se(
             'S1',
-            timeline: {0: TimelineExposure.drawing(FrameId("fa"), length: 1)},
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('fa'), length: 1),
+            },
           ),
         ],
       ),
@@ -94,7 +96,9 @@ void main() {
         layers: [
           se(
             'S1',
-            timeline: {2: TimelineExposure.drawing(FrameId("fb"), length: 1)},
+            timeline: {
+              2: const TimelineExposure.drawing(FrameId('fb'), length: 1),
+            },
           ),
         ],
       ),
@@ -112,8 +116,12 @@ void main() {
         layers: [
           se(
             'S1',
-            frames: [Frame(id: FrameId("f1"), duration: 1, strokes: const [])],
-            timeline: {3: TimelineExposure.drawing(FrameId('f1'), length: 9)},
+            frames: [
+              Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              3: const TimelineExposure.drawing(FrameId('f1'), length: 9),
+            },
           ),
         ],
       ),
@@ -139,8 +147,8 @@ void main() {
           se(
             'S1',
             timeline: {
-              0: TimelineExposure.drawing(FrameId("fk"), length: 1),
-              9: TimelineExposure.drawing(FrameId("fn"), length: 1),
+              0: const TimelineExposure.drawing(FrameId('fk'), length: 1),
+              9: const TimelineExposure.drawing(FrameId('fn'), length: 1),
             },
           ),
         ],
@@ -187,8 +195,8 @@ void main() {
         layers: [
           se(
             'a',
-            audioClips: [
-              AudioClip(filePath: "clip-1.wav", frameId: FrameId("fc1")),
+            audioClips: const [
+              AudioClip(filePath: 'clip-1.wav', frameId: FrameId('fc1')),
             ],
           ),
         ],
@@ -199,8 +207,8 @@ void main() {
         layers: [
           se(
             'b',
-            audioClips: [
-              AudioClip(filePath: "clip-2.wav", frameId: FrameId("fc2")),
+            audioClips: const [
+              AudioClip(filePath: 'clip-2.wav', frameId: FrameId('fc2')),
             ],
           ),
         ],
@@ -209,7 +217,7 @@ void main() {
 
     expect(
       lift.seLayers.first.audioClips.map((clip) => clip.filePath),
-      containsAll(<String>["clip-1.wav", "clip-2.wav"]),
+      containsAll(<String>['clip-1.wav', 'clip-2.wav']),
     );
   });
 }
