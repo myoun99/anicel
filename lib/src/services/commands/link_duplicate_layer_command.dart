@@ -5,10 +5,10 @@ import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
-import '../../models/project.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import 'project_with_cut_layers.dart';
 
 /// 링크 복제 (L2): duplicates a layer's WHOLE attach group as a FREE
 /// group whose members share the originals' cel banks — the pictures
@@ -129,10 +129,10 @@ class LinkDuplicateLayerCommand implements Command {
         );
       }
 
-      return _projectWithCutLayers(
+      return projectWithCutLayers(
         project,
-        cutId: cutId,
-        layers: nextLayers,
+        cutId,
+        nextLayers,
       ).copyWith(linkRegistry: LayerLinkRegistry(groups: groups));
     });
     _hasExecuted = true;
@@ -147,14 +147,10 @@ class LinkDuplicateLayerCommand implements Command {
     repository.updateProject((project) {
       final cut = requireCut(project, cutId);
       final copyIds = layerIdMap.values.toSet();
-      return _projectWithCutLayers(
-        project,
-        cutId: cutId,
-        layers: [
-          for (final layer in cut.layers)
-            if (!copyIds.contains(layer.id)) layer,
-        ],
-      ).copyWith(linkRegistry: registryBefore);
+      return projectWithCutLayers(project, cutId, [
+        for (final layer in cut.layers)
+          if (!copyIds.contains(layer.id)) layer,
+      ]).copyWith(linkRegistry: registryBefore);
     });
   }
 
@@ -165,23 +161,4 @@ class LinkDuplicateLayerCommand implements Command {
     }
     return copyId;
   }
-}
-
-/// [project] with [cutId]'s layer list replaced.
-Project _projectWithCutLayers(
-  Project project, {
-  required CutId cutId,
-  required List<Layer> layers,
-}) {
-  return project.copyWith(
-    tracks: [
-      for (final track in project.tracks)
-        track.copyWith(
-          cuts: [
-            for (final cut in track.cuts)
-              cut.id == cutId ? cut.copyWith(layers: layers) : cut,
-          ],
-        ),
-    ],
-  );
 }

@@ -6,7 +6,6 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
-import '../../models/project.dart';
 import '../../models/project_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/track_id.dart';
@@ -15,6 +14,7 @@ import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
 import 'convert_to_linked_cut_plan.dart';
+import 'project_with_cut_layers.dart';
 
 /// 겸용 변경 (L2b): links [targetCutId] to [originCutId] AFTER both were
 /// drawn — the "타이밍까지 통째 겸용 = 복제→변경" path and the standalone
@@ -206,8 +206,8 @@ class ConvertToLinkedCutCommand implements Command {
     brushFrameStore.rekeyFrames(_rekeys);
 
     repository.updateProject(
-      (current) => _withCutLayers(
-        _withCutLayers(current, originCutId, originLayers),
+      (current) => projectWithCutLayers(
+        projectWithCutLayers(current, originCutId, originLayers),
         targetCutId,
         targetLayers,
       ).copyWith(linkRegistry: LayerLinkRegistry(groups: groups)),
@@ -227,8 +227,8 @@ class ConvertToLinkedCutCommand implements Command {
     ]);
     // Restore both cuts' original layer lists and the registry.
     repository.updateProject(
-      (current) => _withCutLayers(
-        _withCutLayers(current, originCutId, _snapshotOrigin),
+      (current) => projectWithCutLayers(
+        projectWithCutLayers(current, originCutId, _snapshotOrigin),
         targetCutId,
         _snapshotTarget,
       ).copyWith(linkRegistry: registryBefore),
@@ -266,18 +266,4 @@ class ConvertToLinkedCutCommand implements Command {
       frameId: frameId,
     );
   }
-}
-
-Project _withCutLayers(Project project, CutId cutId, List<Layer> layers) {
-  return project.copyWith(
-    tracks: [
-      for (final track in project.tracks)
-        track.copyWith(
-          cuts: [
-            for (final cut in track.cuts)
-              cut.id == cutId ? cut.copyWith(layers: layers) : cut,
-          ],
-        ),
-    ],
-  );
 }
