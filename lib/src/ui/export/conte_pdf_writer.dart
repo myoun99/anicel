@@ -1,3 +1,4 @@
+import '../../models/conte/conte_ink_windows.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -5,10 +6,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 
 import '../../models/brush_frame_key.dart';
-import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
-import '../../models/cut_id.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
 
@@ -230,19 +229,8 @@ class _ContePdfPageWriter {
       _g.restoreContext();
     }
 
-    draw(
-      conteInkPageKey(page.pageIndex),
-      ui.Rect.fromLTWH(0, 0, _metrics.pageWidth, _metrics.pageHeight),
-    );
-    for (final cell in page.cells) {
-      final frameId = cell.source.frameId;
-      if (frameId == null) {
-        continue;
-      }
-      draw(
-        conteInkRowKey(CutId(cell.cutId), frameId),
-        cell.rowBandRect(_metrics),
-      );
+    for (final window in conteInkWindows(page, _metrics)) {
+      draw(window.key, window.rect);
     }
   }
 

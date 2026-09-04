@@ -1,3 +1,4 @@
+import '../../models/conte/conte_ink_windows.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -6,10 +7,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
-import '../../models/cut_id.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import 'conte_fonts.dart';
@@ -231,19 +230,8 @@ class ContePagePainter extends CustomPainter {
       canvas.restore();
     }
 
-    draw(
-      conteInkPageKey(page.pageIndex),
-      Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
-    );
-    for (final cell in page.cells) {
-      final frameId = cell.source.frameId;
-      if (frameId == null) {
-        continue;
-      }
-      draw(
-        conteInkRowKey(CutId(cell.cutId), frameId),
-        cell.rowBandRect(metrics),
-      );
+    for (final window in conteInkWindows(page, metrics)) {
+      draw(window.key, window.rect);
     }
   }
 
