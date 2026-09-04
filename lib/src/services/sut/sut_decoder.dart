@@ -1,3 +1,4 @@
+import '../brush_preset_id_mint.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -6,7 +7,6 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset.dart';
-import '../../models/brush_preset_id.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
@@ -102,17 +102,7 @@ Future<SutImportResult> _decode(
     }
   }
 
-  final usedPresetIds = <String>{};
-  BrushPresetId uniquePresetId(String base) {
-    if (usedPresetIds.add(base)) {
-      return BrushPresetId(base);
-    }
-    var suffix = 2;
-    while (!usedPresetIds.add('$base-$suffix')) {
-      suffix += 1;
-    }
-    return BrushPresetId('$base-$suffix');
-  }
+  final mint = BrushPresetIdMint();
 
   final presets = <BrushPreset>[];
   var nodeIndex = 0;
@@ -134,7 +124,7 @@ Future<SutImportResult> _decode(
     final idBase = uuid is Uint8List && uuid.length >= 16
         ? 'sut-${_hex(uuid)}'
         : 'sut-$sourceName-$nodeIndex';
-    final presetId = uniquePresetId(idBase);
+    final presetId = mint.next(idBase);
 
     BrushTipMask? mask;
     if (_intOf(variant['BrushUsePatternImage']) == 1) {

@@ -1,3 +1,4 @@
+import '../brush_preset_id_mint.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -118,17 +119,7 @@ AbrImportResult decodeAbrBrushFile(
   // bitmap with different settings — common in artist packs), so preset
   // ids must be de-collided; the suffixes are order-deterministic, keeping
   // re-imports of the same file replacing instead of duplicating.
-  final usedPresetIds = <String>{};
-  BrushPresetId uniquePresetId(String base) {
-    if (usedPresetIds.add(base)) {
-      return BrushPresetId(base);
-    }
-    var suffix = 2;
-    while (!usedPresetIds.add('$base-$suffix')) {
-      suffix += 1;
-    }
-    return BrushPresetId('$base-$suffix');
-  }
+  final mint = BrushPresetIdMint();
 
   final brushList = _brushListOf(descriptor);
   if (brushList != null) {
@@ -144,7 +135,7 @@ AbrImportResult decodeAbrBrushFile(
         usedTipKeys: usedTipKeys,
         sourceName: sourceName,
         computedIndex: () => ++computedIndex,
-        uniquePresetId: uniquePresetId,
+        uniquePresetId: mint.next,
         warnings: warnings,
       );
       if (preset != null) {
@@ -163,7 +154,7 @@ AbrImportResult decodeAbrBrushFile(
     unnamedIndex += 1;
     presets.add(
       BrushPreset(
-        id: uniquePresetId('abr-$key'),
+        id: mint.next('abr-$key'),
         name: '$sourceName tip $unnamedIndex',
         settings: _settingsForTip(
           tipsByKey[key],
