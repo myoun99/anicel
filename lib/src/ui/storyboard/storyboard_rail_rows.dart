@@ -946,6 +946,53 @@ class _StoryboardRailRows {
     ];
   }
 
+  /// The selection band both rail sweeps draw: the vertical extent that
+  /// [covers] sweeps out of [_trackGroupRowGeometry], laid at the
+  /// horizontal [span] the selection names, or nothing when the sweep
+  /// reaches no row on this track.
+  ///
+  /// ⛔ONE BAND FOR BOTH SWEEPS. Drawn separately, a decoration or a
+  /// row-geometry change reached the lane band and left the frame band
+  /// behind — and the two sit on the same rows.
+  Widget _rangeBand(
+    Track track, {
+    required bool Function(_StoryboardRailSlot slot) covers,
+    required ({double left, double width}) span,
+    required ({String key, String label}) label,
+  }) {
+    double y = 0;
+    double? top;
+    double? bottom;
+    for (final slot in _trackGroupRowGeometry(track)) {
+      if (covers(slot)) {
+        top ??= y;
+        bottom = y + slot.height;
+      }
+      y += slot.height;
+    }
+    if (top == null || bottom == null) {
+      return const SizedBox.shrink();
+    }
+    return Stack(
+      children: [
+        Positioned(
+          left: span.left,
+          top: top,
+          width: span.width,
+          height: bottom - top,
+          child: Semantics(
+            key: ValueKey<String>(label.key),
+            label: label.label,
+            container: true,
+            child: DecoratedBox(
+              decoration: timelineRangeSelectionBandDecoration,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// The LANE selection's band over this group's property-lane rows —
   /// the V track's own (R4b) and its S rows' alike (R5 ③b). The
   /// timeline's R27 #14 overlay language: ONE band with the cell
@@ -969,46 +1016,29 @@ class _StoryboardRailRows {
           return const SizedBox.shrink();
         }
         final subjectId = selection.layerId;
-        double y = 0;
-        double? top;
-        double? bottom;
-        for (final slot in _trackGroupRowGeometry(track)) {
-          final laneRow = slot.laneRow;
-          if (slot.bandRow &&
-              laneRow != null &&
-              laneRow.layerId == subjectId &&
-              laneSelectionCoversBandRow(
-                selection,
-                subjectId,
-                laneRow.laneId,
-              )) {
-            top ??= y;
-            bottom = y + slot.height;
-          }
-          y += slot.height;
-        }
-        if (top == null || bottom == null) {
-          return const SizedBox.shrink();
-        }
-        return Stack(
-          children: [
-            Positioned(
-              left: scale.leftForFrame(selection.startIndex),
-              top: top,
-              width:
-                  (selection.endIndexExclusive - selection.startIndex) *
-                  scale.pixelsPerFrame,
-              height: bottom - top,
-              child: Semantics(
-                key: const ValueKey<String>('storyboard-lane-range-selection'),
-                label: AppText.strings.tlSelectedLaneRange,
-                container: true,
-                child: DecoratedBox(
-                  decoration: timelineRangeSelectionBandDecoration,
-                ),
-              ),
-            ),
-          ],
+        return _rangeBand(
+          track,
+          covers: (slot) {
+            final laneRow = slot.laneRow;
+            return slot.bandRow &&
+                laneRow != null &&
+                laneRow.layerId == subjectId &&
+                laneSelectionCoversBandRow(
+                  selection,
+                  subjectId,
+                  laneRow.laneId,
+                );
+          },
+          span: (
+            left: scale.leftForFrame(selection.startIndex),
+            width:
+                (selection.endIndexExclusive - selection.startIndex) *
+                scale.pixelsPerFrame,
+          ),
+          label: (
+            key: 'storyboard-lane-range-selection',
+            label: AppText.strings.tlSelectedLaneRange,
+          ),
         );
       },
     );
@@ -1033,40 +1063,23 @@ class _StoryboardRailRows {
           return const SizedBox.shrink();
         }
         final spanned = selection.spanRows.toSet();
-        double y = 0;
-        double? top;
-        double? bottom;
-        for (final slot in _trackGroupRowGeometry(track)) {
+        return _rangeBand(
+          track,
           // C②: an escalated lane drag's span carries LANE rows too — the
           // band covers them exactly as the timeline's covers the lanes it
           // swept.
-          final address = slot.row ?? slot.laneRow;
-          if (address != null && spanned.contains(address)) {
-            top ??= y;
-            bottom = y + slot.height;
-          }
-          y += slot.height;
-        }
-        if (top == null || bottom == null) {
-          return const SizedBox.shrink();
-        }
-        return Stack(
-          children: [
-            Positioned(
-              left: scale.leftForFrame(selection.startFrame),
-              top: top,
-              width: selection.lengthFrames * scale.pixelsPerFrame,
-              height: bottom - top,
-              child: Semantics(
-                key: const ValueKey<String>('storyboard-frame-range-selection'),
-                label: AppText.strings.tlSelectedFrameRange,
-                container: true,
-                child: DecoratedBox(
-                  decoration: timelineRangeSelectionBandDecoration,
-                ),
-              ),
-            ),
-          ],
+          covers: (slot) {
+            final address = slot.row ?? slot.laneRow;
+            return address != null && spanned.contains(address);
+          },
+          span: (
+            left: scale.leftForFrame(selection.startFrame),
+            width: selection.lengthFrames * scale.pixelsPerFrame,
+          ),
+          label: (
+            key: 'storyboard-frame-range-selection',
+            label: AppText.strings.tlSelectedFrameRange,
+          ),
         );
       },
     );

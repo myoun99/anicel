@@ -21,6 +21,30 @@ import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 /// Session-level hooks for the frame-range MOVE drag (UI-R8) — the grid
 /// resolves the pointer's row into [onUpdate]'s target layer before
 /// forwarding, exactly like the block-move callbacks it succeeds.
+/// Retires a range drag whose layer is being unmounted mid-gesture (the
+/// row scrolled out of the window).
+///
+/// A mid-drag unmount commits the move AFTER the frame rather than
+/// leaking an open session (the R12-③ rule) — and hands the grip back
+/// either way, so the pin cannot outlive the layer that took it.
+///
+/// ⛔BOTH RANGE GESTURE LAYERS RETIRE THIS WAY. Written out per State, an
+/// unmount that stopped releasing the grip in one of them would pin its
+/// row with nothing left on screen to release it.
+void retireRangeDragOnUnmount({
+  required bool dragging,
+  required bool moving,
+  required VoidCallback onMoveEnd,
+  required VoidCallback releaseGrip,
+}) {
+  if (moving) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => onMoveEnd());
+  }
+  if (dragging) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => releaseGrip());
+  }
+}
+
 class TimelineRangeMoveCallbacks {
   const TimelineRangeMoveCallbacks({
     required this.onBegin,
@@ -396,22 +420,15 @@ class _TimelineFrameRangeGestureLayerState
 
   @override
   void dispose() {
-    // A mid-drag unmount (row scrolled out of the window) commits the move
-    // AFTER the frame rather than leaking an open session (R12-③ rule) —
-    // and hands the grip back either way, so the pin cannot outlive the
-    // layer that took it.
+    // Retired by the shared law — see [retireRangeDragOnUnmount].
     final callbacks = widget.callbacks;
     final row = widget.row;
-    if (_mode == _RangeDragMode.move) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => callbacks.onMoveEnd(),
-      );
-    }
-    if (_mode != _RangeDragMode.none) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => callbacks.onGripReleased?.call(row),
-      );
-    }
+    retireRangeDragOnUnmount(
+      dragging: _mode != _RangeDragMode.none,
+      moving: _mode == _RangeDragMode.move,
+      onMoveEnd: callbacks.onMoveEnd,
+      releaseGrip: () => callbacks.onGripReleased?.call(row),
+    );
     super.dispose();
   }
 
@@ -786,21 +803,15 @@ class _TimelineLaneRangeGestureLayerState
 
   @override
   void dispose() {
-    // A mid-drag unmount commits the move AFTER the frame rather than
-    // leaking an open session (the R12-③ rule) — and hands the grip back
-    // either way.
+    // Retired by the shared law — see [retireRangeDragOnUnmount].
     final callbacks = widget.callbacks;
     final row = _rowAddress;
-    if (_mode == _RangeDragMode.move) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => callbacks.onMoveEnd(),
-      );
-    }
-    if (_mode != _RangeDragMode.none) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => callbacks.onGripReleased?.call(row),
-      );
-    }
+    retireRangeDragOnUnmount(
+      dragging: _mode != _RangeDragMode.none,
+      moving: _mode == _RangeDragMode.move,
+      onMoveEnd: callbacks.onMoveEnd,
+      releaseGrip: () => callbacks.onGripReleased?.call(row),
+    );
     super.dispose();
   }
 
