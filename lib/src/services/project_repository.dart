@@ -35,6 +35,7 @@ import '../models/transform_track.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import 'project_tree_editor.dart';
+import '../core/inserted_at.dart';
 
 class ProjectRepository {
   ProjectRepository({Project? initialProject})
@@ -323,6 +324,10 @@ class ProjectRepository {
     // with run-edge SPECS and no ghosts. See [_withDerivedRunEdges].
     final derived = _withDerivedRunEdges(cut);
     _mutateTrack(trackId, (track) {
+      // ⛔NOT [insertedAt]. That law CLAMPS, which is right for a row
+      // landing in a layer list; a cut index past the end is a caller
+      // that computed a position from a stale track, and the throw is
+      // pinned by "throws when inserting a cut at an out-of-range index".
       final cuts = [...track.cuts];
       if (index == null) {
         cuts.add(derived);
@@ -551,12 +556,7 @@ class ProjectRepository {
     int? index,
   }) {
     _mutateTrack(trackId, (track) {
-      final seLayers = [...track.seLayers];
-      if (index == null) {
-        seLayers.add(layer);
-      } else {
-        seLayers.insert(index.clamp(0, seLayers.length).toInt(), layer);
-      }
+      final seLayers = insertedAt(track.seLayers, layer, index);
       return track.copyWith(seLayers: seLayers);
     });
   }
@@ -659,12 +659,7 @@ class ProjectRepository {
       // The cut is only known here, and its length is what the ghosts
       // fill to. See [_withDerivedRunEdges].
       final derived = rederiveRunBehaviors(layer, cutFrameCount: cut.duration);
-      final layers = [...cut.layers];
-      if (index == null) {
-        layers.add(derived);
-      } else {
-        layers.insert(index.clamp(0, layers.length).toInt(), derived);
-      }
+      final layers = insertedAt(cut.layers, derived, index);
       return cut.copyWith(layers: layers);
     });
   }

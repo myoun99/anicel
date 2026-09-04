@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/bake_once_lru.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
@@ -37,10 +38,13 @@ class BrushStrokePreviewCache {
   /// covers several hundred presets before eviction starts.
   static const int capacity = 512;
 
-  final LinkedHashMap<(BrushSettings, int, int), ui.Image> _images =
-      LinkedHashMap<(BrushSettings, int, int), ui.Image>();
-  final Map<(BrushSettings, int, int), Future<ui.Image>> _pending =
-      <(BrushSettings, int, int), Future<ui.Image>>{};
+  final BakeOnceLru<(BrushSettings, int, int), ui.Image> _store =
+      BakeOnceLru<(BrushSettings, int, int), ui.Image>(
+        capacity: capacity,
+        // Callers hold clones (the contract above), so disposing the
+        // cache's own handle here is safe.
+        retire: (image) => image.dispose(),
+      );
 
   /// Isolate fan-out cap: a fast scroll requests dozens of rows at once;
   /// two workers keep the UI isolate free without a spawn storm.
@@ -53,12 +57,7 @@ class BrushStrokePreviewCache {
   /// across frames must [ui.Image.clone] it.
   ui.Image? imageFor(BrushSettings settings, int width, int height) {
     final key = (settings, width, height);
-    final image = _images.remove(key);
-    if (image == null) {
-      return null;
-    }
-    _images[key] = image;
-    return image;
+    return _store.peek(key);
   }
 
   /// Rasterizes (once) and caches the key's sample. Concurrent calls for
@@ -69,16 +68,7 @@ class BrushStrokePreviewCache {
     if (cached != null) {
       return Future<ui.Image>.value(cached);
     }
-    return _pending[key] ??= _rasterize(settings, width, height).then((image) {
-      unawaited(_pending.remove(key));
-      _images[key] = image;
-      while (_images.length > capacity) {
-        // Callers hold clones (the contract above), so disposing the
-        // cache's own handle here is safe.
-        _images.remove(_images.keys.first)!.dispose();
-      }
-      return image;
-    });
+    return _store.ensure(key, () => _rasterize(settings, width, height));
   }
 
   Future<ui.Image> _rasterize(
@@ -138,10 +128,10 @@ class BrushStrokePreviewCache {
   /// Test hook: drops every cached image.
   @visibleForTesting
   void clear() {
-    for (final image in _images.values) {
-      image.dispose();
+    for (final entry in _store.entries) {
+      entry.value.dispose();
     }
-    _images.clear();
+    _store.clear();
   }
 }
 

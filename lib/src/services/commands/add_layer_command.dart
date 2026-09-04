@@ -8,6 +8,7 @@ import '../project_lookup.dart';
 import '../project_repository.dart';
 import '../project_tree_editor.dart';
 import 'link_mirror.dart';
+import '../../core/inserted_at.dart';
 
 /// One 겸용 sibling's copy of a layer being created: the cut it lands in,
 /// the id it takes there, and its ANCHORS resolved to that cut's own rows.
@@ -150,8 +151,7 @@ class AddLayerCommand implements Command {
     required int index,
   }) {
     final next = updateCutAnywhere(project, cutId, (cut) {
-      final layers = [...cut.layers];
-      layers.insert(index.clamp(0, layers.length).toInt(), layer);
+      final layers = insertedAt(cut.layers, layer, index);
       return cut.copyWith(layers: layers);
     });
     if (next == null) {

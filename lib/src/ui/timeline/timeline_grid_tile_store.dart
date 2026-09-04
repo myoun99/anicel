@@ -12,6 +12,7 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_row_cells_painter.dart';
+import '../../core/bake_once_lru.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
 ///
@@ -287,10 +288,8 @@ class TimelineGridTileStore {
   // painter's exact ink per cell.
 
   static const int _glyphCapacity = 1024;
-  final LinkedHashMap<String, _BakedGlyph?> _glyphs =
-      LinkedHashMap<String, _BakedGlyph?>();
-  final Map<String, Future<_BakedGlyph?>> _glyphBakes =
-      <String, Future<_BakedGlyph?>>{};
+  final BakeOnceLru<String, _BakedGlyph?> _glyphs =
+      BakeOnceLru<String, _BakedGlyph?>(capacity: _glyphCapacity);
 
   static String _glyphKey(String text, TextStyle style, double dpr) =>
       '$text|${style.fontSize}|${style.fontWeight}|${style.fontStyle}|'
@@ -298,19 +297,7 @@ class TimelineGridTileStore {
 
   Future<_BakedGlyph?> _glyphA8(String text, TextStyle style, double dpr) {
     final key = _glyphKey(text, style, dpr);
-    if (_glyphs.containsKey(key)) {
-      final cached = _glyphs.remove(key);
-      _glyphs[key] = cached;
-      return Future<_BakedGlyph?>.value(cached);
-    }
-    return _glyphBakes[key] ??= _bakeGlyph(text, style, dpr).then((baked) {
-      unawaited(_glyphBakes.remove(key));
-      _glyphs[key] = baked;
-      while (_glyphs.length > _glyphCapacity) {
-        _glyphs.remove(_glyphs.keys.first);
-      }
-      return baked;
-    });
+    return _glyphs.ensure(key, () => _bakeGlyph(text, style, dpr));
   }
 
   Future<_BakedGlyph?> _bakeGlyph(
