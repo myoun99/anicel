@@ -5,6 +5,11 @@ import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
 
+/// ⛔NOT [LayerFieldCommand], though it has that command's shape: this one
+/// looks the layer up CUT-SCOPED ([requireLayer]), so an instruction write
+/// aimed at a track-owned row is refused rather than landing somewhere the
+/// caller did not mean. The shared base uses the anywhere lookup on
+/// purpose, and widening this one would be a rule nobody asked for.
 /// Replaces an instruction row's whole span map in one undo step (edits
 /// are computed as pure functions on the map, then committed here).
 class UpdateLayerInstructionsCommand implements Command {
