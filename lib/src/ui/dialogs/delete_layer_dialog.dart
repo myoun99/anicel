@@ -11,9 +11,10 @@ class DeleteLayerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final keys = confirmDialogKeys('delete-layer');
     final strings = AppText.strings;
     return AppConfirmDialog(
-      windowKey: const ValueKey<String>('delete-layer-dialog'),
+      windowKey: keys.window,
       title: strings.deleteLayerTitle,
       titleIcon: Icons.delete_outline,
       message: strings.deleteLayerMessageTemplate.replaceAll(
@@ -23,9 +24,9 @@ class DeleteLayerDialog extends StatelessWidget {
       actions: confirmActions(
         context,
         declineLabel: strings.commonCancel,
-        declineKey: const ValueKey<String>('delete-layer-cancel-button'),
+        declineKey: keys.decline,
         acceptLabel: strings.commonDelete,
-        acceptKey: const ValueKey<String>('delete-layer-confirm-button'),
+        acceptKey: keys.accept,
       ),
     );
   }

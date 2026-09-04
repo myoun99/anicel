@@ -4,6 +4,7 @@ import '../../models/cut_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import 'app_confirm_dialog.dart';
 
 /// 겸용 변경 dialog: pick a target cut, read the 안내문 (what links, what
 /// gets replaced — 원본 승리 — and what appears where), then confirm.
@@ -38,11 +39,12 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final keys = confirmDialogKeys('convert-linked-cut');
     final targetCutId = _targetCutId;
     final preview = targetCutId == null ? null : widget.previewOf(targetCutId);
     final strings = AppText.strings;
     return AppWindow(
-      windowKey: const ValueKey<String>('convert-linked-cut-dialog'),
+      windowKey: keys.window,
       title: strings.convertLinkedCutTitle,
       titleIcon: Icons.link_outlined,
       onClose: () => Navigator.of(context).pop(null),
@@ -84,14 +86,12 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
       actions: [
         AppWindowAction(
           label: strings.commonCancel,
-          actionKey: const ValueKey<String>('convert-linked-cut-cancel-button'),
+          actionKey: keys.decline,
           onPressed: () => Navigator.of(context).pop(null),
         ),
         AppWindowAction(
           label: strings.commonLink,
-          actionKey: const ValueKey<String>(
-            'convert-linked-cut-confirm-button',
-          ),
+          actionKey: keys.accept,
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: preview != null && preview.linksAnything
               ? () => Navigator.of(context).pop(targetCutId)

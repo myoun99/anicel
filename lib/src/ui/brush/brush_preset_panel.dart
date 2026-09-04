@@ -437,6 +437,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   Future<void> _deleteGroup(BrushGroup group) async {
+    final keys = confirmDialogKeys('brush-preset-group-delete');
     final onDeleted = widget.onGroupDeleted;
     if (onDeleted == null) {
       return;
@@ -447,7 +448,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('brush-preset-group-delete-dialog'),
+        windowKey: keys.window,
         title: AppText.strings.brDeleteGroup,
         titleIcon: Icons.delete_outline,
         message: memberCount == 0
@@ -457,13 +458,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         actions: confirmActions(
           context,
           declineLabel: AppText.strings.commonCancel,
-          declineKey: const ValueKey<String>(
-            'brush-preset-group-delete-cancel-button',
-          ),
+          declineKey: keys.decline,
           acceptLabel: AppText.strings.commonDelete,
-          acceptKey: const ValueKey<String>(
-            'brush-preset-group-delete-confirm-button',
-          ),
+          acceptKey: keys.accept,
         ),
       ),
     );
@@ -474,6 +471,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   Future<void> _resetLibrary() async {
+    final keys = confirmDialogKeys('brush-preset-reset');
     final onReset = widget.onLibraryReset;
     if (onReset == null) {
       return;
@@ -481,20 +479,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('brush-preset-reset-dialog'),
+        windowKey: keys.window,
         title: AppText.strings.brResetLibrary,
         titleIcon: Icons.restart_alt,
         message: AppText.strings.brResetLibraryBody,
         actions: confirmActions(
           context,
           declineLabel: AppText.strings.commonCancel,
-          declineKey: const ValueKey<String>(
-            'brush-preset-reset-cancel-button',
-          ),
+          declineKey: keys.decline,
           acceptLabel: AppText.strings.commonReset,
-          acceptKey: const ValueKey<String>(
-            'brush-preset-reset-confirm-button',
-          ),
+          acceptKey: keys.accept,
         ),
       ),
     );

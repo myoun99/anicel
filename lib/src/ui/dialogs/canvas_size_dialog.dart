@@ -7,6 +7,7 @@ import 'size_fields_row.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import 'app_confirm_dialog.dart';
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
 /// existing artwork stays pinned to.
@@ -110,11 +111,12 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final keys = confirmDialogKeys('canvas-size');
     final enteredRequest = _enteredRequest;
     final strings = AppText.strings;
 
     return AppWindow(
-      windowKey: const ValueKey<String>('canvas-size-dialog'),
+      windowKey: keys.window,
       title: strings.canvasSizeTitle,
       titleIcon: Icons.crop_outlined,
       onClose: () => Navigator.of(context).pop(),
@@ -168,12 +170,12 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
       actions: [
         AppWindowAction(
           label: strings.commonCancel,
-          actionKey: const ValueKey<String>('canvas-size-cancel-button'),
+          actionKey: keys.decline,
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
           label: strings.commonResize,
-          actionKey: const ValueKey<String>('canvas-size-confirm-button'),
+          actionKey: keys.accept,
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: enteredRequest == null
               ? null

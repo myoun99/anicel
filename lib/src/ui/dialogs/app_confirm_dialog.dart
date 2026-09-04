@@ -214,3 +214,25 @@ List<AppWindowAction> confirmActions(
     onPressed: () => Navigator.of(context).pop(true),
   ),
 ];
+
+/// The three keys a confirm window wears, all derived from ONE name:
+/// `<prefix>-dialog`, `<prefix>-cancel-button`, `<prefix>-confirm-button`.
+typedef ConfirmDialogKeys = ({
+  ValueKey<String> window,
+  ValueKey<String> decline,
+  ValueKey<String> accept,
+});
+
+/// ⛔THE THREE KEYS ARE ONE NAME. Six confirm windows spelled their trio
+/// out by hand — eighteen string literals for six names — and a window
+/// renamed without its buttons leaves a test that finds the window and
+/// not its confirm button, which reads as "the button is missing" rather
+/// than "the key drifted".
+///
+/// ⚠️A window whose accept is not `-confirm-button` (the instance editor
+/// answers `-ok-button`) is NOT this convention and keeps its own keys.
+ConfirmDialogKeys confirmDialogKeys(String prefix) => (
+  window: ValueKey<String>('$prefix-dialog'),
+  decline: ValueKey<String>('$prefix-cancel-button'),
+  accept: ValueKey<String>('$prefix-confirm-button'),
+);
