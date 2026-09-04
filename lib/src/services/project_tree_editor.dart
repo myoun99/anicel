@@ -18,7 +18,6 @@ import '../models/track_id.dart';
 /// hand-inlined nested `.map()` chains that were duplicated across every
 /// mutation in `ProjectRepository`. It is deliberately not a general optics /
 /// lens library — just the handful of traversals this project needs.
-
 /// One step of every walk below: [items] with the single element whose id
 /// is [id] replaced by [update], and [onFound] called when it was there.
 ///
@@ -30,14 +29,13 @@ import '../models/track_id.dart';
 /// is the only way they cannot come apart.
 List<T> _replacingOne<T, I>(
   Iterable<T> items,
-  I id,
-  I Function(T item) idOf,
+  ({I id, I Function(T item) of}) picks,
   T Function(T item) update,
   void Function() onFound,
 ) {
   final out = <T>[];
   for (final item in items) {
-    if (idOf(item) != id) {
+    if (picks.of(item) != picks.id) {
       out.add(item);
       continue;
     }
@@ -57,8 +55,7 @@ Project? updateTrackById(
   var found = false;
   final tracks = _replacingOne(
     project.tracks,
-    trackId,
-    (track) => track.id,
+    (id: trackId, of: (Track track) => track.id),
     update,
     () => found = true,
   );
@@ -78,8 +75,7 @@ Project? updateCutAnywhere(
       track.copyWith(
         cuts: _replacingOne(
           track.cuts,
-          cutId,
-          (cut) => cut.id,
+          (id: cutId, of: (cut) => cut.id),
           update,
           () => found = true,
         ),
@@ -100,9 +96,12 @@ Project? updateLayerAnywhere(
 ) {
   var found = false;
   void mark() => found = true;
-  List<Layer> replaced(Iterable<Layer> layers) =>
-      _replacingOne(layers, layerId, (layer) => layer.id, update, mark);
-
+  List<Layer> replaced(Iterable<Layer> layers) => _replacingOne(
+    layers,
+    (id: layerId, of: (layer) => layer.id),
+    update,
+    mark,
+  );
   final tracks = [
     for (final track in project.tracks)
       track.copyWith(
@@ -132,13 +131,11 @@ Project? updateFrameAnywhere(
   Layer updateFrames(Layer layer) => layer.copyWith(
     frames: _replacingOne(
       layer.frames,
-      frameId,
-      (frame) => frame.id,
+      (id: frameId, of: (frame) => frame.id),
       update,
       () => found = true,
     ),
   );
-
   final tracks = [
     for (final track in project.tracks)
       track.copyWith(
@@ -162,8 +159,7 @@ Cut? updateLayerInCut(
   var found = false;
   final layers = _replacingOne(
     cut.layers,
-    layerId,
-    (layer) => layer.id,
+    (id: layerId, of: (Layer layer) => layer.id),
     update,
     () => found = true,
   );
