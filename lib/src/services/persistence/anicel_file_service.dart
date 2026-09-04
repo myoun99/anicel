@@ -1323,29 +1323,11 @@ class AnicelFileService {
       }
     });
 
-    final decoded =
-        jsonDecode(utf8.decode(projectJsonBytes)) as Map<String, dynamic>;
-    if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
-      throw const FormatException('This project was saved by a newer Anicel.');
-    }
-    final project = Project.fromJson(
-      decoded['project'] as Map<String, dynamic>,
-    );
-    final mediaPathsJson = decoded['mediaPaths'];
-    final mediaRelativePaths = <String, String>{
-      if (mediaPathsJson is Map)
-        for (final entry in mediaPathsJson.entries)
-          if (entry.key is String && entry.value is String)
-            entry.key as String: entry.value as String,
-    };
-
-    final mediaEntriesJson = decoded['mediaEntries'];
-    final mediaEntryNames = <String, String>{
-      if (mediaEntriesJson is Map)
-        for (final entry in mediaEntriesJson.entries)
-          if (entry.key is String && entry.value is String)
-            entry.key as String: entry.value as String,
-    };
+    final document = decodeAnicelProjectDocument(projectJsonBytes);
+    final project = document.project;
+    final decoded = document.json;
+    final mediaRelativePaths = anicelStringMapField(decoded['mediaPaths']);
+    final mediaEntryNames = anicelStringMapField(decoded['mediaEntries']);
 
     // Media resolution, INSIDE FIRST. A copy the project carries cannot be
     // moved away or renamed out from under it, so it answers before any

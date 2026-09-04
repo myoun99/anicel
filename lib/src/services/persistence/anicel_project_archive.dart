@@ -484,6 +484,36 @@ Uint8List buildAnicelArchiveBytes({
   return ZipEncoder().encodeBytes(archive);
 }
 
+/// The project a `.anicel`'s `project.json` bytes hold, with its format
+/// version already checked, plus the raw document for the fields around it.
+///
+/// ⛔BOTH READERS COME THROUGH HERE. The streaming open and the
+/// whole-archive parse each decoded, version-checked and rebuilt the
+/// project on their own; a reader that lost the check would open a file
+/// saved by a NEWER Anicel and silently drop everything it did not
+/// understand — which is a project the user then saves back, shortened.
+({Project project, Map<String, dynamic> json}) decodeAnicelProjectDocument(
+  List<int> projectBytes,
+) {
+  final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
+  if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
+    throw const FormatException('This project was saved by a newer Anicel.');
+  }
+  return (
+    project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
+    json: decoded,
+  );
+}
+
+/// A document field read as a `{string: string}` map — anything that is
+/// not a string pair is not one, and is left out rather than throwing.
+Map<String, String> anicelStringMapField(Object? json) => {
+  if (json is Map)
+    for (final entry in json.entries)
+      if (entry.key is String && entry.value is String)
+        entry.key as String: entry.value as String,
+};
+
 /// Parses .anicel bytes; throws [FormatException] on a newer format or a
 /// missing project entry.
 AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
@@ -501,18 +531,10 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
     projectEntry.name,
     projectEntry.readBytes()!,
   );
-  final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
-  if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
-    throw const FormatException('This project was saved by a newer Anicel.');
-  }
-  final project = Project.fromJson(decoded['project'] as Map<String, dynamic>);
-  final mediaPathsJson = decoded['mediaPaths'];
-  final mediaRelativePaths = <String, String>{
-    if (mediaPathsJson is Map)
-      for (final entry in mediaPathsJson.entries)
-        if (entry.key is String && entry.value is String)
-          entry.key as String: entry.value as String,
-  };
+  final document = decodeAnicelProjectDocument(projectBytes);
+  final project = document.project;
+  final decoded = document.json;
+  final mediaRelativePaths = anicelStringMapField(decoded['mediaPaths']);
 
   // v3 truth: cold cel blobs — header parse only, pixels stay compressed
   // until the store's first access. (v1 drawings/tips and v2 cels/*.bin

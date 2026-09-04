@@ -451,7 +451,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     return (
       background: baseBackground,
       border: Colors.transparent,
-      radius: _cellRadius(model.segment),
+      radius: timelineCellBorderRadius(model.segment, axis),
     );
   }
 
@@ -972,27 +972,6 @@ class TimelineRowCellsPainter extends CustomPainter {
         ),
       );
     }
-  }
-
-  BorderRadius? _cellRadius(TimelineExposureBlockVisualSegment segment) {
-    if (!segment.isBlock) {
-      return null;
-    }
-    const blockRadius = timelineBlockCornerRadius;
-    final startRadius = segment.continuesFromPrevious
-        ? Radius.zero
-        : blockRadius;
-    final endRadius = segment.continuesToNext ? Radius.zero : blockRadius;
-    return switch (axis) {
-      Axis.horizontal => BorderRadius.horizontal(
-        left: startRadius,
-        right: endRadius,
-      ),
-      Axis.vertical => BorderRadius.vertical(
-        top: startRadius,
-        bottom: endRadius,
-      ),
-    };
   }
 
   @override
