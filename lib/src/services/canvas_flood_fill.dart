@@ -20,6 +20,7 @@ import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cut_frame_composite_plan.dart';
 import 'guide_geometry.dart';
+import 'mask_morphology.dart';
 import 'mask_soft_edge.dart';
 
 /// P6 fill options — the Tool Settings panel's knobs (R11-④).
@@ -807,27 +808,12 @@ FloodFillRegion _cropAndFinishFloodRegion({
     );
   }
 
-  // Expand: grow the region by N pixels (covers anti-aliased ink edges).
-  for (var pass = 0; pass < options.expandPx; pass += 1) {
-    final grown = Uint8List.fromList(mask);
-    for (var y = 0; y < regionHeight; y += 1) {
-      for (var x = 0; x < regionWidth; x += 1) {
-        final index = y * regionWidth + x;
-        if (mask[index] != 0) {
-          continue;
-        }
-        final touches =
-            (x > 0 && mask[index - 1] != 0) ||
-            (x < regionWidth - 1 && mask[index + 1] != 0) ||
-            (y > 0 && mask[index - regionWidth] != 0) ||
-            (y < regionHeight - 1 && mask[index + regionWidth] != 0);
-        if (touches) {
-          grown[index] = 255;
-        }
-      }
-    }
-    mask.setAll(0, grown);
-  }
+  dilateMask4(
+    mask,
+    width: regionWidth,
+    height: regionHeight,
+    passes: options.expandPx,
+  );
 
   if (options.antiAlias) {
     // ⛔UNCLAMPED, and that is the fill's meaning: paint that stops dead on

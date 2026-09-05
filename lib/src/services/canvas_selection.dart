@@ -12,6 +12,7 @@ import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
+import 'mask_morphology.dart';
 import 'mask_soft_edge.dart';
 import 'resample/resample_kernel.dart';
 import 'resample/selection_resample.dart';
@@ -686,47 +687,6 @@ class SelectionMaskOptions {
       (growPx > 0 ? growPx : 0) + featherPx.ceil() + (antiAlias ? 1 : 0);
 }
 
-/// Grow (dilate) or shrink (erode) [mask] in place by [passes]
-/// 4-neighbor generations — generation-exact like the fill expand.
-void _growShrinkMask(Uint8List mask, int width, int height, int passes) {
-  final grow = passes > 0;
-  final count = passes.abs();
-  var src = mask;
-  var dst = Uint8List(mask.length);
-  for (var pass = 0; pass < count; pass += 1) {
-    for (var y = 0; y < height; y += 1) {
-      for (var x = 0; x < width; x += 1) {
-        final index = y * width + x;
-        final center = src[index];
-        if (grow ? center != 0 : center == 0) {
-          dst[index] = center;
-          continue;
-        }
-        final touches = grow
-            ? ((x > 0 && src[index - 1] != 0) ||
-                  (x < width - 1 && src[index + 1] != 0) ||
-                  (y > 0 && src[index - width] != 0) ||
-                  (y < height - 1 && src[index + width] != 0))
-            : ((x > 0 && src[index - 1] == 0) ||
-                  (x < width - 1 && src[index + 1] == 0) ||
-                  (y > 0 && src[index - width] == 0) ||
-                  (y < height - 1 && src[index + width] == 0) ||
-                  x == 0 ||
-                  x == width - 1 ||
-                  y == 0 ||
-                  y == height - 1);
-        dst[index] = grow ? (touches ? 255 : 0) : (touches ? 0 : center);
-      }
-    }
-    final swap = src;
-    src = dst;
-    dst = swap;
-  }
-  if (!identical(src, mask)) {
-    mask.setAll(0, src);
-  }
-}
-
 /// Inward feather: 3-4 chamfer distance from the OUTSIDE, alpha ramps
 /// over [featherPx] (chamfer units: 3 per orthogonal pixel).
 void _featherMask(Uint8List mask, int width, int height, double featherPx) {
@@ -929,8 +889,11 @@ Uint8List buildSelectionMask({
     height: height,
   );
   if (!options.isHard) {
-    if (options.growPx != 0) {
-      _growShrinkMask(mask, width, height, options.growPx);
+    // The sign of growPx picks the operator; the kernels carry no mode.
+    if (options.growPx > 0) {
+      dilateMask4(mask, width: width, height: height, passes: options.growPx);
+    } else if (options.growPx < 0) {
+      erodeMask4(mask, width: width, height: height, passes: -options.growPx);
     }
     if (options.featherPx > 0) {
       _featherMask(mask, width, height, options.featherPx);
