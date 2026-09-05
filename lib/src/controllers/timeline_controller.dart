@@ -447,6 +447,13 @@ class TimelineController {
     final command = commands.length == 1
         ? commands.single
         : CompositeCommand(description: description, commands: commands);
+    _runCommand(command);
+  }
+
+  /// THE dispatch: through the history when there is one (undoable), run
+  /// directly when there is none. Every mutation ends here, whether it is
+  /// one command, a folded batch, or a hand-composed step.
+  void _runCommand(Command command) {
     final historyManager = _historyManager;
     if (historyManager == null) {
       command.execute();
@@ -592,12 +599,7 @@ class TimelineController {
         ),
       ],
     );
-    final historyManager = _historyManager;
-    if (historyManager == null) {
-      command.execute();
-    } else {
-      historyManager.execute(command);
-    }
+    _runCommand(command);
   }
 
   void linkFrameForLayer({
@@ -783,15 +785,8 @@ class TimelineController {
     );
   }
 
-  void _applyLayerEdit({required Layer before, required Layer after}) {
-    final command = _layerEditCommand(before: before, after: after);
-    final historyManager = _historyManager;
-    if (historyManager == null) {
-      command.execute();
-    } else {
-      historyManager.execute(command);
-    }
-  }
+  void _applyLayerEdit({required Layer before, required Layer after}) =>
+      _runCommand(_layerEditCommand(before: before, after: after));
 
   Layer _requireLayer(LayerId layerId) {
     final cut = _findCutOrNull();
