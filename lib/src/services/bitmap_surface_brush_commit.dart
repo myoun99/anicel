@@ -274,7 +274,7 @@ void _blendStampDab({
   // (parity-pinned); Dart remains the reference and the fallback.
   final native = QaNativeEngine.instance;
   final stampUpload = (native != null && nativeTileFor != null)
-      ? labProbe('stamp.upload', () => native.uploadStampBytes(rgba))
+      ? labProbe('stamp.upload', () => native.stampUploads.upload(rgba))
       : null;
   if (stampUpload != null) {
     // One BATCH call for the whole stamp (R18 A-3a): spans fan out
@@ -619,7 +619,7 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
   }
   final strokeUpload = labProbe(
     'strokeBlend.upload',
-    () => native.uploadStampBytes(strokePixels),
+    () => native.stampUploads.upload(strokePixels),
   );
   final tileXStart = floorDiv(left, tileSize);
   final tileXEnd = floorDiv(rightExclusive - 1, tileSize);

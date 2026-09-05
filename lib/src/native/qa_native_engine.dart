@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
@@ -6,6 +5,7 @@ import 'dart:typed_data';
 
 import 'qa_engine_abi.dart';
 import 'native_scratch.dart';
+import 'native_upload_cache.dart';
 
 /// The native engine core's FFI bindings (R18 A-track).
 ///
@@ -543,7 +543,7 @@ class QaNativeEngine {
   /// mode calls this once per triangle.
   ///
   /// Nothing is allocated per call. The SOURCE goes through the
-  /// identity-keyed [uploadStampBytes] cache, which is exactly what it was
+  /// identity-keyed [stampUploads] cache, which is exactly what it was
   /// built for: a transform session hands the same lift stamp in on every
   /// frame, so only the first one copies. The DESTINATION is a grow-only
   /// engine scratch — never the upload cache, because each resample mints a
@@ -577,7 +577,7 @@ class QaNativeEngine {
     if (byteLength <= 0 || dst.length < byteLength) {
       return false;
     }
-    final source = uploadStampBytes(src);
+    final source = stampUploads.upload(src);
     _resampleDst.ensure(byteLength);
     if (_resampleInverse == nullptr) {
       _resampleInverse = malloc<Double>(9);
@@ -1138,40 +1138,15 @@ class QaNativeEngine {
   /// first upload the whole stamp blend is zero-copy (A-1.5). A freshly
   /// uploaded entry is always the most recent, so it can never be
   /// evicted while its dab is still blending.
-  final LinkedHashMap<Object, Pointer<Uint8>> _stampUploads =
-      LinkedHashMap.identity();
-  final Map<Object, int> _stampUploadSizes = HashMap.identity();
-  int _stampUploadBytes = 0;
-  static const int _stampUploadCap = 4;
+  final stampUploads = NativeUploadCache<Uint8List>(
+    entryCap: 4,
+    byteBudget: stampUploadByteBudget,
+  );
 
   /// Entry-count AND byte-budgeted (R19-8K): a full-canvas fill stamp at
   /// 8000² is 256MB — four of those resident was a 1GB RSS bomb. The
   /// newest entry always survives even when it alone exceeds the budget.
   static const int stampUploadByteBudget = 320 * 1024 * 1024;
-
-  /// Uploads [bytes] once (identity-cached) and returns the native copy.
-  Pointer<Uint8> uploadStampBytes(Uint8List bytes) {
-    final cached = _stampUploads.remove(bytes);
-    if (cached != null) {
-      _stampUploads[bytes] = cached;
-      return cached;
-    }
-    // malloc, not calloc: the copy below overwrites every byte — the
-    // calloc memset doubled an 8000² fill stamp's 256MB upload traffic.
-    final pointer = malloc<Uint8>(bytes.length);
-    pointer.asTypedList(bytes.length).setAll(0, bytes);
-    _stampUploads[bytes] = pointer;
-    _stampUploadSizes[bytes] = bytes.length;
-    _stampUploadBytes += bytes.length;
-    while (_stampUploads.length > 1 &&
-        (_stampUploads.length > _stampUploadCap ||
-            _stampUploadBytes > stampUploadByteBudget)) {
-      final oldest = _stampUploads.keys.first;
-      malloc.free(_stampUploads.remove(oldest)!);
-      _stampUploadBytes -= _stampUploadSizes.remove(oldest)!;
-    }
-    return pointer;
-  }
 
   /// R23: straight-alpha stamp RGBA → PREMULTIPLIED bytes for the fill
   /// overlay image, through the fused C kernel (a 64MP Dart premultiply
@@ -1180,7 +1155,7 @@ class QaNativeEngine {
   /// returned scratch is FRESH (never aliased by a later call); free it
   /// once the image decode has consumed the view.
   QaStampScratch premultipliedStampCopy(Uint8List rgba) {
-    final source = uploadStampBytes(rgba);
+    final source = stampUploads.upload(rgba);
     final buffer = malloc<Uint8>(rgba.length);
     _premultiplyRgbaCopy(buffer, source, rgba.length ~/ 4);
     return QaStampScratch._(buffer.asTypedList(rgba.length), buffer);
@@ -1738,25 +1713,10 @@ class QaNativeEngine {
   /// (BrushTipMask.alphaNormalized is `late final`, so the identity is
   /// stable for a mask's lifetime). Small LRU — one stroke reuses the
   /// same two or three masks for every dab.
-  final LinkedHashMap<Object, Pointer<Double>> _maskUploads =
-      LinkedHashMap.identity();
-  static const int _maskUploadCap = 8;
-
-  Pointer<Double> _uploadMask(Float64List alphaNormalized) {
-    final cached = _maskUploads.remove(alphaNormalized);
-    if (cached != null) {
-      _maskUploads[alphaNormalized] = cached;
-      return cached;
-    }
-    final pointer = calloc<Double>(alphaNormalized.length);
-    pointer.asTypedList(alphaNormalized.length).setAll(0, alphaNormalized);
-    _maskUploads[alphaNormalized] = pointer;
-    while (_maskUploads.length > _maskUploadCap) {
-      final oldest = _maskUploads.keys.first;
-      calloc.free(_maskUploads.remove(oldest)!);
-    }
-    return pointer;
-  }
+  final _maskUploads = NativeUploadCache<Float64List>(
+    entryCap: 8,
+    byteBudget: stampUploadByteBudget,
+  );
 
   /// One grow-only arena for the per-dab lattice arrays — copied once per
   /// dab (prepareDab), read by every tile call of that dab.
@@ -1923,7 +1883,9 @@ class QaNativeEngine {
     spec.dualSize = dualSize;
     spec.texSize = texSize;
     spec.reserved = 0;
-    spec.tipAlpha = tipAlpha == null ? nullptr : _uploadMask(tipAlpha);
+    spec.tipAlpha = tipAlpha == null
+        ? nullptr
+        : _maskUploads.upload(tipAlpha).cast<Double>();
     spec.tipUTexel0 = tipUTexel0 == null ? nullptr : _arenaInt32(tipUTexel0);
     spec.tipUFraction = tipUFraction == null
         ? nullptr
@@ -1940,7 +1902,9 @@ class QaNativeEngine {
         ? nullptr
         : _arenaFloat64(tipVOneMinus);
     spec.tipVInRange = tipVInRange == null ? nullptr : _arenaUint8(tipVInRange);
-    spec.dualAlpha = dualAlpha == null ? nullptr : _uploadMask(dualAlpha);
+    spec.dualAlpha = dualAlpha == null
+        ? nullptr
+        : _maskUploads.upload(dualAlpha).cast<Double>();
     spec.dualUTexel0 = dualUTexel0 == null ? nullptr : _arenaInt32(dualUTexel0);
     spec.dualUTexel1 = dualUTexel1 == null ? nullptr : _arenaInt32(dualUTexel1);
     spec.dualUFraction = dualUFraction == null
@@ -1957,7 +1921,9 @@ class QaNativeEngine {
     spec.dualVOneMinus = dualVOneMinus == null
         ? nullptr
         : _arenaFloat64(dualVOneMinus);
-    spec.texAlpha = texAlpha == null ? nullptr : _uploadMask(texAlpha);
+    spec.texAlpha = texAlpha == null
+        ? nullptr
+        : _maskUploads.upload(texAlpha).cast<Double>();
     spec.texUTexel0 = texUTexel0 == null ? nullptr : _arenaInt32(texUTexel0);
     spec.texUTexel1 = texUTexel1 == null ? nullptr : _arenaInt32(texUTexel1);
     spec.texUFraction = texUFraction == null
