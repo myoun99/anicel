@@ -449,7 +449,7 @@ class ExportFormatModule extends StatelessWidget {
       max: 50,
       divisions: 50,
       valueText: _bitrateText(selection.videoBitrateMbps),
-      valueTextBuilder: (next) => _bitrateText(next.round()),
+      valueTextBuilder: _bitrateText,
       onChanged: enabled
           ? (next) =>
                 _change(selection.copyWith(videoBitrateMbps: next.round()))

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/project_background.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_window.dart';
+import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 
@@ -49,9 +50,7 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
         : background == ProjectBackground.black
         ? _BackgroundChoice.black
         : _BackgroundChoice.custom;
-    _hexController = TextEditingController(
-      text: _rgbText(background.argb),
-    );
+    _hexController = TextEditingController(text: _rgbText(background.argb));
     _paperAlpha = (background.argb >>> 24).toDouble();
     final project = widget.session.repository.requireProject();
     _pasteboardHexController = TextEditingController(
@@ -176,34 +175,43 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
     );
   }
 
+  /// Paper/pasteboard ALPHA. The model is a BYTE and the screen is whole
+  /// per cent, so the track has one stop per byte — a drag lands on a
+  /// value the file can hold rather than on 0.4963 of one.
   Widget _alphaRow({
     required String label,
     required double value,
     required ValueChanged<double> onChanged,
     required Key key,
-  }) {
-    return Row(
-      children: [
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-        Expanded(
-          child: Slider(
-            key: key,
-            value: value,
-            max: 255,
-            onChanged: (next) => setState(() => onChanged(next)),
-          ),
+  }) => Row(
+    children: [
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+      const SizedBox(width: 8),
+      Expanded(
+        child: FieldSlider(
+          key: key,
+          value: value,
+          min: 0,
+          max: 255,
+          divisions: 255,
+          valueText: _alphaPercent(value),
+          valueTextBuilder: _alphaPercent,
+          onChanged: (next) => setState(() => onChanged(next)),
         ),
-        SizedBox(
-          width: 38,
-          child: Text(
-            '${(value / 255 * 100).round()}%',
-            textAlign: TextAlign.right,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+
+  /// ⛔The per cent is NOT rounded to a whole one (F-9): the track has one
+  /// stop per byte, so the steps really are 0.4% apart and a whole per
+  /// cent would show two neighbouring bytes as the same number.
+  static String _alphaPercent(double alpha) =>
+      sliderValueText(alpha / 255 * 100, unit: '%');
+
+  /// The pasteboard's extent as the MULTIPLE of the canvas it reaches:
+  /// a margin of 0.5 on each side is a stage twice the canvas wide.
+  static String _extentText(double margin) =>
+      '×${(1 + 2 * margin).toStringAsFixed(1)}';
 
   @override
   Widget build(BuildContext context) {
@@ -312,22 +320,18 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
                   strings.stagePasteboardExtent,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Slider(
+                  child: FieldSlider(
                     key: const ValueKey<String>('background-pasteboard-extent'),
                     value: _pasteboardMargin.clamp(0.0, 2.0),
+                    min: 0,
                     max: 2,
                     divisions: 40,
+                    valueText: _extentText(_pasteboardMargin),
+                    valueTextBuilder: _extentText,
                     onChanged: (next) =>
                         setState(() => _pasteboardMargin = next),
-                  ),
-                ),
-                SizedBox(
-                  width: 38,
-                  child: Text(
-                    '×${(1 + 2 * _pasteboardMargin).toStringAsFixed(1)}',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
               ],

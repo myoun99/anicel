@@ -1,4 +1,5 @@
 import '../widgets/app_icon_button.dart';
+import '../widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
@@ -60,9 +61,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
           isDense: true,
           style: const TextStyle(fontSize: 12),
           items: [
-            DropdownMenuItem<String?>(
-              child: Text(strings.audioSystemDefault),
-            ),
+            DropdownMenuItem<String?>(child: Text(strings.audioSystemDefault)),
             for (final device in devices)
               DropdownMenuItem<String?>(
                 value: device.name,
@@ -85,15 +84,19 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     );
   }
 
+  /// Mic gain reads as a SIGNED dB: +6 and -6 are different places, and a
+  /// bare `6` on the boost side would read as the default.
+  static String _signedDb(num db) =>
+      '${db > 0 ? '+' : ''}${sliderValueText(db)}';
+
   @override
   Widget build(BuildContext context) {
     // Language is a live subscription (the timeline empty-state pattern):
     // an open Preferences window follows a language switch immediately.
     return ValueListenableBuilder<AppLanguageSettings>(
       valueListenable: widget.session.languageSettings,
-      builder: (context, language, _) => _buildSection(
-        AppStrings.of(language.programLanguage),
-      ),
+      builder: (context, language, _) =>
+          _buildSection(AppStrings.of(language.programLanguage)),
     );
   }
 
@@ -215,8 +218,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   valueListenable: _monitor.peak,
                   builder: (context, rawPeak, _) {
                     final scheme = Theme.of(context).colorScheme;
-                    final scaled =
-                        rawPeak * micGainFactor(settings.micGainDb);
+                    final scaled = rawPeak * micGainFactor(settings.micGainDb);
                     final level = scaled.clamp(0.0, 1.0);
                     return Row(
                       mainAxisSize: MainAxisSize.min,
@@ -292,13 +294,15 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   ),
                 ),
                 SizedBox(
-                  width: 150,
-                  child: Slider(
+                  width: 180,
+                  child: FieldSlider(
                     key: const ValueKey<String>('settings-mic-gain-slider'),
                     value: settings.micGainDb.toDouble(),
                     min: -AudioSyncSettings.maxMicGainDb.toDouble(),
                     max: AudioSyncSettings.maxMicGainDb.toDouble(),
                     divisions: AudioSyncSettings.maxMicGainDb * 2,
+                    valueText: _signedDb(settings.micGainDb),
+                    valueTextBuilder: _signedDb,
                     onChanged: (value) => widget.session.setAudioSyncSettings(
                       settings.copyWith(
                         micGainDb: AudioSyncSettings.clampMicGainDb(
@@ -306,15 +310,6 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                         ),
                       ),
                     ),
-                  ),
-                ),
-                SizedBox(
-                  width: 30,
-                  child: Text(
-                    '${settings.micGainDb > 0 ? '+' : ''}${settings.micGainDb}',
-                    key: const ValueKey<String>('settings-mic-gain-value'),
-                    textAlign: TextAlign.end,
-                    style: const TextStyle(fontSize: 12),
                   ),
                 ),
               ],
@@ -409,12 +404,15 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   ),
                 ),
                 SizedBox(
-                  width: 150,
-                  child: Slider(
+                  width: 180,
+                  child: FieldSlider(
                     key: const ValueKey<String>('settings-count-in-slider'),
                     value: settings.countInSeconds.toDouble(),
+                    min: 0,
                     max: AudioSyncSettings.maxCountInSeconds.toDouble(),
                     divisions: AudioSyncSettings.maxCountInSeconds,
+                    valueText: sliderValueText(settings.countInSeconds),
+                    valueTextBuilder: sliderValueText,
                     onChanged: (value) => widget.session.setAudioSyncSettings(
                       settings.copyWith(
                         countInSeconds: AudioSyncSettings.clampCountInSeconds(
@@ -422,15 +420,6 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                         ),
                       ),
                     ),
-                  ),
-                ),
-                SizedBox(
-                  width: 30,
-                  child: Text(
-                    '${settings.countInSeconds}',
-                    key: const ValueKey<String>('settings-count-in-value'),
-                    textAlign: TextAlign.end,
-                    style: const TextStyle(fontSize: 12),
                   ),
                 ),
               ],

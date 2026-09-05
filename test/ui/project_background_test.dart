@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/dialogs/project_background_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 /// R10-⑥: the project background — model round trip, the session's
 /// one-undo setter and the File-menu dialog.
@@ -29,7 +30,8 @@ void main() {
     expect(
       restoredTransparent.argb,
       0x00FFFFFF,
-      reason: 'transparent IS alpha-0 paper now (R3b) — the alpha is real, '
+      reason:
+          'transparent IS alpha-0 paper now (R3b) — the alpha is real, '
           'on screen and in exports alike',
     );
   });
@@ -108,5 +110,95 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(s.projectBackground.transparent, isTrue);
+  });
+
+  group('the stage bars', () {
+    Future<void> openBackgroundDialog(
+      WidgetTester tester,
+      EditorSessionManager session,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (context) =>
+                      ProjectBackgroundDialog(session: session),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    FieldSlider barAt(WidgetTester tester, String key) =>
+        tester.widget<FieldSlider>(find.byKey(ValueKey<String>(key)));
+
+    testWidgets('🚨alpha is a BYTE on the track and per cent on the screen — '
+        'one stop per byte, so a drag lands on a value the file holds', (
+      tester,
+    ) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      await openBackgroundDialog(tester, session);
+
+      final paper = barAt(tester, 'background-paper-alpha');
+      expect(paper.min, 0);
+      expect(paper.max, 255);
+      expect(
+        paper.divisions,
+        255,
+        reason: 'a byte has 255 steps — 0.4963 of one is not a colour',
+      );
+      expect(paper.valueText, '100%');
+
+      paper.onChanged!(128);
+      await tester.pump();
+      expect(
+        barAt(tester, 'background-paper-alpha').valueText,
+        '50.2%',
+        reason: '128 of 255 is not a whole half — F-9 says show what it is',
+      );
+    });
+
+    testWidgets('🚨the pasteboard extent reads as the MULTIPLE of the canvas '
+        'it reaches, not as the margin it stores', (tester) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      await openBackgroundDialog(tester, session);
+
+      final extent = barAt(tester, 'background-pasteboard-extent');
+      expect(
+        extent.valueTextBuilder!(0),
+        '×1.0',
+        reason: 'no margin is the canvas itself',
+      );
+      expect(
+        extent.valueTextBuilder!(0.5),
+        '×2.0',
+        reason: 'half a canvas on EACH side is twice the canvas',
+      );
+      expect(extent.valueTextBuilder!(2), '×5.0');
+    });
+
+    testWidgets('⛔the stage bars are FieldSliders like every other bar in '
+        'the app — a Material Slider here would not obey the press-claim '
+        'law inside this scrollable dialog', (tester) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      await openBackgroundDialog(tester, session);
+
+      expect(find.byType(Slider), findsNothing);
+      expect(find.byType(FieldSlider), findsNWidgets(3));
+    });
   });
 }
