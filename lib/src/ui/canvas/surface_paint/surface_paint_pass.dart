@@ -229,23 +229,17 @@ class _SurfacePaintPass {
   /// pre-stroke tile, or the live tile within the upload and pixel
   /// budgets.
   void _paintVisibleTiles() {
-    final tileSize = _painter.surface.tileSize;
-    final (
-      firstX: firstTileX,
-      lastX: lastTileX,
-      firstY: firstTileY,
-      lastY: lastTileY,
-    ) = tileRangeCovering(
-      left: _visibleRect.left,
-      top: _visibleRect.top,
-      right: _visibleRect.right,
-      bottom: _visibleRect.bottom,
-      tileSize: tileSize,
+    if (_visibleRect.isEmpty) {
+      return;
+    }
+    final visible = DirtyRegion(
+      left: _visibleRect.left.floor(),
+      top: _visibleRect.top.floor(),
+      rightExclusive: _visibleRect.right.ceil(),
+      bottomExclusive: _visibleRect.bottom.ceil(),
     );
-    for (var tileY = firstTileY; tileY <= lastTileY; tileY += 1) {
-      for (var tileX = firstTileX; tileX <= lastTileX; tileX += 1) {
-        _paintTileAt(tileX, tileY);
-      }
+    for (final covered in tilesCovering(_painter.surface, visible)) {
+      _paintTile(covered.tile);
     }
   }
 
@@ -257,11 +251,7 @@ class _SurfacePaintPass {
   /// stroke settles, else the committed image — through a sync upload
   /// or the pixel fallback while their budgets last, and marked unpainted
   /// past them.
-  void _paintTileAt(int tileX, int tileY) {
-    final tile = _painter.surface.tileAt(TileCoord(x: tileX, y: tileY));
-    if (tile == null) {
-      return;
-    }
+  void _paintTile(BitmapTile tile) {
     // The _overlay's result tile REPLACES this coordinate outright (it
     // already contains the committed pixels blended with the stroke) —
     // the committed tile is not drawn at all. The decode start ran in

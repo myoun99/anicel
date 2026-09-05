@@ -2,7 +2,7 @@ import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../core/floor_math.dart';
+import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_dab.dart';
@@ -11,7 +11,7 @@ import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
-import '../models/tile_coord.dart';
+import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import 'canvas_color_sampler.dart';
@@ -317,55 +317,28 @@ class LazyCanvasRasterRgb {
       final right = math.min(left + _tileSize, width);
       final bottom = math.min(top + _tileSize, height);
       final firstBlend = blends.length;
-      // Surface tiles live in WORLD space (raster + origin); bases pass
-      // back in raster space, so tile-local offsets stay (world - base).
-      final worldLeft = left + originX;
-      final worldTop = top + originY;
-      final worldRight = right + originX;
-      final worldBottom = bottom + originY;
-      for (final layer in _layers) {
-        final surface = layer.surface;
-        final opacityInt = (layer.opacity * 255).round();
-        final surfaceTileSize = surface.tileSize;
-        for (
-          var ty = floorDiv(worldTop, surfaceTileSize);
-          ty <= floorDiv(worldBottom - 1, surfaceTileSize);
-          ty += 1
-        ) {
-          for (
-            var tx = floorDiv(worldLeft, surfaceTileSize);
-            tx <= floorDiv(worldRight - 1, surfaceTileSize);
-            tx += 1
-          ) {
-            // ⚠️ `tileAt`, NOT `surface.tiles[...]`. The `tiles` getter is
-            // `Map.unmodifiable(_tiles)` — it copies the WHOLE map, and
-            // this is the inner line of a nested loop over every tile the
-            // fill touches. Measured at 82.7 ms for a 1024-tile canvas,
-            // which is a tap that feels broken rather than a frame that
-            // is slightly late.
-            final tile = surface.tileAt(TileCoord(x: tx, y: ty));
-            if (tile == null) {
-              continue;
-            }
-            final baseX = tx * surfaceTileSize - originX;
-            final baseY = ty * surfaceTileSize - originY;
-            // The staged pointer outlives this loop (the batch call below
-            // reads it), so the TILE must stay reachable until then —
-            // keepAlive does that (see BitmapTile.readPixels).
-            keepAlive.add(tile);
-            blends.add((
-              pixels: tile.readPixels((pointer, _) => pointer),
-              tileSize: tile.size,
-              baseX: baseX,
-              baseY: baseY,
-              clipLeft: math.max(left, baseX),
-              clipTop: math.max(top, baseY),
-              clipRightExclusive: math.min(right, baseX + surfaceTileSize),
-              clipBottomExclusive: math.min(bottom, baseY + surfaceTileSize),
-              opacityInt: opacityInt,
-            ));
-          }
-        }
+      for (final under in _layerTilesUnder(
+        left: left,
+        top: top,
+        rightExclusive: right,
+        bottomExclusive: bottom,
+      )) {
+        final tile = under.tile;
+        // The staged pointer outlives this loop (the batch call below
+        // reads it), so the TILE must stay reachable until then —
+        // keepAlive does that (see BitmapTile.readPixels).
+        keepAlive.add(tile);
+        blends.add((
+          pixels: tile.readPixels((pointer, _) => pointer),
+          tileSize: tile.size,
+          baseX: under.baseX,
+          baseY: under.baseY,
+          clipLeft: under.clipLeft,
+          clipTop: under.clipTop,
+          clipRightExclusive: under.clipRightExclusive,
+          clipBottomExclusive: under.clipBottomExclusive,
+          opacityInt: under.opacityInt,
+        ));
       }
       tiles.add((
         left: left,
@@ -412,48 +385,26 @@ class LazyCanvasRasterRgb {
         paperG: _paperG,
         paperB: _paperB,
       );
-      for (final layer in _layers) {
-        final surface = layer.surface;
-        final opacityInt = (layer.opacity * 255).round();
-        final surfaceTileSize = surface.tileSize;
-        for (
-          var ty = floorDiv(top + originY, surfaceTileSize);
-          ty <= floorDiv(bottom + originY - 1, surfaceTileSize);
-          ty += 1
-        ) {
-          for (
-            var tx = floorDiv(left + originX, surfaceTileSize);
-            tx <= floorDiv(right + originX - 1, surfaceTileSize);
-            tx += 1
-          ) {
-            // ⚠️ `tileAt`, NOT `surface.tiles[...]`. The `tiles` getter is
-            // `Map.unmodifiable(_tiles)` — it copies the WHOLE map, and
-            // this is the inner line of a nested loop over every tile the
-            // fill touches. Measured at 82.7 ms for a 1024-tile canvas,
-            // which is a tap that feels broken rather than a frame that
-            // is slightly late.
-            final tile = surface.tileAt(TileCoord(x: tx, y: ty));
-            if (tile == null) {
-              continue;
-            }
-            final baseX = tx * surfaceTileSize - originX;
-            final baseY = ty * surfaceTileSize - originY;
-            tile.readPixels(
-              (pointer, _) => native.fillComposeTile(
-                handles: handles,
-                tilePixels: pointer,
-                tileSize: tile.size,
-                baseX: baseX,
-                baseY: baseY,
-                clipLeft: math.max(left, baseX),
-                clipTop: math.max(top, baseY),
-                clipRightExclusive: math.min(right, baseX + surfaceTileSize),
-                clipBottomExclusive: math.min(bottom, baseY + surfaceTileSize),
-                opacityInt: opacityInt,
-              ),
-            );
-          }
-        }
+      for (final under in _layerTilesUnder(
+        left: left,
+        top: top,
+        rightExclusive: right,
+        bottomExclusive: bottom,
+      )) {
+        under.tile.readPixels(
+          (pointer, _) => native.fillComposeTile(
+            handles: handles,
+            tilePixels: pointer,
+            tileSize: under.tile.size,
+            baseX: under.baseX,
+            baseY: under.baseY,
+            clipLeft: under.clipLeft,
+            clipTop: under.clipTop,
+            clipRightExclusive: under.clipRightExclusive,
+            clipBottomExclusive: under.clipBottomExclusive,
+            opacityInt: under.opacityInt,
+          ),
+        );
       }
       return;
     }
@@ -470,72 +421,106 @@ class LazyCanvasRasterRgb {
         target += 4;
       }
     }
+    for (final under in _layerTilesUnder(
+      left: left,
+      top: top,
+      rightExclusive: right,
+      bottomExclusive: bottom,
+    )) {
+      final tile = under.tile;
+      // Snapshot the tile's buffer ONCE (the getter copies).
+      final pixels = tile.pixels;
+      final tileSize = tile.size;
+      final baseX = under.baseX;
+      final baseY = under.baseY;
+      final clipLeft = under.clipLeft;
+      final clipRight = under.clipRightExclusive;
+      final opacityInt = under.opacityInt;
+      for (var y = under.clipTop; y < under.clipBottomExclusive; y += 1) {
+        var source = ((y - baseY) * tileSize + (clipLeft - baseX)) * 4;
+        var target = (y * width + clipLeft) * 4;
+        for (var x = clipLeft; x < clipRight; x += 1) {
+          final alphaByte = pixels[source + 3];
+          if (alphaByte != 0) {
+            final effective = (alphaByte * opacityInt + 127) ~/ 255;
+            final inverse = 255 - effective;
+            rgb[target] =
+                (pixels[source] * effective + rgb[target] * inverse + 127) ~/
+                255;
+            rgb[target + 1] =
+                (pixels[source + 1] * effective +
+                    rgb[target + 1] * inverse +
+                    127) ~/
+                255;
+            rgb[target + 2] =
+                (pixels[source + 2] * effective +
+                    rgb[target + 2] * inverse +
+                    127) ~/
+                255;
+          }
+          source += 4;
+          target += 4;
+        }
+      }
+    }
+  }
+
+  /// Every existing layer tile under a raster rect, in layer stack order:
+  /// the tile, its layer's byte opacity, and where the tile's origin and
+  /// the clipped rect land in RASTER space. The three composes — per-tile
+  /// native, batched native, the Dart reference — walk exactly this, so
+  /// they cannot disagree on which tile a pixel reads from or where a
+  /// tile straddling a compose wall is cut.
+  ///
+  /// Per TILE, never per pixel: the per-pixel loops stay in the callers.
+  Iterable<_LayerTileUnder> _layerTilesUnder({
+    required int left,
+    required int top,
+    required int rightExclusive,
+    required int bottomExclusive,
+  }) sync* {
+    // Surface tiles live in WORLD space (raster + origin); bases pass
+    // back in raster space, so tile-local offsets stay (world - base).
+    final region = DirtyRegion(
+      left: left + originX,
+      top: top + originY,
+      rightExclusive: rightExclusive + originX,
+      bottomExclusive: bottomExclusive + originY,
+    );
     for (final layer in _layers) {
-      final surface = layer.surface;
       // Integer blend (R15-⑥): the per-pixel double multiply/round path
       // was a whole-canvas-scale cost on big fills; the raster only feeds
       // seed MATCHING (tolerance compares), so byte-rounded source-over
       // is exact enough by construction.
       final opacityInt = (layer.opacity * 255).round();
-      final surfaceTileSize = surface.tileSize;
-      for (
-        var ty = floorDiv(top + originY, surfaceTileSize);
-        ty <= floorDiv(bottom + originY - 1, surfaceTileSize);
-        ty += 1
-      ) {
-        for (
-          var tx = floorDiv(left + originX, surfaceTileSize);
-          tx <= floorDiv(right + originX - 1, surfaceTileSize);
-          tx += 1
-        ) {
-          // ⚠️ `tileAt`, NOT `surface.tiles[...]` — the getter copies the
-          // whole map, and this is inside a nested loop. See above.
-          final tile = surface.tileAt(TileCoord(x: tx, y: ty));
-          if (tile == null) {
-            continue;
-          }
-          // Snapshot the tile's buffer ONCE (the getter copies).
-          final pixels = tile.pixels;
-          final baseX = tx * surfaceTileSize - originX;
-          final baseY = ty * surfaceTileSize - originY;
-          final clipLeft = math.max(left, baseX);
-          final clipRight = math.min(right, baseX + surfaceTileSize);
-          final clipTop = math.max(top, baseY);
-          final clipBottom = math.min(bottom, baseY + surfaceTileSize);
-          for (var y = clipTop; y < clipBottom; y += 1) {
-            var source =
-                ((y - baseY) * surfaceTileSize + (clipLeft - baseX)) * 4;
-            var target = (y * width + clipLeft) * 4;
-            for (var x = clipLeft; x < clipRight; x += 1) {
-              final alphaByte = pixels[source + 3];
-              if (alphaByte != 0) {
-                final effective = (alphaByte * opacityInt + 127) ~/ 255;
-                final inverse = 255 - effective;
-                rgb[target] =
-                    (pixels[source] * effective +
-                        rgb[target] * inverse +
-                        127) ~/
-                    255;
-                rgb[target + 1] =
-                    (pixels[source + 1] * effective +
-                        rgb[target + 1] * inverse +
-                        127) ~/
-                    255;
-                rgb[target + 2] =
-                    (pixels[source + 2] * effective +
-                        rgb[target + 2] * inverse +
-                        127) ~/
-                    255;
-              }
-              source += 4;
-              target += 4;
-            }
-          }
-        }
+      for (final covered in tilesCovering(layer.surface, region)) {
+        yield (
+          tile: covered.tile,
+          opacityInt: opacityInt,
+          baseX: covered.worldLeft - originX,
+          baseY: covered.worldTop - originY,
+          clipLeft: covered.left - originX,
+          clipTop: covered.top - originY,
+          clipRightExclusive: covered.rightExclusive - originX,
+          clipBottomExclusive: covered.bottomExclusive - originY,
+        );
       }
     }
   }
 }
+
+/// One layer tile under a compose rect — see
+/// [LazyCanvasRasterRgb._layerTilesUnder].
+typedef _LayerTileUnder = ({
+  BitmapTile tile,
+  int opacityInt,
+  int baseX,
+  int baseY,
+  int clipLeft,
+  int clipTop,
+  int clipRightExclusive,
+  int clipBottomExclusive,
+});
 
 /// Scanline flood fill over an RGB raster from the seed, within
 /// [FloodFillOptions.tolerance] of the SEED color; null when the seed is

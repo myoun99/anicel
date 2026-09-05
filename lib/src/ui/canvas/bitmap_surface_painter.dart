@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
+import '../../models/tiles_covering.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';

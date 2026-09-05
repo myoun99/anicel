@@ -194,6 +194,38 @@ void main() {
     expect(second.seeded, 1);
   });
 
+  test('🚨a landing over the float PASTEBOARD reads float tile -1, not '
+      'tile 0 (floorDiv, not `~/`)', () {
+    // The float's ink is one pixel in its tile (-1, 0) and it has no
+    // picture yet. A delta of 1 maps the landing's tile (0, 0) — canvas
+    // x 0..2 — to float x -1..1, which straddles tiles -1 and 0. Only a
+    // walk that floors reaches tile -1; truncation maps -1 to tile 0,
+    // finds nothing there, and composes a stand-in with the ink missing.
+    final cache = BitmapTileImageCache();
+    final pasteboardTile = tile(TileCoord(x: -1, y: 0), at00: red);
+    final float = surfaceOf([pasteboardTile]);
+
+    final post = surfaceOf([tile(coord0)]);
+    final refused = seedProvisionalTilePictures(
+      preSurface: surfaceOf([tile(coord0)]),
+      postSurface: post,
+      coords: [coord0],
+      ink: inkFromSurface(float, const Offset(1, 0), cache: cache),
+      cache: cache,
+    );
+    expect(refused.seeded, 0, reason: 'pixels with no picture: refuse');
+
+    cache.adoptDecoded(pasteboardTile, solid(tileSize, const Color(0xFF00FF00)));
+    final seeded = seedProvisionalTilePictures(
+      preSurface: surfaceOf([tile(coord0)]),
+      postSurface: post,
+      coords: [coord0],
+      ink: inkFromSurface(float, const Offset(1, 0), cache: cache),
+      cache: cache,
+    );
+    expect(seeded.seeded, 1, reason: 'and with its picture, compose');
+  });
+
   test('a landing that reaches past the float own wall composes nothing', () {
     // The float and the landing have DIFFERENT pasteboards. The float was
     // materialized at its own centre through the same clipping stamp

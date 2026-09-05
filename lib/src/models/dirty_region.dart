@@ -1,4 +1,3 @@
-import '../core/floor_math.dart';
 import 'tile_coord.dart';
 
 /// A pixel-space rectangle. Coordinates may be NEGATIVE (pasteboard
@@ -94,14 +93,17 @@ class DirtyRegion {
   Set<TileCoord> toTileCoords({required int tileSize}) {
     _validatePositive(tileSize, 'tileSize');
 
-    final startTileX = floorDiv(left, tileSize);
-    final endTileX = floorDiv(rightExclusive - 1, tileSize);
-    final startTileY = floorDiv(top, tileSize);
-    final endTileY = floorDiv(bottomExclusive - 1, tileSize);
+    final range = tileRangeCoveringPixels(
+      left: left,
+      top: top,
+      rightExclusive: rightExclusive,
+      bottomExclusive: bottomExclusive,
+      tileSize: tileSize,
+    );
 
     return {
-      for (var y = startTileY; y <= endTileY; y++)
-        for (var x = startTileX; x <= endTileX; x++) TileCoord(x: x, y: y),
+      for (var y = range.firstY; y <= range.lastY; y++)
+        for (var x = range.firstX; x <= range.lastX; x++) TileCoord(x: x, y: y),
     };
   }
 

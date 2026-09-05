@@ -57,19 +57,27 @@ void _validatePositive(int value, String fieldName) {
 }
 
 /// The tile coordinates a pixel-space rectangle touches, inclusive at both
-/// ends: every tile that overlaps [left]..[right) × [top]..[bottom).
+/// ends: every tile that overlaps [left]..[rightExclusive) ×
+/// [top]..[bottomExclusive).
 ///
 /// 🚨ONE walk for the surface painter and the provisional ink pictures
-/// (the audit's clone scan, 2026-09-03).
-({int firstX, int lastX, int firstY, int lastY}) tileRangeCovering({
-  required double left,
-  required double top,
-  required double right,
-  required double bottom,
+/// (the audit's clone scan, 2026-09-03) — and, since 2026-09-06, the ONE
+/// range law under `tilesCovering` and `DirtyRegion.toTileCoords` too.
+///
+/// ⛔FLOORDIV, NOT `~/`. Pasteboard tiles sit at NEGATIVE coordinates and
+/// truncation maps pixel -1 to tile 0, which reads the wrong tile at the
+/// left and top walls. The walks that used to write this out had already
+/// drifted on exactly that: one divided as doubles and floored, the other
+/// called [floorDiv], and only one of them said why.
+({int firstX, int lastX, int firstY, int lastY}) tileRangeCoveringPixels({
+  required int left,
+  required int top,
+  required int rightExclusive,
+  required int bottomExclusive,
   required int tileSize,
 }) => (
-  firstX: floorDiv(left.floor(), tileSize),
-  lastX: floorDiv(right.ceil() - 1, tileSize),
-  firstY: floorDiv(top.floor(), tileSize),
-  lastY: floorDiv(bottom.ceil() - 1, tileSize),
+  firstX: floorDiv(left, tileSize),
+  lastX: floorDiv(rightExclusive - 1, tileSize),
+  firstY: floorDiv(top, tileSize),
+  lastY: floorDiv(bottomExclusive - 1, tileSize),
 );

@@ -3,8 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/dirty_region.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
+import '../../models/tiles_covering.dart';
 import 'bitmap_tile_image_cache.dart';
 
 /// Draws, in CANVAS coordinates, the picture the screen is ALREADY showing
@@ -198,8 +200,6 @@ ProvisionalInkPainter inkFromSurface(
   BitmapTileImageCache? cache,
 }) {
   final images = cache ?? BitmapTileImageCache.instance;
-  final tileSize = surface.tileSize;
-  final tileExtent = tileSize.toDouble();
   final floatCanvas = surface.canvasSize;
   final floatPasteboard = Rect.fromLTRB(
     floatCanvas.pasteboardLeft.toDouble(),
@@ -216,35 +216,33 @@ ProvisionalInkPainter inkFromSurface(
         local.bottom > floatPasteboard.bottom) {
       return false;
     }
-    final (:firstX, :lastX, :firstY, :lastY) = tileRangeCovering(
-      left: local.left,
-      top: local.top,
-      right: local.right,
-      bottom: local.bottom,
-      tileSize: tileSize,
+    if (local.isEmpty) {
+      return true;
+    }
+    final covered = DirtyRegion(
+      left: local.left.floor(),
+      top: local.top.floor(),
+      rightExclusive: local.right.ceil(),
+      bottomExclusive: local.bottom.ceil(),
     );
-    for (var y = firstY; y <= lastY; y += 1) {
-      for (var x = firstX; x <= lastX; x += 1) {
-        final tile = surface.tileAt(TileCoord(x: x, y: y));
-        if (tile == null) {
+    for (final under in tilesCovering(surface, covered)) {
+      final tile = under.tile;
+      final image = images.displayImageFor(tile);
+      if (image == null) {
+        // A tile with no picture and no pixels covers nothing, so its
+        // absence costs nothing; one with pixels is the answer going
+        // missing.
+        if (tile.isFullyTransparent) {
           continue;
         }
-        final image = images.displayImageFor(tile);
-        if (image == null) {
-          // A tile with no picture and no pixels covers nothing, so its
-          // absence costs nothing; one with pixels is the answer going
-          // missing.
-          if (tile.isFullyTransparent) {
-            continue;
-          }
-          return false;
-        }
-        canvas.drawImage(
-          image,
-          Offset(x * tileExtent, y * tileExtent) + canvasDelta,
-          _tilePaint,
-        );
+        return false;
       }
+      canvas.drawImage(
+        image,
+        Offset(under.worldLeft.toDouble(), under.worldTop.toDouble()) +
+            canvasDelta,
+        _tilePaint,
+      );
     }
     return true;
   };

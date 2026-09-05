@@ -601,6 +601,56 @@ void main() {
       );
     });
 
+    test('🚨a view over the PASTEBOARD reads tile -1, not tile 0 (floorDiv, '
+        'not `~/`)', () async {
+      // One red tile LEFT of the canvas origin, nothing at (0, 0).
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i] = 255;
+        pixels[i + 3] = 255;
+      }
+      final pasteboardTile = BitmapTile(
+        coord: TileCoord(x: -1, y: 0),
+        size: tileSize,
+        pixels: pixels,
+      );
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 16, height: 4),
+        tileSize: tileSize,
+        tiles: {pasteboardTile.coord: pasteboardTile},
+      );
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: await decodedCache(surface),
+      );
+
+      // Canvas x -3..5 fills the 8-wide view: the pasteboard tile on the
+      // left, the empty origin tile on the right.
+      final screen = await paintMerged(
+        painter,
+        CanvasViewport(panX: 3),
+        width: 8,
+        height: 4,
+      );
+
+      expect(
+        _rgbaAt(screen, width: 8, x: 0, y: 0),
+        [255, 0, 0, 255],
+        reason: 'canvas x=-3 is tile -1 and shows at screen x=0',
+      );
+      expect(
+        _rgbaAt(screen, width: 8, x: 2, y: 3),
+        [255, 0, 0, 255],
+        reason: 'canvas x=-1 is still tile -1 (truncation says tile 0)',
+      );
+      expect(
+        _rgbaAt(screen, width: 8, x: 3, y: 0),
+        [0, 0, 0, 0],
+        reason: 'canvas x=0 is tile 0, which does not exist',
+      );
+    });
+
     test('selection float: a Transform above the painter moves what is '
         'visible', () async {
       final surface = stripe();
