@@ -424,15 +424,15 @@ class _CutStampSettings extends StatelessWidget {
             // remembered. And NOT the top strip's brush size — sharing it
             // would multiply the piece by whatever pen width was last
             // used, the same failure the locked 100% opacity avoids.
-            Text(
-              'Size ${piece.scalePercent}%',
-              style: theme.textTheme.labelSmall,
-            ),
-            Slider(
+            FieldSlider(
               key: const ValueKey<String>('cut-scale-slider'),
+              label: AppText.strings.brSize,
               min: CutPiece.minScalePercent.toDouble(),
               max: 400,
+              divisions: 400 - CutPiece.minScalePercent,
               value: piece.scalePercent.clamp(1, 400).toDouble(),
+              valueText: sliderValueText(piece.scalePercent, unit: '%'),
+              valueTextBuilder: (next) => sliderValueText(next, unit: '%'),
               onChanged: (value) =>
                   holder.updatePose(scalePercent: value.round()),
             ),

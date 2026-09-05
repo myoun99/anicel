@@ -44,10 +44,11 @@ void main() {
     // three lines that follow the field name.
     final rounding = RegExp(r'\.round\(\)|\.toStringAsFixed\(0\)');
 
-    for (final entry in Directory('lib/src/ui')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry
+        in Directory('lib/src/ui')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.dart'))) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       if (key == 'lib/src/ui/widgets/field_slider.dart' ||
@@ -87,8 +88,47 @@ void main() {
     expect(
       offenders,
       isEmpty,
-      reason: 'use sliderValueText — an integer value renders identically '
+      reason:
+          'use sliderValueText — an integer value renders identically '
           'through it, so there is no reason for a call site to round',
+    );
+  });
+
+  /// 🚨And the harder half of F-9: a call site cannot obey the rule by
+  /// having its own slider. Five Material `Slider`s outlived the shared
+  /// bar — two in the stage dialog, two in Preferences ▸ Audio, one on
+  /// the cut piece — each with a hand-made value Text beside it, each
+  /// formatting for itself, and none of them arbitrating a press against
+  /// the scroll view they sit in.
+  ///
+  /// ⛔The list is the point: noticing the next one is not a plan.
+  test('no Material Slider is left under lib/src/ui — the app has ONE bar', () {
+    final offenders = <String>[];
+    final rawSlider = RegExp(r'(?<![A-Za-z_])Slider\s*\(');
+
+    for (final entry
+        in Directory('lib/src/ui')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.dart'))) {
+      final relative = entry.path.replaceAll(r'\', '/');
+      final key = relative.substring(relative.indexOf('lib/src/ui'));
+      final lines = entry.readAsLinesSync();
+      for (var i = 0; i < lines.length; i += 1) {
+        final line = lines[i];
+        if (line.trimLeft().startsWith('//') || !rawSlider.hasMatch(line)) {
+          continue;
+        }
+        offenders.add('$key:${i + 1}  ${line.trim()}');
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'use FieldSlider: a Material Slider does not carry its value, and '
+          'inside a scrollable it does not claim its own press',
     );
   });
 }

@@ -14,6 +14,8 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 CutPiece _piece({int scalePercent = 100, bool flipHorizontal = false}) {
   return CutPiece(
@@ -77,7 +79,10 @@ void main() {
   testWidgets('an empty slot tells you to cut something first', (tester) async {
     await pump(tester, tool: CanvasTool.cutStamp, slot: CutPieceSlot());
     expect(find.byKey(stampKey), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('cut-scale-slider')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('cut-scale-slider')),
+      findsNothing,
+    );
   });
 
   testWidgets('a held piece shows its size and the full knob set', (
@@ -155,10 +160,21 @@ void main() {
     expect(slot.piece!.isPosed, isFalse);
   });
 
-  testWidgets('the size readout follows the slider', (tester) async {
+  testWidgets('the size readout follows the slider — and rides INSIDE the '
+      'bar, like every other bar in the app', (tester) async {
     final slot = CutPieceSlot()..hold(_piece(scalePercent: 175));
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
-    expect(find.text('Size 175%'), findsOneWidget);
+
+    final bar = tester.widget<FieldSlider>(
+      find.byKey(const ValueKey<String>('cut-scale-slider')),
+    );
+    expect(bar.valueText, '175%');
+    expect(bar.label, AppText.strings.brSize);
+    expect(
+      bar.divisions,
+      400 - CutPiece.minScalePercent,
+      reason: 'a per cent is whole — the track stops on one',
+    );
   });
 
   testWidgets('paste and register are disabled without a host handler', (
@@ -212,7 +228,12 @@ void main() {
       rgba[offset] = 255;
       rgba[offset + 3] = 255;
       return CutPiece(
-        image: BrushStampImage(id: 'dot', width: side, height: side, rgba: rgba),
+        image: BrushStampImage(
+          id: 'dot',
+          width: side,
+          height: side,
+          rgba: rgba,
+        ),
         originLeft: 0,
         originTop: 0,
         flipHorizontal: flipHorizontal,
@@ -247,7 +268,9 @@ void main() {
         final canvas = Canvas(recorder, Offset.zero & size);
         paintCutPiece(canvas, Offset.zero & size, piece, image);
         final rendered = await recorder.endRecording().toImage(side, side);
-        final data = await rendered.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final data = await rendered.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
         rendered.dispose();
         image?.dispose();
         return data!.buffer.asUint8List();
