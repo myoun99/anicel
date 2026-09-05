@@ -146,31 +146,31 @@ void main(List<String> args) {
   );
   final sorted = parts.toList()
     ..sort(
-      (a, b) => ((b['hostTouched'] as Map).length).compareTo(
-        (a['hostTouched'] as Map).length,
+      (a, b) => ((b['hostTouched']! as Map).length).compareTo(
+        (a['hostTouched']! as Map).length,
       ),
     );
   for (final p in sorted) {
     final touched = p['hostTouched'] as Map;
     final writes = p['hostWritten'] as List;
     stderr.writeln(
-      '${(p['part'] as String).padRight(28)} '
-      '${(p['kind'] as String).padRight(12)} '
-      '${(p['name'] as String).padRight(32)} '
-      'members=${(p['members'] as List).length.toString().padLeft(3)} '
+      '${(p['part']! as String).padRight(28)} '
+      '${(p['kind']! as String).padRight(12)} '
+      '${(p['name']! as String).padRight(32)} '
+      'members=${(p['members']! as List).length.toString().padLeft(3)} '
       'touches=${touched.length.toString().padLeft(3)} '
       'writes=${writes.length.toString().padLeft(2)}',
     );
   }
   final multiWriters = ownership.entries
-      .where((e) => ((e.value as Map)['writers'] as List).length > 1)
+      .where((e) => ((e.value! as Map)['writers'] as List).length > 1)
       .toList();
   stderr.writeln(
     'fields written from more than one part: '
     '${multiWriters.length}',
   );
   for (final e in multiWriters) {
-    stderr.writeln('  ${e.key}: ${(e.value as Map)['writers']}');
+    stderr.writeln('  ${e.key}: ${(e.value! as Map)['writers']}');
   }
 }
 
@@ -347,13 +347,16 @@ class _HostUseVisitor extends RecursiveAstVisitor<void> {
     if (viaSession) {
       if (e is PrefixedIdentifier && _isSession(e.prefix))
         return e.identifier.name;
-      if (e is PropertyAccess && _isSession(e.target))
+      }
+      if (e is PropertyAccess && _isSession(e.target)) {
         return e.propertyName.name;
+      }
       return null;
     }
     if (e is SimpleIdentifier && hostNames.contains(e.name)) return e.name;
-    if (e is PropertyAccess && e.target is ThisExpression)
+    if (e is PropertyAccess && e.target is ThisExpression) {
       return e.propertyName.name;
+    }
     return null;
   }
 
