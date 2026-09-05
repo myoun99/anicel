@@ -1178,8 +1178,6 @@ class EditorSessionManager extends ChangeNotifier {
     return ids;
   }
 
-
-
   /// The ladder every band verb climbs at the PLAYHEAD: the band answers
   /// first ([bandAnswers]), a band that names rows this press would miss
   /// ENDS it, and only then is the active row asked.
@@ -1206,6 +1204,7 @@ class EditorSessionManager extends ChangeNotifier {
     final layer = activeLayer;
     return layer != null && accepts(layer) && atPlayhead(layer);
   }
+
   /// The band answer a selection verb reaches: the swept rows whose layer
   /// passes [accepts], handed to [inBand] as ONE ask, and `const {}` when
   /// the band names nothing the verb can touch.
@@ -1236,6 +1235,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return ids.isEmpty ? const {} : inBand(ids, selection);
   }
+
   /// Whether the artwork carries a marquee, published by whoever owns it.
   bool Function()? canvasHasSelection;
 
@@ -2461,7 +2461,6 @@ class EditorSessionManager extends ChangeNotifier {
       activeSourceEffects: activeSourceEffects,
     );
   }
-
 
   // ── the opacity verbs: their own object, in their own file ──────────
   //
@@ -4066,9 +4065,7 @@ class EditorSessionManager extends ChangeNotifier {
         cutId: cutId,
         displayName: displayName,
         canvasSize: canvasSize,
-        duration: decoded.length > 1
-            ? _sequenceLength(layer)
-            : stillDuration,
+        duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
         mint: mint,
       ),
       assets: assets,
@@ -5215,10 +5212,7 @@ class EditorSessionManager extends ChangeNotifier {
       (clip) =>
           clip.fadeInFrames == clampedIn && clip.fadeOutFrames == clampedOut
           ? null
-          : clip.copyWith(
-              fadeInFrames: clampedIn,
-              fadeOutFrames: clampedOut,
-            ),
+          : clip.copyWith(fadeInFrames: clampedIn, fadeOutFrames: clampedOut),
     );
   }
 
@@ -6164,8 +6158,7 @@ class EditorSessionManager extends ChangeNotifier {
       // [_standsDownFromRetime].
       final rows = [
         for (final id in selection.spanLayerIds)
-          if (!_standsDownFromRetime(id) && _rangeLayerById(id) != null)
-            id,
+          if (!_standsDownFromRetime(id) && _rangeLayerById(id) != null) id,
       ];
       return rows.isEmpty
           ? null
@@ -6263,10 +6256,11 @@ class EditorSessionManager extends ChangeNotifier {
       _frameVerbs.shiftFrames(count, currentRow: currentRow);
 
   /// Closes up to [count] frames, clamped to [framePullSlack].
-  void pullFrames(int count, {TimelineRowAddress? currentRow}) => _frameVerbs.shiftFrames(
-    -math.min(count, framePullSlack(currentRow: currentRow)),
-    currentRow: currentRow,
-  );
+  void pullFrames(int count, {TimelineRowAddress? currentRow}) =>
+      _frameVerbs.shiftFrames(
+        -math.min(count, framePullSlack(currentRow: currentRow)),
+        currentRow: currentRow,
+      );
 
   /// The cut-axis scope: which track, and the ordinal the shove starts at.
   ({TrackId trackId, int anchorCutIndex})? _cutShiftScope() {
@@ -6805,8 +6799,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// Both are ID-gated: the synced-block UI stopped marking mirror entries
   /// ghost, so the non-ghost block scans downstream no longer exclude them.
   bool _standsDownFromRetime(LayerId layerId) =>
-      _folders.isSyncedAttachedLayerId(layerId) ||
-      _isSingleCelLayerId(layerId);
+      _folders.isSyncedAttachedLayerId(layerId) || _isSingleCelLayerId(layerId);
 
   /// Whether [layerId] names a SINGLE-CEL (image) row of the active cut:
   /// its one covering block is pinned by the write normalization, so the
@@ -8310,6 +8303,101 @@ class EditorSessionManager extends ChangeNotifier {
     ];
   }
 
+  /// Every cut the project holds — what a loaded envelope's owner is
+  /// checked against.
+  static Set<CutId> _everyCutId(Project project) => {
+    for (final track in project.tracks)
+      for (final cut in track.cuts) cut.id,
+  };
+
+  /// Every drawing the project holds — what a loaded ROW ink entry is
+  /// checked against.
+  static Set<FrameId> _everyFrameId(Project project) => {
+    for (final track in project.tracks)
+      for (final cut in track.cuts)
+        for (final layer in cut.layers)
+          for (final frame in layer.frames) frame.id,
+  };
+
+  /// The loaded cels, split by which store owns them — and PRUNED of the
+  /// ones whose drawing no longer exists in the project being opened.
+  ///
+  /// The conte ink namespace routes to its own stores (R5); a ROW entry
+  /// whose storyboard block no longer exists in the loaded project is
+  /// pruned HERE — the load boundary is where "ink dies with the drawing"
+  /// becomes permanent (saving never prunes, so an undone delete keeps
+  /// its ink within the session).
+  ({
+    Map<BrushFrameKey, AnicelCelFileRef> main,
+    Map<BrushFrameKey, AnicelCelFileRef> inkRow,
+    Map<BrushFrameKey, AnicelCelFileRef> inkPage,
+    Map<BrushFrameKey, AnicelCelFileRef> envelope,
+  })
+  _sortLoadedCels(AnicelOpenResult result) {
+    final main = <BrushFrameKey, AnicelCelFileRef>{};
+    final inkRow = <BrushFrameKey, AnicelCelFileRef>{};
+    final inkPage = <BrushFrameKey, AnicelCelFileRef>{};
+    final envelope = <BrushFrameKey, AnicelCelFileRef>{};
+    Set<FrameId>? liveFrameIds;
+    Set<CutId>? liveCutIds;
+    for (final entry in result.cels.entries) {
+      final key = entry.key;
+      if (isEnvelopeInkKey(key)) {
+        // An envelope's ink is keyed by its OWNER cut: the sheet dies with
+        // the cut it describes. Which BOX a stroke sits in is never pruned
+        // — swapping the form preset back has to bring the writing back
+        // with it.
+        liveCutIds ??= _everyCutId(result.project);
+        if (liveCutIds.contains(key.cutId)) {
+          envelope[key] = entry.value;
+        }
+      } else if (!isConteInkKey(key)) {
+        main[key] = entry.value;
+      } else if (key.layerId == conteInkRowLayerId) {
+        liveFrameIds ??= _everyFrameId(result.project);
+        if (liveFrameIds.contains(key.frameId)) {
+          inkRow[key] = entry.value;
+        }
+      } else {
+        inkPage[key] = entry.value;
+      }
+    }
+    return (main: main, inkRow: inkRow, inkPage: inkPage, envelope: envelope);
+  }
+
+  /// R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): heal cels whose
+  /// stored canvas size disagrees with their cut.
+  ///
+  /// Files written while the resize was still split in two could leave
+  /// 겸용 or unselected cuts' cels at a stale size, which display as EMPTY
+  /// and turn permanent on the first stroke (the D5 loss, preserved in the
+  /// save). A healthy file walks this map once and finds nothing; a broken
+  /// cel gets the same strictly cut-scoped crop the resize itself uses
+  /// (R27), and the heal marks the project unsaved so the next save writes
+  /// the repaired truth.
+  /// Answers whether anything WAS healed — a session whose load repaired
+  /// a cel is dirty, because the file on disk still holds the broken one.
+  bool _healStaleCelSizes(
+    Map<BrushFrameKey, AnicelCelFileRef> cels, {
+    required Project project,
+  }) {
+    final cutSizes = {
+      for (final track in project.tracks)
+        for (final cut in track.cuts) cut.id: cut.canvasSize,
+    };
+    final healedCuts = <CutId>{};
+    for (final entry in cels.entries) {
+      final cutSize = cutSizes[entry.key.cutId];
+      if (cutSize != null && entry.value.canvasSize != cutSize) {
+        healedCuts.add(entry.key.cutId);
+      }
+    }
+    for (final cutId in healedCuts) {
+      brushFrameStore.resizeBakedSurfaces(cutSizes[cutId]!, cutId: cutId);
+    }
+    return healedCuts.isNotEmpty;
+  }
+
   /// Opens a .anicel file, replacing the WHOLE session state: project,
   /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
   /// (loaded state has no history; the load→draw→undo path is pinned by
@@ -8368,69 +8456,12 @@ class EditorSessionManager extends ChangeNotifier {
     // pruned HERE — the load boundary is where "ink dies with the
     // drawing" becomes permanent (saving never prunes, so an undone
     // delete keeps its ink within the session).
-    final mainCels = <BrushFrameKey, AnicelCelFileRef>{};
-    final inkRowCels = <BrushFrameKey, AnicelCelFileRef>{};
-    final inkPageCels = <BrushFrameKey, AnicelCelFileRef>{};
-    final envelopeCels = <BrushFrameKey, AnicelCelFileRef>{};
-    Set<FrameId>? liveFrameIds;
-    Set<CutId>? liveCutIds;
-    for (final entry in result.cels.entries) {
-      final key = entry.key;
-      if (isEnvelopeInkKey(key)) {
-        // An envelope's ink is keyed by its OWNER cut: the sheet dies with
-        // the cut it describes. Which BOX a stroke sits in is never pruned
-        // — swapping the form preset back has to bring the writing back
-        // with it.
-        liveCutIds ??= {
-          for (final track in result.project.tracks)
-            for (final cut in track.cuts) cut.id,
-        };
-        if (liveCutIds.contains(key.cutId)) {
-          envelopeCels[key] = entry.value;
-        }
-      } else if (!isConteInkKey(key)) {
-        mainCels[key] = entry.value;
-      } else if (key.layerId == conteInkRowLayerId) {
-        liveFrameIds ??= {
-          for (final track in result.project.tracks)
-            for (final cut in track.cuts)
-              for (final layer in cut.layers)
-                for (final frame in layer.frames) frame.id,
-        };
-        if (liveFrameIds.contains(key.frameId)) {
-          inkRowCels[key] = entry.value;
-        }
-      } else {
-        inkPageCels[key] = entry.value;
-      }
-    }
-    brushFrameStore.restoreFromFile(mainCels);
-    // R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): heal cels
-    // whose stored canvas size disagrees with their cut — files written
-    // while the resize was still split in two could leave 겸용 or
-    // unselected cuts' cels at a stale size, which display as EMPTY and
-    // turn permanent on the first stroke (the D5 loss, preserved in the
-    // save). A healthy file walks this map once and finds nothing; a
-    // broken cel gets the same strictly cut-scoped crop the resize
-    // itself uses (R27), and the heal marks the project unsaved so the
-    // next save writes the repaired truth.
-    final cutSizes = {
-      for (final track in result.project.tracks)
-        for (final cut in track.cuts) cut.id: cut.canvasSize,
-    };
-    final healedCuts = <CutId>{};
-    for (final entry in mainCels.entries) {
-      final cutSize = cutSizes[entry.key.cutId];
-      if (cutSize != null && entry.value.canvasSize != cutSize) {
-        healedCuts.add(entry.key.cutId);
-      }
-    }
-    for (final cutId in healedCuts) {
-      brushFrameStore.resizeBakedSurfaces(cutSizes[cutId]!, cutId: cutId);
-    }
-    conteInkRowStore.restoreFromFile(inkRowCels);
-    conteInkPageStore.restoreFromFile(inkPageCels);
-    envelopeInkStore.restoreFromFile(envelopeCels);
+    final cels = _sortLoadedCels(result);
+    brushFrameStore.restoreFromFile(cels.main);
+    final healed = _healStaleCelSizes(cels.main, project: result.project);
+    conteInkRowStore.restoreFromFile(cels.inkRow);
+    conteInkPageStore.restoreFromFile(cels.inkPage);
+    envelopeInkStore.restoreFromFile(cels.envelope);
     _historyManager.clear();
     _clipboard._copiedFrame = null;
     _clipboard._layerClipboard = null;
@@ -8469,8 +8500,7 @@ class EditorSessionManager extends ChangeNotifier {
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves — and so does a session whose load just
     // HEALED mismatched cels (R7q2).
-    _hasUnsavedChanges =
-        recoverAs != null || overlayPath != null || healedCuts.isNotEmpty;
+    _hasUnsavedChanges = recoverAs != null || overlayPath != null || healed;
     _warmActiveCut();
     frameSeekCommitted.value += 1;
     notifyListeners();
@@ -8751,7 +8781,6 @@ class EditorSessionManager extends ChangeNotifier {
       frameLabel: _frameVerbs.currentFrameDisplayLabel(layer, frame),
     );
   }
-
 }
 
 /// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
