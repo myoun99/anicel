@@ -53,112 +53,18 @@ SeTakePlacement? planSeTakePlacement({
   if (lengthFrames < 1 || startFrame < 0) {
     return null;
   }
-  final takeStart = startFrame;
-  final takeEnd = startFrame + lengthFrames;
-
-  // Sharing detection uses the row BEFORE the edit: an instance is
-  // shared when more than one real block exposes it.
-  final referenceCounts = <FrameId, int>{};
-  for (final exposure in layer.timeline.values) {
-    final frameId = exposure.frameId;
-    if (exposure.isDrawing && !exposure.ghost && frameId != null) {
-      referenceCounts[frameId] = (referenceCounts[frameId] ?? 0) + 1;
-    }
-  }
-
-  final nextTimeline = SplayTreeMap<int, TimelineExposure>();
-  final clonedFrames = <Frame>[];
-  final clonedClips = <AudioClip>[];
-  // Unshared head-trims: the instance's own clips slide into the file.
-  final offsetBumps = <FrameId, int>{};
-
-  Frame frameOf(FrameId id) =>
-      layer.frames.firstWhere((frame) => frame.id == id);
-
-  // The remainder of a block past the take's end, carried by a fresh
-  // instance whose clips start [trimmedFrames] further into their files.
-  void addRemainder({
-    required FrameId sourceFrameId,
-    required TimelineExposure source,
-    required int remainderLength,
-    required int trimmedFrames,
-  }) {
-    final remainderId = newFrameId();
-    final sourceFrame = frameOf(sourceFrameId);
-    clonedFrames.add(sourceFrame.copyWith(id: remainderId));
-    for (final clip in layer.audioClips) {
-      if (clip.frameId == sourceFrameId) {
-        clonedClips.add(
-          clip.copyWith(
-            frameId: remainderId,
-            offsetFrames: clip.offsetFrames + trimmedFrames,
-          ),
-        );
-      }
-    }
-    nextTimeline[takeEnd] = source.copyWith(
-      frameId: remainderId,
-      length: remainderLength,
-    );
-  }
-
+  final splice = _TakeSplice(
+    layer: layer,
+    takeStart: startFrame,
+    takeEnd: startFrame + lengthFrames,
+    newFrameId: newFrameId,
+  );
   for (final entry in layer.timeline.entries) {
-    final blockStart = entry.key;
-    final exposure = entry.value;
-    final length = exposure.length;
-    if (!exposure.isDrawing || exposure.ghost || length == null) {
-      nextTimeline[blockStart] = exposure;
-      continue;
-    }
-    final blockEnd = blockStart + length;
-    if (blockEnd <= takeStart || blockStart >= takeEnd) {
-      nextTimeline[blockStart] = exposure;
-      continue;
-    }
-    final frameId = exposure.frameId;
-    if (blockStart >= takeStart && blockEnd <= takeEnd) {
-      continue; // Fully covered: the take erased it.
-    }
-    if (blockStart < takeStart && blockEnd > takeEnd) {
-      // The take is strictly inside: head part + remainder instance.
-      nextTimeline[blockStart] = exposure.copyWith(
-        length: takeStart - blockStart,
-      );
-      if (frameId != null) {
-        addRemainder(
-          sourceFrameId: frameId,
-          source: exposure,
-          remainderLength: blockEnd - takeEnd,
-          trimmedFrames: takeEnd - blockStart,
-        );
-      }
-      continue;
-    }
-    if (blockStart < takeStart) {
-      // Tail-trim: the head part keeps its instance and offset as-is.
-      nextTimeline[blockStart] = exposure.copyWith(
-        length: takeStart - blockStart,
-      );
-      continue;
-    }
-    // Head-trim: the block starts inside the take and survives past it.
-    final trimmed = takeEnd - blockStart;
-    if (frameId == null) {
-      nextTimeline[takeEnd] = exposure.copyWith(length: blockEnd - takeEnd);
-    } else if ((referenceCounts[frameId] ?? 0) > 1) {
-      addRemainder(
-        sourceFrameId: frameId,
-        source: exposure,
-        remainderLength: blockEnd - takeEnd,
-        trimmedFrames: trimmed,
-      );
-    } else {
-      nextTimeline[takeEnd] = exposure.copyWith(length: blockEnd - takeEnd);
-      offsetBumps[frameId] = trimmed;
-    }
+    splice.place(entry.key, entry.value);
   }
+  final nextTimeline = splice.timeline;
 
-  nextTimeline[takeStart] = TimelineExposure.drawing(
+  nextTimeline[startFrame] = TimelineExposure.drawing(
     takeFrameId,
     length: lengthFrames,
   );
@@ -171,24 +77,19 @@ SeTakePlacement? planSeTakePlacement({
   final nextFrames = <Frame>[
     for (final frame in layer.frames)
       if (referenced.contains(frame.id)) frame,
-    ...clonedFrames,
-    Frame(
-      id: takeFrameId,
-      duration: 1,
-      strokes: const [],
-      name: null,
-    ),
+    ...splice.clonedFrames,
+    Frame(id: takeFrameId, duration: 1, strokes: const [], name: null),
   ];
   final nextClips = <AudioClip>[
     for (final clip in layer.audioClips)
       if (referenced.contains(clip.frameId))
-        offsetBumps.containsKey(clip.frameId)
+        splice.offsetBumps.containsKey(clip.frameId)
             ? clip.copyWith(
                 offsetFrames:
-                    clip.offsetFrames + offsetBumps[clip.frameId]!,
+                    clip.offsetFrames + splice.offsetBumps[clip.frameId]!,
               )
             : clip,
-    ...clonedClips,
+    ...splice.clonedClips,
     AudioClip(filePath: filePath, frameId: takeFrameId, clipped: takeClipped),
   ];
 
@@ -200,4 +101,119 @@ SeTakePlacement? planSeTakePlacement({
     ),
     takeFrameId: takeFrameId,
   );
+}
+
+/// Splicing a take into an SE row, block by block, the way tape is cut.
+///
+/// A block either misses the take entirely, is wholly covered by it, has
+/// the take land INSIDE it (head plus a remainder), or is trimmed at one
+/// end. Only three of those need a new instance, and which three is the
+/// whole of this class.
+class _TakeSplice {
+  _TakeSplice({
+    required this.layer,
+    required this.takeStart,
+    required this.takeEnd,
+    required this.newFrameId,
+  }) {
+    // Sharing detection uses the row BEFORE the edit: an instance is
+    // shared when more than one real block exposes it.
+    for (final exposure in layer.timeline.values) {
+      final frameId = exposure.frameId;
+      if (exposure.isDrawing && !exposure.ghost && frameId != null) {
+        _referenceCounts[frameId] = (_referenceCounts[frameId] ?? 0) + 1;
+      }
+    }
+  }
+
+  final Layer layer;
+  final int takeStart;
+  final int takeEnd;
+  final FrameId Function() newFrameId;
+
+  final _referenceCounts = <FrameId, int>{};
+  final timeline = SplayTreeMap<int, TimelineExposure>();
+  final clonedFrames = <Frame>[];
+  final clonedClips = <AudioClip>[];
+
+  /// Unshared head-trims: the instance's own clips slide into the file.
+  final offsetBumps = <FrameId, int>{};
+
+  void place(int blockStart, TimelineExposure exposure) {
+    final length = exposure.length;
+    if (!exposure.isDrawing || exposure.ghost || length == null) {
+      timeline[blockStart] = exposure;
+      return;
+    }
+    final blockEnd = blockStart + length;
+    if (blockEnd <= takeStart || blockStart >= takeEnd) {
+      timeline[blockStart] = exposure;
+      return;
+    }
+    if (blockStart >= takeStart && blockEnd <= takeEnd) {
+      return; // Fully covered: the take erased it.
+    }
+    final frameId = exposure.frameId;
+    if (blockStart < takeStart) {
+      // The head part keeps its instance and offset as-is; when the take
+      // lands strictly INSIDE, what is left past it becomes a remainder.
+      timeline[blockStart] = exposure.copyWith(length: takeStart - blockStart);
+      if (blockEnd > takeEnd && frameId != null) {
+        _addRemainder(
+          sourceFrameId: frameId,
+          source: exposure,
+          remainderLength: blockEnd - takeEnd,
+          trimmedFrames: takeEnd - blockStart,
+        );
+      }
+      return;
+    }
+    // Head-trim: the block starts inside the take and survives past it.
+    final trimmed = takeEnd - blockStart;
+    if (frameId != null && (_referenceCounts[frameId] ?? 0) > 1) {
+      // SHARED, so the surviving tail cannot move the instance everyone
+      // else is reading — it gets one of its own.
+      _addRemainder(
+        sourceFrameId: frameId,
+        source: exposure,
+        remainderLength: blockEnd - takeEnd,
+        trimmedFrames: trimmed,
+      );
+      return;
+    }
+    timeline[takeEnd] = exposure.copyWith(length: blockEnd - takeEnd);
+    if (frameId != null) {
+      offsetBumps[frameId] = trimmed;
+    }
+  }
+
+  /// The remainder of a block past the take's end, carried by a fresh
+  /// instance whose clips start [trimmedFrames] further into their files.
+  void _addRemainder({
+    required FrameId sourceFrameId,
+    required TimelineExposure source,
+    required int remainderLength,
+    required int trimmedFrames,
+  }) {
+    final remainderId = newFrameId();
+    clonedFrames.add(
+      layer.frames
+          .firstWhere((frame) => frame.id == sourceFrameId)
+          .copyWith(id: remainderId),
+    );
+    for (final clip in layer.audioClips) {
+      if (clip.frameId == sourceFrameId) {
+        clonedClips.add(
+          clip.copyWith(
+            frameId: remainderId,
+            offsetFrames: clip.offsetFrames + trimmedFrames,
+          ),
+        );
+      }
+    }
+    timeline[takeEnd] = source.copyWith(
+      frameId: remainderId,
+      length: remainderLength,
+    );
+  }
 }
