@@ -666,11 +666,11 @@ class _RawTimelineItem {
 ///   marks on a drawing start (offset 0) or on uncovered cells drop
 ///   (block-owned dots can't live off a block, and no production data
 ///   exists to preserve).
-SplayTreeMap<int, TimelineExposure> _timelineFromJson(
-  Object? json, {
-  Object? legacyMarksJson,
-  required List<Frame> frames,
-}) {
+/// The timeline entries as the FILE spells them, validated and keyed by
+/// index — both spellings (a list of `{index, exposure}` pairs, and an
+/// object keyed by index) read into one map here so the walk below sees
+/// one shape.
+SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
   final items = SplayTreeMap<int, _RawTimelineItem>();
 
   void addItem(int index, Map<String, dynamic> exposureJson) {
@@ -734,6 +734,61 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
   } else {
     throw const FormatException('Layer timeline must be a list or object.');
   }
+  return items;
+}
+
+/// The frames a drawing entry covers, resolved against what follows it.
+///
+/// Two legacy shapes and one invariant. A file written before lengths
+/// existed held each visual until the next drawing or blank entry, and
+/// the LAST block held its Frame.duration — that is the first branch.
+/// The second is the invariant that outranks the file: a block never
+/// overlaps the next drawing, whatever the length says, because a file
+/// that says otherwise draws two cels on one frame.
+int _drawingLength(
+  List<_RawTimelineItem> rawItems,
+  int at,
+  Map<FrameId, int> frameDurations,
+) {
+  final item = rawItems[at];
+  final i = at;
+  var length = item.length;
+  if (length == null) {
+    // Legacy entry: old visuals held until the next drawing/blank
+    // entry; the last block held its Frame.duration.
+    int? boundary;
+    for (var j = i + 1; j < rawItems.length; j += 1) {
+      if (rawItems[j].type != 'mark') {
+        boundary = rawItems[j].index;
+        break;
+      }
+    }
+    length = boundary != null
+        ? boundary - item.index
+        : (frameDurations[item.frameId] ?? 1);
+  }
+  // Never overlap the next drawing regardless of what the file says.
+  for (var j = i + 1; j < rawItems.length; j += 1) {
+    if (rawItems[j].type == 'drawing') {
+      final maxLength = rawItems[j].index - item.index;
+      if (length! > maxLength) {
+        length = maxLength;
+      }
+      break;
+    }
+  }
+  if (length! < 1) {
+    length = 1;
+  }
+  return length;
+}
+
+SplayTreeMap<int, TimelineExposure> _timelineFromJson(
+  Object? json, {
+  Object? legacyMarksJson,
+  required List<Frame> frames,
+}) {
+  final items = _rawTimelineItems(json);
 
   final frameDurations = <FrameId, int>{
     for (final frame in frames)
@@ -753,34 +808,7 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
         // Legacy hold terminator: consumed as the previous block's boundary.
         break;
       case 'drawing':
-        var length = item.length;
-        if (length == null) {
-          // Legacy entry: old visuals held until the next drawing/blank
-          // entry; the last block held its Frame.duration.
-          int? boundary;
-          for (var j = i + 1; j < rawItems.length; j += 1) {
-            if (rawItems[j].type != 'mark') {
-              boundary = rawItems[j].index;
-              break;
-            }
-          }
-          length = boundary != null
-              ? boundary - item.index
-              : (frameDurations[item.frameId] ?? 1);
-        }
-        // Never overlap the next drawing regardless of what the file says.
-        for (var j = i + 1; j < rawItems.length; j += 1) {
-          if (rawItems[j].type == 'drawing') {
-            final maxLength = rawItems[j].index - item.index;
-            if (length! > maxLength) {
-              length = maxLength;
-            }
-            break;
-          }
-        }
-        if (length! < 1) {
-          length = 1;
-        }
+        final length = _drawingLength(rawItems, i, frameDurations);
         var exposure = TimelineExposure.drawing(
           item.frameId!,
           length: length,
