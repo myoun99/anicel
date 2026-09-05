@@ -8,7 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 /// Three timeline pieces the audit left unnamed (2026-09-05): the
 /// playhead, the film-end line, and the tint they share an axis rule with.
 void main() {
-  const metrics = TimelineGridMetrics();
+  const metrics = TimelineGridMetrics.defaults;
 
   Future<void> pumpStack(WidgetTester tester, List<Widget> children) =>
       tester.pumpWidget(
