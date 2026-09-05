@@ -8,6 +8,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../models/tiles_covering.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'tile_origin.dart';
 
 /// Draws, in CANVAS coordinates, the picture the screen is ALREADY showing
 /// over [region] — the float being dragged, the held resample, a fill's
@@ -127,8 +128,7 @@ final Paint _tilePaint = Paint()
       }
     }
 
-    final originX = (coord.x * tileSize).toDouble();
-    final originY = (coord.y * tileSize).toDouble();
+    final origin = tileOriginOffset(tile);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(
       recorder,
@@ -138,12 +138,9 @@ final Paint _tilePaint = Paint()
       canvas.drawImage(preImage, Offset.zero, _tilePaint);
     }
     canvas.save();
-    canvas.translate(-originX, -originY);
+    canvas.translate(-origin.dx, -origin.dy);
     canvas.clipRect(pasteboard);
-    final complete = ink(
-      canvas,
-      Rect.fromLTWH(originX, originY, tileExtent, tileExtent),
-    );
+    final complete = ink(canvas, origin & Size.square(tileExtent));
     canvas.restore();
     final picture = recorder.endRecording();
     if (!complete) {
@@ -237,12 +234,7 @@ ProvisionalInkPainter inkFromSurface(
         }
         return false;
       }
-      canvas.drawImage(
-        image,
-        Offset(under.worldLeft.toDouble(), under.worldTop.toDouble()) +
-            canvasDelta,
-        _tilePaint,
-      );
+      canvas.drawImage(image, tileOriginOffset(tile) + canvasDelta, _tilePaint);
     }
     return true;
   };

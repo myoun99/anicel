@@ -332,16 +332,13 @@ class _SurfacePaintPass {
     if (settledImage == null) {
       return;
     }
-    _canvas.drawImage(
-      settledImage,
-      Offset(
-        (tile.coord.x * tile.size).toDouble(),
-        (tile.coord.y * tile.size).toDouble(),
-      ),
-      _tileImagePaint,
-    );
+    _drawTileImage(settledImage, tile);
     (_committedWins ??= <TileCoord>{}).add(tile.coord);
   }
+
+  /// [image] at [at]'s own origin, with the tile image paint.
+  void _drawTileImage(ui.Image image, BitmapTile at) =>
+      _canvas.drawImage(image, tileOriginOffset(at), _tileImagePaint);
 
   /// A tile the settling stroke holds: the pre-stroke tile, its image or
   /// its pixels.
@@ -350,14 +347,7 @@ class _SurfacePaintPass {
     if (preTile != null) {
       final preImage = _painter.tileImageCache.imageFor(preTile);
       if (preImage != null) {
-        _canvas.drawImage(
-          preImage,
-          Offset(
-            (preTile.coord.x * preTile.size).toDouble(),
-            (preTile.coord.y * preTile.size).toDouble(),
-          ),
-          _tileImagePaint,
-        );
+        _drawTileImage(preImage, preTile);
       } else {
         _painter._paintTilePixels(_canvas, preTile, _layerPaint);
       }
@@ -386,14 +376,7 @@ class _SurfacePaintPass {
       scope: _painter.staleScope,
     );
     if (tileImage != null) {
-      _canvas.drawImage(
-        tileImage,
-        Offset(
-          (tile.coord.x * tile.size).toDouble(),
-          (tile.coord.y * tile.size).toDouble(),
-        ),
-        _tileImagePaint,
-      );
+      _drawTileImage(tileImage, tile);
     } else if (_pixelFallbackBudget > 0) {
       // First-ever content at this coordinate and not decoded yet:
       // draw per pixel for this frame only — within the budget. Every

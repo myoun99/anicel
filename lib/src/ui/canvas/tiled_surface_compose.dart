@@ -5,6 +5,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../core/dev_profile.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'tile_origin.dart';
 
 /// A composed surface image plus the CANVAS-SPACE rect it covers.
 ///
@@ -128,7 +129,7 @@ Future<ui.Image?> _composeAsync(
         image = await _decodeTile(tile);
         transient.add(image);
       }
-      canvas.drawImage(image, _tileOffset(tile), paint);
+      canvas.drawImage(image, tileOriginOffset(tile), paint);
     }
 
     final picture = recorder.endRecording();
@@ -173,7 +174,7 @@ ui.Image? _composeSync(
       recorder.endRecording().dispose();
       return null;
     }
-    canvas.drawImage(image, _tileOffset(tile), paint);
+    canvas.drawImage(image, tileOriginOffset(tile), paint);
   }
 
   final picture = recorder.endRecording();
@@ -183,11 +184,6 @@ ui.Image? _composeSync(
     picture.dispose();
   }
 }
-
-ui.Offset _tileOffset(BitmapTile tile) => ui.Offset(
-  (tile.coord.x * tile.size).toDouble(),
-  (tile.coord.y * tile.size).toDouble(),
-);
 
 /// Synchronous variant for latency-critical swaps (the layer-switch
 /// handoff): composes ONLY when every tile is already decoded in [reuse] —

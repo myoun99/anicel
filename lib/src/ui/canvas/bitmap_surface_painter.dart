@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'tile_origin.dart';
 import 'viewport_canvas_transform.dart';
 
 part 'surface_paint/surface_paint_pass.dart';
@@ -335,12 +337,7 @@ class BitmapSurfacePainter extends CustomPainter {
       return;
     }
     canvas.drawRect(
-      Rect.fromLTWH(
-        (tile.coord.x * tile.size).toDouble(),
-        (tile.coord.y * tile.size).toDouble(),
-        tile.size.toDouble(),
-        tile.size.toDouble(),
-      ),
+      tileOriginOffset(tile) & Size.square(tile.size.toDouble()),
       Paint()..color = const Color(0x99FF00FF),
     );
   }
@@ -376,12 +373,7 @@ class BitmapSurfacePainter extends CustomPainter {
     // and this path is the undecoded-tile fallback with a budget of four.
     if (layerPaint != null) {
       canvas.saveLayer(
-        Rect.fromLTWH(
-          (tile.coord.x * tile.size).toDouble(),
-          (tile.coord.y * tile.size).toDouble(),
-          tile.size.toDouble(),
-          tile.size.toDouble(),
-        ),
+        tileOriginOffset(tile) & Size.square(tile.size.toDouble()),
         layerPaint,
       );
     }
