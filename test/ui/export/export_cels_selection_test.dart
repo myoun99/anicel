@@ -88,7 +88,10 @@ void main() {
     ];
     expect(
       celIds(
-        resolveExportCelsSelection(cut: cut(layers), spec: const CelsExportSpec()),
+        resolveExportCelsSelection(
+          cut: cut(layers),
+          spec: const CelsExportSpec(),
+        ),
       ),
       ['base', 'sync', 'free'],
     );
@@ -142,6 +145,26 @@ void main() {
         ),
       ),
       ['a', 'b', 'c'],
+    );
+  });
+
+  test('🚨folder expansion does NOT pull in a HIDDEN member — the eye says '
+      '"not in this render" here as it does everywhere else', () {
+    final layers = [
+      layer('a', folder: 'f'),
+      layer('dark', folder: 'f', isVisible: false),
+      createFolderLayer(id: const LayerId('f'), name: 'F'),
+    ];
+
+    expect(
+      celIds(
+        resolveExportCelsSelection(
+          cut: cut(layers),
+          spec: const CelsExportSpec(includeFolderMembers: true),
+        ),
+      ),
+      ['a'],
+      reason: 'expansion reaches the folder\'s members, not past their eye',
     );
   });
 

@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
+import '../../models/layer_id.dart';
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
 import '../../models/layer.dart';
@@ -45,108 +46,115 @@ ExportCelsSelection resolveExportCelsSelection({
   required CelsExportSpec spec,
   ExportCelsCutDelta? delta,
 }) {
-  final included = <int, bool>{};
   final layers = cut.layers;
-
-  bool baseRule(Layer layer) {
-    // WHICH KINDS can export a cel is one fact, and it lives with the kind
-    // (layerKindExportsCels): the camera has no artwork, SE cels are timing
-    // data, and a folder holds its members' cels rather than one of its
-    // own. Spelling that set out again here was a second copy of the same
-    // decision — both exhaustive, so both would force an author to choose
-    // when a kind is added, and nothing made the two choices agree.
-    //
-    // What stays here is this EXPORT's policy on top of that gate.
-    if (!layerKindExportsCels(layer.kind)) {
-      return false;
-    }
-    switch (layer.kind) {
-      case LayerKind.camera:
-      case LayerKind.se:
-      case LayerKind.transition:
-      case LayerKind.folder:
-      case LayerKind.adjustment:
-        return false; // Gated above; the switch stays exhaustive on purpose.
-      case LayerKind.instruction:
-        if (!spec.includeInstructionLayers) {
-          return false;
-        }
-        return !spec.onTimesheetOnly || layer.onTimesheet;
-      case LayerKind.animation:
-      case LayerKind.storyboard:
-      case LayerKind.image:
-      case LayerKind.text:
-        // The FOLDER's eye counts too. Asking only the row's own eye wrote
-        // cel files for rows the user had switched off by hiding the folder
-        // they live in — the eye said "not in this render" everywhere else.
-        if (!layers.rowVisible(layer)) {
-          return false;
-        }
-        if (spec.onTimesheetOnly && !layer.onTimesheet) {
-          return false;
-        }
-        if (isAttachedLayer(layer)) {
-          return isSyncedAttachedLayer(layer)
-              ? spec.includeSyncedAttach
-              : spec.includeFreeAttach;
-        }
-        return true;
-    }
-  }
-
-  for (var i = 0; i < layers.length; i += 1) {
-    included[i] = baseRule(layers[i]);
-  }
-
+  final included = [
+    for (final layer in layers) _exportsByBaseRule(layer, layers, spec),
+  ];
   if (spec.includeFolderMembers) {
-    final includedFolders = {
-      for (var i = 0; i < layers.length; i += 1)
-        if (included[i]! && layers[i].folderId != null) layers[i].folderId!,
-    };
-    for (var i = 0; i < layers.length; i += 1) {
-      final layer = layers[i];
-      if (included[i]! ||
-          layer.folderId == null ||
-          !includedFolders.contains(layer.folderId)) {
-        continue;
-      }
-      // "holdsDrawings && != se" IS layerKindIsDrawingCel — re-deriving a
-      // predicate inline is how a kind gets missed when the next one is
-      // added, which is exactly what layer_kind.dart's predicates exist to
-      // prevent.
-      if (layerKindIsDrawingCel(layer.kind) && layers.rowVisible(layer)) {
-        included[i] = true;
-      }
-    }
+    _expandFolderMembers(included, layers);
   }
-
-  final overrides = delta?.layerOverrides ?? const {};
-  for (var i = 0; i < layers.length; i += 1) {
-    final forced = overrides[layers[i].id];
-    if (forced != null) {
-      // The kind gates stay hard: rows that hold no cel never export one.
-      if (!layerKindExportsCels(layers[i].kind)) {
-        continue;
-      }
-      included[i] = forced;
-    }
-  }
+  _applyLayerOverrides(included, layers, delta?.layerOverrides ?? const {});
 
   final celLayers = <Layer>[];
   final instructionLayers = <Layer>[];
   for (var i = 0; i < layers.length; i += 1) {
-    if (!included[i]!) {
+    if (!included[i]) {
       continue;
     }
-    final layer = layers[i];
-    if (layer.kind == LayerKind.instruction) {
-      instructionLayers.add(layer);
-    } else {
-      celLayers.add(layer);
-    }
+    (layers[i].kind == LayerKind.instruction ? instructionLayers : celLayers)
+        .add(layers[i]);
   }
   return ExportCelsSelection(
     celLayers: celLayers,
     instructionLayers: instructionLayers,
   );
+}
+
+/// Whether [layer] exports a cel before any expansion or override.
+///
+/// WHICH KINDS can export a cel is one fact, and it lives with the kind
+/// (layerKindExportsCels): the camera has no artwork, SE cels are timing
+/// data, and a folder holds its members' cels rather than one of its own.
+/// Spelling that set out again here was a second copy of the same
+/// decision — both exhaustive, so both would force an author to choose
+/// when a kind is added, and nothing made the two choices agree.
+///
+/// What stays here is this EXPORT's policy on top of that gate.
+bool _exportsByBaseRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
+  if (!layerKindExportsCels(layer.kind)) {
+    return false;
+  }
+  switch (layer.kind) {
+    case LayerKind.camera:
+    case LayerKind.se:
+    case LayerKind.transition:
+    case LayerKind.folder:
+    case LayerKind.adjustment:
+      return false; // Gated above; the switch stays exhaustive on purpose.
+    case LayerKind.instruction:
+      if (!spec.includeInstructionLayers) {
+        return false;
+      }
+      return !spec.onTimesheetOnly || layer.onTimesheet;
+    case LayerKind.animation:
+    case LayerKind.storyboard:
+    case LayerKind.image:
+    case LayerKind.text:
+      // The FOLDER's eye counts too. Asking only the row's own eye wrote
+      // cel files for rows the user had switched off by hiding the folder
+      // they live in — the eye said "not in this render" everywhere else.
+      if (!layers.rowVisible(layer)) {
+        return false;
+      }
+      if (spec.onTimesheetOnly && !layer.onTimesheet) {
+        return false;
+      }
+      if (isAttachedLayer(layer)) {
+        return isSyncedAttachedLayer(layer)
+            ? spec.includeSyncedAttach
+            : spec.includeFreeAttach;
+      }
+      return true;
+  }
+}
+
+/// Pulls in every same-folder drawing row a selected row shares a folder
+/// with.
+///
+/// ⛔"holdsDrawings && != se" IS layerKindIsDrawingCel — re-deriving a
+/// predicate inline is how a kind gets missed when the next one is added,
+/// which is exactly what layer_kind.dart's predicates exist to prevent.
+void _expandFolderMembers(List<bool> included, List<Layer> layers) {
+  final includedFolders = {
+    for (var i = 0; i < layers.length; i += 1)
+      if (included[i] && layers[i].folderId != null) layers[i].folderId!,
+  };
+  for (var i = 0; i < layers.length; i += 1) {
+    final layer = layers[i];
+    if (included[i] ||
+        layer.folderId == null ||
+        !includedFolders.contains(layer.folderId)) {
+      continue;
+    }
+    if (layerKindIsDrawingCel(layer.kind) && layers.rowVisible(layer)) {
+      included[i] = true;
+    }
+  }
+}
+
+/// The user's per-row answers, which win last.
+///
+/// ⛔The KIND gates stay hard: rows that hold no cel never export one,
+/// however the checkbox was left.
+void _applyLayerOverrides(
+  List<bool> included,
+  List<Layer> layers,
+  Map<LayerId, bool> overrides,
+) {
+  for (var i = 0; i < layers.length; i += 1) {
+    final forced = overrides[layers[i].id];
+    if (forced != null && layerKindExportsCels(layers[i].kind)) {
+      included[i] = forced;
+    }
+  }
 }
