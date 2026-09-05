@@ -271,6 +271,15 @@ List<Object?>? _brushListOf(PsDescriptor? descriptor) {
   return null;
 }
 
+/// One Photoshop brush descriptor read into a preset, key by key.
+///
+/// ⛔NOT SPLIT (2026-09-05): forty-nine branches at cognitive 45 is a
+/// FLAT mapping — read a key, fall back to Photoshop's default — and the
+/// sections it is already divided into by comment (tip shape, tool
+/// options, dynamics, scatter, texture) are the file's own order. Pulling
+/// them into functions would move the defaults away from the keys they
+/// belong to, and a default that drifts from its key is how an imported
+/// brush stops matching the one in Photoshop.
 BrushPreset? _presetFromBrushDescriptor(
   PsDescriptor entry, {
   required Map<String, BrushTipMask> tipsByKey,

@@ -502,6 +502,15 @@ String _clipName(Uint8List bytes, int from, int until, int clipIndex) {
   return name.isEmpty ? 'Clip ${clipIndex + 1}' : name;
 }
 
+/// One clip out of the chunk stream: its properties, layers and slots.
+///
+/// ⛔NOT SPLIT, and the audit says so here rather than re-deciding it
+/// every round (2026-09-05). It is a FLAT walk of the chunk tags — forty
+/// branches at cognitive 49, which is one point per branch and no nesting
+/// worth naming — and the shape of the walk IS the file format, measured
+/// rather than documented (`tvpp-format-notes.md`). Cutting it into
+/// "phases" would hide the order the bytes actually arrive in, which is
+/// the one thing a reader of this function needs.
 TvppClip _parseClip(
   Uint8List bytes,
   int start,
