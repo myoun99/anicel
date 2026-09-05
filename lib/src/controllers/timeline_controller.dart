@@ -92,22 +92,6 @@ class TimelineController {
 
   // --- Queries -------------------------------------------------------------
 
-  int get authoredTimelineExtentFrameCount {
-    final cut = _findCutOrNull();
-    if (cut == null || cut.layers.isEmpty) {
-      return 0;
-    }
-
-    var maxExtent = 0;
-    for (final layer in cut.layers) {
-      final extent = authoredTimelineExtent(layer.timeline);
-      if (extent > maxExtent) {
-        maxExtent = extent;
-      }
-    }
-    return maxExtent;
-  }
-
   /// The drawing block covering [frameIndex] (or the current frame).
   TimelineDrawingBlock? blockForLayerAt({
     required Layer layer,

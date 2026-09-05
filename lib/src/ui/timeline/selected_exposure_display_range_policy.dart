@@ -2,7 +2,7 @@
 ///
 /// This policy is display-range based: it intentionally does not accept
 /// `playbackFrameCount`, `Cut.duration`, or
-/// `authoredTimelineExtentFrameCount`. It resolves the selected exposure block
+/// `cutAuthoredExtent`. It resolves the selected exposure block
 /// and clamps only the visible intersection needed for rendering in the current
 /// virtualized frame window.
 ///
