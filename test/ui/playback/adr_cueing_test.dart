@@ -56,6 +56,81 @@ void main() {
     expect(AudioSyncSettings.defaults.countInSeconds, 0);
   });
 
+  test('🚨REC1-E: NO punch means no cues — a plain record must not count '
+      'anybody down into nothing', () async {
+    final manager = session();
+    manager.setProjectFps(4);
+    final laneId = manager.activeTrack.seLayers.first.id;
+    manager.selectLayer(laneId);
+    manager.selectFrameIndex(0);
+    // No range selection at all: the take simply anchors at the roll.
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+
+    expect(manager.voiceRecordCueClips, isEmpty);
+    expect(manager.voiceRecordStreamerWindow, isNull);
+    manager.dispose();
+  });
+
+  test('🚨REC1-E: a punch the roll is ALREADY PAST is not a punch — the '
+      'window is behind, so there is nothing to count into', () async {
+    final manager = session();
+    manager.setProjectFps(4);
+    final laneId = manager.activeTrack.seLayers.first.id;
+    manager.selectLayer(laneId);
+    // The playhead sits after the range's far edge.
+    manager.selectFrameIndex(20);
+    manager.frameRangeSelection.value = TimelineFrameRangeSelection(
+      layerId: laneId,
+      startIndex: 2,
+      endIndexExclusive: 6,
+    );
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+
+    expect(
+      manager.voiceRecordCueClips,
+      isEmpty,
+      reason: 'a window entirely behind the roll is not a punch window',
+    );
+    expect(manager.voiceRecordStreamerWindow, isNull);
+    // 🚨And the take still LANDS: a punch end behind the anchor would
+    // trim the capture to nothing, so the sound would simply not appear.
+    expect(await manager.stopVoiceRecordingAndPlace(), isNull);
+    expect(manager.activeTrack.seLayers.first.audioClips, hasLength(1));
+    manager.dispose();
+  });
+
+  test('🚨REC1-E: only the beeps that fall AFTER the roll are kept — a '
+      'one-second run-up counts down once, not three times', () async {
+    final manager = session();
+    manager.setProjectFps(4); // 1 s = 4 frames
+    final laneId = manager.activeTrack.seLayers.first.id;
+    manager.selectLayer(laneId);
+    manager.selectFrameIndex(0);
+    // The punch is 4 frames (one second) ahead: only the 1-second beep
+    // lands after the roll; the 2- and 3-second ones are before it.
+    manager.frameRangeSelection.value = TimelineFrameRangeSelection(
+      layerId: laneId,
+      startIndex: 4,
+      endIndexExclusive: 8,
+    );
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(4));
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+
+    expect(
+      manager.voiceRecordCueClips,
+      hasLength(1),
+      reason: 'a beep before the roll is a beep nobody hears',
+    );
+    // 🚨And the streamer covers the RUN-UP, not a fixed three seconds:
+    // the wipe has to start where the roll did, not before it.
+    final window = manager.voiceRecordStreamerWindow;
+    expect(window, isNotNull);
+    expect(window!.punchFrame - window.startFrame, 4);
+    manager.dispose();
+  });
+
   test('REC1-E: a punch ahead of the roll builds three beeps counting '
       'down INTO it, and the streamer window covers the approach', () async {
     final manager = session();

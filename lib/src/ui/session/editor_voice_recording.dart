@@ -716,71 +716,29 @@ class EditorVoiceRecording {
       return VoiceRecordStartResult.alreadyRecording;
     }
     final laneId = activeLayerId;
-    final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
-    if (lane == null || laneId == null) {
+    if (laneId == null || trackSeGlobalLayerById(laneId) == null) {
       return VoiceRecordStartResult.needsSeLane;
     }
     // The settings meter yields the microphone to the take (REC1-D2).
     _inputMonitor?.stop();
-    final device = Platform.environment['FLUTTER_TEST'] == 'true'
-        ? null
-        : QaAudioDevice.instance;
-    final recorder =
-        debugVoiceRecorderFactory?.call() ?? AudioRecorder(device: device);
-    final deviceIndex = device == null
-        ? -1
-        : audioInputDeviceIndexByName(
-            device,
-            audioSyncSettings.value.inputDeviceName,
-          );
-    // Suppression captures at RNNoise's native 48 kHz; the take conforms
-    // ONCE on placement, like any imported rate.
-    final wantDenoise = audioSyncSettings.value.denoiseVoice;
-    final rate = recorder.start(
-      sampleRate: wantDenoise
-          ? voiceDenoiseCaptureRate
-          : audioConformStore.projectSampleRate,
-      deviceIndex: deviceIndex,
-    );
-    if (rate == 0) {
+    final opened = _openVoiceRecorder();
+    if (opened == null) {
       return VoiceRecordStartResult.deviceFailed;
     }
+    final rollStart = _voiceRollStartFrame();
+    final punch = _voicePunchWindow(laneId, rollStart: rollStart);
 
-    // Where the roll starts, on the track-global axis: the playing (or
-    // paused) position when the transport is active, otherwise the
-    // editing playhead — gap parking included (a gap is a place on the
-    // track; the lane is cut-independent).
-    final rollStart = playback.isActive
-        ? (_playbackTrackGlobalFrame() ??
-              (gapParkedGlobalFrame ?? editingGlobalFrame))
-        : (gapParkedGlobalFrame ?? editingGlobalFrame);
-
-    // The punch window: a range selection on the armed lane, mapped from
-    // its cut-local display axis onto the track axis.
-    var anchor = rollStart;
-    int? punchEnd;
-    final selection = frameRangeSelection.value;
-    if (selection != null && selection.coversLayer(laneId)) {
-      final offset = activeCutGlobalStartFrame;
-      final punchStart = selection.startIndex + offset;
-      final windowEnd = selection.endIndexExclusive + offset;
-      if (rollStart < windowEnd) {
-        anchor = math.max(rollStart, punchStart);
-        punchEnd = windowEnd;
-      }
-    }
-
-    _voiceRecorder = recorder;
+    _voiceRecorder = opened.recorder;
     _voiceRecordLaneId = laneId;
-    _voiceRecordAnchorFrame = anchor;
-    _voiceRecordPunchEndFrame = punchEnd;
+    _voiceRecordAnchorFrame = punch.anchor;
+    _voiceRecordPunchEndFrame = punch.end;
     // The performer speaks against what they HEAR, which runs the output
     // latency behind the mix clock — that much comes off the take's head
     // (the DAW recording-compensation rule) — plus the run-up between
     // the roll start and the punch-in.
     _voiceRecordHeadTrimSamples =
         audioDeviceTransport.report.reportedLatencySamples +
-        projectFrameRate.frameToSample(anchor - rollStart, rate);
+        projectFrameRate.frameToSample(punch.anchor - rollStart, opened.rate);
     isVoiceRecording.value = true;
     // Capture-chain snapshot (REC1-D): gain and channel fold ride the
     // whole take; the clip light re-arms per take.
@@ -788,104 +746,206 @@ class EditorVoiceRecording {
       audioSyncSettings.value.micGainDb,
     );
     _voiceRecordChannelMode = audioSyncSettings.value.inputChannelMode;
-    // A device that refused 48 kHz records clean — RNNoise has no other
-    // rate, and a silently resampled pass would be a different promise.
-    _voiceRecordDenoise = wantDenoise && rate == voiceDenoiseCaptureRate;
+    _voiceRecordDenoise = opened.denoise;
     _lastVoiceTakeClipped = false;
     voiceRecordClipLit.value = false;
     // Live preview (REC1-C): the recorder's chunk tap feeds the growing
     // waveform; the playback frame channel drives the block preview at
     // frame boundaries — no session notify per tick (R12-B).
-    _voiceRecordSamplesPerBucket = rate ~/ 40;
-    recorder.onChunk = debugIngestVoiceRecordChunk;
+    _voiceRecordSamplesPerBucket = opened.rate ~/ 40;
+    opened.recorder.onChunk = debugIngestVoiceRecordChunk;
     playback.globalFrameIndexListenable.addListener(_syncVoiceRecordPreview);
-    final wasRolling = playback.isActive && playback.isPlaying;
-    // Stopped-⏺ count-in (REC1-E): the mic is ALREADY rolling, the
-    // transport waits — the wait rides the head trim, so the take still
-    // anchors where the roll will start. A punch has its own run-up; the
-    // count-in stays out of its way.
-    final countInSeconds = !wasRolling && punchEnd == null
+
+    _rollVoiceTransport(
+      rollStart: rollStart,
+      punchEnd: punch.end,
+      rate: opened.rate,
+    );
+    _armVoiceCues(anchor: punch.anchor, rollStart: rollStart);
+    _syncVoiceRecordPreview();
+    notifyListeners(); // Armed-lane mute + cue clips join the schedules.
+    return VoiceRecordStartResult.started;
+  }
+
+  /// Opens the microphone, or null when the device refused to start.
+  ///
+  /// Suppression captures at RNNoise's native 48 kHz; the take conforms
+  /// ONCE on placement, like any imported rate. ⛔A device that refused
+  /// 48 kHz records CLEAN — RNNoise has no other rate, and a silently
+  /// resampled pass would be a different promise.
+  ({AudioRecorder recorder, int rate, bool denoise})? _openVoiceRecorder() {
+    final device = Platform.environment['FLUTTER_TEST'] == 'true'
+        ? null
+        : QaAudioDevice.instance;
+    final recorder =
+        debugVoiceRecorderFactory?.call() ?? AudioRecorder(device: device);
+    final wantDenoise = audioSyncSettings.value.denoiseVoice;
+    final rate = recorder.start(
+      sampleRate: wantDenoise
+          ? voiceDenoiseCaptureRate
+          : audioConformStore.projectSampleRate,
+      deviceIndex: device == null
+          ? -1
+          : audioInputDeviceIndexByName(
+              device,
+              audioSyncSettings.value.inputDeviceName,
+            ),
+    );
+    if (rate == 0) {
+      return null;
+    }
+    return (
+      recorder: recorder,
+      rate: rate,
+      denoise: wantDenoise && rate == voiceDenoiseCaptureRate,
+    );
+  }
+
+  /// Where the roll starts, on the track-global axis: the playing (or
+  /// paused) position when the transport is active, otherwise the
+  /// editing playhead — gap parking included (a gap is a place on the
+  /// track; the lane is cut-independent).
+  int _voiceRollStartFrame() => playback.isActive
+      ? (_playbackTrackGlobalFrame() ??
+            (gapParkedGlobalFrame ?? editingGlobalFrame))
+      : (gapParkedGlobalFrame ?? editingGlobalFrame);
+
+  /// The punch window: a range selection on the armed lane, mapped from
+  /// its cut-local display axis onto the track axis. Without one the
+  /// take simply anchors at the roll.
+  ({int anchor, int? end}) _voicePunchWindow(
+    LayerId laneId, {
+    required int rollStart,
+  }) {
+    final selection = frameRangeSelection.value;
+    if (selection == null || !selection.coversLayer(laneId)) {
+      return (anchor: rollStart, end: null);
+    }
+    final offset = activeCutGlobalStartFrame;
+    final windowEnd = selection.endIndexExclusive + offset;
+    if (rollStart >= windowEnd) {
+      return (anchor: rollStart, end: null);
+    }
+    return (
+      anchor: math.max(rollStart, selection.startIndex + offset),
+      end: windowEnd,
+    );
+  }
+
+  /// Starts the transport under the take, after the count-in if there is
+  /// one.
+  ///
+  /// Stopped-⏺ count-in (REC1-E): the mic is ALREADY rolling, the
+  /// transport waits — the wait rides the head trim, so the take still
+  /// anchors where the roll will start. A punch has its own run-up; the
+  /// count-in stays out of its way.
+  void _rollVoiceTransport({
+    required int rollStart,
+    required int? punchEnd,
+    required int rate,
+  }) {
+    if (playback.isActive && playback.isPlaying) {
+      _voiceRecordStartedRoll = false;
+      return;
+    }
+    _voiceRecordStartedRoll = true;
+    final countInSeconds = punchEnd == null
         ? AudioSyncSettings.clampCountInSeconds(
             audioSyncSettings.value.countInSeconds,
           )
         : 0;
-    if (wasRolling) {
-      _voiceRecordStartedRoll = false;
-    } else if (countInSeconds > 0) {
-      _voiceRecordStartedRoll = true;
-      _voiceRecordHeadTrimSamples += countInSeconds * rate;
-      if (audioSyncSettings.value.cueBeeps) {
-        _playCountInBeeps(countInSeconds);
+    if (countInSeconds <= 0) {
+      _startVoiceRoll(rollStart);
+      return;
+    }
+    _voiceRecordHeadTrimSamples += countInSeconds * rate;
+    if (audioSyncSettings.value.cueBeeps) {
+      _playCountInBeeps(countInSeconds);
+    }
+    _voiceRecordCountInTimer?.cancel();
+    _voiceRecordCountInTimer = Timer(Duration(seconds: countInSeconds), () {
+      if (!isVoiceRecording.value) {
+        return;
       }
-      _voiceRecordCountInTimer?.cancel();
-      _voiceRecordCountInTimer = Timer(Duration(seconds: countInSeconds), () {
-        if (!isVoiceRecording.value) {
-          return;
-        }
-        // 🚨T28: with pause gone, "active" already means rolling — there is
-        // nothing to resume, only a transport to start when there is none.
-        if (!playback.isPlaying) {
-          playback.play(
-            scope: PlaybackScope.allCuts,
-            startGlobalFrame: rollStart,
-          );
-        }
-      });
-    } else {
-      _voiceRecordStartedRoll = true;
-      if (!playback.isPlaying) {
-        playback.play(
-          scope: PlaybackScope.allCuts,
-          startGlobalFrame: rollStart,
+      _startVoiceRoll(rollStart);
+    });
+  }
+
+  /// 🚨T28: with pause gone, "active" already means rolling — there is
+  /// nothing to resume, only a transport to start when there is none.
+  void _startVoiceRoll(int rollStart) {
+    if (!playback.isPlaying) {
+      playback.play(scope: PlaybackScope.allCuts, startGlobalFrame: rollStart);
+    }
+  }
+
+  /// ADR cue clips + the streamer window (REC1-E): only with a punch
+  /// AHEAD of the roll — the approach is what they count down.
+  void _armVoiceCues({required int anchor, required int rollStart}) {
+    _voiceRecordCueClips = const [];
+    _voiceRecordStreamerWindow = null;
+    final secondFrames = projectFrameRate.framesCoveringExactSeconds(1, 1);
+    // ⛔No `punchEnd == null` case: a window that is not a punch anchors
+    // AT the roll, so `anchor <= rollStart` is the same question and one
+    // flag must not answer two. This early-out is EQUIVALENT — both
+    // builders below refuse a zero run-up on their own — and is here so
+    // a plain record does not walk the cue machinery at all.
+    if (anchor <= rollStart || secondFrames <= 0) {
+      return;
+    }
+    // A cut-scoped transport plays its own axis, so the cues have to be
+    // stated in it.
+    final axisShift =
+        playback.isActive && playback.scope == PlaybackScope.activeCut
+        ? activeCutGlobalStartFrame
+        : 0;
+    final settingsNow = audioSyncSettings.value;
+    if (settingsNow.cueBeeps) {
+      _voiceRecordCueClips = _countdownBeeps(
+        anchor: anchor,
+        rollStart: rollStart,
+        axisShift: axisShift,
+        secondFrames: secondFrames,
+      );
+    }
+    if (settingsNow.streamerEnabled) {
+      final approach = math.min(3 * secondFrames, anchor - rollStart);
+      if (approach >= 1) {
+        _voiceRecordStreamerWindow = (
+          startFrame: anchor - approach - axisShift,
+          punchFrame: anchor - axisShift,
         );
       }
     }
-    // ADR cue clips + the streamer window (REC1-E): only with a punch
-    // AHEAD of the roll — the approach is what they count down.
-    _voiceRecordCueClips = const [];
-    _voiceRecordStreamerWindow = null;
-    if (punchEnd != null && anchor > rollStart) {
-      final axisShift =
-          playback.isActive && playback.scope == PlaybackScope.activeCut
-          ? activeCutGlobalStartFrame
-          : 0;
-      final secondFrames = projectFrameRate.framesCoveringExactSeconds(1, 1);
-      if (secondFrames > 0) {
-        final settingsNow = audioSyncSettings.value;
-        if (settingsNow.cueBeeps) {
-          final beepPath = _ensureCueBeepWav();
-          if (beepPath != null) {
-            final beepFrames = math.max(
-              1,
-              projectFrameRate.framesCoveringExactSeconds(9, 100),
-            );
-            _voiceRecordCueClips = [
-              for (var beep = 3; beep >= 1; beep -= 1)
-                if (anchor - beep * secondFrames >= rollStart)
-                  ScheduledAudioClip(
-                    filePath: beepPath,
-                    startFrame: anchor - beep * secondFrames - axisShift,
-                    endFrameExclusive:
-                        anchor - beep * secondFrames - axisShift + beepFrames,
-                    gain: 0.8,
-                  ),
-            ];
-          }
-        }
-        if (settingsNow.streamerEnabled) {
-          final approach = math.min(3 * secondFrames, anchor - rollStart);
-          if (approach >= 1) {
-            _voiceRecordStreamerWindow = (
-              startFrame: anchor - approach - axisShift,
-              punchFrame: anchor - axisShift,
-            );
-          }
-        }
-      }
+  }
+
+  /// The three beeps before the punch — only the ones that fall after the
+  /// roll start, because a beep before the roll is a beep nobody hears.
+  List<ScheduledAudioClip> _countdownBeeps({
+    required int anchor,
+    required int rollStart,
+    required int axisShift,
+    required int secondFrames,
+  }) {
+    final beepPath = _ensureCueBeepWav();
+    if (beepPath == null) {
+      return const [];
     }
-    _syncVoiceRecordPreview();
-    notifyListeners(); // Armed-lane mute + cue clips join the schedules.
-    return VoiceRecordStartResult.started;
+    final beepFrames = math.max(
+      1,
+      projectFrameRate.framesCoveringExactSeconds(9, 100),
+    );
+    return [
+      for (var beep = 3; beep >= 1; beep -= 1)
+        if (anchor - beep * secondFrames >= rollStart)
+          ScheduledAudioClip(
+            filePath: beepPath,
+            startFrame: anchor - beep * secondFrames - axisShift,
+            endFrameExclusive:
+                anchor - beep * secondFrames - axisShift + beepFrames,
+            gain: 0.8,
+          ),
+    ];
   }
 
   /// Stops the take and lands it on the armed lane: WAV to disk, pool
@@ -1121,8 +1181,7 @@ class EditorVoiceRecording {
       // The shelf is also somewhere a person can look: on desktop it is a
       // folder they chose, and losing a take to a `.assets` directory
       // nobody opens is not a thing to keep.
-      final directory = _voiceRecordShelfDirectory ??=
-          appRecordingsDirectory();
+      final directory = _voiceRecordShelfDirectory ??= appRecordingsDirectory();
       Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
         final file = File(
