@@ -219,6 +219,58 @@ void main() {
     store.dispose();
   });
 
+  test('🚨two RESIDENT sources keep their own slots — a clip must not be '
+      'left pointing at the first source, which would play the wrong '
+      'sound with nothing to show for it', () async {
+    final store = AudioConformStore(
+      resolveConformPath: (_) => '${directory.path}/unused.wav',
+      projectSampleRate: sampleRate,
+      runner: (request) async {
+        final frames = request.sourcePath == 'a' ? 100 : 40;
+        return ConformResult(
+          outcome: ConformOutcome.built,
+          samples: ramp(frames),
+          channels: 1,
+          sampleRate: sampleRate,
+          frames: frames,
+        );
+      },
+      log: (_) {},
+    );
+    store.resultFor('a');
+    store.resultFor('b');
+    await pumpEventQueue();
+
+    final upload = windowedMixUpload(
+      mix: mixOf(const [
+        ScheduledAudioClip(filePath: 'a', startFrame: 0, endFrameExclusive: 10),
+        ScheduledAudioClip(
+          filePath: 'b',
+          startFrame: 10,
+          endFrameExclusive: 14,
+        ),
+      ]),
+      conformStore: store,
+      deviceRate: sampleRate,
+      centerSample: 0,
+    );
+
+    expect(upload, isNotNull);
+    expect(upload!.hasStreaming, isFalse);
+    expect(upload.sources[upload.clips[0].sourceIndex].samples, hasLength(100));
+    expect(
+      upload.sources[upload.clips[1].sourceIndex].samples,
+      hasLength(40),
+      reason: 'the second clip plays the SECOND file',
+    );
+    expect(
+      upload.clips[0].sourceIndex,
+      isNot(upload.clips[1].sourceIndex),
+      reason: 'two files are two sources',
+    );
+    store.dispose();
+  });
+
   test('the session lets go before the cache is collected: the entry that '
       'IS its file stands down, the resident one does not', () async {
     // 🚨 The conform cache now has a size bound and a Preferences button

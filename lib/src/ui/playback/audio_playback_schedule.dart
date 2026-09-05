@@ -15,12 +15,14 @@ import 'dart:math' as math;
 
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/cut_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import '../../services/audio/audio_mixer_reference.dart';
+import '../../services/audio/conform_pcm_stream.dart';
 import '../audio/audio_conform_store.dart';
 import '../../models/storyboard_timeline_layout.dart';
 
@@ -130,95 +132,234 @@ int _clampToFileLength({
   );
 }
 
+/// Where each cut sits on its track's GLOBAL frame axis, and which track
+/// owns it. SE rows are track-owned, so this — not the playlist — is the
+/// axis a sound's position is stated in.
+typedef _TrackAxis = ({
+  Map<CutId, int> startByCutId,
+  Map<CutId, Track> trackByCutId,
+});
+
+/// One entry's window onto its track: the track frames it shows, how far
+/// back over a PLAYED leading gap that reaches, and whether it starts a
+/// contiguous run.
+typedef _EntryWindow = ({int start, int end, int coveredLead, bool isRunStart});
+
+/// One call to [buildAudioPlaybackSchedule]: the timeline being played,
+/// the monitoring state it is heard through, and the ruler its ends are
+/// measured against. Every entry and every span consults all three
+/// unchanged, so they are held once rather than threaded through.
+class _ScheduleRun {
+  _ScheduleRun({
+    required this.playlist,
+    required Project project,
+    required this.muted,
+    required this.soloed,
+    required this.rate,
+    required this.durationSecondsFor,
+  }) : axis = _axisOf(project);
+
+  final List<StoryboardTimelineLayoutEntry> playlist;
+  final _TrackAxis axis;
+  final Set<LayerId> muted;
+  final Set<LayerId> soloed;
+  final ProjectFrameRate rate;
+  final double? Function(String filePath) durationSecondsFor;
+
+  static _TrackAxis _axisOf(Project project) {
+    final startByCutId = <CutId, int>{};
+    final trackByCutId = <CutId, Track>{};
+    for (final track in project.tracks) {
+      var start = 0;
+      for (final cut in track.cuts) {
+        start += cut.leadingGapFrames;
+        startByCutId[cut.id] = start;
+        trackByCutId[cut.id] = track;
+        start += cut.duration;
+      }
+    }
+    return (startByCutId: startByCutId, trackByCutId: trackByCutId);
+  }
+
+  /// Everything playlist entry [entryIndex] contributes: for each audible
+  /// SE row of its track, every span this entry is the one to show.
+  List<ScheduledAudioClip> entrySchedule(int entryIndex) {
+    final entry = playlist[entryIndex];
+    final track = axis.trackByCutId[entry.cutId];
+    if (track == null || axis.startByCutId[entry.cutId] == null) {
+      return const [];
+    }
+    final window = _windowAt(entryIndex);
+    final runEnd = _contiguousEndFrom(entryIndex);
+    final scheduled = <ScheduledAudioClip>[];
+    for (final layer in track.seLayers) {
+      if (!_rowIsAudible(layer)) {
+        continue;
+      }
+      for (final span in seAudioSpans(layer)) {
+        final clip = _spanClip(
+          span,
+          layer: layer,
+          at: (
+            window: window,
+            entryStartFrame: entry.startFrame,
+            runEnd: runEnd,
+          ),
+        );
+        if (clip != null) {
+          scheduled.add(clip);
+        }
+      }
+    }
+    return scheduled;
+  }
+
+  /// Whether [layer] is heard at all: its own mute, the transient
+  /// monitoring mute, and solo, which narrows to itself when anything is
+  /// soloed.
+  bool _rowIsAudible(Layer layer) =>
+      !layer.muted &&
+      !muted.contains(layer.id) &&
+      (soloed.isEmpty || soloed.contains(layer.id));
+
+  /// The playlist frame where the contiguous run starting at [entryIndex]
+  /// ends. Contiguous = the playlist and track axes advance by the SAME
+  /// amount between entries — back-to-back cuts, or a leading gap the
+  /// playlist plays through as black. Sounds keep running through played
+  /// gaps (audio lives on the global axis).
+  int _contiguousEndFrom(int entryIndex) {
+    var end = playlist[entryIndex].endFrame;
+    var trackEnd =
+        (axis.startByCutId[playlist[entryIndex].cutId] ?? 0) +
+        playlist[entryIndex].duration;
+    final track = axis.trackByCutId[playlist[entryIndex].cutId];
+    for (var i = entryIndex + 1; i < playlist.length; i += 1) {
+      final next = playlist[i];
+      final nextTrackStart = axis.startByCutId[next.cutId];
+      if (nextTrackStart == null ||
+          next.startFrame < end ||
+          next.startFrame - end != nextTrackStart - trackEnd ||
+          !identical(axis.trackByCutId[next.cutId], track)) {
+        break;
+      }
+      end = next.endFrame;
+      trackEnd = nextTrackStart + next.duration;
+    }
+    return end;
+  }
+
+  /// Where playlist entry [entryIndex]'s window sits on its TRACK's axis,
+  /// and whether it starts a contiguous run.
+  ///
+  /// A run-start entry also carries sounds spilling in from before the
+  /// playlist window (offset-bumped); interior entries only emit spans
+  /// STARTING in their window, so nothing is scheduled twice. The window
+  /// extends back over the entry's PLAYED leading gap — playlist frames
+  /// before the cut that map 1:1 onto the track frames before it — so a
+  /// sound starting inside a gap is scheduled too.
+  _EntryWindow _windowAt(int entryIndex) {
+    final entry = playlist[entryIndex];
+    final track = axis.trackByCutId[entry.cutId];
+    final cutTrackStart = axis.startByCutId[entry.cutId]!;
+    final previous = entryIndex == 0 ? null : playlist[entryIndex - 1];
+    final previousTrackStart = previous == null
+        ? null
+        : axis.startByCutId[previous.cutId];
+    final playlistLead = entry.startFrame - (previous?.endFrame ?? 0);
+    final axesAligned = previous == null
+        // The playlist head maps straight onto the track axis (all-cuts
+        // playlists ARE the track axis; a rebased single-cut playlist has
+        // no lead at all).
+        ? playlistLead >= 0
+        : previousTrackStart != null &&
+              identical(axis.trackByCutId[previous.cutId], track) &&
+              playlistLead >= 0 &&
+              cutTrackStart - (previousTrackStart + previous.duration) ==
+                  playlistLead;
+    final coveredLead = axesAligned ? playlistLead : 0;
+    return (
+      start: cutTrackStart - coveredLead,
+      end: cutTrackStart + entry.duration,
+      coveredLead: coveredLead,
+      isRunStart: previous == null || !axesAligned,
+    );
+  }
+
+  /// The one span, mapped onto the playlist axis — or null when this
+  /// entry is not the one that shows it.
+  ///
+  /// A span is emitted at the entry containing its START; a run START
+  /// also takes a span spilling in from before its window, bumping the
+  /// file offset by the clipped lead so the sound is heard from where it
+  /// has got to rather than from the top.
+  ScheduledAudioClip? _spanClip(
+    SeAudioSpan span, {
+    required Layer layer,
+    required ({_EntryWindow window, int entryStartFrame, int runEnd}) at,
+  }) {
+    final window = at.window;
+    final spanEnd = span.startFrame + span.lengthFrames;
+    final startsHere =
+        span.startFrame >= window.start && span.startFrame < window.end;
+    final spillsIntoRunStart =
+        window.isRunStart &&
+        span.startFrame < window.start &&
+        spanEnd > window.start;
+    if (!startsHere && !spillsIntoRunStart) {
+      return null;
+    }
+    final clippedLead = spillsIntoRunStart ? window.start - span.startFrame : 0;
+    // at.entryStartFrame - coveredLead = the playlist frame the
+    // (gap-extended) window begins at.
+    final startFrame =
+        at.entryStartFrame -
+        window.coveredLead +
+        (spillsIntoRunStart ? 0 : span.startFrame - window.start);
+    final offsetFrames = span.clip.offsetFrames + clippedLead;
+    final endFrameExclusive = _clampToFileLength(
+      startFrame: startFrame,
+      endFrameExclusive: math.min(
+        at.runEnd,
+        startFrame + span.lengthFrames - clippedLead,
+      ),
+      filePath: span.clip.filePath,
+      offsetFrames: offsetFrames,
+      rate: rate,
+      durationSecondsFor: durationSecondsFor,
+    );
+    if (endFrameExclusive <= startFrame) {
+      return null;
+    }
+    return ScheduledAudioClip(
+      filePath: span.clip.filePath,
+      startFrame: startFrame,
+      endFrameExclusive: endFrameExclusive,
+      offsetFrames: offsetFrames,
+      // The layer fader multiplies in HERE (one gain per entry) so no
+      // consumer ever re-consults the layer.
+      gain: layer.audioGain * span.clip.gain,
+      fadeInFrames: span.clip.fadeInFrames,
+      fadeOutFrames: span.clip.fadeOutFrames,
+      pan: layer.audioPan,
+      fadeCurve: span.clip.fadeCurve,
+      // Envelope keys anchor to the SPAN start; a clipped lead shifts
+      // them (possibly negative — before the window).
+      volumeKeys: clippedLead == 0
+          ? span.clip.volumeKeys
+          : [
+              for (final key in span.clip.volumeKeys)
+                AudioVolumeKey(frame: key.frame - clippedLead, gain: key.gain),
+            ],
+    );
+  }
+}
+
 /// Lays the project's track-owned SE spans onto [playlist]'s frame axis.
 ///
 /// Clip lengths come from the waveform peaks ([durationSecondsFor]); clips
 /// whose peaks are not extracted yet fall back to the run end (a shorter
 /// file simply completes early — stopping a completed player is a no-op,
 /// and the mixer plays silence past a source's last sample).
-/// The playlist frame where the contiguous run starting at
-/// [entryIndex] ends. Contiguous = the playlist and track axes
-/// advance by the SAME amount between entries — back-to-back cuts,
-/// or a leading gap the playlist plays through as black. Sounds keep
-/// running through played gaps (audio lives on the global axis).
-int _contiguousPlaylistEndFrom(
-  int entryIndex, {
-  required List<StoryboardTimelineLayoutEntry> playlist,
-  required Map<CutId, int> trackStartByCutId,
-  required Map<CutId, Track> trackByCutId,
-}) {
-  var end = playlist[entryIndex].endFrame;
-  var trackEnd =
-      (trackStartByCutId[playlist[entryIndex].cutId] ?? 0) +
-      playlist[entryIndex].duration;
-  final track = trackByCutId[playlist[entryIndex].cutId];
-  for (var i = entryIndex + 1; i < playlist.length; i += 1) {
-    final next = playlist[i];
-    final nextTrackStart = trackStartByCutId[next.cutId];
-    if (nextTrackStart == null ||
-        next.startFrame < end ||
-        next.startFrame - end != nextTrackStart - trackEnd ||
-        !identical(trackByCutId[next.cutId], track)) {
-      break;
-    }
-    end = next.endFrame;
-    trackEnd = nextTrackStart + next.duration;
-  }
-  return end;
-}
-
-/// Where playlist entry [entryIndex]'s window sits on its TRACK's axis,
-/// and whether it starts a contiguous run.
-///
-/// A run-start entry also carries sounds spilling in from before the
-/// playlist window (offset-bumped); interior entries only emit spans
-/// STARTING in their window, so nothing is scheduled twice. The window
-/// extends back over the entry's PLAYED leading gap — playlist frames
-/// before the cut that map 1:1 onto the track frames before it — so a
-/// sound starting inside a gap is scheduled too.
-({int start, int end, int coveredLead, bool isRunStart}) _entryTrackWindow(
-  int entryIndex, {
-  required List<StoryboardTimelineLayoutEntry> playlist,
-  required Map<CutId, int> trackStartByCutId,
-  required Map<CutId, Track> trackByCutId,
-}) {
-  final i = entryIndex;
-  final entry = playlist[i];
-  final track = trackByCutId[entry.cutId];
-  final cutTrackStart = trackStartByCutId[entry.cutId]!;
-  // A run-start entry also carries sounds spilling in from before
-  // the playlist window (offset-bumped); interior entries only emit
-  // spans STARTING in their window (no duplicates). The window
-  // extends back over the entry's PLAYED leading gap — playlist
-  // frames before the cut that map 1:1 onto the track frames before
-  // it — so sounds starting inside a gap are scheduled too.
-  final previous = i == 0 ? null : playlist[i - 1];
-  final previousTrackStart = previous == null
-      ? null
-      : trackStartByCutId[previous.cutId];
-  final playlistLead = entry.startFrame - (previous?.endFrame ?? 0);
-  final axesAligned = previous == null
-      // The playlist head maps straight onto the track axis
-      // (all-cuts playlists ARE the track axis; a rebased
-      // single-cut playlist has no lead at all).
-      ? playlistLead >= 0
-      : previousTrackStart != null &&
-            identical(trackByCutId[previous.cutId], track) &&
-            playlistLead >= 0 &&
-            cutTrackStart - (previousTrackStart + previous.duration) ==
-                playlistLead;
-  final coveredLead = axesAligned ? playlistLead : 0;
-  final isRunStart = previous == null || !axesAligned;
-  final windowStart = cutTrackStart - coveredLead;
-  final windowEnd = cutTrackStart + entry.duration;
-  return (
-    start: windowStart,
-    end: windowEnd,
-    coveredLead: coveredLead,
-    isRunStart: isRunStart,
-  );
-}
-
 List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   required List<StoryboardTimelineLayoutEntry> playlist,
   required Project? project,
@@ -251,112 +392,16 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   // the span's true end, clamped only where the playlist run stops being
   // contiguous with the track.
   if (project != null && playlist.isNotEmpty) {
-    final trackStartByCutId = <CutId, int>{};
-    final trackByCutId = <CutId, Track>{};
-    for (final track in project.tracks) {
-      var start = 0;
-      for (final cut in track.cuts) {
-        start += cut.leadingGapFrames;
-        trackStartByCutId[cut.id] = start;
-        trackByCutId[cut.id] = track;
-        start += cut.duration;
-      }
-    }
-
+    final run = _ScheduleRun(
+      playlist: playlist,
+      project: project,
+      muted: muted,
+      soloed: soloed,
+      rate: rate,
+      durationSecondsFor: durationSecondsFor,
+    );
     for (var i = 0; i < playlist.length; i += 1) {
-      final entry = playlist[i];
-      final track = trackByCutId[entry.cutId];
-      final cutTrackStart = trackStartByCutId[entry.cutId];
-      if (track == null || cutTrackStart == null) {
-        continue;
-      }
-      final window = _entryTrackWindow(
-        i,
-        playlist: playlist,
-        trackStartByCutId: trackStartByCutId,
-        trackByCutId: trackByCutId,
-      );
-      final isRunStart = window.isRunStart;
-      final windowStart = window.start;
-      final windowEnd = window.end;
-      final coveredLead = window.coveredLead;
-      final runEnd = _contiguousPlaylistEndFrom(
-        i,
-        playlist: playlist,
-        trackStartByCutId: trackStartByCutId,
-        trackByCutId: trackByCutId,
-      );
-
-      for (final layer in track.seLayers) {
-        if (layer.muted ||
-            muted.contains(layer.id) ||
-            (soloed.isNotEmpty && !soloed.contains(layer.id))) {
-          continue;
-        }
-        for (final span in seAudioSpans(layer)) {
-          final spanEnd = span.startFrame + span.lengthFrames;
-          final startsHere =
-              span.startFrame >= windowStart && span.startFrame < windowEnd;
-          final spillsIntoRunStart =
-              isRunStart &&
-              span.startFrame < windowStart &&
-              spanEnd > windowStart;
-          if (!startsHere && !spillsIntoRunStart) {
-            continue;
-          }
-          final clippedLead = spillsIntoRunStart
-              ? windowStart - span.startFrame
-              : 0;
-          // entry.startFrame - coveredLead = the playlist frame the
-          // (gap-extended) window begins at.
-          final startFrame =
-              entry.startFrame -
-              coveredLead +
-              (spillsIntoRunStart ? 0 : span.startFrame - windowStart);
-          var endFrameExclusive = math.min(
-            runEnd,
-            startFrame + span.lengthFrames - clippedLead,
-          );
-          final offsetFrames = span.clip.offsetFrames + clippedLead;
-          endFrameExclusive = _clampToFileLength(
-            startFrame: startFrame,
-            endFrameExclusive: endFrameExclusive,
-            filePath: span.clip.filePath,
-            offsetFrames: offsetFrames,
-            rate: rate,
-            durationSecondsFor: durationSecondsFor,
-          );
-          if (endFrameExclusive <= startFrame) {
-            continue;
-          }
-          schedule.add(
-            ScheduledAudioClip(
-              filePath: span.clip.filePath,
-              startFrame: startFrame,
-              endFrameExclusive: endFrameExclusive,
-              offsetFrames: offsetFrames,
-              // The layer fader multiplies in HERE (one gain per entry) so
-              // no consumer ever re-consults the layer.
-              gain: layer.audioGain * span.clip.gain,
-              fadeInFrames: span.clip.fadeInFrames,
-              fadeOutFrames: span.clip.fadeOutFrames,
-              pan: layer.audioPan,
-              fadeCurve: span.clip.fadeCurve,
-              // Envelope keys anchor to the SPAN start; a clipped lead
-              // shifts them (possibly negative — before the window).
-              volumeKeys: clippedLead == 0
-                  ? span.clip.volumeKeys
-                  : [
-                      for (final key in span.clip.volumeKeys)
-                        AudioVolumeKey(
-                          frame: key.frame - clippedLead,
-                          gain: key.gain,
-                        ),
-                    ],
-            ),
-          );
-        }
-      }
+      schedule.addAll(run.entrySchedule(i));
     }
   }
   // Injected cues (REC1-E): already on the playlist axis, appended
@@ -432,6 +477,94 @@ AudioMixSchedule audioMixScheduleFrom({
   return AudioMixSchedule(clips: clips, sourcePaths: sourcePaths);
 }
 
+/// Where the disk window sits and how far it reaches, in device samples.
+typedef _StreamWindow = ({int centerSample, int backSamples, int aheadSamples});
+
+/// [clip] re-pointed at [sourceIndex]; nothing else about it changes.
+AudioMixClip _clipWithSource(AudioMixClip clip, int sourceIndex) =>
+    AudioMixClip(
+      sourceIndex: sourceIndex,
+      startSample: clip.startSample,
+      endSample: clip.endSample,
+      sourceOffset: clip.sourceOffset,
+      gain: clip.gain,
+      fadeInSamples: clip.fadeInSamples,
+      fadeOutSamples: clip.fadeOutSamples,
+      panLeft: clip.panLeft,
+      panRight: clip.panRight,
+      fadeCurve: clip.fadeCurve,
+      envelope: clip.envelope,
+    );
+
+/// The sources that are already conformed and resident, in upload order,
+/// with the mix's source index mapped onto that order.
+///
+/// Null when one of them is still landing — the caller uploads nothing
+/// and any old schedule keeps playing. ⛔Every lookup runs even after a
+/// miss: each one KICKS its conform or rate conversion, and the next
+/// attempt wants them all landed.
+({List<AudioMixSource> sources, Map<int, int> byMixIndex, bool hasStreaming})?
+_residentSources({
+  required AudioMixSchedule mix,
+  required AudioConformStore conformStore,
+  required int deviceRate,
+}) {
+  final sources = <AudioMixSource>[];
+  final byMixIndex = <int, int>{};
+  var complete = true;
+  var hasStreaming = false;
+  for (var index = 0; index < mix.sourcePaths.length; index += 1) {
+    final path = mix.sourcePaths[index];
+    if (conformStore.isStreaming(path)) {
+      hasStreaming = true;
+      continue; // windowed per clip by the caller
+    }
+    final samples = conformStore.samplesAtRate(path, deviceRate);
+    final entry = conformStore.resultFor(path);
+    if (samples == null || entry == null || !entry.isUsable) {
+      complete = false;
+      continue;
+    }
+    byMixIndex[index] = sources.length;
+    sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+  }
+  // ⛔Do NOT delete this as redundant because the caller refuses again on
+  // a missing map entry: this returns BEFORE the clip loop, so a tick
+  // that cannot upload anyway does not pay for a streamed clip's disk
+  // read — and while a conform is landing, every tick takes this path.
+  if (!complete) {
+    return null;
+  }
+  return (sources: sources, byMixIndex: byMixIndex, hasStreaming: hasStreaming);
+}
+
+/// The slice of a streamed source [clip] needs right now: trailing behind
+/// the playhead and leading in front of it, clamped into the clip's own
+/// span (and, by the reader, into the file).
+AudioMixSource _streamWindowSource(
+  AudioMixClip clip, {
+  required ConformPcmStreamReader reader,
+  required _StreamWindow at,
+}) {
+  final clipLength = clip.endSample - clip.startSample;
+  final positionInClip = (at.centerSample - clip.startSample).clamp(
+    0,
+    clipLength,
+  );
+  final sourceAt = clip.sourceOffset + positionInClip;
+  final windowStart = math.max(clip.sourceOffset, sourceAt - at.backSamples);
+  final windowEnd = math.min(
+    clip.sourceOffset + clipLength,
+    sourceAt + at.aheadSamples,
+  );
+  final window = reader.readWindow(windowStart, windowEnd - windowStart);
+  return AudioMixSource(
+    samples: window.samples,
+    channels: reader.channels,
+    sourceStart: window.startSample,
+  );
+}
+
 /// Builds the device upload for [mix] — resident PCM for ordinary clips,
 /// a disk WINDOW around [centerSample] for streaming ones (AUDIO-PRO R6).
 /// One implementation for the transport AND the scrubber, so streamed
@@ -460,86 +593,41 @@ windowedMixUpload({
   int backSeconds = 2,
   int aheadSeconds = 30,
 }) {
-  final sources = <AudioMixSource>[];
-  final residentIndex = <int, int>{};
-  var complete = true;
-  var hasStreaming = false;
-  for (var index = 0; index < mix.sourcePaths.length; index += 1) {
-    final path = mix.sourcePaths[index];
-    if (conformStore.isStreaming(path)) {
-      hasStreaming = true;
-      continue; // windowed per clip below
-    }
-    // Every lookup runs even after a miss: each one KICKS its conform or
-    // rate conversion, and the next attempt wants them all landed.
-    final samples = conformStore.samplesAtRate(path, deviceRate);
-    final entry = conformStore.resultFor(path);
-    if (samples == null || entry == null || !entry.isUsable) {
-      complete = false;
-      continue;
-    }
-    residentIndex[index] = sources.length;
-    sources.add(AudioMixSource(samples: samples, channels: entry.channels));
-  }
-  if (!complete) {
+  final resident = _residentSources(
+    mix: mix,
+    conformStore: conformStore,
+    deviceRate: deviceRate,
+  );
+  if (resident == null) {
     return null;
   }
-  if (hasStreaming && deviceRate != conformStore.projectSampleRate) {
+  if (resident.hasStreaming && deviceRate != conformStore.projectSampleRate) {
     return null;
   }
 
-  AudioMixClip clipWithSource(AudioMixClip clip, int sourceIndex) =>
-      AudioMixClip(
-        sourceIndex: sourceIndex,
-        startSample: clip.startSample,
-        endSample: clip.endSample,
-        sourceOffset: clip.sourceOffset,
-        gain: clip.gain,
-        fadeInSamples: clip.fadeInSamples,
-        fadeOutSamples: clip.fadeOutSamples,
-        panLeft: clip.panLeft,
-        panRight: clip.panRight,
-        fadeCurve: clip.fadeCurve,
-        envelope: clip.envelope,
-      );
-
+  final sources = [...resident.sources];
   final clips = <AudioMixClip>[];
-  final backSamples = backSeconds * deviceRate;
-  final aheadSamples = aheadSeconds * deviceRate;
+  final at = (
+    centerSample: centerSample,
+    backSamples: backSeconds * deviceRate,
+    aheadSamples: aheadSeconds * deviceRate,
+  );
   for (final clip in mix.clips) {
     final path = mix.sourcePaths[clip.sourceIndex];
     if (!conformStore.isStreaming(path)) {
-      final mapped = residentIndex[clip.sourceIndex];
+      final mapped = resident.byMixIndex[clip.sourceIndex];
       if (mapped == null) {
         return null;
       }
-      clips.add(clipWithSource(clip, mapped));
+      clips.add(_clipWithSource(clip, mapped));
       continue;
     }
     final reader = conformStore.streamReaderFor(path);
     if (reader == null) {
       return null;
     }
-    final clipLength = clip.endSample - clip.startSample;
-    final positionInClip = (centerSample - clip.startSample).clamp(
-      0,
-      clipLength,
-    );
-    final sourceAt = clip.sourceOffset + positionInClip;
-    final windowStart = math.max(clip.sourceOffset, sourceAt - backSamples);
-    final windowEnd = math.min(
-      clip.sourceOffset + clipLength,
-      sourceAt + aheadSamples,
-    );
-    final window = reader.readWindow(windowStart, windowEnd - windowStart);
-    clips.add(clipWithSource(clip, sources.length));
-    sources.add(
-      AudioMixSource(
-        samples: window.samples,
-        channels: reader.channels,
-        sourceStart: window.startSample,
-      ),
-    );
+    clips.add(_clipWithSource(clip, sources.length));
+    sources.add(_streamWindowSource(clip, reader: reader, at: at));
   }
-  return (clips: clips, sources: sources, hasStreaming: hasStreaming);
+  return (clips: clips, sources: sources, hasStreaming: resident.hasStreaming);
 }
