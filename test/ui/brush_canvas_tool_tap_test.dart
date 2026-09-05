@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/gestures.dart' show kMiddleMouseButton, kPrimaryButton;
 import 'package:flutter/material.dart';
@@ -11,12 +13,14 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
@@ -550,6 +554,57 @@ void main() {
     await gesture.up();
     await tester.pump();
     expect(fillColors.length, before, reason: 'middle click never fills');
+  });
+
+  testWidgets('a fill that spills off the canvas holds only CANVAS tiles — '
+      'the settling bounds clip at the canvas wall, not the pasteboard', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    // A 64×64 stamp centred on the canvas ORIGIN lands at (-32, -32)..
+    // (32, 32): three of its four tiles are pasteboard tiles.
+    final stamp = BrushStampImage(
+      id: 'spill',
+      width: 64,
+      height: 64,
+      rgba: Uint8List(64 * 64 * 4)..fillRange(0, 64 * 64 * 4, 0xFF),
+    );
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+          ),
+          fillDabAt: (_, color, _) => fillDab(color).copyWith(
+            center: CanvasPoint(x: 0, y: 0),
+            size: 64,
+            stamp: stamp,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(10, 10),
+    );
+    await tester.pump();
+
+    final held = tester
+        .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+        .overlayModel!
+        .settleHoldTiles;
+    expect(held, isNotNull, reason: 'the fill pins its pre-fill tiles');
+    expect(held!.keys.toList(), [TileCoord(x: 0, y: 0)]);
   });
 
   testWidgets('a null fill region commits nothing', (tester) async {
