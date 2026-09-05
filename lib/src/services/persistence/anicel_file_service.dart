@@ -865,53 +865,10 @@ class AnicelFileService {
         if (layout == null) {
           return null;
         }
-
-        // Only what is not already in the file. Media is written once and
-        // never edited, so an asset already inside is a survivor of the
-        // append like any untouched cel — re-streaming it every save would
-        // rewrite the project's whole media area to change one drawing.
-        //
-        // Resolved BEFORE the cels so the count is complete: a fraction needs
-        // its denominator before the first thing it divides.
-        final newMedia = [
-          for (final entry in mediaToStore.entries)
-            if (layout.entryNamed(
-                  anicelMediaEntryName(
-                    entry.key,
-                    framed: entry.value.storedIsFramed,
-                  ),
-                ) ==
-                null)
-              AnicelStreamedEntry(
-                name: anicelMediaEntryName(
-                  entry.key,
-                  framed: entry.value.storedIsFramed,
-                ),
-                length: entry.value.lengthSync(),
-                readInto: entry.value.readIntoSync,
-              ),
-        ];
-        // A conform, unlike media, CAN be replaced under the same name: it
-        // is derived, and a rebuilt one lands at the same cache address.
-        // So presence is not enough — the LENGTH has to agree too.
-        //
-        // 🚨What being wrong costs, stated honestly: two different conforms
-        // of one source at one setting that happen to compress to the exact
-        // same byte count would leave the stale one carried. The pipeline
-        // checks the source fingerprint before it uses a conform, so that
-        // costs dead bytes until the next differing save and can never
-        // play the wrong sound. Re-streaming every conform on every save
-        // instead would rewrite hundreds of megabytes to change one line
-        // of dialogue.
-        final newConforms = [
-          for (final entry in conforms.entries.entries)
-            if (_needsRestreaming(layout, entry.key, entry.value))
-              AnicelStreamedEntry(
-                name: entry.key,
-                length: entry.value.lengthSync(),
-                readInto: entry.value.readIntoSync,
-              ),
-        ];
+        // Resolved BEFORE the cels so the progress count is complete: a
+        // fraction needs its denominator before the first thing it divides.
+        final newMedia = _mediaToAppend(layout, mediaToStore);
+        final newConforms = _conformsToAppend(layout, conforms);
         // ⚠️ Media counts once PER PASS, not once. This writer reads every
         // streamed entry twice (checksum, then copy), and counting it once
         // put `_done` at `_total` when the checksum pass ended — the window
@@ -931,50 +888,7 @@ class AnicelFileService {
           mediaCrcs: mediaCrcs,
         );
         progress.step();
-        final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
-        for (final work in works) {
-          final blob = work.resolveBlob();
-          if (blob != null) {
-            blobs.add((work.key, work.name, blob));
-          }
-          progress.step();
-        }
-        // Media the project no longer carries leaves the central directory
-        // with this save. An entry nothing names was invisible garbage that
-        // the compaction maths counted as ACTIVE media — raising the very
-        // floor that suppresses compaction, so a deleted 500MB track could
-        // sit in the file for ever — and worse, a live name silently
-        // reattached a RE-imported same-path asset to the OLD bytes (the
-        // presence check above skips streaming when the name already
-        // exists).
-        final wantedMediaNames = {
-          for (final entry in mediaToStore.entries)
-            anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed),
-        };
-        final staleMediaNames = {
-          for (final entry in layout.entries)
-            if (entry.name.startsWith(anicelMediaEntryPrefix) &&
-                !wantedMediaNames.contains(entry.name))
-              entry.name,
-        };
-        // 🚨★★★**THIS IS THE SETTINGS-CHANGE SWEEP** (유저 2026-08-30:
-        // 「레이트 변경 등 죽은파일만 깔끔하게 잘 걷어낼것」).
-        //
-        // ⛔Against [ProjectConforms.liveNames], NOT against what is being
-        // written. Those are different sets and the difference is the bug
-        // this shape exists to avoid: a machine that has only just opened
-        // the project writes NOTHING (its cache is empty and the bytes are
-        // already in the file), and sweeping by「what was written」would
-        // have taken every conform the project carried on exactly that
-        // journey. `liveNames` says what the project may legitimately
-        // HOLD at the current settings; a conform built under others is
-        // under a name outside it, and that is the whole test.
-        final staleConformNames = {
-          for (final entry in layout.entries)
-            if (entry.name.startsWith(anicelConformEntryPrefix) &&
-                !conforms.entries.containsKey(entry.name))
-              entry.name,
-        };
+        final blobs = _resolvedBlobs(works, progress);
         final appended = appendAnicelEntries(
           path: filePath,
           newEntries: {
@@ -983,8 +897,11 @@ class AnicelFileService {
           },
           removeNames: {
             ...removeNames,
-            ...staleMediaNames,
-            ...staleConformNames,
+            ..._namesToDrop(
+              layout,
+              mediaToStore: mediaToStore,
+              conforms: conforms,
+            ),
           },
           streamedEntries: [
             for (final entry in newMedia) _progressed(entry, progress),
@@ -992,18 +909,144 @@ class AnicelFileService {
           ],
         );
         progress.finish();
-        return {
-          for (final (key, name, blob) in blobs)
-            key: AnicelCelFileRef(
-              filePath: filePath,
-              dataOffset: appended.entryNamed(name)!.dataOffset,
-              length: blob.bytes.length,
-              canvasSize: blob.canvasSize,
-              tileSize: blob.tileSize,
-            ),
-        };
+        return _refsForBlobs(blobs, appended: appended, filePath: filePath);
       }),
     );
+  }
+
+  /// Every dirty cel's bytes, in [works] order.
+  ///
+  /// ⛔The progress steps for EVERY work, including the ones that resolve
+  /// to nothing: the fraction has to reach its denominator or the window
+  /// stops short of 100% and looks hung.
+  static List<(BrushFrameKey, String, AnicelCelBlob)> _resolvedBlobs(
+    List<_CelWork> works,
+    _SaveProgress progress,
+  ) {
+    final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
+    for (final work in works) {
+      final blob = work.resolveBlob();
+      if (blob != null) {
+        blobs.add((work.key, work.name, blob));
+      }
+      progress.step();
+    }
+    return blobs;
+  }
+
+  /// The refs to adopt: where each blob actually LANDED, read back from
+  /// the layout the append returned rather than predicted.
+  static Map<BrushFrameKey, AnicelCelFileRef> _refsForBlobs(
+    List<(BrushFrameKey, String, AnicelCelBlob)> blobs, {
+    required AnicelZipLayout appended,
+    required String filePath,
+  }) => {
+    for (final (key, name, blob) in blobs)
+      key: AnicelCelFileRef(
+        filePath: filePath,
+        dataOffset: appended.entryNamed(name)!.dataOffset,
+        length: blob.bytes.length,
+        canvasSize: blob.canvasSize,
+        tileSize: blob.tileSize,
+      ),
+  };
+
+  /// The media this append has to write: only what is not already in the
+  /// file.
+  ///
+  /// Media is written once and never edited, so an asset already inside
+  /// is a survivor of the append like any untouched cel — re-streaming it
+  /// every save would rewrite the project's whole media area to change
+  /// one drawing.
+  static List<AnicelStreamedEntry> _mediaToAppend(
+    AnicelZipLayout layout,
+    Map<String, MediaByteSource> mediaToStore,
+  ) => [
+    for (final entry in mediaToStore.entries)
+      if (layout.entryNamed(
+            anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed),
+          ) ==
+          null)
+        AnicelStreamedEntry(
+          name: anicelMediaEntryName(
+            entry.key,
+            framed: entry.value.storedIsFramed,
+          ),
+          length: entry.value.lengthSync(),
+          readInto: entry.value.readIntoSync,
+        ),
+  ];
+
+  /// The conforms this append has to write.
+  ///
+  /// A conform, unlike media, CAN be replaced under the same name: it is
+  /// derived, and a rebuilt one lands at the same cache address. So
+  /// presence is not enough — the LENGTH has to agree too.
+  ///
+  /// 🚨What being wrong costs, stated honestly: two different conforms of
+  /// one source at one setting that happen to compress to the exact same
+  /// byte count would leave the stale one carried. The pipeline checks
+  /// the source fingerprint before it uses a conform, so that costs dead
+  /// bytes until the next differing save and can never play the wrong
+  /// sound. Re-streaming every conform on every save instead would
+  /// rewrite hundreds of megabytes to change one line of dialogue.
+  static List<AnicelStreamedEntry> _conformsToAppend(
+    AnicelZipLayout layout,
+    ProjectConforms conforms,
+  ) => [
+    for (final entry in conforms.entries.entries)
+      if (_needsRestreaming(layout, entry.key, entry.value))
+        AnicelStreamedEntry(
+          name: entry.key,
+          length: entry.value.lengthSync(),
+          readInto: entry.value.readIntoSync,
+        ),
+  ];
+
+  /// The names this save takes OUT of the central directory.
+  ///
+  /// Media the project no longer carries leaves with this save. An entry
+  /// nothing names was invisible garbage that the compaction maths
+  /// counted as ACTIVE media — raising the very floor that suppresses
+  /// compaction, so a deleted 500MB track could sit in the file for ever
+  /// — and worse, a live name silently reattached a RE-imported same-path
+  /// asset to the OLD bytes (the presence check in [_mediaToAppend] skips
+  /// streaming when the name already exists).
+  ///
+  /// 🚨★★★**AND THIS IS THE SETTINGS-CHANGE SWEEP** (유저 2026-08-30:
+  /// 「레이트 변경 등 죽은파일만 깔끔하게 잘 걷어낼것」).
+  ///
+  /// ⛔Against [ProjectConforms.liveNames], NOT against what is being
+  /// written. Those are different sets and the difference is the bug this
+  /// shape exists to avoid: a machine that has only just opened the
+  /// project writes NOTHING (its cache is empty and the bytes are already
+  /// in the file), and sweeping by「what was written」would have taken
+  /// every conform the project carried on exactly that journey.
+  /// `liveNames` says what the project may legitimately HOLD at the
+  /// current settings; a conform built under others is under a name
+  /// outside it, and that is the whole test.
+  static Set<String> _namesToDrop(
+    AnicelZipLayout layout, {
+    required Map<String, MediaByteSource> mediaToStore,
+    required ProjectConforms conforms,
+  }) {
+    final wantedMediaNames = {
+      for (final entry in mediaToStore.entries)
+        anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed),
+    };
+    return {
+      for (final entry in layout.entries)
+        if (entry.name.startsWith(anicelMediaEntryPrefix) &&
+            !wantedMediaNames.contains(entry.name))
+          entry.name,
+      // 🚨★★★THE SETTINGS-CHANGE SWEEP, against what the project may
+      // legitimately HOLD — see this method's doc for why that is not
+      // the same as what is being written.
+      for (final entry in layout.entries)
+        if (entry.name.startsWith(anicelConformEntryPrefix) &&
+            !conforms.entries.containsKey(entry.name))
+          entry.name,
+    };
   }
 
   /// Whether the entry called [name] has to be streamed again.
