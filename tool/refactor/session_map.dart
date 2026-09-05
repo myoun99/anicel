@@ -345,7 +345,7 @@ class _HostUseVisitor extends RecursiveAstVisitor<void> {
 
   String? _hostTarget(Expression e) {
     if (viaSession) {
-      if (e is PrefixedIdentifier && _isSession(e.prefix))
+      if (e is PrefixedIdentifier && _isSession(e.prefix)) {
         return e.identifier.name;
       }
       if (e is PropertyAccess && _isSession(e.target)) {
@@ -353,7 +353,9 @@ class _HostUseVisitor extends RecursiveAstVisitor<void> {
       }
       return null;
     }
-    if (e is SimpleIdentifier && hostNames.contains(e.name)) return e.name;
+    if (e is SimpleIdentifier && hostNames.contains(e.name)) {
+      return e.name;
+    }
     if (e is PropertyAccess && e.target is ThisExpression) {
       return e.propertyName.name;
     }
