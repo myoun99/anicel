@@ -130,15 +130,18 @@ Future<BitmapSurface> rasterizeImageToSurface({
   }
 
   // Tile span covered by the placement.
-  int floorDiv(int a, int b) => (a / b).floor();
-  final left = clipped.left.floor();
-  final top = clipped.top.floor();
-  final right = clipped.right.ceil();
-  final bottom = clipped.bottom.ceil();
-  final tileX0 = floorDiv(left, tileSize);
-  final tileY0 = floorDiv(top, tileSize);
-  final tileX1 = floorDiv(right - 1, tileSize);
-  final tileY1 = floorDiv(bottom - 1, tileSize);
+  final (
+    firstX: tileX0,
+    lastX: tileX1,
+    firstY: tileY0,
+    lastY: tileY1,
+  ) = tileRangeCovering(
+    left: clipped.left,
+    top: clipped.top,
+    right: clipped.right,
+    bottom: clipped.bottom,
+    tileSize: tileSize,
+  );
 
   // Raster the placed image ONCE over the covered tile block, then slice
   // into tiles. The recorder canvas is translated so the block's origin

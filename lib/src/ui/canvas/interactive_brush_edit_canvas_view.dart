@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/floor_math.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
@@ -57,23 +56,6 @@ part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
 part 'brush_edit/brush_edit_press.dart';
 
-/// The inclusive tile-coordinate box [bounds] touches on a [tileSize] grid.
-///
-/// ⛔FLOORDIV, NOT `~/`. Stroke bounds reach NEGATIVE (pasteboard) space,
-/// and truncation maps pixel -1 to tile 0 — which reads the wrong tile at
-/// the left and top walls. Both settling walks below derived this by hand,
-/// and a walk that lost the floorDiv would hold the wrong tiles at exactly
-/// the edge where a stroke leaves the canvas.
-({int minX, int maxX, int minY, int maxY}) _tileBoxFor(
-  DirtyRegion bounds,
-  int tileSize,
-) => (
-  minX: floorDiv(bounds.left, tileSize),
-  maxX: floorDiv(bounds.rightExclusive - 1, tileSize),
-  minY: floorDiv(bounds.top, tileSize),
-  maxY: floorDiv(bounds.bottomExclusive - 1, tileSize),
-);
-
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
 /// handoff, so a just-committed stroke never trades its overlay for stale
@@ -86,13 +68,13 @@ List<BitmapTile> settlingTilesForBounds({
   if (bounds == null) {
     return surface.tiles.values.toList();
   }
-  final box = _tileBoxFor(bounds, surface.tileSize);
+  final box = bounds.tileRange(tileSize: surface.tileSize);
   return [
     for (final tile in surface.tiles.values)
-      if (tile.coord.x >= box.minX &&
-          tile.coord.x <= box.maxX &&
-          tile.coord.y >= box.minY &&
-          tile.coord.y <= box.maxY)
+      if (tile.coord.x >= box.firstX &&
+          tile.coord.x <= box.lastX &&
+          tile.coord.y >= box.firstY &&
+          tile.coord.y <= box.lastY)
         tile,
   ];
 }
@@ -117,12 +99,12 @@ Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
   if (bounds == null) {
     return {for (final tile in surface.tiles.values) tile.coord: tile};
   }
-  final box = _tileBoxFor(bounds, surface.tileSize);
   final tiles = surface.tiles;
   return {
-    for (var y = box.minY; y <= box.maxY; y += 1)
-      for (var x = box.minX; x <= box.maxX; x += 1)
-        TileCoord(x: x, y: y): tiles[TileCoord(x: x, y: y)],
+    for (final coord in tileCoordsIn(
+      bounds.tileRange(tileSize: surface.tileSize),
+    ))
+      coord: tiles[coord],
   };
 }
 

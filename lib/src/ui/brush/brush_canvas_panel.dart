@@ -62,7 +62,6 @@ import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import 'brush_cursor_overlay.dart';
-import '../../core/floor_math.dart';
 import '../../models/tile_coord.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/provisional_tile_pictures.dart';

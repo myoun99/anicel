@@ -1,4 +1,3 @@
-import '../core/floor_math.dart';
 import 'bitmap_surface.dart';
 import 'bitmap_tile.dart';
 import 'dirty_region.dart';
@@ -19,11 +18,8 @@ typedef CoveredTile = ({
 
 /// Every EXISTING tile [region] touches, row by row.
 ///
-/// ⛔FLOORDIV, NOT `~/`. Pasteboard tiles sit at NEGATIVE coordinates and
-/// truncation maps pixel -1 to tile 0, which reads the wrong tile at the
-/// left and top walls. The walks that used to write this out had already
-/// drifted on exactly that: one divided as doubles and floored, the other
-/// called [floorDiv], and only one of them said why.
+/// The tile box comes from [tileRangeOf] — the floorDiv-not-`~/` law for
+/// negative pasteboard coordinates lives there, once.
 ///
 /// ⛔MISSING TILES ARE SKIPPED, not treated as transparent: the surface is
 /// sparse, an absent tile has no bytes, and every caller has to skip it
@@ -33,12 +29,12 @@ Iterable<CoveredTile> tilesCovering(
   DirtyRegion region,
 ) sync* {
   final tileSize = surface.tileSize;
-  final firstTileX = floorDiv(region.left, tileSize);
-  final lastTileX = floorDiv(region.rightExclusive - 1, tileSize);
-  final lastTileY = floorDiv(region.bottomExclusive - 1, tileSize);
-  for (var ty = floorDiv(region.top, tileSize); ty <= lastTileY; ty += 1) {
+  final (:firstX, :lastX, :firstY, :lastY) = region.tileRange(
+    tileSize: tileSize,
+  );
+  for (var ty = firstY; ty <= lastY; ty += 1) {
     final worldTop = ty * tileSize;
-    for (var tx = firstTileX; tx <= lastTileX; tx += 1) {
+    for (var tx = firstX; tx <= lastX; tx += 1) {
       final tile = surface.tileAt(TileCoord(x: tx, y: ty));
       if (tile == null) {
         continue;

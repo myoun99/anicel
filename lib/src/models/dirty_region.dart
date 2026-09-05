@@ -1,4 +1,3 @@
-import '../core/floor_math.dart';
 import 'tile_coord.dart';
 
 /// A pixel-space rectangle. Coordinates may be NEGATIVE (pasteboard
@@ -93,17 +92,17 @@ class DirtyRegion {
 
   Set<TileCoord> toTileCoords({required int tileSize}) {
     _validatePositive(tileSize, 'tileSize');
-
-    final startTileX = floorDiv(left, tileSize);
-    final endTileX = floorDiv(rightExclusive - 1, tileSize);
-    final startTileY = floorDiv(top, tileSize);
-    final endTileY = floorDiv(bottomExclusive - 1, tileSize);
-
-    return {
-      for (var y = startTileY; y <= endTileY; y++)
-        for (var x = startTileX; x <= endTileX; x++) TileCoord(x: x, y: y),
-    };
+    return tileCoordsIn(tileRange(tileSize: tileSize)).toSet();
   }
+
+  /// The inclusive tile box this region touches ([tileRangeOf]).
+  TileRange tileRange({required int tileSize}) => tileRangeOf(
+    left: left,
+    top: top,
+    rightExclusive: rightExclusive,
+    bottomExclusive: bottomExclusive,
+    tileSize: tileSize,
+  );
 
   Map<String, dynamic> toJson() => {
     'left': left,

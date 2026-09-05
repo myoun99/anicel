@@ -280,10 +280,18 @@ void _blendStampDab({
     // One BATCH call for the whole stamp (R18 A-3a): spans fan out
     // across the C worker pool; disjoint tiles keep it byte-identical
     // to the sequential loop.
-    final tileXStart = floorDiv(left, tileSize);
-    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
-    final tileYStart = floorDiv(top, tileSize);
-    final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
+    final (
+      firstX: tileXStart,
+      lastX: tileXEnd,
+      firstY: tileYStart,
+      lastY: tileYEnd,
+    ) = tileRangeOf(
+      left: left,
+      top: top,
+      rightExclusive: rightExclusive,
+      bottomExclusive: bottomExclusive,
+      tileSize: tileSize,
+    );
     final batchCoords = <TileCoord>[];
     labProbe('stamp.stage', () {
       native!.ensureTileSpanBatch(
@@ -329,12 +337,22 @@ void _blendStampDab({
     return;
   }
 
+  final (
+    firstX: tileXStart,
+    lastX: tileXEnd,
+    firstY: _,
+    lastY: _,
+  ) = tileRangeOf(
+    left: left,
+    top: top,
+    rightExclusive: rightExclusive,
+    bottomExclusive: bottomExclusive,
+    tileSize: tileSize,
+  );
   for (var y = top; y < bottomExclusive; y += 1) {
     final tileY = floorDiv(y, tileSize);
     final localRowOffset = (y - tileY * tileSize) * tileSize;
     final stampRowOffset = (y - stampTop) * stamp.width;
-    final tileXStart = floorDiv(left, tileSize);
-    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
       final coord = TileCoord(x: tileX, y: tileY);
@@ -621,10 +639,18 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
     'strokeBlend.upload',
     () => native.uploadStampBytes(strokePixels),
   );
-  final tileXStart = floorDiv(left, tileSize);
-  final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
-  final tileYStart = floorDiv(top, tileSize);
-  final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
+  final (
+    firstX: tileXStart,
+    lastX: tileXEnd,
+    firstY: tileYStart,
+    lastY: tileYEnd,
+  ) = tileRangeOf(
+    left: left,
+    top: top,
+    rightExclusive: rightExclusive,
+    bottomExclusive: bottomExclusive,
+    tileSize: tileSize,
+  );
   final nativeTiles = <TileCoord, QaNativeTileBuffer>{};
   final batchCoords = <TileCoord>[];
   labProbe('strokeBlend.stage', () {

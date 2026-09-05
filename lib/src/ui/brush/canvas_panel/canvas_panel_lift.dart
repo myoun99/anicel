@@ -87,18 +87,15 @@ class _CanvasPanelLift {
         postSurface.tileSize != preSurface.tileSize) {
       return;
     }
-    // floorDiv, not ~/: a landing in the pasteboard has negative
-    // coordinates, where truncation picks the wrong tile.
-    final size = postSurface.tileSize;
-    final firstTx = floorDiv(left, size);
-    final lastTx = floorDiv(right - 1, size);
-    final lastTy = floorDiv(bottom - 1, size);
-    final coords = <TileCoord>[];
-    for (var ty = floorDiv(top, size); ty <= lastTy; ty += 1) {
-      for (var tx = firstTx; tx <= lastTx; tx += 1) {
-        coords.add(TileCoord(x: tx, y: ty));
-      }
-    }
+    final coords = tileCoordsIn(
+      tileRangeOf(
+        left: left,
+        top: top,
+        rightExclusive: right,
+        bottomExclusive: bottom,
+        tileSize: postSurface.tileSize,
+      ),
+    );
     // Under the probe because it is the one part of a confirm whose cost
     // scales with the LANDING rather than with the change: a whole-canvas
     // stamp is every tile of the cel, at a `toImageSync` each.

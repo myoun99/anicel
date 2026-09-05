@@ -872,10 +872,18 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final baseTileSize = base.tileSize;
     final right = left + tileSize;
     final bottom = top + tileSize;
-    final tileX0 = floorDiv(left, baseTileSize);
-    final tileY0 = floorDiv(top, baseTileSize);
-    final tileX1 = floorDiv(right - 1, baseTileSize);
-    final tileY1 = floorDiv(bottom - 1, baseTileSize);
+    final (
+      firstX: tileX0,
+      lastX: tileX1,
+      firstY: tileY0,
+      lastY: tileY1,
+    ) = tileRangeOf(
+      left: left,
+      top: top,
+      rightExclusive: right,
+      bottomExclusive: bottom,
+      tileSize: baseTileSize,
+    );
     for (var tileY = tileY0; tileY <= tileY1; tileY += 1) {
       for (var tileX = tileX0; tileX <= tileX1; tileX += 1) {
         final tile = base.tileAt(TileCoord(x: tileX, y: tileY));

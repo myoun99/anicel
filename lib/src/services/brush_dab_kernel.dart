@@ -7,6 +7,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
+import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_tip_geometry.dart';
@@ -220,16 +221,23 @@ class BrushDabPlan {
     final textureMask = dab.textureMask;
     final textureDensity = dab.textureDensity;
     final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
+    final tiles = tileRangeOf(
+      left: left,
+      top: top,
+      rightExclusive: rightExclusive,
+      bottomExclusive: bottomExclusive,
+      tileSize: tileSize,
+    );
 
     return BrushDabPlan._(
       left: left,
       top: top,
       rightExclusive: rightExclusive,
       bottomExclusive: bottomExclusive,
-      tileXStart: floorDiv(left, tileSize),
-      tileXEnd: floorDiv(rightExclusive - 1, tileSize),
-      tileYStart: floorDiv(top, tileSize),
-      tileYEnd: floorDiv(bottomExclusive - 1, tileSize),
+      tileXStart: tiles.firstX,
+      tileXEnd: tiles.lastX,
+      tileYStart: tiles.firstY,
+      tileYEnd: tiles.lastY,
       sourceR: (sourceArgb >> 16) & 0xFF,
       sourceG: (sourceArgb >> 8) & 0xFF,
       sourceB: sourceArgb & 0xFF,
