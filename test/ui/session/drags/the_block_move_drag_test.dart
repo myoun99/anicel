@@ -92,8 +92,8 @@ void main() {
       source: row(
         'a',
         timeline: {
-          0: TimelineExposure.drawing(
-            const FrameId('a-1'),
+          0: const TimelineExposure.drawing(
+            FrameId('a-1'),
             length: 2,
             ghost: true,
           ),
