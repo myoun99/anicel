@@ -46,84 +46,119 @@ ProcessedVoiceTake processVoiceTake({
       clipped: false,
     );
   }
+  // A one-channel capture has nothing to fold.
   final fold = channels >= 2 ? channelMode : VoiceInputChannelMode.device;
-  final frames = samples.length ~/ channels;
-  final outChannels = fold == VoiceInputChannelMode.device ? channels : 1;
-  final factor = micGainFactor(gainDb);
-
-  // The no-op chain (device channels, 0 dB) still has to CLAMP: a float
-  // capture can hand us |v| > 1.0, and the take is about to be baked into
-  // 16-bit. Returning those verbatim made "output clamps to +/-1.0" true
-  // of every path except this one — and the one it was false of is the
-  // default. Only a sample that actually needs it is written, so an
-  // in-range take still passes through untouched.
-  final identity = fold == VoiceInputChannelMode.device && gainDb == 0;
-  var clipped = false;
-  if (identity) {
-    for (var index = 0; index < samples.length; index += 1) {
-      final value = samples[index];
-      if (value >= voiceClipThreshold) {
-        clipped = true;
-        if (value > 1.0) {
-          samples[index] = 1.0;
-        }
-      } else if (value <= -voiceClipThreshold) {
-        clipped = true;
-        if (value < -1.0) {
-          samples[index] = -1.0;
-        }
-      }
-    }
-    return ProcessedVoiceTake(
-      samples: samples,
-      channels: channels,
-      clipped: clipped,
-    );
+  if (fold == VoiceInputChannelMode.device) {
+    return gainDb == 0
+        ? _clampedInPlace(samples, channels)
+        : _gainedAllChannels(
+            samples,
+            channels: channels,
+            factor: micGainFactor(gainDb),
+          );
   }
+  return _foldedToMono(
+    samples,
+    channels: channels,
+    fold: fold,
+    factor: micGainFactor(gainDb),
+  );
+}
 
-  final out = Float32List(frames * outChannels);
-  for (var frame = 0; frame < frames; frame += 1) {
-    final base = frame * channels;
-    if (fold == VoiceInputChannelMode.device) {
-      for (var channel = 0; channel < channels; channel += 1) {
-        var value = samples[base + channel] * factor;
-        if (value >= voiceClipThreshold) {
-          if (value > 1.0) value = 1.0;
-          clipped = true;
-        } else if (value <= -voiceClipThreshold) {
-          if (value < -1.0) value = -1.0;
-          clipped = true;
-        }
-        out[frame * channels + channel] = value;
+/// The no-op chain (device channels, 0 dB) still has to CLAMP: a float
+/// capture can hand us |v| > 1.0, and the take is about to be baked into
+/// 16-bit. Returning those verbatim made "output clamps to +/-1.0" true
+/// of every path except this one — and the one it was false of is the
+/// default. Only a sample that actually needs it is written, so an
+/// in-range take still passes through untouched.
+ProcessedVoiceTake _clampedInPlace(Float32List samples, int channels) {
+  var clipped = false;
+  for (var index = 0; index < samples.length; index += 1) {
+    final value = samples[index];
+    if (value >= voiceClipThreshold) {
+      clipped = true;
+      if (value > 1.0) {
+        samples[index] = 1.0;
       }
-    } else {
-      double picked;
-      switch (fold) {
-        case VoiceInputChannelMode.monoMix:
-          var sum = 0.0;
-          for (var channel = 0; channel < channels; channel += 1) {
-            sum += samples[base + channel];
-          }
-          picked = sum / channels;
-        case VoiceInputChannelMode.right:
-          picked = samples[base + 1];
-        case VoiceInputChannelMode.left || VoiceInputChannelMode.device:
-          picked = samples[base];
+    } else if (value <= -voiceClipThreshold) {
+      clipped = true;
+      if (value < -1.0) {
+        samples[index] = -1.0;
       }
-      var value = picked * factor;
-      if (value >= voiceClipThreshold) {
-        if (value > 1.0) value = 1.0;
-        clipped = true;
-      } else if (value <= -voiceClipThreshold) {
-        if (value < -1.0) value = -1.0;
-        clipped = true;
-      }
-      out[frame] = value;
     }
   }
   return ProcessedVoiceTake(
-    samples: out,
-    channels: outChannels,
+    samples: samples,
+    channels: channels,
     clipped: clipped,
   );
+}
+
+/// Every channel kept, every sample gained.
+///
+/// ⛔The clamp is written out here and in [_foldedToMono] rather than
+/// shared: this runs per SAMPLE and a take is millions of them, so a
+/// helper would be a call — and a record allocation for the clipped
+/// flag — on each. The two are the same arithmetic in the same order,
+/// deliberately (a mirror, not a divergence); [_clampedInPlace] is the
+/// third and differs only in writing back in place.
+ProcessedVoiceTake _gainedAllChannels(
+  Float32List samples, {
+  required int channels,
+  required double factor,
+}) {
+  final frames = samples.length ~/ channels;
+  final out = Float32List(frames * channels);
+  var clipped = false;
+  for (var index = 0; index < out.length; index += 1) {
+    var value = samples[index] * factor;
+    if (value >= voiceClipThreshold) {
+      if (value > 1.0) value = 1.0;
+      clipped = true;
+    } else if (value <= -voiceClipThreshold) {
+      if (value < -1.0) value = -1.0;
+      clipped = true;
+    }
+    out[index] = value;
+  }
+  return ProcessedVoiceTake(samples: out, channels: channels, clipped: clipped);
+}
+
+/// One channel out of the interface's several: the mix, the right, or
+/// the left — the one-sided-mic fold (REC1-D).
+ProcessedVoiceTake _foldedToMono(
+  Float32List samples, {
+  required int channels,
+  required VoiceInputChannelMode fold,
+  required double factor,
+}) {
+  final frames = samples.length ~/ channels;
+  final out = Float32List(frames);
+  var clipped = false;
+  for (var frame = 0; frame < frames; frame += 1) {
+    final base = frame * channels;
+    double picked;
+    switch (fold) {
+      case VoiceInputChannelMode.monoMix:
+        var sum = 0.0;
+        for (var channel = 0; channel < channels; channel += 1) {
+          sum += samples[base + channel];
+        }
+        picked = sum / channels;
+      case VoiceInputChannelMode.right:
+        picked = samples[base + 1];
+      case VoiceInputChannelMode.left || VoiceInputChannelMode.device:
+        picked = samples[base];
+    }
+    var value = picked * factor;
+    if (value >= voiceClipThreshold) {
+      if (value > 1.0) value = 1.0;
+      clipped = true;
+    } else if (value <= -voiceClipThreshold) {
+      if (value < -1.0) value = -1.0;
+      clipped = true;
+    }
+    out[frame] = value;
+  }
+  return ProcessedVoiceTake(samples: out, channels: 1, clipped: clipped);
 }
