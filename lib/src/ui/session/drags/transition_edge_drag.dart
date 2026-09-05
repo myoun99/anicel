@@ -108,6 +108,11 @@ class TransitionEdgeDrag implements EditorDragSession {
   void commit() {
     final after = _after;
     _preview.value = null;
+    // ⚠️`after == _before` is DEFENCE, not a live branch: the shift
+    // returns null rather than an equal map, so a clamp that lands back on
+    // the same span already arrives here as null (measured 2026-09-05 — a
+    // mutant that drops this clause survives). It stays because the drag
+    // must not land a no-op undo step if that contract ever moves.
     if (after == null || after == _before) {
       return;
     }
