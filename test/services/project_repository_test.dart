@@ -1279,6 +1279,100 @@ void main() {
       });
     });
 
+    // ⛔ONE law names the missing entity: `<Kind> not found: <id>`. The
+    // spellings used to differ per method (and one said `${track.id}`
+    // where its neighbours said `$trackId`); each kind's sentence is
+    // pinned through a public verb so the shared helper cannot drift a
+    // word, and the cut-SCOPED layer question keeps its own sentence.
+    group('a mutation of a missing entity says which kind and which id', () {
+      late ProjectRepository repository;
+      late Project before;
+
+      setUp(() {
+        final cut = _cut(
+          id: 'cut-1',
+          name: 'Cut 1',
+          layers: [
+            _layer(id: 'layer-1', name: 'A', frames: [_frame(id: 'f1')]),
+          ],
+        );
+        repository = ProjectRepository(
+          initialProject: _project(
+            id: 'project-1',
+            name: 'Project',
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [cut]),
+            ],
+          ),
+        );
+        before = repository.requireProject();
+      });
+
+      Matcher refusesWith(String message) => throwsA(
+        isA<StateError>().having((error) => error.message, 'message', message),
+      );
+
+      test('a track', () {
+        expect(
+          () => repository.updateTrackEffects(
+            trackId: const TrackId('track-x'),
+            effects: const [],
+          ),
+          refusesWith('Track not found: track-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a cut', () {
+        expect(
+          () => repository.renameCut(cutId: const CutId('cut-x'), name: 'X'),
+          refusesWith('Cut not found: cut-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a layer, anywhere', () {
+        expect(
+          () => repository.updateLayer(
+            layerId: const LayerId('layer-x'),
+            update: (layer) => layer,
+          ),
+          refusesWith('Layer not found: layer-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a frame', () {
+        expect(
+          () => repository.updateFrame(
+            frameId: const FrameId('frame-x'),
+            update: (frame) => frame,
+          ),
+          refusesWith('Frame not found: frame-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a layer IN a cut is the scoped question, in its own words', () {
+        expect(
+          () => repository.updateLayerInstructions(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('layer-x'),
+            instructions: const {},
+          ),
+          refusesWith('Layer not found in cut cut-1: layer-x'),
+        );
+        expect(
+          () => repository.updateLayerInstructions(
+            cutId: const CutId('cut-x'),
+            layerId: const LayerId('layer-1'),
+            instructions: const {},
+          ),
+          refusesWith('Cut not found: cut-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+    });
   });
 }
 

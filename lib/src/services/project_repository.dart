@@ -40,6 +40,14 @@ import '../core/inserted_at.dart';
 import '../core/mapped_or_same.dart';
 import '../models/layer_link_registry.dart';
 
+/// One entity kind as the repository's find-and-change law sees it: the
+/// word its not-found message uses, and the `project_tree_editor` walk
+/// that finds it (null when it is not there — see the ⚠️ note below).
+typedef _FoundEdit<I, E> = ({
+  String kind,
+  Project? Function(Project project, I id, E Function(E) update) edit,
+});
+
 class ProjectRepository {
   ProjectRepository({Project? initialProject})
     : _currentProject = initialProject == null
@@ -85,7 +93,7 @@ class ProjectRepository {
     updateProject((current) => current.copyWith(linkRegistry: registry));
   }
 
-  // ⛔THE FIVE BELOW ARE ONE LAW WRITTEN ONCE: find the entity, change it,
+  // ⛔THE TWO BELOW ARE ONE LAW WRITTEN ONCE: find the entity, change it,
   // and say so when it was not there. Thirty-five mutations in this class
   // wrote that out by hand, which is why the same not-found message
   // existed in eleven spellings and one of them said `${track.id}` where
@@ -99,54 +107,31 @@ class ProjectRepository {
   // the editor itself: [removeTrack], [removeCut], [reorderCut] and
   // [deleteLayer] each do, and each says why where it does it.
 
-  void _mutateTrack(TrackId trackId, Track Function(Track track) update) {
-    updateProject((project) {
-      final next = updateTrackById(project, trackId, update);
-      if (next == null) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
-    });
-  }
+  /// What one entity kind is called in that message, and the editor that
+  /// finds it — the only two things the four kinds differed in.
+  static const _track = (kind: 'Track', edit: updateTrackById);
+  static const _cut = (kind: 'Cut', edit: updateCutAnywhere);
+  static const _layer = (kind: 'Layer', edit: updateLayerAnywhere);
+  static const _frame = (kind: 'Frame', edit: updateFrameAnywhere);
 
-  void _mutateCut(CutId cutId, Cut Function(Cut cut) update) {
+  void _mutate<I, E>(_FoundEdit<I, E> entity, I id, E Function(E) update) {
     updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, update);
+      final next = entity.edit(project, id, update);
       if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
-  }
-
-  void _mutateLayer(LayerId layerId, Layer Function(Layer layer) update) {
-    updateProject((project) {
-      final next = updateLayerAnywhere(project, layerId, update);
-      if (next == null) {
-        throw StateError('Layer not found: $layerId');
-      }
-      return next;
-    });
-  }
-
-  void _mutateFrame(FrameId frameId, Frame Function(Frame frame) update) {
-    updateProject((project) {
-      final next = updateFrameAnywhere(project, frameId, update);
-      if (next == null) {
-        throw StateError('Frame not found: $frameId');
+        throw StateError('${entity.kind} not found: $id');
       }
       return next;
     });
   }
 
   /// The layer lookup that is SCOPED to one cut — a different question from
-  /// [_mutateLayer]'s global one, and it says so in its own message.
+  /// [_layer]'s global one, and it says so in its own message.
   void _mutateLayerInCut(
     CutId cutId,
     LayerId layerId,
     Layer Function(Layer layer) update,
   ) {
-    _mutateCut(cutId, (cut) {
+    _mutate(_cut, cutId, (cut) {
       final next = updateLayerInCut(cut, layerId, update);
       if (next == null) {
         throw StateError('Layer not found in cut $cutId: $layerId');
@@ -304,11 +289,11 @@ class ProjectRepository {
   }
 
   void replaceTrack(Track track) {
-    _mutateTrack(track.id, (_) => track);
+    _mutate(_track, track.id, (_) => track);
   }
 
-  /// ⚠️Not [_mutateTrack]: this REMOVES, so there is no track to hand an
-  /// update, and the miss shows up as a length that did not change.
+  /// ⚠️Not [_mutate] with [_track]: this REMOVES, so there is no track to
+  /// hand an update, and the miss shows up as a length that did not change.
   void removeTrack(TrackId trackId) {
     updateProject((project) {
       final tracks = project.tracks
@@ -331,7 +316,7 @@ class ProjectRepository {
     // A cut built elsewhere — an importer's plan, a duplicate — arrives
     // with run-edge SPECS and no ghosts. See [_withDerivedRunEdges].
     final derived = _withDerivedRunEdges(cut);
-    _mutateTrack(trackId, (track) {
+    _mutate(_track, trackId, (track) {
       // ⛔NOT [insertedAt]. That law CLAMPS, which is right for a row
       // landing in a layer list; a cut index past the end is a caller
       // that computed a position from a stale track, and the throw is
@@ -372,7 +357,7 @@ class ProjectRepository {
   /// be a permutation of the track's cut ids; a partial or foreign list is
   /// a programming error, not a silent drop.
   void setCutOrder({required TrackId trackId, required List<CutId> order}) {
-    _mutateTrack(trackId, (track) {
+    _mutate(_track, trackId, (track) {
       return track.copyWith(
         cuts: reorderedByIds(
           track.cuts,
@@ -384,8 +369,8 @@ class ProjectRepository {
     });
   }
 
-  /// ⚠️Not [_mutateCut]: this REMOVES, so there is nothing to hand an
-  /// update — and the caller needs the cut BACK, to undo with.
+  /// ⚠️Not [_mutate] with [_cut]: this REMOVES, so there is nothing to hand
+  /// an update — and the caller needs the cut BACK, to undo with.
   Cut removeCut({required CutId cutId}) {
     Cut? removedCut;
     updateProject((project) {
@@ -400,14 +385,14 @@ class ProjectRepository {
   }
 
   void renameCut({required CutId cutId, required String name}) {
-    _mutateCut(cutId, (cut) => cut.copyWith(name: name));
+    _mutate(_cut, cutId, (cut) => cut.copyWith(name: name));
   }
 
   void updateCutCanvasSize({
     required CutId cutId,
     required CanvasSize canvasSize,
   }) {
-    _mutateCut(cutId, (cut) => cut.copyWith(canvasSize: canvasSize));
+    _mutate(_cut, cutId, (cut) => cut.copyWith(canvasSize: canvasSize));
   }
 
   /// D5 (R7): a resize's ONE model write per cut — the new canvas size
@@ -423,7 +408,8 @@ class ProjectRepository {
     required double centreDx,
     required double centreDy,
   }) {
-    _mutateCut(
+    _mutate(
+      _cut,
       cutId,
       (cut) => translateCutContentModel(
         cut,
@@ -439,7 +425,8 @@ class ProjectRepository {
     required CutId cutId,
     required int leadingGapFrames,
   }) {
-    _mutateCut(
+    _mutate(
+      _cut,
       cutId,
       (cut) => cut.copyWith(leadingGapFrames: leadingGapFrames),
     );
@@ -471,7 +458,8 @@ class ProjectRepository {
   );
 
   void updateCutDuration({required CutId cutId, required int duration}) {
-    _mutateCut(
+    _mutate(
+      _cut,
       cutId,
       // Hold/repeat run edges fill ghosts TO THE CUT END, so a duration
       // change re-derives every layer — the only rederive trigger that
@@ -481,11 +469,11 @@ class ProjectRepository {
   }
 
   void updateCutGuides({required CutId cutId, required CutGuides guides}) {
-    _mutateCut(cutId, (cut) => cut.copyWith(guides: guides));
+    _mutate(_cut, cutId, (cut) => cut.copyWith(guides: guides));
   }
 
   void updateCutCamera({required CutId cutId, required CutCamera camera}) {
-    _mutateCut(cutId, (cut) => cut.copyWith(camera: camera));
+    _mutate(_cut, cutId, (cut) => cut.copyWith(camera: camera));
   }
 
   // `updateTrackTransform` retired with the V row's transform: there is no
@@ -501,7 +489,8 @@ class ProjectRepository {
     required TrackId trackId,
     required Layer transitionLayer,
   }) {
-    _mutateTrack(
+    _mutate(
+      _track,
       trackId,
       (track) => track.copyWith(transitionLayer: transitionLayer),
     );
@@ -513,7 +502,7 @@ class ProjectRepository {
     required TrackId trackId,
     required List<LayerEffect> effects,
   }) {
-    _mutateTrack(trackId, (track) => track.copyWith(effects: effects));
+    _mutate(_track, trackId, (track) => track.copyWith(effects: effects));
   }
 
   /// The V track's DISPLAY properties (R9 #21): its static opacity and its
@@ -524,7 +513,8 @@ class ProjectRepository {
     double? opacity,
     bool? fxEnabled,
   }) {
-    _mutateTrack(
+    _mutate(
+      _track,
       trackId,
       (track) => track.copyWith(opacity: opacity, fxEnabled: fxEnabled),
     );
@@ -534,7 +524,7 @@ class ProjectRepository {
     required CutId cutId,
     required CutMetadata metadata,
   }) {
-    _mutateCut(cutId, (cut) => cut.copyWith(metadata: metadata));
+    _mutate(_cut, cutId, (cut) => cut.copyWith(metadata: metadata));
   }
 
   void addLayer({required CutId cutId, required Layer layer}) {
@@ -545,7 +535,7 @@ class ProjectRepository {
   /// layer BACK to undo with.
   Layer deleteLayer({required CutId cutId, required LayerId layerId}) {
     Layer? deletedLayer;
-    _mutateCut(cutId, (cut) {
+    _mutate(_cut, cutId, (cut) {
       final without = removeLayerFromCut(cut, layerId);
       deletedLayer = without.removed;
       if (deletedLayer == null) {
@@ -563,7 +553,7 @@ class ProjectRepository {
     required Layer layer,
     int? index,
   }) {
-    _mutateTrack(trackId, (track) {
+    _mutate(_track, trackId, (track) {
       final seLayers = insertedAt(track.seLayers, layer, index);
       return track.copyWith(seLayers: seLayers);
     });
@@ -573,7 +563,7 @@ class ProjectRepository {
     required TrackId trackId,
     required LayerId layerId,
   }) {
-    _mutateTrack(trackId, (track) {
+    _mutate(_track, trackId, (track) {
       return track.copyWith(
         seLayers: track.seLayers
             .where((layer) => layer.id != layerId)
@@ -599,7 +589,7 @@ class ProjectRepository {
     required List<LayerId> order,
     Map<LayerId, LayerId?> folderIds = const {},
   }) {
-    _mutateCut(cutId, (cut) {
+    _mutate(_cut, cutId, (cut) {
       return cut.copyWith(
         layers: [
           for (final layer in reorderedByIds(
@@ -624,7 +614,7 @@ class ProjectRepository {
     required TrackId trackId,
     required List<LayerId> order,
   }) {
-    _mutateTrack(trackId, (track) {
+    _mutate(_track, trackId, (track) {
       return track.copyWith(
         seLayers: reorderedByIds(
           track.seLayers,
@@ -663,7 +653,7 @@ class ProjectRepository {
   }
 
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
-    _mutateCut(cutId, (cut) {
+    _mutate(_cut, cutId, (cut) {
       // The cut is only known here, and its length is what the ghosts
       // fill to. See [_withDerivedRunEdges].
       final derived = rederiveRunBehaviors(layer, cutFrameCount: cut.duration);
@@ -680,7 +670,7 @@ class ProjectRepository {
     required LayerId layerId,
     required Layer Function(Layer layer) update,
   }) {
-    _mutateLayer(layerId, update);
+    _mutate(_layer, layerId, update);
   }
 
   // The layer-flag updates below route through the ANYWHERE lookup (cut
@@ -811,7 +801,7 @@ class ProjectRepository {
     required LayerId layerId,
     required LayerKind kind,
   }) {
-    _mutateCut(cutId, (cut) {
+    _mutate(_cut, cutId, (cut) {
       final updatedCut = updateLayerInCut(cut, layerId, (layer) {
         if (kind == LayerKind.storyboard &&
             layer.kind != LayerKind.storyboard &&
@@ -828,7 +818,8 @@ class ProjectRepository {
   }
 
   void addFrame({required LayerId layerId, required Frame frame}) {
-    _mutateLayer(
+    _mutate(
+      _layer,
       layerId,
       (layer) => layer.copyWith(frames: [...layer.frames, frame]),
     );
@@ -838,7 +829,7 @@ class ProjectRepository {
     required FrameId frameId,
     required Frame Function(Frame frame) update,
   }) {
-    _mutateFrame(frameId, update);
+    _mutate(_frame, frameId, update);
   }
 
   /// Writes the memo of the exposure BLOCK starting at [blockStartIndex].
@@ -863,7 +854,8 @@ class ProjectRepository {
   }
 
   void addStroke({required FrameId frameId, required Stroke stroke}) {
-    _mutateFrame(
+    _mutate(
+      _frame,
       frameId,
       (frame) => frame.copyWith(strokes: [...frame.strokes, stroke]),
     );
