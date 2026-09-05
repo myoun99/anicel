@@ -30,67 +30,101 @@ import '../native/qa_native_engine.dart';
 /// path MUST memoize on the surface instance (BrushCanvasPanel does).
 ({int left, int top, int rightExclusive, int bottomExclusive})?
 bitmapSurfaceContentBounds(BitmapSurface surface) {
-  final tileSize = surface.tileSize;
-  var minX = 0x7fffffff;
-  var minY = 0x7fffffff;
-  var maxX = -0x7fffffff;
-  var maxY = -0x7fffffff;
   // BB-N1 (ABI 22): with the engine loaded, every tile's word scan runs
-  // in C, fanned across the worker pool — the Dart loop below stays as
-  // the reference and the fallback (integer logic, so parity is
-  // structural; the parity test pins it anyway).
+  // in C, fanned across the worker pool — the Dart loop stays as the
+  // reference and the fallback (integer logic, so parity is structural;
+  // the parity test pins it anyway).
   final native = QaNativeEngine.instance;
-  if (native != null && surface.tiles.isNotEmpty) {
-    final entries = surface.tiles.entries.toList();
-    native.ensureTileSpanBatch(entries.length);
-    for (var i = 0; i < entries.length; i += 1) {
-      // Only tilePixels is consumed — the scan is whole-tile. The staged
-      // pointers outlive this loop (the batch call below reads them), so
-      // what keeps the buffers alive is `entries` holding every tile —
-      // and it is used again after the call.
-      entries[i].value.readPixels(
-        (pointer, _) => native.setTileSpan(
-          i,
-          tilePixels: pointer,
-          tileLeft: 0,
-          tileTop: 0,
-          spanLeft: 0,
-          spanRightExclusive: tileSize,
-          spanTop: 0,
-          spanBottomExclusive: tileSize,
-        ),
-      );
-    }
-    final bounds = native.alphaBoundsTiles(
-      count: entries.length,
-      tileSize: tileSize,
-    );
-    for (var i = 0; i < entries.length; i += 1) {
-      final localMinX = bounds[i * 4];
-      if (localMinX == 0x7fffffff) {
-        continue; // Ink-free tile.
-      }
-      final originX = entries[i].key.x * tileSize;
-      final originY = entries[i].key.y * tileSize;
-      final tileMinX = originX + localMinX;
-      final tileMinY = originY + bounds[i * 4 + 1];
-      final tileMaxX = originX + bounds[i * 4 + 2];
-      final tileMaxY = originY + bounds[i * 4 + 3];
-      if (tileMinX < minX) minX = tileMinX;
-      if (tileMinY < minY) minY = tileMinY;
-      if (tileMaxX > maxX) maxX = tileMaxX;
-      if (tileMaxY > maxY) maxY = tileMaxY;
-    }
-    if (maxX < minX) {
-      return null;
-    }
-    return (
-      left: minX,
-      top: minY,
-      rightExclusive: maxX + 1,
-      bottomExclusive: maxY + 1,
+  final box = native != null && surface.tiles.isNotEmpty
+      ? _nativeInkBox(surface, native)
+      : _dartInkBox(surface);
+  if (box.maxX < box.minX) {
+    return null;
+  }
+  return (
+    left: box.minX,
+    top: box.minY,
+    rightExclusive: box.maxX + 1,
+    bottomExclusive: box.maxY + 1,
+  );
+}
+
+/// The running extent of the ink found so far. Empty is stated as an
+/// INVERTED box — max below min — which is the one value no real box can
+/// take, so "nothing yet" needs no flag beside it.
+class _InkBox {
+  int minX = 0x7fffffff;
+  int minY = 0x7fffffff;
+  int maxX = -0x7fffffff;
+  int maxY = -0x7fffffff;
+
+  void include({
+    required int left,
+    required int top,
+    required int right,
+    required int bottom,
+  }) {
+    if (left < minX) minX = left;
+    if (top < minY) minY = top;
+    if (right > maxX) maxX = right;
+    if (bottom > maxY) maxY = bottom;
+  }
+}
+
+/// Every tile staged for one batched C scan, and its per-tile answers
+/// folded back onto the canvas axis.
+_InkBox _nativeInkBox(BitmapSurface surface, QaNativeEngine native) {
+  final tileSize = surface.tileSize;
+  final entries = surface.tiles.entries.toList();
+  native.ensureTileSpanBatch(entries.length);
+  for (var i = 0; i < entries.length; i += 1) {
+    // Only tilePixels is consumed — the scan is whole-tile. The staged
+    // pointers outlive this loop (the batch call below reads them), so
+    // what keeps the buffers alive is `entries` holding every tile —
+    // and it is used again after the call.
+    entries[i].value.readPixels(
+      (pointer, _) => native.setTileSpan(
+        i,
+        tilePixels: pointer,
+        tileLeft: 0,
+        tileTop: 0,
+        spanLeft: 0,
+        spanRightExclusive: tileSize,
+        spanTop: 0,
+        spanBottomExclusive: tileSize,
+      ),
     );
   }
+  final bounds = native.alphaBoundsTiles(
+    count: entries.length,
+    tileSize: tileSize,
+  );
+  final box = _InkBox();
+  for (var i = 0; i < entries.length; i += 1) {
+    final localMinX = bounds[i * 4];
+    if (localMinX == 0x7fffffff) {
+      continue; // Ink-free tile.
+    }
+    final originX = entries[i].key.x * tileSize;
+    final originY = entries[i].key.y * tileSize;
+    box.include(
+      left: originX + localMinX,
+      top: originY + bounds[i * 4 + 1],
+      right: originX + bounds[i * 4 + 2],
+      bottom: originY + bounds[i * 4 + 3],
+    );
+  }
+  return box;
+}
+
+/// The reference scan: every tile's words, in Dart.
+///
+/// ⛔The word loop stays written out. It runs per PIXEL of every tile a
+/// cel holds, and it is the twin the parity test measures the C path
+/// against — a helper call inside it would cost on both counts.
+_InkBox _dartInkBox(BitmapSurface surface) {
+  final tileSize = surface.tileSize;
+  final box = _InkBox();
   for (final entry in surface.tiles.entries) {
     final originX = entry.key.x * tileSize;
     final originY = entry.key.y * tileSize;
@@ -100,6 +134,10 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     // scan (see BitmapTile.readPixels).
     entry.value.readPixels((_, bytes) {
       final words = bytes.buffer.asUint32List(0, tileSize * tileSize);
+      var tileMinX = tileSize;
+      var tileMinY = tileSize;
+      var tileMaxX = -1;
+      var tileMaxY = -1;
       for (var y = 0; y < tileSize; y += 1) {
         final rowStart = y * tileSize;
         for (var x = 0; x < tileSize; x += 1) {
@@ -107,33 +145,24 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
           if (word == 0 || (word & 0xff000000) == 0) {
             continue;
           }
-          final worldX = originX + x;
-          final worldY = originY + y;
-          if (worldX < minX) {
-            minX = worldX;
-          }
-          if (worldX > maxX) {
-            maxX = worldX;
-          }
-          if (worldY < minY) {
-            minY = worldY;
-          }
-          if (worldY > maxY) {
-            maxY = worldY;
-          }
+          if (x < tileMinX) tileMinX = x;
+          if (x > tileMaxX) tileMaxX = x;
+          if (y < tileMinY) tileMinY = y;
+          if (y > tileMaxY) tileMaxY = y;
         }
       }
+      if (tileMaxX < 0) {
+        return; // Ink-free tile, same answer the C scan gives.
+      }
+      box.include(
+        left: originX + tileMinX,
+        top: originY + tileMinY,
+        right: originX + tileMaxX,
+        bottom: originY + tileMaxY,
+      );
     });
   }
-  if (maxX < minX) {
-    return null;
-  }
-  return (
-    left: minX,
-    top: minY,
-    rightExclusive: maxX + 1,
-    bottomExclusive: maxY + 1,
-  );
+  return box;
 }
 
 BitmapSurface resizeBitmapSurfaceCanvas(

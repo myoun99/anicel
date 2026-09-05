@@ -40,10 +40,37 @@ void main() {
       },
     );
 
-    expect(
-      bitmapSurfaceContentBounds(surface),
-      (left: 2, top: 1, rightExclusive: 12, bottomExclusive: 7),
+    expect(bitmapSurfaceContentBounds(surface), (
+      left: 2,
+      top: 1,
+      rightExclusive: 12,
+      bottomExclusive: 7,
+    ));
+  });
+
+  test('🚨the box reaches the FARTHEST ink in a tile, not the first — a '
+      'run inside one tile has a left and a right', () {
+    final surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 12, height: 12),
+      tileSize: tileSize,
+      tiles: {
+        // One tile, ink from (1,0) to (3,2): the box has to be three
+        // wide and three tall. Every earlier fixture inked a SINGLE
+        // pixel per tile, so left == right and top == bottom, and a
+        // fold that kept the near edge for both read as correct.
+        TileCoord(x: 1, y: 1): tileWithInk(TileCoord(x: 1, y: 1), [
+          (x: 1, y: 0),
+          (x: 3, y: 2),
+        ]),
+      },
     );
+
+    expect(bitmapSurfaceContentBounds(surface), (
+      left: 5,
+      top: 4,
+      rightExclusive: 8,
+      bottomExclusive: 7,
+    ));
   });
 
   test('alpha-zero pixels are NOT ink (colored-but-transparent bytes '
@@ -60,10 +87,12 @@ void main() {
         ]),
       },
     );
-    expect(
-      bitmapSurfaceContentBounds(ghostInk),
-      (left: 5, top: 5, rightExclusive: 6, bottomExclusive: 6),
-    );
+    expect(bitmapSurfaceContentBounds(ghostInk), (
+      left: 5,
+      top: 5,
+      rightExclusive: 6,
+      bottomExclusive: 6,
+    ));
 
     expect(
       bitmapSurfaceContentBounds(
