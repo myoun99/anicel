@@ -58,6 +58,17 @@ import '../theme/app_theme.dart';
 /// The strip deliberately keeps the old `menu-<id>` keys on its items.
 /// They name commands, not menus, and a command that only moved house
 /// should not cost every test that reaches for it.
+/// What the recovery question settled: which file to READ, which file to
+/// save back to, whether a snapshot goes on top of it, and whether the
+/// user answered "open the saved one" — which retires the sidecar, but
+/// only after the open succeeds.
+typedef _OpenPlan = ({
+  String openPath,
+  String? recoverAs,
+  String? overlayPath,
+  bool declinedSidecar,
+});
+
 class EditorTopStrip extends StatelessWidget {
   const EditorTopStrip({
     super.key,
@@ -161,75 +172,8 @@ class EditorTopStrip extends StatelessWidget {
   /// the path this round promoted.
   Future<void> _openWithRecovery(BuildContext context, ProjectPick pick) async {
     final path = pick.path;
-    // A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp
-    // holds several cuts): everything current is replaced, so the same
-    // unsaved-work gate as any open guards it. No recovery/recents —
-    // the result is a NEW unsaved project until its first save.
     if (path.toLowerCase().endsWith('.tvpp')) {
-      if (!await ensureUnsavedWorkSettled(context, session) ||
-          !context.mounted) {
-        return;
-      }
-      // Decoding and baking a whole project is a save-sized wait; a
-      // frozen screen before the cuts appear reads as a hang (hands-on,
-      // 288's 96 frames × 19 layers).
-      final List<String>? warnings;
-      final wait = _CloudWait();
-      try {
-        warnings = await runWithAppProgress<List<String>?>(
-          context: context,
-          title: AppText.strings.fileOpenTitle,
-          titleIcon: Icons.folder_open_outlined,
-          runningLabel: AppText.strings.openProgressRunning,
-          doneLabel: AppText.strings.openProgressDone,
-          windowKey: const ValueKey<String>('open-progress-dialog'),
-          runningStatus: wait.status,
-          onCancel: wait.cancel,
-          task: (report) => session.openTvppAsProject(
-            tvppPath: path,
-            onProgress: (fraction) {
-              // Reading has started, so the waiting line has nothing
-              // left to say.
-              wait.arrived();
-              report(fraction);
-            },
-            onWaiting: wait.report,
-            isCancelled: wait.isCancelled,
-          ),
-        );
-      } on MaterializeCancelled {
-        // Not a failure: the user stopped waiting for the file to arrive
-        // and nothing was applied. The door closes without a word.
-        return;
-      } on FileSystemException {
-        // Access, not format — the same file opens once it is readable
-        // (a cloud placeholder mid-download, a provider signed out).
-        if (context.mounted) {
-          _showFileError(
-            context,
-            const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
-          );
-        }
-        return;
-      } finally {
-        wait.dispose();
-      }
-      if (!context.mounted) {
-        return;
-      }
-      if (warnings == null) {
-        _showFileError(
-          context,
-          const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'),
-        );
-      } else if (warnings.isNotEmpty) {
-        await showAppNotice(
-          context,
-          windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
-          title: AppText.strings.commonNotice,
-          message: warnings.take(6).join('\n'),
-        );
-      }
+      await _openTvppAsProject(context, path);
       return;
     }
     // Opening ANOTHER project closes this one as surely as the window's X,
@@ -246,14 +190,6 @@ class EditorTopStrip extends StatelessWidget {
         return;
       }
     }
-    // A newer autosave sidecar offers recovery (crash / sync loss). The
-    // snapshot lives in the app-support Recovery folder now, with the
-    // legacy beside-the-file spot kept as a read-only candidate — every
-    // candidate location is checked, newest wins.
-    var openPath = path;
-    String? recoverAs;
-    String? overlayPath;
-    var declinedSidecar = false;
     // Reopening the project that is ALREADY open and dirty. There is no
     // unsaved-changes gate on the open flow, so this reload throws the
     // live edits away on its own — and if a tick had written the sidecar,
@@ -263,136 +199,269 @@ class EditorTopStrip extends StatelessWidget {
     // of these.
     final reopeningDirtySelf =
         session.projectFilePath == path && session.hasUnsavedChanges;
-    final sidecar = AppSave.newestExistingRecoveryFor(path);
-    if (sidecar != null &&
-        ProjectAutosaveService.sidecarIsNewer(
-          filePath: path,
-          sidecarPath: sidecar,
-        )) {
-      final recover = await showDialog<bool>(
-        context: context,
-        builder: (context) => AppConfirmDialog(
-          windowKey: const ValueKey<String>('recover-autosave-dialog'),
-          title: AppText.strings.recoverAutosaveTitle,
-          titleIcon: Icons.restore_outlined,
-          message: AppText.strings.recoverAutosaveBody,
-          actions: confirmActions(
-            context,
-            declineLabel: AppText.strings.recoverOpenSaved,
-            declineKey: const ValueKey<String>('recover-open-saved-button'),
-            declineEmphasis: AppWindowActionEmphasis.danger,
-            declineTooltip: AppText.strings.recoverOpenSavedHint,
-            acceptLabel: AppText.strings.recoverAction,
-            acceptKey: const ValueKey<String>('recover-autosave-button'),
-          ),
-        ),
-      );
-      if (recover == null || !context.mounted) {
+
+    var plan = await _recoveryChoice(context, path);
+    if (plan == null || !context.mounted) {
+      return;
+    }
+    if (plan.openPath == path) {
+      final staged = await _stagedCopyForOpen(context, path);
+      if (staged == null || !context.mounted) {
         return;
       }
-      if (recover) {
-        if (anicelSnapshotIsOverlay(sidecar)) {
-          // The snapshot holds only what changed since the last save, so
-          // the PROJECT is what gets opened and the snapshot goes on top.
-          overlayPath = sidecar;
-        } else {
-          // A build before overlays wrote a complete archive: open it
-          // directly, keeping the project as the path to save back to.
-          openPath = sidecar;
-          recoverAs = path;
-        }
-      } else {
-        declinedSidecar = true;
+      if (staged.path != path) {
+        plan = (
+          openPath: staged.path,
+          recoverAs: path,
+          overlayPath: plan.overlayPath,
+          declinedSidecar: plan.declinedSidecar,
+        );
       }
     }
-    // The same materializer every open uses: a File Provider pick can be
-    // a placeholder a plain read refuses, and the archive reader needs
-    // random access — so an unreadable pick opens from a staged local
-    // copy, with `recoverAs` pointing saves back at the real file,
-    // exactly the sidecar-open mechanism.
-    if (openPath == path) {
-      final wait = _CloudWait();
-      try {
-        // Behind the SAME window the .tvpp door uses, and behind a short
-        // delay: a local pick is instant and must stay silent, while a
-        // file still coming down says so — 「여는 중」 over a download
-        // blames the app for the provider's work.
-        final source = await runWithAppProgress<({String path, bool staged})>(
-          context: context,
-          title: AppText.strings.fileOpenTitle,
-          titleIcon: Icons.folder_open_outlined,
-          runningLabel: AppText.strings.openProgressRunning,
-          doneLabel: AppText.strings.openProgressDone,
-          windowKey: const ValueKey<String>('open-progress-dialog'),
-          // Raised by the WAIT, not by a clock: a pick that reads
-          // immediately never says it is waiting, so a local open stays
-          // exactly as silent as it was.
-          showWhen: wait.started,
-          doneLinger: Duration.zero,
-          runningStatus: wait.status,
-          onCancel: wait.cancel,
-          task: (_) => FolderPicker.materializeOpenedFile(
-            path,
-            within: null,
-            onWaiting: wait.report,
-            isCancelled: wait.isCancelled,
-          ),
+    await _openPlanned(
+      context,
+      pick,
+      plan: plan,
+      reopeningDirtySelf: reopeningDirtySelf,
+    );
+  }
+
+  /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
+  /// several cuts): everything current is replaced, so the same
+  /// unsaved-work gate as any open guards it. No recovery/recents — the
+  /// result is a NEW unsaved project until its first save.
+  Future<void> _openTvppAsProject(BuildContext context, String path) async {
+    if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
+      return;
+    }
+    // Decoding and baking a whole project is a save-sized wait; a frozen
+    // screen before the cuts appear reads as a hang (hands-on, 288's 96
+    // frames × 19 layers).
+    final List<String>? warnings;
+    final wait = _CloudWait();
+    try {
+      warnings = await runWithAppProgress<List<String>?>(
+        context: context,
+        title: AppText.strings.fileOpenTitle,
+        titleIcon: Icons.folder_open_outlined,
+        runningLabel: AppText.strings.openProgressRunning,
+        doneLabel: AppText.strings.openProgressDone,
+        windowKey: const ValueKey<String>('open-progress-dialog'),
+        runningStatus: wait.status,
+        onCancel: wait.cancel,
+        task: (report) => session.openTvppAsProject(
+          tvppPath: path,
+          onProgress: (fraction) {
+            // Reading has started, so the waiting line has nothing left
+            // to say.
+            wait.arrived();
+            report(fraction);
+          },
+          onWaiting: wait.report,
+          isCancelled: wait.isCancelled,
+        ),
+      );
+    } on MaterializeCancelled {
+      // Not a failure: the user stopped waiting for the file to arrive
+      // and nothing was applied. The door closes without a word.
+      return;
+    } on FileSystemException {
+      // Access, not format — the same file opens once it is readable (a
+      // cloud placeholder mid-download, a provider signed out).
+      if (context.mounted) {
+        _showFileError(
+          context,
+          const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
         );
-        if (source.staged) {
-          openPath = source.path;
-          recoverAs = path;
-          if (!context.mounted) {
-            return;
-          }
-          // Said out loud on purpose (유저 2026-08-27): the wait is meant
-          // to make this road unreachable, so a build that still takes it
-          // must be visible rather than quietly slower. A copy also means
-          // every cel ref points into a temp file for the session — the
-          // one case where the user deserves to know before they draw.
-          await showAppNotice(
-            context,
-            windowKey: const ValueKey<String>('opened-from-staged-copy'),
-            title: AppText.strings.commonNotice,
-            message:
-                '제자리에서 읽지 못해 임시 사본으로 열었습니다 — '
-                '이 문구가 보이면 알려주세요.',
-          );
-          if (!context.mounted) {
-            return;
-          }
-        }
-      } on MaterializeCancelled {
-        // Not a failure: the user stopped waiting, nothing was applied.
-        return;
-      } on FileSystemException {
-        if (context.mounted) {
-          _showFileError(
-            context,
-            const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
-          );
-        }
-        return;
-      } finally {
-        wait.dispose();
       }
+      return;
+    } finally {
+      wait.dispose();
     }
     if (!context.mounted) {
       return;
     }
+    if (warnings == null) {
+      _showFileError(
+        context,
+        const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'),
+      );
+    } else if (warnings.isNotEmpty) {
+      await showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
+        title: AppText.strings.commonNotice,
+        message: warnings.take(6).join('\n'),
+      );
+    }
+  }
+
+  /// What to open and what to save back to, after the recovery question —
+  /// or null when the user closed it without answering.
+  ///
+  /// A newer autosave sidecar offers recovery (crash / sync loss). The
+  /// snapshot lives in the app-support Recovery folder now, with the
+  /// legacy beside-the-file spot kept as a read-only candidate — every
+  /// candidate location is checked, newest wins.
+  Future<_OpenPlan?> _recoveryChoice(BuildContext context, String path) async {
+    final sidecar = AppSave.newestExistingRecoveryFor(path);
+    if (sidecar == null ||
+        !ProjectAutosaveService.sidecarIsNewer(
+          filePath: path,
+          sidecarPath: sidecar,
+        )) {
+      return (
+        openPath: path,
+        recoverAs: null,
+        overlayPath: null,
+        declinedSidecar: false,
+      );
+    }
+    final recover = await showDialog<bool>(
+      context: context,
+      builder: (context) => AppConfirmDialog(
+        windowKey: const ValueKey<String>('recover-autosave-dialog'),
+        title: AppText.strings.recoverAutosaveTitle,
+        titleIcon: Icons.restore_outlined,
+        message: AppText.strings.recoverAutosaveBody,
+        actions: confirmActions(
+          context,
+          declineLabel: AppText.strings.recoverOpenSaved,
+          declineKey: const ValueKey<String>('recover-open-saved-button'),
+          declineEmphasis: AppWindowActionEmphasis.danger,
+          declineTooltip: AppText.strings.recoverOpenSavedHint,
+          acceptLabel: AppText.strings.recoverAction,
+          acceptKey: const ValueKey<String>('recover-autosave-button'),
+        ),
+      ),
+    );
+    if (recover == null) {
+      return null;
+    }
+    if (!recover) {
+      return (
+        openPath: path,
+        recoverAs: null,
+        overlayPath: null,
+        declinedSidecar: true,
+      );
+    }
+    // The snapshot holds only what changed since the last save, so the
+    // PROJECT is what gets opened and the snapshot goes on top. A build
+    // before overlays wrote a complete archive: open it directly, keeping
+    // the project as the path to save back to.
+    return anicelSnapshotIsOverlay(sidecar)
+        ? (
+            openPath: path,
+            recoverAs: null,
+            overlayPath: sidecar,
+            declinedSidecar: false,
+          )
+        : (
+            openPath: sidecar,
+            recoverAs: path,
+            overlayPath: null,
+            declinedSidecar: false,
+          );
+  }
+
+  /// The path to actually read, once the file has been made readable — or
+  /// null when the user stopped waiting or the read failed.
+  ///
+  /// The same materializer every open uses: a File Provider pick can be a
+  /// placeholder a plain read refuses, and the archive reader needs random
+  /// access — so an unreadable pick opens from a staged local copy, with
+  /// `recoverAs` pointing saves back at the real file, exactly the
+  /// sidecar-open mechanism.
+  Future<({String path})?> _stagedCopyForOpen(
+    BuildContext context,
+    String path,
+  ) async {
+    final wait = _CloudWait();
+    try {
+      // Behind the SAME window the .tvpp door uses, and behind a short
+      // delay: a local pick is instant and must stay silent, while a file
+      // still coming down says so — 「여는 중」 over a download blames the
+      // app for the provider's work.
+      final source = await runWithAppProgress<({String path, bool staged})>(
+        context: context,
+        title: AppText.strings.fileOpenTitle,
+        titleIcon: Icons.folder_open_outlined,
+        runningLabel: AppText.strings.openProgressRunning,
+        doneLabel: AppText.strings.openProgressDone,
+        windowKey: const ValueKey<String>('open-progress-dialog'),
+        // Raised by the WAIT, not by a clock: a pick that reads
+        // immediately never says it is waiting, so a local open stays
+        // exactly as silent as it was.
+        showWhen: wait.started,
+        doneLinger: Duration.zero,
+        runningStatus: wait.status,
+        onCancel: wait.cancel,
+        task: (_) => FolderPicker.materializeOpenedFile(
+          path,
+          within: null,
+          onWaiting: wait.report,
+          isCancelled: wait.isCancelled,
+        ),
+      );
+      if (!source.staged) {
+        return (path: path);
+      }
+      if (!context.mounted) {
+        return null;
+      }
+      // Said out loud on purpose (유저 2026-08-27): the wait is meant to
+      // make this road unreachable, so a build that still takes it must be
+      // visible rather than quietly slower. A copy also means every cel
+      // ref points into a temp file for the session — the one case where
+      // the user deserves to know before they draw.
+      await showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('opened-from-staged-copy'),
+        title: AppText.strings.commonNotice,
+        message:
+            '제자리에서 읽지 못해 임시 사본으로 열었습니다 — '
+            '이 문구가 보이면 알려주세요.',
+      );
+      return (path: source.path);
+    } on MaterializeCancelled {
+      // Not a failure: the user stopped waiting, nothing was applied.
+      return null;
+    } on FileSystemException {
+      if (context.mounted) {
+        _showFileError(
+          context,
+          const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
+        );
+      }
+      return null;
+    } finally {
+      wait.dispose();
+    }
+  }
+
+  /// The open itself, and the three things that follow a SUCCESSFUL one.
+  Future<void> _openPlanned(
+    BuildContext context,
+    ProjectPick pick, {
+    required _OpenPlan plan,
+    required bool reopeningDirtySelf,
+  }) async {
+    final path = pick.path;
     try {
       await session.openProjectFromFile(
-        openPath,
-        recoverAs: recoverAs,
-        overlayPath: overlayPath,
+        plan.openPath,
+        recoverAs: plan.recoverAs,
+        overlayPath: plan.overlayPath,
       );
       // Recorded AFTER the open succeeds, not at pick time: a file that
       // fails to parse has no business sitting at the top of the menu.
-      // `path` rather than `openPath` — recovering from a sidecar still
+      // `path` rather than the plan's — recovering from a sidecar still
       // means the user opened the project, not the sidecar.
       recordRecentProject(
         RecentProject(path: path, folderBookmark: pick.folderBookmark),
       );
-      if (declinedSidecar && !reopeningDirtySelf) {
+      if (plan.declinedSidecar && !reopeningDirtySelf) {
         // "Open the saved one" is an answer about THIS sidecar, not a
         // deferral: leaving it alive re-asks the same question at every
         // open until the next manual save. Retired only after the open

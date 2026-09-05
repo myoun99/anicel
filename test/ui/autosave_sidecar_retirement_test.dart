@@ -20,7 +20,9 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// A sidecar holds UNSAVED work, so it dies at every moment that work stops
@@ -160,7 +162,8 @@ void main() {
       expect(
         armedBeforeSave(),
         isTrue,
-        reason: 'a save completed while this snapshot was (notionally) in '
+        reason:
+            'a save completed while this snapshot was (notionally) in '
             'its isolate — landing now would recreate what retirement '
             'just deleted',
       );
@@ -225,8 +228,7 @@ void main() {
       expect(File(sidecar).existsSync(), isFalse);
     });
 
-    test('an ordinary open does not inherit the recovery exception',
-        () async {
+    test('an ordinary open does not inherit the recovery exception', () async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       await s.saveProjectToFile(projectPath);
       final sidecar = '$projectPath.autosave';
@@ -357,9 +359,7 @@ void main() {
 
       ProjectRepository? repository;
       await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(onRepositoryCreated: (r) => repository = r),
-        ),
+        MaterialApp(home: HomePage(onRepositoryCreated: (r) => repository = r)),
       );
       await tester.pumpAndSettle();
       await openProjectMenu(tester);
@@ -453,9 +453,7 @@ void main() {
       AppRecent.projects.value = seeded;
       RecentProjectsStore().save(seeded);
       await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(onRepositoryCreated: (r) => repository = r),
-        ),
+        MaterialApp(home: HomePage(onRepositoryCreated: (r) => repository = r)),
       );
       await tester.pumpAndSettle();
       await openProjectMenu(tester);
@@ -492,9 +490,7 @@ void main() {
           ({required suggestedName, initialDirectory}) async =>
               FolderGrant.granted(path: savedAs, kind: GrantKind.file);
       await openProjectMenu(tester);
-      await tester.tap(
-        find.byKey(const ValueKey<String>('menu-file-save-as')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('menu-file-save-as')));
       await settleIsolate(tester, () => File(savedAs).existsSync());
       // The progress window lingers on "saved" behind a timer; let it fire
       // or the binding flags it as a stray after teardown.
@@ -507,7 +503,8 @@ void main() {
       expect(
         celsAfter,
         containsAll(savedCels),
-        reason: 'the base cel is still in the file — the overlay laid OVER '
+        reason:
+            'the base cel is still in the file — the overlay laid OVER '
             'the project instead of replacing it',
       );
       // A recovered-then-saved session still holds scheduled work; the
@@ -533,15 +530,14 @@ void main() {
 
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('system-exit-close')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('system-exit-close')));
       await tester.pumpAndSettle();
 
       expect(
         sidecar.existsSync(),
         isFalse,
-        reason: '"저장 안 하고 닫기 = 버리기" is only literally true if the '
+        reason:
+            '"저장 안 하고 닫기 = 버리기" is only literally true if the '
             'next open cannot resurrect what was discarded',
       );
     });
@@ -578,6 +574,76 @@ void main() {
         sidecar.existsSync(),
         isFalse,
         reason: 'left alive it re-asks at every open until the next save',
+      );
+    });
+
+    testWidgets('🚨 REOPENING the project you are already editing keeps its '
+        'sidecar even when you decline it — the reopen throws the live '
+        'edits away, so that snapshot is the only copy left', (tester) async {
+      // ⛔The guard on this is `!reopeningDirtySelf`, and mutating it away
+      // left the whole suite green (2026-09-05). What it costs: the
+      // reopen discards the in-memory edits AND the retirement deletes
+      // the snapshot of them, so "reopen, answer Recover" — the one way
+      // back — is gone before the user can reach it.
+      writeRealProject(projectPath);
+      writeNewerSidecar(projectPath);
+
+      ProjectRepository? repository;
+      final seeded = const RecentProjects().withOpened(
+        RecentProject(path: projectPath),
+      );
+      AppRecent.projects.value = seeded;
+      RecentProjectsStore().save(seeded);
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(onRepositoryCreated: (r) => repository = r)),
+      );
+      await tester.pumpAndSettle();
+
+      Future<void> openAndDecline() async {
+        await openProjectMenu(tester);
+        await tester.tap(
+          find.byKey(ValueKey<String>('menu-recent-$projectPath')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('recover-open-saved-button')),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      // First open: this project becomes the session's, and the sidecar
+      // it declined is retired (the law the test beside this one pins).
+      await openAndDecline();
+      await settleIsolate(
+        tester,
+        () => repository?.currentProject?.name == openedName,
+      );
+      await tester.pumpAndSettle();
+
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      expect(
+        session.projectFilePath,
+        projectPath,
+        reason: 'the rest of this test is meaningless without the open',
+      );
+
+      // Now dirty it, and let a tick write a fresh snapshot of the edits.
+      session.setProjectBackground(ProjectBackground.black);
+      expect(session.hasUnsavedChanges, isTrue);
+      final sidecar = File(writeNewerSidecar(projectPath));
+
+      // Reopen the SAME project and decline again.
+      await openAndDecline();
+      // The retirement runs after the open lands on the background
+      // isolate, so the answer is not readable until that turn.
+      await settleIsolate(tester, () => !sidecar.existsSync());
+
+      expect(
+        sidecar.existsSync(),
+        isTrue,
+        reason: 'the edits this reopen just discarded live only in there',
       );
     });
 
