@@ -1049,11 +1049,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         plan,
         native,
         tileSize: tileSize,
-        pointerFor: (tileX, tileY) {
+        pointerFor: (coord) {
           // _tileBuffer also bumps the tile revision, which is what marks
           // a resident pre-blend result stale.
-          _tileBuffer(tileX, tileY);
-          return _nativeBuffers[_tileKey(tileX, tileY)]!.pointer;
+          _tileBuffer(coord.x, coord.y);
+          return _nativeBuffers[_tileKey(coord.x, coord.y)]!.pointer;
         },
       );
       return DirtyRegion(

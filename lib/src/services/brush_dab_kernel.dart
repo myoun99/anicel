@@ -12,6 +12,7 @@ import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_tip_geometry.dart';
 import 'brush_tip_mask_sampling.dart';
+import 'native_tile_span_batch.dart';
 
 /// THE geometric dab kernel — the one both raster routes run.
 ///
@@ -323,21 +324,18 @@ class BrushDabPlan {
 }
 
 /// Hands the plan to the C kernel: one `prepareDab`, one staged span per
-/// covered tile, one pooled batch call.
+/// covered tile ([stageTileSpans]), one pooled batch call.
 ///
 /// [pointerFor] returns the tile's native scratch pointer, CREATING the
-/// buffer if this dab is the first to touch the tile. It is called exactly
-/// once per span, in span order (tile row outer, column inner), so a
-/// caller that needs the coordinate list can record it from inside this
-/// callback and stay aligned with the returned changed flags.
+/// buffer if this dab is the first to touch the tile.
 ///
 /// Returns the per-tile changed flags the kernel wrote (valid until the
-/// next batch), or null when the dab covered no tile.
-Uint8List? blendDabTilesNative(
+/// next batch) beside the coordinates they index, in span order.
+({Uint8List changed, List<TileCoord> coords}) blendDabTilesNative(
   BrushDabPlan plan,
   QaNativeEngine native, {
   required int tileSize,
-  required Pointer<Uint8> Function(int tileX, int tileY) pointerFor,
+  required Pointer<Uint8> Function(TileCoord coord) pointerFor,
 }) {
   native.prepareDab(
     centerX: plan.centerX,
@@ -398,40 +396,21 @@ Uint8List? blendDabTilesNative(
     texVOneMinus: plan.textureVLattice?.oneMinusFraction,
   );
 
-  // One BATCH call per dab (R18 A-3a): the spans fan out across the C
-  // worker pool — tiles are disjoint, so the result is byte-identical to
-  // the sequential per-tile loop.
-  var spanCount = 0;
-  native.ensureTileSpanBatch(
-    (plan.tileYEnd - plan.tileYStart + 1) *
-        (plan.tileXEnd - plan.tileXStart + 1),
+  // The plan's clip is never empty (BrushDabPlan.of returns null for
+  // that), so there is always at least one span.
+  final coords = stageTileSpans(
+    native,
+    left: plan.left,
+    top: plan.top,
+    rightExclusive: plan.rightExclusive,
+    bottomExclusive: plan.bottomExclusive,
+    tileSize: tileSize,
+    pointerFor: pointerFor,
   );
-  for (var tileY = plan.tileYStart; tileY <= plan.tileYEnd; tileY += 1) {
-    final tileTop = tileY * tileSize;
-    final spanTop = math.max(plan.top, tileTop);
-    final spanBottomExclusive = math.min(
-      plan.bottomExclusive,
-      tileTop + tileSize,
-    );
-    for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
-      final tileLeft = tileX * tileSize;
-      native.setTileSpan(
-        spanCount,
-        tilePixels: pointerFor(tileX, tileY),
-        tileLeft: tileLeft,
-        tileTop: tileTop,
-        spanLeft: math.max(plan.left, tileLeft),
-        spanRightExclusive: math.min(plan.rightExclusive, tileLeft + tileSize),
-        spanTop: spanTop,
-        spanBottomExclusive: spanBottomExclusive,
-      );
-      spanCount += 1;
-    }
-  }
-  if (spanCount == 0) {
-    return null;
-  }
-  return native.dabBlendTiles(count: spanCount, tileSize: tileSize);
+  return (
+    changed: native.dabBlendTiles(count: coords.length, tileSize: tileSize),
+    coords: coords,
+  );
 }
 
 /// The Dart reference blend: the same pixel visits and the same float

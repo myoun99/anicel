@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/gestures.dart' show kMiddleMouseButton, kPrimaryButton;
 import 'package:flutter/material.dart';

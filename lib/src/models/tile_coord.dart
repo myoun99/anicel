@@ -30,6 +30,14 @@ class TileCoord {
 
   Map<String, dynamic> toJson() => {'x': x, 'y': y};
 
+  /// Row-major order: by row, then by column — the order the commit tail
+  /// puts finished tiles in, so a materialization is deterministic
+  /// whatever order the dabs touched them.
+  static int compareRowMajor(TileCoord a, TileCoord b) {
+    final rows = a.y.compareTo(b.y);
+    return rows != 0 ? rows : a.x.compareTo(b.x);
+  }
+
   factory TileCoord.fromJson(Map<String, dynamic> json) {
     return TileCoord(x: json['x'] as int, y: json['y'] as int);
   }

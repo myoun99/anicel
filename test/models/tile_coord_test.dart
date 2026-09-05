@@ -37,6 +37,24 @@ void main() {
       expect(TileCoord.fromJson(coord.toJson()), coord);
     });
 
+    test('compareRowMajor orders by row, then by column — the order the '
+        'commit tail puts tiles in', () {
+      final shuffled = [
+        TileCoord(x: 1, y: 1),
+        TileCoord(x: 2, y: 0),
+        TileCoord(x: -1, y: 1),
+        TileCoord(x: 0, y: -1),
+        TileCoord(x: 0, y: 0),
+      ]..sort(TileCoord.compareRowMajor);
+      expect(shuffled, [
+        TileCoord(x: 0, y: -1),
+        TileCoord(x: 0, y: 0),
+        TileCoord(x: 2, y: 0),
+        TileCoord(x: -1, y: 1),
+        TileCoord(x: 1, y: 1),
+      ]);
+    });
+
     test('fromPixel maps pixel coordinate to tile coordinate', () {
       expect(
         TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: 256),
