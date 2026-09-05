@@ -14,6 +14,14 @@ import 'audio_playback_sync.dart';
 /// boundary ticks never open or tear down a media pipeline — on Windows
 /// that work runs on the platform thread and visibly stalled playback at
 /// the boundary.
+///
+/// ⛔NOT UNIT-TESTABLE, measured 2026-09-05: constructing `ap.AudioPlayer`
+/// alone blocks on a platform channel that never answers under
+/// `flutter test`, so even a test that only checks this class's own
+/// control flow (prepare's memoisation, startAt standing down before it)
+/// hangs until the 30s timeout. The audit left it unpinned deliberately
+/// rather than adding a test that cannot run — the seam that COULD be
+/// pinned is an injected player, and nothing has asked for one.
 class AudioplayersClipPlayer implements AudioClipPlayer {
   final ap.AudioPlayer _player = ap.AudioPlayer();
   Future<void>? _prepared;
