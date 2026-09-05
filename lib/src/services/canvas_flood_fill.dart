@@ -888,13 +888,15 @@ FloodFillRegion? _gapCloseFloodRegion({
   }
 
   final dist = Uint16List(pixelCount);
-  _chamferDistance(
+  chamferDistance34(
     dist,
     from: fillable,
     zeroWhen: 0,
     width: width,
     height: height,
     infinity: infinity,
+    // The canvas edge is NOT a barrier: a fill against the wall stays open.
+    borderDistance: infinity,
   );
 
   // Seed survival: halve the gap until the seed escapes erosion.
@@ -955,13 +957,14 @@ FloodFillRegion? _gapCloseFloodRegion({
 
   // Grow back to the real barriers: distance from the flooded set.
   final growDist = Uint16List(pixelCount);
-  _chamferDistance(
+  chamferDistance34(
     growDist,
     from: filled,
     zeroWhen: 255,
     width: width,
     height: height,
     infinity: infinity,
+    borderDistance: infinity,
   );
   var minX = width;
   var maxX = -1;
@@ -994,79 +997,6 @@ FloodFillRegion? _gapCloseFloodRegion({
     maxY: maxY,
     options: options,
   );
-}
-
-/// Two-pass 3-4 chamfer distance transform: [target] receives the
-/// distance (orthogonal step 3, diagonal 4, saturated at [infinity])
-/// from every pixel to the nearest SOURCE pixel, where source means
-/// `from[i] == zeroWhen`. Off-canvas neighbors are ignored (the canvas
-/// edge is NOT a barrier). Integer math only — the C kernel mirrors it
-/// exactly.
-void _chamferDistance(
-  Uint16List target, {
-  required Uint8List from,
-  required int zeroWhen,
-  required int width,
-  required int height,
-  required int infinity,
-}) {
-  for (var index = 0; index < target.length; index += 1) {
-    target[index] = from[index] == zeroWhen ? 0 : infinity;
-  }
-  // Forward pass (top-left → bottom-right).
-  for (var y = 0; y < height; y += 1) {
-    final row = y * width;
-    for (var x = 0; x < width; x += 1) {
-      final index = row + x;
-      var best = target[index];
-      if (best == 0) {
-        continue;
-      }
-      if (x > 0 && target[index - 1] + 3 < best) {
-        best = target[index - 1] + 3;
-      }
-      if (y > 0) {
-        final up = index - width;
-        if (target[up] + 3 < best) {
-          best = target[up] + 3;
-        }
-        if (x > 0 && target[up - 1] + 4 < best) {
-          best = target[up - 1] + 4;
-        }
-        if (x < width - 1 && target[up + 1] + 4 < best) {
-          best = target[up + 1] + 4;
-        }
-      }
-      target[index] = best > infinity ? infinity : best;
-    }
-  }
-  // Backward pass (bottom-right → top-left).
-  for (var y = height - 1; y >= 0; y -= 1) {
-    final row = y * width;
-    for (var x = width - 1; x >= 0; x -= 1) {
-      final index = row + x;
-      var best = target[index];
-      if (best == 0) {
-        continue;
-      }
-      if (x < width - 1 && target[index + 1] + 3 < best) {
-        best = target[index + 1] + 3;
-      }
-      if (y < height - 1) {
-        final down = index + width;
-        if (target[down] + 3 < best) {
-          best = target[down] + 3;
-        }
-        if (x < width - 1 && target[down + 1] + 4 < best) {
-          best = target[down + 1] + 4;
-        }
-        if (x > 0 && target[down - 1] + 4 < best) {
-          best = target[down - 1] + 4;
-        }
-      }
-      target[index] = best > infinity ? infinity : best;
-    }
-  }
 }
 
 /// The SHAPE fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다):

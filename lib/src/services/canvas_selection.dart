@@ -732,47 +732,16 @@ void _growShrinkMask(Uint8List mask, int width, int height, int passes) {
 void _featherMask(Uint8List mask, int width, int height, double featherPx) {
   const infinity = 60000;
   final dist = Uint16List(width * height);
-  for (var i = 0; i < mask.length; i += 1) {
-    dist[i] = mask[i] == 0 ? 0 : infinity;
-  }
-  for (var y = 0; y < height; y += 1) {
-    for (var x = 0; x < width; x += 1) {
-      final i = y * width + x;
-      var best = dist[i];
-      if (best == 0) continue;
-      // Canvas-edge pixels ramp too (border counts as outside).
-      if (x == 0 || y == 0 || x == width - 1 || y == height - 1) best = 3;
-      if (x > 0 && dist[i - 1] + 3 < best) best = dist[i - 1] + 3;
-      if (y > 0) {
-        if (dist[i - width] + 3 < best) best = dist[i - width] + 3;
-        if (x > 0 && dist[i - width - 1] + 4 < best) {
-          best = dist[i - width - 1] + 4;
-        }
-        if (x < width - 1 && dist[i - width + 1] + 4 < best) {
-          best = dist[i - width + 1] + 4;
-        }
-      }
-      dist[i] = best > infinity ? infinity : best;
-    }
-  }
-  for (var y = height - 1; y >= 0; y -= 1) {
-    for (var x = width - 1; x >= 0; x -= 1) {
-      final i = y * width + x;
-      var best = dist[i];
-      if (best == 0) continue;
-      if (x < width - 1 && dist[i + 1] + 3 < best) best = dist[i + 1] + 3;
-      if (y < height - 1) {
-        if (dist[i + width] + 3 < best) best = dist[i + width] + 3;
-        if (x < width - 1 && dist[i + width + 1] + 4 < best) {
-          best = dist[i + width + 1] + 4;
-        }
-        if (x > 0 && dist[i + width - 1] + 4 < best) {
-          best = dist[i + width - 1] + 4;
-        }
-      }
-      dist[i] = best > infinity ? infinity : best;
-    }
-  }
+  chamferDistance34(
+    dist,
+    from: mask,
+    zeroWhen: 0,
+    width: width,
+    height: height,
+    infinity: infinity,
+    // Canvas-edge pixels ramp too (border counts as outside).
+    borderDistance: 3,
+  );
   final ramp = featherPx * 3.0;
   for (var i = 0; i < mask.length; i += 1) {
     if (mask[i] == 0) continue;

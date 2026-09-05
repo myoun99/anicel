@@ -29,6 +29,103 @@ import 'dart:typed_data';
 /// 🚨That test SKIPS when `qa_engine.dll` is not built. Build it before
 /// touching this file — the command is in `qa_engine_abi.dart`'s header —
 /// or the guard is not running and you will not be told.
+/// Two-pass 3-4 chamfer distance transform: [target] receives the
+/// distance (orthogonal step 3, diagonal 4, saturated at [infinity])
+/// from every pixel to the nearest SOURCE pixel, where source means
+/// `from[i] == zeroWhen`. Integer math only — the C kernel mirrors it
+/// exactly.
+///
+/// [borderDistance] is the chamfer distance the canvas border is treated
+/// as lying at. The FILL passes [infinity]: off-canvas neighbors are
+/// ignored (the canvas edge is NOT a barrier). The SELECTION feather
+/// passes 3: a border pixel ramps as if the pixel beyond the edge were
+/// outside. It is applied to the four border lines ONCE, before the two
+/// relaxation passes, which is the same value at the same read points as
+/// forcing it inside the forward pass — a border pixel seeded to 3 can be
+/// lowered by no neighbour (nothing is below 0 + 3), and every neighbour
+/// a pass reads has already been visited by that pass.
+void chamferDistance34(
+  Uint16List target, {
+  required Uint8List from,
+  required int zeroWhen,
+  required int width,
+  required int height,
+  required int infinity,
+  required int borderDistance,
+}) {
+  for (var index = 0; index < target.length; index += 1) {
+    target[index] = from[index] == zeroWhen ? 0 : infinity;
+  }
+  if (borderDistance < infinity) {
+    for (var x = 0; x < width; x += 1) {
+      final top = x;
+      final bottom = (height - 1) * width + x;
+      if (target[top] > borderDistance) target[top] = borderDistance;
+      if (target[bottom] > borderDistance) target[bottom] = borderDistance;
+    }
+    for (var y = 0; y < height; y += 1) {
+      final left = y * width;
+      final right = left + width - 1;
+      if (target[left] > borderDistance) target[left] = borderDistance;
+      if (target[right] > borderDistance) target[right] = borderDistance;
+    }
+  }
+  // Forward pass (top-left → bottom-right).
+  for (var y = 0; y < height; y += 1) {
+    final row = y * width;
+    for (var x = 0; x < width; x += 1) {
+      final index = row + x;
+      var best = target[index];
+      if (best == 0) {
+        continue;
+      }
+      if (x > 0 && target[index - 1] + 3 < best) {
+        best = target[index - 1] + 3;
+      }
+      if (y > 0) {
+        final up = index - width;
+        if (target[up] + 3 < best) {
+          best = target[up] + 3;
+        }
+        if (x > 0 && target[up - 1] + 4 < best) {
+          best = target[up - 1] + 4;
+        }
+        if (x < width - 1 && target[up + 1] + 4 < best) {
+          best = target[up + 1] + 4;
+        }
+      }
+      target[index] = best > infinity ? infinity : best;
+    }
+  }
+  // Backward pass (bottom-right → top-left).
+  for (var y = height - 1; y >= 0; y -= 1) {
+    final row = y * width;
+    for (var x = width - 1; x >= 0; x -= 1) {
+      final index = row + x;
+      var best = target[index];
+      if (best == 0) {
+        continue;
+      }
+      if (x < width - 1 && target[index + 1] + 3 < best) {
+        best = target[index + 1] + 3;
+      }
+      if (y < height - 1) {
+        final down = index + width;
+        if (target[down] + 3 < best) {
+          best = target[down] + 3;
+        }
+        if (x < width - 1 && target[down + 1] + 4 < best) {
+          best = target[down + 1] + 4;
+        }
+        if (x > 0 && target[down - 1] + 4 < best) {
+          best = target[down - 1] + 4;
+        }
+      }
+      target[index] = best > infinity ? infinity : best;
+    }
+  }
+}
+
 void softenMaskBoundary(
   Uint8List mask, {
   required int width,
