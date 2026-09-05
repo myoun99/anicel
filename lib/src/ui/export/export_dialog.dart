@@ -26,6 +26,7 @@ import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/storyboard_timeline_layout.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
@@ -504,17 +505,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// The cut's start on the TRACK axis (gaps included) — the SE column
   /// reads track-global spans, so the sheet needs the true origin.
   int _trackStartOf(Cut target) {
-    var start = 0;
-    for (final cut in resolveExportCuts(
-      project: _session.repository.requireProject(),
-      activeCutId: _activeCut.id,
-      range: ExportRange.allCuts,
+    for (final placed in cutSpansOfCuts(
+      resolveExportCuts(
+        project: _session.repository.requireProject(),
+        activeCutId: _activeCut.id,
+        range: ExportRange.allCuts,
+      ),
     )) {
-      start += cut.leadingGapFrames;
-      if (cut.id == target.id) {
-        return start;
+      if (placed.cut.id == target.id) {
+        return placed.startFrame;
       }
-      start += cut.duration;
     }
     return 0;
   }

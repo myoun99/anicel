@@ -170,12 +170,9 @@ class _ScheduleRun {
     final startByCutId = <CutId, int>{};
     final trackByCutId = <CutId, Track>{};
     for (final track in project.tracks) {
-      var start = 0;
-      for (final cut in track.cuts) {
-        start += cut.leadingGapFrames;
-        startByCutId[cut.id] = start;
-        trackByCutId[cut.id] = track;
-        start += cut.duration;
+      for (final placed in cutSpansOf(track)) {
+        startByCutId[placed.cut.id] = placed.startFrame;
+        trackByCutId[placed.cut.id] = track;
       }
     }
     return (startByCutId: startByCutId, trackByCutId: trackByCutId);

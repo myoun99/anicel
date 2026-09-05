@@ -9,6 +9,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 
@@ -220,24 +221,23 @@ List<ScheduledAudioClip> buildExportAudioPlan({
             ? span.clip.volumeKeys
             : [
                 for (final key in span.clip.volumeKeys)
-                  AudioVolumeKey(frame: key.frame - trimmedLead, gain: key.gain),
+                  AudioVolumeKey(
+                    frame: key.frame - trimmedLead,
+                    gain: key.gain,
+                  ),
               ],
       ),
     );
   }
 
-  // Track starts for the TRACK-owned SE rows (global axis, cut-crossing).
+  // Track starts for the TRACK-owned SE rows (global axis, cut-crossing) —
+  // THE walk, so the export axis and the playback axis cannot drift.
   final trackStartByCutId = <CutId, int>{};
   final trackByCutId = <CutId, Track>{};
-  if (project != null) {
-    for (final track in project.tracks) {
-      var start = 0;
-      for (final cut in track.cuts) {
-        start += cut.leadingGapFrames;
-        trackStartByCutId[cut.id] = start;
-        trackByCutId[cut.id] = track;
-        start += cut.duration;
-      }
+  for (final track in project?.tracks ?? const <Track>[]) {
+    for (final placed in cutSpansOf(track)) {
+      trackStartByCutId[placed.cut.id] = placed.startFrame;
+      trackByCutId[placed.cut.id] = track;
     }
   }
 

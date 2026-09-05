@@ -145,20 +145,20 @@ class _Transitions {
     if (transitionSidesOf(span.mark) == TransitionSides.both) {
       return null;
     }
-    var start = 0;
-    for (final cut in _session.activeTrack.cuts) {
-      start += cut.leadingGapFrames;
-      final cutEnd = start + cut.duration;
-      if (oneSidedSpanOwnsCut(span: span, cutStart: start, cutEnd: cutEnd)) {
+    for (final placed in cutSpansOf(_session.activeTrack)) {
+      if (oneSidedSpanOwnsCut(
+        span: span,
+        cutStart: placed.startFrame,
+        cutEnd: placed.endFrame,
+      )) {
         return oneSidedSpanCrossesOwnCut(
               span: span,
-              cutStart: start,
-              cutEnd: cutEnd,
+              cutStart: placed.startFrame,
+              cutEnd: placed.endFrame,
             )
             ? AppText.strings.tlTransitionCrossingWarning
             : null;
       }
-      start = cutEnd;
     }
     return null;
   }

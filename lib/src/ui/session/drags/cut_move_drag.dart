@@ -118,6 +118,11 @@ class CutMoveDrag implements EditorDragSession {
       // writes the previewed span through the selection notifier; the band
       // just listens). An SE/transition-row selection merely overlapping
       // the frames stays put — a cut move does not move that content.
+      // ⛔The track-axis walk, over SLOTS rather than cuts. Judged 보류
+      // (3의 규칙, 2026-09-05): `cutSpansOf` walks `Cut`s and this is the
+      // only caller that holds `CutMoveSlot`s, so making the walk generic
+      // over "anything with a gap and a duration" would cost more than
+      // the six lines it saves. A SECOND slot walker is the trigger.
       var runFrom = 0;
       for (var position = 0; position <= runStart; position += 1) {
         runFrom += slots[position].leadingGapFrames;
@@ -126,12 +131,17 @@ class CutMoveDrag implements EditorDragSession {
         }
       }
       var runTo = runFrom;
-      for (var position = runStart; position <= (runEnd ?? runStart);
-          position += 1) {
-        runTo += slots[position].duration +
+      for (
+        var position = runStart;
+        position <= (runEnd ?? runStart);
+        position += 1
+      ) {
+        runTo +=
+            slots[position].duration +
             (position > runStart ? slots[position].leadingGapFrames : 0);
       }
-      final rides = selection != null &&
+      final rides =
+          selection != null &&
           selection.trackId == track.id &&
           selection.coversRow(TrackRowAddress(track.id)) &&
           selection.overlaps(runFrom, runTo);
@@ -201,8 +211,12 @@ class CutMoveDrag implements EditorDragSession {
     var length = 0;
     for (var index = _runStart; index <= (_runEnd ?? _runStart); index += 1) {
       final slot = _slots[index];
+      // ⛔NOT the track axis: the gap here is the one the PLAN gives this
+      // slot, which is the whole point of a landed extent — the slot's
+      // own gap is only the fallback.
+      final gap = plan.gaps[slot.id] ?? slot.leadingGapFrames;
       if (index > _runStart) {
-        length += plan.gaps[slot.id] ?? slot.leadingGapFrames;
+        length += gap;
       }
       length += slot.duration;
     }

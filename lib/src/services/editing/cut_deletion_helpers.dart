@@ -1,5 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
 import 'cut_list_helpers.dart';
 
@@ -71,8 +72,8 @@ int projectContentEndFrame(Project project) {
 
 int _trackContentEndFrame(Track track) {
   var end = 0;
-  for (final cut in track.cuts) {
-    end += cut.leadingGapFrames + cut.duration;
+  for (final placed in cutSpansOf(track)) {
+    end = placed.endFrame;
   }
   return end;
 }

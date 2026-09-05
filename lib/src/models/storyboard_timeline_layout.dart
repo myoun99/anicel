@@ -64,11 +64,21 @@ List<StoryboardTimelineLayoutEntry> buildStoryboardTimelineLayout(
 /// second copy of this loop — one that said it was "kept in a single place
 /// so the SE tags and the SE window can never disagree with the
 /// storyboard", which a second loop cannot promise. Now it is one loop.
-Iterable<({Cut cut, int startFrame, int endFrame})> cutSpansOf(
-  Track track,
+Iterable<({Cut cut, int startFrame, int endFrame})> cutSpansOf(Track track) =>
+    cutSpansOfCuts(track.cuts);
+
+/// [cutSpansOf] over a bare cut list, in list order.
+///
+/// An export selection is a subset of a track's cuts and an audio plan
+/// walks every track's, so both need the axis without holding a [Track].
+/// ⛔THE SAME walk, not a second one: four call sites had re-typed this
+/// loop and each was one `leadingGapFrames` away from putting a sound or
+/// a wipe on a different frame than the one that plays (2026-09-05).
+Iterable<({Cut cut, int startFrame, int endFrame})> cutSpansOfCuts(
+  Iterable<Cut> cuts,
 ) sync* {
   var nextStartFrame = 0;
-  for (final cut in track.cuts) {
+  for (final cut in cuts) {
     final startFrame = nextStartFrame + cut.leadingGapFrames;
     final endFrame = startFrame + cut.duration;
     yield (cut: cut, startFrame: startFrame, endFrame: endFrame);
