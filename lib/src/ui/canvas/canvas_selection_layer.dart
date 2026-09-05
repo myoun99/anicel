@@ -2352,10 +2352,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     // The landing rect, by the same arithmetic the stamp blend uses.
-    final left = (landed.center.x - stamp.width / 2).round();
-    final top = (landed.center.y - stamp.height / 2).round();
-    final right = left + stamp.width;
-    final bottom = top + stamp.height;
+    final landing = stamp.landingRect(landed.center);
+    final left = landing.left;
+    final top = landing.top;
+    final right = landing.rightExclusive;
+    final bottom = landing.bottomExclusive;
     // FIRST, and before the pending set is read: every coordinate this
     // answers for is one the base can now paint, so it drops out of the
     // hold instead of being covered — which is also what keeps the two
@@ -2450,15 +2451,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     // ⚠️ The delta between the two ROUNDED placements, not the difference
     // of the centres. Both materializations put the stamp at
-    // `(centre - size/2).round()`, so the pixels moved by a whole number
-    // of pixels even when the centres differ by a fraction — and half a
-    // pixel of drift would resample the float against the grid it is
-    // supposed to line up with exactly.
-    final floatLeft = (from.x - stamp.width / 2).round();
-    final floatTop = (from.y - stamp.height / 2).round();
+    // `(centre - size/2).round()` ([BrushStampImage.landingRect]), so the
+    // pixels moved by a whole number of pixels even when the centres
+    // differ by a fraction — and half a pixel of drift would resample the
+    // float against the grid it is supposed to line up with exactly.
+    final floatAt = stamp.landingRect(from);
     return inkFromSurface(
       float,
-      Offset((left - floatLeft).toDouble(), (top - floatTop).toDouble()),
+      Offset((left - floatAt.left).toDouble(), (top - floatAt.top).toDouble()),
     );
   }
 

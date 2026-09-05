@@ -1,5 +1,6 @@
 import '../core/floor_math.dart';
 import 'canvas_size.dart';
+import 'dirty_region.dart';
 
 /// How many whole canvases of pasteboard sit beyond EACH edge.
 ///
@@ -40,6 +41,24 @@ extension PasteboardBounds on CanvasSize {
   int get pasteboardRightExclusive => (1 + pasteboardCanvasesPerEdge) * width;
 
   int get pasteboardBottomExclusive => (1 + pasteboardCanvasesPerEdge) * height;
+
+  /// The canvas itself as a rect: [0, width) × [0, height) — the wall the
+  /// fill's settling bounds clip against.
+  DirtyRegion get canvasRegion => DirtyRegion(
+    left: 0,
+    top: 0,
+    rightExclusive: width,
+    bottomExclusive: height,
+  );
+
+  /// The whole pasteboard as a rect — the wall every stroke, stamp and
+  /// stroke-blend landing clips against ([DirtyRegion.intersection]).
+  DirtyRegion get pasteboardRegion => DirtyRegion(
+    left: pasteboardLeft,
+    top: pasteboardTop,
+    rightExclusive: pasteboardRightExclusive,
+    bottomExclusive: pasteboardBottomExclusive,
+  );
 
   bool containsPasteboardPixel({required int x, required int y}) {
     return x >= pasteboardLeft &&

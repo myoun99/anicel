@@ -244,6 +244,79 @@ void main() {
       );
     });
 
+    // The ONE rect clip (round 8 of the audit): the commit's stamp blend,
+    // the stroke-blend landing, BrushDabPlan and the fill's settling bounds
+    // all clip a landing against a wall through this.
+    group('intersection', () {
+      final wall = DirtyRegion(
+        left: -10,
+        top: -10,
+        rightExclusive: 20,
+        bottomExclusive: 20,
+      );
+
+      test('is the overlap when the rects overlap', () {
+        expect(
+          DirtyRegion(
+            left: 15,
+            top: -30,
+            rightExclusive: 40,
+            bottomExclusive: 5,
+          ).intersection(wall),
+          DirtyRegion(
+            left: 15,
+            top: -10,
+            rightExclusive: 20,
+            bottomExclusive: 5,
+          ),
+        );
+      });
+
+      test('is the inner rect when one contains the other', () {
+        final inner = DirtyRegion(
+          left: -3,
+          top: 2,
+          rightExclusive: 4,
+          bottomExclusive: 9,
+        );
+        expect(inner.intersection(wall), inner);
+        expect(wall.intersection(inner), inner);
+      });
+
+      test('is NULL when the rects only touch or are apart — a DirtyRegion '
+          'cannot be empty', () {
+        expect(
+          DirtyRegion(
+            left: 20,
+            top: 0,
+            rightExclusive: 30,
+            bottomExclusive: 10,
+          ).intersection(wall),
+          isNull,
+          reason: 'touching at the right wall',
+        );
+        expect(
+          DirtyRegion(
+            left: 0,
+            top: -40,
+            rightExclusive: 10,
+            bottomExclusive: -10,
+          ).intersection(wall),
+          isNull,
+          reason: 'touching at the top wall',
+        );
+        expect(
+          DirtyRegion(
+            left: 100,
+            top: 100,
+            rightExclusive: 110,
+            bottomExclusive: 110,
+          ).intersection(wall),
+          isNull,
+        );
+      });
+    });
+
     test('intersects returns true for overlapping regions', () {
       expect(
         DirtyRegion(

@@ -3,6 +3,7 @@ import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 
@@ -63,6 +64,27 @@ void main() {
       expect(canvas.containsPasteboardPixel(x: 3839, y: 2159), isTrue);
       expect(canvas.containsPasteboardPixel(x: -1921, y: 0), isFalse);
       expect(canvas.containsPasteboardPixel(x: 0, y: 2160), isFalse);
+    });
+
+    test('pasteboardRegion and canvasRegion are the two walls as rects', () {
+      expect(
+        canvas.pasteboardRegion,
+        DirtyRegion(
+          left: -1920,
+          top: -1080,
+          rightExclusive: 3840,
+          bottomExclusive: 2160,
+        ),
+      );
+      expect(
+        canvas.canvasRegion,
+        DirtyRegion(
+          left: 0,
+          top: 0,
+          rightExclusive: 1920,
+          bottomExclusive: 1080,
+        ),
+      );
     });
 
     test('tile range covers exactly the pasteboard rect', () {

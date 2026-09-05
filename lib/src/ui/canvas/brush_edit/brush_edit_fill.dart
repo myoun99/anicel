@@ -75,19 +75,11 @@ class _BrushEditFill {
     _state._overlay._overlayModel.blendMode = blend;
     final surface = _state.widget.sessionState.canvasState.currentSurface;
     if (stamp != null) {
-      final stampLeft = (dab.center.x - stamp.width / 2).round();
-      final stampTop = (dab.center.y - stamp.height / 2).round();
-      _state._settlingState._settlingBounds = DirtyRegion(
-        left: math.max(0, stampLeft),
-        top: math.max(0, stampTop),
-        rightExclusive: math.min(
-          surface.canvasSize.width,
-          stampLeft + stamp.width,
-        ),
-        bottomExclusive: math.min(
-          surface.canvasSize.height,
-          stampTop + stamp.height,
-        ),
+      final landing = stamp.landingRect(dab.center);
+      // The CANVAS wall, not the pasteboard: the settling hold covers
+      // what the base paints, and the base paints the canvas.
+      _state._settlingState._settlingBounds = landing.intersection(
+        surface.canvasSize.canvasRegion,
       );
       // R26 #18: a fill previews as ONE stamp image, so it does not pass
       // through the stroke pre-blend where the selection mask lives — the
@@ -97,8 +89,8 @@ class _BrushEditFill {
       // mask, so the preview and the landed pixels agree at the boundary.
       final stampRgba = _state._pressure._maskedStampRgba(
         rgba: stamp.rgba,
-        left: stampLeft,
-        top: stampTop,
+        left: landing.left,
+        top: landing.top,
         width: stamp.width,
         height: stamp.height,
         opacity: dab.opacity,
@@ -133,7 +125,7 @@ class _BrushEditFill {
           }
           _state._overlay._overlayModel.setStampOverlay(
             image,
-            Offset(stampLeft.toDouble(), stampTop.toDouble()),
+            Offset(landing.left.toDouble(), landing.top.toDouble()),
           );
         },
       );

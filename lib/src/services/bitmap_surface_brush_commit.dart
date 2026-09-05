@@ -230,9 +230,8 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 }
 
 /// The RGBA stamp blend (R14-④): the stamp's straight-alpha pixels land
-/// 1:1 source-over centered on the dab (integer top-left from the center,
-/// so a lift-then-drop round trip is byte-exact at full opacity). The
-/// source-over float grouping matches the generic path's exactly.
+/// 1:1 source-over centered on the dab ([BrushStampImage.landingRect]).
+/// The source-over float grouping matches the generic path's exactly.
 void _blendStampDab({
   required BrushDab dab,
   required BrushStampImage stamp,
@@ -246,23 +245,20 @@ void _blendStampDab({
   if (dabOpacity == 0.0) {
     return;
   }
-  final stampLeft = (dab.center.x - stamp.width / 2).round();
-  final stampTop = (dab.center.y - stamp.height / 2).round();
+  final landing = stamp.landingRect(dab.center);
   // Pasteboard clip, NOT canvas: a selection dropped past the stage edge
   // keeps its pixels (they land on the pasteboard instead of vanishing).
-  final left = math.max(canvasSize.pasteboardLeft, stampLeft);
-  final top = math.max(canvasSize.pasteboardTop, stampTop);
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    stampLeft + stamp.width,
-  );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    stampTop + stamp.height,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  final clip = landing.intersection(canvasSize.pasteboardRegion);
+  if (clip == null) {
     return;
   }
+  // Locals, not field reads: the Dart loop below is per pixel.
+  final stampLeft = landing.left;
+  final stampTop = landing.top;
+  final left = clip.left;
+  final top = clip.top;
+  final rightExclusive = clip.rightExclusive;
+  final bottomExclusive = clip.bottomExclusive;
   final rgba = stamp.rgba;
 
   // R18 A-0/A-1.5/F-1: the native core blends whole (dab, tile) spans in
@@ -619,22 +615,17 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
   // The stroke buffer is BOUNDS-LOCAL (stride = bounds width, origin =
   // bounds top-left, like a stamp's raw placement); the blend clips at
   // the pasteboard exactly like the stamp path.
-  final left = math.max(canvasSize.pasteboardLeft, bounds.left);
-  final top = math.max(canvasSize.pasteboardTop, bounds.top);
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    bounds.rightExclusive,
-  );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    bounds.bottomExclusive,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  final clip = bounds.intersection(canvasSize.pasteboardRegion);
+  if (clip == null) {
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
     );
   }
+  final left = clip.left;
+  final top = clip.top;
+  final rightExclusive = clip.rightExclusive;
+  final bottomExclusive = clip.bottomExclusive;
   final strokeUpload = labProbe(
     'strokeBlend.upload',
     () => native.uploadStampBytes(strokePixels),

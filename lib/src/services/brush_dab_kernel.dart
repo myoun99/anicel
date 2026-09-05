@@ -197,19 +197,14 @@ class BrushDabPlan {
     final centerX = dab.center.x;
     final centerY = dab.center.y;
 
-    final top = math.max(region.top, canvasSize.pasteboardTop);
-    final bottomExclusive = math.min(
-      region.bottomExclusive,
-      canvasSize.pasteboardBottomExclusive,
-    );
-    final left = math.max(region.left, canvasSize.pasteboardLeft);
-    final rightExclusive = math.min(
-      region.rightExclusive,
-      canvasSize.pasteboardRightExclusive,
-    );
-    if (rightExclusive <= left || bottomExclusive <= top) {
+    final clip = region.intersection(canvasSize.pasteboardRegion);
+    if (clip == null) {
       return null;
     }
+    final left = clip.left;
+    final top = clip.top;
+    final rightExclusive = clip.rightExclusive;
+    final bottomExclusive = clip.bottomExclusive;
     final columnCount = rightExclusive - left;
     final rowCount = bottomExclusive - top;
 

@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'canvas_point.dart';
+import 'dirty_region.dart';
+
 /// A lifted RGBA pixel rectangle a dab can stamp 1:1 onto the canvas —
 /// the engine primitive behind selection MOVE's bitmap lift (R14-④):
 /// the pixels inside a selection are cut out of their cel with an erase
@@ -9,9 +12,7 @@ import 'dart:typed_data';
 ///
 /// Unlike [BrushTipMask] (square, alpha-only, resampled to the dab size),
 /// a stamp is an arbitrary width×height straight-alpha RGBA image drawn
-/// WITHOUT resampling: pixel (u, v) lands exactly on canvas pixel
-/// (left + u, top + v) where left/top derive from the dab center — a
-/// lift-then-drop round trip is byte-exact.
+/// WITHOUT resampling — [landingRect] says where.
 ///
 /// Immutable; committed dabs reference the stamp object directly.
 class BrushStampImage {
@@ -52,6 +53,31 @@ class BrushStampImage {
 
   /// Row-major straight-alpha RGBA bytes.
   final Uint8List rgba;
+
+  /// Where this stamp lands for a dab centred at [center]: the stamp's
+  /// straight-alpha pixels land 1:1 source-over centered on the dab
+  /// (integer top-left from the center, so a lift-then-drop round trip is
+  /// byte-exact at full opacity). Pixel (u, v) lands exactly on canvas
+  /// pixel (left + u, top + v) where left/top derive from the dab center —
+  /// a lift-then-drop round trip is byte-exact.
+  ///
+  /// 🚨ONE arithmetic for the commit's stamp blend, the fill preview, the
+  /// float hold and the landed-ink painter (round 8 of the audit,
+  /// 2026-09-06) — the float hold's comment used to say "by the same
+  /// arithmetic the stamp blend uses", which is a clone confessing.
+  /// Pasteboard coordinates are negative and land the same way; the clip
+  /// against a wall is the CALLER's decision (pasteboard for the commit,
+  /// canvas for the fill's settling bounds), not this rect's.
+  DirtyRegion landingRect(CanvasPoint center) {
+    final left = (center.x - width / 2).round();
+    final top = (center.y - height / 2).round();
+    return DirtyRegion(
+      left: left,
+      top: top,
+      rightExclusive: left + width,
+      bottomExclusive: top + height,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
