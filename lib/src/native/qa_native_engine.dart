@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
 
+import '../core/rgb_tolerance.dart';
 import 'qa_engine_abi.dart';
 import 'native_scratch.dart';
 import 'native_upload_cache.dart';
@@ -1416,10 +1417,14 @@ class QaNativeEngine {
               'floodFillRun: ensureComposed left tile $tile uncomposed',
             );
           }
-          final base = index * 4;
-          if ((rgbView[base] - seedR).abs() <= tolerance &&
-              (rgbView[base + 1] - seedG).abs() <= tolerance &&
-              (rgbView[base + 2] - seedB).abs() <= tolerance) {
+          if (rgbWithinTolerance(
+            rgbView,
+            index * 4,
+            seedR,
+            seedG,
+            seedB,
+            tolerance,
+          )) {
             filledView[index] = 255;
             if (stackSize >= _floodStack.length) {
               _growFloodStack(stackSize);

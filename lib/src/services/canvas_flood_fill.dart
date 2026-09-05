@@ -14,6 +14,7 @@ import '../models/drawing_guide.dart';
 import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
+import '../core/rgb_tolerance.dart';
 import 'canvas_color_sampler.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
@@ -664,15 +665,9 @@ FloodFillRegion? floodFillRegion({
     // which starts from its own clean heap state.
   }
 
-  // Pure byte compare — the caller guarantees the pixel's compose tile via
-  // the crossing checks below (one ensure per 256px boundary).
-  bool matchesComposed(int index) {
-    final base = index * 4;
-    return (rgb[base] - seedR).abs() <= tolerance &&
-        (rgb[base + 1] - seedG).abs() <= tolerance &&
-        (rgb[base + 2] - seedB).abs() <= tolerance;
-  }
-
+  // Pure byte compare (rgbWithinTolerance) — the caller guarantees the
+  // pixel's compose tile via the crossing checks below (one ensure per
+  // 256px boundary).
   final filled = Uint8List(width * height);
   final stack = <int>[seedY * width + seedX];
   filled[seedY * width + seedX] = 255;
@@ -693,7 +688,14 @@ FloodFillRegion? floodFillRegion({
       if ((left & 0xFF) == 0) {
         ensureComposed?.call(rowStart + left - 1);
       }
-      if (!matchesComposed(rowStart + left - 1)) {
+      if (!rgbWithinTolerance(
+        rgb,
+        (rowStart + left - 1) * 4,
+        seedR,
+        seedG,
+        seedB,
+        tolerance,
+      )) {
         break;
       }
       left -= 1;
@@ -704,7 +706,14 @@ FloodFillRegion? floodFillRegion({
       if (((right + 1) & 0xFF) == 0) {
         ensureComposed?.call(rowStart + right + 1);
       }
-      if (!matchesComposed(rowStart + right + 1)) {
+      if (!rgbWithinTolerance(
+        rgb,
+        (rowStart + right + 1) * 4,
+        seedR,
+        seedG,
+        seedB,
+        tolerance,
+      )) {
         break;
       }
       right += 1;
@@ -732,7 +741,15 @@ FloodFillRegion? floodFillRegion({
           ensureComposed?.call(neighborRow + x);
         }
         final neighborIndex = neighborRow + x;
-        if (filled[neighborIndex] == 0 && matchesComposed(neighborIndex)) {
+        if (filled[neighborIndex] == 0 &&
+            rgbWithinTolerance(
+              rgb,
+              neighborIndex * 4,
+              seedR,
+              seedG,
+              seedB,
+              tolerance,
+            )) {
           if (!runOpen) {
             filled[neighborIndex] = 255;
             stack.add(neighborIndex);
@@ -865,9 +882,7 @@ FloodFillRegion? _gapCloseFloodRegion({
 
   final fillable = Uint8List(pixelCount);
   for (var index = 0, base = 0; index < pixelCount; index += 1, base += 4) {
-    if ((rgb[base] - seedR).abs() <= tolerance &&
-        (rgb[base + 1] - seedG).abs() <= tolerance &&
-        (rgb[base + 2] - seedB).abs() <= tolerance) {
+    if (rgbWithinTolerance(rgb, base, seedR, seedG, seedB, tolerance)) {
       fillable[index] = 1;
     }
   }
