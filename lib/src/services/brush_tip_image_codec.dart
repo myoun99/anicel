@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../core/gray_downscale.dart';
 import '../models/brush_tip_mask.dart';
 import 'photoshop/psd_image.dart';
 import 'photoshop/psd_reader.dart';
@@ -156,24 +156,11 @@ Uint8List _resizeGray(
 /// grid can paint on the first frame — decoding a folder of PNGs is
 /// asynchronous, and a grid of empty squares that fills in later is exactly
 /// the kind of UI that moves under the user's hand.
-Uint8List brushTipThumbnailAlpha(BrushTipMask mask, {int side = 16}) {
-  final thumbnail = Uint8List(side * side);
-  for (var row = 0; row < side; row += 1) {
-    final startY = row * mask.size ~/ side;
-    final endY = math.max(startY + 1, (row + 1) * mask.size ~/ side);
-    for (var column = 0; column < side; column += 1) {
-      final startX = column * mask.size ~/ side;
-      final endX = math.max(startX + 1, (column + 1) * mask.size ~/ side);
-      var total = 0;
-      var count = 0;
-      for (var y = startY; y < endY && y < mask.size; y += 1) {
-        for (var x = startX; x < endX && x < mask.size; x += 1) {
-          total += mask.alpha[y * mask.size + x];
-          count += 1;
-        }
-      }
-      thumbnail[row * side + column] = count == 0 ? 0 : total ~/ count;
-    }
-  }
-  return thumbnail;
-}
+Uint8List brushTipThumbnailAlpha(BrushTipMask mask, {int side = 16}) =>
+    areaAveragedGray(
+      mask.alpha,
+      width: mask.size,
+      height: mask.size,
+      newWidth: side,
+      newHeight: side,
+    );

@@ -1,6 +1,6 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/gray_downscale.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/cut_piece.dart';
 
@@ -36,7 +36,7 @@ BrushTipMask cutPieceToTipMask(CutPiece piece, {required String id}) {
 
   final fit = brushTipMaskFitted(width, height);
   if (fit.width != width || fit.height != height) {
-    coverage = _boxResize(
+    coverage = areaAveragedGray(
       coverage,
       width: width,
       height: height,
@@ -52,39 +52,4 @@ BrushTipMask cutPieceToTipMask(CutPiece piece, {required String id}) {
     width: fit.width,
     height: fit.height,
   );
-}
-
-/// Box average over the source footprint of each destination pixel.
-///
-/// Averaging rather than point sampling because this is a REDUCTION and a
-/// point sampler drops whole strokes out of thin line art. The two-value
-/// argument that keeps the stamp path on Pick does not apply here: a tip
-/// mask is coverage, and a partly covered tip pixel is a real thing rather
-/// than an invented mid-alpha edge.
-Uint8List _boxResize(
-  Uint8List source, {
-  required int width,
-  required int height,
-  required int newWidth,
-  required int newHeight,
-}) {
-  final out = Uint8List(newWidth * newHeight);
-  for (var y = 0; y < newHeight; y += 1) {
-    final srcTop = y * height ~/ newHeight;
-    final srcBottom = math.max(srcTop + 1, (y + 1) * height ~/ newHeight);
-    for (var x = 0; x < newWidth; x += 1) {
-      final srcLeft = x * width ~/ newWidth;
-      final srcRight = math.max(srcLeft + 1, (x + 1) * width ~/ newWidth);
-      var sum = 0;
-      var count = 0;
-      for (var sy = srcTop; sy < srcBottom; sy += 1) {
-        for (var sx = srcLeft; sx < srcRight; sx += 1) {
-          sum += source[sy * width + sx];
-          count += 1;
-        }
-      }
-      out[y * newWidth + x] = count == 0 ? 0 : sum ~/ count;
-    }
-  }
-  return out;
 }
