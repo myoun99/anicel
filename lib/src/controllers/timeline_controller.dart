@@ -440,6 +440,28 @@ class TimelineController {
     _executeCommands(commands, description: 'Adjust selected exposures');
   }
 
+  /// THE one-step cross-layer edit (UI-R17 #8): [edit] turns each layer
+  /// and its value in [byLayer] into the layer after the verb — or null
+  /// when the verb changes nothing on that row — and every changed row
+  /// composes into ONE undo step under [description]. Blank, delete,
+  /// mark and retime are this with their own [edit]; nothing changed
+  /// anywhere adds no step at all.
+  void _editLayersAsOneStep<V>(
+    Map<LayerId, V> byLayer, {
+    required Layer? Function(Layer before, V value) edit,
+    required String description,
+  }) {
+    final commands = <Command>[];
+    for (final entry in byLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final after = edit(before, entry.value);
+      if (after != null) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: description);
+  }
+
   void _executeCommands(List<Command> commands, {required String description}) {
     if (commands.isEmpty) {
       return;

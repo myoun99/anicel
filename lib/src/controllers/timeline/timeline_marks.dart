@@ -119,19 +119,12 @@ class _TimelineMarks {
   void setMarksForFrames(
     Map<LayerId, List<int>> framesByLayer, {
     required bool marked,
-  }) {
-    final commands = <Command>[];
-    for (final entry in framesByLayer.entries) {
-      final before = _controller._requireLayer(entry.key);
-      final after = _markedFramesLayer(before, entry.value, marked: marked);
-      if (after != null) {
-        commands.add(
-          _controller._layerEditCommand(before: before, after: after),
-        );
-      }
-    }
-    _controller._executeCommands(commands, description: 'Mark selected cells');
-  }
+  }) => _controller._editLayersAsOneStep(
+    framesByLayer,
+    edit: (before, frames) =>
+        _markedFramesLayer(before, frames, marked: marked),
+    description: 'Mark selected cells',
+  );
 
   Layer? _markedFramesLayer(
     Layer before,

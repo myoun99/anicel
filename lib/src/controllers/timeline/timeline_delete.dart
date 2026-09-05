@@ -43,22 +43,12 @@ class _TimelineDelete {
 
   /// The cross-layer form (UI-R17 #8): every layer's deletions compose
   /// into ONE undo step.
-  void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) {
-    final commands = <Command>[];
-    for (final entry in blockStartsByLayer.entries) {
-      final before = _controller._requireLayer(entry.key);
-      final after = _deletedBlocksLayer(before, entry.value);
-      if (after != null) {
-        commands.add(
-          _controller._layerEditCommand(before: before, after: after),
-        );
-      }
-    }
-    _controller._executeCommands(
-      commands,
-      description: 'Delete selected cells',
-    );
-  }
+  void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) =>
+      _controller._editLayersAsOneStep(
+        blockStartsByLayer,
+        edit: _deletedBlocksLayer,
+        description: 'Delete selected cells',
+      );
 
   Layer? _deletedBlocksLayer(Layer before, List<int> blockStartIndexes) {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
