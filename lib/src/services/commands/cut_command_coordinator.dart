@@ -1278,19 +1278,10 @@ class CutCommandCoordinator {
     required int blockStartIndex,
     required ExposureMemo memo,
   }) {
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    final entry = layer.timeline[blockStartIndex];
-    if (entry == null || !entry.isDrawing) {
-      throw StateError(
-        'No exposure block starts at $blockStartIndex on $layerId.',
-      );
-    }
-    if (entry.ghost) {
-      throw StateError(
-        'A ghost exposure is rederived, so it cannot hold a memo '
-        '($layerId at $blockStartIndex).',
-      );
-    }
+    final entry = requireMemoBlockAt(
+      _requireLayer(cutId: cutId, layerId: layerId),
+      blockStartIndex,
+    );
 
     final next = memo.isEmpty ? null : memo;
     if (entry.memo == next) {

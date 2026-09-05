@@ -1307,11 +1307,68 @@ void main() {
           blockStartIndex: 7,
           memo: const ExposureMemo(note: 'New'),
         ),
-        throwsStateError,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'No exposure block starts at 7 on layer-1.',
+          ),
+        ),
       );
 
       expect(fixture.project.toJson(), beforeJson);
       expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateExposureMemo refuses a GHOST cell before it opens history — '
+        'the same sentence the repository says', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = Layer(
+        id: const LayerId('layer-1'),
+        name: 'layer-1',
+        kind: LayerKind.animation,
+        frames: [frame],
+        timeline: {
+          0: TimelineExposure.drawing(frame.id, length: 1),
+          1: TimelineExposure.drawing(
+            frame.id,
+            length: 1,
+            ghost: true,
+            ghostOwnerId: 'hold',
+          ),
+        },
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      expect(
+        () => fixture.coordinator.updateExposureMemo(
+          cutId: cutA.id,
+          layerId: layer.id,
+          blockStartIndex: 1,
+          memo: const ExposureMemo(note: 'New'),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'A ghost exposure is rederived, so it cannot hold a memo '
+                '(layer-1 at 1).',
+          ),
+        ),
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 0);
     });

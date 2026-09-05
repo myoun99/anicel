@@ -34,6 +34,7 @@ import '../models/stroke.dart';
 import '../models/transform_track.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
+import 'project_lookup.dart' show requireMemoBlockAt;
 import 'project_tree_editor.dart';
 import '../core/inserted_at.dart';
 import '../core/mapped_or_same.dart';
@@ -851,18 +852,7 @@ class ProjectRepository {
     required ExposureMemo? memo,
   }) {
     _mutateLayerInCut(cutId, layerId, (layer) {
-      final entry = layer.timeline[blockStartIndex];
-      if (entry == null || !entry.isDrawing) {
-        throw StateError(
-          'No exposure block starts at $blockStartIndex on $layerId.',
-        );
-      }
-      if (entry.ghost) {
-        throw StateError(
-          'A ghost exposure is rederived, so it cannot hold a memo '
-          '($layerId at $blockStartIndex).',
-        );
-      }
+      final entry = requireMemoBlockAt(layer, blockStartIndex);
       return layer.copyWith(
         timeline: {
           ...layer.timeline,

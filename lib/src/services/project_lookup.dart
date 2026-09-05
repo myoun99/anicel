@@ -4,6 +4,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/media_asset.dart';
 import '../models/project.dart';
+import '../models/timeline_exposure.dart';
 import '../models/track.dart';
 
 /// Read-only lookups into the `Project` -> `Track` -> `Cut` -> `Layer`
@@ -53,6 +54,28 @@ Layer requireLayer(
   }
 
   throw StateError('Layer not found in cut $cutId: $layerId');
+}
+
+/// The exposure BLOCK starting at [blockStartIndex] on [layer] — the one a
+/// memo is addressed to. Throws when no block starts there, and when the
+/// cell is a GHOST: a ghost exposure is rederived by the run pass, so a
+/// memo written on it would be gone on the next derive. The repository's
+/// write and the coordinator's pre-history check both ask this before
+/// touching a memo, in these words.
+TimelineExposure requireMemoBlockAt(Layer layer, int blockStartIndex) {
+  final entry = layer.timeline[blockStartIndex];
+  if (entry == null || !entry.isDrawing) {
+    throw StateError(
+      'No exposure block starts at $blockStartIndex on ${layer.id}.',
+    );
+  }
+  if (entry.ghost) {
+    throw StateError(
+      'A ghost exposure is rederived, so it cannot hold a memo '
+      '(${layer.id} at $blockStartIndex).',
+    );
+  }
+  return entry;
 }
 
 /// The cut holding [layerId], or null for track-owned SE rows (and

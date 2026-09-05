@@ -939,6 +939,74 @@ void main() {
       expect(repository.requireProject().toJson(), beforeJson);
     });
 
+    // The memo is addressed to a BLOCK, so the repository names the two
+    // ways an index can fail to be one — no block starts there, or the
+    // cell is a ghost the run pass will rederive — in its own words. The
+    // coordinator says the same two sentences before it opens history;
+    // both are pinned so neither can drift from the other.
+    test('updateExposureMemo says WHY it refused: no block, or a ghost', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = Layer(
+        id: const LayerId('layer-1'),
+        name: 'Anim',
+        kind: LayerKind.animation,
+        frames: [frame],
+        timeline: {
+          0: TimelineExposure.drawing(frame.id, length: 1),
+          1: TimelineExposure.drawing(
+            frame.id,
+            length: 1,
+            ghost: true,
+            ghostOwnerId: 'hold',
+          ),
+        },
+      );
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
+        ),
+      );
+      final before = repository.requireProject();
+
+      expect(
+        () => repository.updateExposureMemo(
+          cutId: cut.id,
+          layerId: layer.id,
+          blockStartIndex: 99,
+          memo: const ExposureMemo(note: 'New'),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'No exposure block starts at 99 on layer-1.',
+          ),
+        ),
+      );
+      expect(
+        () => repository.updateExposureMemo(
+          cutId: cut.id,
+          layerId: layer.id,
+          blockStartIndex: 1,
+          memo: const ExposureMemo(note: 'New'),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'A ghost exposure is rederived, so it cannot hold a memo '
+                '(layer-1 at 1).',
+          ),
+        ),
+      );
+      expect(identical(repository.requireProject(), before), isTrue);
+    });
+
     test('updateLayerKind replaces only kind and preserves layer data', () {
       final frame = _frame(
         id: 'frame-1',
