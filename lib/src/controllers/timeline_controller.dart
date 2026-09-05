@@ -296,25 +296,13 @@ class TimelineController {
     return block != null && frameIndex > block.startIndex;
   }
 
-  void cutExposureForLayer({required LayerId layerId}) {
-    final before = _requireLayer(layerId);
-    final frameIndex = _editFrameIndexFor(layerId);
-    if (!canCutExposureAt(layer: before, frameIndex: frameIndex)) {
-      return;
-    }
-
-    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    );
-    nextTimeline[block.startIndex] = block.entry.copyWith(
-      length: frameIndex - block.startIndex,
-    );
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(timeline: nextTimeline),
-    );
-  }
+  void cutExposureForLayer({required LayerId layerId}) =>
+      _editCoveringBlockAtEditFrame(
+        layerId,
+        canEdit: (layer, frameIndex) =>
+            canCutExposureAt(layer: layer, frameIndex: frameIndex),
+        edit: (entry, offset) => entry.copyWith(length: offset),
+      );
 
   // --- Marks (block-owned inbetween dots) --------------------------------------
 
@@ -809,6 +797,38 @@ class TimelineController {
 
   void _applyLayerEdit({required Layer before, required Layer after}) =>
       _runCommand(_layerEditCommand(before: before, after: after));
+
+  /// THE covering-block edit at the playhead: [canEdit] gates on the layer
+  /// and its edit frame (the playhead shifted for a track-owned row), then
+  /// the block covering that frame has its HEAD entry replaced by
+  /// [edit] (the entry, and the frame's offset inside the block) — one
+  /// undo step. The X (cut exposure) and the mark toggle are this with
+  /// their own gate and entry edit.
+  void _editCoveringBlockAtEditFrame(
+    LayerId layerId, {
+    required bool Function(Layer layer, int frameIndex) canEdit,
+    required TimelineExposure Function(TimelineExposure entry, int offset)
+    edit,
+  }) {
+    final before = _requireLayer(layerId);
+    final frameIndex = _editFrameIndexFor(layerId);
+    if (!canEdit(before, frameIndex)) {
+      return;
+    }
+
+    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
+    nextTimeline[block.startIndex] = edit(
+      block.entry,
+      frameIndex - block.startIndex,
+    );
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(timeline: nextTimeline),
+    );
+  }
 
   Layer _requireLayer(LayerId layerId) {
     final cut = _findCutOrNull();
