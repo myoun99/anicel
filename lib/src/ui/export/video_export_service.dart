@@ -135,7 +135,10 @@ class VideoExportService {
         '-vendor',
         'apl0',
         '-pix_fmt',
-        if (codec == ExportVideoCodec.prores4444) keepAlpha ? 'yuva444p10le' : 'yuv444p10le' else 'yuv422p10le',
+        if (codec == ExportVideoCodec.prores4444)
+          keepAlpha ? 'yuva444p10le' : 'yuv444p10le'
+        else
+          'yuv422p10le',
       ] else ...[
         '-c:v',
         if (codec == ExportVideoCodec.h265) 'libx265' else 'libx264',
@@ -252,7 +255,6 @@ class VideoExportService {
       return (written: 0, processed: 0);
     }
     var processed = 0;
-    var written = 0;
 
     // The first renderable frame decides the geometry.
     ui.Image? first;
@@ -295,65 +297,15 @@ class VideoExportService {
       throw const _OsEncoderRefused();
     }
 
-    var audioCursor = 0;
+    final feed = _OsEncoderFeed(
+      encoder: encoder,
+      audio: audio,
+      frameRate: frameRate,
+    );
     var failed = false;
     var cancelled = false;
 
-    // Feeds the audio the timeline owes up to [frames] written frames —
-    // the same frameToSample pairing the clock uses, so A and V cannot
-    // disagree about where a frame sits.
-    bool feedAudioUpTo(int frames) {
-      final reader = audio;
-      if (reader == null) {
-        return true;
-      }
-      final target = frameRate.frameToSample(frames, reader.sampleRate);
-      while (audioCursor < target) {
-        final window = reader.readWindow(
-          audioCursor,
-          math.min(target - audioCursor, 65536),
-        );
-        if (window.samples.isEmpty) {
-          // Past the WAV's end (a cancelled mix, a rounding tail): pad
-          // with silence rather than starving the encoder.
-          final missing = target - audioCursor;
-          if (!encoder.writeAudio(
-            Int16List(missing * reader.channels),
-            missing,
-          )) {
-            return false;
-          }
-          audioCursor = target;
-          return true;
-        }
-        final frameCount = window.samples.length ~/ reader.channels;
-        final pcm = Int16List(window.samples.length);
-        for (var i = 0; i < window.samples.length; i += 1) {
-          // The exact inverse of the WAV decode - see int16FromUnitSample.
-          pcm[i] = int16FromUnitSample(window.samples[i]);
-        }
-        if (!encoder.writeAudio(pcm, frameCount)) {
-          return false;
-        }
-        audioCursor += frameCount;
-      }
-      return true;
-    }
-
-    Future<bool> feed(ui.Image image) async {
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      if (data == null) {
-        return false;
-      }
-      if (!encoder.writeFrame(data.buffer.asUint8List())) {
-        return false;
-      }
-      written += 1;
-      return feedAudioUpTo(written);
-    }
-
-    if (!await feed(first)) {
+    if (!await feed.feed(first)) {
       failed = true;
     }
     while (!failed && index < count) {
@@ -363,7 +315,7 @@ class VideoExportService {
       }
       final image = await renderImage(index);
       index += 1;
-      if (image != null && !await feed(image)) {
+      if (image != null && !await feed.feed(image)) {
         failed = true;
         break;
       }
@@ -379,14 +331,15 @@ class VideoExportService {
       );
     }
     // A cancelled run finalizes a playable partial — the pipe path's
-    // behavior, kept.
+    // behavior, kept. ⚠️Untested (2026-09-05): nothing cancels the OS
+    // path mid-run yet, so `&& !cancelled` mutates away green.
     if (!encoder.finish() && !cancelled) {
       final detail = encoder.lastError;
       throw VideoExportException(
         detail.isEmpty ? 'video export: the MP4 failed to finalize' : detail,
       );
     }
-    return (written: written, processed: processed);
+    return (written: feed.written, processed: processed);
   }
 
   Future<ExportWriteSummary> _exportViaFfmpeg({
@@ -502,5 +455,83 @@ class VideoExportService {
       throw VideoExportException('ffmpeg failed (exit $exitCode): $lines');
     }
     return (written: written, processed: processed);
+  }
+}
+
+/// The A/V feed of one OS-encoder run: how many video frames have gone
+/// in, and how much audio the timeline owes for them.
+///
+/// 🚨THE TWO CURSORS MOVE TOGETHER. The audio target is read from the
+/// written frame count through the SAME `frameToSample` pairing the clock
+/// uses, so A and V cannot come to disagree about where a frame sits.
+class _OsEncoderFeed {
+  _OsEncoderFeed({
+    required this.encoder,
+    required this.audio,
+    required this.frameRate,
+  });
+
+  final QaVideoEncoder encoder;
+  final ConformPcmStreamReader? audio;
+  final ProjectFrameRate frameRate;
+
+  int written = 0;
+  int _audioCursor = 0;
+
+  /// Writes [image] and the audio that now owes for it. False means the
+  /// encoder refused something and the run is over.
+  Future<bool> feed(ui.Image image) async {
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    if (data == null) {
+      return false;
+    }
+    if (!encoder.writeFrame(data.buffer.asUint8List())) {
+      return false;
+    }
+    written += 1;
+    return _feedAudioUpTo(written);
+  }
+
+  bool _feedAudioUpTo(int frames) {
+    final reader = audio;
+    if (reader == null) {
+      return true;
+    }
+    final target = frameRate.frameToSample(frames, reader.sampleRate);
+    while (_audioCursor < target) {
+      final window = reader.readWindow(
+        _audioCursor,
+        math.min(target - _audioCursor, 65536),
+      );
+      // ⚠️Untested (2026-09-05): the end-to-end encoder test's mix always
+      // outlasts its frames, so the pad never fires and mutating it away
+      // stays green. It needs a WAV shorter than the video.
+      if (window.samples.isEmpty) {
+        return _padSilenceTo(target, reader.channels);
+      }
+      final frameCount = window.samples.length ~/ reader.channels;
+      final pcm = Int16List(window.samples.length);
+      for (var i = 0; i < window.samples.length; i += 1) {
+        // The exact inverse of the WAV decode — see int16FromUnitSample.
+        pcm[i] = int16FromUnitSample(window.samples[i]);
+      }
+      if (!encoder.writeAudio(pcm, frameCount)) {
+        return false;
+      }
+      _audioCursor += frameCount;
+    }
+    return true;
+  }
+
+  /// Past the WAV's end (a cancelled mix, a rounding tail): pad with
+  /// silence rather than starving the encoder.
+  bool _padSilenceTo(int target, int channels) {
+    final missing = target - _audioCursor;
+    if (!encoder.writeAudio(Int16List(missing * channels), missing)) {
+      return false;
+    }
+    _audioCursor = target;
+    return true;
   }
 }
