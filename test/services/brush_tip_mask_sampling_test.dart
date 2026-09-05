@@ -202,6 +202,26 @@ void main() {
       expect(sumOf(bristleBrushTipMask), 251426);
       expect(sumOf(spongeBrushTipMask), 73504);
     });
+
+    test('every byte sits in its cell (FNV-1a over the alpha)', () {
+      // A sum cannot see a byte moving between cells, and a generator
+      // rewrite that keeps the sum but swaps two pixels would still re-render
+      // every old stroke. The hash is order-sensitive; locked before the
+      // generators were merged onto one disc stamp (2026-09-06).
+      int fnv1aOf(BrushTipMask mask) {
+        var hash = 0x811C9DC5;
+        for (final value in mask.alpha) {
+          hash = ((hash ^ value) * 0x01000193) & 0xFFFFFFFF;
+        }
+        return hash;
+      }
+
+      expect(fnv1aOf(chalkBrushTipMask), 869599432);
+      expect(fnv1aOf(splatterBrushTipMask), 1378955091);
+      expect(fnv1aOf(grainBrushTipMask), 942463523);
+      expect(fnv1aOf(bristleBrushTipMask), 1122097547);
+      expect(fnv1aOf(spongeBrushTipMask), 4276899769);
+    });
   });
 
   group('built-in canvas textures', () {
