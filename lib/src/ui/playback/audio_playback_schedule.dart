@@ -14,13 +14,11 @@ import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
-import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
-import '../../models/track.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../audio/audio_conform_store.dart';
@@ -132,14 +130,6 @@ int _clampToFileLength({
   );
 }
 
-/// Where each cut sits on its track's GLOBAL frame axis, and which track
-/// owns it. SE rows are track-owned, so this — not the playlist — is the
-/// axis a sound's position is stated in.
-typedef _TrackAxis = ({
-  Map<CutId, int> startByCutId,
-  Map<CutId, Track> trackByCutId,
-});
-
 /// One entry's window onto its track: the track frames it shows, how far
 /// back over a PLAYED leading gap that reaches, and whether it starts a
 /// contiguous run.
@@ -157,26 +147,14 @@ class _ScheduleRun {
     required this.soloed,
     required this.rate,
     required this.durationSecondsFor,
-  }) : axis = _axisOf(project);
+  }) : axis = trackAxisOf(project);
 
   final List<StoryboardTimelineLayoutEntry> playlist;
-  final _TrackAxis axis;
+  final TrackAxis axis;
   final Set<LayerId> muted;
   final Set<LayerId> soloed;
   final ProjectFrameRate rate;
   final double? Function(String filePath) durationSecondsFor;
-
-  static _TrackAxis _axisOf(Project project) {
-    final startByCutId = <CutId, int>{};
-    final trackByCutId = <CutId, Track>{};
-    for (final track in project.tracks) {
-      for (final placed in cutSpansOf(track)) {
-        startByCutId[placed.cut.id] = placed.startFrame;
-        trackByCutId[placed.cut.id] = track;
-      }
-    }
-    return (startByCutId: startByCutId, trackByCutId: trackByCutId);
-  }
 
   /// Everything playlist entry [entryIndex] contributes: for each audible
   /// SE row of its track, every span this entry is the one to show.

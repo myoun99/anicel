@@ -172,177 +172,234 @@ List<ExportFrameTask> buildExportFramePlan({
 /// The result is the SAME schedule shape playback consumes — the export
 /// mix renders through the same mixer, which is the whole point: what the
 /// preview played is what the file holds.
+/// One span, trimmed into the exported window [audibleStart, audibleEnd)
+/// — or null when the window closed before it opened.
+///
+/// ⛔THE SAME anchors playback ramps at: the fade-in anchors to the span
+/// (block) start, so a range starting mid-fade keeps only the remainder,
+/// and the fade-out anchors to the audible end. Both cap at the audible
+/// length, and the envelope keys shift by the trimmed lead (possibly
+/// negative — before the exported window).
+ScheduledAudioClip? _trimmedExportClip(
+  SeAudioSpan span, {
+  required _ExportWindow at,
+  required double layerGain,
+  required double layerPan,
+}) {
+  if (at.audibleEnd <= at.audibleStart) {
+    return null;
+  }
+  final audibleFrames = at.audibleEnd - at.audibleStart;
+  final trimmedLead = at.audibleStart - at.spanExportStart;
+  return ScheduledAudioClip(
+    filePath: span.clip.filePath,
+    startFrame: at.audibleStart,
+    endFrameExclusive: at.audibleEnd,
+    // The clip's offset trim seeks past the skipped file head on top of
+    // any range clipping.
+    offsetFrames: trimmedLead + span.clip.offsetFrames,
+    gain: layerGain * span.clip.gain,
+    fadeInFrames:
+        (at.spanExportStart + span.clip.fadeInFrames - at.audibleStart).clamp(
+          0,
+          audibleFrames,
+        ),
+    fadeOutFrames: span.clip.fadeOutFrames.clamp(0, audibleFrames),
+    pan: layerPan,
+    fadeCurve: span.clip.fadeCurve,
+    volumeKeys: trimmedLead == 0
+        ? span.clip.volumeKeys
+        : [
+            for (final key in span.clip.volumeKeys)
+              AudioVolumeKey(frame: key.frame - trimmedLead, gain: key.gain),
+          ],
+  );
+}
+
+/// Where one span lands in the exported timeline: where the span begins
+/// and the window it is trimmed into.
+typedef _ExportWindow = ({
+  int spanExportStart,
+  int audibleStart,
+  int audibleEnd,
+});
+
+/// One exported block: the frames of one cut, in plan order.
+typedef _ExportBlock = ({int start, int end, int firstFrameIndex, Cut cut});
+
+/// The block starting at [blockStart]: every following task that is still
+/// the same cut belongs to it.
+_ExportBlock _blockAt(int blockStart, List<ExportFrameTask> plan) {
+  final cut = plan[blockStart].cut;
+  var blockEnd = blockStart;
+  while (blockEnd < plan.length && plan[blockEnd].cut.id == cut.id) {
+    blockEnd += 1;
+  }
+  return (
+    start: blockStart,
+    end: blockEnd,
+    firstFrameIndex: plan[blockStart].frameIndex,
+    cut: cut,
+  );
+}
+
+/// Legacy path: cut-owned SE layers (test fixtures; production cuts no
+/// longer carry SE rows). Ends clamp at the cut's exported block.
+Iterable<ScheduledAudioClip> _cutOwnedSpans(_ExportBlock block) sync* {
+  for (final layer in block.cut.layers) {
+    if (layer.kind != LayerKind.se || layer.muted) {
+      continue;
+    }
+    for (final span in seAudioSpans(layer)) {
+      final offsetFrames =
+          block.start + (span.startFrame - block.firstFrameIndex);
+      if (offsetFrames >= block.end) {
+        continue;
+      }
+      final clip = _trimmedExportClip(
+        span,
+        at: (
+          spanExportStart: offsetFrames,
+          audibleStart: math.max(block.start, offsetFrames),
+          audibleEnd: math.min(block.end, offsetFrames + span.lengthFrames),
+        ),
+        layerGain: 1,
+        layerPan: 0,
+      );
+      if (clip != null) {
+        yield clip;
+      }
+    }
+  }
+}
+
+/// Whether the block ENDING at [endIndex] runs straight on into the one
+/// starting there, on the TRACK axis.
+///
+/// Contiguous = the next block's first exported frame sits exactly where
+/// the previous cut ended on the track: back-to-back cuts, or a leading
+/// gap the plan exports as black frames (the next task's frameIndex is
+/// then the negative gap index, offsetting its cut's track start back to
+/// the gap's first frame). A gap the plan SKIPS breaks the run — the
+/// exported timeline collapsed it.
+///
+/// 🚨SYMMETRIC on purpose: BOTH blocks must be on [track] and both must
+/// have a place on it. That is what lets the same question answer "does
+/// this run continue?" looking forward and "did a run already reach me?"
+/// looking back — one predicate, asked at two indices, rather than two
+/// spellings of contiguity that could disagree.
+bool _blocksContiguous(
+  int endIndex, {
+  required List<ExportFrameTask> plan,
+  required Track track,
+  required TrackAxis axis,
+}) {
+  if (endIndex <= 0 || endIndex >= plan.length) {
+    return false;
+  }
+  final prevTask = plan[endIndex - 1];
+  final nextTask = plan[endIndex];
+  final prevTrackStart = axis.startByCutId[prevTask.cut.id];
+  final nextTrackStart = axis.startByCutId[nextTask.cut.id];
+  return prevTrackStart != null &&
+      nextTrackStart != null &&
+      identical(axis.trackByCutId[prevTask.cut.id], track) &&
+      identical(axis.trackByCutId[nextTask.cut.id], track) &&
+      prevTask.frameIndex == prevTask.cut.duration - 1 &&
+      nextTrackStart + nextTask.frameIndex ==
+          prevTrackStart + prevTask.cut.duration;
+}
+
+/// Where the contiguous run starting at [block] ends in the plan: block
+/// after block, for as long as each runs straight on into the next.
+int _runEndFrom(
+  _ExportBlock block, {
+  required List<ExportFrameTask> plan,
+  required Track track,
+  required TrackAxis axis,
+}) {
+  var runEnd = block.end;
+  while (_blocksContiguous(runEnd, plan: plan, track: track, axis: axis)) {
+    final nextCutId = plan[runEnd].cut.id;
+    while (runEnd < plan.length && plan[runEnd].cut.id == nextCutId) {
+      runEnd += 1;
+    }
+  }
+  return runEnd;
+}
+
+/// Track-owned SE rows: spans sit on the track's global axis and may
+/// cross cut boundaries. Each span is laid ONCE — at the block where it
+/// starts, or a run-start block it spills into — and runs to its true
+/// end, clamped where the exported sequence stops being contiguous with
+/// the track (a frame-subrange boundary, a skipped cut).
+Iterable<ScheduledAudioClip> _trackOwnedSpans(
+  _ExportBlock block, {
+  required List<ExportFrameTask> plan,
+  required TrackAxis axis,
+}) sync* {
+  final track = axis.trackByCutId[block.cut.id];
+  final cutTrackStart = axis.startByCutId[block.cut.id];
+  if (track == null || cutTrackStart == null) {
+    return;
+  }
+  final windowTrackStart = cutTrackStart + block.firstFrameIndex;
+  final runEnd = _runEndFrom(block, plan: plan, track: track, axis: axis);
+  // A run STARTS here unless the block before it ran straight into this
+  // one — the same contiguity, asked backwards. ⛔No `block.start == 0`
+  // case: index zero has no block before it, which _blocksContiguous
+  // already answers.
+  final isRunStart = !_blocksContiguous(
+    block.start,
+    plan: plan,
+    track: track,
+    axis: axis,
+  );
+
+  for (final layer in track.seLayers) {
+    if (layer.muted) {
+      continue;
+    }
+    for (final span in seAudioSpans(layer)) {
+      final exportPos = block.start + (span.startFrame - windowTrackStart);
+      final startsHere = exportPos >= block.start && exportPos < block.end;
+      final spillsIn =
+          isRunStart &&
+          exportPos < block.start &&
+          exportPos + span.lengthFrames > block.start;
+      if (!startsHere && !spillsIn) {
+        continue;
+      }
+      final clip = _trimmedExportClip(
+        span,
+        at: (
+          spanExportStart: exportPos,
+          audibleStart: math.max(block.start, exportPos),
+          audibleEnd: math.min(runEnd, exportPos + span.lengthFrames),
+        ),
+        layerGain: layer.audioGain,
+        layerPan: layer.audioPan,
+      );
+      if (clip != null) {
+        yield clip;
+      }
+    }
+  }
+}
+
 List<ScheduledAudioClip> buildExportAudioPlan({
   required List<ExportFrameTask> plan,
   Project? project,
 }) {
-  final clips = <ScheduledAudioClip>[];
-
-  void emit({
-    required int spanExportStart,
-    required int audibleStart,
-    required int audibleEnd,
-    required SeAudioSpan span,
-    double layerGain = 1.0,
-    double layerPan = 0.0,
-  }) {
-    if (audibleEnd <= audibleStart) {
-      return;
-    }
-    final audibleFrames = audibleEnd - audibleStart;
-    // Fade windows in the TRIMMED clip's own time: the fade-in anchors to
-    // the span (block) start — a range starting mid-fade keeps only the
-    // remainder — and the fade-out anchors to the audible end, both capped
-    // at the audible length (same anchors playback ramps).
-    final fadeInFrames =
-        (spanExportStart + span.clip.fadeInFrames - audibleStart).clamp(
-          0,
-          audibleFrames,
-        );
-    final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
-    final trimmedLead = audibleStart - spanExportStart;
-    clips.add(
-      ScheduledAudioClip(
-        filePath: span.clip.filePath,
-        startFrame: audibleStart,
-        endFrameExclusive: audibleEnd,
-        // The clip's offset trim seeks past the skipped file head on top
-        // of any range clipping.
-        offsetFrames: trimmedLead + span.clip.offsetFrames,
-        gain: layerGain * span.clip.gain,
-        fadeInFrames: fadeInFrames,
-        fadeOutFrames: fadeOutFrames,
-        pan: layerPan,
-        fadeCurve: span.clip.fadeCurve,
-        // Envelope keys anchor to the span start; a trimmed lead shifts
-        // them (possibly negative — before the exported window), same as
-        // playback.
-        volumeKeys: trimmedLead == 0
-            ? span.clip.volumeKeys
-            : [
-                for (final key in span.clip.volumeKeys)
-                  AudioVolumeKey(
-                    frame: key.frame - trimmedLead,
-                    gain: key.gain,
-                  ),
-              ],
-      ),
-    );
-  }
-
-  // Track starts for the TRACK-owned SE rows (global axis, cut-crossing) —
   // THE walk, so the export axis and the playback axis cannot drift.
-  final trackStartByCutId = <CutId, int>{};
-  final trackByCutId = <CutId, Track>{};
-  for (final track in project?.tracks ?? const <Track>[]) {
-    for (final placed in cutSpansOf(track)) {
-      trackStartByCutId[placed.cut.id] = placed.startFrame;
-      trackByCutId[placed.cut.id] = track;
-    }
-  }
-
+  final axis = trackAxisOf(project);
+  final clips = <ScheduledAudioClip>[];
   var blockStart = 0;
   while (blockStart < plan.length) {
-    final cut = plan[blockStart].cut;
-    var blockEnd = blockStart;
-    while (blockEnd < plan.length && plan[blockEnd].cut.id == cut.id) {
-      blockEnd += 1;
-    }
-    final firstFrameIndex = plan[blockStart].frameIndex;
-
-    // Legacy path: cut-owned SE layers (test fixtures; production cuts no
-    // longer carry SE rows). Ends clamp at the cut's exported block.
-    for (final layer in cut.layers) {
-      if (layer.kind != LayerKind.se || layer.muted) {
-        continue;
-      }
-      for (final span in seAudioSpans(layer)) {
-        final offsetFrames = blockStart + (span.startFrame - firstFrameIndex);
-        if (offsetFrames >= blockEnd) {
-          continue;
-        }
-        emit(
-          spanExportStart: offsetFrames,
-          audibleStart: math.max(blockStart, offsetFrames),
-          audibleEnd: math.min(blockEnd, offsetFrames + span.lengthFrames),
-          span: span,
-        );
-      }
-    }
-
-    // Track-owned SE rows: spans sit on the track's global axis and may
-    // cross cut boundaries. Each span is laid once — at the block where it
-    // starts (or a run-start block it spills into) — and runs to its true
-    // end, clamped where the exported sequence stops being contiguous with
-    // the track (a frame-subrange boundary, a skipped cut).
-    final track = trackByCutId[cut.id];
-    final cutTrackStart = trackStartByCutId[cut.id];
-    if (track != null && cutTrackStart != null) {
-      final windowTrackStart = cutTrackStart + firstFrameIndex;
-
-      // Contiguous = the next block's first exported frame sits exactly
-      // where the previous cut ended on the TRACK axis: back-to-back cuts,
-      // or a leading gap the plan exports as black frames (the next task's
-      // frameIndex is then the negative gap index, offsetting its cut's
-      // track start back to the gap's first frame). A gap the plan SKIPS
-      // breaks the run — the exported timeline collapsed it.
-      bool blocksContiguous(int endIndex) {
-        if (endIndex >= plan.length) {
-          return false;
-        }
-        final prevTask = plan[endIndex - 1];
-        final nextTask = plan[endIndex];
-        final nextTrackStart = trackStartByCutId[nextTask.cut.id];
-        return nextTrackStart != null &&
-            identical(trackByCutId[nextTask.cut.id], track) &&
-            prevTask.frameIndex == prevTask.cut.duration - 1 &&
-            nextTrackStart + nextTask.frameIndex ==
-                (trackStartByCutId[prevTask.cut.id] ?? 0) +
-                    prevTask.cut.duration;
-      }
-
-      var runEnd = blockEnd;
-      while (blocksContiguous(runEnd)) {
-        final nextCutId = plan[runEnd].cut.id;
-        while (runEnd < plan.length && plan[runEnd].cut.id == nextCutId) {
-          runEnd += 1;
-        }
-      }
-      final isRunStart =
-          blockStart == 0 ||
-          !(plan[blockStart - 1].frameIndex ==
-                  plan[blockStart - 1].cut.duration - 1 &&
-              identical(trackByCutId[plan[blockStart - 1].cut.id], track) &&
-              (trackStartByCutId[plan[blockStart - 1].cut.id] ?? -1) +
-                      plan[blockStart - 1].cut.duration ==
-                  cutTrackStart + firstFrameIndex);
-
-      for (final layer in track.seLayers) {
-        if (layer.muted) {
-          continue;
-        }
-        for (final span in seAudioSpans(layer)) {
-          final exportPos = blockStart + (span.startFrame - windowTrackStart);
-          final startsHere = exportPos >= blockStart && exportPos < blockEnd;
-          final spillsIn =
-              isRunStart &&
-              exportPos < blockStart &&
-              exportPos + span.lengthFrames > blockStart;
-          if (!startsHere && !spillsIn) {
-            continue;
-          }
-          emit(
-            spanExportStart: exportPos,
-            audibleStart: math.max(blockStart, exportPos),
-            audibleEnd: math.min(runEnd, exportPos + span.lengthFrames),
-            span: span,
-            layerGain: layer.audioGain,
-            layerPan: layer.audioPan,
-          );
-        }
-      }
-    }
-    blockStart = blockEnd;
+    final block = _blockAt(blockStart, plan);
+    clips.addAll(_cutOwnedSpans(block));
+    clips.addAll(_trackOwnedSpans(block, plan: plan, axis: axis));
+    blockStart = block.end;
   }
   return clips;
 }

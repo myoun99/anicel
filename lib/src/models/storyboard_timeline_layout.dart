@@ -86,6 +86,29 @@ Iterable<({Cut cut, int startFrame, int endFrame})> cutSpansOfCuts(
   }
 }
 
+/// Every cut's place on its track's axis, and which track owns it.
+///
+/// Track-owned SE rows live on this axis, so a sound's window is stated
+/// in these coordinates — by playback and by export alike.
+typedef TrackAxis = ({
+  Map<CutId, int> startByCutId,
+  Map<CutId, Track> trackByCutId,
+});
+
+/// [cutSpansOf] over every track of [project], as a lookup. A null
+/// project has no tracks and answers an empty axis.
+TrackAxis trackAxisOf(Project? project) {
+  final startByCutId = <CutId, int>{};
+  final trackByCutId = <CutId, Track>{};
+  for (final track in project?.tracks ?? const <Track>[]) {
+    for (final placed in cutSpansOf(track)) {
+      startByCutId[placed.cut.id] = placed.startFrame;
+      trackByCutId[placed.cut.id] = track;
+    }
+  }
+  return (startByCutId: startByCutId, trackByCutId: trackByCutId);
+}
+
 /// [cutId]'s global start on [track]'s axis, or null when [cutId] is null or
 /// the track does not hold it.
 int? cutGlobalStartFrameIn(Track track, CutId? cutId) {

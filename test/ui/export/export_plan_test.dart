@@ -471,12 +471,24 @@ void main() {
 
       expect(clips, const [
         // a.wav fills its whole cut.
-        ScheduledAudioClip(filePath: 'a.wav', startFrame: 0, endFrameExclusive: 10),
+        ScheduledAudioClip(
+          filePath: 'a.wav',
+          startFrame: 0,
+          endFrameExclusive: 10,
+        ),
         // b.wav starts at frame 6 and caps at cut a's end (frame 10).
-        ScheduledAudioClip(filePath: 'b.wav', startFrame: 6, endFrameExclusive: 10),
+        ScheduledAudioClip(
+          filePath: 'b.wav',
+          startFrame: 6,
+          endFrameExclusive: 10,
+        ),
         // c.wav sits at global frame 13 (cut b local 3) and never bleeds
         // past cut b.
-        ScheduledAudioClip(filePath: 'c.wav', startFrame: 13, endFrameExclusive: 30),
+        ScheduledAudioClip(
+          filePath: 'c.wav',
+          startFrame: 13,
+          endFrameExclusive: 30,
+        ),
       ]);
     });
 
@@ -566,6 +578,89 @@ void main() {
       ]);
     });
 
+    /// 🚨A RUN IS ON ONE TRACK, AND ONLY WHOLE CUTS CONTINUE IT.
+    ///
+    /// Both halves of that survived mutation before 2026-09-05: the
+    /// contiguity test looked only at the block it was moving INTO, so a
+    /// block whose predecessor sat on another track — or was only
+    /// partly exported — still counted as the middle of a run. A block
+    /// in the middle of a run does not take a spilling sound (it would
+    /// be scheduled twice), so a sound that really did start before it
+    /// went silent instead.
+    test('🚨a partly exported cut does NOT continue the run — the next '
+        'block is a run start and takes the sound spilling into it', () {
+      final proj = project([
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          seLayers: [seLayer('se-x', file: 'x.wav', start: 8, length: 8)],
+          cuts: [cut('a', duration: 10), cut('b', duration: 10)],
+        ),
+      ]);
+      final a = proj.tracks.first.cuts[0];
+      final b = proj.tracks.first.cuts[1];
+
+      // Cut a is exported only up to frame 4 — the timeline collapses
+      // there, so the sound cannot simply run on.
+      final partial = <ExportFrameTask>[
+        for (var index = 0; index <= 4; index += 1)
+          ExportFrameTask(cut: a, frameIndex: index),
+        for (var index = 0; index <= 9; index += 1)
+          ExportFrameTask(cut: b, frameIndex: index),
+      ];
+
+      expect(buildExportAudioPlan(plan: partial, project: proj), const [
+        ScheduledAudioClip(
+          filePath: 'x.wav',
+          startFrame: 5,
+          endFrameExclusive: 11,
+          offsetFrames: 2,
+        ),
+      ]);
+    });
+
+    test('🚨the block before must be on the SAME track — two tracks whose '
+        'axes happen to line up are still two runs', () {
+      final proj = project([
+        Track(
+          id: const TrackId('track-a'),
+          name: 'A',
+          cuts: [cut('a', duration: 10)],
+        ),
+        Track(
+          id: const TrackId('track-b'),
+          name: 'B',
+          // The gap puts b1 at track frame 10 — exactly where cut a ends
+          // on ITS track, which is the coincidence the track check is
+          // there for.
+          seLayers: [seLayer('se-y', file: 'y.wav', start: 6, length: 8)],
+          cuts: [cut('b', duration: 10).copyWith(leadingGapFrames: 10)],
+        ),
+      ]);
+      final a = proj.tracks[0].cuts.first;
+      final b = proj.tracks[1].cuts.first;
+
+      final mixed = <ExportFrameTask>[
+        for (var index = 0; index <= 9; index += 1)
+          ExportFrameTask(cut: a, frameIndex: index),
+        for (var index = 0; index <= 9; index += 1)
+          ExportFrameTask(cut: b, frameIndex: index),
+      ];
+
+      expect(
+        buildExportAudioPlan(plan: mixed, project: proj),
+        const [
+          ScheduledAudioClip(
+            filePath: 'y.wav',
+            startFrame: 10,
+            endFrameExclusive: 14,
+            offsetFrames: 4,
+          ),
+        ],
+        reason: 'b starts a run of its own, so it takes the spill',
+      );
+    });
+
     test('track-owned SE sounds run THROUGH exported gap frames and '
         're-clamp when the plan collapses the gap', () {
       // Track: cut a (10 frames) + cut b (20 frames, 5-frame leading gap →
@@ -595,21 +690,18 @@ void main() {
         range: ExportRange.allCuts,
         includeGaps: true,
       );
-      expect(
-        buildExportAudioPlan(plan: videoPlan, project: proj),
-        const [
-          ScheduledAudioClip(
-            filePath: 'g.wav',
-            startFrame: 8,
-            endFrameExclusive: 18,
-          ),
-          ScheduledAudioClip(
-            filePath: 'h.wav',
-            startFrame: 12,
-            endFrameExclusive: 17,
-          ),
-        ],
-      );
+      expect(buildExportAudioPlan(plan: videoPlan, project: proj), const [
+        ScheduledAudioClip(
+          filePath: 'g.wav',
+          startFrame: 8,
+          endFrameExclusive: 18,
+        ),
+        ScheduledAudioClip(
+          filePath: 'h.wav',
+          startFrame: 12,
+          endFrameExclusive: 17,
+        ),
+      ]);
 
       // A gap-skipping plan collapses the timeline: the run breaks at the
       // gap, sounds re-sync to the track axis on the far side (seek bumps)
@@ -619,28 +711,25 @@ void main() {
         activeCutId: const CutId('a'),
         range: ExportRange.allCuts,
       );
-      expect(
-        buildExportAudioPlan(plan: collapsedPlan, project: proj),
-        const [
-          ScheduledAudioClip(
-            filePath: 'g.wav',
-            startFrame: 8,
-            endFrameExclusive: 10,
-          ),
-          ScheduledAudioClip(
-            filePath: 'g.wav',
-            startFrame: 10,
-            endFrameExclusive: 13,
-            offsetFrames: 7,
-          ),
-          ScheduledAudioClip(
-            filePath: 'h.wav',
-            startFrame: 10,
-            endFrameExclusive: 12,
-            offsetFrames: 3,
-          ),
-        ],
-      );
+      expect(buildExportAudioPlan(plan: collapsedPlan, project: proj), const [
+        ScheduledAudioClip(
+          filePath: 'g.wav',
+          startFrame: 8,
+          endFrameExclusive: 10,
+        ),
+        ScheduledAudioClip(
+          filePath: 'g.wav',
+          startFrame: 10,
+          endFrameExclusive: 13,
+          offsetFrames: 7,
+        ),
+        ScheduledAudioClip(
+          filePath: 'h.wav',
+          startFrame: 10,
+          endFrameExclusive: 12,
+          offsetFrames: 3,
+        ),
+      ]);
     });
 
     test('gain and fades land on the plan; a range starting mid-fade keeps '
