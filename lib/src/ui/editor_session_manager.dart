@@ -4571,6 +4571,186 @@ class EditorSessionManager extends ChangeNotifier {
     return plan.warnings;
   }
 
+  /// The bytes of every slot in [wave], read by OFFSET one at a time.
+  ///
+  /// 🚨A slot knows where its record is, so the decode never needs the
+  /// file resident: the alternative is holding the whole .tvpp AND the
+  /// buffers the decode builds, and both scale with the FILE rather than
+  /// with the work — which on a phone is the allocation that gets the app
+  /// killed.
+  static Future<List<Uint8List>> _readWaveWindows(
+    RandomAccessFile reader,
+    List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> wave,
+  ) async {
+    final windows = <Uint8List>[];
+    for (final (_, _, _, slot) in wave) {
+      await reader.setPosition(slot.chunkOffset);
+      windows.add(await reader.read(slot.chunkLength));
+    }
+    return windows;
+  }
+
+  /// One wave decoded across worker isolates — the import's whole cost
+  /// (zlib + PackBits per cel; on 288 about 30s single-threaded), and it
+  /// is pure, so it fans out. A cel that will not decode comes back as
+  /// its exception rather than throwing the wave away.
+  static Future<List<Object?>> _decodeWave(
+    List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> wave,
+    List<Uint8List> windows,
+  ) => Future.wait([
+    for (var w = 0; w < wave.length; w++)
+      () {
+        final (plan, _, _, slot) = wave[w];
+        final window = windows[w];
+        // The record's offsets count from the record, so a window
+        // rebased to zero is the same input by a different name.
+        final windowSlot = TvppSlot(
+          kind: slot.kind,
+          chunkOffset: 0,
+          chunkLength: slot.chunkLength,
+          compressed: slot.compressed,
+          v10WholeCanvas: slot.v10WholeCanvas,
+        );
+        final width = plan.cut.canvasSize.width;
+        final height = plan.cut.canvasSize.height;
+        return Isolate.run(() {
+          try {
+            return decodeTvppSlotTiles(
+              recordBytes: window,
+              slot: windowSlot,
+              width: width,
+              height: height,
+            );
+          } on TvppRasterDecodeException catch (error) {
+            return error;
+          }
+        });
+      }(),
+  ]);
+
+  /// Lands one decoded cel, or says why it could not be landed.
+  ///
+  /// A blank instance (빈 셀) decodes to zero tiles: the cel stays, its
+  /// pixels stay absent — the same shape the drawing store gives an empty
+  /// cel.
+  void _bakeDecodedCel(
+    Object? decoded, {
+    required Cut cut,
+    required PlannedCelBake bake,
+    required List<String> warnings,
+  }) {
+    if (decoded is TvppRasterDecodeException) {
+      warnings.add('${bake.sourceFile}: $decoded');
+      return;
+    }
+    final tiles = decoded as List<TvppCelTile>?;
+    if (tiles == null || tiles.isEmpty) {
+      return;
+    }
+    bakeCelSurface(
+      brushFrameStore,
+      brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
+      BitmapSurface(canvasSize: cut.canvasSize).putTiles([
+        for (final tile in tiles)
+          BitmapTile(
+            coord: TileCoord(x: tile.x, y: tile.y),
+            size: 256,
+            pixels: tile.pixels,
+          ),
+      ]),
+    );
+  }
+
+  /// The structure of the .tvpp at [source], or null when it is not one.
+  ///
+  /// ⛔SCOPED, so the whole-file bytes are collectable the moment the
+  /// structure is out of them. Everything after this reads the file by
+  /// OFFSET — a slot knows where its record is, so the long half of an
+  /// import (decoding every cel) never needs the file resident. Before
+  /// this the bytes stayed reachable for the entire import, which on a
+  /// 200MB project is 200MB held for minutes next to everything the
+  /// decode is building.
+  static Future<TvppParseResult?> _readTvppStructure(
+    ({String path, bool staged}) source,
+  ) async {
+    try {
+      final bytes = await File(source.path).readAsBytes();
+      return parseTvppStructure(bytes);
+    } on TvppParseException {
+      if (source.staged) {
+        unawaited(
+          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
+        );
+      }
+      return null;
+    }
+  }
+
+  /// One import plan per clip, with the slots its bakes will read from.
+  /// Every plan's warnings join [warnings] as they are made.
+  List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
+    TvppParseResult parsed, {
+    required List<String> warnings,
+  }) {
+    final mint = _importIdMint();
+    final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
+    for (var c = 0; c < parsed.clips.length; c++) {
+      final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
+      final plan = planTvpImport(
+        parsed: conversion.result,
+        // Block files are synthetic slot keys, resolved against
+        // [conversion.slotsByFile] at bake time — not paths.
+        resolveFile: (key) => key,
+        mint: mint,
+      );
+      warnings.addAll(plan.warnings);
+      plans.add((plan, conversion.slotsByFile));
+    }
+    return plans;
+  }
+
+  /// The whole-state reset an .anicel open performs, minus the parts that
+  /// only exist for saved files (recovery, cel restore, healing).
+  void _resetSessionForImportedProject(CutId firstCutId) {
+    brushFrameStore.restoreFromFile(const {});
+    conteInkRowStore.restoreFromFile(const {});
+    conteInkPageStore.restoreFromFile(const {});
+    envelopeInkStore.restoreFromFile(const {});
+    _historyManager.clear();
+    _clipboard._copiedFrame = null;
+    _clipboard._layerClipboard = null;
+    clearAllSelections();
+    trackFrameRangeSelection.value = null;
+    _editingSession.setActiveCutId(firstCutId);
+    _rebuildActiveCutControllers();
+    _voiceRecording.forgetShelfTakes();
+    _projectFilePath = null;
+    _recoveredFromSidecar = null;
+    _discardedUnsavedWork = false;
+  }
+
+  /// Every cel this import has to bake, paired with the cut it landed in
+  /// and the slot its bytes live in. A plan whose cut did not land, or a
+  /// bake whose slot is missing, simply has no work.
+  List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> _tvppBakeWork(
+    List<(TvpImportPlan, Map<String, TvppSlot>)> plans,
+  ) {
+    final work = <(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)>[];
+    for (final (plan, slotsByFile) in plans) {
+      final bakedCut = _cutById(plan.cut.id);
+      if (bakedCut == null) {
+        continue;
+      }
+      for (final bake in plan.bakes) {
+        final slot = slotsByFile[bake.sourceFile];
+        if (slot != null) {
+          work.add((plan, bakedCut, bake, slot));
+        }
+      }
+    }
+    return work;
+  }
+
   /// Opens a TVPaint project file AS A PROJECT — a .tvpp holds several
   /// cuts, so it replaces the session's project the way an .anicel open
   /// does: every clip a cut, pixels/timeline/folders/marks/camera/audio
@@ -4600,23 +4780,8 @@ class EditorSessionManager extends ChangeNotifier {
       onWaiting: onWaiting,
       isCancelled: isCancelled,
     );
-    final TvppParseResult parsed;
-    try {
-      // SCOPED, so the whole-file bytes are collectable the moment the
-      // structure is out of them. Everything after this reads the file by
-      // OFFSET — a slot knows where its record is, so the long half of an
-      // import (decoding every cel) never needs the file resident. Before
-      // this the bytes stayed reachable for the entire import, which on a
-      // 200MB project is 200MB held for minutes next to everything the
-      // decode is building.
-      final bytes = await File(source.path).readAsBytes();
-      parsed = parseTvppStructure(bytes);
-    } on TvppParseException {
-      if (source.staged) {
-        unawaited(
-          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-        );
-      }
+    final parsed = await _readTvppStructure(source);
+    if (parsed == null) {
       return null;
     }
     // The other candidate for last-thing-the-app-ever-did: decoding a
@@ -4634,7 +4799,6 @@ class EditorSessionManager extends ChangeNotifier {
             height: parsed.projectCameraHeight!,
           )
         : defaultProjectCameraSize;
-    final mint = _importIdMint();
     final warnings = [...parsed.warnings];
     if (source.staged) {
       // The last resort fired. Said out loud on purpose (유저 2026-08-27:
@@ -4644,19 +4808,13 @@ class EditorSessionManager extends ChangeNotifier {
       // in the field, the road comes out.
       warnings.add('제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.');
     }
-    final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
-    for (var c = 0; c < parsed.clips.length; c++) {
-      final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
-      final plan = planTvpImport(
-        parsed: conversion.result,
-        // Block files are synthetic slot keys, resolved against
-        // [conversion.slotsByFile] at bake time — not paths.
-        resolveFile: (key) => key,
-        mint: mint,
-      );
-      warnings.addAll(plan.warnings);
-      plans.add((plan, conversion.slotsByFile));
-    }
+    final plans = _planTvppClips(parsed, warnings: warnings);
+    // ⛔EQUIVALENT to the parser's own refusal today: a structure with no
+    // clip header does not parse at all, so `plans` is empty only when
+    // `parsed.clips` is — and mutating this away leaves the suite green
+    // (2026-09-05). Kept because it is the statement of the door's
+    // contract: replacing the session with an EMPTY project is worse
+    // than not opening.
     if (plans.isEmpty) {
       return null;
     }
@@ -4696,23 +4854,7 @@ class EditorSessionManager extends ChangeNotifier {
       ),
     );
 
-    // The whole-state reset an .anicel open performs, minus the parts
-    // that only exist for saved files (recovery, cel restore, healing).
-    brushFrameStore.restoreFromFile(const {});
-    conteInkRowStore.restoreFromFile(const {});
-    conteInkPageStore.restoreFromFile(const {});
-    envelopeInkStore.restoreFromFile(const {});
-    _historyManager.clear();
-    _clipboard._copiedFrame = null;
-    _clipboard._layerClipboard = null;
-    clearAllSelections();
-    trackFrameRangeSelection.value = null;
-    _editingSession.setActiveCutId(plans.first.$1.cut.id);
-    _rebuildActiveCutControllers();
-    _voiceRecording.forgetShelfTakes();
-    _projectFilePath = null;
-    _recoveredFromSidecar = null;
-    _discardedUnsavedWork = false;
+    _resetSessionForImportedProject(plans.first.$1.cut.id);
 
     // Decoding is the import's whole cost (zlib + PackBits per cel, on
     // 288: ~30s of it, single-threaded) and it is pure — so it fans out
@@ -4720,19 +4862,7 @@ class EditorSessionManager extends ChangeNotifier {
     // that many full-canvas RGBA buffers are ever alive at once. The
     // GPU bake stays here: it needs the UI thread and is cheap next to
     // the decode. Isolate.run moves its result out (no copy back).
-    final work = <(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)>[];
-    for (final (plan, slotsByFile) in plans) {
-      final bakedCut = _cutById(plan.cut.id);
-      if (bakedCut == null) {
-        continue;
-      }
-      for (final bake in plan.bakes) {
-        final slot = slotsByFile[bake.sourceFile];
-        if (slot != null) {
-          work.add((plan, bakedCut, bake, slot));
-        }
-      }
-    }
+    final work = _tvppBakeWork(plans);
     final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
     var bakedSoFar = 0;
     // 🚨READ BY OFFSET, ONE SLOT AT A TIME.
@@ -4756,70 +4886,19 @@ class EditorSessionManager extends ChangeNotifier {
     try {
       for (var at = 0; at < work.length; at += pool) {
         final wave = work.sublist(at, math.min(at + pool, work.length));
-        final windows = <Uint8List>[];
-        for (final (_, _, _, slot) in wave) {
-          await reader.setPosition(slot.chunkOffset);
-          windows.add(await reader.read(slot.chunkLength));
-        }
-        final decoded = await Future.wait([
-          for (var w = 0; w < wave.length; w++)
-            () {
-              final (plan, _, _, slot) = wave[w];
-              final window = windows[w];
-              // The record's offsets count from the record, so a window
-              // rebased to zero is the same input by a different name.
-              final windowSlot = TvppSlot(
-                kind: slot.kind,
-                chunkOffset: 0,
-                chunkLength: slot.chunkLength,
-                compressed: slot.compressed,
-                v10WholeCanvas: slot.v10WholeCanvas,
-              );
-              final width = plan.cut.canvasSize.width;
-              final height = plan.cut.canvasSize.height;
-              return Isolate.run(() {
-                try {
-                  return decodeTvppSlotTiles(
-                    recordBytes: window,
-                    slot: windowSlot,
-                    width: width,
-                    height: height,
-                  );
-                } on TvppRasterDecodeException catch (error) {
-                  return error;
-                }
-              });
-            }(),
-        ]);
+        final decoded = await _decodeWave(
+          wave,
+          await _readWaveWindows(reader, wave),
+        );
         for (var i = 0; i < wave.length; i++) {
           final (_, bakedCut, bake, _) = wave[i];
           bakedSoFar += 1;
           onProgress?.call(bakedSoFar / work.length);
-          final result = decoded[i];
-          if (result is TvppRasterDecodeException) {
-            warnings.add('${bake.sourceFile}: $result');
-            continue;
-          }
-          final tiles = result as List<TvppCelTile>?;
-          // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
-          // its pixels stay absent — same shape the drawing store gives an
-          // empty cel.
-          if (tiles == null || tiles.isEmpty) {
-            continue;
-          }
-          final surface = BitmapSurface(canvasSize: bakedCut.canvasSize)
-              .putTiles([
-                for (final tile in tiles)
-                  BitmapTile(
-                    coord: TileCoord(x: tile.x, y: tile.y),
-                    size: 256,
-                    pixels: tile.pixels,
-                  ),
-              ]);
-          bakeCelSurface(
-            brushFrameStore,
-            brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-            surface,
+          _bakeDecodedCel(
+            decoded[i],
+            cut: bakedCut,
+            bake: bake,
+            warnings: warnings,
           );
         }
       }
