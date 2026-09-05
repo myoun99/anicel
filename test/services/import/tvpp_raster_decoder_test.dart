@@ -120,6 +120,32 @@ void main() {
       expectDecodes(fileWith(srawRecord(px, w, h)), px, compressed: true);
     });
 
+    test('🚨a tile whose DECLARED size is not the size it reads is refused '
+        '— once the cursor drifts, everything after it is noise', () {
+      final px = testPixels();
+
+      expect(
+        () => decodeTvppSlotRgba(
+          recordBytes: fileWith(
+            srawRecord(px, w, h, corruptFirstTileSize: true),
+          ),
+          slot: slotFor(
+            fileWith(srawRecord(px, w, h, corruptFirstTileSize: true)),
+            compressed: true,
+          ),
+          width: w,
+          height: h,
+        ),
+        throwsA(
+          isA<TvppRasterDecodeException>().having(
+            (error) => error.message,
+            'message',
+            contains('크기 불일치'),
+          ),
+        ),
+      );
+    });
+
     test('tiled SRAW, uniform mode: 12-byte records with data chains', () {
       final px = testPixels();
       expectDecodes(

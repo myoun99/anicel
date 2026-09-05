@@ -192,8 +192,12 @@ class TvppBuilder {
 
   static List<int> _u16(int v) => [(v >> 8) & 0xff, v & 0xff];
 
-  static List<int> _u32(int v) =>
-      [(v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+  static List<int> _u32(int v) => [
+    (v >> 24) & 0xff,
+    (v >> 16) & 0xff,
+    (v >> 8) & 0xff,
+    v & 0xff,
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -267,8 +271,7 @@ List<int> encodeRows(List<List<int>> rows) {
 /// BGRA words).
 Uint8List dbodRecord(List<int> pixels, int width, int height) {
   final rows = [
-    for (var y = 0; y < height; y++)
-      pixels.sublist(y * width, (y + 1) * width),
+    for (var y = 0; y < height; y++) pixels.sublist(y * width, (y + 1) * width),
   ];
   final body = encodeRows(rows);
   final record = Uint8List(8 + body.length);
@@ -286,6 +289,10 @@ Uint8List srawRecord(
   int width,
   int height, {
   bool uniformMode = false,
+
+  /// Writes a tile-0 size the record does not actually hold, so the
+  /// decoder's "the cursor has drifted" check can be driven.
+  bool corruptFirstTileSize = false,
 }) {
   const tile = 64;
   final cols = (width + tile - 1) ~/ tile;
@@ -306,23 +313,27 @@ Uint8List srawRecord(
     ];
   }
 
-  bool tileEmpty(int t) =>
-      tileRows(t).every((row) => row.every((v) => v == 0));
+  bool tileEmpty(int t) => tileRows(t).every((row) => row.every((v) => v == 0));
 
   final body = <int>[];
   // Thumbnail: 96×67 of transparent — content correctness of the
   // thumbnail is TVPaint's problem, the decoder only skips it.
-  body.addAll(encodeRows([
-    for (var y = 0; y < 67; y++) List.filled(96, 0),
-  ]));
+  body.addAll(encodeRows([for (var y = 0; y < 67; y++) List.filled(96, 0)]));
 
-  List<int> u32(int v) =>
-      [(v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+  List<int> u32(int v) => [
+    (v >> 24) & 0xff,
+    (v >> 16) & 0xff,
+    (v >> 8) & 0xff,
+    v & 0xff,
+  ];
 
   if (!uniformMode) {
     final tile0 = encodeRows(tileRows(0));
     // Table: (total, X) where X is tile 0's byte size.
-    body.addAll([...u32(total), ...u32(tile0.length)]);
+    body.addAll([
+      ...u32(total),
+      ...u32(tile0.length + (corruptFirstTileSize ? 1 : 0)),
+    ]);
     body.addAll(tile0);
     for (var t = 1; t < total; t++) {
       // TVPaint dedupes identical tiles into copy markers — solid fills
@@ -336,8 +347,10 @@ Uint8List srawRecord(
             List.generate(mine.length, (y) => y).every(
               (y) =>
                   other[y].length == mine[y].length &&
-                  List.generate(mine[y].length, (x) => x)
-                      .every((x) => other[y][x] == mine[y][x]),
+                  List.generate(
+                    mine[y].length,
+                    (x) => x,
+                  ).every((x) => other[y][x] == mine[y][x]),
             )) {
           src = s;
         }
@@ -360,7 +373,11 @@ Uint8List srawRecord(
         // (a, anchor, size): tile t stays empty, the data belongs to
         // t+1; chain further non-empty neighbours with bare u32 sizes.
         final first = encodeRows(tileRows(t + 1));
-        body.addAll([...u32(0), ...u32((t ~/ cols) * cols), ...u32(first.length)]);
+        body.addAll([
+          ...u32(0),
+          ...u32((t ~/ cols) * cols),
+          ...u32(first.length),
+        ]);
         body.addAll(first);
         var ti = t + 2;
         while (ti < total && !tileEmpty(ti)) {

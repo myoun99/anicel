@@ -288,32 +288,65 @@ Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) {
   return img;
 }
 
-Uint32List _decodeTiled(Uint8List record, int width, int height) {
-  const tile = 64;
-  final cols = (width + tile - 1) ~/ tile;
-  final rows = (height + tile - 1) ~/ tile;
-  final total = cols * rows;
-  final img = Uint32List(width * height);
+/// One tiled raster being decoded: the 64×64 grid the picture is cut
+/// into, the PackBits cursor walking the record, and the image being
+/// filled in place.
+///
+/// ⛔The record's shape is measured, not documented — see
+/// `tvpp-format-notes.md`. Nothing here may change what bytes are read
+/// or in what order.
+class _TileGrid {
+  _TileGrid(this.record, {required this.width, required this.height})
+    : cols = (width + tile - 1) ~/ tile,
+      rows = (height + tile - 1) ~/ tile,
+      img = Uint32List(width * height),
+      pb = _PackBits(record, 24);
 
-  final pb = _PackBits(record, 24)..take(96 * 67, null, null); // thumbnail
+  static const tile = 64;
 
-  // Table: (totalTiles, X) pairs — count varies per file; read while the
-  // first word matches.
-  var x = -1;
-  while (pb.at + 8 <= record.length &&
-      ByteData.sublistView(record, pb.at, pb.at + 4).getUint32(0) == total) {
-    x = ByteData.sublistView(record, pb.at + 4, pb.at + 8).getUint32(0);
-    pb.at += 8;
+  final Uint8List record;
+  final int width;
+  final int height;
+  final int cols;
+  final int rows;
+  final Uint32List img;
+  final _PackBits pb;
+
+  int get total => cols * rows;
+
+  int _uint32At(int offset) =>
+      ByteData.sublistView(record, offset, offset + 4).getUint32(0);
+
+  int _tileWidth(int column) =>
+      column == cols - 1 ? width - column * tile : tile;
+
+  int _tileHeight(int row) => row == rows - 1 ? height - row * tile : tile;
+
+  /// Reads the (totalTiles, X) table and answers X.
+  ///
+  /// The pair COUNT varies per file, so the table is read while the first
+  /// word still says how many tiles this picture has; X is the last one
+  /// read, and it decides which of the two tile layouts follows.
+  int readTileTable() {
+    var x = -1;
+    while (pb.at + 8 <= record.length && _uint32At(pb.at) == total) {
+      x = _uint32At(pb.at + 4);
+      pb.at += 8;
+    }
+    if (x < 0) {
+      throw const TvppRasterDecodeException('타일 표가 없다.');
+    }
+    return x;
   }
-  if (x < 0) {
-    throw const TvppRasterDecodeException('타일 표가 없다.');
-  }
 
-  void tileRows(int t, int declaredSize) {
+  /// Decodes tile [t]'s pixels straight into [img], and checks that it
+  /// consumed exactly the bytes the record said it would — a mismatch
+  /// means the cursor has drifted and everything after it is noise.
+  void readTile(int t, int declaredSize) {
     final tr = t ~/ cols;
     final tc = t % cols;
-    final tw = tc == cols - 1 ? width - tc * tile : tile;
-    final th = tr == rows - 1 ? height - tr * tile : tile;
+    final tw = _tileWidth(tc);
+    final th = _tileHeight(tr);
     final from = pb.at;
     for (var y = 0; y < th; y++) {
       final gy = tr * tile + y;
@@ -327,7 +360,15 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
     }
   }
 
+  /// Copies an already-decoded tile onto another — how the format says
+  /// "this tile is the same as that one".
   void copyTile(int dst, int src) {
+    // ⛔An EQUIVALENT guard, kept as the statement of what the caller
+    // already promises: `readSizedTiles` tests `< total` before it calls,
+    // the source word is unsigned so it cannot be negative, and copying a
+    // tile onto itself writes back the bytes it read. Mutating it away
+    // leaves the suite green, and that is the honest state (2026-09-05) —
+    // it is here for the day a corrupt file reaches this line another way.
     if (dst == src || src < 0 || src >= total) {
       return;
     }
@@ -335,8 +376,8 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
     final dc = dst % cols;
     final sr = src ~/ cols;
     final sc = src % cols;
-    final tw = dc == cols - 1 ? width - dc * tile : tile;
-    final th = dr == rows - 1 ? height - dr * tile : tile;
+    final tw = _tileWidth(dc);
+    final th = _tileHeight(dr);
     for (var y = 0; y < th; y++) {
       final gy = dr * tile + y;
       final sy = sr * tile + y;
@@ -353,8 +394,11 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
     }
   }
 
-  if (x > 0) {
-    tileRows(0, x);
+  /// Layout A (X > 0): tile 0 is [firstTileSize] bytes long, and every
+  /// tile after it is either a 12-byte reference to an earlier tile
+  /// (0, 0, source) or a 4-byte size followed by its pixels.
+  void readSizedTiles(int firstTileSize) {
+    readTile(0, firstTileSize);
     for (var t = 1; t < total; t++) {
       if (pb.at + 12 <= record.length) {
         final v = ByteData.sublistView(record, pb.at, pb.at + 12);
@@ -369,42 +413,60 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
       if (pb.at + 4 > record.length) {
         throw const TvppRasterDecodeException('타일 크기 필드가 잘렸다.');
       }
-      final size = ByteData.sublistView(record, pb.at, pb.at + 4).getUint32(0);
+      final size = _uint32At(pb.at);
       pb.at += 4;
-      tileRows(t, size);
+      readTile(t, size);
     }
-  } else {
+  }
+
+  /// Layout B (X == 0): a 12-byte header whose last word is the next
+  /// tile's size, then a RUN of tiles each followed by the next one's
+  /// size. A zero size means the tile is empty and the run has not
+  /// started yet.
+  void readTileRuns() {
     var t = 0;
     while (t < total) {
       if (pb.at + 12 > record.length) {
         break; // the encoder truncates its trailing record — measured.
       }
-      final size = ByteData.sublistView(
-        record,
-        pb.at + 8,
-        pb.at + 12,
-      ).getUint32(0);
+      final size = _uint32At(pb.at + 8);
       pb.at += 12;
       if (size == 0) {
         t += 1;
         continue;
       }
-      var ti = t + 1;
-      var next = size;
-      while (next > 0 && ti < total && pb.at + next <= record.length) {
-        tileRows(ti, next);
-        ti += 1;
-        if (pb.at + 4 > record.length) {
-          next = 0;
-          break;
-        }
-        next = ByteData.sublistView(record, pb.at, pb.at + 4).getUint32(0);
-        pb.at += 4;
-      }
-      t = ti;
+      t = _readRunFrom(t + 1, size);
     }
   }
-  return img;
+
+  /// One run of tiles, starting at [firstIndex] with a tile of
+  /// [firstSize] bytes. Answers the index the outer walk resumes at.
+  int _readRunFrom(int firstIndex, int firstSize) {
+    var ti = firstIndex;
+    var next = firstSize;
+    while (next > 0 && ti < total && pb.at + next <= record.length) {
+      readTile(ti, next);
+      ti += 1;
+      if (pb.at + 4 > record.length) {
+        break;
+      }
+      next = _uint32At(pb.at);
+      pb.at += 4;
+    }
+    return ti;
+  }
+}
+
+Uint32List _decodeTiled(Uint8List record, int width, int height) {
+  final grid = _TileGrid(record, width: width, height: height)
+    ..pb.take(96 * 67, null, null); // thumbnail
+  final x = grid.readTileTable();
+  if (x > 0) {
+    grid.readSizedTiles(x);
+  } else {
+    grid.readTileRuns();
+  }
+  return grid.img;
 }
 
 // ---------------------------------------------------------------------------
