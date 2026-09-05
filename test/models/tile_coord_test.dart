@@ -141,20 +141,21 @@ void main() {
 
   group('tileRangeCovering', () {
     test('is tileRangeOf over the floor/ceil lattice of the double rect', () {
-      // 0.5..256.0 covers pixels 0..255 — ONE tile; 256.2 spills into the
-      // next; -0.5 floors to pixel -1, the tile at -1.
+      // A right/bottom edge of 256.2 covers pixel 256 and spills into the
+      // next tile (ceil); a floored edge would stop at tile 0. -0.5 floors
+      // to pixel -1, the tile at -1.
       expect(
         tileRangeCovering(
           left: 0.5,
           top: -0.5,
-          right: 256.0,
+          right: 256.2,
           bottom: 256.2,
           tileSize: 256,
         ),
         tileRangeOf(
           left: 0,
           top: -1,
-          rightExclusive: 256,
+          rightExclusive: 257,
           bottomExclusive: 257,
           tileSize: 256,
         ),
@@ -163,11 +164,23 @@ void main() {
         tileRangeCovering(
           left: 0.5,
           top: -0.5,
-          right: 256.0,
+          right: 256.2,
           bottom: 256.2,
           tileSize: 256,
         ),
-        (firstX: 0, lastX: 0, firstY: -1, lastY: 1),
+        (firstX: 0, lastX: 1, firstY: -1, lastY: 1),
+      );
+      // An edge exactly ON the boundary reaches no further: 256.0 is
+      // pixels 0..255, one tile.
+      expect(
+        tileRangeCovering(
+          left: 0,
+          top: 0,
+          right: 256.0,
+          bottom: 256.0,
+          tileSize: 256,
+        ),
+        (firstX: 0, lastX: 0, firstY: 0, lastY: 0),
       );
     });
   });
