@@ -1,7 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -72,7 +77,8 @@ void main() {
     expect(
       holdsActive(group.children),
       isTrue,
-      reason: 'the layer being drawn on sits INSIDE the buffer — this is '
+      reason:
+          'the layer being drawn on sits INSIDE the buffer — this is '
           'what the three-sibling-painter split could never express',
     );
   });
@@ -106,4 +112,72 @@ void main() {
 
     expect(countGroups(s.editingCanvasStack.nodes), 1);
   });
+
+  test('🚨a folder whose every member was SKIPPED produces no node at all — '
+      'a group buffer around nothing is a saveLayer for nothing', () {
+    final s = sessionWithFolder(blend: LayerBlendMode.multiply);
+    final cut = s.activeCutOrNull!;
+    final folderId = cut.layers.folderLayers.single.id;
+    // Hide every drawing inside the folder: the tree skips them, and the
+    // folder then has nothing to buffer.
+    for (final layer in cut.layers) {
+      if (layer.id != folderId && !layerKindGroupsLayers(layer.kind)) {
+        if (layer.isVisible) s.toggleLayerVisibility(layer.id);
+      }
+    }
+
+    expect(
+      countGroups(s.editingCanvasStack.nodes),
+      0,
+      reason: 'the folder buffers nothing, so it opens nothing',
+    );
+  });
+
+  test('🚨a HIDDEN track SE row does not composite — read-only on the canvas '
+      'does not mean exempt from being hidden', () {
+    final s = EditorSessionManager(initialProject: _projectWithDrawnSeRow());
+    addTearDown(s.dispose);
+    final seRow = s.activeTrack.seLayers.first;
+
+    final drawn = s.editingCanvasStack.nodes.length;
+    s.toggleLayerVisibility(seRow.id);
+    final hidden = s.editingCanvasStack.nodes.length;
+
+    expect(
+      drawn - hidden,
+      1,
+      reason: 'the row was drawing one image node, and hiding took it away',
+    );
+  });
+}
+
+/// A project whose track SE row actually SHOWS something at frame 0 —
+/// without a drawing exposed there the row contributes no node and the
+/// hidden/visible comparison would be measuring nothing.
+Project _projectWithDrawnSeRow() {
+  final base = createDefaultProject();
+  final track = base.tracks.first;
+  final row = track.seLayers.first;
+  return base.copyWith(
+    tracks: [
+      track.copyWith(
+        seLayers: [
+          row.copyWith(
+            frames: [
+              Frame(
+                id: const FrameId('se-drawn'),
+                duration: 1,
+                strokes: const [],
+              ),
+            ],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('se-drawn'), length: 4),
+            },
+          ),
+          ...track.seLayers.skip(1),
+        ],
+      ),
+      ...base.tracks.skip(1),
+    ],
+  );
 }

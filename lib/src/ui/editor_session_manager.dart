@@ -322,6 +322,166 @@ typedef SeRowMovePair = ({
 /// package): mutations notify listeners so the hosting widget can rebuild. Pure
 /// view state (viewport, brush tool, timeline orientation) intentionally stays
 /// in the widget.
+/// Maps the shared composite TREE onto the editing canvas's stack.
+///
+/// The cut layers ride the tree as it is (skip rules, fx sharing, the W5
+/// attach-layer expansion AND the group buffers agree with playback by
+/// construction); the ACTIVE row becomes a [CanvasActiveLayerNode] where
+/// the tree placed it.
+///
+/// ⛔It also CARRIES OUT two facts about the active row — its display
+/// opacity and its source effects — because this walk is where the
+/// active node's chain is already resolved. Asking a second time
+/// somewhere else is how the panel and the stack would come to disagree.
+class _EditingStackMap {
+  _EditingStackMap({
+    required this.session,
+    required this.cut,
+    required this.stackCut,
+    required this.frameIndex,
+    required this.activeLayerId,
+  });
+
+  final EditorSessionManager session;
+  final Cut cut;
+  final Cut stackCut;
+  final int frameIndex;
+  final LayerId? activeLayerId;
+
+  double activeLayerOpacity = 1.0;
+
+  /// 🚨THE ACTIVE ROW'S CPU HALF, CARRIED OUT WITH THE OPACITY.
+  ///
+  /// The row you are DRAWING on is painted tile by tile by the brush
+  /// panel's own painter, which never sees a CutFrameCompositeLayer and
+  /// never asks the image cache — the two places the colour keys are
+  /// applied. Without this the keyed colour comes back the moment you
+  /// stand on the row, and goes again when you step off: exactly the
+  /// "발신자에 따라 길이 갈렸다" shape #1280 was about.
+  List<ResolvedLayerEffect> activeSourceEffects = const <ResolvedLayerEffect>[];
+
+  CanvasLayerStackNode? map(CutFrameCompositeEntryNode node) => switch (node) {
+    CutFrameCompositeEntryGroup() => _group(node),
+    CutFrameCompositeEntryAdjustment() => _adjustment(node),
+    CutFrameCompositeEntryLive() => _live(node),
+    CutFrameCompositeEntryLeaf() => _leaf(node),
+  };
+
+  /// A folder's children, or null when every one of them was skipped —
+  /// an empty group buffer is a `saveLayer` around nothing.
+  List<CanvasLayerStackNode>? _childrenOf(
+    List<CutFrameCompositeEntryNode> children,
+  ) {
+    final mapped = <CanvasLayerStackNode>[
+      for (final child in children) ?map(child),
+    ];
+    // ⛔EQUIVALENT today — the shared tree already drops a folder whose
+    // members are all skipped, so an empty list never reaches here, and
+    // mutating this away leaves the suite green (2026-09-05). Kept as the
+    // statement of what a group node MEANS: a buffer around nothing is a
+    // `saveLayer` for nothing.
+    return mapped.isEmpty ? null : List.unmodifiable(mapped);
+  }
+
+  CanvasLayerStackNode? _group(CutFrameCompositeEntryGroup node) {
+    final children = _childrenOf(node.children);
+    return children == null
+        ? null
+        : CanvasLayerGroupNode(
+            children: children,
+            opacity: node.opacity,
+            blendMode: node.blendMode,
+            effects: node.effects,
+          );
+  }
+
+  CanvasLayerStackNode? _adjustment(CutFrameCompositeEntryAdjustment node) {
+    final children = _childrenOf(node.children);
+    return children == null
+        ? null
+        : CanvasLayerAdjustmentNode(
+            children: children,
+            effects: node.effects,
+            mix: node.mix,
+          );
+  }
+
+  /// The row being drawn on with NOTHING exposed at this frame — the plan
+  /// still placed it, in its folder and at its z, so the first stroke
+  /// lands where the picture says it should (유저 확정 2026-09-04: 재생과
+  /// 똑같이). The hand-built block this replaced appended it at the top
+  /// level and lost all three.
+  CanvasLayerStackNode _live(CutFrameCompositeEntryLive node) {
+    activeLayerOpacity = session._opacity.stackLayerOpacity(
+      node.layer,
+      stackCut.layers,
+      frameIndex,
+    );
+    activeSourceEffects = splitSourceEffects(node.render.effects).source;
+    return CanvasActiveLayerNode(
+      opacity: node.render.opacity,
+      blendMode: node.render.blendMode,
+      pose: node.render.placement?.pose,
+      anchorPoint: node.render.placement?.anchorPoint,
+      effects: node.render.effects,
+    );
+  }
+
+  /// A cached row — or the ACTIVE one when the brush cannot draw on it.
+  ///
+  /// A brush-banned active layer (SE/instruction, R6-④; a media REFERENCE
+  /// layer, §6-z23) has no interactive surface — it composites like any
+  /// other stack row so its existing cels keep displaying read-only.
+  CanvasLayerStackNode _leaf(CutFrameCompositeEntryLeaf node) {
+    final entry = node.entry;
+    if (entry.layer.id != activeLayerId ||
+        !layerAcceptsBrushInput(entry.layer)) {
+      return CanvasLayerImageNode(
+        CanvasLayerImageRequest(
+          frameKey: session.brushFrameKeyForCut(
+            cut,
+            entry.layer.id,
+            entry.frame.id,
+          ),
+          opacity: entry.opacity,
+          blendMode: entry.blendMode,
+          pose: entry.pose,
+          anchorPoint: entry.anchorPoint,
+          effects: entry.effects,
+        ),
+      );
+    }
+    activeLayerOpacity = !entry.layer.isVisible
+        ? 0.0
+        : session._opacity.stackLayerOpacity(
+            entry.layer,
+            stackCut.layers,
+            frameIndex,
+          );
+    activeSourceEffects = splitSourceEffects(entry.effects).source;
+    return CanvasActiveLayerNode(
+      opacity: entry.opacity,
+      // The active row's CEL key — the SAME key the image branch above
+      // would have requested, so the stack can keep that route's image as
+      // the first-activation stand-in while the promoted surface's tiles
+      // decode.
+      frameKey: session.brushFrameKeyForCut(
+        cut,
+        entry.layer.id,
+        entry.frame.id,
+      ),
+      // The SAME entry the image branch above reads it from. It was
+      // dropped right here — five fields arrived and four were forwarded,
+      // so standing on a multiply row silently made it normal on the
+      // editing canvas only.
+      blendMode: entry.blendMode,
+      pose: entry.pose,
+      anchorPoint: entry.anchorPoint,
+      effects: entry.effects,
+    );
+  }
+}
+
 class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
@@ -2270,148 +2430,21 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
-    var activeLayerOpacity = 1.0;
-    // 🚨THE ACTIVE ROW'S CPU HALF, CARRIED OUT WITH THE OPACITY.
-    //
-    // The row you are DRAWING on is painted tile by tile by the brush
-    // panel's own painter, which never sees a CutFrameCompositeLayer and
-    // never asks the image cache — the two places the colour keys are
-    // applied. Without this the keyed colour comes back the moment you
-    // stand on the row, and goes again when you step off: exactly the
-    // "발신자에 따라 길이 갈렸다" shape #1280 was about.
-    //
-    // It is resolved HERE because this is where the active node's chain is
-    // already resolved — asking a second time somewhere else is how the
-    // panel and the stack would come to disagree.
-    var activeSourceEffects = const <ResolvedLayerEffect>[];
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
     final preview = opacityDragPreview.value;
-    List<Layer> withOpacityPreview(List<Layer> source) => preview == null
-        ? source
-        : [
-            for (final layer in source)
-              preview.layerIds.contains(layer.id) &&
-                      layerKindHasPictureOpacity(layer.kind)
-                  ? layer.copyWith(opacity: preview.opacity)
-                  : layer,
-          ];
     final stackCut = preview == null
         ? cut
-        : cut.copyWith(layers: withOpacityPreview(cut.layers));
+        : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
 
-    // The CUT layers ride the shared composite TREE (skip rules, fx
-    // sharing, the W5 attach-layer expansion AND the group buffers agree
-    // with playback by construction).
-    CanvasLayerStackNode? mapNode(CutFrameCompositeEntryNode node) {
-      switch (node) {
-        case CutFrameCompositeEntryGroup(
-          :final children,
-          :final opacity,
-          :final blendMode,
-          :final effects,
-        ):
-          final mapped = <CanvasLayerStackNode>[
-            for (final child in children) ?mapNode(child),
-          ];
-          if (mapped.isEmpty) {
-            return null;
-          }
-          return CanvasLayerGroupNode(
-            children: List.unmodifiable(mapped),
-            opacity: opacity,
-            blendMode: blendMode,
-            effects: effects,
-          );
-        case CutFrameCompositeEntryAdjustment(
-          :final children,
-          :final effects,
-          :final mix,
-        ):
-          final mapped = <CanvasLayerStackNode>[
-            for (final child in children) ?mapNode(child),
-          ];
-          if (mapped.isEmpty) {
-            return null;
-          }
-          return CanvasLayerAdjustmentNode(
-            children: List.unmodifiable(mapped),
-            effects: effects,
-            mix: mix,
-          );
-        case CutFrameCompositeEntryLive(:final layer, :final render):
-          // The row being drawn on with NOTHING exposed at this frame — the
-          // plan still placed it, in its folder and at its z, so the first
-          // stroke lands where the picture says it should (유저 확정
-          // 2026-09-04: 재생과 똑같이). The hand-built block this replaced
-          // appended it at the top level and lost all three.
-          activeLayerOpacity = _opacity.stackLayerOpacity(
-            layer,
-            stackCut.layers,
-            frameIndex,
-          );
-          activeSourceEffects = splitSourceEffects(render.effects).source;
-          return CanvasActiveLayerNode(
-            opacity: render.opacity,
-            blendMode: render.blendMode,
-            pose: render.placement?.pose,
-            anchorPoint: render.placement?.anchorPoint,
-            effects: render.effects,
-          );
-        case CutFrameCompositeEntryLeaf(:final entry):
-          // A brush-banned active layer (SE/instruction, R6-④; a media
-          // REFERENCE layer, §6-z23) has no interactive surface — it
-          // composites like any other stack row so its existing cels keep
-          // displaying read-only.
-          if (entry.layer.id == activeLayerId &&
-              layerAcceptsBrushInput(entry.layer)) {
-            activeLayerOpacity = !entry.layer.isVisible
-                ? 0.0
-                : _opacity.stackLayerOpacity(
-                    entry.layer,
-                    stackCut.layers,
-                    frameIndex,
-                  );
-            activeSourceEffects = splitSourceEffects(entry.effects).source;
-            return CanvasActiveLayerNode(
-              opacity: entry.opacity,
-              // The active row's CEL key — the SAME key the image branch
-              // below would have requested, so the stack can keep that
-              // route's image as the first-activation stand-in while the
-              // promoted surface's tiles decode.
-              frameKey: brushFrameKeyForCut(
-                cut,
-                entry.layer.id,
-                entry.frame.id,
-              ),
-              // The SAME entry the image branch below reads it from. It was
-              // dropped right here — five fields arrived and four were
-              // forwarded, so standing on a multiply row silently made it
-              // normal on the editing canvas only.
-              blendMode: entry.blendMode,
-              pose: entry.pose,
-              anchorPoint: entry.anchorPoint,
-              effects: entry.effects,
-            );
-          }
-          return CanvasLayerImageNode(
-            CanvasLayerImageRequest(
-              frameKey: brushFrameKeyForCut(
-                cut,
-                entry.layer.id,
-                entry.frame.id,
-              ),
-              opacity: entry.opacity,
-              blendMode: entry.blendMode,
-              pose: entry.pose,
-              anchorPoint: entry.anchorPoint,
-              effects: entry.effects,
-            ),
-          );
-      }
-    }
-
+    final walk = _EditingStackMap(
+      session: this,
+      cut: cut,
+      stackCut: stackCut,
+      frameIndex: frameIndex,
+      activeLayerId: activeLayerId,
+    );
     final nodes = <CanvasLayerStackNode>[
       for (final node in resolveCutFrameCompositeTree(
         cut: stackCut,
@@ -2423,20 +2456,55 @@ class EditorSessionManager extends ChangeNotifier {
             ? activeLayerId
             : null,
       ))
-        ?mapNode(node),
+        ?walk.map(node),
+      // Track-owned SE rows join as their cut-local display clones — they
+      // composite read-only like before the ownership move (their
+      // transform tracks are stripped, so the plain resolve path
+      // suffices). They live outside the cut's stack, so they land at the
+      // top level.
+      ..._trackSeDisplayNodes(cut, frameIndex: frameIndex, preview: preview),
     ];
+    return (
+      nodes: List.unmodifiable(nodes),
+      activeLayerOpacity: walk.activeLayerOpacity,
+      activeSourceEffects: walk.activeSourceEffects,
+    );
+  }
 
-    // Track-owned SE rows join as their cut-local display clones — they
-    // composite read-only like before the ownership move (their transform
-    // tracks are stripped, so the plain resolve path suffices). They live
-    // outside the cut's stack, so they land at the top level.
-    for (final layer in withOpacityPreview(trackSeDisplayLayers)) {
+  /// [source] with the DRAGGED rows' opacity substituted in — display
+  /// only, so the canvas follows an opacity drag without a repo write per
+  /// move.
+  static List<Layer> _withOpacityPreview(
+    List<Layer> source,
+    ({Set<LayerId> layerIds, double opacity}) preview,
+  ) => [
+    for (final layer in source)
+      preview.layerIds.contains(layer.id) &&
+              layerKindHasPictureOpacity(layer.kind)
+          ? layer.copyWith(opacity: preview.opacity)
+          : layer,
+  ];
+
+  /// The track's SE rows as cut-local display clones, read-only.
+  Iterable<CanvasLayerStackNode> _trackSeDisplayNodes(
+    Cut cut, {
+    required int frameIndex,
+    required ({Set<LayerId> layerIds, double opacity})? preview,
+  }) sync* {
+    final rows = preview == null
+        ? trackSeDisplayLayers
+        : _withOpacityPreview(trackSeDisplayLayers, preview);
+    for (final layer in rows) {
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;
       }
       final opacity = layer.transformEnabled
           ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
           : layer.opacity.clamp(0.0, 1.0).toDouble();
+      // The ANIMATED opacity reaching zero, which the flag above cannot
+      // see (that one reads the row's static value). ⚠️Untested: it needs
+      // a transform track whose opacity curve hits 0 while the row's own
+      // stays above it (2026-09-05).
       if (opacity <= 0) {
         continue;
       }
@@ -2444,22 +2512,15 @@ class EditorSessionManager extends ChangeNotifier {
       if (frame == null) {
         continue;
       }
-      nodes.add(
-        CanvasLayerImageNode(
-          CanvasLayerImageRequest(
-            frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-            opacity: opacity,
-            pose: null,
-            anchorPoint: null,
-          ),
+      yield CanvasLayerImageNode(
+        CanvasLayerImageRequest(
+          frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
+          opacity: opacity,
+          pose: null,
+          anchorPoint: null,
         ),
       );
     }
-    return (
-      nodes: List.unmodifiable(nodes),
-      activeLayerOpacity: activeLayerOpacity,
-      activeSourceEffects: activeSourceEffects,
-    );
   }
 
   // ── the opacity verbs: their own object, in their own file ──────────
