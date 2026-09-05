@@ -35,76 +35,51 @@ final BrushTipMask canvasWeaveTextureMask = _generateCanvasWeaveMask();
 
 const int _maskSize = 64;
 
+/// Every round tip is one disc about the mask centre, a pixel short of the
+/// edge so the sampler's zero padding rings it.
+const double _discCenter = _maskSize / 2.0;
+const double _discRadius = _maskSize / 2.0 - 1.0;
+
+/// The value law [_stampDisc] asks at every pixel inside its disc: the
+/// pixel's cell ([x], [y]), its horizontal offset [dx] from the centre and
+/// [edge] = distance / radius (0 at the centre, 1 on the rim). The stamp
+/// rounds and clamps the answer to a byte; 0 leaves the pixel as it was.
+typedef _DiscLaw = double Function(int x, int y, double dx, double edge);
+
 /// Grainy disc: a soft round footprint whose interior is modulated by
 /// noise, leaving chalk-like speckle and ragged edges.
-/// ⚠️[_generateChalkMask] and [_generateGrainMask] walk the same seeded
-/// disc — the clone scan pairs them, and the audit read both (2026-09-04).
-/// They are HELD, not merged: only two tips share it (the bristle runs a
-/// per-row pre-pass, the sponge walks blobs, the weave has no noise at
-/// all), and a per-pixel callback for two callers buys a closure call per
-/// pixel and one more indirection to read through. A THIRD speckled disc
-/// is what makes this worth a `_seededDiscMask(id, seed, valueAt)`.
 BrushTipMask _generateChalkMask() {
-  final alpha = Uint8List(_maskSize * _maskSize);
-  var seed = 0x9E3779B9;
-  const center = _maskSize / 2.0;
-  const radius = _maskSize / 2.0 - 1.0;
-  for (var y = 0; y < _maskSize; y += 1) {
-    for (var x = 0; x < _maskSize; x += 1) {
-      final dx = x + 0.5 - center;
-      final dy = y + 0.5 - center;
-      final distance = math.sqrt(dx * dx + dy * dy);
-      seed = _nextSeed(seed);
-      if (distance > radius) {
-        continue;
-      }
-      final falloff = 1.0 - (distance / radius) * 0.6;
-      final noise = (seed >> 8) & 0xFF;
-      // Drop ~30% of pixels entirely for grain; scale the rest by noise.
-      if (noise < 77) {
-        continue;
-      }
-      final value = (falloff * (96 + (noise - 77) * 159 / 178)).round();
-      alpha[y * _maskSize + x] = value.clamp(0, 255);
+  final noise = _noiseBytes(0x9E3779B9, _maskSize * _maskSize);
+  return _discMask('builtin-chalk', (x, y, dx, edge) {
+    final falloff = 1.0 - edge * 0.6;
+    final grain = noise[y * _maskSize + x];
+    // Drop ~30% of pixels entirely for grain; scale the rest by noise.
+    if (grain < 77) {
+      return 0;
     }
-  }
-  return BrushTipMask(id: 'builtin-chalk', size: _maskSize, alpha: alpha);
+    return falloff * (96 + (grain - 77) * 159 / 178);
+  });
 }
 
 /// Scattered droplets: a dense core blob surrounded by satellite dots.
 BrushTipMask _generateSplatterMask() {
   final alpha = Uint8List(_maskSize * _maskSize);
-  var seed = 0x2545F491;
-
-  void stampDot(double centerX, double centerY, double radius, int strength) =>
-      _stampBlob(
-        alpha,
-        centerX,
-        centerY,
-        radius,
-        strength,
-        intensity: _linearIntensity,
-      );
-
-  // Dense core.
-  stampDot(_maskSize / 2.0, _maskSize / 2.0, 14, 255);
+  // Dense core, stamped before the scatter so it draws no seed.
+  _stampDisc(alpha, _discCenter, _discCenter, 14, _linearDot(255));
   // Satellites scattered around it.
-  for (var dot = 0; dot < 26; dot += 1) {
-    seed = _nextSeed(seed);
-    final angle = ((seed >> 4) & 0x3FF) / 1024.0 * 2.0 * math.pi;
-    seed = _nextSeed(seed);
-    final distance = 10.0 + ((seed >> 4) & 0xFF) / 255.0 * 18.0;
-    seed = _nextSeed(seed);
-    final radius = 1.5 + ((seed >> 4) & 0xFF) / 255.0 * 4.0;
-    seed = _nextSeed(seed);
-    final strength = 140 + ((seed >> 4) & 0x7F);
-    stampDot(
-      _maskSize / 2.0 + math.cos(angle) * distance,
-      _maskSize / 2.0 + math.sin(angle) * distance,
-      radius,
-      strength,
-    );
-  }
+  _scatterDots(
+    alpha,
+    0x2545F491,
+    const _ScatterRecipe(
+      count: 26,
+      minDistance: 10,
+      distanceSpan: 18,
+      minRadius: 1.5,
+      radiusSpan: 4,
+      minStrength: 140,
+      dot: _linearDot,
+    ),
+  );
   return BrushTipMask(id: 'builtin-splatter', size: _maskSize, alpha: alpha);
 }
 
@@ -112,111 +87,144 @@ BrushTipMask _generateSplatterMask() {
 /// fine speckle towards the rim, so light pressure lays down tooth rather
 /// than a clean line.
 BrushTipMask _generateGrainMask() {
-  final alpha = Uint8List(_maskSize * _maskSize);
-  var seed = 0x1F123BB5;
-  const center = _maskSize / 2.0;
-  const radius = _maskSize / 2.0 - 1.0;
-  for (var y = 0; y < _maskSize; y += 1) {
-    for (var x = 0; x < _maskSize; x += 1) {
-      final dx = x + 0.5 - center;
-      final dy = y + 0.5 - center;
-      final distance = math.sqrt(dx * dx + dy * dy);
-      seed = _nextSeed(seed);
-      if (distance > radius) {
-        continue;
-      }
-      final noise = ((seed >> 8) & 0xFF) / 255.0;
-      // Speckle thins out with distance: solid core, ragged edge.
-      final edge = distance / radius;
-      final keep = 1.0 - edge * edge * 0.85;
-      if (noise > keep) {
-        continue;
-      }
-      final value = (255 * (0.55 + noise * 0.45) * (1.0 - edge * 0.35)).round();
-      alpha[y * _maskSize + x] = value.clamp(0, 255);
+  final noise = _noiseBytes(0x1F123BB5, _maskSize * _maskSize);
+  return _discMask('builtin-grain', (x, y, dx, edge) {
+    final speckle = noise[y * _maskSize + x] / 255.0;
+    // Speckle thins out with distance: solid core, ragged edge.
+    final keep = 1.0 - edge * edge * 0.85;
+    if (speckle > keep) {
+      return 0;
     }
-  }
-  return BrushTipMask(id: 'builtin-grain', size: _maskSize, alpha: alpha);
+    return 255 * (0.55 + speckle * 0.45) * (1.0 - edge * 0.35);
+  });
 }
 
 /// Bristle tip: one strength per ROW, so the footprint is a comb of lines
 /// that drag into streaks along a horizontal stroke (the tip's own angle and
 /// direction-following rotation turn them with it).
 BrushTipMask _generateBristleMask() {
-  final alpha = Uint8List(_maskSize * _maskSize);
-  var seed = 0x7F4A7C15;
+  final rowNoise = _noiseBytes(0x7F4A7C15, _maskSize);
   final rowStrength = List<double>.filled(_maskSize, 0);
   for (var row = 0; row < _maskSize; row += 1) {
-    seed = _nextSeed(seed);
-    final noise = ((seed >> 8) & 0xFF) / 255.0;
+    final noise = rowNoise[row] / 255.0;
     // Roughly a fifth of the rows are gaps between bristles.
     rowStrength[row] = noise < 0.2 ? 0.0 : 0.5 + noise * 0.5;
   }
-  const center = _maskSize / 2.0;
-  const radius = _maskSize / 2.0 - 1.0;
-  for (var y = 0; y < _maskSize; y += 1) {
+  return _discMask('builtin-bristle', (x, y, dx, edge) {
     final strength = rowStrength[y];
     if (strength == 0.0) {
-      continue;
+      return 0;
     }
-    for (var x = 0; x < _maskSize; x += 1) {
-      final dx = x + 0.5 - center;
-      final dy = y + 0.5 - center;
-      final distance = math.sqrt(dx * dx + dy * dy);
-      if (distance > radius) {
-        continue;
-      }
-      // Bristles thin towards their ends, not just towards the rim.
-      final along = 1.0 - (dx.abs() / radius) * 0.45;
-      final falloff = 1.0 - math.pow(distance / radius, 3).toDouble();
-      final value = (255 * strength * along * falloff).round();
-      alpha[y * _maskSize + x] = value.clamp(0, 255);
-    }
-  }
-  return BrushTipMask(id: 'builtin-bristle', size: _maskSize, alpha: alpha);
+    // Bristles thin towards their ends, not just towards the rim.
+    final along = 1.0 - (dx.abs() / _discRadius) * 0.45;
+    final falloff = 1.0 - math.pow(edge, 3).toDouble();
+    return 255 * strength * along * falloff;
+  });
 }
 
 /// Sponge/cloud tip: overlapping soft blobs inside a disc, so every dab
 /// lands as an irregular clump instead of a circle.
 BrushTipMask _generateSpongeMask() {
   final alpha = Uint8List(_maskSize * _maskSize);
-  var seed = 0x5D588B65;
-  for (var blob = 0; blob < 16; blob += 1) {
-    seed = _nextSeed(seed);
-    final angle = ((seed >> 4) & 0x3FF) / 1024.0 * 2.0 * math.pi;
-    seed = _nextSeed(seed);
-    final distance = ((seed >> 4) & 0xFF) / 255.0 * 15.0;
-    seed = _nextSeed(seed);
-    final blobRadius = 5.0 + ((seed >> 4) & 0xFF) / 255.0 * 9.0;
-    seed = _nextSeed(seed);
-    final strength = 150 + ((seed >> 4) & 0x7F);
-    _stampSoftBlob(
-      alpha,
-      _maskSize / 2.0 + math.cos(angle) * distance,
-      _maskSize / 2.0 + math.sin(angle) * distance,
-      blobRadius,
-      strength,
-    );
-  }
+  _scatterDots(
+    alpha,
+    0x5D588B65,
+    const _ScatterRecipe(
+      count: 16,
+      minDistance: 0,
+      distanceSpan: 15,
+      minRadius: 5,
+      radiusSpan: 9,
+      minStrength: 150,
+      dot: _softDot,
+    ),
+  );
   return BrushTipMask(id: 'builtin-sponge', size: _maskSize, alpha: alpha);
 }
 
-/// Adds a radially fading blob, keeping the brighter of the two values so
-/// overlapping blobs merge instead of banding.
-void _stampSoftBlob(
-  Uint8List alpha,
-  double centerX,
-  double centerY,
-  double radius,
-  int strength,
-) => _stampBlob(
-  alpha,
-  centerX,
-  centerY,
-  radius,
-  strength,
-  intensity: _squaredIntensity,
-);
+/// One round tip: [law] stamped once over the full [_discRadius] disc of a
+/// fresh buffer, so the stamp's max-blend is plain assignment.
+///
+/// ⚠️[_generateChalkMask] and [_generateGrainMask] walk the same seeded
+/// disc — the clone scan pairs them, and the audit read both (2026-09-04).
+/// They are HELD, not merged: only two tips share it (the bristle runs a
+/// per-row pre-pass, the sponge walks blobs, the weave has no noise at
+/// all), and a per-pixel callback for two callers buys a closure call per
+/// pixel and one more indirection to read through. A THIRD speckled disc
+/// is what makes this worth a `_seededDiscMask(id, seed, valueAt)`.
+/// 2026-09-06 (round 8): the bristle's footprint was that third disc, so
+/// this is it — the seed moved into a table ([_noiseBytes]) read by cell,
+/// so the callback carries no LCG state, and the disc walk itself is the
+/// dot stamp ([_stampDisc]) the splatter and sponge already shared.
+BrushTipMask _discMask(String id, _DiscLaw law) {
+  final alpha = Uint8List(_maskSize * _maskSize);
+  _stampDisc(alpha, _discCenter, _discCenter, _discRadius, law);
+  return BrushTipMask(id: id, size: _maskSize, alpha: alpha);
+}
+
+/// [count] bytes of the [seed] LCG stream in order: cell k holds bits 8..15
+/// of the (k+1)-th state. A generator reads its noise by cell, so a pixel
+/// outside the disc still owns its byte and the speckle stays where it
+/// shipped.
+Uint8List _noiseBytes(int seed, int count) {
+  final bytes = Uint8List(count);
+  var state = seed;
+  for (var index = 0; index < count; index += 1) {
+    state = _nextSeed(state);
+    bytes[index] = (state >> 8) & 0xFF;
+  }
+  return bytes;
+}
+
+/// A scatter of dots as data: how many, how far from the centre, how big
+/// and how strong each may be (every "may be" is `min + draw * span` with
+/// one LCG draw), and the [dot] law stamped at each.
+class _ScatterRecipe {
+  const _ScatterRecipe({
+    required this.count,
+    required this.minDistance,
+    required this.distanceSpan,
+    required this.minRadius,
+    required this.radiusSpan,
+    required this.minStrength,
+    required this.dot,
+  });
+
+  final int count;
+  final double minDistance;
+  final double distanceSpan;
+  final double minRadius;
+  final double radiusSpan;
+  final int minStrength;
+  final _DiscLaw Function(int strength) dot;
+}
+
+/// Stamps [recipe]'s dots around the mask centre, each placed and sized by
+/// four draws of the [seed] LCG in the order angle, distance, radius,
+/// strength — the draw order is part of the frozen bytes.
+void _scatterDots(Uint8List alpha, int seed, _ScatterRecipe recipe) {
+  var state = seed;
+  for (var dot = 0; dot < recipe.count; dot += 1) {
+    state = _nextSeed(state);
+    final angle = ((state >> 4) & 0x3FF) / 1024.0 * 2.0 * math.pi;
+    state = _nextSeed(state);
+    final distance =
+        recipe.minDistance +
+        ((state >> 4) & 0xFF) / 255.0 * recipe.distanceSpan;
+    state = _nextSeed(state);
+    final radius =
+        recipe.minRadius + ((state >> 4) & 0xFF) / 255.0 * recipe.radiusSpan;
+    state = _nextSeed(state);
+    final strength = recipe.minStrength + ((state >> 4) & 0x7F);
+    _stampDisc(
+      alpha,
+      _discCenter + math.cos(angle) * distance,
+      _discCenter + math.sin(angle) * distance,
+      radius,
+      recipe.dot(strength),
+    );
+  }
+}
 
 /// Paper tooth: two octaves of wrapping value noise, kept in the upper half
 /// of the range so the texture bites into a stroke without erasing it.
@@ -292,21 +300,21 @@ List<double> _seamlessValueNoise(int lattice, int seed) {
 /// Deterministic 31-bit LCG so the masks are identical everywhere.
 int _nextSeed(int seed) => (seed * 1103515245 + 12345) & 0x7FFFFFFF;
 
-/// Stamps a radial blob of [radius] at ([centerX], [centerY]) into [alpha]:
-/// [intensity] of [strength] and the linear rim fade at each pixel,
-/// max-blended so overlapping blobs merge instead of banding.
+/// Stamps a disc of [radius] at ([centerX], [centerY]) into [alpha]: [law]
+/// at each covered pixel, max-blended so overlapping blobs merge instead of
+/// banding. Every byte a bundled tip holds comes through here, so the file
+/// header's freeze applies to this walk above all.
 ///
 /// 🚨ONE stamp for the splatter's dots (linear) and the soft blobs
-/// (squared) — the audit's clone scan, 2026-09-03. [intensity] keeps each
+/// (squared) — the audit's clone scan, 2026-09-03. [law] keeps each
 /// caller's own multiplication order, so the generated bytes are theirs.
-void _stampBlob(
+void _stampDisc(
   Uint8List alpha,
   double centerX,
   double centerY,
   double radius,
-  int strength, {
-  required double Function(int strength, double fade) intensity,
-}) {
+  _DiscLaw law,
+) {
   final left = math.max(0, (centerX - radius).floor());
   final top = math.max(0, (centerY - radius).floor());
   final right = math.min(_maskSize - 1, (centerX + radius).ceil());
@@ -319,13 +327,20 @@ void _stampBlob(
       if (distance > radius) {
         continue;
       }
-      final value = intensity(strength, 1.0 - distance / radius).round();
+      final value = law(x, y, dx, distance / radius).round();
       final offset = y * _maskSize + x;
       alpha[offset] = math.max(alpha[offset], value.clamp(0, 255));
     }
   }
 }
 
-double _linearIntensity(int strength, double fade) => strength * fade;
+/// A dot of [strength] that fades linearly to the rim.
+_DiscLaw _linearDot(int strength) =>
+    (x, y, dx, edge) => strength * (1.0 - edge);
 
-double _squaredIntensity(int strength, double fade) => strength * fade * fade;
+/// A soft dot of [strength]: the linear fade squared, so the blob has no
+/// hard shoulder.
+_DiscLaw _softDot(int strength) => (x, y, dx, edge) {
+  final fade = 1.0 - edge;
+  return strength * fade * fade;
+};
