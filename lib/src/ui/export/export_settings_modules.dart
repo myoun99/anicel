@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
+import '../widgets/field_slider.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, chip pickers, and the shared Format module.
@@ -328,9 +329,197 @@ class ExportFormatModule extends StatelessWidget {
   Widget _maybeTooltip(String? reason, Widget chip) =>
       reason == null ? chip : Tooltip(message: reason, child: chip);
 
+  /// The container chips. Choosing one lands on that container's first
+  /// WRITABLE codec when the current one is off there — picking MOV must
+  /// not leave a codec selected that MOV cannot hold.
+  Widget _containerRow() => ExportModuleRow(
+    label: AppText.strings.exVideo,
+    child: Wrap(
+      spacing: 5,
+      runSpacing: 4,
+      children: [
+        for (final container in capabilities.video.keys)
+          _maybeTooltip(
+            capabilities.isContainerEnabled(container)
+                ? null
+                : capabilities.reasonFor(
+                    container,
+                    capabilities.codecsFor(container).first,
+                  ),
+            ExportChip(
+              key: ValueKey<String>(
+                'export-format-container-${container.jsonValue}',
+              ),
+              label: container.label,
+              selected: selection.isVideo && selection.container == container,
+              onTap: enabled && capabilities.isContainerEnabled(container)
+                  ? () => _change(_withContainer(container))
+                  : null,
+            ),
+          ),
+      ],
+    ),
+  );
+
+  /// [container], with the codec moved to that container's first WRITABLE
+  /// one when the selected codec is off there — picking MOV must not
+  /// leave a codec selected that MOV cannot hold.
+  ExportFormatSelection _withContainer(ExportVideoContainer container) {
+    final next = selection.copyWith(
+      kind: ExportMediaKind.video,
+      container: container,
+    );
+    if (capabilities.isVideoEnabled(container, next.videoCodec)) {
+      return next;
+    }
+    for (final codec in capabilities.codecsFor(container)) {
+      if (capabilities.isVideoEnabled(container, codec)) {
+        return next.copyWith(videoCodec: codec);
+      }
+    }
+    return next;
+  }
+
+  Widget _stillFormatRow() => ExportModuleRow(
+    label: AppText.strings.exImage,
+    child: Wrap(
+      spacing: 5,
+      runSpacing: 4,
+      children: [
+        for (final still in capabilities.stills)
+          _maybeTooltip(
+            capabilities.isStillEnabled(still)
+                ? null
+                : 'Not available in this build yet.',
+            ExportChip(
+              key: ValueKey<String>('export-format-still-${still.jsonValue}'),
+              label: still.label,
+              selected: selection.isStill && selection.stillFormat == still,
+              onTap: enabled && capabilities.isStillEnabled(still)
+                  ? () => _change(
+                      selection.copyWith(
+                        kind: ExportMediaKind.still,
+                        stillFormat: still,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
+    label: AppText.strings.exCodec,
+    child: Wrap(
+      spacing: 5,
+      runSpacing: 4,
+      children: [
+        for (final codec in codecs)
+          _maybeTooltip(
+            capabilities.isVideoEnabled(selection.container, codec)
+                ? null
+                : capabilities.reasonFor(selection.container, codec),
+            ExportChip(
+              key: ValueKey<String>('export-format-codec-${codec.jsonValue}'),
+              label: codec.label,
+              selected: selection.videoCodec == codec,
+              onTap:
+                  enabled &&
+                      capabilities.isVideoEnabled(selection.container, codec)
+                  ? () => _change(selection.copyWith(videoCodec: codec))
+                  : null,
+            ),
+          ),
+      ],
+    ),
+  );
+
+  /// Zero is AUTO — the encoder picks — so the bar's low end is a word,
+  /// not a number.
+  static String _bitrateText(num mbps) =>
+      mbps <= 0 ? 'Auto' : sliderValueText(mbps, unit: ' Mb');
+
+  Widget _bitrateRow() => ExportModuleRow(
+    label: AppText.strings.exBitrate,
+    child: FieldSlider(
+      key: const ValueKey<String>('export-format-bitrate'),
+      value: selection.videoBitrateMbps.clamp(0, 50).toDouble(),
+      min: 0,
+      max: 50,
+      divisions: 50,
+      valueText: _bitrateText(selection.videoBitrateMbps),
+      valueTextBuilder: (next) => _bitrateText(next.round()),
+      onChanged: enabled
+          ? (next) =>
+                _change(selection.copyWith(videoBitrateMbps: next.round()))
+          : null,
+    ),
+  );
+
+  Widget _qualityRow() => ExportModuleRow(
+    label: AppText.strings.exQuality,
+    child: FieldSlider(
+      key: const ValueKey<String>('export-format-quality'),
+      value: selection.jpgQuality.clamp(1, 100).toDouble(),
+      min: 1,
+      max: 100,
+      divisions: 99,
+      valueText: sliderValueText(selection.jpgQuality),
+      valueTextBuilder: sliderValueText,
+      onChanged: enabled
+          ? (next) => _change(selection.copyWith(jpgQuality: next.round()))
+          : null,
+    ),
+  );
+
+  Widget _channelsRow() => ExportModuleRow(
+    label: AppText.strings.exChannels,
+    child: Wrap(
+      spacing: 5,
+      children: [
+        for (final channels in ExportChannels.values)
+          ExportChip(
+            key: ValueKey<String>(
+              'export-format-channels-${channels.jsonValue}',
+            ),
+            label: channels.name.toUpperCase(),
+            selected: selection.effectiveChannels == channels,
+            onTap: enabled
+                ? () => _change(selection.copyWith(channels: channels))
+                : null,
+          ),
+      ],
+    ),
+  );
+
+  Widget _backgroundRow() => ExportModuleRow(
+    label: 'BG',
+    child: Wrap(
+      spacing: 5,
+      children: [
+        ExportChip(
+          key: const ValueKey<String>('export-format-bg-white'),
+          label: AppText.strings.exWhite,
+          selected: selection.backgroundArgb == 0xFFFFFFFF,
+          onTap: enabled
+              ? () => _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
+              : null,
+        ),
+        ExportChip(
+          key: const ValueKey<String>('export-format-bg-black'),
+          label: AppText.strings.exBlack,
+          selected: selection.backgroundArgb == 0xFF000000,
+          onTap: enabled
+              ? () => _change(selection.copyWith(backgroundArgb: 0xFF000000))
+              : null,
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
-    final containers = capabilities.video.keys.toList();
     final codecs = selection.isVideo
         ? capabilities.codecsFor(selection.container)
         : const <ExportVideoCodec>[];
@@ -344,242 +533,13 @@ class ExportFormatModule extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (capabilities.hasVideo)
-          ExportModuleRow(
-            label: AppText.strings.exVideo,
-            child: Wrap(
-              spacing: 5,
-              runSpacing: 4,
-              children: [
-                for (final container in containers)
-                  _maybeTooltip(
-                    capabilities.isContainerEnabled(container)
-                        ? null
-                        : capabilities.reasonFor(
-                            container,
-                            capabilities.codecsFor(container).first,
-                          ),
-                    ExportChip(
-                      key: ValueKey<String>(
-                        'export-format-container-${container.jsonValue}',
-                      ),
-                      label: container.label,
-                      selected:
-                          selection.isVideo && selection.container == container,
-                      onTap:
-                          enabled && capabilities.isContainerEnabled(container)
-                          ? () {
-                              // Land on that container's first WRITABLE
-                              // codec when the current one is off there.
-                              var next = selection.copyWith(
-                                kind: ExportMediaKind.video,
-                                container: container,
-                              );
-                              if (!capabilities.isVideoEnabled(
-                                container,
-                                next.videoCodec,
-                              )) {
-                                for (final codec in capabilities.codecsFor(
-                                  container,
-                                )) {
-                                  if (capabilities.isVideoEnabled(
-                                    container,
-                                    codec,
-                                  )) {
-                                    next = next.copyWith(videoCodec: codec);
-                                    break;
-                                  }
-                                }
-                              }
-                              _change(next);
-                            }
-                          : null,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ExportModuleRow(
-          label: AppText.strings.exImage,
-          child: Wrap(
-            spacing: 5,
-            runSpacing: 4,
-            children: [
-              for (final still in capabilities.stills)
-                _maybeTooltip(
-                  capabilities.isStillEnabled(still)
-                      ? null
-                      : 'Not available in this build yet.',
-                  ExportChip(
-                    key: ValueKey<String>(
-                      'export-format-still-${still.jsonValue}',
-                    ),
-                    label: still.label,
-                    selected:
-                        selection.isStill && selection.stillFormat == still,
-                    onTap: enabled && capabilities.isStillEnabled(still)
-                        ? () => _change(
-                            selection.copyWith(
-                              kind: ExportMediaKind.still,
-                              stillFormat: still,
-                            ),
-                          )
-                        : null,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        if (selection.isVideo && codecs.length > 1)
-          ExportModuleRow(
-            label: AppText.strings.exCodec,
-            child: Wrap(
-              spacing: 5,
-              runSpacing: 4,
-              children: [
-                for (final codec in codecs)
-                  _maybeTooltip(
-                    capabilities.isVideoEnabled(selection.container, codec)
-                        ? null
-                        : capabilities.reasonFor(selection.container, codec),
-                    ExportChip(
-                      key: ValueKey<String>(
-                        'export-format-codec-${codec.jsonValue}',
-                      ),
-                      label: codec.label,
-                      selected: selection.videoCodec == codec,
-                      onTap:
-                          enabled &&
-                              capabilities.isVideoEnabled(
-                                selection.container,
-                                codec,
-                              )
-                          ? () => _change(selection.copyWith(videoCodec: codec))
-                          : null,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        if (showBitrate)
-          ExportModuleRow(
-            label: AppText.strings.exBitrate,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    key: const ValueKey<String>('export-format-bitrate'),
-                    value: selection.videoBitrateMbps.clamp(0, 50).toDouble(),
-                    max: 50,
-                    divisions: 50,
-                    onChanged: enabled
-                        ? (value) => _change(
-                            selection.copyWith(videoBitrateMbps: value.round()),
-                          )
-                        : null,
-                  ),
-                ),
-                SizedBox(
-                  width: 52,
-                  child: Text(
-                    selection.videoBitrateMbps <= 0
-                        ? 'Auto'
-                        : '${selection.videoBitrateMbps} Mb',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (showQuality)
-          ExportModuleRow(
-            label: AppText.strings.exQuality,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    key: const ValueKey<String>('export-format-quality'),
-                    value: selection.jpgQuality.clamp(1, 100).toDouble(),
-                    min: 1,
-                    max: 100,
-                    divisions: 99,
-                    onChanged: enabled
-                        ? (value) => _change(
-                            selection.copyWith(jpgQuality: value.round()),
-                          )
-                        : null,
-                  ),
-                ),
-                SizedBox(
-                  width: 52,
-                  child: Text(
-                    '${selection.jpgQuality}',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (showChannels)
-          ExportModuleRow(
-            label: AppText.strings.exChannels,
-            child: Wrap(
-              spacing: 5,
-              children: [
-                ExportChip(
-                  key: const ValueKey<String>('export-format-channels-rgba'),
-                  label: 'RGBA',
-                  selected: selection.effectiveChannels == ExportChannels.rgba,
-                  onTap: enabled
-                      ? () => _change(
-                          selection.copyWith(channels: ExportChannels.rgba),
-                        )
-                      : null,
-                ),
-                ExportChip(
-                  key: const ValueKey<String>('export-format-channels-rgb'),
-                  label: 'RGB',
-                  selected: selection.effectiveChannels == ExportChannels.rgb,
-                  onTap: enabled
-                      ? () => _change(
-                          selection.copyWith(channels: ExportChannels.rgb),
-                        )
-                      : null,
-                ),
-              ],
-            ),
-          ),
-        if (showBackground)
-          ExportModuleRow(
-            label: 'BG',
-            child: Wrap(
-              spacing: 5,
-              children: [
-                ExportChip(
-                  key: const ValueKey<String>('export-format-bg-white'),
-                  label: AppText.strings.exWhite,
-                  selected: selection.backgroundArgb == 0xFFFFFFFF,
-                  onTap: enabled
-                      ? () => _change(
-                          selection.copyWith(backgroundArgb: 0xFFFFFFFF),
-                        )
-                      : null,
-                ),
-                ExportChip(
-                  key: const ValueKey<String>('export-format-bg-black'),
-                  label: AppText.strings.exBlack,
-                  selected: selection.backgroundArgb == 0xFF000000,
-                  onTap: enabled
-                      ? () => _change(
-                          selection.copyWith(backgroundArgb: 0xFF000000),
-                        )
-                      : null,
-                ),
-              ],
-            ),
-          ),
+        if (capabilities.hasVideo) _containerRow(),
+        _stillFormatRow(),
+        if (selection.isVideo && codecs.length > 1) _codecRow(codecs),
+        if (showBitrate) _bitrateRow(),
+        if (showQuality) _qualityRow(),
+        if (showChannels) _channelsRow(),
+        if (showBackground) _backgroundRow(),
       ],
     );
   }
