@@ -567,6 +567,9 @@ class QaNativeEngine {
     int clipX = 0,
     int clipY = 0,
   }) {
+    // Nine doubles or nothing. `setAll` under-fills in silence — it only
+    // throws when the source is LONGER — so a short list would hand the
+    // kernel whatever malloc last held as the homogeneous row.
     if (inverse.length != 9) {
       return false;
     }
@@ -602,61 +605,6 @@ class QaNativeEngine {
 
   final _resampleDst = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   Pointer<Double> _resampleInverse = nullptr;
-
-  /// Copy-in/copy-out convenience over [resampleRgba] for callers (and the
-  /// parity suite) holding Dart lists.
-  ///
-  /// The staging copies are the price of crossing the boundary with a
-  /// typed list; callers on the hot path hand in native pointers instead.
-  Uint8List? resampleRgbaBytes({
-    required Uint8List src,
-    required int srcWidth,
-    required int srcHeight,
-    required int dstWidth,
-    required int dstHeight,
-    required Float64List inverse,
-    required double radiusFloor,
-    required int mode,
-    int clipX = 0,
-    int clipY = 0,
-  }) {
-    // Nine doubles or nothing. `setAll` under-fills in silence — it only
-    // throws when the source is LONGER — so a short list would hand the
-    // kernel whatever malloc last held as the homogeneous row.
-    if (inverse.length != 9) {
-      return null;
-    }
-    final srcNative = malloc<Uint8>(src.length);
-    final dstNative = malloc<Uint8>(dstWidth * dstHeight * 4);
-    final inverseNative = malloc<Double>(9);
-    try {
-      srcNative.asTypedList(src.length).setAll(0, src);
-      inverseNative.asTypedList(9).setAll(0, inverse);
-      final result = resampleRgba(
-        src: srcNative,
-        srcWidth: srcWidth,
-        srcHeight: srcHeight,
-        dst: dstNative,
-        dstWidth: dstWidth,
-        dstHeight: dstHeight,
-        inverse: inverseNative,
-        radiusFloor: radiusFloor,
-        clipX: clipX,
-        clipY: clipY,
-        mode: mode,
-      );
-      if (result != 0) {
-        return null;
-      }
-      return Uint8List.fromList(
-        dstNative.asTypedList(dstWidth * dstHeight * 4),
-      );
-    } finally {
-      malloc.free(srcNative);
-      malloc.free(dstNative);
-      malloc.free(inverseNative);
-    }
-  }
 
   /// Copy-in/copy-out convenience over [gridRasterTile] for callers (and
   /// the parity suite) that live in Dart lists.

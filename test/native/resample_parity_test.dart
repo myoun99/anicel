@@ -78,6 +78,39 @@ ResampleTransform _rotationAbout(double degrees, double cx, double cy) {
   );
 }
 
+/// The kernel's answer as a fresh list, or null where it refused: the
+/// suite's copy-out over [QaNativeEngine.resampleRgbaInto], which is the
+/// one entry point the product has (the buffer-owning one).
+Uint8List? _resampleBytes(
+  QaNativeEngine engine, {
+  required Uint8List src,
+  required int srcWidth,
+  required int srcHeight,
+  required int dstWidth,
+  required int dstHeight,
+  required Float64List inverse,
+  required double radiusFloor,
+  required int mode,
+  int clipX = 0,
+  int clipY = 0,
+}) {
+  final dst = Uint8List(dstWidth * dstHeight * 4);
+  final resampled = engine.resampleRgbaInto(
+    src: src,
+    srcWidth: srcWidth,
+    srcHeight: srcHeight,
+    dst: dst,
+    dstWidth: dstWidth,
+    dstHeight: dstHeight,
+    inverse: inverse,
+    radiusFloor: radiusFloor,
+    mode: mode,
+    clipX: clipX,
+    clipY: clipY,
+  );
+  return resampled ? dst : null;
+}
+
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   if (libraryPath == null) {
@@ -321,7 +354,8 @@ void main() {
           transform: entry.value,
           mode: mode,
         );
-        final actual = engine.resampleRgbaBytes(
+        final actual = _resampleBytes(
+          engine,
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -353,7 +387,8 @@ void main() {
         transform: transform,
         mode: mode,
       );
-      final actual = engine.resampleRgbaBytes(
+      final actual = _resampleBytes(
+        engine,
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -383,7 +418,8 @@ void main() {
         transform: transform,
         mode: mode,
       );
-      final actual = engine.resampleRgbaBytes(
+      final actual = _resampleBytes(
+        engine,
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -422,7 +458,8 @@ void main() {
         transform: transform,
         mode: mode,
       );
-      final actual = engine.resampleRgbaBytes(
+      final actual = _resampleBytes(
+        engine,
         src: crowded,
         srcWidth: size,
         srcHeight: size,
@@ -463,7 +500,8 @@ void main() {
         mode: ResampleMode.blend,
         radiusFloor: floor,
       );
-      final actual = engine.resampleRgbaBytes(
+      final actual = _resampleBytes(
+        engine,
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -493,7 +531,8 @@ void main() {
         transform: transform,
         mode: mode,
       );
-      final actual = engine.resampleRgbaBytes(
+      final actual = _resampleBytes(
+        engine,
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -525,7 +564,8 @@ void main() {
       transform: transform,
       mode: ResampleMode.pick,
     );
-    final actual = engine.resampleRgbaBytes(
+    final actual = _resampleBytes(
+      engine,
       src: tiny,
       srcWidth: size,
       srcHeight: size,
@@ -546,7 +586,8 @@ void main() {
     final source = _fixture(8, 8, 1);
     final identity = _inverseOf(ResampleTransform.identity());
     expect(
-      engine.resampleRgbaBytes(
+      _resampleBytes(
+        engine,
         src: source,
         srcWidth: 8,
         srcHeight: 8,
@@ -560,7 +601,8 @@ void main() {
       reason: 'an unknown mode must not silently pick one',
     );
     expect(
-      engine.resampleRgbaBytes(
+      _resampleBytes(
+        engine,
         src: source,
         srcWidth: 8,
         srcHeight: 8,
@@ -574,7 +616,8 @@ void main() {
       reason: 'a floor below 1 would sample nothing',
     );
     expect(
-      engine.resampleRgbaBytes(
+      _resampleBytes(
+        engine,
         src: source,
         srcWidth: 8,
         srcHeight: 8,
