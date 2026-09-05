@@ -36,6 +36,7 @@ import '../models/track.dart';
 import '../models/track_id.dart';
 import 'project_tree_editor.dart';
 import '../core/inserted_at.dart';
+import '../core/mapped_or_same.dart';
 import '../models/layer_link_registry.dart';
 
 class ProjectRepository {
@@ -197,27 +198,19 @@ class ProjectRepository {
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   static Project _reconcileAttachedMirrors(Project project) {
-    List<Track>? nextTracks;
-    for (var t = 0; t < project.tracks.length; t += 1) {
-      final track = project.tracks[t];
-      List<Cut>? nextCuts;
-      for (var c = 0; c < track.cuts.length; c += 1) {
-        final cut = track.cuts[c];
-        final reconciled = cutWithReconciledAttachedMirrors(
-          cutWithCoveringStoryboardRow(cutWithCoveringImageRows(cut)),
-        );
-        if (identical(reconciled, cut)) {
-          continue;
-        }
-        (nextCuts ??= [...track.cuts])[c] = reconciled;
-      }
-      if (nextCuts == null) {
-        continue;
-      }
-      (nextTracks ??= [...project.tracks])[t] = track.copyWith(cuts: nextCuts);
-    }
-    return nextTracks == null ? project : project.copyWith(tracks: nextTracks);
+    final tracks = mappedOrSame(project.tracks, (track) {
+      final cuts = mappedOrSame(track.cuts, _normalizedCut);
+      return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
+    });
+    return identical(tracks, project.tracks)
+        ? project
+        : project.copyWith(tracks: tracks);
   }
+
+  /// The three invariants above, in their stated order, over one cut.
+  static Cut _normalizedCut(Cut cut) => cutWithReconciledAttachedMirrors(
+    cutWithCoveringStoryboardRow(cutWithCoveringImageRows(cut)),
+  );
 
   void updateTimesheetInfo(TimesheetInfo info) {
     updateProject((project) => project.copyWith(timesheetInfo: info));

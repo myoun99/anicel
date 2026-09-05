@@ -1117,6 +1117,100 @@ void main() {
       expect(repository.currentProject, isNull);
       expect(repository.hasProject, isFalse);
     });
+
+    // Every write runs the normalizations over every cut, so a project
+    // that is already normal MUST come back as the same instance — else
+    // dirty tracking sees an edit in every no-op and every row repaints
+    // on every write. The walk is one shared law now; this pins what the
+    // repository owes on top of it: the untouched tracks and cuts keep
+    // their instances even when a neighbour is reshaped.
+    group('the write-time normalization is identity-preserving', () {
+      Project plain() => _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [
+          _track(
+            id: 'track-1',
+            name: 'Video',
+            cuts: [
+              _cut(
+                id: 'cut-1',
+                name: 'Cut 1',
+                layers: [
+                  _layer(id: 'layer-1', name: 'A', frames: [_frame(id: 'f1')]),
+                ],
+              ),
+            ],
+          ),
+          _track(
+            id: 'track-2',
+            name: 'Video 2',
+            cuts: [
+              _cut(id: 'cut-2', name: 'Cut 2'),
+            ],
+          ),
+        ],
+      );
+
+      test('an already-normal project passes through the constructor, '
+          'replaceProject and updateProject as ITSELF', () {
+        final project = plain();
+        final repository = ProjectRepository(initialProject: project);
+        expect(identical(repository.currentProject, project), isTrue);
+
+        final replacement = plain();
+        repository.replaceProject(replacement);
+        expect(identical(repository.currentProject, replacement), isTrue);
+
+        repository.updateProject((current) => current);
+        expect(identical(repository.currentProject, replacement), isTrue);
+      });
+
+      test('a cut that needs reshaping leaves its NEIGHBOURS alone — the '
+          'other track and the other cuts keep their instances', () {
+        // An image row with a cel but no hold spec is off its D22 form,
+        // so the covering-image normalization must rewrite that cut.
+        final imageCut = _cut(
+          id: 'cut-img',
+          name: 'Image',
+          layers: [
+            _layer(
+              id: 'image',
+              name: 'Image',
+              kind: LayerKind.image,
+              frames: [_frame(id: 'pic')],
+            ),
+          ],
+        );
+        final normalCut = _cut(id: 'cut-1', name: 'Cut 1');
+        final otherTrack = _track(
+          id: 'track-2',
+          name: 'Video 2',
+          cuts: [_cut(id: 'cut-2', name: 'Cut 2')],
+        );
+        final project = _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [normalCut, imageCut]),
+            otherTrack,
+          ],
+        );
+
+        final stored = ProjectRepository(initialProject: project)
+            .requireProject();
+
+        expect(identical(stored, project), isFalse);
+        expect(identical(stored.tracks[1], otherTrack), isTrue);
+        expect(identical(stored.tracks[0].cuts[0], normalCut), isTrue);
+        expect(identical(stored.tracks[0].cuts[1], imageCut), isFalse);
+        expect(
+          stored.tracks[0].cuts[1].layers.single.runBehaviors,
+          hasLength(1),
+        );
+      });
+    });
+
   });
 }
 

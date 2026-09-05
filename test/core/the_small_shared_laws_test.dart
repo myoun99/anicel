@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/inserted_at.dart';
+import 'package:anicel/src/core/mapped_or_same.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/core/unit_direction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -125,6 +126,46 @@ void main() {
 
     test('inserting into nothing gives the one item', () {
       expect(insertedAt(<int>[], 9, 3), [9]);
+    });
+  });
+
+  group('mappedOrSame — the identity-preserving walk every write-time '
+      'normalization stands on', () {
+    test('when no item changes the SAME list comes back, not a copy', () {
+      final items = ['a', 'b', 'c'];
+      expect(identical(mappedOrSame(items, (item) => item), items), isTrue);
+    });
+
+    test('nothing at all comes back as itself', () {
+      final items = <String>[];
+      expect(identical(mappedOrSame(items, (item) => '$item!'), items), isTrue);
+    });
+
+    test('one changed item gives a NEW list with only that slot replaced, '
+        'and the original is not touched', () {
+      final items = ['a', 'b', 'c'];
+      final next = mappedOrSame(items, (item) => item == 'b' ? 'B' : item);
+      expect(identical(next, items), isFalse);
+      expect(next, ['a', 'B', 'c']);
+      expect(items, ['a', 'b', 'c']);
+    });
+
+    test('an EQUAL but not identical result still counts as a change — the '
+        'walk asks identity, not ==', () {
+      final a = Object();
+      final items = [a];
+      final next = mappedOrSame(items, (item) => Object());
+      expect(identical(next, items), isFalse);
+      expect(identical(next.single, a), isFalse);
+    });
+
+    test('every item is visited, in order, exactly once', () {
+      final seen = <int>[];
+      mappedOrSame([3, 1, 2], (item) {
+        seen.add(item);
+        return item;
+      });
+      expect(seen, [3, 1, 2]);
     });
   });
 

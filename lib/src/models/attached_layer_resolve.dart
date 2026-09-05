@@ -7,6 +7,7 @@ library;
 
 import 'dart:collection';
 
+import '../core/mapped_or_same.dart';
 import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'cut.dart';
@@ -179,55 +180,57 @@ FrameId attachedMirrorCelId(LayerId attachedId, FrameId baseFrameId) =>
 /// Identity-preserving: an already-complete cut returns the SAME instance
 /// (no-op writes stay no-ops for dirty tracking).
 Cut cutWithReconciledAttachedMirrors(Cut cut) {
-  List<Layer>? nextLayers;
-  for (var i = 0; i < cut.layers.length; i += 1) {
-    final layer = cut.layers[i];
-    if (!isSyncedAttachedLayer(layer)) {
-      continue;
-    }
-    final base = attachedBaseOf(layer, cut.layers);
-    if (base == null) {
-      continue; // Dangling link — display skips the row; nothing to add.
-    }
-    final ownFrameIds = {for (final frame in layer.frames) frame.id};
-    List<Frame>? addedFrames;
-    Map<FrameId, FrameId>? addedLinks;
-    for (final entry in base.timeline.entries) {
-      final baseFrameId = entry.value.frameId;
-      if (!entry.value.isDrawing || entry.value.ghost || baseFrameId == null) {
-        continue;
-      }
-      final linked =
-          layer.baseFrameLinks[baseFrameId] ?? addedLinks?[baseFrameId];
-      if (linked != null) {
-        // Link present — re-materialize the cel if its object went missing.
-        if (!ownFrameIds.contains(linked)) {
-          (addedFrames ??= []).add(
-            Frame(id: linked, duration: 1, strokes: const []),
-          );
-          ownFrameIds.add(linked);
-        }
-        continue;
-      }
-      final celId = attachedMirrorCelId(layer.id, baseFrameId);
-      (addedFrames ??= []).add(
-        Frame(id: celId, duration: 1, strokes: const []),
-      );
-      ownFrameIds.add(celId);
-      (addedLinks ??= {})[baseFrameId] = celId;
-    }
-    if (addedFrames == null && addedLinks == null) {
-      continue;
-    }
-    nextLayers ??= [...cut.layers];
-    nextLayers[i] = layer.copyWith(
-      frames: [...layer.frames, ...?addedFrames],
-      baseFrameLinks: addedLinks == null
-          ? null
-          : {...layer.baseFrameLinks, ...addedLinks},
-    );
+  final layers = mappedOrSame(
+    cut.layers,
+    (layer) => _reconciledMirrorRow(layer, cut.layers),
+  );
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+}
+
+/// [layer] with its mirror completed against its base in [layers] when it
+/// is a synced attach row with a living base — else [layer] itself.
+Layer _reconciledMirrorRow(Layer layer, List<Layer> layers) {
+  if (!isSyncedAttachedLayer(layer)) {
+    return layer;
   }
-  return nextLayers == null ? cut : cut.copyWith(layers: nextLayers);
+  final base = attachedBaseOf(layer, layers);
+  if (base == null) {
+    return layer; // Dangling link — display skips the row; nothing to add.
+  }
+  final ownFrameIds = {for (final frame in layer.frames) frame.id};
+  List<Frame>? addedFrames;
+  Map<FrameId, FrameId>? addedLinks;
+  for (final entry in base.timeline.entries) {
+    final baseFrameId = entry.value.frameId;
+    if (!entry.value.isDrawing || entry.value.ghost || baseFrameId == null) {
+      continue;
+    }
+    final linked =
+        layer.baseFrameLinks[baseFrameId] ?? addedLinks?[baseFrameId];
+    if (linked != null) {
+      // Link present — re-materialize the cel if its object went missing.
+      if (!ownFrameIds.contains(linked)) {
+        (addedFrames ??= []).add(
+          Frame(id: linked, duration: 1, strokes: const []),
+        );
+        ownFrameIds.add(linked);
+      }
+      continue;
+    }
+    final celId = attachedMirrorCelId(layer.id, baseFrameId);
+    (addedFrames ??= []).add(Frame(id: celId, duration: 1, strokes: const []));
+    ownFrameIds.add(celId);
+    (addedLinks ??= {})[baseFrameId] = celId;
+  }
+  if (addedFrames == null && addedLinks == null) {
+    return layer;
+  }
+  return layer.copyWith(
+    frames: [...layer.frames, ...?addedFrames],
+    baseFrameLinks: addedLinks == null
+        ? null
+        : {...layer.baseFrameLinks, ...addedLinks},
+  );
 }
 
 /// The index of [baseId]'s attach group's FIRST row — the below-placement

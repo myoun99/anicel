@@ -1,3 +1,4 @@
+import '../core/mapped_or_same.dart';
 import 'cut.dart';
 import 'layer.dart';
 import 'timeline_exposure.dart';
@@ -34,25 +35,31 @@ Cut cutWithCoveringStoryboardRow(Cut cut) {
   if (cut.duration < 1) {
     return cut;
   }
-  List<Layer>? nextLayers;
-  for (var i = 0; i < cut.layers.length; i += 1) {
-    final layer = cut.layers[i];
-    if (layer.kind != LayerKind.storyboard || layer.timeline.isEmpty) {
-      continue;
-    }
-    if (_hasDivisionOutsideCut(layer, cut.duration)) {
-      continue;
-    }
-    final filled = storyboardTimelineFilledToCover(
-      timeline: layer.timeline,
-      cutDuration: cut.duration,
-    );
-    if (filled == null || _sameTiling(filled, layer)) {
-      continue;
-    }
-    (nextLayers ??= [...cut.layers])[i] = layer.copyWith(timeline: filled);
+  final layers = mappedOrSame(
+    cut.layers,
+    (layer) => _coveringStoryboardRow(layer, cut.duration),
+  );
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+}
+
+/// [layer] tiled to [cutDuration] when it is a storyboard row that can be
+/// — else [layer] itself (a non-storyboard row, an empty one, one that
+/// already tiles, or one the REFUSES clause above leaves alone).
+Layer _coveringStoryboardRow(Layer layer, int cutDuration) {
+  if (layer.kind != LayerKind.storyboard || layer.timeline.isEmpty) {
+    return layer;
   }
-  return nextLayers == null ? cut : cut.copyWith(layers: nextLayers);
+  if (_hasDivisionOutsideCut(layer, cutDuration)) {
+    return layer;
+  }
+  final filled = storyboardTimelineFilledToCover(
+    timeline: layer.timeline,
+    cutDuration: cutDuration,
+  );
+  if (filled == null || _sameTiling(filled, layer)) {
+    return layer;
+  }
+  return layer.copyWith(timeline: filled);
 }
 
 bool _hasDivisionOutsideCut(Layer layer, int cutDuration) {
