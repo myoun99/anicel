@@ -151,8 +151,8 @@ void main(List<String> args) {
       ),
     );
   for (final p in sorted) {
-    final touched = p['hostTouched'] as Map;
-    final writes = p['hostWritten'] as List;
+    final touched = p['hostTouched']! as Map;
+    final writes = p['hostWritten']! as List;
     stderr.writeln(
       '${(p['part']! as String).padRight(28)} '
       '${(p['kind']! as String).padRight(12)} '
