@@ -68,9 +68,7 @@ void main() {
     required String path,
     required String option,
   }) async {
-    await tester.tap(
-      find.byKey(ValueKey<String>('import-cell-$column-$path')),
-    );
+    await tester.tap(find.byKey(ValueKey<String>('import-cell-$column-$path')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey<String>('import-option-$option')));
     await tester.pumpAndSettle();
@@ -88,8 +86,7 @@ void main() {
       await writePng('$root${sep}A1.png');
       await writePng('$root${sep}A2.png');
       await writePng('$root${sep}_BG.png');
-      await File('${tempDir.path}$sep$root${sep}memo.txt')
-          .writeAsString('메모');
+      await File('${tempDir.path}$sep$root${sep}memo.txt').writeAsString('메모');
       return '${tempDir.path}$sep$root';
     });
 
@@ -122,7 +119,8 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('import-media-reference')),
       findsOneWidget,
-      reason: 'a folder still REGISTERS its references (the 참고영상 among '
+      reason:
+          'a folder still REGISTERS its references (the 참고영상 among '
           'them), so copy-or-reference has something to decide',
     );
     expect(
@@ -136,8 +134,7 @@ void main() {
     // Real IO completes inside runAsync, but the await CONTINUATIONS are
     // fake-zone microtasks that only pump() drains — interleave the two.
     for (var tries = 0; tries < 100; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length >
-          cutsBefore) {
+      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
         break;
       }
       await tester.runAsync(
@@ -251,9 +248,7 @@ void main() {
         reason: 'rasterize is a question about a placed layer',
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-run-button')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await tester.pumpAndSettle();
 
       expect(s.mediaAssets.single.path, path.replaceAll('\\', '/'));
@@ -287,9 +282,7 @@ void main() {
       await tester.pump();
       expect(find.textContaining('placement not available'), findsOneWidget);
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-run-button')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('placement is not available'), findsOneWidget);
@@ -346,9 +339,7 @@ void main() {
     }
 
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-run-button')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       for (var tries = 0; tries < 100; tries += 1) {
         if (s.mediaAssets.isNotEmpty) {
           break;
@@ -410,7 +401,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ImportDialog(session: s, initialPaths: [path])),
+          home: Scaffold(
+            body: ImportDialog(session: s, initialPaths: [path]),
+          ),
         ),
       );
       await tester.pump();
@@ -445,7 +438,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ImportDialog(session: s, initialPaths: [path])),
+          home: Scaffold(
+            body: ImportDialog(session: s, initialPaths: [path]),
+          ),
         ),
       );
       await tester.pump();
@@ -472,7 +467,8 @@ void main() {
           '${tempDir.path}${Platform.pathSeparator}scene.assets',
         ).existsSync(),
         isFalse,
-        reason: 'carrying is a fact about the SAVE — there was somewhere '
+        reason:
+            'carrying is a fact about the SAVE — there was somewhere '
             'for a copy to land and none was made',
       );
     });
@@ -510,8 +506,7 @@ void main() {
     await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 100; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length >
-          cutsBefore) {
+      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
         break;
       }
       await tester.runAsync(
@@ -601,7 +596,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
       ),
     );
     await tester.pump();
@@ -623,7 +620,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
       ),
     );
     await tester.pump();
@@ -651,7 +650,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
       ),
     );
     await tester.pump();
@@ -659,7 +660,8 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('import-large-carry-note')),
       findsNothing,
-      reason: 'a warning about a file that was always staying outside is '
+      reason:
+          'a warning about a file that was always staying outside is '
           'the noise that teaches people to ignore the real one',
     );
   });
@@ -671,7 +673,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
       ),
     );
     await tester.pump();
@@ -744,14 +748,13 @@ void main() {
         return widget.data!;
       }
       return tester
-          .widget<Text>(
-            find.descendant(of: cell, matching: find.byType(Text)),
-          )
+          .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
           .data!;
     }
 
-    testWidgets('a column header answers for every row at once',
-        (tester) async {
+    testWidgets('a column header answers for every row at once', (
+      tester,
+    ) async {
       final a = await tester.runAsync(() => writePng('a.png'));
       final b = await tester.runAsync(() => writePng('b.png'));
       await pump(tester, [a!, b!]);
@@ -768,8 +771,9 @@ void main() {
       expect(cellText(tester, 'File', b), 'Ref');
     });
 
-    testWidgets('a cell speaks for the SELECTION when its row is in one',
-        (tester) async {
+    testWidgets('a cell speaks for the SELECTION when its row is in one', (
+      tester,
+    ) async {
       final a = await tester.runAsync(() => writePng('a.png'));
       final b = await tester.runAsync(() => writePng('b.png'));
       final c = await tester.runAsync(() => writePng('c.png'));
@@ -798,8 +802,9 @@ void main() {
       );
     });
 
-    testWidgets('a movie starts as a reference and can be carried anyway',
-        (tester) async {
+    testWidgets('a movie starts as a reference and can be carried anyway', (
+      tester,
+    ) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       final movie = await tester.runAsync(() => writeMovie('ref.mp4'));
       await pump(tester, [png!, movie!]);
@@ -820,8 +825,55 @@ void main() {
       );
     });
 
-    testWidgets('an answer the KIND refuses still does not stick',
-        (tester) async {
+    testWidgets('🚨a sound REGISTERS rather than places, and it still counts '
+        'as imported — a batch of nothing but sound must not report '
+        '"Nothing imported."', (tester) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      final wav = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}take.wav');
+        await file.writeAsBytes(const [0x52, 0x49, 0x46, 0x46]);
+        return file.path;
+      });
+      // A PLACEMENT run (a destination is chosen), not the pool: this is
+      // the branch where audio takes the batch door on its own.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: [wav!]),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      for (var tries = 0; tries < 100; tries += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+        if (!tester.any(find.text('Importing…'))) {
+          break;
+        }
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        session.repository.requireProject().mediaAssets,
+        isNotEmpty,
+        reason: 'the sound registered',
+      );
+      expect(
+        find.text('Nothing imported.'),
+        findsNothing,
+        reason: 'a registration IS an import — the batch counted it',
+      );
+    });
+
+    testWidgets('an answer the KIND refuses still does not stick', (
+      tester,
+    ) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       final wav = await tester.runAsync(() async {
         final file = File('${tempDir.path}${Platform.pathSeparator}se.wav');
@@ -847,8 +899,9 @@ void main() {
       );
     });
 
-    testWidgets('expanding a PSD locks its File answer to the pixels',
-        (tester) async {
+    testWidgets('expanding a PSD locks its File answer to the pixels', (
+      tester,
+    ) async {
       final psd = await tester.runAsync(() => writePsd('BG.psd'));
       await pump(tester, [psd!]);
 
@@ -888,7 +941,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ImportDialog(session: s, initialPaths: [png!])),
+          home: Scaffold(
+            body: ImportDialog(session: s, initialPaths: [png!]),
+          ),
         ),
       );
       await tester.pump();
@@ -910,8 +965,9 @@ void main() {
     });
 
     testWidgets('registering into the pool shows no IN/OUT either — trimming '
-        'what is only registered would have to write the trimmed bytes',
-        (tester) async {
+        'what is only registered would have to write the trimmed bytes', (
+      tester,
+    ) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       final png = await tester.runAsync(() => writePng('a.png'));
@@ -990,8 +1046,7 @@ void main() {
     // committed first and the bakes follow — so waiting for the cut alone
     // would read the render log half-written.
     for (var tries = 0; tries < 200; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length >
-              cutsBefore &&
+      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore &&
           fake.renderRequests.length >= 3) {
         break;
       }
@@ -1019,8 +1074,9 @@ void main() {
 
   /// PLACE: the pool row's way onto the timeline. The same window, minus
   /// the question it has already answered — which file.
-  testWidgets('place mode drops the source bar and says what it is doing',
-      (tester) async {
+  testWidgets('place mode drops the source bar and says what it is doing', (
+    tester,
+  ) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final path = await tester.runAsync(() => writePng('bg.png'));
@@ -1067,11 +1123,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportDialog(
-            session: s,
-            initialPaths: [path],
-            placeOnly: true,
-          ),
+          body: ImportDialog(session: s, initialPaths: [path], placeOnly: true),
         ),
       ),
     );
@@ -1155,7 +1207,9 @@ void main() {
 
     // And the wait can be let go of — Cancel is live again while the
     // import is waiting on bytes that are not its own.
-    await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-cancel-button')),
+    );
     for (var tries = 0; tries < 40; tries += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
@@ -1175,5 +1229,106 @@ void main() {
       layersBefore,
       reason: 'nothing was placed from a file that never arrived',
     );
+  });
+
+  /// 🚨WHAT SUCCEEDED LEAVES THE LIST.
+  ///
+  /// A mixed batch is the normal case — one file is corrupt, the rest are
+  /// fine — and the window stays open so the warning can be read. Pressing
+  /// Import again then has to import ONLY what is left: the rule was
+  /// written in a comment and nothing checked it, so mutating the removal
+  /// away left the whole suite green (2026-09-05).
+  group('the tally after a mixed batch', () {
+    Future<String> writeBrokenPng(String name) async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}$name');
+      // A .png that is not a PNG: the kind is image, the file reads, and
+      // the decode is what fails — the per-file failure this window has
+      // to survive.
+      await file.writeAsBytes(const [1, 2, 3, 4, 5, 6, 7, 8]);
+      return file.path;
+    }
+
+    Future<EditorSessionManager> runImport(
+      WidgetTester tester,
+      List<String> paths,
+    ) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: paths),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      for (var tries = 0; tries < 100; tries += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+        if (!tester.any(find.text('Importing…'))) {
+          break;
+        }
+      }
+      await tester.pumpAndSettle();
+      return session;
+    }
+
+    testWidgets('🚨the file that LANDED is gone from the list and the one '
+        'that failed is still there — pressing Import again must not '
+        'import the good one twice', (tester) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final bad = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      await runImport(tester, [good!, bad!]);
+
+      expect(
+        find.text('breaks.png'),
+        findsOneWidget,
+        reason: 'the failure is still on the list to retry',
+      );
+      expect(
+        find.text('lands.png'),
+        findsNothing,
+        reason: 'it already landed — importing it again would duplicate it',
+      );
+    });
+
+    testWidgets('🚨a WARNING holds the window open — the whole point of the '
+        'list surviving is that there is something to read and retry', (
+      tester,
+    ) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final bad = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      await runImport(tester, [good!, bad!]);
+
+      expect(
+        find.byKey(const ValueKey<String>('import-run-button')),
+        findsOneWidget,
+        reason: 'the window did not close on a batch that half-failed',
+      );
+      expect(
+        find.text('Nothing imported.'),
+        findsNothing,
+        reason: 'one of the two DID land',
+      );
+    });
+
+    testWidgets('and the good file really did land — the removal is not the '
+        'window quietly dropping it', (tester) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final bad = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      final session = await runImport(tester, [good!, bad!]);
+
+      expect(
+        session.requireActiveCut.layers.any(
+          (layer) => layer.kind == LayerKind.image,
+        ),
+        isTrue,
+      );
+    });
   });
 }

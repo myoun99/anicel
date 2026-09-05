@@ -67,6 +67,17 @@ class ImportDialog extends StatefulWidget {
   State<ImportDialog> createState() => _ImportDialogState();
 }
 
+/// What an import run has come to so far.
+///
+/// ⛔MUTABLE on purpose: a batch that throws part-way must keep what
+/// already landed, and `done` is what gets removed from the list so that
+/// pressing Import again never re-imports a file that succeeded.
+class _ImportTally {
+  int imported = 0;
+  final List<String> warnings = [];
+  final List<String> done = [];
+}
+
 class _ImportDialogState extends State<ImportDialog> {
   final List<String> _files = [];
   String? _folder;
@@ -398,149 +409,19 @@ class _ImportDialogState extends State<ImportDialog> {
       _running = true;
       _status = 'Importing…';
     });
-    final session = widget.session;
     // Before anything registers: the session has to be holding the tokens
     // by the time a save writes them down, and this is the only moment
     // they exist outside the picker. Harmless when the list is empty,
     // which is every desktop import and every drop.
-    session.rememberMediaGrants(_pickedGrants);
-    var imported = 0;
-    final warnings = <String>[];
-    final done = <String>[];
-    try {
-      final folder = _folder;
-      final destination = _destination;
-      if (folder != null) {
-        final folderWarnings = await session.importCutFolder(
-          folderPath: folder,
-          config: _parseConfig,
-          fit: _fit,
-          copyIntoProject: _copyIntoProject,
-        );
-        if (folderWarnings == null) {
-          warnings.add('Could not read that folder.');
-        } else {
-          imported += 1;
-          warnings.addAll(folderWarnings);
-        }
-      } else if (destination == null) {
-        // The pool: every kind registers, movies included. Two batches
-        // rather than one, because carrying is now a per-file answer and
-        // the registration verb takes one flag for the batch it is given.
-        imported += _registerBatches(session, _files);
-        done.addAll(_files);
-      } else {
-        // Audio registers rather than places, and does it in as few undos
-        // as the per-file answers allow.
-        final audioPaths = [
-          for (final path in _files)
-            if (mediaAssetKindForPath(path) == MediaAssetKind.audio) path,
-        ];
-        if (audioPaths.isNotEmpty) {
-          imported += _registerBatches(session, audioPaths);
-          done.addAll(audioPaths);
-        }
-        for (final path in _files) {
-          final kind = mediaAssetKindForPath(path);
-          if (kind == MediaAssetKind.audio) {
-            continue;
-          }
-          if (_unplaceableKinds.contains(kind)) {
-            warnings.add(
-              '${mediaAssetDefaultName(path)}: ${kind!.jsonValue} placement '
-              'is not available yet.',
-            );
-            continue;
-          }
-          // A PLACEMENT reads the file, so this is where the picked path
-          // has to become a path that reads — the same law the two open
-          // doors go through. A cloud file arrives here as a placeholder
-          // and would otherwise fail as if it were corrupt.
-          if (await _readableForImport(path) == null) {
-            warnings.add('${mediaAssetDefaultName(path)}: 파일을 읽지 못했습니다.');
-            continue;
-          }
-          if (!mounted) {
-            return;
-          }
-          final settings = _settingsFor(path);
-          final carry = settings.mode == ImportFileMode.keepInside;
-          final bake = settings.mode == ImportFileMode.rasterize;
-          final failedPages = <int>[];
-          final bool ok;
-          try {
-            ok = importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand
-                ? await _expandPsd(session, path, settings, warnings)
-                : kind == MediaAssetKind.pdf
-                ? await session.importPdfFile(
-                    path: path,
-                    destination: settings.into,
-                    rasterize: bake,
-                    fit: settings.fit,
-                    copyIntoProject: carry,
-                    inFrame: settings.inFrame,
-                    outFrame: settings.outFrame,
-                    // A 100-page conte renders for seconds — the footer
-                    // says where it is instead of looking hung.
-                    onRenderProgress: (rendered, total) {
-                      if (mounted) {
-                        setState(
-                          () =>
-                              _status = 'Rendering PDF page $rendered/$total…',
-                        );
-                      }
-                    },
-                    onPageRenderFailed: failedPages.add,
-                  )
-                : await session.importImageFile(
-                    path: path,
-                    destination: settings.into,
-                    rasterize: bake,
-                    fit: settings.fit,
-                    copyIntoProject: carry,
-                    inFrame: settings.inFrame,
-                    outFrame: settings.outFrame,
-                  );
-          } on Object {
-            // A corrupt/locked file must not abort the rest of the batch —
-            // it gets its named warning and the loop moves on (the image
-            // path's per-file contract).
-            warnings.add(
-              '${mediaAssetDefaultName(path)} could not be opened — '
-              'corrupt or password-locked.',
-            );
-            continue;
-          }
-          if (failedPages.isNotEmpty) {
-            warnings.add(
-              '${mediaAssetDefaultName(path)}: ${failedPages.length} '
-              'page(s) failed to render — their cels stay empty.',
-            );
-          }
-          if (ok) {
-            imported += 1;
-            done.add(path);
-          } else {
-            warnings.add(
-              kind == MediaAssetKind.pdf &&
-                      PdfRenderService.availability != true
-                  ? '${mediaAssetDefaultName(path)}: no PDF renderer in '
-                        'this build.'
-                  : settings.into == ImportDestination.activeCutLayer &&
-                        session.activeCutOrNull == null
-                  ? 'No active cut — pick "New cut" or leave the gap.'
-                  : 'Could not import ${mediaAssetDefaultName(path)}.',
-            );
-          }
-        }
-      }
-    } on Object catch (error) {
-      warnings.add('$error');
+    widget.session.rememberMediaGrants(_pickedGrants);
+    final tally = _ImportTally();
+    if (!await _importAll(tally)) {
+      return; // the dialog went away part-way through the batch
     }
     if (!mounted) {
       return;
     }
-    if (imported > 0 && warnings.isEmpty) {
+    if (tally.imported > 0 && tally.warnings.isEmpty) {
       Navigator.of(context).pop();
       return;
     }
@@ -548,11 +429,193 @@ class _ImportDialogState extends State<ImportDialog> {
       _running = false;
       // What SUCCEEDED leaves the list — pressing Import again after
       // fixing a problem must never duplicate what already landed.
-      _files.removeWhere(done.contains);
-      _status = warnings.isEmpty
+      _files.removeWhere(tally.done.contains);
+      _status = tally.warnings.isEmpty
           ? 'Nothing imported.'
-          : warnings.take(3).join(' · ');
+          : tally.warnings.take(3).join(' · ');
     });
+  }
+
+  /// Runs the picked import, whichever door it goes through. Answers
+  /// FALSE when the dialog went away part-way.
+  ///
+  /// ⛔ONE catch for the whole run: a batch that throws part-way KEEPS
+  /// what already landed (the tally fills as it goes) and the error
+  /// becomes a warning, so the dialog says what happened rather than
+  /// leaving a dead spinner behind an unhandled error.
+  Future<bool> _importAll(_ImportTally tally) async {
+    try {
+      final folder = _folder;
+      if (folder != null) {
+        await _importCutFolder(folder, tally);
+      } else if (_destination == null) {
+        // The pool: every kind registers, movies included. Two batches
+        // rather than one, because carrying is now a per-file answer and
+        // the registration verb takes one flag for the batch it is given.
+        tally.imported += _registerBatches(widget.session, _files);
+        tally.done.addAll(_files);
+      } else {
+        // ⛔The `await` is NOT redundant: `return _placeFiles(tally)`
+        // hands the future to the caller and this try never sees it
+        // fail, so a throw part-way through the batch would escape as an
+        // unhandled async error and leave the spinner running forever.
+        return await _placeFiles(tally);
+      }
+    } on Object catch (error) {
+      tally.warnings.add('$error');
+    }
+    return true;
+  }
+
+  Future<void> _importCutFolder(String folder, _ImportTally tally) async {
+    final folderWarnings = await widget.session.importCutFolder(
+      folderPath: folder,
+      config: _parseConfig,
+      fit: _fit,
+      copyIntoProject: _copyIntoProject,
+    );
+    if (folderWarnings == null) {
+      tally.warnings.add('Could not read that folder.');
+      return;
+    }
+    tally.imported += 1;
+    tally.warnings.addAll(folderWarnings);
+  }
+
+  /// Places every picked file, audio first. Answers FALSE when the dialog
+  /// went away part-way — the caller must not touch its state after that.
+  Future<bool> _placeFiles(_ImportTally tally) async {
+    // Audio registers rather than places, and does it in as few undos
+    // as the per-file answers allow.
+    final audioPaths = [
+      for (final path in _files)
+        if (mediaAssetKindForPath(path) == MediaAssetKind.audio) path,
+    ];
+    if (audioPaths.isNotEmpty) {
+      tally.imported += _registerBatches(widget.session, audioPaths);
+      tally.done.addAll(audioPaths);
+    }
+    for (final path in _files) {
+      final kind = mediaAssetKindForPath(path);
+      if (kind == MediaAssetKind.audio) {
+        continue;
+      }
+      if (_unplaceableKinds.contains(kind)) {
+        tally.warnings.add(
+          '${mediaAssetDefaultName(path)}: ${kind!.jsonValue} placement '
+          'is not available yet.',
+        );
+        continue;
+      }
+      // A PLACEMENT reads the file, so this is where the picked path
+      // has to become a path that reads — the same law the two open
+      // doors go through. A cloud file arrives here as a placeholder
+      // and would otherwise fail as if it were corrupt.
+      if (await _readableForImport(path) == null) {
+        tally.warnings.add('${mediaAssetDefaultName(path)}: 파일을 읽지 못했습니다.');
+        continue;
+      }
+      if (!mounted) {
+        return false;
+      }
+      await _placeOneFile(path, kind, tally);
+    }
+    return true;
+  }
+
+  /// One file through its door. ⛔A file that fails does NOT abort the
+  /// batch: it leaves a named warning and the loop moves on (the image
+  /// path's per-file contract).
+  Future<void> _placeOneFile(
+    String path,
+    MediaAssetKind? kind,
+    _ImportTally tally,
+  ) async {
+    final failedPages = <int>[];
+    final bool ok;
+    try {
+      ok = await _placeThrough(path, kind, tally, failedPages);
+    } on Object {
+      tally.warnings.add(
+        '${mediaAssetDefaultName(path)} could not be opened — '
+        'corrupt or password-locked.',
+      );
+      return;
+    }
+    if (failedPages.isNotEmpty) {
+      tally.warnings.add(
+        '${mediaAssetDefaultName(path)}: ${failedPages.length} '
+        'page(s) failed to render — their cels stay empty.',
+      );
+    }
+    if (ok) {
+      tally.imported += 1;
+      tally.done.add(path);
+      return;
+    }
+    tally.warnings.add(_placementFailure(path, kind, _settingsFor(path)));
+  }
+
+  /// Which door this file goes through: an expanded PSD, the PDF
+  /// renderer, or the ordinary image path.
+  Future<bool> _placeThrough(
+    String path,
+    MediaAssetKind? kind,
+    _ImportTally tally,
+    List<int> failedPages,
+  ) {
+    final settings = _settingsFor(path);
+    final carry = settings.mode == ImportFileMode.keepInside;
+    final bake = settings.mode == ImportFileMode.rasterize;
+    if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
+      return _expandPsd(widget.session, path, settings, tally.warnings);
+    }
+    if (kind == MediaAssetKind.pdf) {
+      return widget.session.importPdfFile(
+        path: path,
+        destination: settings.into,
+        rasterize: bake,
+        fit: settings.fit,
+        copyIntoProject: carry,
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+        // A 100-page conte renders for seconds — the footer says where
+        // it is instead of looking hung.
+        onRenderProgress: (rendered, total) {
+          if (mounted) {
+            setState(() => _status = 'Rendering PDF page $rendered/$total…');
+          }
+        },
+        onPageRenderFailed: failedPages.add,
+      );
+    }
+    return widget.session.importImageFile(
+      path: path,
+      destination: settings.into,
+      rasterize: bake,
+      fit: settings.fit,
+      copyIntoProject: carry,
+      inFrame: settings.inFrame,
+      outFrame: settings.outFrame,
+    );
+  }
+
+  /// Why a placement that ran and answered `false` did not land, most
+  /// specific reason first: a build with no renderer, then a destination
+  /// that is not there.
+  String _placementFailure(
+    String path,
+    MediaAssetKind? kind,
+    ImportFileSettings settings,
+  ) {
+    if (kind == MediaAssetKind.pdf && PdfRenderService.availability != true) {
+      return '${mediaAssetDefaultName(path)}: no PDF renderer in this build.';
+    }
+    if (settings.into == ImportDestination.activeCutLayer &&
+        widget.session.activeCutOrNull == null) {
+      return 'No active cut — pick "New cut" or leave the gap.';
+    }
+    return 'Could not import ${mediaAssetDefaultName(path)}.';
   }
 
   /// Registers [paths] in as few undo steps as their answers allow: one
