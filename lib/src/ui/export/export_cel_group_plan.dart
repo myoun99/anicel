@@ -6,6 +6,7 @@ import '../../models/export_spec.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/timeline_coverage.dart';
 import 'export_cels_selection.dart';
@@ -120,6 +121,154 @@ Frame? celGroupMemberFrame({
 /// per cut (the EX1 resolver), labels = included un-attached drawing
 /// rows, members = the included attach rows around each base, one task
 /// per authored base cel. Instruction layers become per-event tasks.
+/// Names the files a cel-group export writes, and keeps them UNIQUE.
+///
+/// 🚨Uniqueness is per RUN, not per cut or per label: two labels can hold
+/// a cel of the same name and a flat naming puts them in one folder, so
+/// the second write would silently replace the first. The bump (`_2`,
+/// `_3`, …) is what the user sees instead of a missing file.
+class _CelGroupNamer {
+  _CelGroupNamer({
+    required this.project,
+    required this.spec,
+    required this.fileExtension,
+  });
+
+  final Project project;
+  final CelsExportSpec spec;
+  final String fileExtension;
+  final Set<String> _used = <String>{};
+
+  String fileNameFor({
+    required Cut cut,
+    required String labelName,
+    required String celName,
+  }) {
+    final folder = [
+      if (spec.naming.cutFolder) sanitizeExportFileComponent(cut.name),
+      if (spec.naming.layerFolder) sanitizeExportFileComponent(labelName),
+    ].join('/');
+    final prefix = folder.isEmpty ? '' : '$folder/';
+    final base = celGroupFileBase(
+      projectName: project.name,
+      cut: cut,
+      labelName: labelName,
+      celName: celName,
+      naming: spec.naming,
+    );
+    var fileName = '$prefix$base.$fileExtension';
+    var bump = 2;
+    while (!_used.add(fileName)) {
+      fileName = '$prefix${base}_$bump.$fileExtension';
+      bump += 1;
+    }
+    return fileName;
+  }
+}
+
+/// The layers that ride [base]'s label, in CUT order — [below…, base,
+/// above…] — so the stack order survives the selection's filtering.
+///
+/// Null when the base is not in the cut's layer list at all: there is
+/// then nothing to draw, and a group without its base is not a group.
+List<Layer>? _celGroupMembers(
+  Layer base, {
+  required Cut cut,
+  required Set<LayerId> includedIds,
+}) {
+  final attached = attachedLayersOf(base.id, cut.layers);
+  final members = <Layer>[];
+  var baseInserted = false;
+  for (final layer in cut.layers) {
+    if (layer.id == base.id) {
+      members.add(layer);
+      baseInserted = true;
+    } else if (attached.any((candidate) => candidate.id == layer.id) &&
+        includedIds.contains(layer.id)) {
+      members.add(layer);
+    }
+  }
+  // ⛔UNREACHABLE from the one caller — `resolveExportCelsSelection`
+  // draws every cel layer out of `cut.layers`, so the base is always in
+  // there. Kept because the guard is the only thing saying so: a members
+  // list without its base composites the attachments alone, which is
+  // pixels the user never drew. A mutant that removes it survives, and
+  // that is the honest state (2026-09-05).
+  return baseInserted ? members : null;
+}
+
+/// One task per authored cel of every label in [selection].
+Iterable<ExportCelGroupTask> _celGroupTasksFor(
+  Cut cut, {
+  required ExportCelsSelection selection,
+  required _CelGroupNamer namer,
+}) sync* {
+  final includedIds = {for (final layer in selection.celLayers) layer.id};
+  for (final base in selection.celLayers) {
+    if (isAttachedLayer(base)) {
+      continue; // members ride their base's label below
+    }
+    final members = _celGroupMembers(base, cut: cut, includedIds: includedIds);
+    if (members == null) {
+      continue;
+    }
+    for (var index = 0; index < base.frames.length; index += 1) {
+      final baseFrame = base.frames[index];
+      final celName = baseFrame.name ?? '${index + 1}';
+      yield ExportCelGroupTask(
+        cut: cut,
+        baseLayer: base,
+        members: members,
+        memberFrames: [
+          for (final member in members)
+            celGroupMemberFrame(
+              base: base,
+              member: member,
+              baseFrame: baseFrame,
+            ),
+        ],
+        baseFrame: baseFrame,
+        celName: celName,
+        fileName: namer.fileNameFor(
+          cut: cut,
+          labelName: base.name,
+          celName: celName,
+        ),
+      );
+    }
+  }
+}
+
+/// One task per EVENT on every instruction row in [selection]. The cel
+/// name is the event's position in its row, counted from one.
+Iterable<ExportInstructionTask> _instructionTasksFor(
+  Cut cut, {
+  required ExportCelsSelection selection,
+  required _CelGroupNamer namer,
+}) sync* {
+  for (final layer in selection.instructionLayers) {
+    var eventIndex = 0;
+    for (final entry in layer.instructions.entries) {
+      eventIndex += 1;
+      final def = namer.project.cameraInstructions.defById(
+        entry.value.instructionId,
+      );
+      yield ExportInstructionTask(
+        cut: cut,
+        layer: layer,
+        startFrame: entry.key,
+        length: entry.value.length,
+        label: entry.value.displayLabel(def),
+        fileName: namer.fileNameFor(
+          cut: cut,
+          labelName: layer.name,
+          celName: '$eventIndex',
+        ),
+      );
+    }
+  }
+}
+
 ExportCelGroupPlan buildExportCelGroupPlan({
   required Project project,
   required CutId activeCutId,
@@ -127,28 +276,20 @@ ExportCelGroupPlan buildExportCelGroupPlan({
   ExportProjectOverrides? overrides,
   String fileExtension = 'png',
 }) {
-  final cuts = resolveExportCuts(
+  final namer = _CelGroupNamer(
+    project: project,
+    spec: spec,
+    fileExtension: fileExtension,
+  );
+  final cels = <ExportCelGroupTask>[];
+  final instructions = <ExportInstructionTask>[];
+  for (final cut in resolveExportCuts(
     project: project,
     activeCutId: activeCutId,
     range: spec.scope == ExportScopeKind.project
         ? ExportRange.allCuts
         : ExportRange.activeCut,
-  );
-  final cels = <ExportCelGroupTask>[];
-  final instructions = <ExportInstructionTask>[];
-  final usedNames = <String>{};
-
-  String uniqueName(String prefix, String base) {
-    var fileName = '$prefix$base.$fileExtension';
-    var bump = 2;
-    while (!usedNames.add(fileName)) {
-      fileName = '$prefix${base}_$bump.$fileExtension';
-      bump += 1;
-    }
-    return fileName;
-  }
-
-  for (final cut in cuts) {
+  )) {
     if (overrides != null &&
         spec.scope == ExportScopeKind.project &&
         !overrides.cutIncluded(cut.id)) {
@@ -159,102 +300,10 @@ ExportCelGroupPlan buildExportCelGroupPlan({
       spec: spec,
       delta: overrides?.deltaFor(cut.id),
     );
-    final includedIds = {
-      for (final layer in selection.celLayers) layer.id,
-    };
-
-    for (final base in selection.celLayers) {
-      if (isAttachedLayer(base)) {
-        continue; // members ride their base's label below
-      }
-      final attached = attachedLayersOf(base.id, cut.layers);
-      final members = <Layer>[];
-      var baseInserted = false;
-      // Cut order = [below…, base, above…]; walk the cut list so the
-      // stack order survives filtering.
-      for (final layer in cut.layers) {
-        final isBase = layer.id == base.id;
-        final isMember =
-            attached.any((candidate) => candidate.id == layer.id) &&
-            includedIds.contains(layer.id);
-        if (isBase) {
-          members.add(layer);
-          baseInserted = true;
-        } else if (isMember) {
-          members.add(layer);
-        }
-      }
-      if (!baseInserted) {
-        continue;
-      }
-      for (var index = 0; index < base.frames.length; index += 1) {
-        final baseFrame = base.frames[index];
-        final celName = baseFrame.name ?? '${index + 1}';
-        final fileBase = celGroupFileBase(
-          projectName: project.name,
-          cut: cut,
-          labelName: base.name,
-          celName: celName,
-          naming: spec.naming,
-        );
-        final folder = [
-          if (spec.naming.cutFolder) sanitizeExportFileComponent(cut.name),
-          if (spec.naming.layerFolder) sanitizeExportFileComponent(base.name),
-        ].join('/');
-        final prefix = folder.isEmpty ? '' : '$folder/';
-        cels.add(
-          ExportCelGroupTask(
-            cut: cut,
-            baseLayer: base,
-            members: members,
-            memberFrames: [
-              for (final member in members)
-                celGroupMemberFrame(
-                  base: base,
-                  member: member,
-                  baseFrame: baseFrame,
-                ),
-            ],
-            baseFrame: baseFrame,
-            celName: celName,
-            fileName: uniqueName(prefix, fileBase),
-          ),
-        );
-      }
-    }
-
-    for (final layer in selection.instructionLayers) {
-      var eventIndex = 0;
-      for (final entry in layer.instructions.entries) {
-        eventIndex += 1;
-        final def =
-            project.cameraInstructions.defById(entry.value.instructionId);
-        final label = entry.value.displayLabel(def);
-        final fileBase = celGroupFileBase(
-          projectName: project.name,
-          cut: cut,
-          labelName: layer.name,
-          celName: '$eventIndex',
-          naming: spec.naming,
-        );
-        final folder = [
-          if (spec.naming.cutFolder) sanitizeExportFileComponent(cut.name),
-          if (spec.naming.layerFolder)
-            sanitizeExportFileComponent(layer.name),
-        ].join('/');
-        final prefix = folder.isEmpty ? '' : '$folder/';
-        instructions.add(
-          ExportInstructionTask(
-            cut: cut,
-            layer: layer,
-            startFrame: entry.key,
-            length: entry.value.length,
-            label: label,
-            fileName: uniqueName(prefix, fileBase),
-          ),
-        );
-      }
-    }
+    cels.addAll(_celGroupTasksFor(cut, selection: selection, namer: namer));
+    instructions.addAll(
+      _instructionTasksFor(cut, selection: selection, namer: namer),
+    );
   }
   return ExportCelGroupPlan(cels: cels, instructions: instructions);
 }

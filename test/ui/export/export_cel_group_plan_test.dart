@@ -108,10 +108,10 @@ void main() {
         ExportCelsCutDelta().withLayerOverride(const LayerId('a-color'), true),
       ),
     );
-    expect(
-      restored.cels.single.members.map((layer) => layer.name),
-      ['A', 'A색'],
-    );
+    expect(restored.cels.single.members.map((layer) => layer.name), [
+      'A',
+      'A색',
+    ]);
   });
 
   test('a FREE member maps through what it exposes at the base cel', () {
@@ -233,5 +233,94 @@ void main() {
       ),
     );
     expect(plan.cels.map((task) => task.cut.id.value).toSet(), {'c1'});
+  });
+
+  /// 🚨A FILE NAME THAT REPEATS IS A FILE THAT DISAPPEARS.
+  ///
+  /// Two labels can each hold a cel called `1`, and a naming that leaves
+  /// the label out puts both in one folder under one name. The bump
+  /// (`_2`, `_3`, …) is what the user sees instead of one of the two
+  /// cels simply not being written. Nothing checked it until
+  /// 2026-09-05: the whole uniqueness loop could be deleted and the
+  /// suite stayed green.
+  test('🚨two labels holding a cel of the same name get two FILES', () {
+    final plan = buildExportCelGroupPlan(
+      project: projectWith([
+        base('a', 'A', [frame('f1')]),
+        base('b', 'B', [frame('g1')]),
+      ]),
+      activeCutId: const CutId('cut'),
+      spec: const CelsExportSpec(
+        naming: ExportCelNaming(includeLayerName: false),
+      ),
+    );
+
+    final names = plan.cels.map((task) => task.fileName).toList();
+    expect(names, hasLength(2));
+    expect(
+      names.toSet(),
+      hasLength(2),
+      reason: 'the second write would have replaced the first: $names',
+    );
+    expect(names.last, contains('_2'));
+  });
+
+  test('🚨the label FOLDER is a folder, not a prefix — a cel of label A '
+      'lands under A/', () {
+    final plan = buildExportCelGroupPlan(
+      project: projectWith([
+        base('a', 'A', [frame('f1')]),
+      ]),
+      activeCutId: const CutId('cut'),
+      spec: const CelsExportSpec(naming: ExportCelNaming(layerFolder: true)),
+    );
+
+    expect(plan.cels.single.fileName, startsWith('A/'));
+  });
+
+  test('the cut folder and the label folder nest, cut outside', () {
+    final plan = buildExportCelGroupPlan(
+      project: projectWith([
+        base('a', 'A', [frame('f1')]),
+      ]),
+      activeCutId: const CutId('cut'),
+      spec: const CelsExportSpec(
+        naming: ExportCelNaming(cutFolder: true, layerFolder: true),
+      ),
+    );
+
+    expect(plan.cels.single.fileName, startsWith('CUT1/A/'));
+  });
+
+  test('🚨an instruction file shares the run\'s names — a camera event and '
+      'a cel cannot collide either', () {
+    final plan = buildExportCelGroupPlan(
+      project: projectWith([
+        base('a', 'A', [frame('f1')]),
+        Layer(
+          id: const LayerId('i'),
+          name: 'A',
+          kind: LayerKind.instruction,
+          frames: const [],
+          instructions: {
+            0: const InstructionEvent(
+              instructionId: 'pan',
+              length: 2,
+              text: 'PAN',
+            ),
+          },
+        ),
+      ]),
+      activeCutId: const CutId('cut'),
+      spec: const CelsExportSpec(
+        naming: ExportCelNaming(includeLayerName: false),
+      ),
+    );
+
+    final names = [
+      ...plan.cels.map((task) => task.fileName),
+      ...plan.instructions.map((task) => task.fileName),
+    ];
+    expect(names.toSet(), hasLength(names.length), reason: '$names');
   });
 }
