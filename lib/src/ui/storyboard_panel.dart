@@ -554,7 +554,8 @@ class StoryboardPanel extends StatefulWidget {
 
   /// The bottom horizontal scrollbar row's height — the timeline grids'
   /// value (UI-R10 #21 3-row unification).
-  static const double _bottomScrollbarRailHeight = 16;
+  static const double _bottomScrollbarRailHeight =
+      timelineBottomScrollbarRailHeight;
 
   /// The header band above the track rows — a `Row` of the seconds corner,
   /// the ruler and [TimelineLayerControlsHeader].
