@@ -1063,21 +1063,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (recall == null || recall.isIdentity) {
       return;
     }
-    if (_transform == null) {
-      _beginTransform();
-    }
-    final affine = _transform;
-    if (affine == null) {
-      return;
-    }
-    setState(() {
-      _transform = affine.copyWith(
-        sx: recall.scale,
-        sy: recall.scale,
-        rotationDegrees: recall.rotationDegrees,
-        tx: recall.tx,
-        ty: recall.ty,
-      );
+    // The replay is an EDIT of the box like any other, so it enters and
+    // leaves through _editTransform (open a box when none is up; resample
+    // and re-run the ants on the way out). The closure runs inside its
+    // setState, so the offsets land in the same frame as the affine.
+    _editTransform((affine) {
       // Only the part the armed mode can hold. A recall carrying a mesh
       // recorded on another grid has nowhere to put its interior points,
       // so it lands as the affine alone rather than as a guess.
@@ -1091,9 +1081,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           )) {
         _meshOffsets = List.of(recall.meshOffsets);
       }
+      return affine.copyWith(
+        sx: recall.scale,
+        sy: recall.scale,
+        rotationDegrees: recall.rotationDegrees,
+        tx: recall.tx,
+        ty: recall.ty,
+      );
     });
-    _scheduleFloatResample();
-    _syncAnts();
   }
 
   /// Whether the open box would change any pixel.
