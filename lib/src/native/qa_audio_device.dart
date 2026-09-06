@@ -364,30 +364,28 @@ final class QaAudioDevice {
   int get captureLatencySamples => _captureLatency();
 }
 
-/// The enumeration index for the output device named [name], or -1 (the
-/// system default) when [name] is null or no longer attached — a missing
-/// speaker falls back to the default rather than failing playback
-/// (AUDIO-PRO R4).
-int audioOutputDeviceIndexByName(QaAudioDevice device, String? name) {
+/// The enumeration index, on the [capture] side or the playback side, for
+/// the device named [name].
+///
+/// Playback: or -1 (the system default) when [name] is null or no longer
+/// attached — a missing speaker falls back to the default rather than
+/// failing playback (AUDIO-PRO R4).
+///
+/// Capture: or -1 (the system default microphone) when [name] is null or
+/// unplugged (AUDIO-PRO R5).
+///
+/// [capture] is the enumeration-kind axis [QaAudioDevice.devicesOf] already
+/// takes (it becomes the C `kind`), not a behaviour switch: one search, one
+/// question.
+int audioDeviceIndexByName(
+  QaAudioDevice device, {
+  required bool capture,
+  required String? name,
+}) {
   if (name == null) {
     return -1;
   }
-  final devices = device.devicesOf(capture: false);
-  for (var index = 0; index < devices.length; index += 1) {
-    if (devices[index].name == name) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-/// The capture-side twin: the input device named [name], or -1 (the system
-/// default microphone) when [name] is null or unplugged (AUDIO-PRO R5).
-int audioInputDeviceIndexByName(QaAudioDevice device, String? name) {
-  if (name == null) {
-    return -1;
-  }
-  final devices = device.devicesOf(capture: true);
+  final devices = device.devicesOf(capture: capture);
   for (var index = 0; index < devices.length; index += 1) {
     if (devices[index].name == name) {
       return index;

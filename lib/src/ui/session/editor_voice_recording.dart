@@ -22,10 +22,7 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../native/qa_audio_native.dart' show QaAudioNative;
 import '../../native/qa_audio_device.dart'
-    show
-        QaAudioDevice,
-        audioInputDeviceIndexByName,
-        audioOutputDeviceIndexByName;
+    show QaAudioDevice, audioDeviceIndexByName;
 import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import '../playback/audio_input_monitor.dart';
@@ -348,9 +345,10 @@ class EditorVoiceRecording {
     if (device == null || playback.isActive || device.isOpen) {
       return null;
     }
-    final index = audioOutputDeviceIndexByName(
+    final index = audioDeviceIndexByName(
       device,
-      audioSyncSettings.value.outputDeviceName,
+      capture: false,
+      name: audioSyncSettings.value.outputDeviceName,
     );
     var opened = device.open(
       sampleRate: 48000,
@@ -444,9 +442,10 @@ class EditorVoiceRecording {
       sampleRate: audioConformStore.projectSampleRate,
       deviceIndex: device == null
           ? -1
-          : audioInputDeviceIndexByName(
+          : audioDeviceIndexByName(
               device,
-              audioSyncSettings.value.inputDeviceName,
+              capture: true,
+              name: audioSyncSettings.value.inputDeviceName,
             ),
     );
   }
@@ -786,9 +785,10 @@ class EditorVoiceRecording {
           : audioConformStore.projectSampleRate,
       deviceIndex: device == null
           ? -1
-          : audioInputDeviceIndexByName(
+          : audioDeviceIndexByName(
               device,
-              audioSyncSettings.value.inputDeviceName,
+              capture: true,
+              name: audioSyncSettings.value.inputDeviceName,
             ),
     );
     if (rate == 0) {

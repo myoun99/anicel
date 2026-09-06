@@ -282,7 +282,11 @@ class AudioDeviceTransport {
       device.close();
     }
     if (!device.isOpen) {
-      final index = audioOutputDeviceIndexByName(device, desiredName);
+      final index = audioDeviceIndexByName(
+        device,
+        capture: false,
+        name: desiredName,
+      );
       var opened = device.open(
         sampleRate: conformStore.projectSampleRate,
         deviceIndex: index,
