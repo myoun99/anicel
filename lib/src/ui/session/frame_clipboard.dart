@@ -496,8 +496,7 @@ class FrameClipboard {
       carryBakedPictures(
         internals: _internals,
         cut: cut,
-        sourceLayerId: copied.layerId,
-        targetLayerId: targetId,
+        between: (from: copied.layerId, to: targetId),
         minted: minted,
       );
     }

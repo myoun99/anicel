@@ -98,19 +98,18 @@ mintIndependentClip({
 void carryBakedPictures({
   required SessionInternals internals,
   required Cut cut,
-  required LayerId sourceLayerId,
-  required LayerId targetLayerId,
+  required ({LayerId from, LayerId to}) between,
   required Map<FrameId, FrameId> minted,
 }) {
   for (final entry in minted.entries) {
     final surface = internals.brushFrameStore.bakedSurfaceOrNull(
-      internals.brushFrameKeyForCut(cut, sourceLayerId, entry.key),
+      internals.brushFrameKeyForCut(cut, between.from, entry.key),
     );
     if (surface == null) {
       continue;
     }
     internals.brushFrameStore.storeBakedSurface(
-      internals.brushFrameKeyForCut(cut, targetLayerId, entry.value),
+      internals.brushFrameKeyForCut(cut, between.to, entry.value),
       surface,
     );
   }

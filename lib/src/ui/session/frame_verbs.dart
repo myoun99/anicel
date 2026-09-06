@@ -229,8 +229,7 @@ class FrameVerbs {
       carryBakedPictures(
         internals: _internals,
         cut: cut,
-        sourceLayerId: layer.id,
-        targetLayerId: layer.id,
+        between: (from: layer.id, to: layer.id),
         minted: minted,
       );
     }
