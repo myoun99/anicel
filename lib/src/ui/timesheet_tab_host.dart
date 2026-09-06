@@ -361,10 +361,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     final page = layout == null ? 0 : _visiblePage(layout);
     return pageTurnStrip(
       keyPrefix: 'timesheet',
-      pageIndex: page,
-      pageCount: pageCount,
-      // '1/2' — the spelling shared with the printed ページ header (R26 #41).
-      label: layout?.pageLabel(page) ?? '-',
+      page: (
+        index: page,
+        count: pageCount,
+        // '1/2' — the spelling shared with the printed ページ header (R26 #41).
+        readout: layout?.pageLabel(page) ?? '-',
+      ),
       onTurnTo: widget.continuous ? null : _turnToPage,
     );
   }

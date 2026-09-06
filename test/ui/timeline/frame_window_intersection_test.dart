@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -9,6 +10,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
@@ -91,6 +94,42 @@ void main() {
       countingBase: 24,
     );
     expect(painter.runLabels().map((l) => l.startIndex).toList(), [4]);
+  });
+
+  test('the instruction overlays mark only the span inside the window', () {
+    // The same three blocks as spans, and BOTH passes — the marks and the
+    // crossing markers — are asked once and read the same answer.
+    final layer = layerWith(timeline).copyWith(
+      kind: LayerKind.instruction,
+      instructions: {
+        0: const InstructionEvent(instructionId: 'pan', length: 4),
+        4: const InstructionEvent(instructionId: 'pan', length: 2),
+        8: const InstructionEvent(instructionId: 'pan', length: 4),
+      },
+    );
+    final marked = timelineRowInstructionOverlays(
+      layer: layer,
+      frameStartIndex: windowStart,
+      frameEndIndexExclusive: windowEnd,
+      axis: Axis.horizontal,
+      defById: CameraInstructionSet.standard.defById,
+    ).whereType<TimelineFrameSpan>().map((s) => s.placement.startIndex);
+    expect(marked, [4]);
+
+    final warned = <int>[];
+    timelineRowInstructionOverlays(
+      layer: layer,
+      frameStartIndex: windowStart,
+      frameEndIndexExclusive: windowEnd,
+      axis: Axis.horizontal,
+      defById: CameraInstructionSet.standard.defById,
+      crossingWarningTooltip: (start) {
+        warned.add(start);
+        return null;
+      },
+      crossingWarningColor: const Color(0xFFFF0000),
+    );
+    expect(warned, [4], reason: 'the marker pass takes the same window');
   });
 
   test('a track range selection overlaps the same half-open way', () {

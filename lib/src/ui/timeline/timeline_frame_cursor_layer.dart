@@ -199,24 +199,25 @@ class TimelineCursorLayer extends StatelessWidget {
     return null;
   }
 
-  /// One band for a selection of the frames [startIndex]..[endIndexExclusive]
-  /// over the rows [coversRow] answers for — the SAME band for a cell span
-  /// and a lane span (R27 #14). Null when the span has no cell inside the
-  /// built [window] or covers no row on screen.
+  /// One band for a selection over the frames [span] and the rows
+  /// [coversRow] answers for — the SAME band for a cell span and a lane
+  /// span (R27 #14). Null when the span has no cell inside the built
+  /// [window] or covers no row on screen.
+  ///
+  /// [span] and [window] are the same shape on purpose: this asks whether
+  /// one half-open frame range reaches the other.
   ///
   /// The rows a band covers are the first covered row through the last —
   /// contiguous in display order by construction.
   Widget? _selectionBand(
     ({int startIndex, int endIndexExclusive}) window, {
-    required int startIndex,
-    required int endIndexExclusive,
+    required ({int startIndex, int endIndexExclusive}) span,
     required bool Function(TimelineDisplayRow row) coversRow,
-    required Key key,
-    required String label,
+    required ({Key key, String label}) semantics,
   }) {
     if (!frameRangesOverlap(
-      startIndex,
-      endIndexExclusive,
+      span.startIndex,
+      span.endIndexExclusive,
       window.startIndex,
       window.endIndexExclusive,
     )) {
@@ -230,16 +231,16 @@ class TimelineCursorLayer extends StatelessWidget {
       count = index - first + 1;
     }
     if (first == null) return null;
-    final spanStart = _frameX(startIndex);
+    final spanStart = _frameX(span.startIndex);
     return placedAlong(
       axis,
       along: spanStart,
       across: first * metrics.layerRowHeight,
-      alongExtent: _frameX(endIndexExclusive) - spanStart,
+      alongExtent: _frameX(span.endIndexExclusive) - spanStart,
       acrossExtent: count * metrics.layerRowHeight,
       child: Semantics(
-        key: key,
-        label: label,
+        key: semantics.key,
+        label: semantics.label,
         container: true,
         child: DecoratedBox(decoration: timelineRangeSelectionBandDecoration),
       ),
@@ -290,11 +291,15 @@ class TimelineCursorLayer extends StatelessWidget {
     if (range == null) return null;
     return _selectionBand(
       window,
-      startIndex: range.startIndex,
-      endIndexExclusive: range.endIndexExclusive,
+      span: (
+        startIndex: range.startIndex,
+        endIndexExclusive: range.endIndexExclusive,
+      ),
       coversRow: (row) => range.coversRow(row.address),
-      key: const ValueKey<String>('timeline-frame-range-selection'),
-      label: AppText.strings.tlSelectedFrameRange,
+      semantics: (
+        key: const ValueKey<String>('timeline-frame-range-selection'),
+        label: AppText.strings.tlSelectedFrameRange,
+      ),
     );
   }
 
@@ -315,11 +320,15 @@ class TimelineCursorLayer extends StatelessWidget {
     if (laneRange == null) return null;
     return _selectionBand(
       window,
-      startIndex: laneRange.startIndex,
-      endIndexExclusive: laneRange.endIndexExclusive,
+      span: (
+        startIndex: laneRange.startIndex,
+        endIndexExclusive: laneRange.endIndexExclusive,
+      ),
       coversRow: (row) => _laneRowInBand(row, laneRange),
-      key: const ValueKey<String>('timeline-lane-range-selection'),
-      label: AppText.strings.tlSelectedLaneRange,
+      semantics: (
+        key: const ValueKey<String>('timeline-lane-range-selection'),
+        label: AppText.strings.tlSelectedLaneRange,
+      ),
     );
   }
 

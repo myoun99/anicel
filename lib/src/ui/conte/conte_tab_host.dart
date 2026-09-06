@@ -147,11 +147,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
     // workspace warms them at startup, so this await is normally a no-op;
     // on a cold open the one rebuild below reflows the text out of the
     // fallback face the first frames measured in.
-    unawaited(ensureConteFontsLoaded().then((_) {
-      if (mounted) {
-        setState(() {});
-      }
-    }));
+    unawaited(
+      ensureConteFontsLoaded().then((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      }),
+    );
   }
 
   @override
@@ -326,9 +328,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
       pageStrip: pageTurnStrip(
         keyPrefix: 'conte',
-        pageIndex: pageIndex,
-        pageCount: pageCount,
-        label: '${pageIndex + 1} / $pageCount',
+        page: (
+          index: pageIndex,
+          count: pageCount,
+          readout: '${pageIndex + 1} / $pageCount',
+        ),
         onTurnTo: (page) => _turnToPage(page, pageCount),
       ),
       bottomBarHostToken: (pageIndex, pageCount, widget.inkEnabled),
@@ -351,8 +355,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
             // Under the ink window: reachable exactly when ink is blocked
             // (the toggle doubles as the edit-mode switch, the timesheet's
             // header-edit rule).
-            if (page != null)
-              _cellTapLayer(viewport, page),
+            if (page != null) _cellTapLayer(viewport, page),
             if (page != null &&
                 inkController != null &&
                 brushToolState != null &&
@@ -376,7 +379,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
-  Positioned _inkLayer(ValueListenable<BrushToolState> brushToolState, ConteInkController inkController, ContePageLayout page, CanvasViewport viewport) {
+  Positioned _inkLayer(
+    ValueListenable<BrushToolState> brushToolState,
+    ConteInkController inkController,
+    ContePageLayout page,
+    CanvasViewport viewport,
+  ) {
     return Positioned.fill(
       // The tool-state boundary (R18 UI-3): only this overlay
       // follows the brush/eraser.
@@ -420,7 +428,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
-  Positioned _pageLayer(ContePageLayout page, ConteSheetSource source, CanvasViewport viewport, BuildContext context, ConteInkController? inkController) {
+  Positioned _pageLayer(
+    ContePageLayout page,
+    ConteSheetSource source,
+    CanvasViewport viewport,
+    BuildContext context,
+    ConteInkController? inkController,
+  ) {
     return Positioned.fill(
       // The sheet page is the timesheet's answer applied to its
       // sibling. A `RepaintBoundary` here stopped the page being
@@ -466,10 +480,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
                   ),
             liveInkKeys: !widget.inkEnabled || inkController == null
                 ? const {}
-                : {
-                    for (final window in conteInkWindows(page))
-                      window.key,
-                  },
+                : {for (final window in conteInkWindows(page)) window.key},
             repaint: inkController == null
                 ? widget.thumbnailRepaint
                 : Listenable.merge([

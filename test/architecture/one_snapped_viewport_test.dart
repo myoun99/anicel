@@ -22,6 +22,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// cannot drift from itself, and that is the whole reason the answer was
 /// `host` rather than "convert the painters".
 ///
+/// The snap now has ONE site: `SheetCanvasPanel`, the paper shell the
+/// four sheet panels mount. Round 8 found the recipe — and this decision
+/// with it — typed out three times, so the rule reads the same way it
+/// always did and lands in one place: a sheet host takes its viewport
+/// through the shell, and the shell snaps it once.
+///
 /// ⛔THE DRAWING CANVAS IS OUT OF SCOPE ON PURPOSE. `contentOverride` is
 /// also how the main canvas and the editor canvas area mount, and the
 /// helper reserves the exact mapping for pointer math: "stored pan/gesture
@@ -43,15 +49,42 @@ void main() {
     'lib/src/ui/envelope/cut_envelope_tab_host.dart',
   ];
 
-  test('every sheet host snaps its viewport once, itself', () {
+  const shell = 'lib/src/ui/brush/sheet_canvas_panel.dart';
+
+  test('every sheet host snaps its viewport once, through the one shell', () {
     for (final path in sheetHosts) {
       expect(
-        File(path).readAsStringSync().contains('renderSnappedViewport'),
+        File(path).readAsStringSync().contains('SheetCanvasPanel'),
         isTrue,
         reason:
             '$path hands its viewport to a painter AND to ink windows; '
             'both must come from ONE snapped value or they drift a device '
             'pixel apart at fractional pans',
+      );
+    }
+  });
+
+  test('the shell snaps ONCE — one call, and the hosts have none', () {
+    // ⛔ONCE is the whole decision, so it is counted, not looked for: a
+    // second call in the shell would be the same two-starting-values bug
+    // the P8 answer removed, and a call left behind in a host would snap
+    // an already-snapped viewport.
+    expect(
+      'renderSnappedViewport('
+          .allMatches(File(shell).readAsStringSync())
+          .length,
+      1,
+      reason:
+          '$shell is the one place a sheet viewport is snapped — the paper '
+          'below and the ink windows above both read what it returns',
+    );
+    for (final path in sheetHosts) {
+      expect(
+        File(path).readAsStringSync().contains('renderSnappedViewport'),
+        isFalse,
+        reason:
+            '$path snaps for itself again — a value snapped twice is a '
+            'value with two starting points',
       );
     }
   });

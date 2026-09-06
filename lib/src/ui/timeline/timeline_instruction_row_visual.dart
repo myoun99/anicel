@@ -92,6 +92,33 @@ TimelineCellExposureState bandExposureState(
       : own;
 }
 
+/// The instruction spans of [layer] that reach the half-open window
+/// [frameStartIndex]..[frameEndIndexExclusive], in map order.
+List<({int start, int endExclusive, InstructionEvent event})>
+_instructionSpansIn(
+  Layer layer,
+  int frameStartIndex,
+  int frameEndIndexExclusive,
+) {
+  final spans = <({int start, int endExclusive, InstructionEvent event})>[];
+  for (final entry in layer.instructions.entries) {
+    final endExclusive = entry.key + entry.value.length;
+    if (frameRangesOverlap(
+      entry.key,
+      endExclusive,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
+      spans.add((
+        start: entry.key,
+        endExclusive: endExclusive,
+        event: entry.value,
+      ));
+    }
+  }
+  return spans;
+}
+
 /// The mark/label overlays for every instruction span intersecting the
 /// visible window.
 ///
@@ -117,19 +144,18 @@ List<Widget> timelineRowInstructionOverlays({
     'a crossing warning needs its ink — pass colorScheme.error, the SE '
     'clip marker convention',
   );
+  // The two passes draw over exactly the same spans, so the window is
+  // asked once and both walk the answer.
+  final visible = _instructionSpansIn(
+    layer,
+    frameStartIndex,
+    frameEndIndexExclusive,
+  );
   final overlays = <Widget>[];
-  for (final entry in layer.instructions.entries) {
-    final start = entry.key;
-    final endExclusive = start + entry.value.length;
-    if (!frameRangesOverlap(
-      start,
-      endExclusive,
-      frameStartIndex,
-      frameEndIndexExclusive,
-    )) {
-      continue;
-    }
-    final def = defById(entry.value.instructionId);
+  for (final span in visible) {
+    final start = span.start;
+    final endExclusive = span.endExclusive;
+    final def = defById(span.event.instructionId);
     overlays.add(
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
@@ -138,7 +164,7 @@ List<Widget> timelineRowInstructionOverlays({
         ),
         child: IgnorePointer(
           key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
-          child: _InstructionSpan(axis: axis, event: entry.value, def: def),
+          child: _InstructionSpan(axis: axis, event: span.event, def: def),
         ),
       ),
     );
@@ -147,17 +173,9 @@ List<Widget> timelineRowInstructionOverlays({
   // neighbouring block's body.
   final resolveWarning = crossingWarningTooltip;
   if (resolveWarning != null) {
-    for (final entry in layer.instructions.entries) {
-      final start = entry.key;
-      final endExclusive = start + entry.value.length;
-      if (!frameRangesOverlap(
-        start,
-        endExclusive,
-        frameStartIndex,
-        frameEndIndexExclusive,
-      )) {
-        continue;
-      }
+    for (final span in visible) {
+      final start = span.start;
+      final endExclusive = span.endExclusive;
       final tooltip = resolveWarning(start);
       if (tooltip == null) {
         continue;

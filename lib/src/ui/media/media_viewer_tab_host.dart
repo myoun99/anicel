@@ -329,9 +329,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       // outcome this method exists to prevent.
       final farthest = _pageCache.keys
           .where((page) => page != keeping)
-          .reduce((a, b) => _evictionDistance(a) >= _evictionDistance(b)
-              ? a
-              : b);
+          .reduce(
+            (a, b) => _evictionDistance(a) >= _evictionDistance(b) ? a : b,
+          );
       final dropped = _pageCache.remove(farthest)!;
       total -= ViewerRasterBudget.costOf(dropped.image);
       dropped.image.dispose();
@@ -851,9 +851,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     final strings = AppText.strings;
     return pageTurnStrip(
       keyPrefix: widget.viewerId,
-      pageIndex: pageIndex,
-      pageCount: pageCount,
-      label: '${pageIndex + 1} / $pageCount',
+      page: (
+        index: pageIndex,
+        count: pageCount,
+        readout: '${pageIndex + 1} / $pageCount',
+      ),
       onTurnTo: _turnToPage,
       leading: [
         // 🚨PLAY sits with the page controls, not in a strip of its own:
@@ -1074,7 +1076,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       children: [
         surface,
         Positioned.fill(
-          child: MediaAssetDropTarget(onDrop: (data, _) => onAssetDropped(data)),
+          child: MediaAssetDropTarget(
+            onDrop: (data, _) => onAssetDropped(data),
+          ),
         ),
       ],
     );
