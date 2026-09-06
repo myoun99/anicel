@@ -39,6 +39,30 @@ class AudioPeaks {
   }
 }
 
+/// The LOUDEST channel of the frame starting at [base] in an interleaved
+/// [samples] buffer of [channels], as a magnitude.
+///
+/// The one answer both envelopes take when no fold is chosen — the file
+/// fold below, and the live meter's `device` mode. Never a downmix:
+/// downmixing SUMS the channels, so a stereo pair in opposite phase
+/// cancels to silence and the waveform shows nothing while the sound plays
+/// perfectly well.
+///
+/// ⚠️Per FRAME, and inlined: the clamp and gain around the callers stay
+/// written out because THOSE run per sample.
+@pragma('vm:prefer-inline')
+double loudestChannelMagnitude(Float32List samples, int base, int channels) {
+  var loudest = 0.0;
+  for (var channel = 0; channel < channels; channel += 1) {
+    final value = samples[base + channel];
+    final magnitude = value < 0 ? -value : value;
+    if (magnitude > loudest) {
+      loudest = magnitude;
+    }
+  }
+  return loudest;
+}
+
 /// The bucket state machine behind every `|peak|` envelope: a running
 /// maximum per bucket, counted to [samplesPerBucket], pushed clamped and
 /// reset.
@@ -131,16 +155,7 @@ AudioPeaks peaksFromSamples({
   final frameCount = samples.length ~/ channels;
   final fold = AudioPeakBucketFold(samplesPerBucket: samplesPerBucket);
   for (var frame = 0; frame < frameCount; frame += 1) {
-    final base = frame * channels;
-    var loudest = 0.0;
-    for (var channel = 0; channel < channels; channel += 1) {
-      final value = samples[base + channel];
-      final magnitude = value < 0 ? -value : value;
-      if (magnitude > loudest) {
-        loudest = magnitude;
-      }
-    }
-    fold.add(loudest);
+    fold.add(loudestChannelMagnitude(samples, frame * channels, channels));
   }
   // A file has an end: the last partial bucket lands.
   fold.flush();

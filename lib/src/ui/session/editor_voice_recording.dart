@@ -31,7 +31,7 @@ import '../../services/audio/conform_pcm_codec.dart' show encodeConform;
 import '../../services/commands/update_media_assets_command.dart';
 import '../../models/se_take_placement.dart';
 import '../../services/audio/audio_peaks_extractor.dart'
-    show AudioPeakBucketFold, AudioPeaks;
+    show AudioPeakBucketFold, AudioPeaks, loudestChannelMagnitude;
 import '../playback/audio_recorder.dart';
 import '../playback/voice_take_processing.dart';
 import '../../services/project_repository.dart';
@@ -560,18 +560,11 @@ class EditorVoiceRecording {
       final base = frame * channels;
       double magnitude;
       if (mode == VoiceInputChannelMode.device) {
-        // ⛔The METER'S OWN RULE, not the fold. `device` keeps every
-        // channel in the TAKE, and a meter needs one scalar — so it shows
-        // the loudest channel rather than a downmix, the same honest
-        // single-lane answer [peaksFromSamples] gives a file.
-        magnitude = 0;
-        for (var channel = 0; channel < channels; channel += 1) {
-          final value = interleaved[base + channel];
-          final size = value < 0 ? -value : value;
-          if (size > magnitude) {
-            magnitude = size;
-          }
-        }
+        // ⛔NOT the fold. `device` keeps every channel in the TAKE, so
+        // there is nothing to fold — and a meter needs one scalar, so it
+        // takes the loudest channel, the same honest single-lane answer
+        // [peaksFromSamples] gives a file. Same rule, same function.
+        magnitude = loudestChannelMagnitude(interleaved, base, channels);
       } else {
         final picked = mode.pickFrame(interleaved, base, channels);
         magnitude = picked < 0 ? -picked : picked;
