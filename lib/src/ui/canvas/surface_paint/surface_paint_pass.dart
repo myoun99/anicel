@@ -229,16 +229,7 @@ class _SurfacePaintPass {
   /// pre-stroke tile, or the live tile within the upload and pixel
   /// budgets.
   void _paintVisibleTiles() {
-    if (_visibleRect.isEmpty) {
-      return;
-    }
-    final visible = DirtyRegion(
-      left: _visibleRect.left.floor(),
-      top: _visibleRect.top.floor(),
-      rightExclusive: _visibleRect.right.ceil(),
-      bottomExclusive: _visibleRect.bottom.ceil(),
-    );
-    for (final covered in tilesCovering(_painter.surface, visible)) {
+    for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
       _paintTile(covered.tile);
     }
   }

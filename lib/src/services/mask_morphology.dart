@@ -85,25 +85,31 @@ void _dilateGeneration(Uint8List src, Uint8List dst, int width, int height) {
   }
 }
 
+/// The border lines are written 0 outright (a border pixel always erodes,
+/// zero or not), so the per-pixel loop runs over the INTERIOR alone, where
+/// all four side neighbours exist and no bounds guard is needed.
 void _erodeGeneration(Uint8List src, Uint8List dst, int width, int height) {
-  for (var y = 0; y < height; y += 1) {
-    for (var x = 0; x < width; x += 1) {
-      final index = y * width + x;
+  // A 0-sized mask has no border lines to write (the old loop ran nothing).
+  if (width == 0 || height == 0) {
+    return;
+  }
+  dst.fillRange(0, width, 0);
+  dst.fillRange((height - 1) * width, height * width, 0);
+  for (var y = 1; y < height - 1; y += 1) {
+    final row = y * width;
+    dst[row] = 0;
+    dst[row + width - 1] = 0;
+    for (var index = row + 1; index < row + width - 1; index += 1) {
       final center = src[index];
-      if (center == 0) {
+      if (center == 0 ||
+          src[index - 1] == 0 ||
+          src[index + 1] == 0 ||
+          src[index - width] == 0 ||
+          src[index + width] == 0) {
         dst[index] = 0;
-        continue;
+      } else {
+        dst[index] = center;
       }
-      final touches =
-          (x > 0 && src[index - 1] == 0) ||
-          (x < width - 1 && src[index + 1] == 0) ||
-          (y > 0 && src[index - width] == 0) ||
-          (y < height - 1 && src[index + width] == 0) ||
-          x == 0 ||
-          x == width - 1 ||
-          y == 0 ||
-          y == height - 1;
-      dst[index] = touches ? 0 : center;
     }
   }
 }

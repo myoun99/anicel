@@ -7,9 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
-import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
-import '../../models/tiles_covering.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -19,6 +17,7 @@ import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'tile_origin.dart';
+import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
 
 part 'surface_paint/surface_paint_pass.dart';

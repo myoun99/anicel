@@ -3,12 +3,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/dirty_region.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
-import '../../models/tiles_covering.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'tile_origin.dart';
+import 'tiles_under_rect.dart';
 
 /// Draws, in CANVAS coordinates, the picture the screen is ALREADY showing
 /// over [region] — the float being dragged, the held resample, a fill's
@@ -213,16 +212,7 @@ ProvisionalInkPainter inkFromSurface(
         local.bottom > floatPasteboard.bottom) {
       return false;
     }
-    if (local.isEmpty) {
-      return true;
-    }
-    final covered = DirtyRegion(
-      left: local.left.floor(),
-      top: local.top.floor(),
-      rightExclusive: local.right.ceil(),
-      bottomExclusive: local.bottom.ceil(),
-    );
-    for (final under in tilesCovering(surface, covered)) {
+    for (final under in tilesUnderRect(surface, local)) {
       final tile = under.tile;
       final image = images.displayImageFor(tile);
       if (image == null) {
