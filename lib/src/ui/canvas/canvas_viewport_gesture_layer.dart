@@ -154,8 +154,8 @@ class _CanvasViewportGestureLayerState
       behavior: HitTestBehavior.translucent,
       onPointerDown: _handlePointerDown,
       onPointerMove: _handlePointerMove,
-      onPointerUp: _handlePointerUp,
-      onPointerCancel: _handlePointerCancel,
+      onPointerUp: _handlePointerLift,
+      onPointerCancel: _handlePointerLift,
       onPointerSignal: _handlePointerSignal,
       onPointerPanZoomStart: _handlePanZoomStart,
       onPointerPanZoomUpdate: _handlePanZoomUpdate,
@@ -229,17 +229,9 @@ class _CanvasViewportGestureLayerState
     _emit(startViewport.translated(dx: delta.dx, dy: delta.dy));
   }
 
-  void _handlePointerUp(PointerUpEvent event) {
-    if (_touchPositions.remove(event.pointer) != null) {
-      _controlTouchLift(event.pointer);
-      return;
-    }
-    if (event.pointer == _panPointer) {
-      _clearPan();
-    }
-  }
-
-  void _handlePointerCancel(PointerCancelEvent event) {
+  /// UP and CANCEL say the same thing to this layer — **this pointer left**
+  /// — so one handler answers both. Only [PointerEvent.pointer] is read.
+  void _handlePointerLift(PointerEvent event) {
     if (_touchPositions.remove(event.pointer) != null) {
       _controlTouchLift(event.pointer);
       return;
