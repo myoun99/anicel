@@ -4,6 +4,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
+    show XSheetFrameRailPainter;
 
 /// D43 (유저, 2026-08-21: 「그리드 오버레이랑 블록 내부 이음매같은게 색이나
 /// 생긴게 달라서 통일하고싶다」).
@@ -214,6 +216,74 @@ void main() {
             timelineGridSixLineInk(scheme),
             selectedGround,
           ),
+        ),
+      );
+    });
+  });
+
+  /// 🚨AND THE X-SHEET'S RAIL, which had never joined. D43 landed on the
+  /// overlay and on the ruler; the rail — a transposed re-implementation of
+  /// the same strip — kept laying `ink.color` straight down, so the sheet's
+  /// grid read lighter than the timeline's on exactly the boundaries the
+  /// two are supposed to share. Found by round 8's grid unification, once
+  /// the two painters' rect and model had been brought together and the
+  /// paint was the only thing left to compare.
+  group('the X-sheet rail composites onto the row it just filled', () {
+    _LineSpy paintRail({int currentFrameIndex = -1}) {
+      final spy = _LineSpy();
+      XSheetFrameRailPainter(
+        scale: TimelineRulerScale(
+          axis: Axis.vertical,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 30,
+          currentFrameIndex: currentFrameIndex,
+          playbackFrameCount: 30,
+          leadingFrameSpacer: 0,
+          crossExtent: 28,
+          metrics: TimelineGridMetrics.defaults,
+          colorScheme: scheme,
+        ),
+      ).paint(spy, const Size(28, 24 * 30));
+      return spy;
+    }
+
+    ({Offset from, Offset to, Color color, double strokeWidth}) lineAtY(
+      _LineSpy spy,
+      double y,
+    ) => spy.lines.singleWhere((line) => line.from.dy == y && line.to.dy == y);
+
+    test('the rail\'s grid lines land as the block-seam ink would', () {
+      final line = lineAtY(paintRail(), timelineFrameBoundaryLinePosition(6, 24));
+      expect(
+        line.color,
+        paintsAs(
+          timelineGridLineInkOnGround(timelineGridSixLineInk(scheme), scheme.surface),
+        ),
+        reason: 'the fill above laid surface — that is the ground',
+      );
+      expect(line.color, isNot(paintsAs(timelineGridSixLineInk(scheme).color)));
+    });
+
+    test('and the SELECTED row\'s line multiplies onto ITS tint', () {
+      final ground = TimelineRulerScale(
+        axis: Axis.vertical,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 30,
+        currentFrameIndex: 6,
+        playbackFrameCount: 30,
+        leadingFrameSpacer: 0,
+        crossExtent: 28,
+        metrics: TimelineGridMetrics.defaults,
+        colorScheme: scheme,
+      ).modelAt(6).background;
+      expect(ground, isNot(scheme.surface), reason: 'fixture premise');
+      expect(
+        lineAtY(
+          paintRail(currentFrameIndex: 6),
+          timelineFrameBoundaryLinePosition(6, 24),
+        ).color,
+        paintsAs(
+          timelineGridLineInkOnGround(timelineGridSixLineInk(scheme), ground),
         ),
       );
     });

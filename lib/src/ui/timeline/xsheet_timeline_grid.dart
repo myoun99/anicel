@@ -1284,7 +1284,13 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
           Offset(rect.left, position),
           Offset(rect.right, position),
           boundaryPaint
-            ..color = ink.color
+            // D43 (유저, 2026-08-21): and the LAW's over-ground treatment
+            // too — the half the rail was still missing while the ruler and
+            // the beat-lines overlay both had it (round 8's grid
+            // unification). The fill above has just laid this row's paper,
+            // so the ground is known exactly rather than assumed, and the
+            // sheet's grid stops reading lighter than the timeline's.
+            ..color = timelineGridLineInkOnGround(ink, model.background)
             ..strokeWidth = ink.strokeWidth,
         );
       }
