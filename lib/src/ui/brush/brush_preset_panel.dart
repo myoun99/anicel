@@ -345,12 +345,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }
     return askThenCommit<String>(
       context,
-      dialog: (_) => _BrushNameDialog(
+      dialog: (_) => AppPromptDialog.keyed(
         keyPrefix: 'brush-preset-group-new',
         title: AppText.strings.brNewGroup,
         titleIcon: Icons.create_new_folder_outlined,
         fieldLabel: AppText.strings.brGroupNameField,
-        initialName: 'New Group',
+        initialValue: 'New Group',
         confirmLabel: AppText.strings.brCreate,
         emptyError: AppText.strings.brGroupNameEmpty,
       ),
@@ -369,12 +369,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }
     return askThenCommit<String>(
       context,
-      dialog: (_) => _BrushNameDialog(
+      dialog: (_) => AppPromptDialog.keyed(
         keyPrefix: 'brush-preset-rename',
         title: AppText.strings.brRenameBrush,
         titleIcon: Icons.drive_file_rename_outline,
         fieldLabel: AppText.strings.brBrushNameField,
-        initialName: selected.name,
+        initialValue: selected.name,
         confirmLabel: AppText.strings.commonRename,
         emptyError: AppText.strings.brBrushNameEmpty,
       ),
@@ -395,14 +395,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     return askThenCommit<String>(
       context,
       dialog: (_) => StatefulBuilder(
-        builder: (context, setLocal) => _BrushNameDialog(
+        builder: (context, setLocal) => AppPromptDialog.keyed(
           keyPrefix: 'brush-preset-group-rename',
           title: AppText.strings.brEditGroup,
           titleIcon: Icons.drive_file_rename_outline,
           fieldLabel: AppText.strings.brGroupNameField,
-          initialName: group.name,
+          initialValue: group.name,
           confirmLabel: AppText.strings.commonSave,
           emptyError: AppText.strings.brGroupNameEmpty,
+          // Content confirmed alongside the name — the group's face, so
+          // the two are one edit rather than two dialogs in a row.
           extra: _GroupIconPicker(
             selected: icon,
             onPicked: (picked) => setLocal(() => icon = picked),
@@ -1158,49 +1160,6 @@ class _GroupIconPicker extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// The one name-entry window the panel's three naming flows share (preset
-/// rename, group rename, new group); [keyPrefix] names its widget keys.
-class _BrushNameDialog extends StatelessWidget {
-  const _BrushNameDialog({
-    required this.keyPrefix,
-    required this.title,
-    required this.titleIcon,
-    required this.fieldLabel,
-    required this.initialName,
-    required this.confirmLabel,
-    required this.emptyError,
-    this.extra,
-  });
-
-  final String keyPrefix;
-  final String title;
-  final IconData titleIcon;
-  final String fieldLabel;
-  final String initialName;
-  final String confirmLabel;
-  final String emptyError;
-
-  /// Content confirmed alongside the name — the group editor's icon grid.
-  final Widget? extra;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppPromptDialog(
-      extra: extra,
-      windowKey: ValueKey<String>('$keyPrefix-dialog'),
-      title: title,
-      titleIcon: titleIcon,
-      fieldLabel: fieldLabel,
-      initialValue: initialName,
-      confirmLabel: confirmLabel,
-      emptyError: emptyError,
-      fieldKey: ValueKey<String>('$keyPrefix-text-field'),
-      cancelKey: ValueKey<String>('$keyPrefix-cancel-button'),
-      confirmKey: ValueKey<String>('$keyPrefix-ok-button'),
     );
   }
 }

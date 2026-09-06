@@ -345,4 +345,84 @@ void main() {
       expect(popped, isTrue);
     });
   });
+
+  /// 🚨THE FOUR KEYS ARE ONE NAME — the prompt family's half of the rule
+  /// [confirmDialogKeys] already owns for confirms: `<name>-dialog`,
+  /// `-text-field`, `-cancel-button`, `-ok-button`. A window renamed
+  /// without its buttons leaves a test finding the window and not its
+  /// confirm, which reads as "the button is missing" rather than "the key
+  /// drifted".
+  ///
+  /// ⚠️Two windows are off that convention and keep their own keys: a cut
+  /// rename accepts through `-confirm-button` ([confirmDialogKeys]), and
+  /// the cut note's buttons are named after the verb rather than the
+  /// window. They are listed HERE, spelled out, so that staying off the
+  /// convention is a decision the file records rather than a drift.
+  group('the keys a prompt window wears', () {
+    Future<void> pump(WidgetTester tester, Widget dialog) async {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: dialog)));
+      await tester.pump();
+    }
+
+    void expectKeys(WidgetTester tester, List<String> keys) {
+      for (final key in keys) {
+        expect(
+          find.byKey(ValueKey<String>(key)),
+          findsOneWidget,
+          reason: 'key $key',
+        );
+      }
+    }
+
+    testWidgets('a layer rename: four keys from "rename-layer"', (
+      tester,
+    ) async {
+      await pump(tester, const RenameLayerDialog(initialName: 'A'));
+      expectKeys(tester, [
+        'rename-layer-dialog',
+        'rename-layer-text-field',
+        'rename-layer-cancel-button',
+        'rename-layer-ok-button',
+      ]);
+    });
+
+    testWidgets('a frame rename: four keys from "rename-frame"', (
+      tester,
+    ) async {
+      await pump(tester, const RenameFrameDialog(initialName: 'a'));
+      expectKeys(tester, [
+        'rename-frame-dialog',
+        'rename-frame-text-field',
+        'rename-frame-cancel-button',
+        'rename-frame-ok-button',
+      ]);
+    });
+
+    testWidgets('a cut rename accepts through -confirm-button, not '
+        '-ok-button', (tester) async {
+      await pump(tester, const RenameCutDialog(initialName: 'A1'));
+      expectKeys(tester, [
+        'rename-cut-dialog',
+        'rename-cut-text-field',
+        'rename-cut-cancel-button',
+        'rename-cut-confirm-button',
+      ]);
+      expect(
+        find.byKey(const ValueKey<String>('rename-cut-ok-button')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the cut note names its buttons after the verb', (
+      tester,
+    ) async {
+      await pump(tester, const CutNoteDialog(initialNote: 'n'));
+      expectKeys(tester, [
+        'cut-note-dialog',
+        'cut-note-text-field',
+        'cancel-cut-note-button',
+        'save-cut-note-button',
+      ]);
+    });
+  });
 }

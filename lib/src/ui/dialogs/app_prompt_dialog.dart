@@ -32,6 +32,40 @@ class AppPromptDialog extends StatefulWidget {
     this.extra,
   });
 
+  /// The same window with its four keys derived from ONE name:
+  /// `<keyPrefix>-dialog`, `-text-field`, `-cancel-button`, `-ok-button`.
+  ///
+  /// 🚨THE FOUR KEYS ARE ONE NAME — the prompt family's half of the rule
+  /// `confirmDialogKeys` owns for confirms (round 8's clone scan). Four
+  /// windows spelled the four out by hand, or wrapped this one in a
+  /// data-only widget whose whole job was the derivation, and a window
+  /// renamed without its buttons leaves a test that finds the window and
+  /// not its confirm — which reads as "the button is missing" rather than
+  /// "the key drifted".
+  ///
+  /// ⚠️The prompt family accepts through `-ok-button`, where a confirm
+  /// accepts through `-confirm-button`. A window off EITHER convention
+  /// (the cut rename accepts through `-confirm-button`; the cut note names
+  /// its buttons after the verb) passes its keys to the default
+  /// constructor instead — which is what keeps a test key from moving
+  /// because a window joined a family.
+  AppPromptDialog.keyed({
+    super.key,
+    required String keyPrefix,
+    required this.title,
+    required this.fieldLabel,
+    required this.initialValue,
+    required this.confirmLabel,
+    this.titleIcon,
+    this.emptyError,
+    this.multiline = false,
+    this.numeric = false,
+    this.extra,
+  }) : windowKey = ValueKey<String>('$keyPrefix-dialog'),
+       fieldKey = ValueKey<String>('$keyPrefix-text-field'),
+       cancelKey = ValueKey<String>('$keyPrefix-cancel-button'),
+       confirmKey = ValueKey<String>('$keyPrefix-ok-button');
+
   /// Optional content below the field — a picker that belongs to the same
   /// edit as the name, so the two are confirmed together rather than
   /// through two dialogs in a row.
