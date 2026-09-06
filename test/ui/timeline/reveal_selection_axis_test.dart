@@ -100,6 +100,14 @@ void main() {
   testWidgets('an axis the selection is not drawn on stays put, and the '
       'other still moves', (tester) async {
     final controllers = await pumpScrollables(tester);
+    // ⚠️Scrolled AWAY first, on purpose. At offset 0 a "not drawn" step
+    // reveals to a negative offset that the scrollable clamps back to 0, so
+    // the guard and no guard look identical — a mutant that deleted it
+    // survived exactly this way. Parked mid-strip, dropping the guard drags
+    // the view back to the top.
+    controllers[Axis.horizontal]!.jumpTo(600);
+    await tester.pump();
+
     revealSelectionOnBothAxes(
       // -1 is what indexOfDisplayRow answers for "not drawn".
       (controller: controllers[Axis.horizontal]!, extent: 24, at: -1),
@@ -107,7 +115,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(controllers[Axis.horizontal]!.offset, 0);
+    expect(controllers[Axis.horizontal]!.offset, 600);
     expect(controllers[Axis.vertical]!.offset, greaterThan(0));
   });
 
