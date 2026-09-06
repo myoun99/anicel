@@ -71,12 +71,9 @@ Map<String, MediaByteSource> projectMediaSources({
     if (entryName != null && layout != null) {
       final entry = layout.entryNamed(entryName);
       if (entry != null) {
-        sources[path] = MediaArchiveBytes(
+        sources[path] = MediaArchiveBytes.ofEntry(
           archivePath: projectFilePath!,
-          dataOffset: entry.dataOffset,
-          length: entry.length,
-          entryCrc32: entry.crc32,
-          framed: mediaEntryIsFramed(entryName),
+          entry: entry,
         );
         continue;
       }
@@ -210,12 +207,9 @@ ProjectConforms projectConformSources({
       for (final name in names) {
         final entry = layout.entryNamed(name);
         if (entry != null) {
-          sources[name] = MediaArchiveBytes(
+          sources[name] = MediaArchiveBytes.ofEntry(
             archivePath: projectFilePath!,
-            dataOffset: entry.dataOffset,
-            length: entry.length,
-            entryCrc32: entry.crc32,
-            framed: mediaEntryIsFramed(name),
+            entry: entry,
           );
           break;
         }

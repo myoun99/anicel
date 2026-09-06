@@ -1693,12 +1693,9 @@ class EditorSessionManager extends ChangeNotifier
       )) {
         final entry = layout.entryNamed(name);
         if (entry != null) {
-          return MediaArchiveBytes(
+          return MediaArchiveBytes.ofEntry(
             archivePath: archivePath,
-            dataOffset: entry.dataOffset,
-            length: entry.length,
-            entryCrc32: entry.crc32,
-            framed: mediaEntryIsFramed(name),
+            entry: entry,
           );
         }
       }
@@ -6850,12 +6847,9 @@ class EditorSessionManager extends ChangeNotifier
           archivePath,
         ).entryNamed(entryName);
         if (entry != null) {
-          final range = MediaArchiveBytes(
+          final range = MediaArchiveBytes.ofEntry(
             archivePath: archivePath,
-            dataOffset: entry.dataOffset,
-            length: entry.length,
-            entryCrc32: entry.crc32,
-            framed: mediaEntryIsFramed(entryName),
+            entry: entry,
           );
           // 🚨A framed entry is decoded HERE and nowhere downstream. Every
           // consumer asked for「the bytes of this asset」and must keep

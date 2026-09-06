@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../persistence/anicel_incremental_writer.dart' show AnicelZipEntry;
 import '../persistence/media_blob_codec.dart';
 
 /// Where a media file's bytes actually are.
@@ -233,6 +234,24 @@ class MediaArchiveBytes extends MediaByteSource {
     this.entryCrc32,
     this.framed = false,
   });
+
+  /// The source for one archive ENTRY — the one place that turns a parsed
+  /// zip entry into a byte source.
+  ///
+  /// The entry carries its own name, so `framed` is derived where the name
+  /// lives instead of at each call site: four of them spelled this out, and
+  /// a fifth would have been one more chance for the flag to be read from
+  /// somewhere other than the name.
+  factory MediaArchiveBytes.ofEntry({
+    required String archivePath,
+    required AnicelZipEntry entry,
+  }) => MediaArchiveBytes(
+    archivePath: archivePath,
+    dataOffset: entry.dataOffset,
+    length: entry.length,
+    entryCrc32: entry.crc32,
+    framed: mediaEntryIsFramed(entry.name),
+  );
 
   final String archivePath;
 
