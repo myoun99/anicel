@@ -14,6 +14,24 @@ class ExportNavAxis {
     this.captionOf,
   });
 
+  /// An axis over [entries] whose ticks sit where the GROUP changes —
+  /// [groupOf] reads each entry's group (a cut id, a cel label), so the
+  /// tick law of [ticks] is written once for every tab that groups its
+  /// stops (Sequence and Timesheet by cut, Cels by label) instead of once
+  /// per tab.
+  static ExportNavAxis grouped<T>({
+    required List<T> entries,
+    required Object? Function(T entry) groupOf,
+    required String Function(int position) captionOf,
+  }) => ExportNavAxis(
+    length: entries.length,
+    ticks: [
+      for (var i = 1; i < entries.length; i += 1)
+        if (groupOf(entries[i]) != groupOf(entries[i - 1])) i,
+    ],
+    captionOf: captionOf,
+  );
+
   final int length;
 
   /// Positions that start a new group (cut boundaries, cel-label

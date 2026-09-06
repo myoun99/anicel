@@ -49,6 +49,45 @@ void main() {
     expect(const ExportNavAxis(length: 0).clamp(4), 0);
   });
 
+  test('a grouped axis ticks exactly where the group changes', () {
+    // Three cuts over six stops: A A B C C C — ticks at the first B and
+    // the first C, never at position 0.
+    final axis = ExportNavAxis.grouped<String>(
+      entries: const ['A', 'A', 'B', 'C', 'C', 'C'],
+      groupOf: (entry) => entry,
+      captionOf: (position) => 'p${position + 1}',
+    );
+    expect(axis.length, 6);
+    expect(axis.ticks, [2, 3]);
+    expect(axis.caption(2), 'p3');
+
+    expect(
+      ExportNavAxis.grouped<int>(
+        entries: const [1, 1, 1],
+        groupOf: (entry) => entry,
+        captionOf: (position) => '',
+      ).ticks,
+      isEmpty,
+      reason: 'one group has no boundary',
+    );
+    expect(
+      ExportNavAxis.grouped<int>(
+        entries: const [1, 2, 1],
+        groupOf: (entry) => entry,
+        captionOf: (position) => '',
+      ).ticks,
+      [1, 2],
+      reason: 'a group that comes back is a new group again',
+    );
+    final empty = ExportNavAxis.grouped<int>(
+      entries: const [],
+      groupOf: (entry) => entry,
+      captionOf: (position) => '',
+    );
+    expect(empty.length, 0);
+    expect(empty.ticks, isEmpty);
+  });
+
   testWidgets('tap seeks by fraction, drag follows', (tester) async {
     final changes = <int>[];
     await pumpBar(

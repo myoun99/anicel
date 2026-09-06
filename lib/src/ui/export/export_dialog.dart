@@ -829,6 +829,39 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
+  /// One conte page rendered with its cell pictures and sheet ink alive
+  /// for exactly that render and disposed after — the preview's and the
+  /// page-image export's one routine; they differ only in the values they
+  /// pass ([pictureWidth], and [outputSize] for a fitted preview against
+  /// [scale] for a run — both already [renderContePageImage]'s own).
+  Future<ui.Image> _renderContePage(
+    ContePageLayout page,
+    ConteSheetSource source, {
+    required int pictureWidth,
+    double scale = 1,
+    CanvasSize? outputSize,
+  }) async {
+    final pictures = await _renderContePictures([page], width: pictureWidth);
+    final ink = await _renderConteInk([page]);
+    try {
+      return await renderContePageImage(
+        page: page,
+        source: source,
+        pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+        inkImageFor: (key) => ink[key],
+        scale: scale,
+        outputSize: outputSize,
+      );
+    } finally {
+      for (final image in pictures.values) {
+        image.dispose();
+      }
+      for (final image in ink.values) {
+        image.dispose();
+      }
+    }
+  }
+
   /// Renders every cell's picture once, camera-framed at [width].
   Future<Map<(String, int), ui.Image>> _renderContePictures(
     List<ContePageLayout> pages, {
@@ -903,9 +936,15 @@ class ExportDialogState extends State<ExportDialog> {
   String _exportCancelled(int written, String noun, {String tail = ''}) =>
       'Export cancelled after $written ${_plural(written, noun)}$tail.';
 
-  String _exportDone(int written, String noun, {String? kind}) =>
+  String _exportDone(
+    int written,
+    String noun, {
+    String? kind,
+    int skipped = 0,
+  }) =>
       'Exported $written ${kind == null ? '' : '$kind '}'
-      '${_plural(written, noun)}.';
+      '${_plural(written, noun)}'
+      '${skipped > 0 ? ' ($skipped empty skipped)' : ''}.';
 
   // --- preview (EX3) --------------------------------------------------------
 
@@ -923,14 +962,12 @@ class ExportDialogState extends State<ExportDialog> {
     _ => '',
   };
 
-  ExportNavAxis _sequenceAxis(List<ExportFrameTask> plan) => ExportNavAxis(
-    length: plan.length,
-    ticks: [
-      for (var i = 1; i < plan.length; i += 1)
-        if (plan[i].cut.id != plan[i - 1].cut.id) i,
-    ],
-    captionOf: (position) => 'F${position + 1}',
-  );
+  ExportNavAxis _sequenceAxis(List<ExportFrameTask> plan) =>
+      ExportNavAxis.grouped(
+        entries: plan,
+        groupOf: (task) => task.cut.id,
+        captionOf: (position) => 'F${position + 1}',
+      );
 
   ExportNavAxis _imageAxis() => ExportNavAxis(
     length: math.max(1, _activeCut.duration),
@@ -939,20 +976,26 @@ class ExportDialogState extends State<ExportDialog> {
 
   ExportNavAxis _celsAxis(ExportCelGroupPlan plan) {
     final entries = _celEntries(plan);
-    String groupOf(Object entry) => switch (entry) {
-      ExportCelGroupTask(:final baseLayer) => 'cel:${baseLayer.id.value}',
-      ExportInstructionTask(:final layer) => 'inst:${layer.id.value}',
-      _ => '',
-    };
-    return ExportNavAxis(
-      length: entries.length,
-      ticks: [
-        for (var i = 1; i < entries.length; i += 1)
-          if (groupOf(entries[i]) != groupOf(entries[i - 1])) i,
-      ],
+    return ExportNavAxis.grouped(
+      entries: entries,
+      groupOf: (entry) => switch (entry) {
+        ExportCelGroupTask(:final baseLayer) => 'cel:${baseLayer.id.value}',
+        ExportInstructionTask(:final layer) => 'inst:${layer.id.value}',
+        _ => '',
+      },
       captionOf: (position) => _celEntryCaption(entries[position]),
     );
   }
+
+  ExportNavAxis _timesheetAxis(List<ExportTimesheetPageTask> plan) =>
+      ExportNavAxis.grouped(
+        entries: plan,
+        groupOf: (task) => task.cut.id,
+        captionOf: (position) {
+          final task = plan[position.clamp(0, plan.length - 1)];
+          return 'CUT${task.cutLabel}·p${task.pageIndex + 1}';
+        },
+      );
 
   /// Re-aims the preview at whatever the tab currently points at. Called
   /// after every spec/nav/tab change; requests coalesce in the controller.
@@ -1075,30 +1118,16 @@ class ExportDialogState extends State<ExportDialog> {
         _preview.request(
           key: 'conte:${page.pageIndex}',
           caption: 'p${page.pageIndex + 1}',
-          render: () async {
-            // Preview pictures at panel resolution — fast, and the run
-            // re-renders sharper ones anyway.
-            final pictures = await _renderContePictures([page], width: 128);
-            final ink = await _renderConteInk([page]);
-            try {
-              return await renderContePageImage(
-                page: page,
-                source: source,
-                pictureFor: (cutId, frame) => pictures[(cutId, frame)],
-                inkImageFor: (key) => ink[key],
-                outputSize: fitted == null
-                    ? null
-                    : CanvasSize(width: fitted.width, height: fitted.height),
-              );
-            } finally {
-              for (final image in pictures.values) {
-                image.dispose();
-              }
-              for (final image in ink.values) {
-                image.dispose();
-              }
-            }
-          },
+          // Preview pictures at panel resolution — fast, and the run
+          // re-renders sharper ones anyway.
+          render: () => _renderContePage(
+            page,
+            source,
+            pictureWidth: 128,
+            outputSize: fitted == null
+                ? null
+                : CanvasSize(width: fitted.width, height: fitted.height),
+          ),
         );
       case ExportTab.envelope:
         final plan = _envelopePlan();
@@ -1729,24 +1758,35 @@ class ExportDialogState extends State<ExportDialog> {
   /// the picked location, watches the same cancel flag and feeds the same
   /// progress bar; written out per export, the one that forgets
   /// `isCancelled` keeps rendering after the user pressed Cancel.
+  ///
+  /// A null render or a null [encode] answer skips that file (the service's
+  /// rule); the finished sentence counts the skips, and says so only when
+  /// there were any.
   Future<String> _runImageExport({
     required int count,
-    required Future<ui.Image> Function(int index) renderImage,
+    required Future<ui.Image?> Function(int index) renderImage,
     required String Function(int index) fileNameFor,
-    required ({String noun, String kind}) says,
+    required ({String noun, String? kind}) says,
+    Future<List<int>?> Function(ui.Image image)? encode,
   }) async {
     final summary = await _exportService.exportImages(
       count: count,
       renderImage: renderImage,
       fileNameFor: fileNameFor,
       directoryPath: _location!,
+      encode: encode,
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
     );
     if (summary.processed < count) {
       return _exportCancelled(summary.written, says.noun);
     }
-    return _exportDone(summary.written, says.noun, kind: says.kind);
+    return _exportDone(
+      summary.written,
+      says.noun,
+      kind: says.kind,
+      skipped: summary.processed - summary.written,
+    );
   }
 
   Future<String> _exportSheetImages() {
@@ -1802,27 +1842,12 @@ class ExportDialogState extends State<ExportDialog> {
       final cellWidth = 320 * spec.sheetScale;
       return _runImageExport(
         count: pages.length,
-        renderImage: (index) async {
-          final page = pages[index];
-          final pictures = await _renderContePictures([page], width: cellWidth);
-          final ink = await _renderConteInk([page]);
-          try {
-            return await renderContePageImage(
-              page: page,
-              source: source,
-              pictureFor: (cutId, frame) => pictures[(cutId, frame)],
-              inkImageFor: (key) => ink[key],
-              scale: spec.sheetScale.toDouble(),
-            );
-          } finally {
-            for (final image in pictures.values) {
-              image.dispose();
-            }
-            for (final image in ink.values) {
-              image.dispose();
-            }
-          }
-        },
+        renderImage: (index) => _renderContePage(
+          pages[index],
+          source,
+          pictureWidth: cellWidth,
+          scale: spec.sheetScale.toDouble(),
+        ),
         fileNameFor: (index) => _contePageFileName(index, pages.length),
         says: (noun: 'page', kind: 'conte'),
       );
@@ -1942,27 +1967,21 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  Future<String> _exportPngSequence() async {
+  Future<String> _exportPngSequence() {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: false)!;
     final renderer = _runRenderer(
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
     );
-    final summary = await _exportService.exportImages(
+    return _runImageExport(
       count: plan.length,
       renderImage: (index) =>
           renderer.renderComposite(plan[index], spec.sizeMode),
       fileNameFor: _sequenceFileNameFor,
-      directoryPath: _location!,
       encode: _stillEncodeFor(spec.format),
-      isCancelled: () => _cancelRequested,
-      onProgress: _reportProgress,
+      says: (noun: 'frame', kind: null),
     );
-    if (summary.processed < plan.length) {
-      return _exportCancelled(summary.written, 'file');
-    }
-    return _exportDone(summary.written, 'frame');
   }
 
   Future<String> _exportCurrentFrame() async {
@@ -1993,7 +2012,7 @@ class ExportDialogState extends State<ExportDialog> {
         : 'Nothing to export (empty frame).';
   }
 
-  Future<String> _exportCels() async {
+  Future<String> _exportCels() {
     final spec = _specs.cels;
     final plan = _celGroupPlan();
     final entries = _celEntries(plan);
@@ -2009,7 +2028,7 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
     );
-    final summary = await _exportService.exportImages(
+    return _runImageExport(
       count: entries.length,
       renderImage: (index) {
         final entry = entries[index];
@@ -2032,19 +2051,9 @@ class ExportDialogState extends State<ExportDialog> {
         ExportInstructionTask(:final fileName) => fileName,
         _ => 'cel_$index.png',
       },
-      directoryPath: _location!,
       encode: _stillEncodeFor(spec.format),
-      isCancelled: () => _cancelRequested,
-      onProgress: _reportProgress,
+      says: (noun: 'cel', kind: null),
     );
-    if (summary.processed < entries.length) {
-      return _exportCancelled(summary.written, 'file');
-    }
-    final skipped = summary.processed - summary.written;
-    final cels = '${summary.written} ${_plural(summary.written, 'cel')}';
-    return skipped > 0
-        ? 'Exported $cels ($skipped empty skipped).'
-        : 'Exported $cels.';
   }
 
   Future<String> _exportXdts() async {
@@ -2535,19 +2544,8 @@ class ExportDialogState extends State<ExportDialog> {
           },
         );
       case ExportTab.timesheet:
-        final plan = _timesheetPagePlan();
         return ExportNavBar(
-          axis: ExportNavAxis(
-            length: plan.length,
-            ticks: [
-              for (var i = 1; i < plan.length; i += 1)
-                if (plan[i].cut.id != plan[i - 1].cut.id) i,
-            ],
-            captionOf: (position) {
-              final task = plan[position.clamp(0, plan.length - 1)];
-              return 'CUT${task.cutLabel}·p${task.pageIndex + 1}';
-            },
-          ),
+          axis: _timesheetAxis(_timesheetPagePlan()),
           position: _sheetPosition,
           enabled: !_isExporting,
           onChanged: (position) {
@@ -2768,18 +2766,12 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         fold: (key: 'scope', open: true),
       ),
-      ExportAccordion(
-        title: 'Size',
-        summary: ExportSizeModule.summarize(spec.sizeMode),
-        expansion: _expansion('size', open: true),
-        child: ExportSizeModule(
-          sizeMode: spec.sizeMode,
-          cameraSize: _session.cameraFrameSize,
-          canvasSizes: _scopeCanvasSizes(spec.scope),
-          projectScope: projectScope,
-          enabled: !_isExporting,
-          onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
-        ),
+      _sizeAccordion(
+        sizeMode: spec.sizeMode,
+        canvasSizes: _scopeCanvasSizes(spec.scope),
+        projectScope: projectScope,
+        open: true,
+        onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       if (spec.format.isVideo)
         ExportAccordion(
@@ -2788,13 +2780,11 @@ class ExportDialogState extends State<ExportDialog> {
               ? 'SE muxed · ${spec.format.videoCodec.isProRes ? 'PCM' : 'AAC'}'
               : 'Off',
           expansion: _expansion('audio'),
-          child: ExportToggleRow(
-            widgetKey: const ValueKey<String>('export-audio-toggle'),
+          child: _specToggle(
+            keyValue: 'export-audio-toggle',
             label: AppText.strings.exMuxSeMix,
             value: spec.includeAudio,
-            onChanged: _isExporting
-                ? null
-                : (value) => _updateSpec(spec.copyWith(includeAudio: value)),
+            write: (value) => spec.copyWith(includeAudio: value),
           ),
         ),
       if (spec.format.isStill)
@@ -2845,28 +2835,15 @@ class ExportDialogState extends State<ExportDialog> {
     return [
       _formatAccordion(
         format: spec.format,
-        capabilities: ExportFormatCapabilities(
-          stills: const [
-            ExportStillFormat.png,
-            ExportStillFormat.jpg,
-            ExportStillFormat.psd,
-          ],
-          stillEnabled: _availability.stillAllowed,
-        ),
+        capabilities: _stillOnlyCapabilities,
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
-      ExportAccordion(
-        title: 'Size',
-        summary: ExportSizeModule.summarize(spec.sizeMode),
-        expansion: _expansion('size', open: true),
-        child: ExportSizeModule(
-          sizeMode: spec.sizeMode,
-          cameraSize: _session.cameraFrameSize,
-          canvasSizes: {_activeCut.canvasSize},
-          projectScope: false,
-          enabled: !_isExporting,
-          onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
-        ),
+      _sizeAccordion(
+        sizeMode: spec.sizeMode,
+        canvasSizes: {_activeCut.canvasSize},
+        projectScope: false,
+        open: true,
+        onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _fxAccordion(
         keyValue: 'export-image-fx-toggle',
@@ -3050,14 +3027,11 @@ class ExportDialogState extends State<ExportDialog> {
                 : () => _writeLayerOverride(layer, false),
           ),
         Divider(height: 8, color: theme.dividerColor),
-        ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-cels-instruction-toggle'),
+        _specToggle(
+          keyValue: 'export-cels-instruction-toggle',
           label: AppText.strings.exInstructionLayer,
           value: spec.includeInstructionLayers,
-          onChanged: _isExporting
-              ? null
-              : (value) =>
-                    _updateSpec(spec.copyWith(includeInstructionLayers: value)),
+          write: (value) => spec.copyWith(includeInstructionLayers: value),
         ),
         const Tooltip(
           message: '용지 레이어 타입이 도입되면 여기서 합류합니다.',
@@ -3131,31 +3105,23 @@ class ExportDialogState extends State<ExportDialog> {
                       _writeLayerOverride(member, !selection.includes(member)),
           ),
         Divider(height: 8, color: Theme.of(context).dividerColor),
-        ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-cels-sync-toggle'),
+        _specToggle(
+          keyValue: 'export-cels-sync-toggle',
           label: AppText.strings.exSyncAttach,
           value: spec.includeSyncedAttach,
-          onChanged: _isExporting
-              ? null
-              : (value) =>
-                    _updateSpec(spec.copyWith(includeSyncedAttach: value)),
+          write: (value) => spec.copyWith(includeSyncedAttach: value),
         ),
-        ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-cels-free-toggle'),
+        _specToggle(
+          keyValue: 'export-cels-free-toggle',
           label: AppText.strings.exFreeAttach,
           value: spec.includeFreeAttach,
-          onChanged: _isExporting
-              ? null
-              : (value) => _updateSpec(spec.copyWith(includeFreeAttach: value)),
+          write: (value) => spec.copyWith(includeFreeAttach: value),
         ),
-        ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-cels-folder-toggle'),
+        _specToggle(
+          keyValue: 'export-cels-folder-toggle',
           label: AppText.strings.exFolderMembers,
           value: spec.includeFolderMembers,
-          onChanged: _isExporting
-              ? null
-              : (value) =>
-                    _updateSpec(spec.copyWith(includeFolderMembers: value)),
+          write: (value) => spec.copyWith(includeFolderMembers: value),
         ),
         const ExportMarkSlotsRow(),
       ],
@@ -3202,41 +3168,26 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       _formatAccordion(
         format: spec.format,
-        capabilities: ExportFormatCapabilities(
-          stills: const [
-            ExportStillFormat.png,
-            ExportStillFormat.jpg,
-            ExportStillFormat.psd,
-          ],
-          stillEnabled: _availability.stillAllowed,
-        ),
+        capabilities: _stillOnlyCapabilities,
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       ExportAccordion(
         title: AppText.strings.exFilter,
         summary: spec.onTimesheetOnly ? 'Sheet only' : 'All visible',
         expansion: _expansion('filter'),
-        child: ExportToggleRow(
-          widgetKey: const ValueKey<String>('export-cel-timesheet-only-toggle'),
+        child: _specToggle(
+          keyValue: 'export-cel-timesheet-only-toggle',
           label: AppText.strings.exOnTimesheetOnly,
           value: spec.onTimesheetOnly,
-          onChanged: _isExporting
-              ? null
-              : (value) => _updateSpec(spec.copyWith(onTimesheetOnly: value)),
+          write: (value) => spec.copyWith(onTimesheetOnly: value),
         ),
       ),
-      ExportAccordion(
-        title: 'Size',
-        summary: ExportSizeModule.summarize(spec.sizeMode),
-        expansion: _expansion('size'),
-        child: ExportSizeModule(
-          sizeMode: spec.sizeMode,
-          cameraSize: _session.cameraFrameSize,
-          canvasSizes: {_activeCut.canvasSize},
-          projectScope: false,
-          enabled: !_isExporting,
-          onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
-        ),
+      _sizeAccordion(
+        sizeMode: spec.sizeMode,
+        canvasSizes: {_activeCut.canvasSize},
+        projectScope: false,
+        open: false,
+        onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _namingAccordion(
         summary: ExportCelNamingModule.summarize(spec.naming),
@@ -3471,6 +3422,59 @@ class ExportDialogState extends State<ExportDialog> {
             },
     ),
   );
+
+  /// A toggle row bound to the tab's spec: DEAD while an export runs, and
+  /// a change writes the spec [write] answers. Six rows wrote that binding
+  /// out; a run in flight owns the spec, so one place says it — the same
+  /// law [_chip] states for the chips. [_fxAccordion]'s row is not this: its
+  /// preview clear is part of the switch.
+  ExportToggleRow _specToggle({
+    required String keyValue,
+    required String label,
+    required bool value,
+    required ExportTabSpec Function(bool value) write,
+  }) => ExportToggleRow(
+    widgetKey: ValueKey<String>(keyValue),
+    label: label,
+    value: value,
+    onChanged: _isExporting ? null : (value) => _updateSpec(write(value)),
+  );
+
+  /// The Size accordion three tabs offer: one title, one fold key, one
+  /// enabled law. What differs per tab is values — which canvas sizes are
+  /// on the table, whether the scope is the project, whether it opens by
+  /// default — the same shape [_scopeAccordion] was extracted for.
+  ExportAccordion _sizeAccordion({
+    required ExportSizeMode sizeMode,
+    required Set<CanvasSize> canvasSizes,
+    required bool projectScope,
+    required bool open,
+    required void Function(ExportSizeMode mode) onChanged,
+  }) => ExportAccordion(
+    title: 'Size',
+    summary: ExportSizeModule.summarize(sizeMode),
+    expansion: _expansion('size', open: open),
+    child: ExportSizeModule(
+      sizeMode: sizeMode,
+      cameraSize: _session.cameraFrameSize,
+      canvasSizes: canvasSizes,
+      projectScope: projectScope,
+      enabled: !_isExporting,
+      onChanged: onChanged,
+    ),
+  );
+
+  /// The still-only format lineup the Image and Cels tabs share; the
+  /// Sequence tab's table carries video and is its own value.
+  ExportFormatCapabilities get _stillOnlyCapabilities =>
+      ExportFormatCapabilities(
+        stills: const [
+          ExportStillFormat.png,
+          ExportStillFormat.jpg,
+          ExportStillFormat.psd,
+        ],
+        stillEnabled: _availability.stillAllowed,
+      );
 
   /// The "this cut or the whole film" accordion every tab offers.
   ///
