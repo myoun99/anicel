@@ -4,7 +4,7 @@ import 'package:anicel/src/models/brush_stroke_commit_outcome.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_tile_set.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/import/tvpp_camera_data_values.dart';
+import 'package:anicel/src/models/import/tvpp_key_value_lines.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/string_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -43,9 +43,17 @@ void main() {
     });
   });
 
-  group('the [cameradata] block', () {
+  group('the clip-config key=value lines ([cameradata], [audio+N])', () {
+    test('an [audio+N] section reads through the same law — the header '
+        'line drops out, a path keeps its own =', () {
+      expect(tvppKeyValueLines('[audio+0]\nfilepath=G:/a=b.mp4\nmute=1'), {
+        'filepath': 'G:/a=b.mp4',
+        'mute': '1',
+      });
+    });
+
     test('key=value lines become a map, trimmed', () {
-      expect(tvppCameraDataValues('a=1\n  b  =  two  \nc=3'), {
+      expect(tvppKeyValueLines('a=1\n  b  =  two  \nc=3'), {
         'a': '1',
         'b': 'two',
         'c': '3',
@@ -54,19 +62,19 @@ void main() {
 
     test('🚨everything after the FIRST = is the value — a value may '
         'contain one', () {
-      expect(tvppCameraDataValues('mpoint=0.5=1.0'), {'mpoint': '0.5=1.0'});
+      expect(tvppKeyValueLines('mpoint=0.5=1.0'), {'mpoint': '0.5=1.0'});
     });
 
     test('⛔an = at index 0 is not a key', () {
-      expect(tvppCameraDataValues('=orphan'), isEmpty);
+      expect(tvppKeyValueLines('=orphan'), isEmpty);
     });
 
     test('lines with no = are skipped, not stored empty', () {
-      expect(tvppCameraDataValues('[cameradata]\na=1\n\n'), {'a': '1'});
+      expect(tvppKeyValueLines('[cameradata]\na=1\n\n'), {'a': '1'});
     });
 
     test('a later line WINS — the block is read top to bottom', () {
-      expect(tvppCameraDataValues('a=1\na=2'), {'a': '2'});
+      expect(tvppKeyValueLines('a=1\na=2'), {'a': '2'});
     });
   });
 

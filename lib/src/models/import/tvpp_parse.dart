@@ -1,8 +1,8 @@
-import 'tvpp_camera_data_values.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'tvp_import_model.dart';
+import 'tvpp_key_value_lines.dart';
 
 /// TVPaint's own project file (.tvpp), read directly — structure only.
 ///
@@ -734,13 +734,7 @@ List<TvppAudioTrack> _audioTracks(String fcfgText) {
     if (end < 0) {
       end = fcfgText.length;
     }
-    final values = <String, String>{};
-    for (final line in fcfgText.substring(at, end).split('\n').skip(1)) {
-      final eq = line.indexOf('=');
-      if (eq > 0) {
-        values[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
-      }
-    }
+    final values = tvppKeyValueLines(fcfgText.substring(at, end));
     final filePath = values['filepath'] ?? '';
     if (filePath.isEmpty) {
       continue;
@@ -804,7 +798,7 @@ List<TvppCameraPoint> _cameraPoints(String cameraDataText) {
   if (cameraDataText.isEmpty) {
     return const [];
   }
-  final values = tvppCameraDataValues(cameraDataText);
+  final values = tvppKeyValueLines(cameraDataText);
   double num(int i, String key, [double orElse = 0]) =>
       double.tryParse(values['mpoints-$i-$key'] ?? '') ?? orElse;
   final points = <TvppCameraPoint>[];

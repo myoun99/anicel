@@ -1,7 +1,7 @@
-import 'tvpp_camera_data_values.dart';
 import 'dart:math' as math;
 
 import 'tvp_import_model.dart';
+import 'tvpp_key_value_lines.dart';
 import 'tvpp_parse.dart';
 
 /// Bakes a .tvpp camera's authored keys into per-frame poses — the
@@ -232,7 +232,7 @@ TvppCameraChannels parseTvppCameraProfiles(String cameraDataText) {
   if (cameraDataText.isEmpty) {
     return TvppCameraChannels.none;
   }
-  final values = tvppCameraDataValues(cameraDataText);
+  final values = tvppKeyValueLines(cameraDataText);
   double num(String key) => double.tryParse(values[key] ?? '') ?? 0;
   List<TvppCameraProfile> channel(String name) {
     final profiles = <TvppCameraProfile>[];
