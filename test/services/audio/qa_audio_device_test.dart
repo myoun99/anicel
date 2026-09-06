@@ -136,6 +136,29 @@ void main() {
       expect(audioOutputDeviceIndexByName(device, 'no-such-speaker'), -1,
           reason: 'unplugged hardware falls back to the system default');
     }, skip: skip);
+
+    test('openAudioOutput opens on an unattached NAME — the fallback is to '
+        'the system default, never to silence (AUDIO-PRO R4)', () {
+      final device = QaAudioDevice.instance!;
+      expect(
+        openAudioOutput(
+          device,
+          sampleRate: 48000,
+          preferredName: 'no-such-speaker',
+        ),
+        isTrue,
+        reason: 'the name resolves to -1, so the FIRST open is the default',
+      );
+      expect(device.isOpen, isTrue);
+      device.close();
+
+      expect(
+        openAudioOutput(device, sampleRate: 48000, preferredName: null),
+        isTrue,
+        reason: 'no preference is the same default',
+      );
+      device.close();
+    }, skip: skip);
   });
 
   group('the device opens and reports itself', () {

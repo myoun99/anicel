@@ -404,6 +404,12 @@ bool openAudioOutput(
     channels: channels,
     deviceIndex: index,
   );
+  // 🧪MUTATION: this retry SURVIVES the suite — never applied. Reaching it
+  // needs a device that enumerates under a name and then REFUSES to open,
+  // which no bench here can stage: `QaAudioDevice` binds to the real
+  // binary and cannot be faked, and the null backend's one device always
+  // opens. The reachable half — an unattached name falling back to the
+  // default rather than to silence — is pinned in `qa_audio_device_test`.
   if (opened <= 0 && index >= 0) {
     opened = device.open(sampleRate: sampleRate, channels: channels);
   }
