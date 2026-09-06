@@ -228,6 +228,7 @@ import 'session/drawing_block_move_drag.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
 import 'session/active_cut_edits.dart';
+import 'session/row_sweep.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
@@ -3394,32 +3395,29 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in [
+    final swept = sweepRows(
+      history: historyManager,
+      rows: [
         ...cut.layers,
         ...activeTrack.seLayers,
         activeTrack.transitionLayer,
-      ])
-        if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
-          UpdateLayerTimesheetCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layer.id,
-            onTimesheet: onTimesheet,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: onTimesheet
-            ? 'Add all layers to timesheet'
-            : 'Remove all layers from timesheet',
-        commands: commands,
-      ),
+      ],
+      description: onTimesheet
+          ? 'Add all layers to timesheet'
+          : 'Remove all layers from timesheet',
+      commandFor: (layer) =>
+          layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet
+          ? UpdateLayerTimesheetCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layer.id,
+              onTimesheet: onTimesheet,
+            )
+          : null,
     );
-    notifyListeners();
+    if (swept) {
+      notifyListeners();
+    }
   }
 
   /// Drops the fill-reference flag from every layer — one undo (cut-owned
@@ -3430,26 +3428,22 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in cut.layers)
-        if (layer.isFillReference)
-          UpdateLayerFillReferenceCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layer.id,
-            isFillReference: false,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: 'Clear all fill references',
-        commands: commands,
-      ),
+    final swept = sweepRows(
+      history: historyManager,
+      rows: cut.layers,
+      description: 'Clear all fill references',
+      commandFor: (layer) => layer.isFillReference
+          ? UpdateLayerFillReferenceCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layer.id,
+              isFillReference: false,
+            )
+          : null,
     );
-    notifyListeners();
+    if (swept) {
+      notifyListeners();
+    }
   }
 
   // ── the instructions: their own object, in their own file ───────────

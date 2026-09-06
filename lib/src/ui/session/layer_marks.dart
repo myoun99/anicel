@@ -3,9 +3,9 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
-import '../../services/command.dart';
 import '../../services/commands/update_layer_mark_command.dart';
 import 'active_cut_edits.dart';
+import 'row_sweep.dart';
 import 'session_roles.dart';
 
 /// The LAYER MARKS — the mark a layer carries, the frames a selection can
@@ -51,26 +51,22 @@ class LayerMarks {
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in [...cut.layers, ..._selection.activeTrack.seLayers])
-        if (layer.mark != LayerMark.none)
-          UpdateLayerMarkCommand(
-            repository: _project.repository,
-            cutId: cutId,
-            layerId: layer.id,
-            mark: LayerMark.none,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    _project.historyManager.execute(
-      CompositeCommand(
-        description: 'Clear all layer marks',
-        commands: commands,
-      ),
+    final swept = sweepRows(
+      history: _project.historyManager,
+      rows: [...cut.layers, ..._selection.activeTrack.seLayers],
+      description: 'Clear all layer marks',
+      commandFor: (layer) => layer.mark == LayerMark.none
+          ? null
+          : UpdateLayerMarkCommand(
+              repository: _project.repository,
+              cutId: cutId,
+              layerId: layer.id,
+              mark: LayerMark.none,
+            ),
     );
-    _changes.notifyChanged();
+    if (swept) {
+      _changes.notifyChanged();
+    }
   }
 
   /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE MARK LEARNED THE BAND.**
