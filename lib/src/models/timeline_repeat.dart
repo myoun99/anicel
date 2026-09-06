@@ -89,6 +89,29 @@ class _RunBehaviorPass {
     return null;
   }
 
+  /// The behavior holding [run]'s [side], if that side holds at all —
+  /// the question a repeat's DEFAULT pattern asks about the opposite
+  /// edge (UI-R13 #5: the default pattern is the DISPLAYED run, hold
+  /// ghosts included).
+  TimelineRunBehavior? holdEdgeOf(_Run run, TimelineRunEdgeSide side) {
+    final edge = byEdge[(run.startIndex, side)];
+    return edge != null && edge.behavior.mode == TimelineRunEdgeMode.hold
+        ? edge.behavior
+        : null;
+  }
+
+  /// The block start of [anchorFrameId] when it still sits inside [run] —
+  /// the lookup both repeat sides make before they decide which edge of
+  /// that block their pattern takes. Null when the named anchor has moved
+  /// out of the run, and then each side keeps the run's own edge (the
+  /// same self-healing the resolve pass does when an anchor vanishes).
+  int? patternAnchorKeyIn(FrameId anchorFrameId, _Run run) {
+    final key = anchorStartOf(anchorFrameId);
+    return key != null && key >= run.startIndex && key < run.endIndexExclusive
+        ? key
+        : null;
+  }
+
   _Run runAt(int blockStartIndex) {
     final blocks = [
       for (final entry in base.entries)
@@ -212,22 +235,21 @@ class _RunBehaviorPass {
     var patternStart = run.startIndex;
     final patternAnchor = behavior.patternAnchorFrameId;
     if (patternAnchor != null) {
-      final key = anchorStartOf(patternAnchor);
-      if (key != null && key >= run.startIndex && key < run.endIndexExclusive) {
-        patternStart = key;
-      }
+      // Start side: the pattern opens at the anchor BLOCK's start.
+      patternStart = patternAnchorKeyIn(patternAnchor, run) ?? patternStart;
     } else {
       // UI-R13 #5: the DEFAULT pattern is the DISPLAYED run — a
       // front-hold lead-in abutting the run start joins the repeated
       // unit (holds applied first, so its ghost already sits here).
-      final startEdge = byEdge[(run.startIndex, TimelineRunEdgeSide.start)];
-      if (startEdge != null &&
-          startEdge.behavior.mode == TimelineRunEdgeMode.hold) {
+      final startHold = holdEdgeOf(run, TimelineRunEdgeSide.start);
+      if (startHold != null) {
+        // A lead-in ghost is keyed at ITS own start, so finding it is a
+        // search backwards plus an adjacency test.
         final leadKey = result.lastKeyBefore(run.startIndex);
         if (leadKey != null) {
           final lead = result[leadKey]!;
           if (lead.ghost &&
-              lead.ghostOwnerId == startEdge.behavior.ghostOwnerId &&
+              lead.ghostOwnerId == startHold.ghostOwnerId &&
               leadKey + lead.length! == run.startIndex) {
             patternStart = leadKey;
           }
@@ -278,21 +300,23 @@ class _RunBehaviorPass {
     var patternEnd = run.endIndexExclusive;
     final patternAnchor = behavior.patternAnchorFrameId;
     if (patternAnchor != null) {
-      final key = anchorStartOf(patternAnchor);
-      if (key != null && key >= runStart && key < run.endIndexExclusive) {
+      // End side: the pattern closes at the anchor BLOCK's end.
+      final key = patternAnchorKeyIn(patternAnchor, run);
+      if (key != null) {
         patternEnd = key + base[key]!.length!;
       }
     } else {
       // UI-R13 #5 (the mirror): a rear-hold tail abutting the run end
       // joins the repeated unit — the front repeat cycles the DISPLAYED
       // run, hold included.
-      final endEdge = byEdge[(run.startIndex, TimelineRunEdgeSide.end)];
-      if (endEdge != null &&
-          endEdge.behavior.mode == TimelineRunEdgeMode.hold) {
+      final endHold = holdEdgeOf(run, TimelineRunEdgeSide.end);
+      if (endHold != null) {
+        // A rear ghost is keyed exactly at the run's end, so this side
+        // reads it straight out of the map.
         final rear = result[run.endIndexExclusive];
         if (rear != null &&
             rear.ghost &&
-            rear.ghostOwnerId == endEdge.behavior.ghostOwnerId) {
+            rear.ghostOwnerId == endHold.ghostOwnerId) {
           patternEnd = run.endIndexExclusive + rear.length!;
         }
       }
