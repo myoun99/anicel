@@ -31,7 +31,7 @@ import 'canvas/flip_hud_controller.dart';
 import '../models/drawing_guide.dart';
 import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
-import 'canvas/layer_position_gizmo.dart';
+import 'canvas/canvas_point_gizmo.dart';
 import 'canvas/layer_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'canvas/paper_background.dart' show alphaPreviewEnabled;
@@ -645,13 +645,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return Positioned.fill(
       // Unwrapped like the position handle, for the same
       // reason.
-      child: LayerAnchorGizmo(
-        anchorPoint: session.layerAnchorPointAtFrame(
+      child: CanvasPointGizmo(
+        glyph: HandleGlyph.anchor,
+        point: session.layerAnchorPointAtFrame(
           activeLayer,
           session.currentFrameIndex,
         ),
         viewport: viewport,
-        onAnchorCommitted: (anchorPoint) =>
+        onCommitted: (anchorPoint) =>
             session.updateLayerTransformTrack(
               activeLayer.id,
               transformTrackWithAnchorDragged(
@@ -671,15 +672,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // so the crosshair sits directly on the layer's own
       // canvas space and the committed Position needs no
       // un-posing.
-      child: LayerPositionGizmo(
-        pose: session.layerPoseAtFrame(
-          activeLayer,
-          session.currentFrameIndex,
-        ),
+      child: CanvasPointGizmo(
+        glyph: HandleGlyph.crosshair,
+        point: session
+            .layerPoseAtFrame(activeLayer, session.currentFrameIndex)
+            .center,
         viewport: viewport,
         // ONE key at the playhead per drag (AE rule,
         // one undo).
-        onPositionCommitted: (position) =>
+        onCommitted: (position) =>
             session.updateLayerTransformTrack(
               activeLayer.id,
               transformTrackWithPositionDragged(
