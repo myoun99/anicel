@@ -42,5 +42,29 @@ abstract final class AppScrollbarLane {
 /// grid metrics that reason about it are calculation-only files.
 abstract final class AppScrollbarThumb {
   /// CLAUDE.md: 「레인 16px, **썸 최소 32px**」.
+  ///
+  /// ⛔ONE MINIMUM FOR THE WHOLE APP — 유저 (ARCH-audit-Q1, 2026-09-01)
+  /// chose 「32 하나로 통일」 over three named steps. The panbar carried
+  /// its own 24 and `AppScrollbar` defaulted to 28, and neither number
+  /// could say who asked for it: `git log -S` finds the commits and the
+  /// messages say nothing.
   static const double minimum = 32;
 }
+
+/// An extent a scrollbar can reason about: anything not finite, and
+/// anything at or below zero, IS zero. A NaN track extent otherwise walks
+/// straight into the thumb arithmetic and comes out as a NaN thumb.
+double finiteNonNegativeExtent(double value) {
+  if (!value.isFinite || value <= 0) {
+    return 0;
+  }
+  return value;
+}
+
+/// How far a viewport can travel over its content — never negative, so
+/// content that fits reads as "nothing to scroll" rather than as a
+/// backwards range.
+double scrollRangeFor({
+  required double contentExtent,
+  required double viewportExtent,
+}) => (contentExtent - viewportExtent).clamp(0.0, double.infinity).toDouble();
