@@ -22,10 +22,7 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../native/qa_audio_native.dart' show QaAudioNative;
 import '../../native/qa_audio_device.dart'
-    show
-        QaAudioDevice,
-        audioInputDeviceIndexByName,
-        audioOutputDeviceIndexByName;
+    show QaAudioDevice, audioInputDeviceIndexByName, openAudioOutput;
 import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import '../playback/audio_input_monitor.dart';
@@ -348,19 +345,13 @@ class EditorVoiceRecording {
     if (device == null || playback.isActive || device.isOpen) {
       return null;
     }
-    final index = audioOutputDeviceIndexByName(
-      device,
-      audioSyncSettings.value.outputDeviceName,
-    );
-    var opened = device.open(
-      sampleRate: 48000,
-      channels: 2,
-      deviceIndex: index,
-    );
-    if (opened == 0 && index >= 0) {
-      opened = device.open(sampleRate: 48000, channels: 2);
-    }
-    return opened == 0 ? null : device;
+    return openAudioOutput(
+          device,
+          sampleRate: 48000,
+          preferredName: audioSyncSettings.value.outputDeviceName,
+        )
+        ? device
+        : null;
   }
 
   void _playCountInBeeps(int seconds) {

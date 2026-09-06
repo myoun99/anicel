@@ -48,7 +48,7 @@ const _startRepeat = TimelineRunBehavior(
 );
 
 void main() {
-  group("remapFrameIds", _remapTests);
+  group('remapFrameIds', _remapTests);
   test('no behaviors and no ghosts returns the SAME layer instance', () {
     final layer = _layer(timeline: {0: _draw('a', 3)});
     expect(

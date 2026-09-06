@@ -381,6 +381,35 @@ int audioOutputDeviceIndexByName(QaAudioDevice device, String? name) {
   return -1;
 }
 
+/// Opens [device] on the output named [preferredName], falling back to the
+/// system default — true when the device is open afterwards.
+///
+/// 🚨The named device failed to open (unplugged mid-enumeration): fall
+/// back to the system default deliberately, never to silence (AUDIO-PRO
+/// R4). The retry only happens when a NAMED device was actually picked;
+/// a default that will not open has nowhere left to fall.
+///
+/// One sequence for the three callers that need a speaker — the playback
+/// transport, the scrub arm and the recording cue — which differ only in
+/// the rate, the channel count and where the name comes from.
+bool openAudioOutput(
+  QaAudioDevice device, {
+  required int sampleRate,
+  required String? preferredName,
+  int channels = 2,
+}) {
+  final index = audioOutputDeviceIndexByName(device, preferredName);
+  var opened = device.open(
+    sampleRate: sampleRate,
+    channels: channels,
+    deviceIndex: index,
+  );
+  if (opened <= 0 && index >= 0) {
+    opened = device.open(sampleRate: sampleRate, channels: channels);
+  }
+  return opened > 0;
+}
+
 /// The capture-side twin: the input device named [name], or -1 (the system
 /// default microphone) when [name] is null or unplugged (AUDIO-PRO R5).
 int audioInputDeviceIndexByName(QaAudioDevice device, String? name) {
