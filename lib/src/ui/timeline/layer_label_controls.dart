@@ -286,7 +286,7 @@ const double layerControlChipGap = 4;
 /// (R27 #29); SE/CAM/instruction rows reserve the slot so the control
 /// columns and the legend header stay aligned.
 bool layerKindShowsBlendControl(LayerKind kind) =>
-    layerKindIsDrawingCel(kind) || layerKindGroupsLayers(kind);
+    kind.isDrawingCel || kind.groupsLayers;
 
 /// R27 #6 / R28 #2: the row's blend-mode BUTTON. Reads the current mode's
 /// name; accent while non-normal (selection style: color only, no check
@@ -383,8 +383,7 @@ class LayerBlendModeChip extends StatelessWidget {
 /// gate their sheet columns and the CAMERA layer gates the printed CAM
 /// column. A folder prints nothing of its own, so its slot stays reserved
 /// but empty.
-bool layerKindEligibleForTimesheetToggle(LayerKind kind) =>
-    !layerKindGroupsLayers(kind);
+bool layerKindEligibleForTimesheetToggle(LayerKind kind) => !kind.groupsLayers;
 
 /// Whether [layer]'s row carries a live sheet toggle: its kind prints AND
 /// it is not an attach row (W5) — attach rows are display accessories of
@@ -404,7 +403,7 @@ bool layerCarriesTimesheetToggle(Layer layer) =>
 ///
 /// ⛔The TRANSITION row does not. It is the one row that carries no picture
 /// of its own — it says WHEN two cuts cross-dissolve — so there is nothing
-/// for a slider to fade, and [layerKindHasPictureOpacity] has answered false
+/// for a slider to fade, and [LayerKind.hasPictureOpacity] has answered false
 /// for it all along. 유저 2026-08-12: 「타임라인에서 fx랑 불투명도 뺌」.
 ///
 /// 🚨★These two predicates took a `kind` and returned a bare `true`, which

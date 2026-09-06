@@ -133,13 +133,13 @@ void main() {
 
   group('the adjustment shares across 겸용컷 (user: 액션란은 다 공유)', () {
     test('the link predicate takes the ACTION rows, storyboard excepted', () {
-      expect(layerKindLinksIntoLinkedCut(LayerKind.adjustment), isTrue);
-      expect(layerKindLinksIntoLinkedCut(LayerKind.animation), isTrue);
-      expect(layerKindLinksIntoLinkedCut(LayerKind.folder), isTrue);
+      expect(LayerKind.adjustment.linksIntoLinkedCut, isTrue);
+      expect(LayerKind.animation.linksIntoLinkedCut, isTrue);
+      expect(LayerKind.folder.linksIntoLinkedCut, isTrue);
       // A cut holds one conte strip and it belongs to that cut.
-      expect(layerKindLinksIntoLinkedCut(LayerKind.storyboard), isFalse);
-      expect(layerKindLinksIntoLinkedCut(LayerKind.se), isFalse);
-      expect(layerKindLinksIntoLinkedCut(LayerKind.camera), isFalse);
+      expect(LayerKind.storyboard.linksIntoLinkedCut, isFalse);
+      expect(LayerKind.se.linksIntoLinkedCut, isFalse);
+      expect(LayerKind.camera.linksIntoLinkedCut, isFalse);
     });
 
     test('but 겸용 변경 does NOT relocate it — position is its meaning', () {
@@ -148,16 +148,16 @@ void main() {
       // side lacks, stripped of its folder — which for an adjustment means
       // grading the whole stack instead of the rows it was scoped to, in
       // one of the two "shared" cuts.
-      expect(layerKindJoinsLinkedCutConvert(LayerKind.adjustment), isFalse);
-      expect(layerKindLinksIntoLinkedCut(LayerKind.adjustment), isTrue);
+      expect(LayerKind.adjustment.joinsLinkedCutConvert, isFalse);
+      expect(LayerKind.adjustment.linksIntoLinkedCut, isTrue);
       // Every other linking kind joins both paths.
       for (final kind in LayerKind.values) {
         if (kind == LayerKind.adjustment) {
           continue;
         }
         expect(
-          layerKindJoinsLinkedCutConvert(kind),
-          layerKindLinksIntoLinkedCut(kind),
+          kind.joinsLinkedCutConvert,
+          kind.linksIntoLinkedCut,
           reason: kind.name,
         );
       }
@@ -168,7 +168,7 @@ void main() {
       () {
         for (final kind in LayerKind.values) {
           expect(
-            layerKindMirrorsEffects(kind),
+            kind.mirrorsEffects,
             kind == LayerKind.adjustment,
             reason: kind.name,
           );

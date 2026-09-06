@@ -289,7 +289,7 @@ void main() {
       session.addLayerOfKind(LayerKind.adjustment);
       final row = session.activeLayer!;
       expect(session.canAddEffectToActiveLayer, isTrue);
-      expect(layerKindHasLayerTransform(row.kind), isFalse);
+      expect(row.kind.hasLayerTransform, isFalse);
       // …and the coordinator refuses a transform outright — writing one is
       // a programming error, not a silently ignored edit.
       expect(

@@ -1969,7 +1969,7 @@ class FrameRangeMoveDrag {
     // Design E: the storyboard row refuses repeat/hold regions outright —
     // a derived instance would look exactly like a panel while owning no
     // memo of its own. Copy the frames instead.
-    if (!layerKindAcceptsRepeatRegions(before.kind)) {
+    if (!before.kind.acceptsRepeatRegions) {
       return;
     }
     final run = gluedRunAt(before, blockStartIndex);

@@ -409,7 +409,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// `timeline-folder-row-…` / `xsheet-layer-row-…`: the kind's word and the
   /// surface's word, one grammar.
   String get _rowKey =>
-      '$keyPrefix-${layerKindGroupsLayers(layer.kind) ? 'folder' : 'layer'}'
+      '$keyPrefix-${layer.kind.groupsLayers ? 'folder' : 'layer'}'
       '-row-${layer.id}';
 
   /// The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
@@ -686,7 +686,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// base read alike anywhere.
   Widget? _foldTwirl() {
     if (!hasGroupFold || onToggleGroupFold == null) return null;
-    final kind = layerKindGroupsLayers(layer.kind) ? 'folder' : 'attach';
+    final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
     return ControlPressClaim(
       onPressed: () => onToggleGroupFold!(layer.id),
       child: InkWell(
@@ -782,7 +782,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// column whole. The sheet went without it until R10 R6's "싹다 넣어".
   Widget? _onionToggle(ColorScheme colorScheme) {
     final onToggle = onToggleLayerOnionSkin;
-    if (onToggle == null || !layerKindAcceptsBrushInput(layer.kind)) {
+    if (onToggle == null || !layer.kind.acceptsBrushInput) {
       return null;
     }
     return acrossBox(
@@ -853,7 +853,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (onSelected == null || !layerKindShowsBlendControl(layer.kind)) {
       return null;
     }
-    final isGroup = layerKindGroupsLayers(layer.kind);
+    final isGroup = layer.kind.groupsLayers;
     return LayerBlendModeChip(
       axis: axis,
       keyValue: '$keyPrefix-layer-blend-${layer.id}',

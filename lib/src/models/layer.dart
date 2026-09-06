@@ -545,9 +545,9 @@ class Layer {
 /// (§6-z23's second axis) shows a library asset, so strokes have nowhere
 /// to live until it is rasterized (which nulls [Layer.mediaReference] and
 /// changes nothing else). The layer-level question; kind-only callers
-/// keep [layerKindAcceptsBrushInput].
+/// keep [LayerKind.acceptsBrushInput].
 bool layerAcceptsBrushInput(Layer layer) =>
-    layerKindAcceptsBrushInput(layer.kind) && layer.mediaReference == null;
+    layer.kind.acceptsBrushInput && layer.mediaReference == null;
 
 /// D24: whether this layer prints an ACTION cel column — the ONE gate the
 /// printed timesheet, the cut envelope's cel counts and the XDTS export
@@ -594,7 +594,7 @@ extension LayerStackQueries on List<Layer> {
 
   /// The rows that take part in the composited picture, bottom → top.
   Iterable<Layer> get compositingLayers =>
-      where((layer) => layerKindComposites(layer.kind));
+      where((layer) => layer.kind.composites);
 }
 
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(

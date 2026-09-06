@@ -424,7 +424,7 @@ class LayerTypeButton extends StatelessWidget {
     // says what kind of row they are — and the sheet slot beside it was
     // reserved and empty on exactly those rows. The arrow lives there now
     // ([LayerAttachArrowCell]).
-    if (kind != null && layerKindGroupsLayers(kind!)) {
+    if (kind != null && kind!.groupsLayers) {
       label = semanticLabel ?? layerTypeSemanticLabel(kind!);
       glyph = Icon(
         folderCollapsed ? Icons.folder : Icons.folder_open,

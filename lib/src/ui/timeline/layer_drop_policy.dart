@@ -31,7 +31,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_section_policy.dart';
@@ -119,7 +118,7 @@ class LayerDropPlan {
     return null;
   }
   final moving = stack[index];
-  if (layerKindGroupsLayers(moving.kind)) {
+  if (moving.kind.groupsLayers) {
     final members = stack.subtreeMembersOf(moving.id);
     if (members.isEmpty) {
       return (start: index, endExclusive: index + 1);
@@ -254,7 +253,7 @@ LayerDropPlan? resolveLayerDropOnRow({
     return null;
   }
   final target = stack[targetIndex];
-  if (layerKindGroupsLayers(target.kind)) {
+  if (target.kind.groupsLayers) {
     // The TOP of the folder's members, which is the gap directly under the
     // folder row (the folder invariant puts the row above its members).
     return resolveLayerDrop(
@@ -577,12 +576,10 @@ LayerAttachDrop? _attachPlan(
 /// its leaves are the riders.
 List<Layer> _ridersOf(_Lift lift) {
   final moving = lift.moving;
-  if (!layerKindGroupsLayers(moving.kind)) {
+  if (!moving.kind.groupsLayers) {
     return lift.carried.length == 1 ? [moving] : const <Layer>[];
   }
-  return lift.carried
-      .where((layer) => !layerKindGroupsLayers(layer.kind))
-      .toList();
+  return lift.carried.where((layer) => !layer.kind.groupsLayers).toList();
 }
 
 /// The mounts onto [target], or null when the slice cannot join that group

@@ -389,7 +389,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     String? frameName,
   }) {
     // Instruction spans carry their own semantics on the row overlay.
-    if (layerKindBandIsInstructionsOnly(layer.kind)) {
+    if (layer.kind.bandIsInstructionsOnly) {
       return null;
     }
     return switch (exposureState) {

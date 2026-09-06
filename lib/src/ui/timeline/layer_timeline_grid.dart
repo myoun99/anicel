@@ -461,7 +461,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// excluded) — the master opacity bar's target set (R4 #6).
   Set<LayerId> _displayedLayerIds(List<TimelineDisplayRow> rows) => {
     for (final row in rows)
-      if (!row.isLane && layerKindHasPictureOpacity(row.layer.kind))
+      if (!row.isLane && row.layer.kind.hasPictureOpacity)
         row.layer.id,
   };
 

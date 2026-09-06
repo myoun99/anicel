@@ -342,7 +342,7 @@ class LayerRowDragTarget extends StatelessWidget {
   /// 한 것은 **드래그 이동뿐**」.
   ///
   /// ⛔Both rails used to answer this by mounting **no target at all**
-  /// (`if (!layerKindReordersInCut(kind)) return child;`), and the target
+  /// (`if (!kind.reordersInCut) return child;`), and the target
   /// carries BOTH halves of the drag — so 「이동 불가」 silently answered
   /// 「선택 불가」 too. **한 플래그가 두 질문에 답한 것이다.**
   ///
@@ -967,7 +967,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
 /// **카메라나 트랜지션레이어에서 선택범위 시작하려하면 작동안함** … 막으라고
 /// 한 것은 **드래그 이동뿐**」.
 ///
-/// ⛔두 레일이 각자 `if (!layerKindReordersInCut(kind)) return child;` 를
+/// ⛔두 레일이 각자 `if (!kind.reordersInCut) return child;` 를
 /// 적고 있었고, 그 한 줄이 **이동 불가로 선택 불가까지** 답했다. x시트는
 /// 가로 레일의 그 모양을 **베껴서** 같은 버그를 갖고 있었다 — 사본이라
 /// 한쪽만 고치면 갈라진다.
@@ -985,7 +985,7 @@ Widget? unmovableRowSelectTarget({
   required void Function(int rowDelta) onSelectCrossed,
   required Widget child,
 }) {
-  if (layerKindReordersInCut(kind)) {
+  if (kind.reordersInCut) {
     return null;
   }
   if (hooks == null || hooks.onSelectBegin == null) {

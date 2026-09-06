@@ -46,7 +46,6 @@ import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../services/layer_pose_matrix.dart' show LayerPoseSample;
-import '../models/layer_kind.dart' show layerKindHasLayerTransform;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';

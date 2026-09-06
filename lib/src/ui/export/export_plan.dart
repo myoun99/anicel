@@ -427,7 +427,7 @@ List<ExportCelTask> buildExportCelPlan({
   final usedNames = <String>{};
   for (final cut in cuts) {
     for (final layer in cut.layers) {
-      if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
+      if (!layer.kind.paintsArtwork || !layer.isVisible) {
         continue;
       }
       // Cel-export scope: the timesheet toggle on layer labels marks which

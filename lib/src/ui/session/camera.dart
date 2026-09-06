@@ -237,7 +237,7 @@ class Camera {
     }
     final frameIndex = _timeline.timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
-      if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
+      if (!layer.kind.paintsArtwork || !layer.isVisible) {
         continue;
       }
       final frame = _timeline.timelineController.resolveFrameForLayer(

@@ -4,7 +4,6 @@ import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../../services/cut_frame_composite_plan.dart';
@@ -186,7 +185,7 @@ class OpacityVerbs {
       layerIds: [
         for (final layer in _project.layers)
           if (layerIds.contains(layer.id) &&
-              layerKindHasPictureOpacity(layer.kind) &&
+              layer.kind.hasPictureOpacity &&
               layer.opacity != clamped)
             layer.id,
       ],
@@ -207,8 +206,7 @@ class OpacityVerbs {
     _timeline.layerController.setLayersOpacity(
       layerIds: [
         for (final layer in _project.layers)
-          if (layerKindHasPictureOpacity(layer.kind) &&
-              layer.opacity != clamped)
+          if (layer.kind.hasPictureOpacity && layer.opacity != clamped)
             layer.id,
       ],
       opacity: clamped,

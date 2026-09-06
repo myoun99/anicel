@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart'
-    show layerKindBandIsInstructionsOnly, layerKindCarriesInstructions;
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../text/vertical_writing_text.dart';
@@ -62,7 +60,7 @@ TimelineCellExposureState instructionCellExposureState(
 ///
 /// 🚨R27 #16 LEFT THE BAND EMPTY (유저 2026-08-27: 「지금 스샷보면 **블록의
 /// 배경색 흰색이 사라졌는데?**」). Giving the direction row cels flipped
-/// `layerKindBandIsInstructionsOnly` to false, so the band stopped reading
+/// `LayerKind.bandIsInstructionsOnly` to false, so the band stopped reading
 /// the span adapter — and started reading cels the row did not have yet.
 /// Nothing was drawn at all. The row did not gain a feature; it lost its
 /// blocks.
@@ -80,10 +78,10 @@ TimelineCellExposureState bandExposureState(
   int frameIndex, {
   required TimelineCellExposureState Function(Layer, int) ownCels,
 }) {
-  if (!layerKindCarriesInstructions(layer.kind)) {
+  if (!layer.kind.carriesInstructions) {
     return ownCels(layer, frameIndex);
   }
-  if (layerKindBandIsInstructionsOnly(layer.kind)) {
+  if (layer.kind.bandIsInstructionsOnly) {
     return instructionCellExposureState(layer, frameIndex);
   }
   final own = ownCels(layer, frameIndex);

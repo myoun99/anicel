@@ -108,7 +108,7 @@ import 'timeline/timeline_layer_controls_row.dart'
 import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
-import '../models/layer_kind.dart' show LayerKind, layerKindHoldsDrawings;
+import '../models/layer_kind.dart' show LayerKind;
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'timeline/layer_timeline_display_adapter.dart'

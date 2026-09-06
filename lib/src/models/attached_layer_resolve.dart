@@ -18,7 +18,6 @@ import 'layer_folder.dart';
 
 export 'layer_folder.dart' show attachOrganizerBaseOf;
 import 'layer_id.dart';
-import 'layer_kind.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
@@ -36,7 +35,7 @@ bool isSyncedAttachedLayer(Layer layer) =>
 /// Whether [layer] can carry attach layers (v1: drawing kinds only, no
 /// nesting — an attach layer is never itself a base).
 bool canCarryAttachedLayers(Layer layer) =>
-    !isAttachedLayer(layer) && layerKindIsDrawingCel(layer.kind);
+    !isAttachedLayer(layer) && layer.kind.isDrawingCel;
 
 /// The base layer [attached] rides, looked up in [layers]; null when the
 /// link dangles (base deleted out from under it — display/composite skip

@@ -434,7 +434,7 @@ class CutCommandCoordinator {
     // Deleting a FOLDER row means dissolving it: the members are rows in
     // their own right and stay where they are. (Deleting the pictures too
     // would make one Delete key destroy work the row itself never held.)
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       dissolveFolder(cutId: cutId, folderId: layerId);
       return;
     }
@@ -575,7 +575,7 @@ class CutCommandCoordinator {
   }) {
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
-    if (layerKindIsFixed(sourceLayer.kind)) {
+    if (sourceLayer.kind.isFixed) {
       throw StateError('The camera layer cannot be duplicated.');
     }
     final sourceIndex = cut.layers.indexWhere(
@@ -597,7 +597,7 @@ class CutCommandCoordinator {
     required LayerCopyPayload payload,
     required int insertionIndex,
   }) {
-    if (layerKindIsFixed(payload.kind)) {
+    if (payload.kind.isFixed) {
       throw StateError('The camera layer cannot be pasted.');
     }
 
@@ -853,7 +853,7 @@ class CutCommandCoordinator {
   /// ([effectChainWithSharedShape]). Sharing values across cuts is the
   /// named-union link's job.
   ///
-  /// An ADJUSTMENT row goes further ([layerKindMirrorsEffects]): its chain
+  /// An ADJUSTMENT row goes further ([LayerKind.mirrorsEffects]): its chain
   /// is its whole content, not decoration on a picture, so values mirror
   /// too.
   void updateLayerEffects({
@@ -1089,10 +1089,10 @@ class CutCommandCoordinator {
     String description = 'Edit layer effects',
   }) {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (!layerKindHasLayerEffects(layer.kind)) {
+    if (!layer.kind.hasLayerEffects) {
       throw StateError('The camera row carries no effect chain of its own.');
     }
-    final mirrorsValuesToo = layerKindMirrorsEffects(layer.kind);
+    final mirrorsValuesToo = layer.kind.mirrorsEffects;
     final targets = linkMirrorTargets(
       repository.requireProject(),
       cutId: cutId,
@@ -1241,7 +1241,7 @@ class CutCommandCoordinator {
     if (isAttachedLayer(layer)) {
       throw StateError('Attach layers keep their base\'s kind: $layerId');
     }
-    if (layerKindIsFixed(layer.kind) || layerKindIsFixed(kind)) {
+    if (layer.kind.isFixed || kind.isFixed) {
       throw StateError(
         'The camera layer kind is fixed; layers cannot become cameras.',
       );
