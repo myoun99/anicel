@@ -557,13 +557,10 @@ class EditorTopStrip extends StatelessWidget {
             : '$resolved/${entry.name}';
         bookmark = grant.bookmark ?? bookmark;
       } else {
-        storeRecentProjects(
-          AppRecent.projects.value.withReconnectNeeded(entry.path),
-        );
         if (!context.mounted) {
           return;
         }
-        final relinked = await _relink(context, entry);
+        final relinked = await _reconnect(context, entry);
         if (relinked == null) {
           return;
         }
@@ -578,13 +575,10 @@ class EditorTopStrip extends StatelessWidget {
       // are no bookmarks at all — every row after a revoked storage grant
       // became permanently dead with a "not found" that blamed the wrong
       // thing.
-      storeRecentProjects(
-        AppRecent.projects.value.withReconnectNeeded(entry.path),
-      );
       if (!context.mounted) {
         return;
       }
-      final relinked = await _relink(context, entry);
+      final relinked = await _reconnect(context, entry);
       if (relinked == null) {
         return;
       }
@@ -612,8 +606,8 @@ class EditorTopStrip extends StatelessWidget {
     ));
   }
 
-  /// Asks for the project a remembered row has lost track of — with the
-  /// FILE picker, the same door Open uses.
+  /// Flags [entry] as needing a reconnect and asks for the project it has
+  /// lost track of — with the FILE picker, the same door Open uses.
   ///
   /// It used to raise the FOLDER picker and rejoin by file name, a shape
   /// left over from the folder-as-permission-unit world. That mode is the
@@ -622,20 +616,18 @@ class EditorTopStrip extends StatelessWidget {
   /// round un-blocked. Picking the file itself needs no name join, works
   /// everywhere file mode works, and hands back the file bookmark the
   /// recents row wants anyway.
-  Future<ProjectPick?> _relink(
-    BuildContext context,
-    RecentProject entry,
-  ) async {
-    final grants = await pickFileGrantsForUser(
+  ///
+  /// The two ways a recent row goes stale — no bookmark to resolve, and a
+  /// bookmark that resolved to a file that is gone — reach exactly this
+  /// step, so the row is flagged HERE rather than at each of them.
+  Future<ProjectPick?> _reconnect(BuildContext context, RecentProject entry) {
+    storeRecentProjects(
+      AppRecent.projects.value.withReconnectNeeded(entry.path),
+    );
+    return pickProjectFile(
       context,
       supportedExtensions: FileTypeGroups.anicelProject.extensions ?? const [],
     );
-    final grant = grants.isEmpty ? null : grants.first;
-    final path = grant?.path;
-    if (path == null) {
-      return null;
-    }
-    return (path: path, folderBookmark: grant!.bookmark, placed: false);
   }
 
   /// The PROJECT popover: the file itself, and the two doors it has to the
@@ -1451,31 +1443,49 @@ typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 /// It also unblocks Google Drive, which declines folder mode outright
 /// (measured on iOS 26.5.2) but serves file mode fine.
 @visibleForTesting
-Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
+Future<ProjectPick?> pickProjectToOpen(BuildContext context) => pickProjectFile(
+  context,
+  // TVPaint projects open through the same door (the user's call: ONE
+  // entry, the Open button — the import pickers retire later). A .tvpp
+  // converts into cuts rather than loading as a project.
+  //
+  // 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
+  // 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
+  // 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
+  // 선택할수 있게」.
+  supportedExtensions: const [anicelProjectExtension, 'tvpp'],
+  // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
+  // never completes under the widget-test clock, and this is the first
+  // line of the open flow.
+  //
+  // Withheld wherever grants are scoped — on macOS the sandbox makes
+  // `$HOME` the container, so this would point at
+  // `~/Library/Containers/…/Documents/Anicel` and the panel would open
+  // inside the sandbox on every Open. With no hint the Apple pickers
+  // restore wherever the user last was, which is what Files trains them
+  // to expect.
+  initialDirectory: FolderPicker.grantsAreScoped
+      ? null
+      : ensuredAppDocumentsDirectorySync(),
+);
+
+/// Points the FILE picker at a project and answers what it grants: the
+/// first file, its bookmark, and `placed: false` — nothing was written, so
+/// whoever asked still has to write it.
+///
+/// 🚨THE ONE PICK BEHIND EVERY PROJECT DOOR. Open and Reconnect are the
+/// same act with two bound constants — which extensions the door accepts,
+/// and whether a desktop starting folder is offered — so they are one
+/// function with two arguments rather than two functions that drift.
+Future<ProjectPick?> pickProjectFile(
+  BuildContext context, {
+  required List<String> supportedExtensions,
+  String? initialDirectory,
+}) async {
   final grants = await pickFileGrantsForUser(
     context,
-    // TVPaint projects open through the same door (the user's call: ONE
-    // entry, the Open button — the import pickers retire later). A .tvpp
-    // converts into cuts rather than loading as a project.
-    //
-    // 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
-    // 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
-    // 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
-    // 선택할수 있게」.
-    supportedExtensions: const [anicelProjectExtension, 'tvpp'],
-    // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
-    // never completes under the widget-test clock, and this is the first
-    // line of the open flow.
-    //
-    // Withheld wherever grants are scoped — on macOS the sandbox makes
-    // `$HOME` the container, so this would point at
-    // `~/Library/Containers/…/Documents/Anicel` and the panel would open
-    // inside the sandbox on every Open. With no hint the Apple pickers
-    // restore wherever the user last was, which is what Files trains them
-    // to expect.
-    initialDirectory: FolderPicker.grantsAreScoped
-        ? null
-        : ensuredAppDocumentsDirectorySync(),
+    supportedExtensions: supportedExtensions,
+    initialDirectory: initialDirectory,
   );
   final grant = grants.isEmpty ? null : grants.first;
   final path = grant?.path;
