@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
 import '../../services/project_tree_editor.dart';
+import '../collection_equality.dart';
 
 /// The scoped edit-drag preview channel.
 ///
@@ -107,55 +108,20 @@ class BlockMoveDragPreview extends TimelineDragPreview {
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
       mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
-      _trackEffectsEqual(other.previewTrackEffects, previewTrackEffects) &&
+      mapOfListsEquals(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
       mapEquals(other.cameraKeyframes, cameraKeyframes) &&
       identical(other.cameraMarkerLayer, cameraMarkerLayer);
 
   @override
   int get hashCode => Object.hash(
-    Object.hashAllUnordered(
-      previewLayers.entries.map((e) => Object.hash(e.key, e.value)),
-    ),
-    Object.hashAllUnordered(
-      previewGlobalLayers.entries.map((e) => Object.hash(e.key, e.value)),
-    ),
-    previewTrackEffects == null
-        ? null
-        : Object.hashAllUnordered(
-            previewTrackEffects!.entries.map(
-              (e) => Object.hash(e.key, Object.hashAll(e.value)),
-            ),
-          ),
+    mapHash(previewLayers),
+    mapHash(previewGlobalLayers),
+    mapOfListsHash(previewTrackEffects),
     cameraCutId,
-    cameraKeyframes == null
-        ? null
-        : Object.hashAllUnordered(
-            cameraKeyframes!.entries.map((e) => Object.hash(e.key, e.value)),
-          ),
+    mapHash(cameraKeyframes),
     identityHashCode(cameraMarkerLayer),
   );
-
-  /// `mapEquals` compares the LISTS by identity, which a rebuilt chain
-  /// never satisfies — the preview would then read as changed on every
-  /// step whose keys did not actually move.
-  static bool _trackEffectsEqual(
-    Map<TrackId, List<LayerEffect>>? a,
-    Map<TrackId, List<LayerEffect>>? b,
-  ) {
-    if (a == null || b == null) {
-      return a == b;
-    }
-    if (a.length != b.length) {
-      return false;
-    }
-    for (final entry in a.entries) {
-      if (!listEquals(entry.value, b[entry.key])) {
-        return false;
-      }
-    }
-    return true;
-  }
 }
 
 /// A storyboard cut edge drag in flight: the involved cuts' previewed
@@ -191,37 +157,14 @@ class CutTrimDragPreview extends TimelineDragPreview {
       mapEquals(other.previewDurations, previewDurations) &&
       mapEquals(other.previewGaps, previewGaps) &&
       mapEquals(other.previewLayers, previewLayers) &&
-      _orderEquals(other.previewOrder, previewOrder);
+      mapOfListsEquals(other.previewOrder, previewOrder);
 
   @override
   int get hashCode => Object.hash(
-    Object.hashAllUnordered(
-      previewDurations.entries.map((e) => Object.hash(e.key, e.value)),
-    ),
-    Object.hashAllUnordered(
-      previewGaps.entries.map((e) => Object.hash(e.key, e.value)),
-    ),
-    Object.hashAllUnordered(
-      previewOrder.entries.map(
-        (e) => Object.hash(e.key, Object.hashAll(e.value)),
-      ),
-    ),
+    mapHash(previewDurations),
+    mapHash(previewGaps),
+    mapOfListsHash(previewOrder),
   );
-
-  static bool _orderEquals(
-    Map<TrackId, List<CutId>> a,
-    Map<TrackId, List<CutId>> b,
-  ) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (final entry in a.entries) {
-      if (!listEquals(entry.value, b[entry.key])) {
-        return false;
-      }
-    }
-    return true;
-  }
 }
 
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
