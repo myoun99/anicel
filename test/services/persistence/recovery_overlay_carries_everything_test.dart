@@ -114,7 +114,7 @@ void main() {
     // stayed green, because a project with no fingerprints writes no
     // fingerprint key and the pinned set still matched. The law can only
     // catch an omission it can see, so each new fact earns a line here.
-    s.rememberMediaFingerprint(
+    s.mediaFingerprints.rememberMediaFingerprint(
       '${directory.path}/참고영상.mp4'.replaceAll('\\', '/'),
       File('${directory.path}/참고영상.mp4').readAsBytesSync(),
     );

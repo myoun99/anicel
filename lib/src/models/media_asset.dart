@@ -288,6 +288,15 @@ class MediaAsset {
   String toString() => 'MediaAsset(path: $path, name: $name, kind: $kind)';
 }
 
+/// One spelling for every path the project records: forward slashes.
+///
+/// The media pool is keyed by path, so `C:\a\b.wav` and `C:/a/b.wav`
+/// reaching it as written are two assets for one file — two rows, a
+/// dedupe that does not, and a usage badge counting half the clips.
+/// Paths arrive spelled however the OS handed them over, so every site
+/// that records one passes it through here first.
+String normalizedMediaPath(String path) => path.replaceAll('\\', '/');
+
 /// The asset kind [path]'s extension implies; null for unrecognized
 /// extensions (the import sheet asks or refuses).
 MediaAssetKind? mediaAssetKindForPath(String path) {

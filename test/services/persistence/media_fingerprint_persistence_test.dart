@@ -62,8 +62,8 @@ void main() {
   }
 
   /// Records the fingerprint the way production does — from the bytes.
-  void fingerprint(EditorSessionManager s, String path) =>
-      s.rememberMediaFingerprint(path, File(path).readAsBytesSync());
+  void fingerprint(EditorSessionManager s, String path) => s.mediaFingerprints
+      .rememberMediaFingerprint(path, File(path).readAsBytesSync());
 
   test('🚨 remembering a fingerprint does NOT dirty the project', () async {
     final s = session();
@@ -95,7 +95,7 @@ void main() {
     final reopened = session();
     await reopened.openProjectFromFile(projectPath);
 
-    final identity = reopened.recordedMediaIdentity(movie);
+    final identity = reopened.mediaFingerprints.recordedMediaIdentity(movie);
     expect(identity, isNotNull);
     expect(
       identity!.crc32,
@@ -118,13 +118,13 @@ void main() {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
     s.importMediaFiles([movie], copyIntoProject: false);
-    expect(s.recordedMediaIdentity(movie)!.lengthBytes, 512);
+    expect(s.mediaFingerprints.recordedMediaIdentity(movie)!.lengthBytes, 512);
 
     // The file is edited in place: different size, different content.
     File(movie).writeAsBytesSync(List<int>.filled(900, 9));
     fingerprint(s, movie);
 
-    final identity = s.recordedMediaIdentity(movie)!;
+    final identity = s.mediaFingerprints.recordedMediaIdentity(movie)!;
     expect(
       identity.lengthBytes,
       900,
@@ -146,7 +146,7 @@ void main() {
     final was = makeFile('참고영상.mp4', 7);
     s.importMediaFiles([was], copyIntoProject: false);
     fingerprint(s, was);
-    final recorded = s.recordedMediaIdentity(was)!;
+    final recorded = s.mediaFingerprints.recordedMediaIdentity(was)!;
 
     final now = makeFile('옮긴영상.mp4', 7);
     await s.relinkMediaAsset(was, now);
@@ -156,7 +156,7 @@ void main() {
     final reopened = session();
     await reopened.openProjectFromFile(projectPath);
     expect(
-      reopened.recordedMediaIdentity(now),
+      reopened.mediaFingerprints.recordedMediaIdentity(now),
       recorded,
       reason: 'the fingerprint has to follow the asset it describes',
     );
@@ -179,9 +179,21 @@ void main() {
       await s.saveProjectToFile(projectPath);
       s.dispose();
 
+      // 🚨THE FILE, not just the reopened session. The open side narrows
+      // too, so reading the session back cannot tell a save that wrote
+      // the dead row from one that did not — and the row growing per
+      // asset the project has ever held is the cost this narrowing was
+      // written to avoid (G1 mutation, 2026-09-06: dropping the save-side
+      // narrowing left the whole suite green).
+      expect(
+        projectJsonOf(projectPath).containsKey('mediaCrcs'),
+        isFalse,
+        reason: 'the removed asset was the only one — nothing left to say',
+      );
+
       final reopened = session();
       await reopened.openProjectFromFile(projectPath);
-      expect(reopened.debugMediaFingerprints.isEmpty, isTrue);
+      expect(reopened.mediaFingerprints.debugMediaFingerprints.isEmpty, isTrue);
       reopened.dispose();
     },
   );
@@ -204,7 +216,7 @@ void main() {
 
       final reopened = session();
       await reopened.openProjectFromFile(projectPath);
-      expect(reopened.debugMediaFingerprints.isEmpty, isTrue);
+      expect(reopened.mediaFingerprints.debugMediaFingerprints.isEmpty, isTrue);
       reopened.dispose();
     },
   );

@@ -15,11 +15,10 @@ import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/import/media_identity_reader.dart';
-import '../services/media/media_fingerprints.dart';
 import '../services/persistence/media_blob_codec.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
-    show anicelCrc32, parseAnicelZipLayoutFile;
+    show parseAnicelZipLayoutFile;
 import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
@@ -199,6 +198,7 @@ import 'timeline/timeline_instruction_row_visual.dart'
     show instructionCellExposureState;
 import 'timeline/timeline_drag_preview.dart';
 import 'session/session_roles.dart';
+import 'session/media_fingerprint_ledger.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -3652,7 +3652,7 @@ class EditorSessionManager extends ChangeNotifier
   /// [MediaAsset.carried] — where a choice belongs — instead of being
   /// smuggled into the path and read back off it later.
   String importAudioFile(String sourcePath) {
-    final effectivePath = _normalizedPath(sourcePath);
+    final effectivePath = normalizedMediaPath(sourcePath);
     // Fresh conform + waveform budget: on a re-import the file may have
     // changed on disk. (A byte-identical reused copy re-fingerprints
     // against the existing conform and lands as `reused` without a
@@ -3671,7 +3671,7 @@ class EditorSessionManager extends ChangeNotifier
     final known = {for (final asset in pool) asset.path};
     final added = <MediaAsset>[];
     for (final path in paths) {
-      final source = _normalizedPath(path);
+      final source = normalizedMediaPath(path);
       final kind = mediaAssetKindForPath(source) ?? MediaAssetKind.image;
       if (kind == MediaAssetKind.audio) {
         importAudioFile(source);
@@ -3859,7 +3859,7 @@ class EditorSessionManager extends ChangeNotifier
         defaultCutCanvasSize;
     final project = repository.requireProject();
     final mint = _importIdMint();
-    final source = _normalizedPath(path);
+    final source = normalizedMediaPath(path);
     // The file where the user keeps it, either way: carrying is a fact
     // about the SAVE now, not about a copy made at import time.
     final identity = readMediaIdentity(source);
@@ -3937,7 +3937,7 @@ class EditorSessionManager extends ChangeNotifier
     // that can go missing and have to be found again, and `A1.png` repeats
     // in every cut folder on a real drive.
     if (assets.isNotEmpty) {
-      rememberMediaFingerprint(source, bytes);
+      mediaFingerprints.rememberMediaFingerprint(source, bytes);
     }
 
     // Bake pixels AFTER the structure exists (keys resolve the owner
@@ -4010,7 +4010,7 @@ class EditorSessionManager extends ChangeNotifier
         defaultCutCanvasSize;
     final project = repository.requireProject();
     final mint = _importIdMint();
-    final source = _normalizedPath(path);
+    final source = normalizedMediaPath(path);
     final displayName = mediaAssetDefaultName(source);
     final cutId = targetCut?.id ?? mint.nextCutId();
     final duration = destination == ImportDestination.activeCutLayer
@@ -4121,7 +4121,7 @@ class EditorSessionManager extends ChangeNotifier
       final spanCount = lastPage - firstPage + 1;
       final project = repository.requireProject();
       final mint = _importIdMint();
-      final source = _normalizedPath(path);
+      final source = normalizedMediaPath(path);
       final identity = readMediaIdentity(source);
       final displayName = mediaAssetDefaultName(source);
       final cutId = targetCut?.id ?? mint.nextCutId();
@@ -4886,7 +4886,7 @@ class EditorSessionManager extends ChangeNotifier
     trackSeGlobalLayerById: trackSeGlobalLayerById,
     mintFrameId: mintFrameId,
     mediaAssets: () => mediaAssets,
-    rememberMediaFingerprint: rememberMediaFingerprint,
+    rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
     stageCarriedBytes: stageCarriedBytes,
     frameRangeSelection: () => frameRangeSelection,
     projectFilePath: () => _projectFilePath,
@@ -4994,15 +4994,6 @@ class EditorSessionManager extends ChangeNotifier
     _frameSequence += 1;
     return FrameId(nextFrameId(layerId));
   }
-
-  /// One spelling for every path the project records: forward slashes.
-  ///
-  /// The media pool is keyed by path, so `C:\a\b.wav` and `C:/a/b.wav`
-  /// reaching it as written are two assets for one file — two rows, a
-  /// dedupe that does not, and a usage badge counting half the clips.
-  /// Paths arrive spelled however the OS handed them over, so every site
-  /// that records one passes it through here first.
-  static String _normalizedPath(String path) => path.replaceAll('\\', '/');
 
   /// ⛔THE SHAPE EVERY AUDIO-CLIP EDIT HAS, WRITTEN ONCE. Seven of them
   /// spelled out the same guard — an SE row, an index inside its clip list
@@ -5315,7 +5306,7 @@ class EditorSessionManager extends ChangeNotifier
   Future<void> relinkMediaAsset(String oldPath, String newPath) async {
     audioConformStore.invalidate(newPath);
     cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
-    _moveMediaFingerprints({oldPath: newPath});
+    mediaFingerprints.moveMediaFingerprints({oldPath: newPath});
     // 🚨★★★**THIS RELINK RE-STAGES; THE BATCH ONE MOVES. THE DIFFERENCE
     // IS WHAT EACH CALLER KNOWS.**
     //
@@ -5362,7 +5353,7 @@ class EditorSessionManager extends ChangeNotifier
     // this relink was decided by — the store is keyed by path and the save
     // keeps only keys the pool still holds. Left out, the feature works
     // exactly once per asset and only on the machine that imported it.
-    _moveMediaFingerprints(moves);
+    mediaFingerprints.moveMediaFingerprints(moves);
     // And the staged bytes, keyed by the same path — see
     // [MediaStagingStore.rename]. The sentence above about derived state
     // is the whole reason both of these lines exist.
@@ -7671,7 +7662,7 @@ class EditorSessionManager extends ChangeNotifier
       // And what it knows about its media's content. A recovered session
       // without these still opens and still looks right — it has just
       // forgotten how to tell one `A1.png` from another.
-      mediaCrcs: _mediaCrcsToStore(),
+      mediaCrcs: mediaFingerprints.crcsToStore(),
       // Asked again at the rename: a manual save can begin and finish
       // while this one is in the isolate, and it retires the snapshot on
       // its way out. Generation-armed, not just the in-flight flag — the
@@ -7783,7 +7774,7 @@ class EditorSessionManager extends ChangeNotifier
       mediaToStore: mediaToStore,
       conforms: conforms,
       grants: _grantsToStore(),
-      mediaCrcs: _mediaCrcsToStore(),
+      mediaCrcs: mediaFingerprints.crcsToStore(),
       onProgress: onProgress,
       adoptRefs: false,
     );
@@ -7863,7 +7854,7 @@ class EditorSessionManager extends ChangeNotifier
       mediaToStore: mediaToStore,
       conforms: conforms,
       grants: _grantsToStore(),
-      mediaCrcs: _mediaCrcsToStore(),
+      mediaCrcs: mediaFingerprints.crcsToStore(),
       onProgress: onProgress,
     );
     final replaced = await FolderPicker.replaceFileCoordinated(
@@ -7934,7 +7925,7 @@ class EditorSessionManager extends ChangeNotifier
         mediaToStore: mediaToStore,
         conforms: conforms,
         grants: _grantsToStore(),
-        mediaCrcs: _mediaCrcsToStore(),
+        mediaCrcs: mediaFingerprints.crcsToStore(),
         onProgress: onProgress,
         // 🚨A Save As is「writing somewhere else」and nothing more subtle:
         // the target is not the file this session has been saving to. 유저
@@ -8053,78 +8044,14 @@ class EditorSessionManager extends ChangeNotifier
   /// working on its own.
   List<FolderGrant> _mediaGrants = const [];
 
-  /// Content fingerprints for the pool, held OUT of the project.
-  ///
-  /// 🚨 Out here because recording one is not an edit. The length on
-  /// [MediaAsset.identity] is imprinted by an import, which the user did;
-  /// a CRC arrives whenever something reads an asset's bytes for its own
-  /// reasons, which the user did not — and a viewer showing a picture must
-  /// not put a dot on the title bar. Same law as [_storedGrants], same
-  /// shape: this map rides to the writer as an argument, never through
-  /// `Project`.
-  MediaFingerprints _mediaFingerprints = const MediaFingerprints.empty();
-
-  /// What is known about [poolPath]'s content: the length the import
-  /// imprinted, plus the CRC if anyone has paid for one.
-  ///
-  /// Null when the pool has no such asset, or when even the length is
-  /// missing — which is every asset registered by a build that predates
-  /// [MediaIdentity], and is exactly the case that must answer "unknown"
-  /// rather than guess.
-  MediaIdentity? recordedMediaIdentity(String poolPath) {
-    final wanted = _normalizedPath(poolPath);
-    for (final asset in mediaAssets) {
-      if (_normalizedPath(asset.path) == wanted) {
-        return _mediaFingerprints.identityFor(wanted, asset.identity);
-      }
-    }
-    return null;
-  }
-
-  /// Records that [poolPath]'s bytes hash to [crc32], because something
-  /// read them anyway.
-  ///
-  /// 🔑 Deliberately NOT an edit: no command, no undo entry, no dirty
-  /// flag, no notify. Flipping through the media pool must not make the
-  /// project look unsaved. The price is that a fingerprint learned in a
-  /// session that never saves is forgotten, which is the right way round —
-  /// it is a cache of something re-derivable, and the file it describes is
-  /// still there to be read again.
-  ///
-  /// Takes any path, registered or not. An import reads the bytes BEFORE
-  /// it knows whether the import will happen, so demanding the asset exist
-  /// first would forfeit the one reading that is guaranteed free. What
-  /// reaches the FILE is narrowed to the pool at save time instead, which
-  /// is where the same filter has to run anyway for assets since removed.
-  void rememberMediaFingerprint(String poolPath, Uint8List bytes) {
-    _mediaFingerprints = _mediaFingerprints.remembering(
-      poolPath,
-      // Both halves from THESE bytes. Taking the length off the asset
-      // instead would weld a value imprinted at first registration onto a
-      // hash taken now, and a file edited in between would be described as
-      // a revision that never existed.
-      MediaIdentity(lengthBytes: bytes.length, crc32: anicelCrc32(bytes)),
-    );
-  }
-
-  /// Follows [moves] (old pool path → new) so a fingerprint survives its
-  /// asset being pointed somewhere else.
-  ///
-  /// 🚨 Called from every place a pool path changes. The store is keyed by
-  /// path and the save keeps only keys the pool still holds, so a move that
-  /// skips this does not merely mislay the fact — the next save DELETES it.
-  void _moveMediaFingerprints(Map<String, String> moves) {
-    _mediaFingerprints = _mediaFingerprints.moved(moves);
-  }
-
-  /// The fingerprints as the file should keep them: only for media the
-  /// project still references.
-  Map<String, Object?> _mediaCrcsToStore() => _mediaFingerprints.narrowedTo({
-    for (final asset in mediaAssets) _normalizedPath(asset.path),
-  }).toJson();
-
-  @visibleForTesting
-  MediaFingerprints get debugMediaFingerprints => _mediaFingerprints;
+  // ── the pool's content fingerprints: their own object ────────────────
+  //
+  // A collaborator (session/media_fingerprint_ledger.dart). It owns the
+  // map; the import doors write to it, the save reads it, and the open
+  // restores it.
+  late final MediaFingerprintLedger mediaFingerprints = MediaFingerprintLedger(
+    project: this,
+  );
 
   /// 🚨 What the FILE should keep, which is not the same question as what
   /// this launch can USE.
@@ -8417,7 +8344,9 @@ class EditorSessionManager extends ChangeNotifier
     // out here, after a bookmark resolved to a file the user renamed, and
     // the service never learns about it. Two movers, both of which have to
     // be followed — miss one and the next save deletes the fact.
-    _mediaFingerprints = result.mediaFingerprints.moved(movedByGrant);
+    mediaFingerprints.restoreFromFile(
+      result.mediaFingerprints.moved(movedByGrant),
+    );
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
     // The conte ink namespace routes to its own stores (R5); a ROW entry

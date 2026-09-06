@@ -65,7 +65,8 @@ Future<void> runMediaRelinkFlow(
   // screen that does not repaint. The reads are the same reads — they
   // just happen where a frozen thread costs nothing.
   final wanted = [
-    for (final path in missing) ?session.recordedMediaIdentity(path),
+    for (final path in missing)
+      ?session.mediaFingerprints.recordedMediaIdentity(path),
   ];
   final read = await runWithAppProgress<Map<String, MediaIdentity?>>(
     context: context,
@@ -82,7 +83,7 @@ Future<void> runMediaRelinkFlow(
   final plan = planMediaRelink(
     missingPaths: missing,
     candidatePaths: candidates,
-    recordedIdentity: session.recordedMediaIdentity,
+    recordedIdentity: session.mediaFingerprints.recordedMediaIdentity,
     // Already read, and read once: the matcher gets a lookup rather than
     // a file handle.
     candidateIdentity: (candidate, _) => read[candidate],

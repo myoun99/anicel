@@ -89,7 +89,7 @@ void main() {
     // folder full of files called `A1.png`. Nobody has to remember to ask
     // for it; if this stops holding, relink quietly goes back to giving up
     // on every tie.
-    final fingerprinted = s.recordedMediaIdentity(
+    final fingerprinted = s.mediaFingerprints.recordedMediaIdentity(
       s.mediaAssets.single.path,
     );
     expect(
