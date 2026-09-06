@@ -51,23 +51,15 @@ class BitmapSurface {
   /// of an 8000² fill was exactly this), so there is deliberately no
   /// one-tile form to reach for: `putTiles([tile])` is the n = 1 case and
   /// costs the same as the old single put did.
+  ///
+  /// ⛔THE STORABILITY LAW IS [_validateTileEntry]'s, and only its. This
+  /// put re-typed the same two throws with the same two messages; the
+  /// constructor every write goes through already applies them, so the
+  /// copy was dead weight that could drift (a mutant that disabled the
+  /// copy's bounds check survived every test, 2026-09-07).
   BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     for (final tile in tilesToPut) {
-      if (!containsTileCoord(tile.coord)) {
-        throw ArgumentError.value(
-          tile.coord,
-          'tile.coord',
-          'BitmapSurface tile coord must be inside surface tile bounds.',
-        );
-      }
-      if (tile.size != tileSize) {
-        throw ArgumentError.value(
-          tile.size,
-          'tile.size',
-          'BitmapSurface tile size must match surface tileSize.',
-        );
-      }
       updated[tile.coord] = tile;
     }
     return copyWith(tiles: updated);
