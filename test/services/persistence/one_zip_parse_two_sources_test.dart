@@ -47,21 +47,29 @@ void main() {
       ),
   ];
 
-  /// Names long enough that the per-entry local-header read (the four
-  /// bytes at +26, the one thing the two sources fetch differently) has a
-  /// different answer per entry.
-  Iterable<({String name, Uint8List bytes})> entriesOf(int count) sync* {
+  /// Names of different lengths, so the per-entry local-header read (the
+  /// four bytes at +26, the one thing the two sources fetch differently)
+  /// has a different answer per entry. [payload] is the first entry's byte
+  /// count; each later one is one byte longer, so an entry's own length
+  /// says which entry it is.
+  Iterable<({String name, Uint8List bytes})> entriesOf(
+    int count, {
+    required int payload,
+  }) sync* {
     for (var i = 0; i < count; i += 1) {
       yield (
         name: 'cels/${'n' * i}$i.celz',
-        bytes: Uint8List.fromList(List<int>.filled(7 + i, i)),
+        bytes: Uint8List.fromList(List<int>.filled(payload + i, i)),
       );
     }
   }
 
-  void expectBothSourcesAgree(String fileName) {
+  void expectBothSourcesAgree(String fileName, {int payload = 7}) {
     final path = '${temp.path}/$fileName';
-    writeAnicelArchiveFile(path: path, entries: entriesOf(5));
+    writeAnicelArchiveFile(
+      path: path,
+      entries: entriesOf(5, payload: payload),
+    );
     final bytes = File(path).readAsBytesSync();
 
     final fromBytes = parseAnicelZipLayout(bytes);
@@ -74,7 +82,7 @@ void main() {
     for (final entry in fromBytes.entries) {
       expect(
         bytes.sublist(entry.dataOffset, entry.dataOffset + entry.length),
-        List<int>.filled(entry.length, entry.length - 7),
+        List<int>.filled(entry.length, entry.length - payload),
         reason: entry.name,
       );
     }
@@ -89,5 +97,19 @@ void main() {
       'file', () {
     anicelAlwaysZip64 = false;
     expectBothSourcesAgree('plain.anicel');
+  });
+
+  test('an entry past the field limit carries a local EXTRA field, and '
+      'both sources step over it', () {
+    // ⛔A LOCAL HEADER IS 30 BYTES PLUS ITS NAME PLUS ITS EXTRA. Every
+    // archive this app writes at shipped settings has an empty extra, so
+    // only an entry past [anicelZip64FieldLimit] — where the spec makes
+    // the local header carry BOTH sizes — proves the walk adds the extra
+    // length as well as the name length. Without this the data offsets
+    // land 20 bytes early and every cel reads as its own ZIP64 field.
+    anicelAlwaysZip64 = true;
+    anicelZip64FieldLimit = 64;
+    addTearDown(() => anicelZip64FieldLimit = anicelZip64FieldLimitShipped);
+    expectBothSourcesAgree('zip64-extra.anicel', payload: 64);
   });
 }
