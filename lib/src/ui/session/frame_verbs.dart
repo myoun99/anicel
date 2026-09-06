@@ -8,15 +8,12 @@ import '../../models/layer_kind.dart';
 import '../../models/row_block_shift.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/flip_column_step.dart';
-import '../../models/timeline_exposure.dart';
-import '../../services/editing/cut_duplicate_helpers.dart'
-    show duplicateFrameContent;
-import '../../models/timeline_splice.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_pose_paint.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
+import 'independent_clip_mint.dart';
 import 'session_roles.dart';
 
 /// The FRAME VERBS — the playhead's frame and what stands there: stepping
@@ -204,35 +201,16 @@ class FrameVerbs {
     );
     final bornFrames = <Frame>[];
     var placed = clip;
+    var minted = const <FrameId, FrameId>{};
     if (!linked) {
-      final minted = <FrameId, FrameId>{};
-      final exposures = <int, TimelineExposure>{};
-      for (final entry in clip.exposures.entries) {
-        final sourceId = entry.value.frameId;
-        if (sourceId == null) {
-          continue;
-        }
-        final newId = minted.putIfAbsent(sourceId, () {
-          final id = _frameIds.mintFrameId(layer.id);
-          final source = layer.frames
-              .where((frame) => frame.id == sourceId)
-              .firstOrNull;
-          if (source != null) {
-            // Unnamed, for the reason the independent paste is: a name is a
-            // cel's identity inside the layer, and two cels claiming one is
-            // a state no rename could produce.
-            bornFrames.add(
-              duplicateFrameContent(
-                frame: source,
-                newFrameId: id,
-              ).copyWith(name: null),
-            );
-          }
-          return id;
-        });
-        exposures[entry.key] = entry.value.copyWith(frameId: newId);
-      }
-      placed = TimelineClipRow(exposures: exposures, length: clip.length);
+      final independent = mintIndependentClip(
+        clip: clip,
+        sources: layer.frames,
+        born: bornFrames,
+        mint: () => _frameIds.mintFrameId(layer.id),
+      );
+      placed = independent.clip;
+      minted = independent.minted;
     }
     _timeline.timelineController.spliceRunsForLayers(
       runs: [
@@ -246,6 +224,16 @@ class FrameVerbs {
       ],
       description: linked ? 'Link duplicate frames' : 'Duplicate frames',
     );
+    final cut = _project.activeCutOrNull;
+    if (cut != null) {
+      carryBakedPictures(
+        internals: _internals,
+        cut: cut,
+        sourceLayerId: layer.id,
+        targetLayerId: layer.id,
+        minted: minted,
+      );
+    }
     _changes.notifyChanged();
   }
 
