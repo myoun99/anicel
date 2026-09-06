@@ -281,6 +281,27 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
   return end;
 }
 
+/// The attach group [member] belongs to, named by its BASE: the row it
+/// rides, or itself when it IS the base.
+LayerId attachBaseIdOf(Layer member) => member.attachedToLayerId ?? member.id;
+
+/// [baseId]'s whole attach group in stack order — the base, the
+/// below-placement rows that sit before it, the above-placement rows after
+/// it, and the organizer folder rows on either side.
+///
+/// Resolve to the group's base first ([attachBaseIdOf]), then take the
+/// contiguous run — below-side rows and organizer folder rows included (the
+/// gate scans the same slice).
+///
+/// A missing base answers `layers.length` on both ends, so the slice is
+/// EMPTY rather than silently spanning the whole stack — the contract
+/// [attachedGroupStartIndex] and [attachedGroupEndIndex] already document.
+List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
+    layers.sublist(
+      attachedGroupStartIndex(baseId, layers),
+      attachedGroupEndIndex(baseId, layers),
+    );
+
 /// A fresh attach-row name, signed by placement (UI-R20 #11, the
 /// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,
 /// rows below are `-1`, `-2`, … — each side numbers its own count.

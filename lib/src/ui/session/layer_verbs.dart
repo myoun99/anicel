@@ -189,7 +189,7 @@ class LayerVerbs {
     }
     // The verb unlinks the whole attach group; it is offered when ANY
     // member is linked (mirrors the coordinator's own guard).
-    final baseId = activeLayer.attachedToLayerId ?? activeLayer.id;
+    final baseId = attachBaseIdOf(activeLayer);
     final registry = _project.repository.requireProject().linkRegistry;
     return cut.layers.any(
       (layer) =>
@@ -326,16 +326,13 @@ class LayerVerbs {
         : isAttachedLayer(active)
         ? active.attachedToLayerId
         : active.id;
-    if (baseId != null) {
-      final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
-      final groupStart = attachedGroupStartIndex(baseId, cut.layers);
-      if (groupEnd - groupStart > 1) {
-        _timeline.layerController.addLayer(
-          layer: layer,
-          insertionIndex: groupEnd,
-        );
-        return;
-      }
+    if (baseId != null &&
+        attachedGroupSlice(baseId, cut.layers).length > 1) {
+      _timeline.layerController.addLayer(
+        layer: layer,
+        insertionIndex: attachedGroupEndIndex(baseId, cut.layers),
+      );
+      return;
     }
     _timeline.layerController.addLayer(layer: layer);
   }

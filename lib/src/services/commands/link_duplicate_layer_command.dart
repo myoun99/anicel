@@ -64,15 +64,11 @@ class LinkDuplicateLayerCommand implements Command {
         cutId: cutId,
         layerId: sourceLayerId,
       );
-      // Resolve to the group's base, then take the contiguous run —
-      // below-side rows and organizer folder rows included.
-      final baseId = source.attachedToLayerId ?? source.id;
-      if (!cut.layers.any((layer) => layer.id == baseId)) {
+      final baseId = attachBaseIdOf(source);
+      final members = attachedGroupSlice(baseId, cut.layers);
+      if (members.isEmpty) {
         throw StateError('Attach base not found: $baseId');
       }
-      final startIndex = attachedGroupStartIndex(baseId, cut.layers);
-      final endIndex = attachedGroupEndIndex(baseId, cut.layers);
-      final members = cut.layers.sublist(startIndex, endIndex);
 
       final copies = <Layer>[
         for (final member in members)
@@ -100,7 +96,8 @@ class LinkDuplicateLayerCommand implements Command {
           }(),
       ];
 
-      final nextLayers = [...cut.layers]..insertAll(endIndex, copies);
+      final nextLayers = [...cut.layers]
+        ..insertAll(attachedGroupEndIndex(baseId, cut.layers), copies);
 
       _registryBefore = project.linkRegistry;
       var groups = [...project.linkRegistry.groups];

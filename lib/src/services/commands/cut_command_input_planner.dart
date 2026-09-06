@@ -391,11 +391,7 @@ LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
 }) {
   final ids = _ProjectIdSnapshot.fromProject(project);
   final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
-  final baseId = source.attachedToLayerId ?? source.id;
-  final members = cut.layers.sublist(
-    attachedGroupStartIndex(baseId, cut.layers),
-    attachedGroupEndIndex(baseId, cut.layers),
-  );
+  final members = attachedGroupSlice(attachBaseIdOf(source), cut.layers);
 
   final minted = _mintLinkIds(project, ids, members);
 

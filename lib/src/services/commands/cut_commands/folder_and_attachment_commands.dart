@@ -34,12 +34,9 @@ class _FolderAndAttachmentCommands {
     if (source.kind != LayerKind.animation) {
       return null;
     }
-    final baseId = source.attachedToLayerId ?? source.id;
+    final baseId = attachBaseIdOf(source);
     final base = requireLayer(project, cutId: cutId, layerId: baseId);
-    final slice = cut.layers.sublist(
-      attachedGroupStartIndex(baseId, cut.layers),
-      attachedGroupEndIndex(baseId, cut.layers),
-    );
+    final slice = attachedGroupSlice(baseId, cut.layers);
     final memberIds = [
       for (final layer in slice)
         if (layer.folderId == base.folderId) layer.id,
