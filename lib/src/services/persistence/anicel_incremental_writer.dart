@@ -290,7 +290,9 @@ typedef _CentralBlock = ({ByteData data, Uint8List bytes, int limit});
 /// full length either way, because a local header offset is always
 /// absolute. [localHeaderLengths] is the one thing the two parsers
 /// genuinely do differently: one already holds the whole file, the other
-/// seeks and reads four bytes.
+/// seeks and reads four bytes. (Both now reach it through the one
+/// `readAt` the shared parse takes, so that difference is the SOURCE's,
+/// not a second parser's.)
 ({AnicelZipEntry entry, int nextCursor}) _readCentralEntry(
   _CentralBlock block,
   int cursor, {
@@ -349,47 +351,19 @@ typedef _CentralBlock = ({ByteData data, Uint8List bytes, int limit});
 /// type on purpose: the production fallbacks (`on FormatException` at the
 /// open and incremental-save sites) are the recovery, and a RangeError
 /// escaping them turned a salvageable file into one that refused to open.
-AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
-  final data = ByteData.sublistView(bytes);
-  // EOCD: scan back over a possible comment (max 64KB + 22).
-  final scanFloor = bytes.length - 22 - 65535 < 0
-      ? 0
-      : bytes.length - 22 - 65535;
-  var eocd = -1;
-  for (var i = bytes.length - 22; i >= scanFloor; i -= 1) {
-    if (data.getUint32(i, Endian.little) == _eocdSignature) {
-      eocd = i;
-      break;
-    }
-  }
-  if (eocd < 0) {
-    throw const FormatException('No ZIP end-of-central-directory found.');
-  }
-  final zip64 = _readZip64End(data, eocd, tailStart: 0);
-  final entryCount =
-      zip64?.entryCount ?? data.getUint16(eocd + 10, Endian.little);
-  final centralOffset =
-      zip64?.centralOffset ?? data.getUint32(eocd + 16, Endian.little);
-
-  final entries = <AnicelZipEntry>[];
-  var cursor = centralOffset;
-  for (var i = 0; i < entryCount; i += 1) {
-    final read = _readCentralEntry(
-      (data: data, bytes: bytes, limit: bytes.length),
-      cursor,
-      fileLength: bytes.length,
-      localHeaderLengths: (localOffset) =>
-          data.getUint16(localOffset + 26, Endian.little) +
-          data.getUint16(localOffset + 28, Endian.little),
+AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) =>
+    _parseAnicelZipLayoutFrom(
+      length: bytes.length,
+      readAt: (offset, count) {
+        // ⛔BOUNDS FIRST here too: a garbage offset must be the
+        // [FormatException] the callers catch, never a RangeError out of
+        // `sublistView`. No copy — the window is a view.
+        if (offset < 0 || count < 0 || offset + count > bytes.length) {
+          throw const FormatException('Corrupt central directory.');
+        }
+        return Uint8List.sublistView(bytes, offset, offset + count);
+      },
     );
-    entries.add(read.entry);
-    cursor = read.nextCursor;
-  }
-  return AnicelZipLayout(
-    entries: entries,
-    centralDirectoryOffset: centralOffset,
-  );
-}
 
 /// Parses the layout straight from the FILE with tail-only reads (EOCD
 /// scan window + central directory + 4 bytes per local header) — a
@@ -398,70 +372,87 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
 AnicelZipLayout parseAnicelZipLayoutFile(String path) {
   final raf = File(path).openSync();
   try {
-    final fileLength = raf.lengthSync();
-    if (fileLength < 22) {
-      throw const FormatException('No ZIP end-of-central-directory found.');
-    }
-    final tailLength = fileLength < 22 + 65535 ? fileLength : 22 + 65535;
-    raf.setPositionSync(fileLength - tailLength);
-    final tail = raf.readSync(tailLength);
-    final tailData = ByteData.sublistView(tail);
-    var eocd = -1;
-    for (var i = tail.length - 22; i >= 0; i -= 1) {
-      if (tailData.getUint32(i, Endian.little) == _eocdSignature) {
-        eocd = i;
-        break;
-      }
-    }
-    if (eocd < 0) {
-      throw const FormatException('No ZIP end-of-central-directory found.');
-    }
-    final tailStart = fileLength - tailLength;
-    final zip64 = _readZip64End(tailData, eocd, tailStart: tailStart);
-    final entryCount =
-        zip64?.entryCount ?? tailData.getUint16(eocd + 10, Endian.little);
-    final centralOffset =
-        zip64?.centralOffset ?? tailData.getUint32(eocd + 16, Endian.little);
-    // With ZIP64 the central directory ends at the ZIP64 record rather
-    // than at the plain EOCD — reading to the EOCD would swallow the
-    // ZIP64 record and locator as if they were another entry.
-    final centralEnd = zip64 == null
-        ? tailStart + eocd
-        : centralOffset + zip64.centralLength;
-    if (centralOffset > centralEnd) {
-      throw const FormatException('Corrupt central directory.');
-    }
-
-    raf.setPositionSync(centralOffset);
-    final central = raf.readSync(centralEnd - centralOffset);
-    final data = ByteData.sublistView(central);
-    final entries = <AnicelZipEntry>[];
-    var cursor = 0;
-    for (var i = 0; i < entryCount; i += 1) {
-      final read = _readCentralEntry(
-        (data: data, bytes: central, limit: central.length),
-        cursor,
-        fileLength: fileLength,
-        localHeaderLengths: (localOffset) {
-          raf.setPositionSync(localOffset + 26);
-          final localLengths = ByteData.sublistView(raf.readSync(4));
-          if (localLengths.lengthInBytes < 4) {
-            throw const FormatException('Corrupt central directory.');
-          }
-          return localLengths.getUint16(0, Endian.little) +
-              localLengths.getUint16(2, Endian.little);
-        },
-      );
-      entries.add(read.entry);
-      cursor = read.nextCursor;
-    }
-    return AnicelZipLayout(
-      entries: entries,
-      centralDirectoryOffset: centralOffset,
+    return _parseAnicelZipLayoutFrom(
+      length: raf.lengthSync(),
+      readAt: (offset, count) {
+        raf.setPositionSync(offset);
+        return raf.readSync(count);
+      },
     );
   } finally {
     raf.closeSync();
   }
+}
+
+/// THE parse, over any byte source.
+///
+/// [readAt] is asked for the tail window once, the central directory once,
+/// and four bytes per entry — the reason the file variant can answer
+/// without loading the archive. Whether those bytes come from a buffer
+/// already in hand or from a seek is the only difference between the two
+/// entry points, so it is the only thing they hand in.
+AnicelZipLayout _parseAnicelZipLayoutFrom({
+  required int length,
+  required Uint8List Function(int offset, int count) readAt,
+}) {
+  if (length < 22) {
+    throw const FormatException('No ZIP end-of-central-directory found.');
+  }
+  // EOCD: scan back over a possible comment (max 64KB + 22).
+  final tailLength = length < 22 + 65535 ? length : 22 + 65535;
+  final tailStart = length - tailLength;
+  final tail = readAt(tailStart, tailLength);
+  final tailData = ByteData.sublistView(tail);
+  var eocd = -1;
+  for (var i = tail.length - 22; i >= 0; i -= 1) {
+    if (tailData.getUint32(i, Endian.little) == _eocdSignature) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) {
+    throw const FormatException('No ZIP end-of-central-directory found.');
+  }
+  final zip64 = _readZip64End(tailData, eocd, tailStart: tailStart);
+  final entryCount =
+      zip64?.entryCount ?? tailData.getUint16(eocd + 10, Endian.little);
+  final centralOffset =
+      zip64?.centralOffset ?? tailData.getUint32(eocd + 16, Endian.little);
+  // With ZIP64 the central directory ends at the ZIP64 record rather
+  // than at the plain EOCD — reading to the EOCD would swallow the
+  // ZIP64 record and locator as if they were another entry.
+  final centralEnd = zip64 == null
+      ? tailStart + eocd
+      : centralOffset + zip64.centralLength;
+  if (centralOffset > centralEnd) {
+    throw const FormatException('Corrupt central directory.');
+  }
+
+  final central = readAt(centralOffset, centralEnd - centralOffset);
+  final data = ByteData.sublistView(central);
+  final entries = <AnicelZipEntry>[];
+  var cursor = 0;
+  for (var i = 0; i < entryCount; i += 1) {
+    final read = _readCentralEntry(
+      (data: data, bytes: central, limit: central.length),
+      cursor,
+      fileLength: length,
+      localHeaderLengths: (localOffset) {
+        final localLengths = ByteData.sublistView(readAt(localOffset + 26, 4));
+        if (localLengths.lengthInBytes < 4) {
+          throw const FormatException('Corrupt central directory.');
+        }
+        return localLengths.getUint16(0, Endian.little) +
+            localLengths.getUint16(2, Endian.little);
+      },
+    );
+    entries.add(read.entry);
+    cursor = read.nextCursor;
+  }
+  return AnicelZipLayout(
+    entries: entries,
+    centralDirectoryOffset: centralOffset,
+  );
 }
 
 /// Torn-tail RECOVERY (R24-D1): an append crash destroys only the tail
