@@ -104,10 +104,13 @@ void main() {
 
   /// ⛔끝없는 축의 규칙을 **각자 적지 않는다** (소스 스캔 래칫).
   test('플립의 착지 규칙은 한 곳이다', () {
-    // The library — host plus the parts it lists — because the flip moved
-    // into the frame verbs collaborator on 2026-09-03 and a scan of the
-    // host alone would have gone quietly empty.
-    final source = librarySource('lib/src/ui/editor_session_manager.dart');
+    // The FRAME VERBS, because the flip moved into that collaborator on
+    // 2026-09-03 and a scan of the host alone would have gone quietly
+    // empty. It was read through the session's library (host plus its
+    // parts) until G0 made the collaborators libraries of their own
+    // (2026-09-06) — at which point that read went quietly empty too, and
+    // said so. The address follows the code; the law does not move.
+    final source = librarySource('lib/src/ui/session/frame_verbs.dart');
     expect(
       source,
       contains('_flipToFrame('),

@@ -218,4 +218,60 @@ void main() {
       expect(session.storyboardSelectedCutIds, const [CutId('cut-1')]);
     });
   });
+
+  /// 🚨[trackId] NAMES THE ROW THE DRAG IS ON, and every test above happened
+  /// to drag on the selected track — so dropping the parameter and always
+  /// reading `selectedTrackId` passed all of them (mutation, 2026-09-06).
+  /// A storyboard shows every track's rail at once: the drag has to land on
+  /// the row the finger is on, not on whichever track was last selected.
+  test(
+    'a drag on a track that is NOT the selected one lands on that track',
+    () {
+      const otherTrackId = TrackId('track-b');
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('two-track-project'),
+          name: 'Two tracks',
+          createdAt: DateTime.utc(2026, 9, 6),
+          tracks: [
+            Track(
+              id: trackId,
+              name: 'A',
+              cuts: [
+                createDefaultCut(
+                  cutId: const CutId('a-1'),
+                  name: 'a-1',
+                  layerId: defaultLayerIdForSequence(1),
+                ),
+              ],
+            ),
+            Track(
+              id: otherTrackId,
+              name: 'B',
+              cuts: [
+                createDefaultCut(
+                  cutId: const CutId('b-1'),
+                  name: 'b-1',
+                  layerId: defaultLayerIdForSequence(2),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+      expect(session.selectedTrackId, trackId, reason: 'A is the selected one');
+
+      final axis = session.axisForTrack(otherTrackId);
+      final onB = axis.entryFor(const CutId('b-1'))!;
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: otherTrackId,
+        anchorGlobalFrame: onB.startFrame,
+        headGlobalFrame: onB.startFrame,
+      );
+
+      expect(session.trackFrameRangeSelection.value!.trackId, otherTrackId);
+      expect(session.storyboardSelectedCutIds, const [CutId('b-1')]);
+    },
+  );
 }

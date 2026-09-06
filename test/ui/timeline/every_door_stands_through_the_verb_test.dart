@@ -54,10 +54,17 @@ void main() {
       if (owners.contains(relative)) {
         continue;
       }
+      // A SESSION COLLABORATOR IS THE SESSION, split by file. It used to be
+      // a `part of` the session library and the skip below said exactly
+      // that; G0 (2026-09-06) made the collaborators libraries that take
+      // the roles they need by constructor. The object graph did not move —
+      // the same drags carry the same calls the verb makes on its own way
+      // down — so the boundary this test draws is unchanged: it is doors
+      // OUTSIDE the session that must stand through the verb.
+      if (relative.startsWith('lib/src/ui/session/')) {
+        continue;
+      }
       final lines = entity.readAsLinesSync();
-      // A `part of` an owner IS the owner — the same library, split by file
-      // (the session's first collaborator, session/frame_range_move_drag.dart,
-      // carries the verb's own calls that used to sit in the session file).
       if (lines.isNotEmpty &&
           lines.first.startsWith('part of ') &&
           owners.any((o) => lines.first.contains(o.split('/').last))) {
