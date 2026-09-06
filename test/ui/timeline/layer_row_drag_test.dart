@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
@@ -14,12 +15,15 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -816,5 +820,78 @@ void main() {
       reason: 'the bar straddles the column boundary, badge or no badge',
     );
     expect(find.text('어태치 해제'), findsOneWidget);
+  });
+
+  testWidgets('A5: the wrapper takes the ONE pin for the row it holds, and '
+      'lets go only of its own', (tester) async {
+    // The row window unmounts what has scrolled past, and an unmounted row
+    // releases the grip mid-gesture (드래그 풀림). The wrapper is one of the
+    // three surfaces that take the pin, and this is the half no source scan
+    // can see: that a real drag reaches HeldRowPin at all.
+    final pin = HeldRowPin();
+    final drag = ValueNotifier<LayerRowDragState?>(null);
+    addTearDown(drag.dispose);
+    final layer = Layer(id: const LayerId('b'), name: 'B', frames: const []);
+    final row = TimelineDisplayRow.layer(layer, layerIndex: 0);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 300,
+              child: layerRowDragWrapper(
+                row: row,
+                dragRows: () => [row],
+                rowExtent: 28,
+                axis: Axis.horizontal,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onRowSelectionSpan: null,
+                pin: pin,
+                child: const SizedBox(
+                  width: 300,
+                  height: 28,
+                  key: ValueKey('pinned-row'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(LayerRowDragTarget), findsOneWidget);
+    expect(pin.held, isNull, reason: 'nothing is held before the press');
+    // A MOUSE: the row drag is a pen/mouse gesture unless the input policy
+    // has been flipped to let touch edit ([AppInput.timelineEditPanDevices]).
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('pinned-row'))),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -42));
+    await tester.pump();
+    expect(
+      pin.held,
+      const LayerRowAddress(LayerId('b')),
+      reason: 'the grip is taken for THIS row, by address',
+    );
+
+    // ⛔RELEASE ONLY IF STILL MINE: another surface letting go of another
+    // row must not unpin the row this drag is holding.
+    pin.release(const LayerRowAddress(LayerId('z')));
+    expect(pin.held, const LayerRowAddress(LayerId('b')));
+
+    await gesture.up();
+    await tester.pump();
+    expect(pin.held, isNull, reason: 'the drag let go of its own row');
   });
 }
