@@ -254,6 +254,14 @@ void main() {
       );
     });
 
+    test('a FOLDER whose parent is missing is reported by the same rule — '
+        'a folder row is a layer row', () {
+      expect(
+        folderStructureProblem([folder('a', parent: 'ghost')]),
+        contains('missing folder'),
+      );
+    });
+
     test('a cyclic parent chain is reported', () {
       expect(
         folderStructureProblem([

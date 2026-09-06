@@ -277,7 +277,7 @@ String? _duplicateFolderProblem(List<Layer> layers) {
   return null;
 }
 
-/// A folder whose parent chain loops, or names a folder that is not there.
+/// A folder whose parent chain loops.
 String? _parentChainProblem(List<Layer> layers) {
   for (final folder in layers.folderLayers) {
     final seen = <LayerId>{folder.id};
@@ -288,14 +288,12 @@ String? _parentChainProblem(List<Layer> layers) {
       }
       parent = layers.folderById(parent.folderId);
     }
-    if (folder.folderId != null && layers.folderById(folder.folderId) == null) {
-      return 'Folder ${folder.id} has a missing parent ${folder.folderId}.';
-    }
   }
   return null;
 }
 
-/// A layer whose folder is not there.
+/// A layer whose folder is not there — a folder row included, since it is
+/// a layer row too ([folderLayers] filters this same list).
 String? _missingFolderProblem(List<Layer> layers) {
   for (final layer in layers) {
     if (layer.folderId != null && layers.folderById(layer.folderId) == null) {
