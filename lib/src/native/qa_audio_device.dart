@@ -382,6 +382,10 @@ int audioDeviceIndexByName(
   required bool capture,
   required String? name,
 }) {
+  // 🧪Mutating this guard away leaves every ANSWER unchanged — the loop
+  // below finds no device named null and returns -1 anyway. It stays as an
+  // early-out: no saved device is the common case, and it skips an FFI
+  // enumeration plus a 256-byte calloc on every open.
   if (name == null) {
     return -1;
   }
