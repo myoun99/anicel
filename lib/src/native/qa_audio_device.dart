@@ -248,32 +248,17 @@ final class QaAudioDevice {
       totalFloats += source.samples.length;
     }
 
-    final clipArray = calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length);
-    final sourceArray = calloc<QaAudioSourceStruct>(
-      sources.isEmpty ? 1 : sources.length,
-    );
+    // The clips' envelopes flatten into one shared key array, exactly as
+    // the mixer FFI does (the C copies it beside the PCM) — one scope
+    // builds that whole layout for both paths.
+    final arrays = QaAudioScheduleArrays(clips, sources);
     final pcm = calloc<Float>(totalFloats <= 0 ? 1 : totalFloats);
     final offsetArray = calloc<Int64>(offsets.isEmpty ? 1 : offsets.length);
-    // The clips' envelopes flatten into one shared key array, exactly as
-    // the mixer FFI does (the C copies it beside the PCM).
-    final envelopeTotal = qaAudioEnvelopeTotal(clips);
-    final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
-      envelopeTotal <= 0 ? 1 : envelopeTotal,
-    );
     try {
-      qaAudioWriteClips(
-        clips: clips,
-        clipArray: clipArray,
-        envelopeArray: envelopeArray,
-      );
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
-        final target = sourceArray[index];
-        target.sourceStart = source.sourceStart;
-        target.length = source.length;
-        target.channels = source.channels;
-        target.reserved = 0;
-        target.samples = nullptr; // repointed at the C copy
+        // repointed at the C copy
+        arrays.writeSource(index, source, nullptr);
         offsetArray[index] = offsets[index];
         if (source.samples.isNotEmpty) {
           pcm
@@ -286,23 +271,21 @@ final class QaAudioDevice {
         }
       }
       return _setSchedule(
-            clipArray,
+            arrays.clipArray,
             clips.length,
-            sourceArray,
+            arrays.sourceArray,
             sources.length,
             pcm,
             totalFloats,
             offsetArray,
-            envelopeArray,
-            envelopeTotal,
+            arrays.envelopeArray,
+            arrays.envelopeTotal,
           ) !=
           0;
     } finally {
-      calloc.free(envelopeArray);
       calloc.free(offsetArray);
       calloc.free(pcm);
-      calloc.free(sourceArray);
-      calloc.free(clipArray);
+      arrays.free();
     }
   }
 
