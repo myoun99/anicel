@@ -42,6 +42,13 @@ abstract class LinkRegistrySnapshotCommand implements Command {
 
   /// Takes the registry as it stands now, unless a previous execute
   /// already took it.
+  ///
+  /// 🧪MUTATION: turning `??=` into `=` survives every test today, and is
+  /// EQUIVALENT for the four current subclasses — undo restores the
+  /// registry to the snapshot, so a redo's second read finds the same
+  /// value. It stops being equivalent the moment a subclass executes
+  /// twice without an undo between, which is why the rule is stated here
+  /// rather than left to each subclass to rediscover.
   @protected
   void snapshotRegistry(Project project) {
     _registryBefore ??= project.linkRegistry;
