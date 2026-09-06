@@ -65,6 +65,15 @@ class BitmapSurface {
   /// Puts MANY tiles in one map rebuild — [putTile] copies the whole
   /// tile map per call, which is O(n²) across a full-canvas commit's n
   /// tiles (417ms of an 8000² fill was exactly this).
+  /// The end of a copy-on-write pass: the surface with [rebuilt] put back,
+  /// or THIS VERY SURFACE when the pass wrote nothing.
+  ///
+  /// Handing the same object back is the structural-sharing half of the
+  /// rewrite — callers test it with `identical`, and every tile the pass
+  /// did not touch keeps its identity either way.
+  BitmapSurface withRebuiltTiles(Map<TileCoord, BitmapTile> rebuilt) =>
+      rebuilt.isEmpty ? this : putTiles(rebuilt.values);
+
   BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     for (final tile in tilesToPut) {

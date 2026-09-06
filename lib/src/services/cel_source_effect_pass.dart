@@ -26,6 +26,7 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/bitmap_tile_rewrite.dart';
 import '../models/layer_effect.dart';
 import '../models/tile_coord.dart';
 
@@ -290,32 +291,36 @@ BitmapSurface celSurfaceWithSourceEffects(
   if (keys.isEmpty) {
     return surface;
   }
+  // Once per call, not once per tile: the same values reach every tile in
+  // the surface, and rebuilding this list per tile allocated a list per
+  // tile per frame while a slider was moving.
   final signature = [for (final key in keys) ...key.signature];
-  final cached = _derived[surface];
-  if (cached != null && listEquals(cached.signature, signature)) {
-    return cached.surface;
+  final cached = _signedHit(_derived, surface, signature);
+  if (cached != null) {
+    return cached;
   }
-  final result = _applyKeys(surface, keys);
+  final result = _applyKeys(surface, keys, signature);
   // ONE entry per surface, deliberately. Dragging Tolerance makes a new
   // signature every frame, and holding them all would retain a derived copy
   // of the cel per slider step; the value being dragged is the only one
   // anyone is looking at.
-  _derived[surface] = _DerivedSurface(signature, result);
+  _derived[surface] = _Signed(signature, result);
   return result;
 }
 
-BitmapSurface _applyKeys(BitmapSurface surface, List<CelColorKey> keys) {
+BitmapSurface _applyKeys(
+  BitmapSurface surface,
+  List<CelColorKey> keys,
+  List<double> signature,
+) {
   final rebuilt = <TileCoord, BitmapTile>{};
   for (final entry in surface.tiles.entries) {
-    final keyed = _keyedTile(entry.value, keys, surface.tileSize);
+    final keyed = _keyedTile(entry.value, keys, signature, surface.tileSize);
     if (!identical(keyed, entry.value)) {
       rebuilt[entry.key] = keyed;
     }
   }
-  if (rebuilt.isEmpty) {
-    return surface;
-  }
-  return surface.putTiles(rebuilt.values);
+  return surface.withRebuiltTiles(rebuilt);
 }
 
 /// 🚨THE CACHE IS PER TILE, NOT PER SURFACE, and that is what makes the CPU
@@ -328,75 +333,83 @@ BitmapSurface _applyKeys(BitmapSurface surface, List<CelColorKey> keys) {
 /// object — cache here and the stroke re-keys one tile while the rest of
 /// the cel answers from memory. Same reasoning, same [Expando] shape, as
 /// `BitmapTileImageCache`.
-BitmapTile _keyedTile(BitmapTile tile, List<CelColorKey> keys, int tileSize) {
-  final signature = [for (final key in keys) ...key.signature];
-  final cached = _keyedTiles[tile];
-  if (cached != null && listEquals(cached.signature, signature)) {
-    return cached.tile;
+BitmapTile _keyedTile(
+  BitmapTile tile,
+  List<CelColorKey> keys,
+  List<double> signature,
+  int tileSize,
+) {
+  final cached = _signedHit(_keyedTiles, tile, signature);
+  if (cached != null) {
+    return cached;
   }
-  // Reads come from the tile's own bytes, writes go to a copy made LAZILY
-  // at the first pixel that actually moves — a tile the key does not touch
-  // keeps its ORIGINAL object, which is what lets the surface share it and
-  // the tile image cache keep the image already decoded for it.
   final pixelCount = tileSize * tileSize;
-  final written = tile.readPixels<Uint8List?>((_, view) {
-    Uint8List? out;
-    for (var pixel = 0; pixel < pixelCount; pixel += 1) {
-      final offset = pixel * 4;
-      final alpha = view[offset + 3];
-      if (alpha == 0) {
-        continue;
-      }
-      final red = view[offset];
-      final green = view[offset + 1];
-      final blue = view[offset + 2];
-      var next = alpha;
-      for (final key in keys) {
-        next = key.alphaFor(red, green, blue, next);
-        if (next == 0) {
-          break;
+  final keyed =
+      rewriteTileLazily(tile, tileSize, (view) {
+        Uint8List? out;
+        for (var pixel = 0; pixel < pixelCount; pixel += 1) {
+          final offset = pixel * 4;
+          final alpha = view[offset + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          final red = view[offset];
+          final green = view[offset + 1];
+          final blue = view[offset + 2];
+          var next = alpha;
+          for (final key in keys) {
+            next = key.alphaFor(red, green, blue, next);
+            if (next == 0) {
+              break;
+            }
+          }
+          if (next == alpha) {
+            continue;
+          }
+          out ??= Uint8List.fromList(view);
+          out[offset + 3] = next;
         }
-      }
-      if (next == alpha) {
-        continue;
-      }
-      out ??= Uint8List.fromList(view);
-      out[offset + 3] = next;
-    }
-    return out;
-  });
-  final keyed = written == null
-      ? tile
-      : BitmapTile(coord: tile.coord, size: tileSize, pixels: written);
-  _keyedTiles[tile] = _KeyedTile(signature, keyed);
+        return out;
+      }) ??
+      tile;
+  _keyedTiles[tile] = _Signed(signature, keyed);
   return keyed;
 }
 
-class _KeyedTile {
-  const _KeyedTile(this.signature, this.tile);
+/// A memo entry: what was derived, plus the VALUES it was derived from.
+///
+/// ⛔Values, not a hash — see [CelColorKey.signature]. The two grains
+/// (surface and tile) differ only in what `T` is, so they are one class.
+class _Signed<T> {
+  const _Signed(this.signature, this.value);
 
   final List<double> signature;
-  final BitmapTile tile;
+  final T value;
+}
+
+/// The memo's one lookup: an entry keyed on [key]'s identity counts only
+/// while its signature still says the same thing.
+T? _signedHit<T>(
+  Expando<_Signed<T>> memo,
+  Object key,
+  List<double> signature,
+) {
+  final cached = memo[key];
+  return cached != null && listEquals(cached.signature, signature)
+      ? cached.value
+      : null;
 }
 
 /// One keyed tile per source tile — the newest values win, for the reason
 /// [_derived] states about a slider being dragged.
-final Expando<_KeyedTile> _keyedTiles = Expando<_KeyedTile>(
+final Expando<_Signed<BitmapTile>> _keyedTiles = Expando<_Signed<BitmapTile>>(
   'celSourceEffectTiles',
 );
-
-class _DerivedSurface {
-  const _DerivedSurface(this.signature, this.surface);
-
-  final List<double> signature;
-  final BitmapSurface surface;
-}
 
 /// Derived render data keyed on the SOURCE surface's identity. Surfaces are
 /// immutable, so identity is a stable key and an edited cel is a different
 /// object that misses and recomputes — the same contract
 /// `BitmapTileImageCache` runs on. The [Expando] releases an entry when the
 /// source surface itself goes.
-final Expando<_DerivedSurface> _derived = Expando<_DerivedSurface>(
-  'celSourceEffectSurfaces',
-);
+final Expando<_Signed<BitmapSurface>> _derived =
+    Expando<_Signed<BitmapSurface>>('celSourceEffectSurfaces');
