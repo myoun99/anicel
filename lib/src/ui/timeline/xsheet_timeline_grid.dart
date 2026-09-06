@@ -13,7 +13,7 @@ import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'rail_column_swipe.dart';
 import 'layer_rail_window.dart';
-import 'package:flutter/semantics.dart' show SemanticsProperties;
+import 'frame_window_semantics.dart';
 
 import 'timeline_grid_range_callbacks.dart';
 import 'timeline_scroll_offset_sync.dart';
@@ -1451,27 +1451,14 @@ class XSheetFrameRailPainter extends CustomPainter {
       // whole rail on every rebuild.
       oldDelegate.colorScheme != colorScheme;
 
+  // Every row gets a node — the rail numbers every frame.
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) {
-    final nodes = <CustomPainterSemantics>[];
-    final window = visibleRowWindow();
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      nodes.add(
-        CustomPainterSemantics(
-          rect: rowRectFor(frameIndex),
-          properties: SemanticsProperties(
-            label: 'frame ${frameIndex + 1}',
-            textDirection: TextDirection.ltr,
-          ),
-        ),
+  SemanticsBuilderCallback get semanticsBuilder => (size) =>
+      frameWindowSemantics(
+        window: visibleRowWindow(),
+        rectFor: rowRectFor,
+        labelFor: (frameIndex) => 'frame ${frameIndex + 1}',
       );
-    }
-    return nodes;
-  };
 }
 
 /// One cell of the section band above the layer headers: the paper sheet's

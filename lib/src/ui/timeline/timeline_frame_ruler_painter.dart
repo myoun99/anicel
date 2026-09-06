@@ -1,7 +1,7 @@
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart' show SemanticsProperties;
+import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
@@ -310,31 +310,15 @@ class TimelineFrameRulerPainter extends CustomPainter {
       // identity check re-recorded this whole strip on every rebuild.
       oldDelegate.colorScheme != colorScheme;
 
+  // One node per labeled header (the old per-cell widgets' surface),
+  // windowed with the paint pass.
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) {
-    // One node per labeled header (the old per-cell widgets' surface),
-    // windowed with the paint pass.
-    final nodes = <CustomPainterSemantics>[];
-    final window = visibleHeaderWindow();
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      final model = headerModelAt(frameIndex);
-      if (model.label.isEmpty) {
-        continue;
-      }
-      nodes.add(
-        CustomPainterSemantics(
-          rect: headerRectFor(frameIndex),
-          properties: SemanticsProperties(
-            label: 'frame ${frameIndex + 1}',
-            textDirection: TextDirection.ltr,
-          ),
-        ),
+  SemanticsBuilderCallback get semanticsBuilder => (size) =>
+      frameWindowSemantics(
+        window: visibleHeaderWindow(),
+        rectFor: headerRectFor,
+        labelFor: (frameIndex) => headerModelAt(frameIndex).label.isEmpty
+            ? null
+            : 'frame ${frameIndex + 1}',
       );
-    }
-    return nodes;
-  };
 }

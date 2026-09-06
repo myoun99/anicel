@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart' show SemanticsProperties;
+import 'frame_window_semantics.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -1009,35 +1009,17 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.rowGround != rowGround ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 
+  // One semantics node per NON-EMPTY cell (labels only where content
+  // exists), windowed with the paint pass — the per-cell widget tree
+  // used to emit these; the painted rows keep the a11y surface without
+  // the widget cost.
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) {
-    // One semantics node per NON-EMPTY cell (labels only where content
-    // exists), windowed with the paint pass — the per-cell widget tree
-    // used to emit these; the painted rows keep the a11y surface without
-    // the widget cost.
-    final nodes = <CustomPainterSemantics>[];
-    final window = visibleFrameWindow();
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      final label = cellModelAt(frameIndex).semanticsLabel;
-      if (label == null) {
-        continue;
-      }
-      nodes.add(
-        CustomPainterSemantics(
-          rect: cellRectFor(frameIndex),
-          properties: SemanticsProperties(
-            label: label,
-            textDirection: TextDirection.ltr,
-          ),
-        ),
+  SemanticsBuilderCallback get semanticsBuilder =>
+      (size) => frameWindowSemantics(
+        window: visibleFrameWindow(),
+        rectFor: cellRectFor,
+        labelFor: (frameIndex) => cellModelAt(frameIndex).semanticsLabel,
       );
-    }
-    return nodes;
-  };
 }
 
 /// The painted cell strip + its row-level interaction, shared by the
