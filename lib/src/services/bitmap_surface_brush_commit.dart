@@ -239,6 +239,14 @@ void _blendStampDab({
     return;
   }
 
+  // One blitter per dab: the stamp's bytes, its opacity and its erase
+  // flag do not change between spans, so they are resolved before the
+  // row loop and never re-read inside it.
+  final blitter = BrushStampBlitter(
+    rgba: rgba,
+    dabOpacity: dabOpacity,
+    erase: erase,
+  );
   final (firstX: tileXStart, lastX: tileXEnd, firstY: _, lastY: _) = clip
       .tileRange(tileSize: tileSize);
   for (var y = top; y < bottomExclusive; y += 1) {
@@ -253,14 +261,11 @@ void _blendStampDab({
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
 
       final buffer = scratch.bufferFor(coord);
-      if (blendStampSpanInPlace(
+      if (blitter.blendSpanInPlace(
         buffer,
         (localRowOffset + (spanLeft - tileLeft)) * BitmapTile.bytesPerPixel,
-        rgba,
         (stampRowOffset + (spanLeft - stampLeft)) * 4,
         spanRightExclusive - spanLeft,
-        dabOpacity: dabOpacity,
-        erase: erase,
       )) {
         changedCoords.add(coord);
       }

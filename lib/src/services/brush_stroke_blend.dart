@@ -248,7 +248,7 @@ int _clampByte(double value) {
 /// mode. So the overlay stops handing the GPU anything to blend: this
 /// runs the SAME per-pixel math the commit runs — [blendStrokeRegionPixels]
 /// for the kernel modes, and for color/erase the stamp blitter ITSELF
-/// ([blendStampSpanInPlace]) at opacity 1, because that landing IS one
+/// ([BrushStampBlitter]) at opacity 1, because that landing IS one
 /// stamp of the stroke buffer (see
 /// `compositeStrokePixelsOntoBitmapSurface`).
 /// The result draws as a plain REPLACEMENT tile, so pen-up cannot move a
@@ -300,15 +300,11 @@ Uint8List preBlendStrokeOverlayPixels({
     // live rasterizer diffs the result against `dst` to decide whether
     // the tile moved), so a copy of `dst` is what it blends into.
     final result = Uint8List.fromList(dst);
-    blendStampSpanInPlace(
-      result,
-      0,
-      src,
-      0,
-      pixelCount,
+    BrushStampBlitter(
+      rgba: src,
       dabOpacity: 1.0,
       erase: stampErase,
-    );
+    ).blendSpanInPlace(result, 0, 0, pixelCount);
     return result;
   }
   final result = blendStrokeRegionPixels(
