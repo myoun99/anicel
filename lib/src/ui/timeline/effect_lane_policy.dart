@@ -1,4 +1,3 @@
-import 'lane_span_in_order.dart';
 import 'dart:ui' show Offset;
 
 import '../../models/layer_effect.dart';
@@ -126,63 +125,21 @@ List<PropertyLaneRow> effectPropertyLanes(
   return rows;
 }
 
-/// The display order of ONE effect's lanes — the lane-row span (R26 #3)
-/// resolves anchor→head against this, so a multi-lane range move can grab a
-/// whole effect but never reach across two effects.
+/// The display order of ONE effect's member lanes — the order the rail
+/// draws them under the effect's group header.
+///
+/// 🪦`effectLaneSelectionOrder` (header first, then these) and
+/// `effectLaneSpan` (a span sliced out of it, effect-scoped) are gone: the
+/// span is sliced out of the rows the rail ACTUALLY DREW
+/// (`laneSpanOverDrawnRows`), which carry the header as a row like any
+/// other. R9 #20 stands, restated: the header used to sit outside the
+/// order and be handled by a branch, so a drag from the header to the
+/// SECOND parameter selected every parameter — selection did something
+/// other than what the drag drew.
 List<String> effectLaneDisplayOrder(LayerEffect effect) => [
   for (final spec in effectParametersOf(effect.kind))
     effectLaneId(effect.id, spec.id),
 ];
-
-/// The rows as SELECTION sees them: the group header is the first of them
-/// (R9 #20, the transform group's rule). It used to sit outside the order
-/// and be handled by a branch, so a drag from the header to the SECOND
-/// parameter selected every parameter — selection did something other than
-/// what the drag drew.
-List<String> effectLaneSelectionOrder(LayerEffect effect) => [
-  effectGroupLaneId(effect.id),
-  ...effectLaneDisplayOrder(effect),
-];
-
-/// The display-ordered lane span from [anchorLaneId] to [headLaneId] within
-/// ONE effect (R26 #3's Excel span rule, effect-scoped); null when neither
-/// endpoint is an effect lane, so the caller falls through to
-/// [transformLaneSpan].
-///
-/// The group HEADER is a row in the span like any other (R9 #20).
-/// Endpoints in DIFFERENT effects collapse to the anchor alone: a rigid
-/// multi-lane move across two effects has no meaning the model can honour
-/// all-or-nothing.
-List<String>? effectLaneSpan(
-  List<LayerEffect> effects,
-  String anchorLaneId,
-  String headLaneId,
-) {
-  final anchor = parseEffectLaneId(anchorLaneId);
-  final head = parseEffectLaneId(headLaneId);
-  if (anchor == null && head == null) {
-    return null;
-  }
-  final effectId = anchor?.effectId ?? head!.effectId;
-  LayerEffect? owner;
-  for (final effect in effects) {
-    if (effect.id == effectId) {
-      owner = effect;
-      break;
-    }
-  }
-  if (owner == null) {
-    return [anchorLaneId];
-  }
-  if (head == null || head.effectId != effectId) {
-    return [anchorLaneId];
-  }
-  return laneSpanInOrder(
-    effectLaneSelectionOrder(owner),
-    anchorLaneId,
-    headLaneId,
-  );
-}
 
 /// Whether a lane selection covering [spanLaneIds] should wash an effect's
 /// GROUP HEADER row — the header's counterpart of the transform group's

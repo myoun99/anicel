@@ -1,5 +1,6 @@
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
+import 'lane_span_in_order.dart';
 import 'property_lane_model.dart';
 
 /// The row [rowDelta] display rows from [sourceLayerId]'s CELLS row,
@@ -256,23 +257,24 @@ List<String> laneSpanOverDrawnRows({
   required String laneId,
   required String headLaneId,
 }) {
-  final anchor = rows.indexOf(LaneRowAddress(layerId, laneId));
-  final head = rows.indexOf(LaneRowAddress(layerId, headLaneId));
-  if (anchor < 0 || head < 0) {
+  final run = inclusiveRunBetween(
+    rows,
+    LaneRowAddress(layerId, laneId),
+    LaneRowAddress(layerId, headLaneId),
+  );
+  if (run == null) {
     // One end is not on screen — a span cannot be honestly named, so the
     // press keeps only itself. (The same answer the family walks gave when
     // an id was missing from their order.)
     return [laneId];
   }
-  final low = anchor < head ? anchor : head;
-  final high = anchor < head ? head : anchor;
   return [
-    for (var i = low; i <= high; i += 1)
+    for (final row in run)
       // ⚠️THE OWNER IS CHECKED. A rail can draw two layers at once, and a
       // lane id is only unique WITHIN a layer — without this, another
       // layer's `scale` between the two ends joined the span as a second
       // `scale` and the selection carried a row nobody swept (measured).
-      if (rows[i] case LaneRowAddress(
+      if (row case LaneRowAddress(
         :final laneId,
         layerId: final owner,
       ) when owner == layerId)

@@ -2,11 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart'
     show TimelineLaneSelection;
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 /// The effect lanes' side of the shared lane substrate (R6): the addresses,
@@ -143,56 +145,50 @@ void main() {
     });
   });
 
-  group('the lane span (R26 #3)', () {
+  group('the lane span (R26 #3) — sliced out of the rows the rail DREW', () {
+    const layerId = LayerId('l');
+    final header = effectGroupLaneId(const EffectId('e2'));
+    final order = effectLaneDisplayOrder(hue());
+    // The rail's rows for one layer with its hue effect twirled open:
+    // the cells row, the effect's header, then its members in order.
+    final rows = <TimelineRowAddress?>[
+      const LayerRowAddress(layerId),
+      LaneRowAddress(layerId, header),
+      for (final laneId in order) LaneRowAddress(layerId, laneId),
+    ];
+    List<String> span(String anchor, String head) => laneSpanOverDrawnRows(
+      rows: rows,
+      layerId: layerId,
+      laneId: anchor,
+      headLaneId: head,
+    );
+
     test('R9 #20: the header is a ROW in the span — header to the LAST '
         'parameter still covers the whole effect, by the range rule', () {
-      final effects = [hue()];
-      final header = effectGroupLaneId(const EffectId('e2'));
-      final order = effectLaneDisplayOrder(effects.single);
-
+      expect(span(header, order.last), [header, ...order]);
       expect(
-        effectLaneSpan(effects, header, order.last),
-        effectLaneSelectionOrder(effects.single),
-      );
-      expect(
-        effectLaneSpan(effects, header, order.first),
+        span(header, order.first),
         [header, order.first],
         reason: 'a drag over two rows selects two rows',
       );
       expect(
-        effectLaneSpan(effects, header, 'x'),
+        span(header, 'x'),
         [header],
         reason: 'an unknown head leaves the anchor alone',
       );
     });
 
     test('two parameter lanes select the range between them', () {
-      final effects = [hue()];
-      final span = effectLaneSpan(
-        effects,
-        effectLaneId(const EffectId('e2'), 'hue'),
-        effectLaneId(const EffectId('e2'), 'saturation'),
-      );
-      expect(span, [
-        effectLaneId(const EffectId('e2'), 'hue'),
-        effectLaneId(const EffectId('e2'), 'saturation'),
-      ]);
-    });
-
-    test('endpoints in DIFFERENT effects collapse to the anchor alone', () {
-      final effects = [blur(id: 'a'), blur(id: 'b')];
       expect(
-        effectLaneSpan(
-          effects,
-          effectLaneId(const EffectId('a'), 'blurX'),
-          effectLaneId(const EffectId('b'), 'blurX'),
+        span(
+          effectLaneId(const EffectId('e2'), 'hue'),
+          effectLaneId(const EffectId('e2'), 'saturation'),
         ),
-        [effectLaneId(const EffectId('a'), 'blurX')],
+        [
+          effectLaneId(const EffectId('e2'), 'hue'),
+          effectLaneId(const EffectId('e2'), 'saturation'),
+        ],
       );
-    });
-
-    test('a transform lane pair answers null so the caller falls through', () {
-      expect(effectLaneSpan([blur()], 'position', 'scale'), isNull);
     });
 
     test('R9 #20: the header washes when IT is in the span, like every '
@@ -200,7 +196,7 @@ void main() {
       const layerId = LayerId('l');
       final header = effectGroupLaneId(const EffectId('e2'));
       final members = effectLaneDisplayOrder(hue());
-      final withHeader = effectLaneSelectionOrder(hue());
+      final withHeader = [header, ...members];
 
       expect(effectGroupHeaderCovered(header, withHeader), isTrue);
       expect(

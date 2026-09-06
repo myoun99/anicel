@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/color/color_hex.dart';
 import 'package:anicel/src/ui/text/byte_size_label.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/lane_span_in_order.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 
 /// The pure laws under `ui/` that no test named — each replaced two or
@@ -86,27 +89,45 @@ void main() {
     });
   });
 
-  group('the lane span a drag names', () {
+  group('the inclusive run a drag names', () {
     const order = ['a', 'b', 'c', 'd'];
 
     test('a forward drag is the inclusive run in DISPLAY order', () {
-      expect(laneSpanInOrder(order, 'b', 'd'), ['b', 'c', 'd']);
+      expect(inclusiveRunBetween(order, 'b', 'd'), ['b', 'c', 'd']);
     });
 
     test('a BACKWARD drag is the same run — display order, however the '
         'drag ran', () {
-      expect(laneSpanInOrder(order, 'd', 'b'), ['b', 'c', 'd']);
+      expect(inclusiveRunBetween(order, 'd', 'b'), ['b', 'c', 'd']);
     });
 
-    test('anchor and head on the same lane is that lane alone', () {
-      expect(laneSpanInOrder(order, 'c', 'c'), ['c']);
+    test('anchor and head on the same item is that item alone', () {
+      expect(inclusiveRunBetween(order, 'c', 'c'), ['c']);
     });
 
-    test('⛔an id OUTSIDE the order keeps only the ANCHOR — a span cannot '
-        'be honestly named when one end is not on the list', () {
-      expect(laneSpanInOrder(order, 'b', 'zzz'), ['b']);
-      expect(laneSpanInOrder(order, 'zzz', 'b'), ['zzz']);
-      expect(laneSpanInOrder(const [], 'b', 'c'), ['b']);
+    test('⛔an id OUTSIDE the order has no run — a span cannot be honestly '
+        'named when one end is not on the list, and the callers keep the '
+        'ANCHOR alone', () {
+      expect(inclusiveRunBetween(order, 'b', 'zzz'), isNull);
+      expect(inclusiveRunBetween(order, 'zzz', 'b'), isNull);
+      expect(inclusiveRunBetween(const <String>[], 'b', 'c'), isNull);
+      expect(transformLaneSpan('se-audio', 'position'), ['se-audio']);
+    });
+
+    test('the same slice over any list — drawn row addresses included', () {
+      const rows = [
+        LayerRowAddress(LayerId('l')),
+        LaneRowAddress(LayerId('l'), 'position'),
+        LaneRowAddress(LayerId('l'), 'scale'),
+      ];
+      expect(
+        inclusiveRunBetween(
+          rows,
+          const LaneRowAddress(LayerId('l'), 'scale'),
+          const LayerRowAddress(LayerId('l')),
+        ),
+        rows,
+      );
     });
   });
 

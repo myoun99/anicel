@@ -235,7 +235,8 @@ List<String> get transformLaneSelectionOrder => [
 /// within one layer's lane group). Ids outside the canonical order fall
 /// back to the anchor lane alone.
 List<String> transformLaneSpan(String anchorLaneId, String headLaneId) =>
-    laneSpanInOrder(transformLaneSelectionOrder, anchorLaneId, headLaneId);
+    inclusiveRunBetween(transformLaneSelectionOrder, anchorLaneId, headLaneId) ??
+    [anchorLaneId];
 
 /// Whether the lane selection covers [laneId]'s BAND ROW on [layerId]
 /// (R26 #3) — member lanes read the span directly; the group HEADER row
