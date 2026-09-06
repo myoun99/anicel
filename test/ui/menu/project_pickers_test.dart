@@ -39,12 +39,19 @@ void main() {
     }
   });
 
+  /// What the last file pick was told to accept — the argument
+  /// `pickProjectFile`'s two callers differ by.
+  List<XTypeGroup>? lastAcceptedTypeGroups;
+
   void installFilePicker(List<FolderGrant> answer) {
     FolderPicker.debugFilePicker =
         ({
           required List<XTypeGroup> acceptedTypeGroups,
           required bool allowMultiple,
-        }) async => answer;
+        }) async {
+          lastAcceptedTypeGroups = acceptedTypeGroups;
+          return answer;
+        };
   }
 
   /// Runs [action] from inside a real Navigator + ScaffoldMessenger, which
@@ -90,6 +97,11 @@ void main() {
       // The bookmark is what makes a recent-projects entry outlive a
       // relaunch. Dropping it here would be invisible until the next launch.
       expect(pick?.folderBookmark, 'BOOK==');
+      // ⛔An OPEN pick PLACED NOTHING. `placed: true` means the picker has
+      // already written the project where the user pointed, and the caller
+      // adopts it instead of saving over it — say that here and an open
+      // would skip the write that puts the project on disk.
+      expect(pick?.placed, isFalse);
       // Nothing asks WHICH project any more — there is no folder to look in.
       expect(
         find.byKey(const ValueKey<String>('project-chooser-dialog')),
@@ -100,6 +112,51 @@ void main() {
     testWidgets('cancelling opens nothing', (tester) async {
       installFilePicker(const [FolderGrant.cancelled()]);
       expect(await runFlow(tester, pickProjectToOpen), isNull);
+    });
+
+    testWidgets('🚨the open ACCEPTS .tvpp too — 유저 2026-08-29: one entry, '
+        'the Open button', (tester) async {
+      installFilePicker(const [
+        FolderGrant.granted(
+          path: '/work/C-045/scene.tvpp',
+          bookmark: 'BOOK==',
+          kind: GrantKind.file,
+        ),
+      ]);
+
+      final pick = await runFlow(tester, pickProjectToOpen);
+
+      expect(pick?.path, '/work/C-045/scene.tvpp');
+      // What the open ACCEPTS, not what the dialog SHOWS: the picker is
+      // never filtered, so this is the only place the two extensions are
+      // a fact.
+      expect(
+        lastAcceptedTypeGroups,
+        isEmpty,
+        reason: '🚨NO TYPE FILTER — the dialog shows everything',
+      );
+    });
+
+    testWidgets('the pick is one door with two bound constants: a caller '
+        'that accepts only .anicel REFUSES a .tvpp', (tester) async {
+      // The reconnect flow is that caller. It must not inherit the open's
+      // .tvpp — a recents row points at a project, not at a TVPaint file
+      // that would have to be converted again.
+      installFilePicker(const [
+        FolderGrant.granted(
+          path: '/work/C-045/scene.tvpp',
+          bookmark: 'BOOK==',
+          kind: GrantKind.file,
+        ),
+      ]);
+
+      final pick = await runFlow(
+        tester,
+        (context) =>
+            pickProjectFile(context, supportedExtensions: const ['anicel']),
+      );
+
+      expect(pick, isNull);
     });
 
     testWidgets('a location with no filesystem path is explained', (
