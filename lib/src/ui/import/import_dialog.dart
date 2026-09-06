@@ -571,7 +571,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return _expandPsd(widget.session, path, settings, tally.warnings);
     }
     if (kind == MediaAssetKind.pdf) {
-      return widget.session.importPdfFile(
+      return widget.session.importDoors.importPdfFile(
         path: path,
         destination: settings.into,
         rasterize: bake,
@@ -589,7 +589,7 @@ class _ImportDialogState extends State<ImportDialog> {
         onPageRenderFailed: failedPages.add,
       );
     }
-    return widget.session.importImageFile(
+    return widget.session.importDoors.importImageFile(
       path: path,
       destination: settings.into,
       rasterize: bake,
@@ -646,7 +646,7 @@ class _ImportDialogState extends State<ImportDialog> {
     ImportFileSettings settings,
     List<String> warnings,
   ) async {
-    final expanded = await session.importPsdExpanded(
+    final expanded = await session.importDoors.importPsdExpanded(
       path: path,
       destination: settings.into,
       fit: settings.fit,

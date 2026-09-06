@@ -74,7 +74,7 @@ void main() {
 
     final imported = await tester.runAsync(() async {
       final path = await writePng('bg.png');
-      return s.importImageFile(
+      return s.importDoors.importImageFile(
         path: path,
         destination: ImportDestination.newCut,
         lengthFrames: 12,
@@ -144,7 +144,7 @@ void main() {
 
     final imported = await tester.runAsync(() async {
       final path = await writePng('ref.png', seed: 0xFF22AA44);
-      return s.importImageFile(
+      return s.importDoors.importImageFile(
         path: path,
         destination: ImportDestination.activeCutLayer,
         rasterize: true,
@@ -178,7 +178,7 @@ void main() {
     addTearDown(s.dispose);
     await tester.runAsync(() async {
       final path = await writePng('paper.png');
-      await s.importImageFile(
+      await s.importDoors.importImageFile(
         path: path,
         destination: ImportDestination.activeCutLayer,
         copyIntoProject: false,
@@ -345,7 +345,7 @@ void main() {
     final imported = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return s.importPdfFile(
+      return s.importDoors.importPdfFile(
         path: file.path,
         destination: ImportDestination.newCut,
         onRenderProgress: (done, total) => progress.add((done, total)),
@@ -406,7 +406,7 @@ void main() {
     final imported = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}page.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return s.importPdfFile(
+      return s.importDoors.importPdfFile(
         path: file.path,
         destination: ImportDestination.activeCutLayer,
         rasterize: true,
@@ -437,7 +437,7 @@ void main() {
     final imported = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}none.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return s.importPdfFile(
+      return s.importDoors.importPdfFile(
         path: file.path,
         destination: ImportDestination.newCut,
         copyIntoProject: false,

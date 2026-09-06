@@ -229,3 +229,15 @@ Set<String> projectArchivedMediaPaths(Project project) => {
   for (final asset in project.mediaAssets)
     if (asset.carried) asset.path,
 };
+
+/// Every layer id the project already holds, as raw strings.
+///
+/// The set a MINT is checked against: a counter alone cannot answer
+/// "is this id free?", because the project can arrive from disk holding
+/// ids the counter never issued. One walk, handed to a caller minting
+/// many ids so it does not re-walk per id.
+Set<String> projectLayerIdValues(Project project) => {
+  for (final track in project.tracks)
+    for (final cut in track.cuts)
+      for (final layer in cut.layers) layer.id.value,
+};

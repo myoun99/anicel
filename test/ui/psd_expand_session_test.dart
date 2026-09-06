@@ -92,7 +92,7 @@ void main() {
 
     final warnings = await tester.runAsync(() async {
       final path = await writePsd();
-      return s.importPsdExpanded(
+      return s.importDoors.importPsdExpanded(
         path: path,
         destination: ImportDestination.activeCutLayer,
       );
@@ -152,7 +152,7 @@ void main() {
       );
       final file = File('${tempDir.path}${Platform.pathSeparator}flat.psd');
       await file.writeAsBytes(bytes);
-      return s.importPsdExpanded(
+      return s.importDoors.importPsdExpanded(
         path: file.path,
         destination: ImportDestination.activeCutLayer,
       );
@@ -170,7 +170,7 @@ void main() {
 
     await tester.runAsync(() async {
       final path = await writePsd();
-      return s.importPsdExpanded(
+      return s.importDoors.importPsdExpanded(
         path: path,
         destination: ImportDestination.newCut,
       );

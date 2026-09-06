@@ -2,12 +2,11 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:ui' as ui show ImageByteFormat;
 
 import 'package:flutter/foundation.dart';
 
 import '../services/editing/default_cut_helpers.dart'
-    show createDefaultCut, defaultCutCanvasSize, importedCut;
+    show defaultCutCanvasSize;
 import '../services/editing/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvpp_convert.dart';
@@ -22,16 +21,15 @@ import '../services/persistence/anicel_incremental_writer.dart'
 import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
-import '../services/import/psd_expand_import.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
-import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
     show
         cutLocationOrNull,
         projectArchivedMediaPaths,
         projectAudioSourcePaths,
+        projectLayerIdValues,
         requireLayerAnywhere;
 import '../models/app_language.dart';
 // The six settings stores are injected THROUGH this class into
@@ -199,6 +197,8 @@ import 'timeline/timeline_instruction_row_visual.dart'
 import 'timeline/timeline_drag_preview.dart';
 import 'session/session_roles.dart';
 import 'session/media_fingerprint_ledger.dart';
+import 'session/import_landing.dart';
+import 'session/project_import_doors.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -764,14 +764,15 @@ class EditorSessionManager extends ChangeNotifier
   /// duplicate key is what a duplicate id looks like downstream.
   ///
   /// So the project has the last word, exactly as it already does for
-  /// imported cut ids ([_importIdMint]). The counter still carries a BATCH,
+  /// imported cut ids ([ImportLanding.idMint]). The counter still carries a BATCH,
   /// where ids minted a moment ago are not in the project yet.
   ///
   /// [usedIds] lets a caller minting MANY ids hand the scan in once; see
-  /// [_importIdMint], which is the only such caller.
+  /// [ImportLanding.idMint], which is the only such caller.
   @override
   LayerId mintLayerId({Set<String>? usedIds}) {
-    final used = usedIds ?? _usedLayerIdValues();
+    final used =
+        usedIds ?? projectLayerIdValues(repository.requireProject());
     _layerSequence += 1;
     var candidate = defaultLayerIdForSequence(_layerSequence);
     while (used.contains(candidate.value)) {
@@ -780,12 +781,6 @@ class EditorSessionManager extends ChangeNotifier
     }
     return candidate;
   }
-
-  Set<String> _usedLayerIdValues() => {
-    for (final track in repository.requireProject().tracks)
-      for (final cut in track.cuts)
-        for (final layer in cut.layers) layer.id.value,
-  };
 
   // ── the frame clipboard: its own object, in its own file ────────────
   //
@@ -3706,571 +3701,27 @@ class EditorSessionManager extends ChangeNotifier
 
   // --- Media import (R3b): stills, GIF sequences, cut folders -------------
 
-  int _importCutSequence = 0;
+  // ── the landing and the file doors: their own objects ────────────────
+  //
+  // Collaborators (session/import_landing.dart,
+  // session/project_import_doors.dart). The destination GATE is the
+  // landing's: image, PSD and PDF each carried a copy of it, and a copy
+  // of a gate is a chance for one of them to slip behind a decode.
+  late final ImportLanding importLanding = ImportLanding(
+    project: this,
+    selection: this,
+    frameIds: this,
+    timeline: this,
+    internals: this,
+  );
 
-  ImportIdMint _importIdMint() {
-    // ONE scan for the whole batch. An import mints an id per layer and per
-    // cut it brings in, and scanning the project inside each of those turns
-    // a 200-layer PSD landing in a heavy project into 200 walks of every
-    // layer in it. The snapshot stays correct because the counters only
-    // climb: an id minted a moment ago is not in this set, and it is not
-    // reachable again either.
-    final usedLayerIds = _usedLayerIdValues();
-    final usedCutIds = {
-      for (final track in repository.requireProject().tracks)
-        for (final cut in track.cuts) cut.id.value,
-    };
-    return ImportIdMint(
-      nextLayerId: () => mintLayerId(usedIds: usedLayerIds),
-      // Through the MINT, not the formatter. `nextFrameId` reads
-      // `_frameSequence` and does not advance it, so calling it directly
-      // leaves the wall clock as the only thing telling two cels apart —
-      // and an import mints a whole layer inside one clock tick. Every cel
-      // of that layer came out with the SAME id, which is not "cels that
-      // look alike": it is one drawing exposed N times. A 10-drawing layer
-      // arrived as one drawing.
-      nextFrameId: mintFrameId,
-      nextCutId: () {
-        _importCutSequence += 1;
-        var candidate = 'import-cut-$_importCutSequence';
-        while (usedCutIds.contains(candidate)) {
-          _importCutSequence += 1;
-          candidate = 'import-cut-$_importCutSequence';
-        }
-        return CutId(candidate);
-      },
-    );
-  }
-
-  /// Lands imported [layers] where [destination] says: as rows in the cut
-  /// that is already there, or as a NEW cut built from the default.
-  ///
-  /// ⛔THREE IMPORTERS, ONE LANDING. Image, PSD and PDF each wrote both
-  /// arms out with their own ImportMediaCommand, so a field the command
-  /// grew reached one importer's new cut and not another's — and the two
-  /// arms have to agree about the description the undo stack shows, which
-  /// is the only thing the user sees of either.
-  void _landImportedLayers(
-    ImportDestination destination,
-    List<Layer> layers, {
-    required ({
-      CutId cutId,
-      String displayName,
-      CanvasSize canvasSize,
-      int duration,
-      ImportIdMint mint,
-    })
-    asCut,
-    List<MediaAsset> assets = const [],
-  }) {
-    final description = 'Import ${asCut.displayName}';
-    if (destination == ImportDestination.activeCutLayer) {
-      historyManager.execute(
-        ImportMediaCommand(
-          repository: repository,
-          editingSession: editingSession,
-          targetCutId: asCut.cutId,
-          newLayers: layers,
-          assetAdditions: assets,
-          description: description,
-        ),
-      );
-      return;
-    }
-    final cut = importedCut(
-      defaultCut: createDefaultCut(
-        cutId: asCut.cutId,
-        name: asCut.displayName,
-        layerId: asCut.mint.nextLayerId(),
-        canvasSize: asCut.canvasSize,
-      ),
-      layers: layers,
-      duration: asCut.duration,
-    );
-    historyManager.execute(
-      ImportMediaCommand(
-        repository: repository,
-        editingSession: editingSession,
-        trackId: selectedTrackId,
-        newCuts: [cut],
-        assetAdditions: assets,
-        description: description,
-      ),
-    );
-  }
-
-  /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
-  /// import window's core verb. Reference mode (default) copies into
-  /// `.assets/Media/`, registers the asset and stamps
-  /// [Layer.mediaReference]; rasterize absorbs the pixels with no
-  /// registration (§3). One undo step; the baked cels display through
-  /// the ordinary store paths. Returns false when nothing imported.
-  Future<bool> importImageFile({
-    required String path,
-    required ImportDestination destination,
-    required bool copyIntoProject,
-    bool rasterize = false,
-    MediaFitMode fit = MediaFitMode.contain,
-    int? lengthFrames,
-    int inFrame = 0,
-    int? outFrame,
-  }) async {
-    // The destination gate runs BEFORE any decode: a refused import must
-    // not have images to leak.
-    final targetCut = destination == ImportDestination.activeCutLayer
-        ? activeCutOrNull
-        : null;
-    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
-      return false;
-    }
-    final Uint8List bytes;
-    try {
-      bytes = await MediaFileBytes(path).read();
-    } on Object {
-      return false;
-    }
-    final List<DecodedImageFrame> allFrames;
-    try {
-      allFrames = await decodeImageFrames(bytes);
-    } on Object {
-      return false;
-    }
-    if (allFrames.isEmpty) {
-      return false;
-    }
-    // IN/OUT on a multi-frame source: only the chosen span becomes cels.
-    // The frames outside it are disposed HERE rather than left to the
-    // finally block, which only knows about the ones that were kept.
-    final start = inFrame < 0
-        ? 0
-        : (inFrame > allFrames.length - 1 ? allFrames.length - 1 : inFrame);
-    final last = outFrame == null || outFrame > allFrames.length - 1
-        ? allFrames.length - 1
-        : (outFrame < start ? start : outFrame);
-    final decoded = allFrames.sublist(start, last + 1);
-    for (var index = 0; index < allFrames.length; index += 1) {
-      if (index < start || index > last) {
-        allFrames[index].image.dispose();
-      }
-    }
-    final canvasSize =
-        targetCut?.canvasSize ??
-        activeCutOrNull?.canvasSize ??
-        defaultCutCanvasSize;
-    final project = repository.requireProject();
-    final mint = _importIdMint();
-    final source = normalizedMediaPath(path);
-    // The file where the user keeps it, either way: carrying is a fact
-    // about the SAVE now, not about a copy made at import time.
-    final identity = readMediaIdentity(source);
-    final displayName = mediaAssetDefaultName(source);
-
-    final cutId = targetCut?.id ?? mint.nextCutId();
-    final stillDuration = destination == ImportDestination.activeCutLayer
-        ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
-        : (lengthFrames ?? project.fps);
-
-    final Layer layer;
-    final List<PlannedCelBake> bakes;
-    final List<MediaAsset> assets;
-    if (decoded.length == 1) {
-      final plan = planStillImageLayer(
-        sourceFile: source,
-        displayName: displayName,
-        cutId: cutId,
-        duration: stillDuration,
-        fit: fit,
-        rasterize: rasterize,
-        mint: mint,
-        identity: identity,
-        carried: copyIntoProject,
-      );
-      layer = plan.layer;
-      bakes = plan.bakes;
-      assets = plan.assets;
-    } else {
-      // Animated (GIF): frames become cels with duplicate folding; the
-      // fingerprint is a cheap fold over each frame's RGBA bytes.
-      final fingerprints = <Object?>[];
-      for (final frame in decoded) {
-        final data = await frame.image.toByteData(
-          format: ui.ImageByteFormat.rawStraightRgba,
-        );
-        fingerprints.add(data == null ? null : _foldBytes(data));
-      }
-      final plan = planSequenceLayer(
-        sourceFiles: List<String>.filled(decoded.length, source),
-        frameFingerprints: fingerprints,
-        displayName: displayName,
-        cutId: cutId,
-        fit: fit,
-        rasterize: rasterize,
-        mint: mint,
-        referencePath: source,
-        identity: identity,
-        carried: copyIntoProject,
-      );
-      layer = plan.layer;
-      bakes = plan.bakes;
-      assets = plan.assets;
-    }
-
-    _landImportedLayers(
-      destination,
-      [layer],
-      asCut: (
-        cutId: cutId,
-        displayName: displayName,
-        canvasSize: canvasSize,
-        duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
-        mint: mint,
-      ),
-      assets: assets,
-    );
-    // 🔑 AFTER the registration, and only when there IS one. The bytes were
-    // read to decode them so the hash costs no I/O — but it is not free of
-    // CPU, and a RASTERIZING import registers no asset at all (§3: absorbed
-    // pixels register nothing), so hashing there would be a full pass over
-    // a large file on the UI isolate for a value the next save discards.
-    //
-    // Worth taking where it does register: a REFERENCED image is the asset
-    // that can go missing and have to be found again, and `A1.png` repeats
-    // in every cut folder on a real drive.
-    if (assets.isNotEmpty) {
-      mediaFingerprints.rememberMediaFingerprint(source, bytes);
-    }
-
-    // Bake pixels AFTER the structure exists (keys resolve the owner
-    // track through the inserted cut). Duplicate folding compresses the
-    // bake list, so every bake names its SOURCE frame index.
-    try {
-      final bakedCut = cutById(cutId);
-      if (bakedCut != null) {
-        for (final bake in bakes) {
-          final surface = await rasterizeImageToSurface(
-            image: decoded[bake.sourceFrameIndex].image,
-            canvas: bakedCut.canvasSize,
-            fit: bake.fit,
-          );
-          bakeCelSurface(
-            brushFrameStore,
-            brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-            surface,
-          );
-        }
-      }
-    } finally {
-      for (final frame in decoded) {
-        frame.image.dispose();
-      }
-    }
-
-    refreshAfterCutCommand(preferredActiveLayerId: layer.id);
-    notifyListeners();
-    return true;
-  }
-
-  /// EXPAND: a Photoshop stack becomes ours — ONE folder named after the
-  /// file, holding its layers with their groups, names, opacity, blend and
-  /// eye intact.
-  ///
-  /// Always baked. "One of them baked means all of them are" is the rule
-  /// the user set: a half-linked stack would take original updates on some
-  /// rows and not others, and a reorder in Photoshop would break the match
-  /// for the rest. So nothing registers and nothing keeps a reference —
-  /// the merged reading ([importImageFile]) is the one that stays live.
-  ///
-  /// Returns the warnings (colour conversions, blends we have no
-  /// equivalent for, adjustment layers left behind), or null when the
-  /// import did not happen — including a FLATTENED document, which has no
-  /// stack to expand and which merge reads perfectly.
-  Future<List<String>?> importPsdExpanded({
-    required String path,
-    required ImportDestination destination,
-    MediaFitMode fit = MediaFitMode.contain,
-    int? lengthFrames,
-  }) async {
-    // Same order as the image path: the destination gate runs before any
-    // read, so a refused import never has pixels to leak.
-    final targetCut = destination == ImportDestination.activeCutLayer
-        ? activeCutOrNull
-        : null;
-    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
-      return null;
-    }
-    final Uint8List bytes;
-    try {
-      bytes = await MediaFileBytes(path).read();
-    } on Object {
-      return null;
-    }
-    final canvasSize =
-        targetCut?.canvasSize ??
-        activeCutOrNull?.canvasSize ??
-        defaultCutCanvasSize;
-    final project = repository.requireProject();
-    final mint = _importIdMint();
-    final source = normalizedMediaPath(path);
-    final displayName = mediaAssetDefaultName(source);
-    final cutId = targetCut?.id ?? mint.nextCutId();
-    final duration = destination == ImportDestination.activeCutLayer
-        ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
-        : (lengthFrames ?? project.fps);
-
-    final PsdExpansion? expansion;
-    try {
-      expansion = await readPsdExpansion(
-        bytes: bytes,
-        displayName: displayName,
-        cutId: cutId,
-        duration: duration,
-        canvas: canvasSize,
-        fit: fit,
-        mint: mint,
-      );
-    } on Object {
-      return null;
-    }
-    if (expansion == null || expansion.layers.isEmpty) {
-      return null;
-    }
-
-    _landImportedLayers(
-      destination,
-      expansion.layers,
-      asCut: (
-        cutId: cutId,
-        displayName: displayName,
-        canvasSize: canvasSize,
-        duration: duration,
-        mint: mint,
-      ),
-    );
-
-    // Pixels after the structure, like every other import: the cel keys
-    // resolve their owner through the cut that now exists.
-    final bakedCut = cutById(cutId);
-    if (bakedCut != null) {
-      for (final cel in expansion.cels) {
-        bakeCelSurface(
-          brushFrameStore,
-          brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
-          cel.surface,
-        );
-      }
-    }
-
-    // The folder row is the last layer, and a folder takes no brush — so
-    // the topmost PICTURE is what the hand should land on.
-    final picture = expansion.layers.lastWhere(
-      (layer) => layer.kind != LayerKind.folder,
-      orElse: () => expansion!.layers.last,
-    );
-    refreshAfterCutCommand(preferredActiveLayerId: picture.id);
-    notifyListeners();
-    return expansion.warnings;
-  }
-
-  /// Imports a PDF: pages become cels at canvas resolution — §6-m's full
-  /// pre-conversion, with the CEL STORE as the persistent home (it saves
-  /// inside the .anicel, so placement rides every display/export path
-  /// untouched; no separate disk cache). 1 page = 1 frame (§6-k).
-  /// Returns false when the renderer is absent
-  /// ([PdfRenderService.availability] says which), the destination
-  /// refuses, or the document has no pages; a corrupt/locked file throws
-  /// at open. A single page failing to RENDER leaves its cel empty and
-  /// reports through [onPageRenderFailed] — the import still completes.
-  Future<bool> importPdfFile({
-    required String path,
-    required ImportDestination destination,
-    required bool copyIntoProject,
-    bool rasterize = false,
-    MediaFitMode fit = MediaFitMode.contain,
-    int inFrame = 0,
-    int? outFrame,
-    void Function(int done, int total)? onRenderProgress,
-    void Function(int pageIndex)? onPageRenderFailed,
-  }) async {
-    // The destination gate runs BEFORE any native work — a refused
-    // import must not have opened a document to leak.
-    final targetCut = destination == ImportDestination.activeCutLayer
-        ? activeCutOrNull
-        : null;
-    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
-      return false;
-    }
-    final document = await PdfRenderService.open(path);
-    if (document == null) {
-      return false; // Renderer absent — the honest-absence state.
-    }
-    try {
-      final pageCount = document.pageCount;
-      if (pageCount <= 0) {
-        return false;
-      }
-      // IN/OUT over PAGES: a hundred-page conte is imported for the cuts
-      // someone is drawing this week, not for all of it. The span decides
-      // how many cels there are; [pageCount] keeps describing the FILE,
-      // because that is what the asset records about it.
-      final firstPage = inFrame < 0
-          ? 0
-          : (inFrame > pageCount - 1 ? pageCount - 1 : inFrame);
-      final lastPage = outFrame == null || outFrame > pageCount - 1
-          ? pageCount - 1
-          : (outFrame < firstPage ? firstPage : outFrame);
-      final spanCount = lastPage - firstPage + 1;
-      final project = repository.requireProject();
-      final mint = _importIdMint();
-      final source = normalizedMediaPath(path);
-      final identity = readMediaIdentity(source);
-      final displayName = mediaAssetDefaultName(source);
-      final cutId = targetCut?.id ?? mint.nextCutId();
-
-      final Layer layer;
-      final List<PlannedCelBake> bakes;
-      final List<MediaAsset> assets;
-      if (spanCount == 1) {
-        // A one-page span is a still: an image-kind layer holding over the
-        // cut, exactly like a placed PNG.
-        final stillDuration = destination == ImportDestination.activeCutLayer
-            ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
-            : project.fps;
-        final plan = planStillImageLayer(
-          sourceFile: source,
-          displayName: displayName,
-          cutId: cutId,
-          duration: stillDuration,
-          fit: fit,
-          rasterize: rasterize,
-          mint: mint,
-          identity: identity,
-          carried: copyIntoProject,
-          assetKind: MediaAssetKind.pdf,
-          pageCount: pageCount,
-        );
-        layer = plan.layer;
-        bakes = plan.bakes;
-        assets = plan.assets;
-      } else {
-        // Pages never fold (the fingerprint is the page index): a conte's
-        // pages can repeat a layout, but page 12 is still page 12.
-        final plan = planSequenceLayer(
-          sourceFiles: List<String>.filled(spanCount, source),
-          frameFingerprints: [
-            for (var i = 0; i < spanCount; i += 1) firstPage + i,
-          ],
-          displayName: displayName,
-          cutId: cutId,
-          fit: fit,
-          rasterize: rasterize,
-          mint: mint,
-          referencePath: source,
-          identity: identity,
-          carried: copyIntoProject,
-          assetKind: MediaAssetKind.pdf,
-          pageCount: pageCount,
-        );
-        layer = plan.layer;
-        bakes = plan.bakes;
-        assets = plan.assets;
-      }
-
-      _landImportedLayers(
-        destination,
-        [layer],
-        asCut: (
-          cutId: cutId,
-          displayName: displayName,
-          canvasSize: activeCutOrNull?.canvasSize ?? defaultCutCanvasSize,
-          duration: spanCount > 1 ? _sequenceLength(layer) : project.fps,
-          mint: mint,
-        ),
-        assets: assets,
-      );
-      // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
-      // page precisely so a hundred-page conte never lands in memory at
-      // once; reading it whole to hash it would undo the one thing this
-      // path is written to avoid. A PDF that goes missing stays findable by
-      // name and length like it was before.
-
-      // Bake AFTER the structure exists, one page at a time: render the
-      // page at exactly its placement size (the vector source rasters
-      // once, at the size it will live at — no second resample), then
-      // donate through the ordinary cel path. Each page guards itself
-      // (the importCutFolder contract): the command is already committed,
-      // so one damaged page must leave its cel empty and be REPORTED —
-      // never abort into a half-baked import the dialog would retry as a
-      // duplicate.
-      final bakedCut = cutById(cutId);
-      if (bakedCut != null) {
-        var done = 0;
-        for (final bake in bakes) {
-          // The bake counts within the SPAN; the document counts from its
-          // first page.
-          final pageIndex = firstPage + bake.sourceFrameIndex;
-          try {
-            final pageSize = document.pageSize(pageIndex);
-            final placement = placementRectFor(
-              sourceWidth: pageSize.width.round().clamp(1, 1 << 13).toInt(),
-              sourceHeight: pageSize.height.round().clamp(1, 1 << 13).toInt(),
-              canvas: bakedCut.canvasSize,
-              fit: bake.fit,
-            );
-            final image = await document.renderPage(
-              pageIndex,
-              width: placement.width.round().clamp(1, 1 << 13).toInt(),
-              height: placement.height.round().clamp(1, 1 << 13).toInt(),
-            );
-            try {
-              final surface = await rasterizeImageToSurface(
-                image: image,
-                canvas: bakedCut.canvasSize,
-                fit: bake.fit,
-              );
-              bakeCelSurface(
-                brushFrameStore,
-                brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-                surface,
-              );
-            } finally {
-              image.dispose();
-            }
-          } on Object {
-            onPageRenderFailed?.call(pageIndex);
-          }
-          done += 1;
-          onRenderProgress?.call(done, bakes.length);
-        }
-      }
-
-      refreshAfterCutCommand(preferredActiveLayerId: layer.id);
-      notifyListeners();
-      return true;
-    } finally {
-      await document.dispose();
-    }
-  }
-
-  int _sequenceLength(Layer layer) {
-    var end = 1;
-    for (final entry in layer.timeline.entries) {
-      final length = entry.value.length ?? 1;
-      if (entry.key + length > end) {
-        end = entry.key + length;
-      }
-    }
-    return end;
-  }
-
-  Object _foldBytes(ByteData data) {
-    // Every 4th PIXEL, all four channels — a fold that read one channel
-    // would merge frames whose change hides in the others.
-    var hash = 0x811c9dc5;
-    for (var i = 0; i + 3 < data.lengthInBytes; i += 16) {
-      hash = (hash ^ data.getUint32(i)) * 0x01000193 & 0xFFFFFFFF;
-    }
-    return Object.hash(hash, data.lengthInBytes);
-  }
+  late final ProjectImportDoors importDoors = ProjectImportDoors(
+    project: this,
+    changes: this,
+    internals: this,
+    landing: importLanding,
+    fingerprints: mediaFingerprints,
+  );
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
   /// [parseCutFolder]: one fully-formed cut — symbol layers with named
@@ -4318,7 +3769,7 @@ class EditorSessionManager extends ChangeNotifier
     );
 
     final canvasSize = activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
-    final mint = _importIdMint();
+    final mint = importLanding.idMint();
     final plan = planCutFolderImport(
       parsed: parsed,
       resolveFile: (relativePath) => '$folderPath/$relativePath',
@@ -4538,7 +3989,7 @@ class EditorSessionManager extends ChangeNotifier
     TvppParseResult parsed, {
     required List<String> warnings,
   }) {
-    final mint = _importIdMint();
+    final mint = importLanding.idMint();
     final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
     for (var c = 0; c < parsed.clips.length; c++) {
       final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
