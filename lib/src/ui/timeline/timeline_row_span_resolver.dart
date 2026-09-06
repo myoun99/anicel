@@ -164,6 +164,23 @@ String? resolveInGroupHeadLane({
   required String laneId,
   required int rowDelta,
 }) {
+  final walk = _laneDragHeadIndex(rows, layerId, laneId, rowDelta);
+  final head = walk == null ? null : rows[walk.headIndex];
+  return head is LaneRowAddress && head.layerId == layerId ? head.laneId : null;
+}
+
+/// The walk BOTH halves of the escalation law make before they answer:
+/// the anchor lane's index and the index of the row [rowDelta] away,
+/// clamped to the ends and stepped back toward the anchor over
+/// address-less rows (the storyboard's audio strip takes space but cannot
+/// be a head — the [_railRowAtCrossOffset] rule). Null when the delta is
+/// zero, the list is empty, or the anchor lane is not drawn.
+({int anchorIndex, int headIndex})? _laneDragHeadIndex(
+  List<TimelineRowAddress?> rows,
+  LayerId layerId,
+  String laneId,
+  int rowDelta,
+) {
   if (rowDelta == 0 || rows.isEmpty) {
     return null;
   }
@@ -172,8 +189,11 @@ String? resolveInGroupHeadLane({
   if (anchorIndex < 0) {
     return null;
   }
-  final head = rows[(anchorIndex + rowDelta).clamp(0, rows.length - 1)];
-  return head is LaneRowAddress && head.layerId == layerId ? head.laneId : null;
+  var headIndex = (anchorIndex + rowDelta).clamp(0, rows.length - 1);
+  while (headIndex != anchorIndex && rows[headIndex] == null) {
+    headIndex += headIndex > anchorIndex ? -1 : 1;
+  }
+  return (anchorIndex: anchorIndex, headIndex: headIndex);
 }
 
 /// [resolveLaneSpanEscalation] stated in the ADDRESS vocabulary — the ONE
@@ -189,18 +209,11 @@ resolveLaneSpanEscalationOverAddresses({
   required String laneId,
   required int rowDelta,
 }) {
-  if (rowDelta == 0 || rows.isEmpty) {
+  final walk = _laneDragHeadIndex(rows, layerId, laneId, rowDelta);
+  if (walk == null) {
     return null;
   }
-  final anchor = LaneRowAddress(layerId, laneId);
-  final anchorIndex = rows.indexWhere((row) => row == anchor);
-  if (anchorIndex < 0) {
-    return null;
-  }
-  var headIndex = (anchorIndex + rowDelta).clamp(0, rows.length - 1);
-  while (headIndex != anchorIndex && rows[headIndex] == null) {
-    headIndex += headIndex > anchorIndex ? -1 : 1;
-  }
+  final (:anchorIndex, :headIndex) = walk;
   final head = rows[headIndex];
   if (head == null) {
     return null;

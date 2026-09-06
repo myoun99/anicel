@@ -85,6 +85,19 @@ void main() {
       ),
       isNull,
     );
+    // …and the in-group half names that header as the head: the two
+    // halves of one escalation law make the SAME walk (round 8 — the
+    // in-group half used to answer null off the strip, so a member-anchored
+    // drag onto the audio strip selected nothing new).
+    expect(
+      resolveInGroupHeadLane(
+        rows: rows,
+        layerId: se,
+        laneId: 'position',
+        rowDelta: -2,
+      ),
+      'transform-group',
+    );
   });
 
   test('DOWN onto the TRACK row — the head the TimelineDisplayRow form '
