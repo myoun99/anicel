@@ -167,7 +167,10 @@ void main() {
 /// **39** since the conte page and the cut envelope stopped each drawing
 /// their own ink window: `paintSheetInkWindow` is the one clipped draw for
 /// both sheets, and it owns its medium filter.
-const int _knownRawDraws = 39;
+/// **37** since the surface paint pass draws a tile through one call: its
+/// three identical tile blits (replaced, held, live) are `_drawTileImage`,
+/// one raw draw at `tileOriginOffset` with the same tile image paint.
+const int _knownRawDraws = 37;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
