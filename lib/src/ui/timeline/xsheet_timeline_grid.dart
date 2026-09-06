@@ -36,7 +36,7 @@ import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
@@ -66,7 +66,6 @@ import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
 import '../repaint_props.dart';
 
-part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
 part 'xsheet_grid/xsheet_grid_columns.dart';
@@ -228,11 +227,24 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
 
-  // ── the rail scrub: its own object, in its own file ─────────────────
+  // ── the rail scrub: the SHARED object ───────────────────────────────
   //
-  // A collaborator (timeline/xsheet_grid/xsheet_grid_rail_scrub.dart, a part of this
-  // library). The State keeps the entry points its build tree calls.
-  late final _XSheetGridRailScrub _railScrub = _XSheetGridRailScrub(this);
+  // [TimelineFrameScrub], the one the timeline's ruler holds too — the same
+  // six members, turned by the axis (the audit's clone scan, round 8).
+  late final TimelineFrameScrub _railScrub = TimelineFrameScrub(
+    axis: Axis.vertical,
+    viewportKey: _railScrubViewportKey,
+    controller: _frameScrollController,
+    hooks: () => widget.hooks,
+    frameCellExtent: () => _metrics.frameCellWidth,
+    renderedFrameCount: () => _frameScroll.renderedFrameCount,
+    scrolledFrameOffset: () => _lastEffectiveFrameScrollOffset,
+  );
+
+  /// The fallback rail extent for hosts that keep none of their own — the
+  /// window the splitter sizes and the workspace persists.
+  LayerRailExtent get _railExtent =>
+      widget.railExtent ?? (_ownedRailExtent ??= LayerRailExtent());
 
   // ── the column headers: their own object ────────────────────────────
   //
@@ -295,7 +307,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     isMounted: () => mounted,
   );
   final GlobalKey _railScrubViewportKey = GlobalKey();
-  final FrameScrubDedupe _railScrubbedFrame = FrameScrubDedupe();
 
   TimelineGridMetrics get _metrics => widget.metrics;
 
@@ -439,7 +450,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     return LayerRailSplitter(
       key: const ValueKey<String>('xsheet-rail-splitter'),
       axis: Axis.vertical,
-      extent: _railScrub._railExtent,
+      extent: _railExtent,
       naturalExtent: naturalHeaderBlockExtent,
       availableExtent: availableHeaderExtent,
     );
@@ -552,7 +563,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             children: [
               LayerRailWindow(
                 axis: Axis.vertical,
-                rail: _railScrub._railExtent,
+                rail: _railExtent,
                 naturalExtent: naturalHeaderBlockExtent,
                 availableExtent: availableHeaderExtent,
                 child: Column(
@@ -690,24 +701,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
-        _railScrub.resetRailScrubTracking();
-        _railScrub.selectFrameFromRailGlobalPosition(event.position, autoPan: false);
+        _railScrub.resetTracking();
+        _railScrub.pressAt(event.position);
       },
-      onPointerUp: (_) => _railScrub.endRailScrub(),
-      onPointerCancel: (_) => _railScrub.endRailScrub(),
+      onPointerUp: (_) => _railScrub.endScrub(),
+      onPointerCancel: (_) => _railScrub.endScrub(),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onVerticalDragStart: (details) {
-          _railScrub.selectFrameFromRailGlobalPosition(
-            details.globalPosition,
-            autoPan: false,
-          );
+          _railScrub.pressAt(details.globalPosition);
         },
         onVerticalDragUpdate: (details) {
-          _railScrub.selectFrameFromRailGlobalPosition(details.globalPosition);
+          _railScrub.dragTo(details.globalPosition);
         },
-        onVerticalDragEnd: (_) => _railScrub.resetRailScrubTracking(),
-        onVerticalDragCancel: _railScrub.resetRailScrubTracking,
+        onVerticalDragEnd: (_) => _railScrub.resetTracking(),
+        onVerticalDragCancel: _railScrub.resetTracking,
         child: ClipRect(
           key: _railScrubViewportKey,
           child: OverflowBox(
@@ -749,7 +757,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             leadingFrameSpacerHeight: 0,
                             trailingFrameSpacerHeight: 0,
                             metrics: _metrics,
-                            onSelectFrame: _railScrub.selectClampedFrameFromRail,
+                            onSelectFrame: _railScrub.selectClampedFrame,
                             framesPerSecond: _countingFps,
                             showSeconds: widget.hooks.showSeconds,
                             windowBucket: _frameWindowBucket,
@@ -863,7 +871,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       framesPerSecond: _countingFps,
       controllers: [_frameScrollController, _layerScrollController],
       child: ValueListenableBuilder<double?>(
-        valueListenable: _railScrub._railExtent,
+        valueListenable: _railExtent,
         builder: (context, _, _) => LayoutBuilder(
           builder: (context, constraints) {
             // The header block is ALWAYS its natural extent; the splitter
@@ -881,7 +889,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               railAxis: Axis.vertical,
               scrollbarLaneExtent: layerAxisScrollbarExtent,
             );
-            final headerBlockHeight = _railScrub._railExtent.windowExtent(
+            final headerBlockHeight = _railExtent.windowExtent(
               naturalHeaderBlockExtent,
               availableExtent: availableHeaderExtent,
             );
@@ -1038,7 +1046,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 // window, so the two are cut at one line.
                                 LayerRailWindow(
                                   axis: Axis.vertical,
-                                  rail: _railScrub._railExtent,
+                                  rail: _railExtent,
                                   naturalExtent: naturalHeaderBlockExtent,
                                   availableExtent: availableHeaderExtent,
                                   child: TimelineLayerControlsHeader(
@@ -1081,7 +1089,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               children: [
                                 LayerRailScrollbar(
                                   axis: Axis.vertical,
-                                  rail: _railScrub._railExtent,
+                                  rail: _railExtent,
                                   naturalExtent: naturalHeaderBlockExtent,
                                   availableExtent: availableHeaderExtent,
                                   laneExtent:
