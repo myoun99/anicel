@@ -1,9 +1,9 @@
 import '../../models/project_background.dart';
-import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../services/commands/update_project_frame_rate_command.dart';
 import 'session_roles.dart';
+import '../../core/identity_memo.dart';
 
 /// The PROJECT SETTINGS — the project's frame rate, backdrop, background,
 /// pasteboard, and the storyboard timeline layout memo — as their own
