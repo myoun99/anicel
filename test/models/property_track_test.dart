@@ -55,9 +55,18 @@ void main() {
     });
 
     test('negative key indexes are rejected', () {
+      // The same law Layer's timeline wears (layer_test): one helper
+      // answers both since the round-8 audit (2026-09-06), each with its
+      // own wording.
       expect(
         () => PropertyTrack<double>(keys: {-1: const PropertyKey(1)}),
-        throwsArgumentError,
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'Property key indexes must be non-negative.',
+          ),
+        ),
       );
     });
 

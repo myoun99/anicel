@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 
 void main() {
   group('Layer.kind', () {
@@ -153,6 +154,40 @@ void main() {
           revise: LayerRevise.animationDirector,
         ),
       );
+    });
+  });
+
+  group('Layer.timeline', () {
+    test('negative timeline indexes are rejected, in a sorted copy', () {
+      // The same law PropertyTrack's keys wear (property_track_test): one
+      // helper answers both since the round-8 audit (2026-09-06).
+      expect(
+        () => Layer(
+          id: const LayerId('l'),
+          name: 'L',
+          frames: const [],
+          timeline: {
+            -1: const TimelineExposure.drawing(FrameId('f'), length: 1),
+          },
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'Timeline indexes must be non-negative.',
+          ),
+        ),
+      );
+      final layer = Layer(
+        id: const LayerId('l'),
+        name: 'L',
+        frames: const [],
+        timeline: {
+          4: const TimelineExposure.drawing(FrameId('b'), length: 1),
+          0: const TimelineExposure.drawing(FrameId('a'), length: 2),
+        },
+      );
+      expect(layer.timeline.keys, [0, 4]);
     });
   });
 }

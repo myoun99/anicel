@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'non_negative_index_map.dart';
 
 /// AE-style temporal interpolation OUT of a key: how the segment between
 /// this key and the next one moves.
@@ -81,7 +82,11 @@ class PropertyKey<T> {
 /// supply their own default.
 class PropertyTrack<T> {
   PropertyTrack({Map<int, PropertyKey<T>>? keys})
-    : keys = _immutableKeys(keys ?? const {});
+    : keys = nonNegativeIndexedCopy(
+        keys ?? const {},
+        argumentName: 'keys',
+        indexNoun: 'Property key',
+      );
 
   factory PropertyTrack.empty() => PropertyTrack();
 
@@ -403,21 +408,4 @@ Map<String, T> movedNamedValues<T>(
     moved[name] = entry.value.value;
   }
   return moved;
-}
-
-SplayTreeMap<int, PropertyKey<T>> _immutableKeys<T>(
-  Map<int, PropertyKey<T>> keys,
-) {
-  final result = SplayTreeMap<int, PropertyKey<T>>();
-  for (final entry in keys.entries) {
-    if (entry.key < 0) {
-      throw ArgumentError.value(
-        entry.key,
-        'keys',
-        'Property key indexes must be non-negative.',
-      );
-    }
-    result[entry.key] = entry.value;
-  }
-  return result;
 }

@@ -15,6 +15,7 @@ import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
 import 'media_reference.dart';
+import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
@@ -599,17 +600,11 @@ extension LayerStackQueries on List<Layer> {
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(
   Map<int, TimelineExposure> timeline,
 ) {
-  final result = SplayTreeMap<int, TimelineExposure>();
-  for (final entry in timeline.entries) {
-    if (entry.key < 0) {
-      throw ArgumentError.value(
-        entry.key,
-        'timeline',
-        'Timeline indexes must be non-negative.',
-      );
-    }
-    result[entry.key] = entry.value;
-  }
+  final result = nonNegativeIndexedCopy(
+    timeline,
+    argumentName: 'timeline',
+    indexNoun: 'Timeline',
+  );
   validateTimelineCoverage(result);
   return result;
 }
