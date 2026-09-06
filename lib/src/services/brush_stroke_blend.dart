@@ -49,7 +49,9 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
     final copyBottom = covered.bottomExclusive;
     final rowBytes = (copyRight - copyLeft) * 4;
     // Inside readPixels: the tile is the receiver, so its buffer cannot
-    // be finalized out from under these reads (see BitmapTile.readPixels).
+    // be finalized out from under these reads (see BitmapTile.readPixels —
+    // the live rasterizer's copy of this exact loop, `_copyBaseRectInto`,
+    // is where that bug was caught).
     covered.tile.readPixels((_, tilePixels) {
       for (var y = copyTop; y < copyBottom; y += 1) {
         final srcOffset =
