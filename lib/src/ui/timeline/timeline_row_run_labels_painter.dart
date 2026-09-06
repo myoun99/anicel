@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../../models/layer.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
@@ -148,9 +149,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
           ),
           // Frame axis: the last cell's centre. Cross axis: the far end
           // (R10).
-          anchor: axis == Axis.horizontal
-              ? Offset(lastCellCentre, crossAxisExtent)
-              : Offset(crossAxisExtent, lastCellCentre),
+          anchor: offsetAlong(
+            axis,
+            along: lastCellCentre,
+            across: crossAxisExtent,
+          ),
         ),
       );
       assert(!start.isNaN);

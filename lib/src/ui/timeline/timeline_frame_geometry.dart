@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'axis_turn.dart';
 import 'timeline_frame_coordinate_policy.dart';
 
 /// The frame-axis geometry of a timeline row — everything a ZOOM STEP moves.
@@ -285,7 +286,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
     if (origin == 0) {
       return Offset.zero;
     }
-    return _axis == Axis.horizontal ? Offset(origin, 0) : Offset(0, origin);
+    return offsetAlong(_axis, along: origin, across: 0);
   }
 
   @override

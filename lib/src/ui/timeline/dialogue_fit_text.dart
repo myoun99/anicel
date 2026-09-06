@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../text/dialogue_fit_layout.dart';
 import '../text/vertical_writing_text.dart';
+import 'axis_turn.dart';
 
 /// SE dialogue distributed evenly over the available extent — one glyph per
 /// [dialogueGlyphCenters] position along [axis], centered on the cross
@@ -63,7 +64,7 @@ class _DialogueFitPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final glyphs = text.characters.toList(growable: false);
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    final mainExtent = extentAlong(axis, size);
     final centers = dialogueGlyphCenters(
       glyphCount: glyphs.length,
       mainExtent: mainExtent,

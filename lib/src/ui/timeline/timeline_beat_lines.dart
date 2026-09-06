@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 
 /// The frame grid's LINE system, one overlay per grid (UI-R10 #26 →
@@ -295,15 +296,16 @@ class TimelineOutsideCutWashPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    final mainExtent = extentAlong(axis, size);
     if (outsideStart >= mainExtent) {
       return;
     }
     final start = outsideStart < 0 ? 0.0 : outsideStart;
     canvas.drawRect(
-      axis == Axis.horizontal
-          ? Rect.fromLTWH(start, 0, size.width - start, size.height)
-          : Rect.fromLTWH(0, start, size.width, size.height - start),
+      Rect.fromPoints(
+        offsetAlong(axis, along: start, across: 0),
+        offsetAlong(axis, along: mainExtent, across: extentAcross(axis, size)),
+      ),
       Paint()..color = AppColors.washUp.withValues(alpha: 0.54),
     );
   }
@@ -381,24 +383,14 @@ class TimelineBeatLinesPainter extends CustomPainter {
     if (frameCellExtent <= 0) {
       return;
     }
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
-    final crossExtent = axis == Axis.horizontal ? size.height : size.width;
+    final mainExtent = extentAlong(axis, size);
+    final crossExtent = extentAcross(axis, size);
 
-    void mainAxisLine(double position, Paint paint) {
-      if (axis == Axis.horizontal) {
-        canvas.drawLine(
-          Offset(position, 0),
-          Offset(position, crossExtent),
-          paint,
-        );
-      } else {
-        canvas.drawLine(
-          Offset(0, position),
-          Offset(crossExtent, position),
-          paint,
-        );
-      }
-    }
+    void mainAxisLine(double position, Paint paint) => canvas.drawLine(
+      offsetAlong(axis, along: position, across: 0),
+      offsetAlong(axis, along: position, across: crossExtent),
+      paint,
+    );
 
     // BASE grid: flat faint, cadence-thinned (UI-R18 #8 — the storyboard
     // look; beat frames skip, the beat pass draws them stronger). The
@@ -448,11 +440,11 @@ class TimelineBeatLinesPainter extends CustomPainter {
         seam < crossExtent;
         seam += crossCellExtent
       ) {
-        if (axis == Axis.horizontal) {
-          canvas.drawLine(Offset(0, seam), Offset(mainExtent, seam), seamPaint);
-        } else {
-          canvas.drawLine(Offset(seam, 0), Offset(seam, mainExtent), seamPaint);
-        }
+        canvas.drawLine(
+          offsetAlong(axis, along: 0, across: seam),
+          offsetAlong(axis, along: mainExtent, across: seam),
+          seamPaint,
+        );
       }
     }
 

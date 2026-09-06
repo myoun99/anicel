@@ -8,6 +8,7 @@ import '../../models/app_input_settings.dart' show AppInput;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
@@ -186,8 +187,8 @@ class BlockEdgeGripBarPainter extends CustomPainter {
     canvas,
     blockEdgeGripBarRect(
       edge: edge,
-      hitExtent: axis == Axis.horizontal ? size.width : size.height,
-      crossAxisExtent: axis == Axis.horizontal ? size.height : size.width,
+      hitExtent: extentAlong(axis, size),
+      crossAxisExtent: extentAcross(axis, size),
       axis: axis,
     ),
     ink,

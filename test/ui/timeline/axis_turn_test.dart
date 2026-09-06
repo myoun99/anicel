@@ -159,4 +159,28 @@ void main() {
       expect((p.top, p.width), (null, null));
     });
   });
+
+  group('the painter twins: extentAlong / extentAcross / offsetAlong', () {
+    const size = Size(120, 30);
+
+    test('horizontal: along is the width, across the height; a point is '
+        '(along, across)', () {
+      expect(extentAlong(Axis.horizontal, size), 120);
+      expect(extentAcross(Axis.horizontal, size), 30);
+      expect(
+        offsetAlong(Axis.horizontal, along: 100, across: 7),
+        const Offset(100, 7),
+      );
+    });
+
+    test('vertical: along is the height, across the width; a point is '
+        '(across, along)', () {
+      expect(extentAlong(Axis.vertical, size), 30);
+      expect(extentAcross(Axis.vertical, size), 120);
+      expect(
+        offsetAlong(Axis.vertical, along: 100, across: 7),
+        const Offset(7, 100),
+      );
+    });
+  });
 }

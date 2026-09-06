@@ -6,6 +6,7 @@ import '../../models/layer_kind.dart'
     show layerKindBandIsInstructionsOnly, layerKindCarriesInstructions;
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../text/vertical_writing_text.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
@@ -426,10 +427,6 @@ class _InstructionMarkPainter extends CustomPainter {
   final bool hasStartName;
   final bool hasEndName;
 
-  /// Main/cross coordinates → canvas offset for the current [axis].
-  Offset _at(double main, double cross) =>
-      axis == Axis.horizontal ? Offset(main, cross) : Offset(cross, main);
-
   /// The dedicated marks' light-gray fill — laid under the writing, with
   /// the cell borders showing through (R4: hatching and outlines retired).
   Paint get _wedgeFill => Paint()..color = color.withValues(alpha: 0.15);
@@ -460,8 +457,8 @@ class _InstructionMarkPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 1.4
       ..strokeCap = StrokeCap.round;
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
-    final crossExtent = axis == Axis.horizontal ? size.height : size.width;
+    final mainExtent = extentAlong(axis, size);
+    final crossExtent = extentAcross(axis, size);
     final crossCenter = crossExtent / 2;
     final frameCellExtent = _cellExtent(mainExtent);
     var start = frameCellExtent;
@@ -487,7 +484,11 @@ class _InstructionMarkPainter extends CustomPainter {
     if (end - start < 2) {
       return;
     }
-    canvas.drawLine(_at(start, crossCenter), _at(end, crossCenter), paint);
+    canvas.drawLine(
+      offsetAlong(axis, along: start, across: crossCenter),
+      offsetAlong(axis, along: end, across: crossCenter),
+      paint,
+    );
   }
 
   /// The solid triangle capping a nameless bar endpoint, its APEX pointing
@@ -511,9 +512,9 @@ class _InstructionMarkPainter extends CustomPainter {
     final apexMain = atStart ? length : mainExtent - length;
     canvas.drawPath(
       Path()..addPolygon([
-        _at(baseMain, crossCenter - crossHalf),
-        _at(apexMain, crossCenter),
-        _at(baseMain, crossCenter + crossHalf),
+        offsetAlong(axis, along: baseMain, across: crossCenter - crossHalf),
+        offsetAlong(axis, along: apexMain, across: crossCenter),
+        offsetAlong(axis, along: baseMain, across: crossCenter + crossHalf),
       ], true),
       Paint()..color = color,
     );
@@ -524,8 +525,8 @@ class _InstructionMarkPainter extends CustomPainter {
   /// narrow → wide (the picture grows in), FO wide → narrow (R4
   /// orientation fix; hatching retired).
   void _paintFadeWedge(Canvas canvas, Size size, {required bool wideAtStart}) {
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
-    final crossExtent = axis == Axis.horizontal ? size.height : size.width;
+    final mainExtent = extentAlong(axis, size);
+    final crossExtent = extentAcross(axis, size);
     final crossCenter = crossExtent / 2;
     final wideHalf = crossCenter - 2;
     if (mainExtent < 6 || wideHalf < 2) {
@@ -535,9 +536,9 @@ class _InstructionMarkPainter extends CustomPainter {
     final pointMain = wideAtStart ? mainExtent - 1 : 1.0;
     canvas.drawPath(
       Path()..addPolygon([
-        _at(wideMain, crossCenter - wideHalf),
-        _at(pointMain, crossCenter),
-        _at(wideMain, crossCenter + wideHalf),
+        offsetAlong(axis, along: wideMain, across: crossCenter - wideHalf),
+        offsetAlong(axis, along: pointMain, across: crossCenter),
+        offsetAlong(axis, along: wideMain, across: crossCenter + wideHalf),
       ], true),
       _wedgeFill,
     );
@@ -545,7 +546,7 @@ class _InstructionMarkPainter extends CustomPainter {
 
   void _paintBowtie(Canvas canvas, Size size) {
     final paint = _wedgeFill;
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    final mainExtent = extentAlong(axis, size);
     final mid = mainExtent / 2;
     final startTriangle = Path();
     final endTriangle = Path();

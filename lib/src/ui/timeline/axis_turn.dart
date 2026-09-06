@@ -125,3 +125,22 @@ SizedBox sizedAlong(
 }) => axis == Axis.horizontal
     ? SizedBox(width: along, height: across, child: child)
     : SizedBox(width: across, height: along, child: child);
+
+/// A painter's box measured ALONG [axis] — the strip's length. The painter
+/// twin of [alongBox]: every `paint(canvas, size)` that serves both
+/// orientations used to open with `horizontal ? size.width : size.height`.
+double extentAlong(Axis axis, Size size) =>
+    axis == Axis.horizontal ? size.width : size.height;
+
+/// A painter's box measured ACROSS [axis] — the strip's thickness.
+double extentAcross(Axis axis, Size size) =>
+    axis == Axis.horizontal ? size.height : size.width;
+
+/// A canvas point [along] the axis and [across] it — the painter twin of
+/// [placedAlong]. Called per bucket in the waveform loop, so it is a
+/// top-level one-expression function and not a per-paint closure.
+Offset offsetAlong(
+  Axis axis, {
+  required double along,
+  required double across,
+}) => axis == Axis.horizontal ? Offset(along, across) : Offset(across, along);

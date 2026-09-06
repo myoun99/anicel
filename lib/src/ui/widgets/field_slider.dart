@@ -8,6 +8,7 @@ import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart';
 import 'axis_bar_gesture.dart';
 import 'superellipse_clip.dart';
 
@@ -595,7 +596,7 @@ class _FieldSliderTrackPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final trackExtent = axis == Axis.horizontal ? size.width : size.height;
+    final trackExtent = extentAlong(axis, size);
     // Along the axis, measured from the fill's ORIGIN edge — the left for
     // a horizontal bar, the BOTTOM for a vertical one.
     double along(double fraction) => axis == Axis.horizontal

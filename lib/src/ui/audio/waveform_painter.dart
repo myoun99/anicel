@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../timeline/axis_turn.dart';
 
 /// Paints a clip's |peak| envelope as a filled band mirrored around the
 /// row's center line, along [axis] (horizontal timeline rows, vertical
@@ -50,8 +51,8 @@ class WaveformPainter extends CustomPainter {
         pixelsPerFrame <= 0) {
       return;
     }
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
-    final crossExtent = axis == Axis.horizontal ? size.height : size.width;
+    final mainExtent = extentAlong(axis, size);
+    final crossExtent = extentAcross(axis, size);
     final center = crossExtent / 2;
     final maxAmplitude = (crossExtent / 2) - 1;
     final pixelsPerBucket =
@@ -86,9 +87,6 @@ class WaveformPainter extends CustomPainter {
       return factor;
     }
 
-    Offset at(double main, double cross) =>
-        axis == Axis.horizontal ? Offset(main, cross) : Offset(cross, main);
-
     final path = Path();
     final top = <Offset>[];
     final bottom = <Offset>[];
@@ -107,8 +105,8 @@ class WaveformPainter extends CustomPainter {
         lastSample = true;
       }
       final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeAt(main);
-      top.add(at(main, center - amplitude));
-      bottom.add(at(main, center + amplitude));
+      top.add(offsetAlong(axis, along: main, across: center - amplitude));
+      bottom.add(offsetAlong(axis, along: main, across: center + amplitude));
       if (lastSample) {
         break;
       }

@@ -94,4 +94,88 @@ void main() {
     expect(paid, isEmpty, reason: 'delete these lines from stillByHand');
     expect(stillByHand, hasLength(1));
   });
+
+  // ── The painter twins (round 8, C9) ────────────────────────────────────
+  //
+  // A painter turns the SAME way: `horizontal ? size.width : size.height`
+  // at the top of `paint`, and `horizontal ? Offset(a, b) : Offset(b, a)`
+  // for every point. Fifteen sites in eight files spelled it; the home says
+  // it once as [extentAlong], [extentAcross] and [offsetAlong].
+  const painterTurns = ['extentAlong(', 'extentAcross(', 'offsetAlong('];
+
+  /// `? size.width : size.height` (or the reverse) — gone from lib, a ban.
+  final projectedSize = RegExp(
+    r'\?\s*size\.(width|height)\s*:\s*size\.(height|width)',
+  );
+
+  /// `? Offset(a, b) … : Offset(b, a)` — the point turned by hand, the
+  /// `:` arm on the same line or the next.
+  final turnedOffset = RegExp(
+    r'\?\s*\(?Offset\((\w+), (\w+)\)\s*(?:\r?\n\s*)?:\s*\(?Offset\(\2, \1\)',
+  );
+
+  /// Files that still turn a point by hand. Only shrinks.
+  const pointsStillByHand = <String>{
+    // Drags whose VERTICAL scrolled offset has no pin yet
+    // (every_frame_drag_follows_the_edge_test scans the wiring, not the
+    // direction), and a law moves only behind a test that pins it.
+    'lib/src/ui/timeline/timeline_frame_range_gesture.dart',
+    'lib/src/ui/timeline/timeline_row_edit_chrome.dart',
+    // Turned by an AxisDirection, not an Axis: `down` is the vertical arm
+    // and every other direction — `up` included — the horizontal one.
+    // Reading it through `axisDirectionToAxis` would move `up`, which is a
+    // behaviour question for the scroll lane, not a spelling.
+    'lib/src/ui/layout/device_grid_scroll_controller.dart',
+  };
+
+  /// Lines where a painter turns by hand.
+  List<int> handPainterTurnsIn(File file) {
+    final text = file.readAsStringSync();
+    int lineOf(int index) =>
+        '\n'.allMatches(text.substring(0, index)).length + 1;
+    return [
+      for (final m in projectedSize.allMatches(text)) lineOf(m.start),
+      for (final m in turnedOffset.allMatches(text)) lineOf(m.start),
+    ]..sort();
+  }
+
+  test('premise: the home has the three painter twins', () {
+    final text = File(home).readAsStringSync();
+    for (final turn in painterTurns) {
+      expect(text, contains(turn), reason: '$turn is what painters reach for');
+    }
+  });
+
+  test('premise: the painter scan sees a hand turn', () {
+    // The ledger's own files are the proof the regex matches something.
+    for (final path in pointsStillByHand) {
+      expect(handPainterTurnsIn(File(path)), isNotEmpty, reason: path);
+    }
+  });
+
+  test('no file outside the ledger projects a size or turns a point by '
+      'hand', () {
+    final offenders = <String>[];
+    for (final file in dartFilesUnder('lib')) {
+      final path = rel(file);
+      if (path == home || pointsStillByHand.contains(path)) continue;
+      for (final line in handPainterTurnsIn(file)) {
+        offenders.add('$path:$line');
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'reach for extentAlong / extentAcross / offsetAlong',
+    );
+  });
+
+  test('the point ledger holds no file that has stopped', () {
+    final paid = <String>[
+      for (final path in pointsStillByHand)
+        if (handPainterTurnsIn(File(path)).isEmpty) path,
+    ];
+    expect(paid, isEmpty, reason: 'delete these lines from pointsStillByHand');
+    expect(pointsStillByHand, hasLength(3));
+  });
 }

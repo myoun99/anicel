@@ -600,17 +600,19 @@ class _SePaperPainter extends CustomPainter {
     final dividerPaint = Paint()
       ..color = timelineDrawingInkColor.withValues(alpha: 0.15)
       ..strokeWidth = 1;
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    final mainExtent = extentAlong(axis, size);
+    final crossExtent = extentAcross(axis, size);
     if (frameCellExtent > 0) {
       for (
         var x = frameCellExtent;
         x < mainExtent - 0.5;
         x += frameCellExtent
       ) {
-        final (from, to) = axis == Axis.horizontal
-            ? (Offset(x, 0), Offset(x, size.height))
-            : (Offset(0, x), Offset(size.width, x));
-        canvas.drawLine(from, to, dividerPaint);
+        canvas.drawLine(
+          offsetAlong(axis, along: x, across: 0),
+          offsetAlong(axis, along: x, across: crossExtent),
+          dividerPaint,
+        );
       }
     }
     canvas.restore();
