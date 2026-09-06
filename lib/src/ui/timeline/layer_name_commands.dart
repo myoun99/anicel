@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/cut.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/rename_cut_dialog.dart';
@@ -118,14 +119,9 @@ Future<void> renameActiveLayerWithDialog(
 Future<void> renameActiveCutWithDialog(
   BuildContext context,
   EditorSessionManager session,
-) {
-  final cut = session.activeCutOrNull;
-  if (cut == null) {
-    return Future<void>.value(); // Gap state: no cut to rename.
-  }
-  return askThenCommit<String>(
-    context,
-    dialog: (_) => RenameCutDialog(initialName: cut.name),
-    commit: session.renameActiveCut,
-  );
-}
+) => askAboutThenCommit<Cut, String>(
+  context,
+  session.activeCutOrNull, // Gap state: no cut to rename.
+  dialog: (cut) => RenameCutDialog(initialName: cut.name),
+  commit: session.renameActiveCut,
+);

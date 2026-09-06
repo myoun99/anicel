@@ -43,6 +43,29 @@ Future<void> askThenCommit<T extends Object>(
   await commit(answer);
 }
 
+/// [askThenCommit] about a SUBJECT: the window is asked about something,
+/// and there may be nothing to ask about.
+///
+/// ⛔THE STAND-DOWN IS THE HELPER'S, NOT THE CALLER'S. Every cut-scoped
+/// command opens with the same two lines — read the subject, return
+/// having done nothing when it is null — and that guard is exactly what
+/// the gap state (UI-R9 #3) needs never to be forgotten. Passing the
+/// subject rather than checking it makes forgetting it unrepresentable,
+/// and gives [dialog] the non-null subject it was going to re-read
+/// anyway.
+Future<void> askAboutThenCommit<S extends Object, T extends Object>(
+  BuildContext context,
+  S? subject, {
+  required Widget Function(S subject) dialog,
+  required FutureOr<void> Function(T answer) commit,
+}) => subject == null
+    ? Future<void>.value()
+    : askThenCommit<T>(
+        context,
+        dialog: (_) => dialog(subject),
+        commit: commit,
+      );
+
 /// The yes/no shape. The decline action pops `false` (see
 /// `confirmActions`), so `false` is an answer that must not commit — a
 /// value the specialisation consumes, not a mode anyone selects.

@@ -167,4 +167,55 @@ void main() {
     await open(tester, 'pop-nothing');
     expect(runs, 1, reason: 'a dismissed confirm is a decline');
   });
+
+  group('askAboutThenCommit', () {
+    Widget subjectHost(
+      String? subject, {
+      required List<String> seen,
+      required List<String> committed,
+    }) => host(
+      (context) => askAboutThenCommit<String, String>(
+        context,
+        subject,
+        dialog: (about) {
+          seen.add(about);
+          return Builder(
+            builder: (dialogContext) => Dialog(child: answers(dialogContext)),
+          );
+        },
+        commit: committed.add,
+      ),
+    );
+
+    testWidgets('no subject opens nothing and commits nothing', (tester) async {
+      final seen = <String>[];
+      final committed = <String>[];
+      await tester.pumpWidget(
+        subjectHost(null, seen: seen, committed: committed),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('pop-value'), findsNothing, reason: 'no window opened');
+      expect(seen, isEmpty, reason: 'the builder never ran');
+      expect(committed, isEmpty);
+    });
+
+    testWidgets('a subject reaches the window, and its answer is committed', (
+      tester,
+    ) async {
+      final seen = <String>[];
+      final committed = <String>[];
+      await tester.pumpWidget(
+        subjectHost('the cut', seen: seen, committed: committed),
+      );
+
+      await open(tester, 'pop-value');
+      expect(seen, ['the cut'], reason: 'the window is built ABOUT it');
+      expect(committed, ['yes']);
+
+      await open(tester, 'pop-nothing');
+      expect(committed, ['yes'], reason: 'a cancel commits nothing');
+    });
+  });
 }
