@@ -135,6 +135,37 @@ void main() {
       expect(committed.single.y, closeTo(80 - 20 / 2, 0.001));
     });
 
+    testWidgets('a drag that lands back where it started commits NOTHING — '
+        'one undo entry per real move, none for a handle that did not move', (
+      tester,
+    ) async {
+      final committed = <CanvasPoint>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.crosshair,
+              point: CanvasPoint(x: 100, y: 80),
+              viewport: CanvasViewport(),
+              onCommitted: committed.add,
+            ),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(_gizmoKey)),
+      );
+      await gesture.moveBy(const Offset(24, 16));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-24, -16));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(committed, isEmpty);
+    });
+
     testWidgets('the crosshair glyph: one circle and four ticks OUTSIDE it '
         '(AE-style move handle)', (tester) async {
       await tester.pumpWidget(
