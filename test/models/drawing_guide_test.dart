@@ -282,6 +282,43 @@ void main() {
       );
     });
 
+    test('replacing swaps the one guide with that id and keeps the rest in '
+        'place; an unknown id changes nothing', () {
+      final guides = CutGuides(
+        guides: [_symmetry(), _perspective()],
+        activeSymmetryId: const GuideId('sym'),
+      );
+
+      final renamed = guides.replacing(
+        _perspective().copyWith(name: 'Renamed'),
+      );
+      expect(
+        [for (final guide in renamed.guides) guide.name],
+        ['Symmetry', 'Renamed'],
+      );
+      expect(renamed.activeSymmetryId, const GuideId('sym'));
+
+      final untouched = guides.replacing(_perspective(id: 'nowhere'));
+      expect(untouched.guides, guides.guides);
+      expect(untouched.activeSymmetryId, const GuideId('sym'));
+    });
+
+    test('without drops the guide with that id — and the acting pointer '
+        'with it when it was the one acting', () {
+      final guides = CutGuides(
+        guides: [_symmetry(), _perspective()],
+        activeSymmetryId: const GuideId('sym'),
+      );
+
+      final withoutPerspective = guides.without(const GuideId('persp'));
+      expect(withoutPerspective.guides.single.id, const GuideId('sym'));
+      expect(withoutPerspective.activeSymmetryId, const GuideId('sym'));
+
+      final withoutSymmetry = guides.without(const GuideId('sym'));
+      expect(withoutSymmetry.guides.single.id, const GuideId('persp'));
+      expect(withoutSymmetry.activeSymmetryId, isNull);
+    });
+
     test('deleting the acting guide clears the pointer instead of throwing', () {
       final guides = CutGuides(
         guides: [_symmetry(), _perspective()],

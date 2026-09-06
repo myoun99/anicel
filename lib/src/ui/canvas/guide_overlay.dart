@@ -568,12 +568,7 @@ CutGuides dragGuideHandle(
       }
   }
   if (next == null) return guides;
-  return guides.copyWith(
-    guides: [
-      for (final entry in guides.guides)
-        if (entry.id == handle.guideId) entry.copyWith(shape: next) else entry,
-    ],
-  );
+  return guides.replacing(guide.copyWith(shape: next));
 }
 
 /// The pointer layer that edits guides — mounted ONLY while the guide tool

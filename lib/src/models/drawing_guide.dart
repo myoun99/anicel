@@ -666,6 +666,23 @@ class CutGuides {
     }
   }
 
+  /// These guides with the one whose id is [guide]'s swapped for [guide],
+  /// in place. An id that is not here changes nothing.
+  CutGuides replacing(DrawingGuide guide) => copyWith(
+    guides: [
+      for (final entry in guides)
+        if (entry.id == guide.id) guide else entry,
+    ],
+  );
+
+  /// These guides without the one whose id is [id].
+  CutGuides without(GuideId id) => copyWith(
+    guides: [
+      for (final entry in guides)
+        if (entry.id != id) entry,
+    ],
+  );
+
   CutGuides copyWith({
     List<DrawingGuide>? guides,
     GuideId? activeSymmetryId,

@@ -111,28 +111,14 @@ class GuideLibraryList extends StatelessWidget {
   }
 
   void _delete(GuideId id) {
-    onGuidesCommitted(
-      guides.copyWith(
-        guides: [
-          for (final guide in guides.guides)
-            if (guide.id != id) guide,
-        ],
-      ),
-    );
+    onGuidesCommitted(guides.without(id));
     if (selectedGuideId == id) {
       onGuideSelected(null);
     }
   }
 
   void _replace(DrawingGuide guide) {
-    onGuidesCommitted(
-      guides.copyWith(
-        guides: [
-          for (final entry in guides.guides)
-            if (entry.id == guide.id) guide else entry,
-        ],
-      ),
-    );
+    onGuidesCommitted(guides.replacing(guide));
   }
 
   @override
@@ -326,14 +312,7 @@ class GuideSettings extends StatelessWidget {
   final ValueChanged<CutGuides> onGuidesCommitted;
 
   void _replaceShape(DrawingGuide guide, GuideShape shape) {
-    onGuidesCommitted(
-      guides.copyWith(
-        guides: [
-          for (final entry in guides.guides)
-            if (entry.id == guide.id) entry.copyWith(shape: shape) else entry,
-        ],
-      ),
-    );
+    onGuidesCommitted(guides.replacing(guide.copyWith(shape: shape)));
   }
 
   @override
