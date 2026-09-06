@@ -19,6 +19,7 @@ import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart'
     show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
+import '../../services/project_lookup.dart' show cutLocationOrNull;
 import '../editor_session_manager.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachedLayersOf, isAttachedLayer;
@@ -630,7 +631,7 @@ class ExportDialogState extends State<ExportDialog> {
       }
       // The sheet belongs to the owner: its canvas sizes the cut-fitted
       // paper and its name the file, whichever sibling was in scope.
-      final owner = _cutById(ownerId) ?? cut;
+      final owner = cutLocationOrNull(project, ownerId)?.cut ?? cut;
       final paper = cutEnvelopePaperSize(
         mode: spec.paperMode,
         cut: owner,
@@ -650,17 +651,6 @@ class ExportDialogState extends State<ExportDialog> {
       );
     }
     return tasks;
-  }
-
-  Cut? _cutById(CutId id) {
-    for (final track in _session.repository.requireProject().tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == id) {
-          return cut;
-        }
-      }
-    }
-    return null;
   }
 
   /// One output file: the sheet, plus the stratum when the layers ship

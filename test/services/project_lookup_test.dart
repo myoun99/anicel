@@ -76,16 +76,32 @@ void main() {
       );
     });
 
-    test('requireTrackOfCut finds the holding track, else throws', () {
+    test('requireCutLocation is ONE walk — the holding track and the cut '
+        'are its two projections, and an absent id throws', () {
+      final project = _project(cuts: [_cut('a'), _cut('b')]);
+
+      final location = requireCutLocation(project, const CutId('b'));
+      expect(location.track.id, const TrackId('t'));
+      expect(location.cut.id, const CutId('b'));
+      expect(
+        () => requireCutLocation(project, const CutId('missing')),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'Cut not found: missing',
+          ),
+        ),
+      );
+    });
+
+    test('cutLocationOrNull answers null for an id that lives nowhere', () {
       final project = _project(cuts: [_cut('a')]);
 
+      expect(cutLocationOrNull(project, const CutId('missing')), isNull);
       expect(
-        requireTrackOfCut(project, const CutId('a')).id,
-        const TrackId('t'),
-      );
-      expect(
-        () => requireTrackOfCut(project, const CutId('missing')),
-        throwsStateError,
+        cutLocationOrNull(project, const CutId('a'))?.cut.id,
+        const CutId('a'),
       );
     });
 

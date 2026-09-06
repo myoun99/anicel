@@ -117,7 +117,7 @@ class CreateFolderCommand implements Command {
       }
       folderMembers.add(
         LayerLinkMember(
-          trackId: requireTrackOfCut(project, target.cutId).id,
+          trackId: requireCutLocation(project, target.cutId).track.id,
           cutId: target.cutId,
           layerId: newFolderId,
         ),

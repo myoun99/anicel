@@ -61,10 +61,14 @@ class ConvertToLinkedCutCommand implements Command {
   @override
   void execute() {
     final project = repository.requireProject();
-    final originTrack = requireTrackOfCut(project, originCutId);
-    final targetTrack = requireTrackOfCut(project, targetCutId);
-    final originCut = requireCut(project, originCutId);
-    final targetCut = requireCut(project, targetCutId);
+    final (track: originTrack, cut: originCut) = requireCutLocation(
+      project,
+      originCutId,
+    );
+    final (track: targetTrack, cut: targetCut) = requireCutLocation(
+      project,
+      targetCutId,
+    );
     final plan = planConvertToLinkedCut(
       project: project,
       originCut: originCut,

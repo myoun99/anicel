@@ -34,6 +34,7 @@ import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
     show
         cutIdOfLayer,
+        cutLocationOrNull,
         projectArchivedMediaPaths,
         projectAudioSourcePaths,
         requireLayerAnywhere;
@@ -1489,16 +1490,8 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The cut with [cutId] anywhere in the project, or `null`.
-  Cut? cutById(CutId cutId) {
-    for (final track in _repository.requireProject().tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          return cut;
-        }
-      }
-    }
-    return null;
-  }
+  Cut? cutById(CutId cutId) =>
+      cutLocationOrNull(_repository.requireProject(), cutId)?.cut;
 
   /// The brush store key of a layer frame within [cut] — same derivation the
   /// canvas selection uses (track containing the cut, first track fallback).
@@ -2422,16 +2415,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The track that owns [cutId] — the V effects' home (R4: the transform
   /// lanes are TRACK data on the global axis, like the SE rows).
-  Track? trackOwningCut(CutId cutId) {
-    for (final track in _repository.requireProject().tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          return track;
-        }
-      }
-    }
-    return null;
-  }
+  Track? trackOwningCut(CutId cutId) =>
+      cutLocationOrNull(_repository.requireProject(), cutId)?.track;
 
   // `transformTrackForCut` retired with the V row's transform: every route
   // that asked for a track pose or fade now has neither to apply.
@@ -3990,7 +3975,7 @@ class EditorSessionManager extends ChangeNotifier {
     // track through the inserted cut). Duplicate folding compresses the
     // bake list, so every bake names its SOURCE frame index.
     try {
-      final bakedCut = _cutById(cutId);
+      final bakedCut = cutById(cutId);
       if (bakedCut != null) {
         for (final bake in bakes) {
           final surface = await rasterizeImageToSurface(
@@ -4095,7 +4080,7 @@ class EditorSessionManager extends ChangeNotifier {
 
     // Pixels after the structure, like every other import: the cel keys
     // resolve their owner through the cut that now exists.
-    final bakedCut = _cutById(cutId);
+    final bakedCut = cutById(cutId);
     if (bakedCut != null) {
       for (final cel in expansion.cels) {
         bakeCelSurface(
@@ -4247,7 +4232,7 @@ class EditorSessionManager extends ChangeNotifier {
       // so one damaged page must leave its cel empty and be REPORTED —
       // never abort into a half-baked import the dialog would retry as a
       // duplicate.
-      final bakedCut = _cutById(cutId);
+      final bakedCut = cutById(cutId);
       if (bakedCut != null) {
         var done = 0;
         for (final bake in bakes) {
@@ -4316,17 +4301,6 @@ class EditorSessionManager extends ChangeNotifier {
       hash = (hash ^ data.getUint32(i)) * 0x01000193 & 0xFFFFFFFF;
     }
     return Object.hash(hash, data.lengthInBytes);
-  }
-
-  Cut? _cutById(CutId cutId) {
-    for (final track in _repository.requireProject().tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          return cut;
-        }
-      }
-    }
-    return null;
   }
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
@@ -4424,7 +4398,7 @@ class EditorSessionManager extends ChangeNotifier {
       ),
     );
 
-    final bakedCut = _cutById(plan.cut.id);
+    final bakedCut = cutById(plan.cut.id);
     if (bakedCut != null) {
       // Each file bakes exactly once — decode, bake, dispose, so the
       // peak stays ONE image no matter how large the folder (the
@@ -4640,7 +4614,7 @@ class EditorSessionManager extends ChangeNotifier {
   ) {
     final work = <(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)>[];
     for (final (plan, slotsByFile) in plans) {
-      final bakedCut = _cutById(plan.cut.id);
+      final bakedCut = cutById(plan.cut.id);
       if (bakedCut == null) {
         continue;
       }

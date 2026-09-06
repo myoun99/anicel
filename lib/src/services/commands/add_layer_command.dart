@@ -126,13 +126,13 @@ class AddLayerCommand implements Command {
                   // Each member's OWN track: a link group may span tracks,
                   // and stamping the source's id on all of them would file
                   // the copy under a track it does not live in.
-                  trackId: requireTrackOfCut(next, cutId).id,
+                  trackId: requireCutLocation(next, cutId).track.id,
                   cutId: cutId,
                   layerId: layer.id,
                 ),
                 for (final mirror in mirrors)
                   LayerLinkMember(
-                    trackId: requireTrackOfCut(next, mirror.cutId).id,
+                    trackId: requireCutLocation(next, mirror.cutId).track.id,
                     cutId: mirror.cutId,
                     layerId: mirror.layerId,
                   ),
