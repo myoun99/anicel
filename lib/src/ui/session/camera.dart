@@ -18,7 +18,7 @@ class _Camera {
   /// The camera's output frame size (the exported picture size); the camera
   /// view rect on canvas is this divided by the pose zoom.
   CanvasSize get cameraFrameSize =>
-      _session._repository.requireProject().cameraSize;
+      _session.repository.requireProject().cameraSize;
 
   /// Sets the project's camera (shooting) frame — one undo step, no-op
   /// when unchanged. Poses are untouched: `CameraPose.zoom` is stated
@@ -27,13 +27,13 @@ class _Camera {
     if (size.width < 1 || size.height < 1 || size == cameraFrameSize) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       UpdateProjectCameraSizeCommand(
-        repository: _session._repository,
+        repository: _session.repository,
         cameraSize: size,
       ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Resolved camera pose at an arbitrary playback frame (for rendering).
@@ -75,7 +75,7 @@ class _Camera {
   CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
     camera: _session.requireActiveCut.camera,
     canvasSize: _session.requireActiveCut.canvasSize,
-    frameIndex: _session._timelineController.currentFrameIndex,
+    frameIndex: _session.timelineController.currentFrameIndex,
   );
 
   /// The camera pose the canvas should FRAME right now — not always the
@@ -95,7 +95,7 @@ class _Camera {
   /// then there is nothing to frame. Null says exactly that.
   CameraPose? get displayedCameraPose {
     final parked = _session.frameScrubActive.value
-        ? _session._gapGlobalFrame
+        ? _session.gapGlobalFrame
         : null;
     if (parked == null) {
       return _session.activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
@@ -118,45 +118,45 @@ class _Camera {
 
   bool get hasCameraKeyframeAtCurrentFrame =>
       _session.activeCutOrNull?.camera.keyframeAt(
-        _session._timelineController.currentFrameIndex,
+        _session.timelineController.currentFrameIndex,
       ) !=
       null;
 
   void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.setCutCameraKeyframe(
+    _session.cutCommandCoordinator.setCutCameraKeyframe(
       cutId: cutId,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
       pose: pose,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void removeCameraKeyframeAtCurrentFrame() {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.removeCutCameraKeyframe(
+    _session.cutCommandCoordinator.removeCutCameraKeyframe(
       cutId: cutId,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void clearActiveCutCamera() {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.clearCutCamera(cutId: cutId);
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.clearCutCamera(cutId: cutId);
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// Replaces the active cut's camera track (one undo step) — the property
@@ -165,7 +165,7 @@ class _Camera {
     TransformTrack track, {
     String description = 'Edit camera keyframes',
   }) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
@@ -174,7 +174,7 @@ class _Camera {
     // reach — but two keys sharing a name on one lane still move together,
     // which is the whole link at its smallest.
     final before = _session.cutById(cutId)?.camera.track;
-    _session._cutCommandCoordinator.updateCutCamera(
+    _session.cutCommandCoordinator.updateCutCamera(
       cutId: cutId,
       camera: CutCamera.fromTrack(
         before == null
@@ -186,8 +186,8 @@ class _Camera {
       ),
       description: description,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// Whether the canvas is in camera manipulation mode.
@@ -202,12 +202,12 @@ class _Camera {
     if (cut == null) {
       return null;
     }
-    final frameIndex = _session._timelineController.currentFrameIndex;
+    final frameIndex = _session.timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
       if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
         continue;
       }
-      final frame = _session._timelineController.resolveFrameForLayer(
+      final frame = _session.timelineController.resolveFrameForLayer(
         layer: layer,
         frameIndex: frameIndex,
       );
@@ -215,7 +215,7 @@ class _Camera {
         continue;
       }
       return BrushEditorSelection(
-        projectId: _session._repository.requireProject().id,
+        projectId: _session.repository.requireProject().id,
         trackId: _session.selectedTrackId,
         cutId: cut.id,
         layerId: layer.id,
@@ -227,17 +227,17 @@ class _Camera {
 
   /// The project's instruction vocabulary (FI/FO/PAN …, user-editable).
   CameraInstructionSet get cameraInstructionSet =>
-      _session._repository.requireProject().cameraInstructions;
+      _session.repository.requireProject().cameraInstructions;
 
   /// One undo step; no-op when unchanged.
   void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
-    _session._cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
+    _session.notifyChanged();
   }
 
   Command? cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
     final cut = _session.activeCutOrNull;
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cut == null || cutId == null) {
       return null;
     }
@@ -267,7 +267,7 @@ class _Camera {
       return null;
     }
     return UpdateCutCameraCommand(
-      repository: _session._repository,
+      repository: _session.repository,
       cutId: cutId,
       camera: camera,
       description: 'Create camera keys',

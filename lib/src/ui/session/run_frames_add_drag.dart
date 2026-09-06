@@ -28,17 +28,17 @@ class _RunFramesAddDrag {
       blockStartIndex: blockStartIndex,
       atEnd: atEnd,
       blockMoveEligible: _session._blockMoveEligible,
-      layerById: _session._layerById,
-      tracksNow: () => _session._repository.requireProject().tracks,
-      activeCutFrameCount: () => _session._activeCutFrameCount,
+      layerById: _session.layerById,
+      tracksNow: () => _session.repository.requireProject().tracks,
+      activeCutFrameCount: () => _session.activeCutFrameCount,
       preview: _session.dragPreview,
       commitLayerDrag: ({required before, required after}) {
-        _session._timelineController.commitLayerTimelineDrag(
+        _session.timelineController.commitLayerTimelineDrag(
           before: before,
           after: after,
         );
-        _session._warmActiveCut();
-        _session._notifyChanged();
+        _session.warmActiveCut();
+        _session.notifyChanged();
       },
     );
     if (drag == null) {

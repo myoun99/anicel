@@ -232,7 +232,7 @@ class _RangeSelections {
       spanned = railRows.sublist(first, last + 1);
     }
 
-    final axis = _session._axisForTrack(trackId);
+    final axis = _session.axisForTrack(trackId);
     final lanes = <RangeBlock? Function(int)>[
       for (final row in spanned) ?_session._trackRowSnapLane(row, axis),
     ];
@@ -344,12 +344,12 @@ class _RangeSelections {
       // onto the TRACK's lanes — global frame indexes, no layer to
       // activate. Selecting the row keeps the rail's answer honest,
       // without promoting a cut (the drag is about keys, not cuts).
-      if (_session._trackById(carrierTrackId) == null) {
+      if (_session.trackById(carrierTrackId) == null) {
         return;
       }
       _session.selectTrackRow(carrierTrackId);
     } else {
-      if (_session._layerById(layerId) == null) {
+      if (_session.layerById(layerId) == null) {
         // A REAL track row that just is not the ACTIVE track's (its lane
         // law cannot hold the span here — the pre-existing gate): an
         // escalated track-axis selection this drag painted must not
@@ -419,7 +419,7 @@ class _RangeSelections {
     if (_session.isTrackSeLayerId(layerId)) {
       return _session.trackSeGlobalLayerById(layerId) != null;
     }
-    return _session._layerById(layerId) != null;
+    return _session.layerById(layerId) != null;
   }
 
   /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
@@ -444,7 +444,7 @@ class _RangeSelections {
     if (!rangeSelectionEligible(layerId)) {
       return;
     }
-    final layer = _session._rangeLayerById(layerId);
+    final layer = _session.rangeLayerById(layerId);
     if (layer == null) {
       return;
     }
@@ -504,7 +504,7 @@ class _RangeSelections {
     while (changed) {
       changed = false;
       for (final id in spanIds) {
-        final spanned = _session._rangeLayerById(id);
+        final spanned = _session.rangeLayerById(id);
         if (spanned == null) {
           continue;
         }
@@ -632,11 +632,11 @@ class _RangeSelections {
       // verbs that then no-op against the stored-empty row.
       //
       // and SINGLE-CEL (image) rows with them — see
-      // [EditorSessionManager._standsDownFromRetime].
-      if (_session._standsDownFromRetime(id)) {
+      // [EditorSessionManager.standsDownFromRetime].
+      if (_session.standsDownFromRetime(id)) {
         continue;
       }
-      final layer = _session._rangeLayerById(id);
+      final layer = _session.rangeLayerById(id);
       if (layer == null) {
         continue;
       }
@@ -698,7 +698,7 @@ class _RangeSelections {
   ) {
     int? end;
     for (final entry in startsByLayer.entries) {
-      final layer = _session._layerById(entry.key);
+      final layer = _session.layerById(entry.key);
       if (layer == null) {
         continue;
       }

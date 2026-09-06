@@ -15,38 +15,38 @@ class _LayerSwitchVerbs {
   final EditorSessionManager _session;
 
   void toggleLayerVisibility(LayerId layerId) {
-    _session._layerController.toggleLayerVisibility(layerId);
-    _session._notifyChanged();
+    _session.layerController.toggleLayerVisibility(layerId);
+    _session.notifyChanged();
   }
 
   /// Silences/unsilences an SE row's sounds (the mute button — view state
   /// like visibility, not undoable): playback and export skip muted
   /// layers' clips, waveforms keep displaying.
   void toggleLayerMuted(LayerId layerId) {
-    _session._layerController.toggleLayerMuted(layerId);
-    _session._refreshLiveAudioSchedule();
-    _session._notifyChanged();
+    _session.layerController.toggleLayerMuted(layerId);
+    _session.refreshLiveAudioSchedule();
+    _session.notifyChanged();
   }
 
   /// The SE row's track fader + pan (mix state like mute, repo-direct).
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _session._layerController.setLayerAudio(
+    _session.layerController.setLayerAudio(
       layerId: layerId,
       gain: gain,
       pan: pan,
     );
-    _session._refreshLiveAudioSchedule();
-    _session._notifyChanged();
+    _session.refreshLiveAudioSchedule();
+    _session.notifyChanged();
   }
 
   /// R26 #30: the layer's composite blend — display state alongside the
   /// eye/static opacity (repo-direct, link-group mirrored).
   void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {
-    _session._layerController.setLayerBlendMode(
+    _session.layerController.setLayerBlendMode(
       layerId: layerId,
       blendMode: blendMode,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// R27 #6: the legend's BLEND bulk — the master opacity bar's rule for
@@ -63,11 +63,11 @@ class _LayerSwitchVerbs {
           layer.id,
     ];
     if (targets.isNotEmpty) {
-      _session._layerController.setLayersBlendMode(
+      _session.layerController.setLayersBlendMode(
         layerIds: targets,
         blendMode: mode,
       );
-      _session._notifyChanged();
+      _session.notifyChanged();
     }
   }
 
@@ -76,26 +76,26 @@ class _LayerSwitchVerbs {
     // ⛔ONE undo step for one legend press — the loop used to make one per
     // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
     // 다 한번에 언두되야하는데 안됨」 in the place it is easiest to hit.
-    _session._layerController.setLayersVisible(
+    _session.layerController.setLayersVisible(
       layerIds: [
         for (final layer in _session.layers)
           if (layer.isVisible != visible) layer.id,
       ],
       visible: visible,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Mutes/unmutes every SE layer of the active cut.
   void setAllSeLayersMuted(bool muted) {
-    _session._layerController.setLayersMuted(
+    _session.layerController.setLayersMuted(
       layerIds: [
         for (final layer in _session.layers)
           if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
       ],
       muted: muted,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   bool get canToggleTargetLayerKind {
@@ -112,7 +112,7 @@ class _LayerSwitchVerbs {
       return true;
     }
 
-    return !_session._layerController.layers.any(
+    return !_session.layerController.layers.any(
       (layer) =>
           layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
     );
@@ -141,24 +141,24 @@ class _LayerSwitchVerbs {
       final covered = filled == null
           ? createStoryboardLayer(
               layerId: targetLayer.id,
-              frameId: FrameId(_session._nextFrameId(targetLayer.id)),
+              frameId: FrameId(_session.nextFrameId(targetLayer.id)),
               cut: cut,
             ).copyWith(name: targetLayer.name)
           : targetLayer.copyWith(timeline: filled);
       if (covered != targetLayer) {
-        _session._timelineController.commitLayerTimelineDrag(
+        _session.timelineController.commitLayerTimelineDrag(
           before: targetLayer,
           after: covered,
         );
       }
     }
 
-    _session._cutCommandCoordinator.updateLayerKind(
+    _session.cutCommandCoordinator.updateLayerKind(
       cutId: _session.requireActiveCut.id,
       layerId: targetLayer.id,
       kind: nextKind,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 }

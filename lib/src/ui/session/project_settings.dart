@@ -19,8 +19,8 @@ class _ProjectSettings {
   /// for the NEXT project, which is all that remains of the old app-state
   /// pasteboard.
   void setPasteboardColor(int argb) {
-    _session._cutCommandCoordinator.setProjectPasteboard(argb);
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.setProjectPasteboard(argb);
+    _session.notifyChanged();
     _session._appSettings.rememberPasteboardDefault(argb);
   }
 
@@ -28,25 +28,25 @@ class _ProjectSettings {
   /// opaque floor — what a fade reveals and what an opaque export bakes
   /// where nothing covers.
   void setProjectBackdrop(int argb) {
-    _session._cutCommandCoordinator.setProjectBackdrop(argb);
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.setProjectBackdrop(argb);
+    _session.notifyChanged();
   }
 
   /// How far past the canvas the pasteboard SHOWS, in canvas widths and
   /// heights — where the pasteboard stops and the backdrop begins. One undo
   /// step; no-op when unchanged.
   void setProjectPasteboardMargin(double margin) {
-    _session._cutCommandCoordinator.setProjectPasteboardMargin(margin);
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.setProjectPasteboardMargin(margin);
+    _session.notifyChanged();
   }
 
   /// The exact rate, for the surfaces that convert frames to REAL TIME
   /// (playback clock, audio placement, export). Everything that merely
   /// COUNTS frames wants [projectFps] instead.
   ProjectFrameRate get projectFrameRate =>
-      _session._repository.requireProject().frameRate;
+      _session.repository.requireProject().frameRate;
 
-  int get projectFps => _session._repository.requireProject().fps;
+  int get projectFps => _session.repository.requireProject().fps;
 
   void setProjectFrameRate(ProjectFrameRate frameRate) {
     if (frameRate.numerator < 1 ||
@@ -55,14 +55,14 @@ class _ProjectSettings {
         frameRate == projectFrameRate) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       UpdateProjectFrameRateCommand(
-        repository: _session._repository,
+        repository: _session.repository,
         frameRate: frameRate,
       ),
     );
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
   }
 
   /// Whole-number convenience for the callers that only ever mean an
@@ -77,14 +77,14 @@ class _ProjectSettings {
   /// The project's paper/background (R10-⑥): canvas paper, playback gap
   /// fill and export backing.
   ProjectBackground get projectBackground =>
-      _session._repository.requireProject().background;
+      _session.repository.requireProject().background;
 
   /// One undo step; no-op when unchanged. Composites are untouched — the
   /// background paints at display/export time, never baked (the camera
   /// rule).
   void setProjectBackground(ProjectBackground background) {
-    _session._cutCommandCoordinator.setProjectBackground(background);
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.setProjectBackground(background);
+    _session.notifyChanged();
   }
 
   /// The whole-project layout, memoized on PROJECT IDENTITY: scrubs ask

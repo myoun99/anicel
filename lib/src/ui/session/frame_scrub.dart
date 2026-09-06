@@ -45,7 +45,7 @@ class _FrameScrub {
       // rule scrubFrameIndex keeps for in-cut taps; the playhead itself
       // follows immediately through the parking either way). No warm:
       // the track stack self-fills, there is no active-cut cache to fill.
-      final parked = _session._gapGlobalFrame;
+      final parked = _session.gapGlobalFrame;
       // Engage on the SECOND out-of-territory event — OR on the FIRST
       // when this gesture already touched the cut's territory (D6: a
       // press ON the cursor's own frame never set the flag via
@@ -57,7 +57,7 @@ class _FrameScrub {
           !_session.frameScrubActive.value) {
         _session.frameScrubActive.value = true;
       }
-      _session._gapGlobalFrame = globalFrame;
+      _session.gapGlobalFrame = globalFrame;
       // D6: the territory-exit EDGE — only while the gesture is live
       // (a tap's pointer-down park keeps this false, the no-flash rule),
       // and only on the flip, so per-move parking stays notify-quiet.
@@ -70,13 +70,13 @@ class _FrameScrub {
     // The gesture stands IN territory — the fact the out-branch's engage
     // reads to tell a real drag's crossing from a bare pointer-down.
     _scrubTouchedTerritory = true;
-    if (_session._gapGlobalFrame != null) {
+    if (_session.gapGlobalFrame != null) {
       // Scrubbing back onto the cut un-parks — and kicks the warm the
       // out-of-territory engage skipped (one warm per territory entry,
       // not per move: the preview reads the composite cache, so a cold
       // stretch would otherwise show stale paper for the whole re-entry).
-      _session._gapGlobalFrame = null;
-      _session._warmActiveCut();
+      _session.gapGlobalFrame = null;
+      _session.warmActiveCut();
       // D6: the re-entry edge — the content mount swaps back to the
       // interactive canvas even when the cursor lands on its own frame
       // (the retarget scope swallows an unchanged index, so without
@@ -106,8 +106,8 @@ class _FrameScrub {
     if (_session.editingInteractionBusy) {
       return;
     }
-    if (frameIndex != _session._timelineController.currentFrameIndex) {
-      _session._timelineController.selectFrameIndex(frameIndex);
+    if (frameIndex != _session.timelineController.currentFrameIndex) {
+      _session.timelineController.selectFrameIndex(frameIndex);
       _session.editingFrameCursor.value = frameIndex;
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       _session.audioScrubber.onScrubFrame(frameIndex);
@@ -115,7 +115,7 @@ class _FrameScrub {
         _session.frameScrubActive.value = true;
         // One warm per gesture. A scrub is a seek and every other seek
         // warms; per-move warms would only thrash the scheduler's ordering.
-        _session._warmActiveCut();
+        _session.warmActiveCut();
       }
     } else {
       _session.editingFrameCursor.value = frameIndex;
@@ -156,7 +156,7 @@ class _FrameScrub {
       _session.scrubOutOfTerritory.value = false;
     }
     _scrubTouchedTerritory = false;
-    final parked = _session._gapGlobalFrame;
+    final parked = _session.gapGlobalFrame;
     if (parked != null) {
       // R15-⑤: a live editing interaction refuses the landing seek — the
       // parking stays put (the parked display state) instead of being
@@ -168,10 +168,10 @@ class _FrameScrub {
       // not read a live drag's parking as a committed gap departure —
       // its fromGap branch would land frame 0 first and double the
       // committed-seek signal. A gap landing re-parks by itself.
-      _session._gapGlobalFrame = null;
+      _session.gapGlobalFrame = null;
       _session.selectGlobalFrame(parked);
       return;
     }
-    _session.selectFrameIndex(_session._timelineController.currentFrameIndex);
+    _session.selectFrameIndex(_session.timelineController.currentFrameIndex);
   }
 }

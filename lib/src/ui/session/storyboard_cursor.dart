@@ -63,7 +63,7 @@ class _StoryboardCursor {
     if (entry == null || !entry.isDrawing || entry.ghost) {
       return;
     }
-    _session._cutCommandCoordinator.updateExposureMemo(
+    _session.cutCommandCoordinator.updateExposureMemo(
       cutId: cutId,
       layerId: layer.id,
       blockStartIndex: blockStart,
@@ -71,7 +71,7 @@ class _StoryboardCursor {
         actionMemo: action,
       ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// The BLOCK under the storyboard cursor, whatever its kind: the standing
@@ -122,7 +122,7 @@ class _StoryboardCursor {
         if (row != null) {
           final panel = coveringDrawingBlockAt(
             row.timeline,
-            _session._timelineController.currentFrameIndex,
+            _session.timelineController.currentFrameIndex,
           );
           if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
             return _StoryboardCursorStoryboardPanel(
@@ -196,10 +196,10 @@ class _StoryboardCursor {
         // gap; the lookup below finds the track row without a cut; the verb
         // was the one still refusing. Found by the adversarial check on the
         // 2026-09-02 cut — the verb had no test of its own.
-        _session._timelineController.deleteBlocksForLayers({
+        _session.timelineController.deleteBlocksForLayers({
           layerId: [blockStartIndex],
         });
-        _session._notifyChanged();
+        _session.notifyChanged();
       case _StoryboardCursorTransitionSpan():
         _session.removeTransitionSpanAt(_session.editingGlobalFrame);
     }
@@ -242,7 +242,7 @@ class _StoryboardCursor {
     // (the active cut's global start) — pre-subtract the SAME expression,
     // exactly as [_createTrackSeEntriesForRange] does, or the entry lands
     // double-shifted.
-    final commands = _session._timelineController
+    final commands = _session.timelineController
         .drawingFramesCommandsForLayers({
           layerId: [
             (
@@ -250,7 +250,7 @@ class _StoryboardCursor {
                   _session.editingGlobalFrame -
                   _session.activeCutGlobalStartFrame,
               length: 1,
-              frameId: FrameId(_session._nextFrameId(layerId)),
+              frameId: FrameId(_session.nextFrameId(layerId)),
               name: '',
             ),
           ],
@@ -258,7 +258,7 @@ class _StoryboardCursor {
     if (commands.isEmpty) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -266,7 +266,7 @@ class _StoryboardCursor {
               commands: commands,
             ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// D28: whether the frame ＋ can DIVIDE the storyboard panel under the
@@ -277,7 +277,7 @@ class _StoryboardCursor {
     if (_storyboardCursorBlockOrNull() case _StoryboardCursorStoryboardPanel(
       :final panelStartIndex,
     )) {
-      return _session._timelineController.currentFrameIndex != panelStartIndex;
+      return _session.timelineController.currentFrameIndex != panelStartIndex;
     }
     return false;
   }
@@ -290,15 +290,15 @@ class _StoryboardCursor {
       :final row,
       :final panelStartIndex,
     )) {
-      if (_session._timelineController.currentFrameIndex == panelStartIndex) {
+      if (_session.timelineController.currentFrameIndex == panelStartIndex) {
         return;
       }
       _session._frameSequence += 1;
-      _session._timelineController.createDrawingFrameForLayer(
+      _session.timelineController.createDrawingFrameForLayer(
         layerId: row.id,
-        frameId: FrameId(_session._nextFrameId(row.id)),
+        frameId: FrameId(_session.nextFrameId(row.id)),
       );
-      _session._notifyChanged();
+      _session.notifyChanged();
     }
   }
 }

@@ -34,7 +34,7 @@ class _FrameClipboard {
     }
 
     _layerClipboard = copyLayerToPayload(activeLayer);
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   void pasteLayerFromClipboard() {
@@ -59,13 +59,13 @@ class _FrameClipboard {
         ? targetLayers.length
         : activeLayerIndex + 1;
 
-    final pastedLayerId = _session._cutCommandCoordinator.pasteLayer(
+    final pastedLayerId = _session.cutCommandCoordinator.pasteLayer(
       cutId: cut.id,
       payload: payload,
       insertionIndex: insertionIndex,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: pastedLayerId);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: pastedLayerId);
+    _session.notifyChanged();
   }
 
   bool get canCopyFrameAtCurrentFrame {
@@ -116,12 +116,12 @@ class _FrameClipboard {
     // still has it" would have made cut-then-paste-back impossible while
     // the button sat lit.
     if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
-      return _session._timelineController.currentFrameIndex >= 0;
+      return _session.timelineController.currentFrameIndex >= 0;
     }
 
-    return _session._timelineController.canPasteLinkedFrameAt(
+    return _session.timelineController.canPasteLinkedFrameAt(
       layer: layer,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
       copiedFrameId: copiedFrame.frameId,
     );
   }
@@ -145,7 +145,7 @@ class _FrameClipboard {
       return 'Links: -';
     }
 
-    final uses = _session._timelineController.linkedUseCountForLayerFrame(
+    final uses = _session.timelineController.linkedUseCountForLayerFrame(
       layer: layer,
       frameId: frame.id,
     );
@@ -168,7 +168,7 @@ class _FrameClipboard {
     }
     final entries = <_CopiedRow>[];
     for (final row in _pasteTargetRowsBesides(anchor)) {
-      final clip = _session._timelineController.copyRunForLayer(
+      final clip = _session.timelineController.copyRunForLayer(
         layerId: row.id,
         index: _session._commitBlockStart(row.id, selection.startIndex),
         count: selection.lengthFrames,
@@ -205,7 +205,7 @@ class _FrameClipboard {
     // then decides a length for.
     final clip = run == null
         ? null
-        : _session._timelineController.copyRunForLayer(
+        : _session.timelineController.copyRunForLayer(
             layerId: layer.id,
             index: run.index,
             count: run.count,
@@ -238,7 +238,7 @@ class _FrameClipboard {
         ..._copiedRowsBesides(layer),
       ],
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// ㉕: the copied cel's content here, as a cel of its own.
@@ -284,7 +284,7 @@ class _FrameClipboard {
         layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
-    return _session._timelineController.currentFrameIndex >= 0;
+    return _session.timelineController.currentFrameIndex >= 0;
   }
 
   void pasteIndependentFrameAtCurrentFrame() {
@@ -340,7 +340,7 @@ class _FrameClipboard {
       if (id == anchor.id) {
         continue;
       }
-      final row = _session._rangeLayerById(id);
+      final row = _session.rangeLayerById(id);
       if (row == null ||
           !layerKindHoldsDrawings(row.kind) ||
           layerKindHoldsSingleCel(row.kind) ||
@@ -406,13 +406,13 @@ class _FrameClipboard {
         continue;
       }
       final newId = minted.putIfAbsent(sourceId, () {
-        // 🚨Through the MINT. `_nextFrameId` reads the sequence without
+        // 🚨Through the MINT. `nextFrameId` reads the sequence without
         // advancing it, so two independent pastes inside one clock tick
         // would come out as the SAME cel — which is not "two cels that look
         // alike", it is one cel exposed twice, and the import round already
         // paid for that lesson once. A band paste makes that risk ROUTINE:
         // every swept row mints in the same tick as its neighbours.
-        final id = _session._mintFrameId(layer.id);
+        final id = _session.mintFrameId(layer.id);
         // 🚨IT COMES OUT UNNAMED, and that is the point rather than an
         // omission. A cel's name is its IDENTITY inside the layer — the
         // rename path REFUSES a duplicate and offers to merge instead, which
@@ -463,7 +463,7 @@ class _FrameClipboard {
     final replacing = selection != null && selection.coversLayer(layer.id);
     final index = replacing
         ? run!.index
-        : _session._timelineController.currentFrameIndex;
+        : _session.timelineController.currentFrameIndex;
     final liftCount = replacing ? run!.count : 0;
 
     // 🚨결정 14 ③ⓐ (유저 확정 2026-08-22) — **THE CLIP LANDS ON EVERY SWEPT
@@ -544,7 +544,7 @@ class _FrameClipboard {
         bornFrames: placed.born,
       ));
     }
-    _session._timelineController.spliceRunsForLayers(
+    _session.timelineController.spliceRunsForLayers(
       runs: runs,
       description: independent ? 'Paste frames' : 'Paste linked frames',
     );
@@ -582,6 +582,6 @@ class _FrameClipboard {
     if (replacing) {
       _session.clearFrameRangeSelection();
     }
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 }

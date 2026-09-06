@@ -19,7 +19,7 @@ class _MovieEndDrag {
   int get movieContentEndFrame {
     var end = 0;
     for (final entry in buildStoryboardTimelineLayout(
-      _session._repository.requireProject(),
+      _session.repository.requireProject(),
     )) {
       if (entry.endFrame > end) {
         end = entry.endFrame;
@@ -34,16 +34,16 @@ class _MovieEndDrag {
   /// gap on this timeline).
   bool beginMovieEndDrag() {
     _movieEndDrag = MovieEndDrag(
-      beforeTrailing: _session._repository.requireProject().trailingFrames,
+      beforeTrailing: _session.repository.requireProject().trailingFrames,
       preview: _session.dragPreview,
       commitTrailing: (trailingFrames) {
-        _session._historyManager.execute(
+        _session.historyManager.execute(
           UpdateProjectTrailingFramesCommand(
-            repository: _session._repository,
+            repository: _session.repository,
             trailingFrames: trailingFrames,
           ),
         );
-        _session._notifyChanged();
+        _session.notifyChanged();
       },
     );
     return true;

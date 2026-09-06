@@ -23,10 +23,10 @@ class _DrawingBlockMoveDrag {
     final drag = DrawingBlockMoveDrag.begin(
       layerId: layerId,
       blockStartIndex: blockStartIndex,
-      layerById: _session._layerById,
+      layerById: _session.layerById,
       isEligibleRow: _session._blockMoveEligible,
       noticeIneligible: _session._folders._noticeSyncedAttachRefusal,
-      cutFrameCount: () => _session._activeCutFrameCount,
+      cutFrameCount: () => _session.activeCutFrameCount,
       preview: _session.dragPreview,
       land: _landDrawingBlockMove,
     );
@@ -41,7 +41,7 @@ class _DrawingBlockMoveDrag {
   /// the SHARED single-row builder, then the selection, the cache warm and
   /// the notify — all of which are this class's jobs, not the gesture's.
   void _landDrawingBlockMove(DrawingBlockMovePlan plan, Layer source) {
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       _session._singleRowMoveCommand(
         plan,
         source: source,
@@ -51,10 +51,10 @@ class _DrawingBlockMoveDrag {
     // The selection follows the block onto its new layer (R12-④): the
     // user grabbed THAT drawing — keep working on it where it landed.
     if (plan.isCrossLayer) {
-      _session._layerController.selectLayer(plan.targetAfter!.id);
+      _session.layerController.selectLayer(plan.targetAfter!.id);
     }
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
   }
 
   /// Applies the drag's cumulative deltas as a live preview on

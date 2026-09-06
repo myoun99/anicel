@@ -79,16 +79,16 @@ class _LayerVerbs {
       return;
     }
     LayerId? landed;
-    _session._historyManager.runAsOneStep('Duplicate rows', () {
+    _session.historyManager.runAsOneStep('Duplicate rows', () {
       for (final layerId in ids) {
-        landed = _session._cutCommandCoordinator.duplicateLayer(
+        landed = _session.cutCommandCoordinator.duplicateLayer(
           cutId: cut.id,
           sourceLayerId: layerId,
         );
       }
     });
-    _session._refreshAfterCutCommand(preferredActiveLayerId: landed);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: landed);
+    _session.notifyChanged();
   }
 
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
@@ -111,14 +111,14 @@ class _LayerVerbs {
       return;
     }
 
-    final duplicatedLayerId = _session._cutCommandCoordinator.duplicateLayer(
+    final duplicatedLayerId = _session.cutCommandCoordinator.duplicateLayer(
       // A non-null active layer implies an active cut (gap state has no
       // rows at all).
       cutId: _session.requireActiveCut.id,
       sourceLayerId: activeLayer.id,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
+    _session.notifyChanged();
   }
 
   /// Whether the layer is a member of a link group in the ACTIVE cut
@@ -128,7 +128,7 @@ class _LayerVerbs {
     if (cut == null) {
       return false;
     }
-    return _session._repository.requireProject().linkRegistry.useCountOf(
+    return _session.repository.requireProject().linkRegistry.useCountOf(
           cutId: cut.id,
           layerId: layerId,
         ) >
@@ -154,12 +154,12 @@ class _LayerVerbs {
       return;
     }
     final activeLayer = _session.activeLayer!;
-    _session._cutCommandCoordinator.linkDuplicateLayer(
+    _session.cutCommandCoordinator.linkDuplicateLayer(
       cutId: _session.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
+    _session.notifyChanged();
   }
 
   bool get canUnlinkActiveLayer {
@@ -171,7 +171,7 @@ class _LayerVerbs {
     // The verb unlinks the whole attach group; it is offered when ANY
     // member is linked (mirrors the coordinator's own guard).
     final baseId = activeLayer.attachedToLayerId ?? activeLayer.id;
-    final registry = _session._repository.requireProject().linkRegistry;
+    final registry = _session.repository.requireProject().linkRegistry;
     return cut.layers.any(
       (layer) =>
           (layer.id == baseId || layer.attachedToLayerId == baseId) &&
@@ -186,12 +186,12 @@ class _LayerVerbs {
       return;
     }
     final activeLayer = _session.activeLayer!;
-    _session._cutCommandCoordinator.unlinkLayer(
+    _session.cutCommandCoordinator.unlinkLayer(
       cutId: _session.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
+    _session.notifyChanged();
   }
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
@@ -208,17 +208,17 @@ class _LayerVerbs {
         beforeLayers: beforeSe,
         deletedLayerId: activeLayer.id,
       );
-      _session._historyManager.execute(
+      _session.historyManager.execute(
         RemoveTrackSeLayerCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           trackId: _session.selectedTrackId,
           layerId: activeLayer.id,
         ),
       );
-      _session._refreshAfterCutCommand(
+      _session.refreshAfterCutCommand(
         preferredActiveLayerId: nextActiveLayerId,
       );
-      _session._notifyChanged();
+      _session.notifyChanged();
       return;
     }
 
@@ -228,12 +228,12 @@ class _LayerVerbs {
       deletedLayerId: activeLayer.id,
     );
 
-    _session._cutCommandCoordinator.deleteLayer(
+    _session.cutCommandCoordinator.deleteLayer(
       cutId: _session.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    _session.notifyChanged();
   }
 
   /// ⑨: deletes every selected row that names a deletable layer, as ONE
@@ -262,17 +262,17 @@ class _LayerVerbs {
       beforeLayers: List<Layer>.of(cut.layers),
       deletedLayerId: ordered.last,
     );
-    _session._historyManager.runAsOneStep('Delete rows', () {
+    _session.historyManager.runAsOneStep('Delete rows', () {
       for (final layerId in ordered) {
-        _session._cutCommandCoordinator.deleteLayer(
+        _session.cutCommandCoordinator.deleteLayer(
           cutId: cut.id,
           layerId: layerId,
         );
       }
     });
     _session.clearRowSelection();
-    _session._refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    _session.notifyChanged();
   }
 
   void renameActiveLayer(String name) {
@@ -311,13 +311,13 @@ class _LayerVerbs {
       final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
       final groupStart = attachedGroupStartIndex(baseId, cut.layers);
       if (groupEnd - groupStart > 1) {
-        _session._layerController.addLayer(
+        _session.layerController.addLayer(
           layer: layer,
           insertionIndex: groupEnd,
         );
         return;
       }
     }
-    _session._layerController.addLayer(layer: layer);
+    _session.layerController.addLayer(layer: layer);
   }
 }

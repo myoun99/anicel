@@ -29,7 +29,7 @@ class _LaneRangeMoveDrag {
     // The V TRACK's own lanes (R4b, the carrier route).
     final carrierTrackId = trackIdOfTransformLaneCarrier(selection.layerId);
     if (carrierTrackId != null) {
-      final track = _session._trackById(carrierTrackId);
+      final track = _session.trackById(carrierTrackId);
       if (track == null) {
         return null;
       }
@@ -78,12 +78,12 @@ class _LaneRangeMoveDrag {
       seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
       commitSeNameTag: isSe
           ? (next) {
-              _session._cutCommandCoordinator.setSeNameTag(
+              _session.cutCommandCoordinator.setSeNameTag(
                 layerId: layer.id,
                 seNameTag: next,
                 description: _laneMoveWhy,
               );
-              _session._notifyChanged();
+              _session.notifyChanged();
             }
           : null,
       previewSeNameTag: isSe
@@ -134,7 +134,7 @@ class _LaneRangeMoveDrag {
           // still for the whole drag (B4-②).
           ? (next) => BlockMoveDragPreview(
               previewLayers: const {},
-              cameraMarkerLayer: _session._layerById(layer.id)?.copyWith(),
+              cameraMarkerLayer: _session.layerById(layer.id)?.copyWith(),
             )
           : (next) => BlockMoveDragPreview(
               previewLayers: {layer.id: layer.copyWith(transformTrack: next)},

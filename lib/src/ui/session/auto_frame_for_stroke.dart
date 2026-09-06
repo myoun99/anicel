@@ -48,14 +48,14 @@ class _AutoFrameForStroke {
       return false;
     }
     _session._frameSequence += 1;
-    final command = _session._timelineController
+    final command = _session.timelineController
         .createDrawingFrameCommandForLayer(
           layerId: layer.id,
-          frameId: FrameId(_session._nextFrameId(layer.id)),
+          frameId: FrameId(_session.nextFrameId(layer.id)),
         );
     command.execute();
     _autoFrameForStroke = command;
-    _session._notifyChanged();
+    _session.notifyChanged();
     return true;
   }
 
@@ -92,6 +92,6 @@ class _AutoFrameForStroke {
     // Already executed at pen-down; this records it without re-running
     // anything that matters (the layer edit holds its own before/after).
     _session.historyManager.execute(command);
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 }

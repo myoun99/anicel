@@ -41,7 +41,7 @@ class _FrameVerbs {
       final pose = resolveLayerPoseAt(
         layer: fxCarrier,
         canvasSize: cut.canvasSize,
-        frameIndex: _session._timelineController.currentFrameIndex,
+        frameIndex: _session.timelineController.currentFrameIndex,
       );
       if (pose == null) {
         return null;
@@ -50,7 +50,7 @@ class _FrameVerbs {
         pose: pose,
         anchorPoint: resolveLayerAnchorPointAt(
           layer: fxCarrier,
-          frameIndex: _session._timelineController.currentFrameIndex,
+          frameIndex: _session.timelineController.currentFrameIndex,
         ),
       );
     }
@@ -63,7 +63,7 @@ class _FrameVerbs {
       return null;
     }
 
-    return _session._timelineController.getSelectedFrameForLayer(layer);
+    return _session.timelineController.getSelectedFrameForLayer(layer);
   }
 
   bool get canCreateDrawingAtCurrentFrame {
@@ -93,9 +93,9 @@ class _FrameVerbs {
       return false;
     }
 
-    return _session._timelineController.canCreateDrawingAt(
+    return _session.timelineController.canCreateDrawingAt(
       layer: layer,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
     );
   }
 
@@ -144,7 +144,7 @@ class _FrameVerbs {
     }
     return coveringDrawingBlockAt(
           layer.timeline,
-          _session._timelineController.currentFrameIndex,
+          _session.timelineController.currentFrameIndex,
         ) !=
         null;
   }
@@ -156,12 +156,12 @@ class _FrameVerbs {
     }
     final block = coveringDrawingBlockAt(
       layer.timeline,
-      _session._timelineController.currentFrameIndex,
+      _session.timelineController.currentFrameIndex,
     );
     if (block == null) {
       return;
     }
-    final clip = _session._timelineController.copyRunForLayer(
+    final clip = _session.timelineController.copyRunForLayer(
       layerId: layer.id,
       index: block.startIndex,
       count: block.endIndexExclusive - block.startIndex,
@@ -177,7 +177,7 @@ class _FrameVerbs {
           continue;
         }
         final newId = minted.putIfAbsent(sourceId, () {
-          final id = _session._mintFrameId(layer.id);
+          final id = _session.mintFrameId(layer.id);
           final source = layer.frames
               .where((frame) => frame.id == sourceId)
               .firstOrNull;
@@ -198,7 +198,7 @@ class _FrameVerbs {
       }
       placed = TimelineClipRow(exposures: exposures, length: clip.length);
     }
-    _session._timelineController.spliceRunsForLayers(
+    _session.timelineController.spliceRunsForLayers(
       runs: [
         (
           layerId: layer.id,
@@ -210,7 +210,7 @@ class _FrameVerbs {
       ],
       description: linked ? 'Link duplicate frames' : 'Duplicate frames',
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   void shiftFrames(int delta, {TimelineRowAddress? currentRow}) {
@@ -223,7 +223,7 @@ class _FrameVerbs {
       // The COMMIT layer, never the display clone: a track-SE row's clone
       // is a projection and writing it back would drop the edit (the
       // clones are never written back).
-      final before = _session._commitLayerById(layerId);
+      final before = _session.commitLayerById(layerId);
       if (before == null) {
         continue;
       }
@@ -246,9 +246,9 @@ class _FrameVerbs {
     if (edits.isEmpty) {
       return;
     }
-    _session._timelineController.commitLayerTimelineDrags(edits);
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.timelineController.commitLayerTimelineDrags(edits);
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   bool get canRenameFrameAtCurrentFrame {
@@ -257,9 +257,9 @@ class _FrameVerbs {
       return false;
     }
 
-    return _session._timelineController.canRenameFrameAt(
+    return _session.timelineController.canRenameFrameAt(
       layer: layer,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
     );
   }
 
@@ -279,7 +279,7 @@ class _FrameVerbs {
 
     final allowDuplicateName = layer.kind == LayerKind.se;
     if (!allowDuplicateName) {
-      final conflictingFrameId = _session._timelineController
+      final conflictingFrameId = _session.timelineController
           .conflictingFrameIdForRename(
             layer: layer,
             frameId: frame.id,
@@ -290,13 +290,13 @@ class _FrameVerbs {
       }
     }
 
-    _session._timelineController.renameFrameForLayer(
+    _session.timelineController.renameFrameForLayer(
       layerId: layer.id,
       frameId: frame.id,
       name: name,
       allowDuplicateName: allowDuplicateName,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
     return null;
   }
 
@@ -307,20 +307,20 @@ class _FrameVerbs {
       return;
     }
 
-    _session._timelineController.linkFrameForLayer(
+    _session.timelineController.linkFrameForLayer(
       layerId: layer.id,
       sourceFrameId: frame.id,
       targetFrameId: targetFrameId,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
-  int get currentFrameIndex => _session._timelineController.currentFrameIndex;
+  int get currentFrameIndex => _session.timelineController.currentFrameIndex;
 
   /// Steps the playhead one frame back (flipping `,`) — a committed seek,
   /// clamped at the cut start.
   void selectPreviousFrame() {
-    final current = _session._timelineController.currentFrameIndex;
+    final current = _session.timelineController.currentFrameIndex;
     if (current <= 0) {
       return;
     }
@@ -335,7 +335,7 @@ class _FrameVerbs {
       return; // Gap state: no cut axis to flip along.
     }
     final last = math.max(0, cut.duration - 1);
-    final current = _session._timelineController.currentFrameIndex;
+    final current = _session.timelineController.currentFrameIndex;
     if (current >= last) {
       return;
     }
@@ -358,7 +358,7 @@ class _FrameVerbs {
   /// 이동**이고 그건 그것대로 옳다(플립이 아닌 호출자가 쓴다). 플립은 이쪽이다.
   void _flipToFrame(int landing) {
     final floored = landing < 0 ? 0 : landing;
-    if (floored != _session._timelineController.currentFrameIndex) {
+    if (floored != _session.timelineController.currentFrameIndex) {
       _session.selectFrameIndex(floored);
     }
   }
@@ -381,7 +381,7 @@ class _FrameVerbs {
       case TrackRowAddress(:final trackId):
         _session._flipCuts(trackId, forward: forward);
       case LayerRowAddress(:final layerId):
-        final layer = _session._layerById(layerId) ?? _session.activeLayer;
+        final layer = _session.layerById(layerId) ?? _session.activeLayer;
         if (layer == null) {
           // No such layer to stand on — the playhead is parked in a GAP
           // (no cut, so no rows), or the stored row outlived its cut. The
@@ -402,7 +402,7 @@ class _FrameVerbs {
         // 컷 끝에 갇혀 있던 자리다. 한 프레임 걷는 것은 그대로고, 그 한
         // 프레임이 어디에 내리는지를 이제 두 행이 같이 답한다.
         _flipToFrame(
-          _session._timelineController.currentFrameIndex + (forward ? 1 : -1),
+          _session.timelineController.currentFrameIndex + (forward ? 1 : -1),
         );
     }
   }
@@ -429,7 +429,7 @@ class _FrameVerbs {
     if (_session.activeCutOrNull == null) {
       return; // Gap state: no cut axis — the TRACK row is the one to walk.
     }
-    final current = _session._timelineController.currentFrameIndex;
+    final current = _session.timelineController.currentFrameIndex;
     final next = flipColumnStep(
       frame: current,
       direction: forward ? 1 : -1,
@@ -477,12 +477,12 @@ class _FrameVerbs {
         _session.activeCutOrNull?.layers ?? const <Layer>[],
       );
       if (base != null) {
-        return _session._timelineController
+        return _session.timelineController
             .resolveFrameForLayer(layer: base, frameIndex: frameIndex)
             ?.name;
       }
     }
-    return _session._timelineController
+    return _session.timelineController
         .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
         ?.name;
   }
@@ -492,20 +492,20 @@ class _FrameVerbs {
     if (layer == null || selectedFrame == null) {
       return null;
     }
-    return _session._timelineController.effectiveDurationForLayerAt(
+    return _session.timelineController.effectiveDurationForLayerAt(
       layer: layer,
     );
   }
 
   String get currentFrameStatusText {
-    return 'Frame: ${_session._timelineController.currentFrameIndex + 1}';
+    return 'Frame: ${_session.timelineController.currentFrameIndex + 1}';
   }
 
   String currentFrameDisplayLabel(Layer? layer, Frame? frame) {
     if (layer == null) {
       return '-';
     }
-    final frameIndex = _session._timelineController.currentFrameIndex;
+    final frameIndex = _session.timelineController.currentFrameIndex;
     final frameName = frame?.name;
     final exposureState = _session.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {

@@ -25,17 +25,17 @@ class _EffectsAndFx {
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
   }) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.updateLayerEffects(
+    _session.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,
       effects: effects,
       description: description,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Whether the ACTIVE row can take an effect: a row that carries its own
@@ -98,7 +98,7 @@ class _EffectsAndFx {
     required int frameIndex,
     required String? name,
   }) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return false;
     }
@@ -113,7 +113,7 @@ class _EffectsAndFx {
       return false;
     }
     if (name != null &&
-        _session._cutCommandCoordinator.namedEffectKeyValueInSpace(
+        _session.cutCommandCoordinator.namedEffectKeyValueInSpace(
               cutId: cutId,
               layerId: layerId,
               effectId: effectId,
@@ -148,7 +148,7 @@ class _EffectsAndFx {
     required int frameIndex,
     required String name,
   }) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
@@ -159,7 +159,7 @@ class _EffectsAndFx {
       parameterId: parameterId,
       frameIndex: frameIndex,
       name: name,
-      adopted: _session._cutCommandCoordinator.namedEffectKeyValueInSpace(
+      adopted: _session.cutCommandCoordinator.namedEffectKeyValueInSpace(
         cutId: cutId,
         layerId: layerId,
         effectId: effectId,
@@ -360,7 +360,7 @@ class _EffectsAndFx {
   /// The row a switch edit addresses: a cut layer, or a track-owned SE row
   /// (whose display clone is not the thing to write).
   Layer? fxSwitchLayerById(LayerId layerId) =>
-      _session._layerById(layerId) ?? _session.trackSeGlobalLayerById(layerId);
+      _session.layerById(layerId) ?? _session.trackSeGlobalLayerById(layerId);
 
   /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
   void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
@@ -372,7 +372,7 @@ class _EffectsAndFx {
           layer.transformEnabled != enabled) {
         commands.add(
           UpdateLayerTransformEnabledCommand(
-            repository: _session._repository,
+            repository: _session.repository,
             layerId: layer.id,
             transformEnabled: enabled,
           ),
@@ -385,14 +385,14 @@ class _EffectsAndFx {
       // 겸용컷 effect mirror, and a master that built its own would write
       // one cut of a link group and leave its twin permanently `mixed`.
       final cutId = cutIdOfLayer(
-        _session._repository.requireProject(),
+        _session.repository.requireProject(),
         layer.id,
       );
       if (cutId == null) {
         continue; // A row no cut holds (a track-SE clone) has no chain here.
       }
       commands.addAll(
-        _session._cutCommandCoordinator.layerEffectsCommands(
+        _session.cutCommandCoordinator.layerEffectsCommands(
           cutId: cutId,
           layerId: layer.id,
           effects: [
@@ -406,7 +406,7 @@ class _EffectsAndFx {
     if (commands.isEmpty) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -418,7 +418,7 @@ class _EffectsAndFx {
     // transform track, the effect chain): a switch flip is not a structural
     // cut edit, and refreshing as one threw away the frame-range selection
     // the user keeps while A/B-ing the switch.
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Whether the cut's fx (the V track's Transform group — the pose AND
@@ -445,7 +445,7 @@ class _EffectsAndFx {
   /// the switches beneath it, so it reports what it is. A bypassed effect
   /// says so on its own lane header, where the eye already looks.
   LayerFxState trackFxState(TrackId trackId) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     if (track == null) {
       return LayerFxState.on;
     }
@@ -458,20 +458,20 @@ class _EffectsAndFx {
     List<LayerEffect> effects, {
     String description = 'Edit track effects',
   }) {
-    _session._cutCommandCoordinator.updateTrackEffects(
+    _session.cutCommandCoordinator.updateTrackEffects(
       trackId: trackId,
       effects: effects,
       description: description,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// Adds an effect to the V row's chain. Ids are minted the way a layer's
   /// are (the lane address embeds them, so two adds in one session must not
   /// collide) — off the TRACK id, since that is what carries the chain.
   void addEffectToTrack(TrackId trackId, EffectKind kind) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     if (track == null) {
       return;
     }
@@ -491,7 +491,7 @@ class _EffectsAndFx {
   }
 
   void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     if (track == null) {
       return;
     }
@@ -506,14 +506,14 @@ class _EffectsAndFx {
   /// [_session.resetLaneGroup]. Track effects have no lane-range selection of their
   /// own, so the scope is always the playhead.
   bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     if (track == null) {
       return false;
     }
     final next = effectsWithGroupReset(
       track.effects,
       laneId: headerLaneId,
-      frameIndexes: [_session._timelineController.currentFrameIndex],
+      frameIndexes: [_session.timelineController.currentFrameIndex],
     );
     if (next == null) {
       return false;
@@ -525,7 +525,7 @@ class _EffectsAndFx {
   /// One effect's own bypass on the V row — the switch on its group header,
   /// the twin of a layer effect's.
   void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     if (track == null) {
       return;
     }
@@ -555,18 +555,18 @@ class _EffectsAndFx {
 
   /// The V row's fx toggle, one undoable write.
   void toggleTrackFx(TrackId trackId) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     if (track == null) {
       return;
     }
     final turnOn = !track.fxEnabled;
-    _session._cutCommandCoordinator.updateTrackDisplay(
+    _session.cutCommandCoordinator.updateTrackDisplay(
       trackId: trackId,
       fxEnabled: turnOn,
       description: turnOn ? 'Apply track FX' : 'Bypass track FX',
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// The effect chain a lane/fx-header address names: a real layer's, or the
@@ -574,9 +574,9 @@ class _EffectsAndFx {
   List<LayerEffect>? _effectChainOf(LayerId layerId) {
     final trackId = trackIdOfTransformLaneCarrier(layerId);
     if (trackId != null) {
-      return _session._trackById(trackId)?.effects;
+      return _session.trackById(trackId)?.effects;
     }
-    return _session._layerById(layerId)?.effects;
+    return _session.layerById(layerId)?.effects;
   }
 
   /// Bypasses or restores EVERY layer's fx — the legend's bulk flyout,

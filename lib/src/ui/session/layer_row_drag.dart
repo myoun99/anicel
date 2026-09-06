@@ -22,25 +22,25 @@ class _LayerRowDrag {
     _rowOrderDrag = RowOrderDrag(
       subject: subject,
       channel: _session.layerRowDrag,
-      tracksNow: () => _session._repository.requireProject().tracks,
+      tracksNow: () => _session.repository.requireProject().tracks,
       effectChainOf: _session._effectsAndFx._effectChainOf,
       trackSeAnywhere: _session._trackSe.trackSeAnywhere,
       activeCutOrNull: () => _session.activeCutOrNull,
       isTrackSeLayerId: _session.isTrackSeLayerId,
       rowSelectionCarriedBy: _session._rowSelection.rowSelectionCarriedBy,
       trackIdOfTransformLaneCarrier: trackIdOfTransformLaneCarrier,
-      mountModeFor: _session._cutCommandCoordinator.mountModeFor,
+      mountModeFor: _session.cutCommandCoordinator.mountModeFor,
       commitTrackReorder:
           ({required fromIndex, required toIndex, required trackName}) {
-            _session._historyManager.execute(
+            _session.historyManager.execute(
               ReorderTrackCommand(
-                repository: _session._repository,
+                repository: _session.repository,
                 fromIndex: fromIndex,
                 toIndex: toIndex,
                 trackName: trackName,
               ),
             );
-            _session._notifyChanged();
+            _session.notifyChanged();
           },
       commitTrackEffects: (trackId, effects) => _session.updateTrackEffects(
         trackId,
@@ -49,21 +49,21 @@ class _LayerRowDrag {
       ),
       commitLayerEffects:
           ({required cutId, required layerId, required effects}) {
-            _session._cutCommandCoordinator.updateLayerEffects(
+            _session.cutCommandCoordinator.updateLayerEffects(
               cutId: cutId,
               layerId: layerId,
               effects: effects,
               description: 'Reorder effects',
             );
-            _session._refreshAfterCutCommand(preferredActiveLayerId: layerId);
-            _session._notifyChanged();
+            _session.refreshAfterCutCommand(preferredActiveLayerId: layerId);
+            _session.notifyChanged();
           },
       commitSeOrder: ({required trackId, required order}) {
-        _session._cutCommandCoordinator.setTrackSeOrder(
+        _session.cutCommandCoordinator.setTrackSeOrder(
           trackId: trackId,
           order: order,
         );
-        _session._notifyChanged();
+        _session.notifyChanged();
       },
       commitPlacement:
           ({
@@ -72,7 +72,7 @@ class _LayerRowDrag {
             required subjectLayerId,
             required movedIds,
           }) {
-            _session._cutCommandCoordinator.setLayerPlacement(
+            _session.cutCommandCoordinator.setLayerPlacement(
               cutId: cutId,
               order: plan.order,
               folderIds: plan.folderIds,
@@ -82,10 +82,10 @@ class _LayerRowDrag {
               attach: plan.attach,
               description: 'Move layer',
             );
-            _session._refreshAfterCutCommand(
+            _session.refreshAfterCutCommand(
               preferredActiveLayerId: subjectLayerId,
             );
-            _session._notifyChanged();
+            _session.notifyChanged();
           },
     );
   }

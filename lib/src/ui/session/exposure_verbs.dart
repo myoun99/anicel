@@ -22,9 +22,9 @@ class _ExposureVerbs {
   /// PAST the sweep, so the swept cells go empty and the block's tail stays
   /// where it stands (see [TimelineController.blankableSpanInBand]).
   Map<LayerId, ({int start, int endExclusive})> _blankableSpanForSelection() =>
-      _session._bandRowsForSelection(
+      _session.bandRowsForSelection(
         _blankable,
-        (ids, selection) => _session._timelineController.blankableSpanInBand(
+        (ids, selection) => _session.timelineController.blankableSpanInBand(
           layerIds: ids,
           startIndex: selection.startIndex,
           endExclusive: selection.endIndexExclusive,
@@ -49,9 +49,9 @@ class _ExposureVerbs {
   bool get canBlankExposureAtCurrentFrame => _session.bandOrActiveRow(
     canBlankExposureForSelection,
     _blankable,
-    (layer) => _session._timelineController.canCutExposureAt(
+    (layer) => _session.timelineController.canCutExposureAt(
       layer: layer,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
     ),
   );
 
@@ -66,8 +66,8 @@ class _ExposureVerbs {
   void blankExposureAtCurrentFrame() {
     final banded = _blankableSpanForSelection();
     if (banded.isNotEmpty) {
-      _session._timelineController.blankSpansForLayers(banded);
-      _session._notifyChanged();
+      _session.timelineController.blankSpansForLayers(banded);
+      _session.notifyChanged();
       return;
     }
     final layer = _session.activeLayer;
@@ -75,8 +75,8 @@ class _ExposureVerbs {
       return;
     }
 
-    _session._timelineController.cutExposureForLayer(layerId: layer.id);
-    _session._notifyChanged();
+    _session.timelineController.cutExposureForLayer(layerId: layer.id);
+    _session.notifyChanged();
   }
 
   /// The toolbar +/- buttons are one-frame comma adjustments of the
@@ -90,18 +90,18 @@ class _ExposureVerbs {
     if (layer == null) {
       return;
     }
-    final block = _session._timelineController.blockForLayerAt(layer: layer);
+    final block = _session.timelineController.blockForLayerAt(layer: layer);
     if (block == null) {
       return;
     }
 
-    _session._timelineController.shiftExposureEdge(
+    _session.timelineController.shiftExposureEdge(
       layerId: layer.id,
       blockStartIndex: block.startIndex,
       edge: TimelineBlockEdge.end,
       delta: delta,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
@@ -126,14 +126,14 @@ class _ExposureVerbs {
           : TimelineCellExposureState.uncovered;
     }
 
-    if (_session._timelineController.isDrawingStartForLayer(
+    if (_session.timelineController.isDrawingStartForLayer(
       layer: layer,
       frameIndex: frameIndex,
     )) {
       return TimelineCellExposureState.drawingStart;
     }
 
-    final held = _session._timelineController.isHeldExposureForLayer(
+    final held = _session.timelineController.isHeldExposureForLayer(
       layer: layer,
       frameIndex: frameIndex,
     );
@@ -141,7 +141,7 @@ class _ExposureVerbs {
     // markUncovered is never produced anymore — the enum value survives
     // solely for exhaustive switches over legacy-visual states.
     if (held &&
-        _session._timelineController.hasMarkAt(
+        _session.timelineController.hasMarkAt(
           layer: layer,
           frameIndex: frameIndex,
         )) {
@@ -157,7 +157,7 @@ class _ExposureVerbs {
     if (layer == null) {
       return false;
     }
-    final block = _session._timelineController.blockForLayerAt(layer: layer);
+    final block = _session.timelineController.blockForLayerAt(layer: layer);
     return block != null && block.length > 1;
   }
 
@@ -166,6 +166,6 @@ class _ExposureVerbs {
     if (layer == null) {
       return false;
     }
-    return _session._timelineController.blockForLayerAt(layer: layer) != null;
+    return _session.timelineController.blockForLayerAt(layer: layer) != null;
   }
 }

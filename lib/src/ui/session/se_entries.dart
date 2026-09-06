@@ -24,11 +24,11 @@ class _SeEntries {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    _session._cutCommandCoordinator.setSeNameTag(
+    _session.cutCommandCoordinator.setSeNameTag(
       layerId: layer.id,
       seNameTag: tag,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// A NAME TAG lane edit landing on [layerId] (R5 #7) — one undo.
@@ -40,7 +40,7 @@ class _SeEntries {
   /// after the edit, before the commit.
   void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) {
     final keys = tag?.track;
-    _session._cutCommandCoordinator.setSeNameTag(
+    _session.cutCommandCoordinator.setSeNameTag(
       layerId: layerId,
       seNameTag: keys == null || !_session.isTrackSeLayerId(layerId)
           ? tag
@@ -48,7 +48,7 @@ class _SeEntries {
               track: _session.trackSeWindow.globalSeNameTagTrack(keys),
             ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
@@ -63,7 +63,7 @@ class _SeEntries {
     // scrub preview already clamps this way, so drag and release agree.
     final maxLocal = cut.duration > 0 ? cut.duration - 1 : 0;
     final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
-    final project = _session._repository.requireProject();
+    final project = _session.repository.requireProject();
     // Rows on the tracks BELOW this one: unconfigured defaults stack the
     // whole project's SE rows, so two covered tracks in the multitrack
     // stack never land on the same spot.
@@ -115,18 +115,18 @@ class _SeEntries {
 
     final remaining =
         _session.requireActiveCut.duration -
-        _session._timelineController.currentFrameIndex;
+        _session.timelineController.currentFrameIndex;
     final toCutEnd = remaining < 1 ? 1 : remaining;
     final requested = lengthFrames ?? toCutEnd;
     _session._frameSequence += 1;
-    _session._timelineController.createDrawingFrameForLayer(
+    _session.timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
-      frameId: FrameId(_session._nextFrameId(layer.id)),
+      frameId: FrameId(_session.nextFrameId(layer.id)),
       length: requested < 1 ? 1 : requested,
       name: name,
       seName: seName,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// SE rows: updates the selected entry's dialogue (Frame.name) and
@@ -161,13 +161,13 @@ class _SeEntries {
     String? seName,
   }) {
     final layer = requireLayerAnywhere(
-      _session._repository.requireProject(),
+      _session.repository.requireProject(),
       layerId,
     );
     if (layer.kind != LayerKind.se) {
       return;
     }
-    _session._timelineController.renameFrameForLayer(
+    _session.timelineController.renameFrameForLayer(
       layerId: layerId,
       frameId: frameId,
       name: dialogue,
@@ -175,6 +175,6 @@ class _SeEntries {
       seName: seName,
       updateSeName: true,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 }

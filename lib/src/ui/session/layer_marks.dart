@@ -12,16 +12,16 @@ class _LayerMarks {
 
   /// Sets [layerId]'s organizational color mark. One undo step.
   void setLayerMark(LayerId layerId, LayerMark mark) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.setLayerMark(
+    _session.cutCommandCoordinator.setLayerMark(
       cutId: cutId,
       layerId: layerId,
       mark: mark,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Clears every layer mark of the active cut (track-owned SE rows
@@ -36,7 +36,7 @@ class _LayerMarks {
       for (final layer in [...cut.layers, ..._session.activeTrack.seLayers])
         if (layer.mark != LayerMark.none)
           UpdateLayerMarkCommand(
-            repository: _session._repository,
+            repository: _session.repository,
             cutId: cutId,
             layerId: layer.id,
             mark: LayerMark.none,
@@ -45,13 +45,13 @@ class _LayerMarks {
     if (commands.isEmpty) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       CompositeCommand(
         description: 'Clear all layer marks',
         commands: commands,
       ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE MARK LEARNED THE BAND.**
@@ -71,9 +71,9 @@ class _LayerMarks {
   /// button and the dispatch have to read one answer, and three downstream
   /// copies of a filter is how they stop agreeing.
   Map<LayerId, List<int>> _markableFramesForSelection() =>
-      _session._bandRowsForSelection(
+      _session.bandRowsForSelection(
         _markable,
-        (ids, selection) => _session._timelineController.markableFramesInBand(
+        (ids, selection) => _session.timelineController.markableFramesInBand(
           layerIds: ids,
           startIndex: selection.startIndex,
           endIndexExclusive: selection.endIndexExclusive,
@@ -96,9 +96,9 @@ class _LayerMarks {
   bool get canToggleMarkAtCurrentFrame => _session.bandOrActiveRow(
     canToggleMarkForSelection,
     _markable,
-    (layer) => _session._timelineController.canToggleMarkAt(
+    (layer) => _session.timelineController.canToggleMarkAt(
       layer: layer,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
     ),
   );
 
@@ -108,11 +108,11 @@ class _LayerMarks {
       // SET the whole band one way, never toggle each frame: a mixed band
       // would invert under the hand and hand back the complement of what
       // was there. All marked → clear; anything unmarked → mark them all.
-      _session._timelineController.setMarksForFrames(
+      _session.timelineController.setMarksForFrames(
         banded,
-        marked: !_session._timelineController.bandFramesAreAllMarked(banded),
+        marked: !_session.timelineController.bandFramesAreAllMarked(banded),
       );
-      _session._notifyChanged();
+      _session.notifyChanged();
       return;
     }
     final layer = _session.activeLayer;
@@ -120,15 +120,15 @@ class _LayerMarks {
       return;
     }
 
-    _session._timelineController.toggleMarkForLayer(layerId: layer.id);
-    _session._notifyChanged();
+    _session.timelineController.toggleMarkForLayer(layerId: layer.id);
+    _session.notifyChanged();
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
     if (!layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
-    return _session._timelineController.hasMarkAt(
+    return _session.timelineController.hasMarkAt(
       layer: layer,
       frameIndex: frameIndex,
     );

@@ -81,7 +81,7 @@ class _OpacityVerbs {
           spans: _session.activeTrackTransitionSpans,
           globalFrame:
               start +
-              (frameIndex ?? _session._timelineController.currentFrameIndex),
+              (frameIndex ?? _session.timelineController.currentFrameIndex),
         );
   }
 
@@ -93,7 +93,7 @@ class _OpacityVerbs {
     if (dragging != null && dragging.trackId == trackId) {
       return dragging.opacity;
     }
-    return _session._trackById(trackId)?.opacity ?? 1.0;
+    return _session.trackById(trackId)?.opacity ?? 1.0;
   }
 
   double trackStaticOpacityForCut(CutId cutId) {
@@ -110,21 +110,21 @@ class _OpacityVerbs {
 
   void commitTrackOpacity(TrackId trackId, double opacity) {
     _session.trackOpacityDragPreview.value = null;
-    _session._cutCommandCoordinator.updateTrackDisplay(
+    _session.cutCommandCoordinator.updateTrackDisplay(
       trackId: trackId,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
       description: 'Track opacity',
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    _session._layerController.setLayerOpacity(
+    _session.layerController.setLayerOpacity(
       layerId: layerId,
       opacity: opacity,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   void previewLayerOpacity(LayerId layerId, double opacity) {
@@ -156,7 +156,7 @@ class _OpacityVerbs {
     // ⛔ONE undo step for one bar drag. The drag itself never reaches here
     // — `previewLayersOpacity` holds it in a notifier and only the release
     // commits — so this is one entry per gesture, not per frame.
-    _session._layerController.setLayersOpacity(
+    _session.layerController.setLayersOpacity(
       layerIds: [
         for (final layer in _session.layers)
           if (layerIds.contains(layer.id) &&
@@ -166,7 +166,7 @@ class _OpacityVerbs {
       ],
       opacity: clamped,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Resets every opacity-bearing layer back to fully opaque. The camera
@@ -178,7 +178,7 @@ class _OpacityVerbs {
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    _session._layerController.setLayersOpacity(
+    _session.layerController.setLayersOpacity(
       layerIds: [
         for (final layer in _session.layers)
           if (layerKindHasPictureOpacity(layer.kind) &&
@@ -187,6 +187,6 @@ class _OpacityVerbs {
       ],
       opacity: clamped,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 }

@@ -19,7 +19,7 @@ class _CutVerbs {
     if (plan == null) {
       return;
     }
-    _session._cutCommandCoordinator.createCut(
+    _session.cutCommandCoordinator.createCut(
       trackId: plan.trackId,
       // New cuts inherit the active cut's canvas size, like new scenes in
       // TVPaint/Clip Studio inherit the project size.
@@ -32,38 +32,38 @@ class _CutVerbs {
               duration: plan.duration,
             ),
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void resizeActiveCutCanvas(
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
   }) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.resizeCutCanvas(
+    _session.cutCommandCoordinator.resizeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void duplicateActiveCut() {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.duplicateCut(
+    _session.cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
       targetTrackId: _session.selectedTrackId,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void deleteActiveCut() {
@@ -73,22 +73,22 @@ class _CutVerbs {
       deleteSelectedCuts();
       return;
     }
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.deleteCut(cutId: cutId);
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.deleteCut(cutId: cutId);
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   CutPosition? get _activeCutPositionOrNull {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return null;
     }
     return _session._cutReorderPlanner.findCutPosition(
-      project: _session._repository.requireProject(),
+      project: _session.repository.requireProject(),
       cutId: cutId,
     );
   }
@@ -97,7 +97,7 @@ class _CutVerbs {
     final position = _activeCutPositionOrNull;
     if (position == null) {
       throw StateError(
-        'Active Cut not found: ${_session._editingSession.activeCutId}',
+        'Active Cut not found: ${_session.editingSession.activeCutId}',
       );
     }
     return position;
@@ -125,7 +125,7 @@ class _CutVerbs {
     if (!_session._cutReorderPlanner.canMove(position, direction)) {
       return;
     }
-    _session._cutCommandCoordinator.reorderCut(
+    _session.cutCommandCoordinator.reorderCut(
       trackId: position.trackId,
       cutId: position.cutId,
       newIndex: _session._cutReorderPlanner.moveTargetIndex(
@@ -133,27 +133,27 @@ class _CutVerbs {
         direction,
       ),
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   String? get activeCutNote => _session.activeCutOrNull?.metadata.note;
 
   void updateActiveCutNote(String note) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.updateCutNote(cutId: cutId, note: note);
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note);
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// Whether the active cut's storyboard thumbnail is pinned to the
   /// playhead frame (drives the toolbar toggle's state).
   bool get isActiveCutThumbnailPinnedHere =>
       _session.activeCutOrNull?.metadata.thumbnailFrameIndex ==
-          _session._timelineController.currentFrameIndex &&
+          _session.timelineController.currentFrameIndex &&
       _session.activeCutOrNull?.metadata.thumbnailFrameIndex != null;
 
   /// Pins the active cut's storyboard thumbnail to the playhead frame, or
@@ -164,24 +164,24 @@ class _CutVerbs {
     if (cut == null) {
       return;
     }
-    final frame = _session._timelineController.currentFrameIndex;
+    final frame = _session.timelineController.currentFrameIndex;
     final pinned = cut.metadata.thumbnailFrameIndex;
-    _session._cutCommandCoordinator.updateCutThumbnailFrame(
+    _session.cutCommandCoordinator.updateCutThumbnailFrame(
       cutId: cut.id,
       frameIndex: pinned == frame ? null : frame,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   void renameActiveCut(String newName) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.renameCut(cutId: cutId, newName: newName);
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.renameCut(cutId: cutId, newName: newName);
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// R26 #32: sets the PROJECT's frame rate (one undo step, no-op when
@@ -203,37 +203,37 @@ class _CutVerbs {
     if (cut == null || cut.guides == guides) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       SetCutGuidesCommand(
-        repository: _session._repository,
+        repository: _session.repository,
         cutId: cut.id,
         guides: guides,
       ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
   /// active cut's (empty timelines — same pictures, own timing).
   void createLinkedCutFromActiveCut() {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.createLinkedCut(sourceCutId: cutId);
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId);
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// 겸용 변경 preview: what linking the active cut with [targetCutId]
   /// would do (drives the confirmation dialog's 안내문). Null when there
   /// is no active cut or the target is the active cut itself.
   ConvertToLinkedCutPlan? convertToLinkedCutPreview(CutId targetCutId) {
-    final originCutId = _session._editingSession.activeCutId;
+    final originCutId = _session.editingSession.activeCutId;
     if (originCutId == null || originCutId == targetCutId) {
       return null;
     }
-    return _session._cutCommandCoordinator.convertToLinkedCutPreview(
+    return _session.cutCommandCoordinator.convertToLinkedCutPreview(
       originCutId: originCutId,
       targetCutId: targetCutId,
     );
@@ -242,12 +242,12 @@ class _CutVerbs {
   /// Cuts the active cut can 겸용-convert WITH (every other cut, all
   /// tracks — dialog picker data).
   List<({CutId id, String name})> get convertToLinkedCutCandidates {
-    final activeCutId = _session._editingSession.activeCutId;
+    final activeCutId = _session.editingSession.activeCutId;
     if (activeCutId == null) {
       return const [];
     }
     return [
-      for (final track in _session._repository.requireProject().tracks)
+      for (final track in _session.repository.requireProject().tracks)
         for (final cut in track.cuts)
           if (cut.id != activeCutId) (id: cut.id, name: cut.name),
     ];
@@ -263,7 +263,7 @@ class _CutVerbs {
     if (plan == null || originCut == null) {
       return null;
     }
-    final project = _session._repository.requireProject();
+    final project = _session.repository.requireProject();
     Cut? targetCut;
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
@@ -299,16 +299,16 @@ class _CutVerbs {
   /// 겸용 변경: links the active cut (origin — 원본 승리) with
   /// [targetCutId]. Callers confirm through the preview dialog first.
   void convertActiveCutToLinked(CutId targetCutId) {
-    final originCutId = _session._editingSession.activeCutId;
+    final originCutId = _session.editingSession.activeCutId;
     if (originCutId == null || originCutId == targetCutId) {
       return;
     }
-    _session._cutCommandCoordinator.convertCutToLinked(
+    _session.cutCommandCoordinator.convertCutToLinked(
       originCutId: originCutId,
       targetCutId: targetCutId,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// Whether the selection can delete: cuts selected AND at least one
@@ -319,7 +319,7 @@ class _CutVerbs {
       return false;
     }
     var total = 0;
-    for (final track in _session._repository.requireProject().tracks) {
+    for (final track in _session.repository.requireProject().tracks) {
       total += track.cuts.length;
     }
     return total > selection.length;
@@ -331,11 +331,11 @@ class _CutVerbs {
     if (!canDeleteSelectedCuts) {
       return;
     }
-    _session._cutCommandCoordinator.deleteCuts(
+    _session.cutCommandCoordinator.deleteCuts(
       cutIds: _session._liveSelectedCutIds,
     );
     _session.clearStoryboardCutSelection();
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 }

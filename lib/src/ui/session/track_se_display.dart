@@ -52,7 +52,7 @@ class _TrackSeDisplay {
         _session._transitions.trackTransitionOwner(layerId) ??
         // C②: the V track's synthetic lane CARRIER is a rail row too — an
         // escalated lane drag anchors the track-axis selection on it.
-        (carrierTrackId == null ? null : _session._trackById(carrierTrackId));
+        (carrierTrackId == null ? null : _session.trackById(carrierTrackId));
   }
 
   /// The GLOBAL track layer for [layerId] (never a display clone).
@@ -128,7 +128,7 @@ class _TrackSeDisplay {
     TrackFrameRangeSelection range,
   ) {
     Track? track;
-    for (final candidate in _session._repository.requireProject().tracks) {
+    for (final candidate in _session.repository.requireProject().tracks) {
       if (candidate.id == range.trackId) {
         track = candidate;
         break;
@@ -182,7 +182,7 @@ class _TrackSeDisplay {
         layerFills.add((
           startIndex: gap.startIndex - lensOffset,
           length: gap.length,
-          frameId: FrameId(_session._nextFrameId(layer.id)),
+          frameId: FrameId(_session.nextFrameId(layer.id)),
           // A blank DIALOGUE, like the cut-scope SE creation makes — the
           // entry exists to be written into.
           name: '',
@@ -193,9 +193,9 @@ class _TrackSeDisplay {
     if (fills.isEmpty) {
       return false;
     }
-    final commands = _session._timelineController
+    final commands = _session.timelineController
         .drawingFramesCommandsForLayers(fills);
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -203,7 +203,7 @@ class _TrackSeDisplay {
               commands: commands,
             ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
     return true;
   }
 
@@ -213,7 +213,7 @@ class _TrackSeDisplay {
   /// through [_session.selectedTrackId]/[trackSeGlobalLayerById] (both active-track
   /// bound) made every verb on an unselected track's row a silent no-op.
   ({Track track, Layer layer})? trackSeAnywhere(LayerId layerId) {
-    for (final track in _session._repository.requireProject().tracks) {
+    for (final track in _session.repository.requireProject().tracks) {
       for (final layer in track.seLayers) {
         if (layer.id == layerId) {
           return (track: track, layer: layer);

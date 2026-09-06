@@ -81,7 +81,7 @@ class _StoryboardRows {
       return const [];
     }
     return _session
-        ._axisForTrack(selection.trackId)
+        .axisForTrack(selection.trackId)
         .cutsIn(selection.startFrame, selection.endFrameExclusive);
   }
 
@@ -129,7 +129,7 @@ class _StoryboardRows {
   /// precedent: what is not on the list is unreachable, so there is
   /// nothing to refuse).
   List<TimelineRowAddress> storyboardRailRows(TrackId trackId) {
-    final track = _session._trackById(trackId);
+    final track = _session.trackById(trackId);
     return [
       // The TRANSITION row heads the group on screen, so it heads the list: a
       // row delta walks this in VISUAL order, and a row missing from it is

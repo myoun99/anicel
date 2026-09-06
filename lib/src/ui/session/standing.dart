@@ -33,7 +33,7 @@ class _Standing {
   /// on purpose there — and overriding the read put the ring on the wrong row.
   /// The two writers say it instead, each where it moved the layer.
   void seatVerbRowOnActiveLayer() {
-    final seated = _session._layerController.activeLayerId;
+    final seated = _session.layerController.activeLayerId;
     if (seated == null || _verbRow == LayerRowAddress(seated)) {
       return;
     }
@@ -262,11 +262,11 @@ class _Standing {
         final owner = _session._trackSe.trackOwnedRailOwner(layerId);
         var trackMoved = false;
         if (owner != null && _session.selectedTrackId != owner.id) {
-          _session._editingSession.setSelectedTrackId(owner.id);
+          _session.editingSession.setSelectedTrackId(owner.id);
           trackMoved = true;
         }
         if (_session._storyboardRows.storeStoryboardRow(row) || trackMoved) {
-          _session._notifyChanged();
+          _session.notifyChanged();
         }
       case LaneRowAddress():
         // R10 #19: a property row is a row you can be ON. The rail's own
@@ -286,7 +286,7 @@ class _Standing {
         _session.clearFrameRangeSelection();
         _timelineRow = row;
         if (_session._storyboardRows.storeStoryboardRow(row)) {
-          _session._notifyChanged();
+          _session.notifyChanged();
         }
       case TrackRowAddress(:final trackId):
         _session.selectTrackCutAtPlayhead(trackId);
@@ -313,7 +313,7 @@ class _Standing {
   /// left on" can name one, and the id is the same in every cut — a cut
   /// left on S1 comes back on S1 for free.
   void rememberActiveLayerForCut() {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     final layerId = _session.activeLayerId;
     if (cutId != null && layerId != null) {
       _lastLayerByCut[cutId] = layerId;
@@ -321,7 +321,7 @@ class _Standing {
   }
 
   void selectCut(CutId cutId) {
-    if (cutId == _session._editingSession.activeCutId) {
+    if (cutId == _session.editingSession.activeCutId) {
       return;
     }
     // R15-⑤: never switch cuts under a live editing interaction.
@@ -332,19 +332,19 @@ class _Standing {
     final nextActiveLayerId = _lastLayerByCut[cutId];
 
     final fromGap =
-        _session._gapGlobalFrame != null ||
-        _session._editingSession.activeCutId == null;
+        _session.gapGlobalFrame != null ||
+        _session.editingSession.activeCutId == null;
     // The visibility solo is cut-scoped: restore the eyes before leaving.
     if (_session._solo._layerVisibilitySoloEnabled) {
       _session._solo.exitVisibilitySolo();
     }
-    _session._editingSession.setActiveCutId(cutId);
+    _session.editingSession.setActiveCutId(cutId);
     // Keep the pair reconciled at the seam instead of only at read time:
     // selecting a cut selects its track, so the stored selection is right
     // the moment the cut is dropped (a gap park) rather than falling back.
-    _session._editingSession.setSelectedTrackId(
-      trackIdOfCut(_session._repository.requireProject(), cutId) ??
-          _session._editingSession.selectedTrackId,
+    _session.editingSession.setSelectedTrackId(
+      trackIdOfCut(_session.repository.requireProject(), cutId) ??
+          _session.editingSession.selectedTrackId,
     );
     _session._clipboard._copiedFrame = null;
     _session.clearFrameRangeSelection();
@@ -365,8 +365,8 @@ class _Standing {
     // run of them queued a full-canvas warm per step and the run stuttered
     // on work it was about to invalidate anyway.
     _session.prerenderScheduler.notifyEditActivity();
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
   }
 
   /// Selects the CUT's row — the active layer, which is the drawing target
@@ -394,7 +394,7 @@ class _Standing {
     // app-wide and rebuilt the whole panel, which is what made cell
     // selection feel like it lagged behind the pointer.
     if (_session.activeLayerId != layerId) {
-      _session._layerController.selectLayer(layerId);
+      _session.layerController.selectLayer(layerId);
       // The solo mode FOLLOWS the active layer (R4 #7) — nothing to follow
       // when the layer did not move, and re-applying it is what would have
       // fought a manual visibility toggle on every click.
@@ -412,7 +412,7 @@ class _Standing {
     // "already active is free" stays true for the session notify.
     publishCurrentRow();
     if (changed) {
-      _session._notifyChanged();
+      _session.notifyChanged();
     }
   }
 }

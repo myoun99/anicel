@@ -45,7 +45,7 @@ class _CellVerbs {
       if (!layerAcceptsBrushInput(layer) || !cut.layers.rowVisible(layer)) {
         return;
       }
-      final frame = _session._timelineController.resolveFrameForLayer(
+      final frame = _session.timelineController.resolveFrameForLayer(
         layer: layer,
         frameIndex: frameIndex,
       );
@@ -145,7 +145,7 @@ class _CellVerbs {
         ),
       );
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       CelPixelOverwriteCommand.forVerb(
         coordinator: coordinator,
         targets: targets,
@@ -170,7 +170,7 @@ class _CellVerbs {
 
   bool get hasActiveNonNegativeCell {
     return _session.activeLayer != null &&
-        _session._timelineController.currentFrameIndex >= 0;
+        _session.timelineController.currentFrameIndex >= 0;
   }
 
   /// The SELECTION-borne rungs of the cell delete, alone (B8): lane keys
@@ -226,9 +226,9 @@ class _CellVerbs {
       return false;
     }
 
-    return _session._timelineController.canDeleteCellAt(
+    return _session.timelineController.canDeleteCellAt(
       layer: layer,
-      frameIndex: _session._timelineController.currentFrameIndex,
+      frameIndex: _session.timelineController.currentFrameIndex,
     );
   }
 
@@ -245,11 +245,11 @@ class _CellVerbs {
     final selectionTargets = _session._rangeSelections
         .selectionBlockStartsByLayer();
     if (selectionTargets != null) {
-      _session._timelineController.deleteBlocksForLayers(selectionTargets);
+      _session.timelineController.deleteBlocksForLayers(selectionTargets);
       // Whichever axis answered: the leftover span covers empty cells now.
       _session.clearFrameRangeSelection();
       _session.clearStoryboardCutSelection();
-      _session._notifyChanged();
+      _session.notifyChanged();
       return;
     }
     if (cellSelectionClaimsSubject) {
@@ -262,8 +262,8 @@ class _CellVerbs {
       return;
     }
 
-    _session._timelineController.deleteCellForLayer(layerId: layer.id);
-    _session._notifyChanged();
+    _session.timelineController.deleteCellForLayer(layerId: layer.id);
+    _session.notifyChanged();
   }
 
   String get currentCellStatusText {
@@ -281,7 +281,7 @@ class _CellVerbs {
       return 'No layer';
     }
 
-    final frameIndex = _session._timelineController.currentFrameIndex;
+    final frameIndex = _session.timelineController.currentFrameIndex;
     final exposureState = _session.exposureStateForLayer(layer, frameIndex);
     final canPaste = _session.canPasteLinkedFrameAtCurrentFrame;
 
@@ -308,7 +308,7 @@ class _CellVerbs {
   }
 
   String _cellStatusLabelForLayer(Layer layer) {
-    final frameIndex = _session._timelineController.currentFrameIndex;
+    final frameIndex = _session.timelineController.currentFrameIndex;
     final exposureState = _session.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {
       TimelineCellExposureState.drawingStart =>

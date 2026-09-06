@@ -81,7 +81,7 @@ class _TextCelBakes {
   final _sweepSeen = <BrushFrameKey>{};
 
   Future<void> _sweepTextCelBakesOnce() async {
-    final project = _session._repository.currentProject;
+    final project = _session.repository.currentProject;
     if (project == null) {
       _textCelBakedContent.clear();
       return;
@@ -107,7 +107,7 @@ class _TextCelBakes {
     }
     _textCelBakedContent.removeWhere((key, _) => !_sweepSeen.contains(key));
     if (changed && !_session._disposed) {
-      _session._notifyChanged();
+      _session.notifyChanged();
     }
   }
 
@@ -201,11 +201,11 @@ class _TextCelBakes {
     if (layer == null || layer.kind != LayerKind.text || frame == null) {
       return;
     }
-    _session._timelineController.setTextContentForFrame(
+    _session.timelineController.setTextContentForFrame(
       layerId: layer.id,
       frameId: frame.id,
       textContent: content,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 }

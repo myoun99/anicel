@@ -33,13 +33,13 @@ class _VisibilitySolo {
       exitVisibilitySolo();
     } else {
       _layerVisibilitySoloEnabled = true;
-      _visibilitySoloCutId = _session._editingSession.activeCutId;
+      _visibilitySoloCutId = _session.editingSession.activeCutId;
       _visibilitySoloSnapshot = {
         for (final layer in _session.layers) layer.id: layer.isVisible,
       };
       _applyVisibilitySolo();
     }
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Re-solos to the CURRENT active layer. Rows born during the solo join
@@ -79,8 +79,8 @@ class _VisibilitySolo {
     }
     // Two batches, not one per row: Solo hides most of the stack and shows
     // a few, and each side is one undo step rather than a screenful.
-    _session._layerController.setLayersVisible(layerIds: toShow, visible: true);
-    _session._layerController.setLayersVisible(
+    _session.layerController.setLayersVisible(layerIds: toShow, visible: true);
+    _session.layerController.setLayersVisible(
       layerIds: toHide,
       visible: false,
     );
@@ -98,7 +98,7 @@ class _VisibilitySolo {
     // the solo have nothing to restore (skip).
     snapshot.forEach((layerId, visible) {
       try {
-        _session._repository.updateLayer(
+        _session.repository.updateLayer(
           layerId: layerId,
           update: (layer) => layer.isVisible == visible
               ? layer
@@ -116,7 +116,7 @@ class _VisibilitySolo {
     if (!_layerVisibilitySoloEnabled) {
       return;
     }
-    if (_session._editingSession.activeCutId != _visibilitySoloCutId) {
+    if (_session.editingSession.activeCutId != _visibilitySoloCutId) {
       exitVisibilitySolo();
     } else {
       _applyVisibilitySolo();
@@ -130,7 +130,7 @@ class _VisibilitySolo {
       next.add(layerId);
     }
     _session.soloedSeLayerIds.value = next;
-    _session._refreshLiveAudioSchedule();
-    _session._notifyChanged();
+    _session.refreshLiveAudioSchedule();
+    _session.notifyChanged();
   }
 }

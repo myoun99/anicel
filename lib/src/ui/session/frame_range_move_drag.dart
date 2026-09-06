@@ -400,7 +400,7 @@ class _FrameRangeMoveDrag {
       (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
     );
     for (final id in selection.spanLayerIds) {
-      final layer = _session._layerById(id);
+      final layer = _session.layerById(id);
       if (layer == null) {
         continue;
       }
@@ -440,12 +440,12 @@ class _FrameRangeMoveDrag {
     final sources = <({Layer commit, int offset})>[];
     for (final id in selection.spanLayerIds) {
       // Rows whose timing is not their own stand down — see
-      // [EditorSessionManager._standsDownFromRetime].
-      if (_session._standsDownFromRetime(id)) {
+      // [EditorSessionManager.standsDownFromRetime].
+      if (_session.standsDownFromRetime(id)) {
         continue;
       }
-      final display = _session._rangeLayerById(id);
-      final commit = _session._commitLayerById(id);
+      final display = _session.rangeLayerById(id);
+      final commit = _session.commitLayerById(id);
       if (display == null || commit == null) {
         continue;
       }
@@ -497,7 +497,7 @@ class _FrameRangeMoveDrag {
     if (_session._isSingleCelLayerId(selection.layerId)) {
       return false;
     }
-    final layer = _session._layerById(selection.layerId);
+    final layer = _session.layerById(selection.layerId);
     if (layer == null) {
       return false;
     }
@@ -601,8 +601,8 @@ class _FrameRangeMoveDrag {
       followOutline();
       return true;
     }
-    final sourceLayer = _session._layerById(selection.layerId);
-    final targetLayer = _session._layerById(targetLayerId);
+    final sourceLayer = _session.layerById(selection.layerId);
+    final targetLayer = _session.layerById(targetLayerId);
     final sourceIsInstruction = sourceLayer?.kind == LayerKind.instruction;
     if (sourceIsInstruction && targetLayer?.kind == LayerKind.instruction) {
       final plan = planInstructionRangeRowMove(
@@ -730,7 +730,7 @@ class _FrameRangeMoveDrag {
       if (_session._transitions.trackTransitionOwner(entry.key)
           case final owner?)
         UpdateTrackTransitionLayerCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           trackId: owner.id,
           before: owner.transitionLayer,
           after: owner.transitionLayer.copyWith(
@@ -740,7 +740,7 @@ class _FrameRangeMoveDrag {
         )
       else if (cut != null)
         UpdateLayerInstructionsCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           cutId: cut.id,
           layerId: entry.key,
           instructions: entry.value,
@@ -872,18 +872,18 @@ class _FrameRangeMoveDrag {
     bool Function(Layer) carriesBlockInRange,
   ) {
     if (_session._blockMoveEligible(id)) {
-      final layer = _session._layerById(id);
+      final layer = _session.layerById(id);
       return layer != null && carriesBlockInRange(layer)
           ? _HopCast.drawingSource
           : _HopCast.nothing;
     }
     if (_session.isTrackSeLayerId(id)) {
-      final display = _session._rangeLayerById(id);
+      final display = _session.rangeLayerById(id);
       return display != null && carriesBlockInRange(display)
           ? _HopCast.sePassenger
           : _HopCast.nothing;
     }
-    final layer = _session._layerById(id);
+    final layer = _session.layerById(id);
     if (layer == null) {
       return _HopCast.nothing;
     }
@@ -1092,7 +1092,7 @@ class _FrameRangeMoveDrag {
           for (final entry in plan.layersAfter.entries)
             entry.key: rederiveRunBehaviors(
               entry.value,
-              cutFrameCount: _session._activeCutFrameCount,
+              cutFrameCount: _session.activeCutFrameCount,
             ),
         for (final se in sePlans) ...{
           se.sourceId: _session.trackSeWindow.displayLayer(se.sourceAfter),
@@ -1101,14 +1101,14 @@ class _FrameRangeMoveDrag {
         // R27 #8: the frame-axis riders preview their shifted spans in
         // place (the cells row renders straight off layer.instructions).
         // ⛔The TRANSITION stays OFF this map: on the ACTIVE track
-        // _layerById finds its display clone under the same id, and a
+        // layerById finds its display clone under the same id, and a
         // global-keyed entry here would leak into the cut timeline's
         // read-only projection. It previews on its own channel below.
         for (final entry in instructionShifted.entries)
           if (_session._transitions.trackTransitionOwner(entry.key) == null &&
-              _session._layerById(entry.key) != null)
+              _session.layerById(entry.key) != null)
             entry.key: _session
-                ._layerById(entry.key)!
+                .layerById(entry.key)!
                 .copyWith(instructions: entry.value),
       },
       // C2: the SE passengers' global forms, for the storyboard strips.
@@ -1127,7 +1127,7 @@ class _FrameRangeMoveDrag {
       cameraMarkerLayer:
           cameraShifted == null || _rangeMoveCameraLayerId == null
           ? null
-          : _session._layerById(_rangeMoveCameraLayerId!)?.copyWith(),
+          : _session.layerById(_rangeMoveCameraLayerId!)?.copyWith(),
     );
     // C1: the transition channel follows every published step — a riding
     // transition previews its shifted spans here (C④: it used to be
@@ -1290,7 +1290,7 @@ class _FrameRangeMoveDrag {
             rangeStartIndex: selection.startIndex,
             rangeEndIndexExclusive: selection.endIndexExclusive,
             frameDelta: frameDelta,
-            cutFrameCount: _session._activeCutFrameCount,
+            cutFrameCount: _session.activeCutFrameCount,
           );
     if (plan == null) {
       // UI-R23 #10: a blocked / incompatible landing HOLDS the last valid
@@ -1308,7 +1308,7 @@ class _FrameRangeMoveDrag {
     Layer? target = source;
     if (targetLayerId != null && targetLayerId != source.id) {
       target = _session._blockMoveEligible(targetLayerId)
-          ? _session._layerById(targetLayerId)
+          ? _session.layerById(targetLayerId)
           : null;
       // Cross-row drops stay within the SAME SECTION (UI-R20 #2 P3b-3:
       // 행이동도 같은 섹션 내 — animation/storyboard/image interchange
@@ -1336,12 +1336,12 @@ class _FrameRangeMoveDrag {
       previewLayers: {
         plan.sourceAfter.id: rederiveRunBehaviors(
           plan.sourceAfter,
-          cutFrameCount: _session._activeCutFrameCount,
+          cutFrameCount: _session.activeCutFrameCount,
         ),
         if (plan.targetAfter != null)
           plan.targetAfter!.id: rederiveRunBehaviors(
             plan.targetAfter!,
-            cutFrameCount: _session._activeCutFrameCount,
+            cutFrameCount: _session.activeCutFrameCount,
           ),
       },
     );
@@ -1466,7 +1466,7 @@ class _FrameRangeMoveDrag {
         rangeStartIndex: selection.startIndex + source.offset,
         rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
         frameDelta: frameDelta,
-        cutFrameCount: _session._activeCutFrameCount,
+        cutFrameCount: _session.activeCutFrameCount,
       );
       if (plan == null) {
         return null;
@@ -1488,7 +1488,7 @@ class _FrameRangeMoveDrag {
     _session._camera._cameraKeysDragPreview = cameraShifted;
     final cameraMarker = cameraShifted == null
         ? null
-        : _session._layerById(_rangeMoveCameraLayerId!)?.copyWith();
+        : _session.layerById(_rangeMoveCameraLayerId!)?.copyWith();
     final previewLayers = <LayerId, Layer>{};
     // C2 (2026-08-17): the GLOBAL forms ride the same preview — the
     // storyboard's track-global SE strips resolve THIS map, exactly as
@@ -1500,7 +1500,7 @@ class _FrameRangeMoveDrag {
       // form windowed (UI-R18 #1 seam) — the two can never disagree.
       final commitForm = rederiveRunBehaviors(
         plan.sourceAfter,
-        cutFrameCount: _session._activeCutFrameCount,
+        cutFrameCount: _session.activeCutFrameCount,
       );
       if (_session.isTrackSeLayerId(plan.sourceAfter.id)) {
         previewLayers[plan.sourceAfter.id] = _session.trackSeWindow
@@ -1513,7 +1513,7 @@ class _FrameRangeMoveDrag {
     // Instruction rows preview with their shifted spans — the cells row
     // renders straight off layer.instructions. ⛔The track-owned
     // TRANSITION row stays OFF this map: on the ACTIVE track
-    // [_layerById] DOES find its display clone under the same id
+    // [layerById] DOES find its display clone under the same id
     // (layer_controller inserts it), and a global-keyed entry here
     // would leak into the cut timeline's read-only projection. It
     // previews on its own channel below instead.
@@ -1521,7 +1521,7 @@ class _FrameRangeMoveDrag {
       if (_session._transitions.trackTransitionOwner(entry.key) != null) {
         continue;
       }
-      final layer = _session._layerById(entry.key);
+      final layer = _session.layerById(entry.key);
       if (layer != null) {
         previewLayers[entry.key] = layer.copyWith(instructions: entry.value);
       }
@@ -1606,7 +1606,7 @@ class _FrameRangeMoveDrag {
       _rangeMoveSelection = selection;
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       _session._singleRowMoveCommand(
         plan,
         source: source,
@@ -1616,10 +1616,10 @@ class _FrameRangeMoveDrag {
     // The selection stays on the moved frames where they landed.
     _rangeMoveSelection = landedSelection;
     if (plan.isCrossLayer) {
-      _session._layerController.selectLayer(plan.targetAfter!.id);
+      _session.layerController.selectLayer(plan.targetAfter!.id);
     }
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
   }
 
   void _commitMultiSourceMove(
@@ -1635,18 +1635,18 @@ class _FrameRangeMoveDrag {
       if (multiPlans != null)
         for (var i = 0; i < multiPlans.length; i += 1)
           UpdateLayerTimelineCommand(
-            repository: _session._repository,
+            repository: _session.repository,
             before: multiSources[i].commit,
             after: rederiveRunBehaviors(
               multiPlans[i].sourceAfter,
-              cutFrameCount: _session._activeCutFrameCount,
+              cutFrameCount: _session.activeCutFrameCount,
             ),
           ),
       if (instructionShifted != null)
         ..._instructionShiftCommands(instructionShifted, cut),
       if (cameraShifted != null && cut != null)
         UpdateCutCameraCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           cutId: cut.id,
           camera: CutCamera(keyframes: cameraShifted),
           description: 'Move camera keys',
@@ -1656,7 +1656,7 @@ class _FrameRangeMoveDrag {
       _rangeMoveSelection = selection;
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -1665,8 +1665,8 @@ class _FrameRangeMoveDrag {
             ),
     );
     _rangeMoveSelection = landedSelection;
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
     return;
   }
 
@@ -1693,7 +1693,7 @@ class _FrameRangeMoveDrag {
     if (cut != null && cameraShifted != null) {
       commands.add(
         UpdateCutCameraCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           cutId: cut.id,
           camera: CutCamera(keyframes: cameraShifted),
           description: 'Move camera keys',
@@ -1718,7 +1718,7 @@ class _FrameRangeMoveDrag {
       _rangeMoveSelection = selection;
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -1728,10 +1728,10 @@ class _FrameRangeMoveDrag {
     );
     _rangeMoveSelection = landedSelection;
     if (landedSelection != null) {
-      _session._layerController.selectLayer(landedSelection.layerId);
+      _session.layerController.selectLayer(landedSelection.layerId);
     }
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
     return;
   }
 
@@ -1742,14 +1742,14 @@ class _FrameRangeMoveDrag {
     for (final se in multiSeRowChanges ?? const <SeRowMovePair>[]) {
       commands.add(
         UpdateLayerTimelineCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           before: se.sourceBefore,
           after: se.sourceAfter,
         ),
       );
       commands.add(
         UpdateLayerTimelineCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           before: se.targetBefore,
           after: se.targetAfter,
         ),
@@ -1765,20 +1765,20 @@ class _FrameRangeMoveDrag {
     for (final entry
         in multiRowPlan?.layersAfter.entries ??
             const <MapEntry<LayerId, Layer>>[]) {
-      final before = _session._layerById(entry.key);
+      final before = _session.layerById(entry.key);
       if (before == null) {
         continue;
       }
       final after = rederiveRunBehaviors(
         entry.value,
-        cutFrameCount: _session._activeCutFrameCount,
+        cutFrameCount: _session.activeCutFrameCount,
       );
       if (after == before) {
         continue; // An untouched source/target row — no command.
       }
       commands.add(
         UpdateLayerTimelineCommand(
-          repository: _session._repository,
+          repository: _session.repository,
           before: before,
           after: after,
         ),
@@ -1800,19 +1800,19 @@ class _FrameRangeMoveDrag {
   ) {
     final cut = _session.activeCutOrNull;
     if (cut != null) {
-      _session._historyManager.execute(
+      _session.historyManager.execute(
         CompositeCommand(
           description: 'Move frame range',
           commands: [
             UpdateLayerInstructionsCommand(
-              repository: _session._repository,
+              repository: _session.repository,
               cutId: cut.id,
               layerId: instructionRowChange.sourceId,
               instructions: instructionRowChange.sourceAfter,
               description: 'Move instruction keys',
             ),
             UpdateLayerInstructionsCommand(
-              repository: _session._repository,
+              repository: _session.repository,
               cutId: cut.id,
               layerId: instructionRowChange.targetId,
               instructions: instructionRowChange.targetAfter,
@@ -1822,9 +1822,9 @@ class _FrameRangeMoveDrag {
         ),
       );
       _rangeMoveSelection = landedSelection;
-      _session._layerController.selectLayer(instructionRowChange.targetId);
-      _session._warmActiveCut();
-      _session._notifyChanged();
+      _session.layerController.selectLayer(instructionRowChange.targetId);
+      _session.warmActiveCut();
+      _session.notifyChanged();
     } else {
       _rangeMoveSelection = selection;
     }
@@ -1843,17 +1843,17 @@ class _FrameRangeMoveDrag {
     seRowChange,
     TimelineFrameRangeSelection? landedSelection,
   ) {
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       CompositeCommand(
         description: 'Move frame range',
         commands: [
           UpdateLayerTimelineCommand(
-            repository: _session._repository,
+            repository: _session.repository,
             before: seRowChange.sourceBefore,
             after: seRowChange.sourceAfter,
           ),
           UpdateLayerTimelineCommand(
-            repository: _session._repository,
+            repository: _session.repository,
             before: seRowChange.targetBefore,
             after: seRowChange.targetAfter,
           ),
@@ -1861,9 +1861,9 @@ class _FrameRangeMoveDrag {
       ),
     );
     _rangeMoveSelection = landedSelection;
-    _session._layerController.selectLayer(seRowChange.targetId);
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.layerController.selectLayer(seRowChange.targetId);
+    _session.warmActiveCut();
+    _session.notifyChanged();
     return;
   }
 
@@ -1895,7 +1895,7 @@ class _FrameRangeMoveDrag {
     if (!_session._blockMoveEligible(layerId)) {
       return;
     }
-    final before = _session._layerById(layerId);
+    final before = _session.layerById(layerId);
     if (before == null) {
       return;
     }
@@ -1936,17 +1936,17 @@ class _FrameRangeMoveDrag {
     ];
     final after = rederiveRunBehaviors(
       before.copyWith(runBehaviors: behaviors),
-      cutFrameCount: _session._activeCutFrameCount,
+      cutFrameCount: _session.activeCutFrameCount,
     );
     if (after == before) {
       return;
     }
-    _session._timelineController.commitLayerTimelineDrag(
+    _session.timelineController.commitLayerTimelineDrag(
       before: before,
       after: after,
     );
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.warmActiveCut();
+    _session.notifyChanged();
   }
 
   /// Whether [behavior] already sits on this [side] of [run] — the one a

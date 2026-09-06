@@ -28,8 +28,8 @@ class _LaneVerbs {
     required int frameIndex,
     required String? name,
   }) {
-    final cutId = _session._editingSession.activeCutId;
-    final layer = _session._layerById(layerId);
+    final cutId = _session.editingSession.activeCutId;
+    final layer = _session.layerById(layerId);
     if (cutId == null || layer == null) {
       return false;
     }
@@ -39,7 +39,7 @@ class _LaneVerbs {
       return false;
     }
     if (name != null &&
-        _session._cutCommandCoordinator.transformTrackHoldingName(
+        _session.cutCommandCoordinator.transformTrackHoldingName(
               cutId: cutId,
               layerId: layerId,
               property: property,
@@ -65,12 +65,12 @@ class _LaneVerbs {
     required int frameIndex,
     required String name,
   }) {
-    final cutId = _session._editingSession.activeCutId;
-    final layer = _session._layerById(layerId);
+    final cutId = _session.editingSession.activeCutId;
+    final layer = _session.layerById(layerId);
     if (cutId == null || layer == null) {
       return;
     }
-    final holder = _session._cutCommandCoordinator.transformTrackHoldingName(
+    final holder = _session.cutCommandCoordinator.transformTrackHoldingName(
       cutId: cutId,
       layerId: layerId,
       property: property,
@@ -119,13 +119,13 @@ class _LaneVerbs {
     )) {
       return track;
     }
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null ||
         layer.kind == LayerKind.camera ||
         trackIdOfTransformLaneCarrier(layer.id) != null) {
       return null;
     }
-    return _session._cutCommandCoordinator.transformTrackHoldingName(
+    return _session.cutCommandCoordinator.transformTrackHoldingName(
       cutId: cutId,
       layerId: layer.id,
       property: property,
@@ -245,7 +245,7 @@ class _LaneVerbs {
   Layer? _laneVerbLayerFor(LayerId layerId) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     if (carrierTrackId != null) {
-      final track = _session._trackById(carrierTrackId);
+      final track = _session.trackById(carrierTrackId);
       return track == null
           ? null
           : Layer(
@@ -259,14 +259,14 @@ class _LaneVerbs {
     }
     return _session.isTrackSeLayerId(layerId)
         ? _session.trackSeGlobalLayerById(layerId)
-        : _session._layerById(layerId);
+        : _session.layerById(layerId);
   }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
   /// [_laneVerbLayerFor]. A track-SE row is on the global axis, so the
   /// cut-local cursor has to be translated before it can name a key.
   int _laneVerbFrameFor(LayerId layerId) =>
-      _session._timelineController.currentFrameIndex +
+      _session.timelineController.currentFrameIndex +
       (_session.isTrackSeLayerId(layerId)
           ? _session.activeCutGlobalStartFrame
           : 0);
@@ -539,7 +539,7 @@ class _LaneVerbs {
       return false;
     }
     final layer = scope.layer;
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     final targets = scope.targets;
     final preferred = _laneVerbFrameFor(lane.layerId);
     final why = name == null ? 'Unname keys' : 'Name keys';
@@ -562,7 +562,7 @@ class _LaneVerbs {
         }
         double? adopted;
         if (name != null && cutId != null) {
-          adopted = _session._cutCommandCoordinator.namedEffectKeyValueInSpace(
+          adopted = _session.cutCommandCoordinator.namedEffectKeyValueInSpace(
             cutId: cutId,
             layerId: layer.id,
             effectId: address.effectId,

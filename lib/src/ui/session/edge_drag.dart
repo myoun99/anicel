@@ -363,7 +363,7 @@ class _EdgeDrag {
       return true;
     }
 
-    final layer = _session._layerById(layerId);
+    final layer = _session.layerById(layerId);
     if (layer == null) {
       return false;
     }
@@ -447,12 +447,12 @@ class _EdgeDrag {
     final beforeByLayer = <LayerId, Layer>{};
     for (final id in selection.spanLayerIds) {
       // Rows whose timing is not their own stand down — see
-      // [EditorSessionManager._standsDownFromRetime].
-      if (_session._standsDownFromRetime(id)) {
+      // [EditorSessionManager.standsDownFromRetime].
+      if (_session.standsDownFromRetime(id)) {
         continue;
       }
-      final display = _session._rangeLayerById(id);
-      final commit = _session._commitLayerById(id);
+      final display = _session.rangeLayerById(id);
+      final commit = _session.commitLayerById(id);
       if (display == null || commit == null) {
         continue;
       }
@@ -492,7 +492,7 @@ class _EdgeDrag {
       );
       return shifted == null ? before : before.copyWith(instructions: shifted);
     }
-    return _session._timelineController.shiftedLayerForEdge(
+    return _session.timelineController.shiftedLayerForEdge(
           layer: before,
           blockStartIndex: blockStart,
           edge: edge,
@@ -570,7 +570,7 @@ class _EdgeDrag {
       if (beforeLayer == null) {
         continue;
       }
-      final after = _session._timelineController.retimedLayerForBlocks(
+      final after = _session.timelineController.retimedLayerForBlocks(
         layer: beforeLayer,
         newLengthByStart: {
           for (final start in entry.value)
@@ -682,9 +682,9 @@ class _EdgeDrag {
     required Map<CutId, int>? afterGaps,
   }) {
     if (sync == null || afterDurations == null || afterGaps == null) {
-      _session._timelineController.commitLayerTimelineDrags(edits);
-      _session._warmActiveCut();
-      _session._notifyChanged();
+      _session.timelineController.commitLayerTimelineDrags(edits);
+      _session.warmActiveCut();
+      _session.notifyChanged();
       return;
     }
     final beforeDurations = <CutId, int>{sync.cutId: sync.beforeDuration};
@@ -694,7 +694,7 @@ class _EdgeDrag {
     //
     // No fade re-anchor rides along any more (R4): the fade keys are the
     // TRACK's, on the global axis — a cut resize edits the cut, not them.
-    _session._timelineController.commitLayerTimelineDragsWithCutDurations(
+    _session.timelineController.commitLayerTimelineDragsWithCutDurations(
       edits: edits,
       beforeDurations: beforeDurations,
       afterDurations: afterDurations,
@@ -705,9 +705,9 @@ class _EdgeDrag {
       afterGaps: afterGaps,
       description: 'Retime storyboard cells',
     );
-    _session._refreshAfterCutCommand();
-    _session._warmActiveCut();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.warmActiveCut();
+    _session.notifyChanged();
   }
 
   Map<CutId, int>? _cutTrimBeforeDurations;
@@ -844,7 +844,7 @@ class _EdgeDrag {
     int panelIndex = 0,
   }) {
     final layout = buildStoryboardTimelineLayout(
-      _session._repository.requireProject(),
+      _session.repository.requireProject(),
     );
     StoryboardTimelineLayoutEntry? entry;
     for (final candidate in layout) {
@@ -1128,7 +1128,7 @@ class _EdgeDrag {
             afterDurations: afterDurations,
           );
     if (rowEdits.isNotEmpty) {
-      _session._timelineController.commitLayerTimelineDragsWithCutDurations(
+      _session.timelineController.commitLayerTimelineDragsWithCutDurations(
         edits: rowEdits,
         beforeDurations: scopedBeforeDurations,
         afterDurations: afterDurations,
@@ -1136,20 +1136,20 @@ class _EdgeDrag {
         afterGaps: afterGaps,
         description: 'Trim cut duration',
       );
-      _session._refreshAfterCutCommand();
-      _session._warmActiveCut();
-      _session._notifyChanged();
+      _session.refreshAfterCutCommand();
+      _session.warmActiveCut();
+      _session.notifyChanged();
       return;
     }
 
-    _session._cutCommandCoordinator.commitCutDurationDrag(
+    _session.cutCommandCoordinator.commitCutDurationDrag(
       beforeDurations: scopedBeforeDurations,
       afterDurations: afterDurations,
       beforeGaps: scopedBeforeGaps,
       afterGaps: afterGaps,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// The storyboard-row rewrites a duration change owes, one per resized
@@ -1212,7 +1212,7 @@ class _EdgeDrag {
 
   /// The cut after [cutId] on its own track, or null at the track's end.
   Cut? _nextCutInTrack(CutId cutId) {
-    for (final track in _session._repository.requireProject().tracks) {
+    for (final track in _session.repository.requireProject().tracks) {
       final cuts = track.cuts;
       for (var index = 0; index < cuts.length; index += 1) {
         if (cuts[index].id == cutId) {
@@ -1278,12 +1278,12 @@ class _EdgeDrag {
     if (trackTargets != null) {
       // ⛔No active-cut guard: these starts are ALREADY global keys and the
       // retime applies no lens, so a gap changes nothing about them (H11).
-      _session._timelineController.retimeBlocksForLayers({
+      _session.timelineController.retimeBlocksForLayers({
         for (final entry in trackTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
-      _session._warmActiveCut();
-      _session._notifyChanged();
+      _session.warmActiveCut();
+      _session.notifyChanged();
       return;
     }
     switch (_session._storyboardCursor._storyboardCursorBlockOrNull()) {
@@ -1302,11 +1302,11 @@ class _EdgeDrag {
         if (_session.activeCutOrNull == null) {
           return;
         }
-        _session._timelineController.retimeBlocksForLayers({
+        _session.timelineController.retimeBlocksForLayers({
           layerId: {blockStartIndex: comma},
         });
-        _session._warmActiveCut();
-        _session._notifyChanged();
+        _session.warmActiveCut();
+        _session.notifyChanged();
       case _StoryboardCursorTransitionSpan(
         :final spanStartIndex,
         :final spanLength,

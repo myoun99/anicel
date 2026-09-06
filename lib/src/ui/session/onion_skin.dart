@@ -22,7 +22,7 @@ class _OnionSkin {
     // 무슨소리지? 아무튼 어니언 적용 미적용만 되면 되는건데」. Press the
     // button, press Ctrl+Z, the ghosts come back. Where the bit lives is
     // plumbing.
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       ToggleIdInSetCommand(
         notifier: _session.onionSkinLayerIds,
         layerId: layerId,
@@ -30,7 +30,7 @@ class _OnionSkin {
       ),
     );
     // Row/legend toggle glyphs read through the session listenable.
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// The drawing layers the legend's bulk onion sweep addresses: the
@@ -80,7 +80,7 @@ class _OnionSkin {
     if (changing.isEmpty) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       CompositeCommand(
         description: 'Toggle onion skin (${changing.length} layers)',
         commands: [
@@ -93,7 +93,7 @@ class _OnionSkin {
         ],
       ),
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// The `O` shortcut: toggles the ACTIVE layer's onion (the per-layer
@@ -138,7 +138,7 @@ class _OnionSkin {
             layerKindAcceptsBrushInput(layer.kind))
           for (final plan in planOnionSkin(
             layer: layer,
-            frameIndex: _session._timelineController.currentFrameIndex,
+            frameIndex: _session.timelineController.currentFrameIndex,
             settings: settings,
           ))
             CanvasLayerImageRequest(

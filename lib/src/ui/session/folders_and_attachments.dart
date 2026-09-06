@@ -77,7 +77,7 @@ class _FoldersAndAttachments {
     // always-mirror reconciliation fills one own cel + base link per base
     // cel in the same write (and keeps doing so live as the base gains
     // cels later), so every mirror cell is editable from the first frame.
-    _session._layerController.addLayer(
+    _session.layerController.addLayer(
       layer: Layer(
         id: layerId,
         name: nextAttachedLayerName(base, cut.layers, placement),
@@ -99,7 +99,7 @@ class _FoldersAndAttachments {
       ),
       insertionIndex: insertionIndex,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   bool get canGroupActiveLayerIntoFolder =>
@@ -113,12 +113,12 @@ class _FoldersAndAttachments {
       return;
     }
     final activeLayerId = _session.activeLayer!.id;
-    _session._cutCommandCoordinator.createFolderFromLayer(
+    _session.cutCommandCoordinator.createFolderFromLayer(
       cutId: _session.requireActiveCut.id,
       layerId: activeLayerId,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    _session.notifyChanged();
   }
 
   /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
@@ -147,25 +147,25 @@ class _FoldersAndAttachments {
       return;
     }
     final activeLayerId = _session.activeLayer!.id;
-    _session._cutCommandCoordinator.createAttachOrganizerFolder(
+    _session.cutCommandCoordinator.createAttachOrganizerFolder(
       cutId: _session.requireActiveCut.id,
       layerId: activeLayerId,
     );
-    _session._refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    _session.notifyChanged();
   }
 
   void dissolveFolder(LayerId folderId) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.dissolveFolder(
+    _session.cutCommandCoordinator.dissolveFolder(
       cutId: cutId,
       folderId: folderId,
     );
-    _session._refreshAfterCutCommand();
-    _session._notifyChanged();
+    _session.refreshAfterCutCommand();
+    _session.notifyChanged();
   }
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED

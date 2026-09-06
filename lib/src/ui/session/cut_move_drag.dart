@@ -21,7 +21,7 @@ class _CutMoveDragVerbs {
   bool beginCutMoveDrag(CutId cutId) {
     final drag = CutMoveDrag.begin(
       cutId: cutId,
-      tracks: _session._repository.requireProject().tracks,
+      tracks: _session.repository.requireProject().tracks,
       selectedCutIds: _session.storyboardSelectedCutIds,
       preview: _session.dragPreview,
       selection: _session.trackFrameRangeSelection.value,
@@ -34,24 +34,24 @@ class _CutMoveDragVerbs {
             required beforeGaps,
             required afterGaps,
           }) {
-            _session._cutCommandCoordinator.commitCutMoveReorder(
+            _session.cutCommandCoordinator.commitCutMoveReorder(
               trackId: trackId,
               order: order,
               beforeGaps: beforeGaps,
               afterGaps: afterGaps,
             );
-            _session._refreshAfterCutCommand();
-            _session._notifyChanged();
+            _session.refreshAfterCutCommand();
+            _session.notifyChanged();
           },
       commitGaps: ({required beforeGaps, required afterGaps}) {
-        _session._cutCommandCoordinator.commitCutDurationDrag(
+        _session.cutCommandCoordinator.commitCutDurationDrag(
           beforeDurations: const {},
           afterDurations: const {},
           beforeGaps: beforeGaps,
           afterGaps: afterGaps,
         );
-        _session._refreshAfterCutCommand();
-        _session._notifyChanged();
+        _session.refreshAfterCutCommand();
+        _session.notifyChanged();
       },
     );
     if (drag == null) {

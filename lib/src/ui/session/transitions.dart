@@ -27,7 +27,7 @@ class _Transitions {
 
   /// The track that owns [layerId] as its TRANSITION row, on any track.
   Track? trackTransitionOwner(LayerId layerId) {
-    for (final track in _session._repository.requireProject().tracks) {
+    for (final track in _session.repository.requireProject().tracks) {
       if (track.transitionLayer.id == layerId) {
         return track;
       }
@@ -250,9 +250,9 @@ class _Transitions {
     if (next == null) {
       return;
     }
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       UpdateTrackTransitionLayerCommand(
-        repository: _session._repository,
+        repository: _session.repository,
         trackId: track.id,
         before: before,
         after: before.copyWith(instructions: next),
@@ -260,7 +260,7 @@ class _Transitions {
       ),
     );
     _transitionDisplayClone = null;
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Replaces the whole transition span map in one undo step — the writer
@@ -271,9 +271,9 @@ class _Transitions {
   }) {
     final track = _session.activeTrack;
     final before = track.transitionLayer;
-    _session._historyManager.execute(
+    _session.historyManager.execute(
       UpdateTrackTransitionLayerCommand(
-        repository: _session._repository,
+        repository: _session.repository,
         trackId: track.id,
         before: before,
         after: before.copyWith(
@@ -283,7 +283,7 @@ class _Transitions {
       ),
     );
     _transitionDisplayClone = null;
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// The vocabulary a transition dialog picks from — the same set object the
@@ -349,7 +349,7 @@ class _Transitions {
   /// `hidden_folder_is_hidden_test`); the fixture lives in no folder, so
   /// the singleton stack it stands in is its own.
   List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) {
-    for (final track in _session._repository.requireProject().tracks) {
+    for (final track in _session.repository.requireProject().tracks) {
       if (track.id == trackId) {
         final transition = track.transitionLayer;
         if (!<Layer>[transition].rowVisible(transition)) {

@@ -90,10 +90,10 @@ class _CellInstances {
       ...cameraCommands,
       ...instructionCommands,
       if (fills.isNotEmpty)
-        ..._session._timelineController.drawingFramesCommandsForLayers(fills),
+        ..._session.timelineController.drawingFramesCommandsForLayers(fills),
     ];
     if (commands.isNotEmpty) {
-      _session._historyManager.execute(
+      _session.historyManager.execute(
         commands.length == 1
             ? commands.single
             : CompositeCommand(
@@ -102,10 +102,10 @@ class _CellInstances {
               ),
       );
       if (cameraCommands.isNotEmpty || instructionCommands.isNotEmpty) {
-        _session._refreshAfterCutCommand();
+        _session.refreshAfterCutCommand();
       }
     }
-    _session._notifyChanged();
+    _session.notifyChanged();
     return true;
   }
 
@@ -134,7 +134,7 @@ class _CellInstances {
       layerFills.add((
         startIndex: gap.startIndex,
         length: gap.length,
-        frameId: FrameId(_session._nextFrameId(layer.id)),
+        frameId: FrameId(_session.nextFrameId(layer.id)),
         name: null,
       ));
     }
@@ -196,7 +196,7 @@ class _CellInstances {
       // No cell at all is not an empty cell: there is nowhere to create.
       return true;
     }
-    final frameIndex = _session._timelineController.currentFrameIndex;
+    final frameIndex = _session.timelineController.currentFrameIndex;
     return switch (layer.kind) {
       LayerKind.camera =>
         _session.activeCutOrNull?.camera.keyframeAt(frameIndex) != null,

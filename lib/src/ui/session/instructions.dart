@@ -20,17 +20,17 @@ class _Instructions {
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit instructions',
   }) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session._cutCommandCoordinator.updateLayerInstructions(
+    _session.cutCommandCoordinator.updateLayerInstructions(
       cutId: cutId,
       layerId: layerId,
       instructions: instructions,
       description: description,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// The instruction span covering [frameIndex] on [layerId], as
@@ -39,7 +39,7 @@ class _Instructions {
     LayerId layerId,
     int frameIndex,
   ) {
-    final layer = _session._layerById(layerId);
+    final layer = _session.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return null;
     }
@@ -55,7 +55,7 @@ class _Instructions {
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
-    final frameIndex = _session._timelineController.currentFrameIndex;
+    final frameIndex = _session.timelineController.currentFrameIndex;
     if (frameIndex < 0 ||
         instructionSpanAt(layer.id, frameIndex) != null ||
         _session.cameraInstructionSet.defs.isEmpty) {
@@ -81,7 +81,7 @@ class _Instructions {
     InstructionEvent event, {
     int? createLengthFrames,
   }) {
-    final layer = _session._layerById(layerId);
+    final layer = _session.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
@@ -125,19 +125,19 @@ class _Instructions {
         appendedNote = note.isEmpty ? line : '$note\n$line';
       }
     }
-    _session._cutCommandCoordinator.updateLayerInstructions(
+    _session.cutCommandCoordinator.updateLayerInstructions(
       cutId: _session.requireActiveCut.id,
       layerId: layerId,
       instructions: next,
       description: covering == null ? 'Add instruction' : 'Edit instruction',
       note: appendedNote,
     );
-    _session._notifyChanged();
+    _session.notifyChanged();
   }
 
   /// Removes the instruction span covering [frameIndex]; one undo step.
   void removeInstructionEventAt(LayerId layerId, int frameIndex) {
-    final layer = _session._layerById(layerId);
+    final layer = _session.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
@@ -159,7 +159,7 @@ class _Instructions {
     Layer layer,
     TimelineFrameRangeSelection selection,
   ) {
-    final cutId = _session._editingSession.activeCutId;
+    final cutId = _session.editingSession.activeCutId;
     final defaultDef = _session.cameraInstructionSet.defs.isEmpty
         ? null
         : _session.cameraInstructionSet.defs.first;
@@ -202,7 +202,7 @@ class _Instructions {
       return null;
     }
     return UpdateLayerInstructionsCommand(
-      repository: _session._repository,
+      repository: _session.repository,
       cutId: cutId,
       layerId: layer.id,
       instructions: next,
