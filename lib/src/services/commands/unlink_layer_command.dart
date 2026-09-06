@@ -44,7 +44,9 @@ class UnlinkLayerCommand implements Command {
   @override
   void execute() {
     final project = repository.requireProject();
-    final (:track, :cut) = requireCutLocation(project, cutId);
+    final position = requireCutPosition(project, cutId);
+    final track = position.track;
+    final cut = position.cut;
     final source = requireLayer(project, cutId: cutId, layerId: sourceLayerId);
     final baseId = source.attachedToLayerId ?? source.id;
     if (!cut.layers.any((layer) => layer.id == baseId)) {

@@ -22,7 +22,7 @@ import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/project_lookup.dart'
     show
-        cutLocationOrNull,
+        cutPositionOf,
         projectArchivedMediaPaths,
         projectAudioSourcePaths,
         projectLayerIdValues,
@@ -1420,22 +1420,16 @@ class EditorSessionManager extends ChangeNotifier
   /// The cut with [cutId] anywhere in the project, or `null`.
   @override
   Cut? cutById(CutId cutId) =>
-      cutLocationOrNull(repository.requireProject(), cutId)?.cut;
+      cutPositionOf(repository.requireProject(), cutId)?.cut;
 
   /// The brush store key of a layer frame within [cut] — same derivation the
   /// canvas selection uses (track containing the cut, first track fallback).
   @override
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
     final project = repository.requireProject();
-    var trackId = project.tracks.isEmpty
-        ? const TrackId('')
-        : project.tracks.first.id;
-    for (final track in project.tracks) {
-      if (track.cuts.any((candidate) => candidate.id == cut.id)) {
-        trackId = track.id;
-        break;
-      }
-    }
+    final trackId =
+        cutPositionOf(project, cut.id)?.trackId ??
+        (project.tracks.isEmpty ? const TrackId('') : project.tracks.first.id);
     return BrushFrameKey(
       projectId: project.id,
       trackId: trackId,
@@ -2328,7 +2322,7 @@ class EditorSessionManager extends ChangeNotifier
   /// lanes are TRACK data on the global axis, like the SE rows).
   @override
   Track? trackOwningCut(CutId cutId) =>
-      cutLocationOrNull(repository.requireProject(), cutId)?.track;
+      cutPositionOf(repository.requireProject(), cutId)?.track;
 
   // `transformTrackForCut` retired with the V row's transform: every route
   // that asked for a track pose or fade now has neither to apply.

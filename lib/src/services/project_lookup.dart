@@ -1,4 +1,5 @@
 import '../models/cut.dart';
+import '../models/track_id.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
@@ -11,32 +12,49 @@ import '../models/track.dart';
 /// hierarchy, shared by the edit commands and coordinator that previously each
 /// carried a private copy of the same track/cut walk.
 
-/// Where the cut with [cutId] lives — the track holding it and the cut
-/// itself — or null when no track holds it.
+/// Where a cut lives: the track holding it and its INDEX in that track.
 ///
-/// THE ONE WALK. The cut and its track are two projections of the same
-/// find, not two finds: a caller that needs both takes both from one
-/// answer, and a caller that needs one takes `.cut` or `.track`.
-({Track track, Cut cut})? cutLocationOrNull(Project project, CutId cutId) {
+/// Everything else a caller asks about a cut's place is a projection of
+/// those two — the track id, the cut itself, how many cuts the track has.
+/// Reorder needs the index, delete needs the index and the neighbour,
+/// every other caller needs the track or the cut, and they are all one
+/// find.
+class CutPosition {
+  const CutPosition({required this.track, required this.cutIndex});
+
+  final Track track;
+  final int cutIndex;
+
+  TrackId get trackId => track.id;
+  Cut get cut => track.cuts[cutIndex];
+  CutId get cutId => cut.id;
+  int get cutCount => track.cuts.length;
+}
+
+/// Where the cut with [cutId] lives, or null when no track holds it.
+///
+/// THE ONE WALK. The cut, its track and its index are three projections of
+/// the same find, not three finds: a caller that needs several takes them
+/// from one answer.
+CutPosition? cutPositionOf(Project project, CutId cutId) {
   for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) {
-        return (track: track, cut: cut);
-      }
+    final cutIndex = track.cuts.indexWhere((cut) => cut.id == cutId);
+    if (cutIndex != -1) {
+      return CutPosition(track: track, cutIndex: cutIndex);
     }
   }
   return null;
 }
 
-/// [cutLocationOrNull], throwing a [StateError] when no cut matches.
-({Track track, Cut cut}) requireCutLocation(Project project, CutId cutId) =>
-    cutLocationOrNull(project, cutId) ??
+/// [cutPositionOf], throwing a [StateError] when no cut matches.
+CutPosition requireCutPosition(Project project, CutId cutId) =>
+    cutPositionOf(project, cutId) ??
     (throw StateError('Cut not found: $cutId'));
 
 /// Returns the cut matching [cutId] anywhere in [project]. Throws a [StateError]
 /// if no cut matches.
 Cut requireCut(Project project, CutId cutId) =>
-    requireCutLocation(project, cutId).cut;
+    requireCutPosition(project, cutId).cut;
 
 /// Returns the layer matching [layerId] within the cut matching [cutId]. Throws
 /// a [StateError] if the cut or the layer is missing.

@@ -58,7 +58,9 @@ class LinkDuplicateLayerCommand implements Command {
   @override
   void execute() {
     repository.updateProject((project) {
-      final (:track, :cut) = requireCutLocation(project, cutId);
+      final position = requireCutPosition(project, cutId);
+      final track = position.track;
+      final cut = position.cut;
       final source = requireLayer(
         project,
         cutId: cutId,

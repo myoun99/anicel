@@ -21,6 +21,11 @@ typedef _PatternPart = ({
   List<int> dots,
 });
 
+/// A free interval `[lo, hi)` a repeat fills, plus the edge its cycle
+/// phase is pinned to. The three travel together because none of them
+/// means anything without the other two.
+typedef _GhostFill = ({int lo, int hi, int alignAt});
+
 /// [layer]'s timeline without its ghosts — the base a block move plans on.
 ///
 /// Derived repeat/hold ghosts neither move nor obstruct, and (sharing the
@@ -230,11 +235,9 @@ class _RunBehaviorPass {
       }
     }
     _tileGhosts(
-      parts: _patternParts(patternStart, run.endIndexExclusive),
+      _patternParts(patternStart, run.endIndexExclusive),
       span: run.endIndexExclusive - patternStart,
-      lo: ghostStart,
-      hi: limit,
-      alignAt: ghostStart,
+      fill: (lo: ghostStart, hi: limit, alignAt: ghostStart),
       ownerId: behavior.ghostOwnerId,
     );
   }
@@ -295,11 +298,9 @@ class _RunBehaviorPass {
       }
     }
     _tileGhosts(
-      parts: _patternParts(runStart, patternEnd),
+      _patternParts(runStart, patternEnd),
       span: patternEnd - runStart,
-      lo: limitStart,
-      hi: runStart,
-      alignAt: runStart,
+      fill: (lo: limitStart, hi: runStart, alignAt: runStart),
       ownerId: behavior.ghostOwnerId,
     );
   }
@@ -333,14 +334,13 @@ class _RunBehaviorPass {
   /// A part straddling a wall keeps its VISIBLE half, and its breakdown
   /// dots move with it. (Dots past the far end need no arithmetic:
   /// [TimelineExposure] drops any that fall outside the clipped length.)
-  void _tileGhosts({
-    required List<_PatternPart> parts,
+  void _tileGhosts(
+    List<_PatternPart> parts, {
     required int span,
-    required int lo,
-    required int hi,
-    required int alignAt,
+    required _GhostFill fill,
     required String ownerId,
   }) {
+    final (:lo, :hi, :alignAt) = fill;
     for (
       var cycleStart = alignAt + floorDiv(lo - alignAt, span) * span;
       cycleStart < hi;

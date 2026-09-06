@@ -20,7 +20,7 @@ import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart'
     show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
-import '../../services/project_lookup.dart' show cutLocationOrNull;
+import '../../services/project_lookup.dart' show cutPositionOf;
 import '../editor_session_manager.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachedLayersOf, isAttachedLayer;
@@ -632,7 +632,7 @@ class ExportDialogState extends State<ExportDialog> {
       }
       // The sheet belongs to the owner: its canvas sizes the cut-fitted
       // paper and its name the file, whichever sibling was in scope.
-      final owner = cutLocationOrNull(project, ownerId)?.cut ?? cut;
+      final owner = cutPositionOf(project, ownerId)?.cut ?? cut;
       final paper = cutEnvelopePaperSize(
         mode: spec.paperMode,
         cut: owner,

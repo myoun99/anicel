@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
+import '../../services/project_lookup.dart' show cutPositionOf;
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
@@ -115,10 +116,7 @@ class CutVerbs {
     if (cutId == null) {
       return null;
     }
-    return _internals.cutReorderPlanner.findCutPosition(
-      project: _project.repository.requireProject(),
-      cutId: cutId,
-    );
+    return cutPositionOf(_project.repository.requireProject(), cutId);
   }
 
   CutPosition get _activeCutPosition {
