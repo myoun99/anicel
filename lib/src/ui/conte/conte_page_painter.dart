@@ -1,9 +1,9 @@
 import '../../models/conte/conte_ink_windows.dart';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_sheet_layout.dart';
@@ -373,26 +373,11 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     if (slot.width <= 0 || slot.height <= 0) {
       return;
     }
-    final source = Rect.fromLTWH(
-      0,
-      0,
-      image.width.toDouble(),
-      image.height.toDouble(),
-    );
-    final scale = math.min(
-      slot.width / source.width,
-      slot.height / source.height,
-    );
-    final drawn = Size(source.width * scale, source.height * scale);
+    final source = Size(image.width.toDouble(), image.height.toDouble());
     canvas.drawImageRect(
       image,
-      source,
-      Rect.fromLTWH(
-        slot.left + (slot.width - drawn.width) / 2,
-        slot.top + (slot.height - drawn.height) / 2,
-        drawn.width,
-        drawn.height,
-      ),
+      Offset.zero & source,
+      containRect(source, slot),
       Paint()..filterQuality = FilterQuality.medium,
     );
   }

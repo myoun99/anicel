@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_form.dart';
@@ -203,22 +204,14 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     }
   }
 
-  /// Fits [image] inside the box without distorting it — a stamp is a
-  /// stamp, not a stretched one.
   void _paintImage(Canvas canvas, ui.Image image, PlacedEnvelopeBox placed) {
-    final scale = (placed.width / image.width) < (placed.height / image.height)
-        ? placed.width / image.width
-        : placed.height / image.height;
-    final width = image.width * scale;
-    final height = image.height * scale;
+    final source = Size(image.width.toDouble(), image.height.toDouble());
     canvas.drawImageRect(
       image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Rect.fromLTWH(
-        placed.x + (placed.width - width) / 2,
-        placed.y + (placed.height - height) / 2,
-        width,
-        height,
+      Offset.zero & source,
+      containRect(
+        source,
+        Rect.fromLTWH(placed.x, placed.y, placed.width, placed.height),
       ),
       Paint()..filterQuality = FilterQuality.high,
     );
