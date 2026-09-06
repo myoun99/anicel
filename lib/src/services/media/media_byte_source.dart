@@ -148,12 +148,7 @@ class MediaSourceStamp {
 /// The one IO primitive under every source that lives in a file — the
 /// plain file, the app-support file and the archive entry (which adds its
 /// own offset to [position] and clamps [size] first).
-int _readFileWindowSync(
-  String path,
-  int position,
-  Uint8List buffer,
-  int size,
-) {
+int _readFileWindowSync(String path, int position, Uint8List buffer, int size) {
   final handle = File(path).openSync();
   try {
     handle.setPositionSync(position);
