@@ -51,9 +51,17 @@ class DrawingBlockMovePlan {
   bool get isCrossLayer => targetBefore != null;
 }
 
-/// Plans moving the drawing block starting at [blockStartIndex] on [source]
-/// by [frameDelta] frames onto [target] ([target] == [source] for a plain
-/// slide). Returns null when the move is impossible or a no-op:
+/// Plans moving EVERY drawing block inside [rangeStartIndex,
+/// rangeEndIndexExclusive) on [source] by [frameDelta] frames onto [target]
+/// ([target] == [source] for a plain slide) as ONE RIGID GROUP (relative
+/// offsets — internal gaps included — are preserved). The UI-R8 range move:
+/// the selection is block-snapped, so the range always holds whole blocks.
+/// A whole-block drag (R10-④b) is the range of exactly that block — the
+/// round-8 audit (2026-09-06) retired the one-block planner that had
+/// written this same sequence (link check → cel collection → pushed
+/// landing → rebuild of both layers) a second time.
+///
+/// Returns null when the move is impossible or a no-op:
 ///
 /// - a SAME-LAYER slide follows the shared rank rule ([planBlockRunMove]):
 ///   reaching the seat beyond a neighbour reorders, and either way the run
@@ -61,124 +69,14 @@ class DrawingBlockMovePlan {
 ///   never pushes anything;
 /// - a CROSS-LAYER drop pushes the blocks it lands among out of the way
 ///   (R12-②), cascading, and clamps at the frame-0 wall on the way left;
-/// - cross-layer moves take the block's cel along, so a cel that other
-///   timeline entries still reference (linked cels) stays put — the move
-///   is rejected rather than splitting the link.
-DrawingBlockMovePlan? planDrawingBlockMove({
-  required Layer source,
-  required Layer target,
-  required int blockStartIndex,
-  required int frameDelta,
-  int? cutFrameCount,
-}) {
-  final sameLayer = source.id == target.id;
-  final sourceBase = ghostFreeTimeline(source);
-  final targetBase = sameLayer ? sourceBase : ghostFreeTimeline(target);
-
-  final entry = sourceBase[blockStartIndex];
-  if (entry == null || !entry.isDrawing) {
-    return null;
-  }
-  if (sameLayer && frameDelta == 0) {
-    return null;
-  }
-  final length = entry.length!;
-
-  // A same-layer slide is a run of one under the shared rule.
-  if (sameLayer) {
-    final blocks = drawingBlocks(sourceBase);
-    final runIndex = _indexOfBlockStarting(blocks, blockStartIndex);
-    final moved = _sameLayerRunMove(
-      blocks: blocks,
-      runStart: runIndex,
-      runEnd: runIndex,
-      frameDelta: frameDelta,
-      axisEndExclusive: _axisEndFor(source, cutFrameCount),
-    );
-    if (moved == null) {
-      return null;
-    }
-    return DrawingBlockMovePlan(
-      sourceAfter: source.copyWith(timeline: moved.timeline),
-      destinationStartIndex: moved.destinationStartIndex,
-    );
-  }
-
-  // Cross-layer: the cel travels with the block. Linked cels (the same
-  // frame exposed by another REAL entry) stay: rejecting keeps the link
-  // intact.
-  final frameId = entry.frameId!;
-  Frame? movedFrame;
-  for (final candidate in sourceBase.entries) {
-    if (candidate.key != blockStartIndex &&
-        candidate.value.isDrawing &&
-        candidate.value.frameId == frameId) {
-      return null;
-    }
-  }
-  movedFrame = source.frameById(frameId);
-  if (movedFrame == null) {
-    return null;
-  }
-
-  final resolved = _resolvePushedLanding(
-    others: drawingBlocks(targetBase),
-    requestedStart: blockStartIndex + frameDelta,
-    movedLength: length,
-    pushRight: frameDelta >= 0,
-    // Leftward drops clamp against the frame-0 wall, and never land RIGHT
-    // of where the block came from (a leftward drag must not teleport it
-    // forward).
-    leftwardCap: math.max(0, blockStartIndex),
-  );
-  if (resolved == null) {
-    return null;
-  }
-  final (:destStart, :pushes) = resolved;
-
-  SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
-    final timeline = _timelineWithPushes(targetBase, pushes);
-    timeline[destStart] = entry;
-    return timeline;
-  }
-
-  final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase)
-    ..remove(blockStartIndex);
-  return DrawingBlockMovePlan(
-    sourceAfter: source.copyWith(
-      timeline: sourceTimeline,
-      frames: [
-        for (final frame in source.frames)
-          if (frame.id != frameId) frame,
-      ],
-    ),
-    targetBefore: target,
-    targetAfter: target.copyWith(
-      timeline: targetTimelineAfter(),
-      frames: [...target.frames, movedFrame],
-    ),
-    movedFrameIds: [frameId],
-    destinationStartIndex: destStart,
-  );
-}
-
-/// Plans moving EVERY drawing block inside [rangeStartIndex,
-/// rangeEndIndexExclusive) on [source] by [frameDelta] frames onto [target]
-/// as ONE RIGID GROUP (relative offsets — internal gaps included — are
-/// preserved). The UI-R8 range move: the selection is block-snapped, so
-/// the range always holds whole blocks.
-///
-/// Same rules as [planDrawingBlockMove], applied group-wise:
-/// - a same-layer slide follows the shared rank rule ([planBlockRunMove]):
-///   the seat beyond a neighbour reorders, free space re-times either way,
-///   nothing is pushed;
-/// - cross-layer moves carry the moved cels; a cel referenced by an entry
-///   OUTSIDE the moved set stays (rejected) to keep links intact — entries
-///   linked WITHIN the range travel together sharing their cel.
+/// - cross-layer moves take the moved cels along, so a cel that an entry
+///   OUTSIDE the moved set still references (linked cels) stays put — the
+///   move is rejected rather than splitting the link; entries linked WITHIN
+///   the range travel together sharing their cel.
 ///
 /// GHOST entries (derived repeat instances) never move and never obstruct:
 /// both timelines are planned ghost-free and the caller re-derives repeats
-/// afterwards. A range intersecting a ghost is rejected outright.
+/// afterwards (UI-R20 #5: selections COVER ghosts now).
 DrawingBlockMovePlan? planDrawingRangeMove({
   required Layer source,
   required Layer target,
@@ -276,6 +174,9 @@ DrawingBlockMovePlan? planDrawingRangeMove({
     requestedStart: groupStart + frameDelta,
     movedLength: groupSpan,
     pushRight: frameDelta >= 0,
+    // Leftward drops clamp against the frame-0 wall, and never land RIGHT
+    // of where the group came from (a leftward drag must not teleport it
+    // forward).
     leftwardCap: math.max(0, groupStart),
   );
   if (resolved == null) {

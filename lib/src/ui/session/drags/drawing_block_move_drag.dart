@@ -31,6 +31,7 @@ class DrawingBlockMoveDrag {
   DrawingBlockMoveDrag._({
     required Layer source,
     required int blockStart,
+    required int blockEndExclusive,
     required Layer? Function(LayerId layerId) layerById,
     required bool Function(LayerId layerId) isEligibleRow,
     required int Function() cutFrameCount,
@@ -38,6 +39,7 @@ class DrawingBlockMoveDrag {
     required void Function(DrawingBlockMovePlan plan, Layer source) land,
   }) : _source = source,
        _blockStart = blockStart,
+       _blockEndExclusive = blockEndExclusive,
        _layerById = layerById,
        _isEligibleRow = isEligibleRow,
        _cutFrameCount = cutFrameCount,
@@ -47,7 +49,13 @@ class DrawingBlockMoveDrag {
   /// The row and block as they stood when the grip closed — the drag's own
   /// before-state, and what the commit's undo step restores to.
   final Layer _source;
+
+  /// The block as a RANGE: a single-block drag plans through the range
+  /// planner as the block-snapped range of exactly one block (the round-8
+  /// audit, 2026-09-06 — the one-block planner had written the range
+  /// planner's sequence a second time).
   final int _blockStart;
+  final int _blockEndExclusive;
 
   final Layer? Function(LayerId layerId) _layerById;
   final bool Function(LayerId layerId) _isEligibleRow;
@@ -98,6 +106,7 @@ class DrawingBlockMoveDrag {
     return DrawingBlockMoveDrag._(
       source: layer,
       blockStart: blockStartIndex,
+      blockEndExclusive: blockStartIndex + entry.length!,
       layerById: layerById,
       isEligibleRow: isEligibleRow,
       cutFrameCount: cutFrameCount,
@@ -117,10 +126,11 @@ class DrawingBlockMoveDrag {
     final frames = _cutFrameCount();
     final plan = target == null
         ? null
-        : planDrawingBlockMove(
+        : planDrawingRangeMove(
             source: _source,
             target: target,
-            blockStartIndex: _blockStart,
+            rangeStartIndex: _blockStart,
+            rangeEndIndexExclusive: _blockEndExclusive,
             frameDelta: frameDelta,
             cutFrameCount: frames,
           );

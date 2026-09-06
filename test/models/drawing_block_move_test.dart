@@ -11,6 +11,11 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 /// rule — free space re-times, a neighbour's midpoint reorders, nothing is
 /// pushed — while a CROSS-LAYER drop carries the cel and shoves the blocks
 /// it lands among (leftward pushes clamp at the frame-0 wall).
+///
+/// A whole block is the block-snapped RANGE of exactly one block: every
+/// case here hands [planDrawingRangeMove] `[start, start + length)`, which
+/// is what the drag does (the round-8 audit, 2026-09-06, retired the
+/// one-block planner that wrote the same sequence twice).
 void main() {
   Layer layerWith(
     String id,
@@ -26,6 +31,24 @@ void main() {
     timeline: timeline,
   );
 
+  /// The one-block move: the block starting at [blockStartIndex] on
+  /// [source], as the range of that block alone.
+  DrawingBlockMovePlan? planBlock({
+    required Layer source,
+    required Layer target,
+    required int blockStartIndex,
+    required int frameDelta,
+    int? cutFrameCount,
+  }) => planDrawingRangeMove(
+    source: source,
+    target: target,
+    rangeStartIndex: blockStartIndex,
+    rangeEndIndexExclusive:
+        blockStartIndex + source.timeline[blockStartIndex]!.length!,
+    frameDelta: frameDelta,
+    cutFrameCount: cutFrameCount,
+  );
+
   group('same-layer slide', () {
     test('remaps the entry and keeps the frames list', () {
       final layer = layerWith(
@@ -34,7 +57,7 @@ void main() {
         frameIds: ['a-f1'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 0,
@@ -61,7 +84,7 @@ void main() {
         frameIds: ['a-f1', 'a-f2'],
       );
 
-      DrawingBlockMovePlan? plan(int delta) => planDrawingBlockMove(
+      DrawingBlockMovePlan? plan(int delta) => planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 0,
@@ -73,6 +96,46 @@ void main() {
         plan(-1),
         isNull,
         reason: 'the frame-0 wall clamps the move back to its own start',
+      );
+    });
+
+    test('a range holding no block plans nothing', () {
+      // The one-block planner answered null for "no drawing starts here";
+      // the range of an empty or ghost-only stretch answers the same.
+      final layer = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          2: const TimelineExposure.drawing(
+            FrameId('a-f1'),
+            length: 2,
+            ghost: true,
+          ),
+        },
+        frameIds: ['a-f1'],
+      );
+
+      expect(
+        planDrawingRangeMove(
+          source: layer,
+          target: layer,
+          rangeStartIndex: 2,
+          rangeEndIndexExclusive: 4,
+          frameDelta: 3,
+        ),
+        isNull,
+        reason: 'a ghost is derived, not a block to move',
+      );
+      expect(
+        planDrawingRangeMove(
+          source: layer,
+          target: layer,
+          rangeStartIndex: 6,
+          rangeEndIndexExclusive: 8,
+          frameDelta: 3,
+        ),
+        isNull,
+        reason: 'empty cells are not a block to move',
       );
     });
 
@@ -89,7 +152,7 @@ void main() {
         frameIds: ['a-f1', 'a-f2'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 6,
@@ -119,7 +182,7 @@ void main() {
         frameIds: ['a-f1', 'a-f2', 'a-f3'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 0,
@@ -152,7 +215,7 @@ void main() {
         },
         frameIds: ['a-f1', 'a-f2'],
       );
-      final right = planDrawingBlockMove(
+      final right = planBlock(
         source: rightward,
         target: rightward,
         blockStartIndex: 0,
@@ -178,7 +241,7 @@ void main() {
         },
         frameIds: ['a-f1', 'a-f2'],
       );
-      final left = planDrawingBlockMove(
+      final left = planBlock(
         source: leftward,
         target: leftward,
         blockStartIndex: 8,
@@ -203,7 +266,7 @@ void main() {
         },
         frameIds: ['a-f1', 'a-f2'],
       );
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 0,
@@ -215,7 +278,8 @@ void main() {
       expect(
         plan.sourceAfter.timeline[5]!.frameId,
         const FrameId('a-f2'),
-        reason: 'and b is home again — a walked far enough past 5 that the '
+        reason:
+            'and b is home again — a walked far enough past 5 that the '
             'road back is clear (H9/H10)',
       );
       expect(plan.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
@@ -237,7 +301,7 @@ void main() {
         frameIds: ['a-f1', 'a-f2'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 21,
@@ -273,7 +337,7 @@ void main() {
         frameIds: ['a-f1', 'a-f2', 'a-f3'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 0,
@@ -314,7 +378,7 @@ void main() {
       );
 
       expect(
-        planDrawingBlockMove(
+        planBlock(
           source: layer,
           target: layer,
           blockStartIndex: 5,
@@ -335,7 +399,7 @@ void main() {
         },
         frameIds: ['a-f1', 'a-f2'],
       );
-      final past = planDrawingBlockMove(
+      final past = planBlock(
         source: cel,
         target: cel,
         blockStartIndex: 5,
@@ -360,7 +424,7 @@ void main() {
         frameIds: ['a-f1'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: layer,
         target: layer,
         blockStartIndex: 0,
@@ -386,7 +450,7 @@ void main() {
         frameIds: ['b-f1'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: source,
         target: target,
         blockStartIndex: 2,
@@ -419,7 +483,7 @@ void main() {
         frameIds: ['b-f1'],
       );
 
-      final plan = planDrawingBlockMove(
+      final plan = planBlock(
         source: source,
         target: target,
         blockStartIndex: 0,
@@ -446,7 +510,7 @@ void main() {
       final target = layerWith('b', const {});
 
       expect(
-        planDrawingBlockMove(
+        planBlock(
           source: source,
           target: target,
           blockStartIndex: 0,
