@@ -111,7 +111,7 @@ void main() {
     });
   });
 
-  group('headerModelAt — the model the ruler and the rail both read', () {
+  group('modelAt — the model the ruler and the rail both read', () {
     test('the label follows the cadence, and the seconds line the second '
         'boundaries', () {
       // 8px cells put the ladder on its 6f rung (3 × 8 < 40 ≤ 6 × 8).
@@ -119,26 +119,27 @@ void main() {
         metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 8),
       );
       expect(wide.metrics.frameLabelEveryFrames, 6, reason: 'fixture premise');
-      expect(wide.headerModelAt(0).label, '1');
-      expect(wide.headerModelAt(6).label, '7');
-      expect(wide.headerModelAt(7).label, '');
-      expect(wide.headerModelAt(24).secondsLabel, '1');
-      expect(wide.headerModelAt(25).secondsLabel, '');
+      expect(wide.modelAt(0).label, '1');
+      expect(wide.modelAt(6).label, '7');
+      expect(wide.modelAt(7).label, '');
+      expect(wide.modelAt(24).secondsLabel, '1');
+      expect(wide.modelAt(25).secondsLabel, '');
     });
 
     test('the current frame is selected and takes the tint, wash or no '
         'wash', () {
       final ruler = scale(currentFrameIndex: 6);
-      expect(ruler.headerModelAt(6).selected, isTrue);
-      expect(ruler.headerModelAt(5).selected, isFalse);
-      expect(ruler.headerModelAt(6).background, isNot(light.surface));
+      expect(ruler.modelAt(6).selected, isTrue);
+      expect(ruler.modelAt(5).selected, isFalse);
+      expect(ruler.modelAt(6).background, isNot(light.surface));
       // Selection outranks the wash: a selected frame past the playback
       // range still reads as the one you are standing on.
       expect(
         scale(
           currentFrameIndex: 40,
           playbackFrameCount: 30,
-        ).headerModelAt(40, outsideWash: const Color(0xFF00FF00)).background,
+          pastPlaybackWash: const Color(0xFF00FF00),
+        ).modelAt(40).background,
         isNot(const Color(0xFF00FF00)),
       );
     });
@@ -146,14 +147,15 @@ void main() {
     test('⛔the RULER takes no past-playback wash (UI-R18 #9) while the '
         'RAIL does — that is the whole difference between them', () {
       final past = scale(playbackFrameCount: 30);
-      expect(past.headerModelAt(31).outsidePlaybackRange, isTrue);
-      // No wash handed in: the strip stays plain, which is the ruler.
-      expect(past.headerModelAt(31).background, light.surface);
-      // A wash handed in: the row grays, which is the rail.
+      expect(past.modelAt(31).outsidePlaybackRange, isTrue);
+      // No wash on the scale: the strip stays plain, which is the ruler.
+      expect(past.modelAt(31).background, light.surface);
+      // A wash on the scale: the row grays, which is the rail.
       const wash = Color(0xFF00FF00);
-      expect(past.headerModelAt(31, outsideWash: wash).background, wash);
+      final washed = scale(playbackFrameCount: 30, pastPlaybackWash: wash);
+      expect(washed.modelAt(31).background, wash);
       // And the wash reaches ONLY the frames past the range.
-      expect(past.headerModelAt(29, outsideWash: wash).background, light.surface);
+      expect(washed.modelAt(29).background, light.surface);
     });
   });
 
@@ -178,12 +180,9 @@ void main() {
     });
   });
 
-  // ── the AXIS is the only turn (round 8) ────────────────────────────────
-  //
-  // The ruler's `headerRectFor`/`headerModelAt` and the rail's
-  // `rowRectFor`/`modelAt` were the same two sentences written twice, one
-  // with the frame axis across and one with it down. They live here now, so
-  // these ask the transposed question and demand the transposed answer.
+  // The ruler and the rail wrote the same two sentences, one with the frame
+  // axis across and one with it down. They live on the scale now, so these
+  // ask the transposed question and demand the transposed answer.
   group('cellRectFor turns with the axis', () {
     const cell = TimelineGridMetrics.defaults;
 
