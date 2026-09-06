@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 const _size = CanvasSize(width: 100, height: 100);
 
@@ -63,6 +65,30 @@ void main() {
     });
   });
 
+  group('a painter with ONE input still declares it', () {
+    TimelineFrameRulerPainter ruler({int currentFrameIndex = -1}) =>
+        TimelineFrameRulerPainter(
+          scale: TimelineRulerScale(
+            frameStartIndex: 0,
+            frameEndIndexExclusive: 30,
+            currentFrameIndex: currentFrameIndex,
+            playbackFrameCount: 30,
+            leadingFrameSpacer: 0,
+            metrics: TimelineGridMetrics.defaults,
+            colorScheme: const ColorScheme.light(),
+          ),
+        );
+
+    test(
+      'TimelineFrameRulerPainter: a rebuilt equal scale does not repaint',
+      () {
+        final old = ruler();
+        expect(ruler().shouldRepaint(old), isFalse);
+        expect(ruler(currentFrameIndex: 3).shouldRepaint(old), isTrue);
+      },
+    );
+  });
+
   group('an identity-declared prop repaints for an equal-by-value one', () {
     test('BitmapSurfacePainter: two surfaces of the same shape', () {
       // THE LAW `ByIdentity` EXISTS FOR: these two surfaces hold the same
@@ -71,15 +97,15 @@ void main() {
       final surface = BitmapSurface(canvasSize: _size);
       final twin = BitmapSurface(canvasSize: _size);
       expect(
-        BitmapSurfacePainter(surface: surface).shouldRepaint(
-          BitmapSurfacePainter(surface: surface),
-        ),
+        BitmapSurfacePainter(
+          surface: surface,
+        ).shouldRepaint(BitmapSurfacePainter(surface: surface)),
         isFalse,
       );
       expect(
-        BitmapSurfacePainter(surface: twin).shouldRepaint(
-          BitmapSurfacePainter(surface: surface),
-        ),
+        BitmapSurfacePainter(
+          surface: twin,
+        ).shouldRepaint(BitmapSurfacePainter(surface: surface)),
         isTrue,
       );
       // And a plain value prop beside it still decides on its own.

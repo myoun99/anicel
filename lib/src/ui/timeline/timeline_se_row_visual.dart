@@ -294,7 +294,7 @@ Widget timelineBlockCornerWarning({
   );
 }
 
-class _ClipCornerPainter extends CustomPainter {
+class _ClipCornerPainter extends CustomPainter with RepaintOnProps {
   const _ClipCornerPainter(this.color);
 
   final Color color;
@@ -310,8 +310,7 @@ class _ClipCornerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ClipCornerPainter oldDelegate) =>
-      oldDelegate.color != color;
+  Object get props => (color,);
 }
 
 /// Media-browser drop targets over an SE row's blocks: dropping an asset

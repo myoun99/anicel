@@ -8,6 +8,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
+import '../repaint_props.dart';
 
 /// The ruler's top-line SECOND mark at [frameIndex], or '' off a boundary.
 ///
@@ -66,7 +67,7 @@ class TimelineRulerHeaderModel {
 /// gone. Shared by the timeline header and the storyboard ruler (which
 /// already share [TimelineFrameHeaderRow]); scrubbing stays on the
 /// viewport-level listeners (G8) — the strip itself is passive.
-class TimelineFrameRulerPainter extends CustomPainter {
+class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
   TimelineFrameRulerPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 
@@ -253,8 +254,7 @@ class TimelineFrameRulerPainter extends CustomPainter {
   // fresh layout per label per repaint was the priciest slice of a
   // scroll-time repaint in debug.
   @override
-  bool shouldRepaint(covariant TimelineFrameRulerPainter oldDelegate) =>
-      oldDelegate.scale != scale;
+  Object get props => (scale,);
 
   // One node per labeled header (the old per-cell widgets' surface),
   // windowed with the paint pass.

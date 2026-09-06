@@ -64,6 +64,7 @@ import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
+import '../repaint_props.dart';
 
 part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
@@ -1227,7 +1228,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 /// ruler's UI-R13 #1 treatment, transposed): number rows, the seconds
 /// column, selection tint, playback dimming and the cached strip paint
 /// in a single pass. Public for the test probe.
-class XSheetFrameRailPainter extends CustomPainter {
+class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   XSheetFrameRailPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 
@@ -1384,8 +1385,7 @@ class XSheetFrameRailPainter extends CustomPainter {
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
   // across repaints — fresh layout per label was the debug hot spot.
   @override
-  bool shouldRepaint(covariant XSheetFrameRailPainter oldDelegate) =>
-      oldDelegate.scale != scale;
+  Object get props => (scale,);
 
   // Every row gets a node — the rail numbers every frame.
   @override
