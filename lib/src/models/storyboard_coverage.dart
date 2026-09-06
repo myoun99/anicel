@@ -150,26 +150,18 @@ List<int> storyboardDivisionKeys({
 /// How far the panel at [panelIndex] may be shortened from its FRONT, or
 /// null when there is no such panel to re-time.
 ///
-/// The panel keeps one frame — the same one-frame floor every other
-/// boundary rule here has. Growing (a negative delta) is NOT bounded here:
-/// what stops it is the cut axis, where the frames come from ([planCutLeadEdge]
-/// clamps against the slack that actually exists ahead of the cut).
+/// Growing (a negative delta) is NOT bounded here: what stops it is the
+/// cut axis, where the frames come from ([planCutLeadEdge] clamps against
+/// the slack that actually exists ahead of the cut).
 int? storyboardPanelLeadMaxShrink({
   required SplayTreeMap<int, TimelineExposure>? timeline,
   required int cutDuration,
   required int panelIndex,
-}) {
-  final bounds = _panelLeadBounds(
-    timeline: timeline,
-    cutDuration: cutDuration,
-    panelIndex: panelIndex,
-  );
-  if (bounds == null) {
-    return null;
-  }
-  final room = bounds.end - bounds.start - 1;
-  return room < 0 ? 0 : room;
-}
+}) => _panelLeadBounds(
+  timeline: timeline,
+  cutDuration: cutDuration,
+  panelIndex: panelIndex,
+)?.maxShrink;
 
 /// [timeline] with the panel at [panelIndex] shortened by [delta] frames at
 /// its FRONT, or null when there is nothing to re-time or the clamped delta
@@ -212,8 +204,7 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithPanelLeadRetimed({
   if (bounds == null) {
     return null;
   }
-  final maxShrink = bounds.end - bounds.start - 1;
-  final applied = delta > maxShrink ? maxShrink : delta;
+  final applied = delta > bounds.maxShrink ? bounds.maxShrink : delta;
   if (applied == 0) {
     return null;
   }
@@ -240,8 +231,16 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithPanelLeadRetimed({
 }
 
 /// The stored key, cell start and cell end of the panel a front-edge drag
-/// grabbed, or null when that panel does not exist.
-({int key, int start, int end})? _panelLeadBounds({
+/// grabbed, and how far its front may come in — or null when that panel
+/// does not exist.
+///
+/// [maxShrink] is the one-frame floor: the panel keeps one frame — the
+/// same one-frame floor every other boundary rule here has. Computed once,
+/// here, so the query that reports the room and the retime that clamps to
+/// it cannot disagree. It is never negative by construction: the division
+/// keys are strictly ascending and below [cutDuration], so every cell's end
+/// is past its start.
+({int key, int start, int end, int maxShrink})? _panelLeadBounds({
   required SplayTreeMap<int, TimelineExposure>? timeline,
   required int cutDuration,
   required int panelIndex,
@@ -253,12 +252,15 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithPanelLeadRetimed({
   if (panelIndex < 0 || panelIndex >= keys.length || keys.first < 0) {
     return null;
   }
+  // The first cell reaches back to the cut start, exactly as
+  // [storyboardCoverageCells] reads it.
+  final start = panelIndex == 0 ? 0 : keys[panelIndex];
+  final end = panelIndex + 1 < keys.length ? keys[panelIndex + 1] : cutDuration;
   return (
     key: keys[panelIndex],
-    // The first cell reaches back to the cut start, exactly as
-    // [storyboardCoverageCells] reads it.
-    start: panelIndex == 0 ? 0 : keys[panelIndex],
-    end: panelIndex + 1 < keys.length ? keys[panelIndex + 1] : cutDuration,
+    start: start,
+    end: end,
+    maxShrink: end - start - 1,
   );
 }
 
