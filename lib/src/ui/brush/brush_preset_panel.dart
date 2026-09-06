@@ -445,24 +445,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final memberCount = widget.presets
         .where((preset) => _ownerGroupId(preset) == group.id)
         .length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: keys.window,
-        title: AppText.strings.brDeleteGroup,
-        titleIcon: Icons.delete_outline,
-        message: memberCount == 0
-            ? 'Delete the empty group "${group.name}"?'
-            : 'Delete "${group.name}" and the $memberCount '
-                  '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.commonCancel,
-          declineKey: keys.decline,
-          acceptLabel: AppText.strings.commonDelete,
-          acceptKey: keys.accept,
-        ),
-      ),
+    final confirmed = await askConfirm(
+      context,
+      keys: keys,
+      title: AppText.strings.brDeleteGroup,
+      titleIcon: Icons.delete_outline,
+      message: memberCount == 0
+          ? 'Delete the empty group "${group.name}"?'
+          : 'Delete "${group.name}" and the $memberCount '
+                '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
+      acceptLabel: AppText.strings.commonDelete,
     );
     if (!mounted || confirmed != true) {
       return;
@@ -476,21 +468,13 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     if (onReset == null) {
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: keys.window,
-        title: AppText.strings.brResetLibrary,
-        titleIcon: Icons.restart_alt,
-        message: AppText.strings.brResetLibraryBody,
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.commonCancel,
-          declineKey: keys.decline,
-          acceptLabel: AppText.strings.commonReset,
-          acceptKey: keys.accept,
-        ),
-      ),
+    final confirmed = await askConfirm(
+      context,
+      keys: keys,
+      title: AppText.strings.brResetLibrary,
+      titleIcon: Icons.restart_alt,
+      message: AppText.strings.brResetLibraryBody,
+      acceptLabel: AppText.strings.commonReset,
     );
     if (!mounted || confirmed != true) {
       return;

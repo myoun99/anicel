@@ -211,11 +211,65 @@ void showFileError(BuildContext context, Object error) => unawaited(
   ),
 );
 
+/// Asks a yes/no question in the app's own window and answers what the
+/// user did: `true` accepted, `false` declined, **null** dismissed — the
+/// barrier or escape.
+///
+/// 🚨THE DOOR into the two-button confirm, the way [showAppNotice] is the
+/// door into the one-button one. Eight sites opened it by hand
+/// (`showDialog<bool>` → `AppConfirmDialog` → [confirmActions]), varying
+/// only in labels, keys, icon, emphasis and tooltip — all values.
+///
+/// ⚠️The RAW `bool?` comes back on purpose. The three answers are not the
+/// same everywhere: most sites read `!= true`, the selection move reads
+/// `== false` (dismissing keeps the move rather than reverting it), and
+/// the autosave-recovery gate treats null as "close the whole flow". A
+/// helper that folded null into false would have quietly changed all
+/// three.
+///
+/// ⛔Not for a dialog that is its OWN widget — `delete_layer_dialog.dart`
+/// and `frame_name_conflict_dialog.dart` are built on [AppConfirmDialog]
+/// as widgets, which is a different thing from this recipe.
+Future<bool?> askConfirm(
+  BuildContext context, {
+  required ConfirmDialogKeys keys,
+  required String title,
+  IconData? titleIcon,
+  required String message,
+  List<String> details = const [],
+  String? declineLabel,
+  AppWindowActionEmphasis declineEmphasis = AppWindowActionEmphasis.quiet,
+  String? declineTooltip,
+  required String acceptLabel,
+  AppWindowActionEmphasis acceptEmphasis = AppWindowActionEmphasis.primary,
+}) => showDialog<bool>(
+  context: context,
+  builder: (context) => AppConfirmDialog(
+    windowKey: keys.window,
+    title: title,
+    titleIcon: titleIcon,
+    message: message,
+    details: details,
+    actions: confirmActions(
+      context,
+      declineLabel: declineLabel ?? AppText.strings.commonCancel,
+      declineKey: keys.decline,
+      declineEmphasis: declineEmphasis,
+      declineTooltip: declineTooltip,
+      acceptLabel: acceptLabel,
+      acceptKey: keys.accept,
+      acceptEmphasis: acceptEmphasis,
+    ),
+  ),
+);
+
 /// The two ways out of a yes/no window: the decline action pops `false`,
 /// the accept action pops `true`.
 ///
 /// 🚨ONE law for every two-button confirm (the audit's clone scan,
-/// 2026-09-03) — ten sites used to type both pops themselves.
+/// 2026-09-03) — ten sites used to type both pops themselves. [askConfirm]
+/// is the door: it is what a caller asking a yes/no question reaches for,
+/// and this is the pair of actions inside it.
 List<AppWindowAction> confirmActions(
   BuildContext context, {
   required String declineLabel,

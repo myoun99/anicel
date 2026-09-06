@@ -68,7 +68,7 @@ import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
-    show AppConfirmDialog, confirmActions, showAppNotice;
+    show askConfirm, showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -1251,20 +1251,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       return;
     }
     final strings = AppText.strings;
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('attach-drops-fx-dialog'),
-        title: strings.tlAttachDropsFxTitle,
-        message: strings.tlAttachDropsFxBody,
-        actions: confirmActions(
-          context,
-          declineLabel: strings.commonCancel,
-          declineKey: const ValueKey<String>('attach-drops-fx-cancel'),
-          acceptLabel: strings.commonApply,
-          acceptKey: const ValueKey<String>('attach-drops-fx-confirm'),
-        ),
+    final proceed = await askConfirm(
+      context,
+      keys: (
+        window: const ValueKey<String>('attach-drops-fx-dialog'),
+        decline: const ValueKey<String>('attach-drops-fx-cancel'),
+        accept: const ValueKey<String>('attach-drops-fx-confirm'),
       ),
+      title: strings.tlAttachDropsFxTitle,
+      message: strings.tlAttachDropsFxBody,
+      acceptLabel: strings.commonApply,
     );
     request.answer(proceed ?? false);
   }

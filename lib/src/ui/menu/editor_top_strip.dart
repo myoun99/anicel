@@ -307,23 +307,20 @@ class EditorTopStrip extends StatelessWidget {
         declinedSidecar: false,
       );
     }
-    final recover = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('recover-autosave-dialog'),
-        title: AppText.strings.recoverAutosaveTitle,
-        titleIcon: Icons.restore_outlined,
-        message: AppText.strings.recoverAutosaveBody,
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.recoverOpenSaved,
-          declineKey: const ValueKey<String>('recover-open-saved-button'),
-          declineEmphasis: AppWindowActionEmphasis.danger,
-          declineTooltip: AppText.strings.recoverOpenSavedHint,
-          acceptLabel: AppText.strings.recoverAction,
-          acceptKey: const ValueKey<String>('recover-autosave-button'),
-        ),
+    final recover = await askConfirm(
+      context,
+      keys: (
+        window: const ValueKey<String>('recover-autosave-dialog'),
+        decline: const ValueKey<String>('recover-open-saved-button'),
+        accept: const ValueKey<String>('recover-autosave-button'),
       ),
+      title: AppText.strings.recoverAutosaveTitle,
+      titleIcon: Icons.restore_outlined,
+      message: AppText.strings.recoverAutosaveBody,
+      declineLabel: AppText.strings.recoverOpenSaved,
+      declineEmphasis: AppWindowActionEmphasis.danger,
+      declineTooltip: AppText.strings.recoverOpenSavedHint,
+      acceptLabel: AppText.strings.recoverAction,
     );
     if (recover == null) {
       return null;
@@ -1553,25 +1550,21 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
   final suffixed = '$picked$anicelProjectSuffix';
   if (File(suffixed).existsSync()) {
     final strings = AppText.strings;
-    final replace = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('save-as-replace-dialog'),
-        title: strings.replaceFileTitle,
-        titleIcon: Icons.save_as_outlined,
-        message: strings.replaceFileMessageTemplate.replaceAll(
-          '{name}',
-          suffixed.split('/').last,
-        ),
-        actions: confirmActions(
-          context,
-          declineLabel: strings.commonCancel,
-          declineKey: const ValueKey<String>('save-as-replace-cancel'),
-          acceptLabel: strings.commonReplace,
-          acceptKey: const ValueKey<String>('save-as-replace-confirm'),
-          acceptEmphasis: AppWindowActionEmphasis.danger,
-        ),
+    final replace = await askConfirm(
+      context,
+      keys: (
+        window: const ValueKey<String>('save-as-replace-dialog'),
+        decline: const ValueKey<String>('save-as-replace-cancel'),
+        accept: const ValueKey<String>('save-as-replace-confirm'),
       ),
+      title: strings.replaceFileTitle,
+      titleIcon: Icons.save_as_outlined,
+      message: strings.replaceFileMessageTemplate.replaceAll(
+        '{name}',
+        suffixed.split('/').last,
+      ),
+      acceptLabel: strings.commonReplace,
+      acceptEmphasis: AppWindowActionEmphasis.danger,
     );
     if (replace != true || !context.mounted) {
       return null;
