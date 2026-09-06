@@ -427,6 +427,22 @@ class _InstructionMarkPainter extends CustomPainter {
   final bool hasStartName;
   final bool hasEndName;
 
+  /// ONE isosceles triangle, base on [baseMain] spanning [crossHalf] either
+  /// side of [crossCenter], apex at [apexMain] on the centre line. The bar's
+  /// endpoint caps, the fade wedge and the bowtie's two halves are all this
+  /// shape; each caller keeps choosing the values its own decision fixes.
+  Path _isoscelesToward({
+    required double baseMain,
+    required double apexMain,
+    required double crossCenter,
+    required double crossHalf,
+  }) => Path()
+    ..addPolygon([
+      offsetAlong(axis, along: baseMain, across: crossCenter - crossHalf),
+      offsetAlong(axis, along: apexMain, across: crossCenter),
+      offsetAlong(axis, along: baseMain, across: crossCenter + crossHalf),
+    ], true);
+
   /// The dedicated marks' light-gray fill — laid under the writing, with
   /// the cell borders showing through (R4: hatching and outlines retired).
   Paint get _wedgeFill => Paint()..color = color.withValues(alpha: 0.15);
@@ -507,15 +523,14 @@ class _InstructionMarkPainter extends CustomPainter {
     required bool atStart,
   }) {
     final length = _cellExtent(mainExtent) / 2;
-    final crossHalf = crossExtent / 4;
-    final baseMain = atStart ? 0.0 : mainExtent;
     final apexMain = atStart ? length : mainExtent - length;
     canvas.drawPath(
-      Path()..addPolygon([
-        offsetAlong(axis, along: baseMain, across: crossCenter - crossHalf),
-        offsetAlong(axis, along: apexMain, across: crossCenter),
-        offsetAlong(axis, along: baseMain, across: crossCenter + crossHalf),
-      ], true),
+      _isoscelesToward(
+        baseMain: atStart ? 0.0 : mainExtent,
+        apexMain: apexMain,
+        crossCenter: crossCenter,
+        crossHalf: crossExtent / 4,
+      ),
       Paint()..color = color,
     );
     return apexMain;
@@ -526,55 +541,47 @@ class _InstructionMarkPainter extends CustomPainter {
   /// orientation fix; hatching retired).
   void _paintFadeWedge(Canvas canvas, Size size, {required bool wideAtStart}) {
     final mainExtent = extentAlong(axis, size);
-    final crossExtent = extentAcross(axis, size);
-    final crossCenter = crossExtent / 2;
+    final crossCenter = extentAcross(axis, size) / 2;
     final wideHalf = crossCenter - 2;
     if (mainExtent < 6 || wideHalf < 2) {
       return;
     }
-    final wideMain = wideAtStart ? 1.0 : mainExtent - 1;
-    final pointMain = wideAtStart ? mainExtent - 1 : 1.0;
     canvas.drawPath(
-      Path()..addPolygon([
-        offsetAlong(axis, along: wideMain, across: crossCenter - wideHalf),
-        offsetAlong(axis, along: pointMain, across: crossCenter),
-        offsetAlong(axis, along: wideMain, across: crossCenter + wideHalf),
-      ], true),
+      _isoscelesToward(
+        baseMain: wideAtStart ? 1.0 : mainExtent - 1,
+        apexMain: wideAtStart ? mainExtent - 1 : 1.0,
+        crossCenter: crossCenter,
+        crossHalf: wideHalf,
+      ),
       _wedgeFill,
     );
   }
 
+  /// Two triangles meeting at the span's centre, each based on a span edge
+  /// and spanning the whole row.
   void _paintBowtie(Canvas canvas, Size size) {
     final paint = _wedgeFill;
     final mainExtent = extentAlong(axis, size);
+    final crossHalf = extentAcross(axis, size) / 2;
     final mid = mainExtent / 2;
-    final startTriangle = Path();
-    final endTriangle = Path();
-    if (axis == Axis.horizontal) {
-      startTriangle
-        ..moveTo(0, 0)
-        ..lineTo(mid, size.height / 2)
-        ..lineTo(0, size.height)
-        ..close();
-      endTriangle
-        ..moveTo(size.width, 0)
-        ..lineTo(mid, size.height / 2)
-        ..lineTo(size.width, size.height)
-        ..close();
-    } else {
-      startTriangle
-        ..moveTo(0, 0)
-        ..lineTo(size.width / 2, mid)
-        ..lineTo(size.width, 0)
-        ..close();
-      endTriangle
-        ..moveTo(0, size.height)
-        ..lineTo(size.width / 2, mid)
-        ..lineTo(size.width, size.height)
-        ..close();
-    }
-    canvas.drawPath(startTriangle, paint);
-    canvas.drawPath(endTriangle, paint);
+    canvas.drawPath(
+      _isoscelesToward(
+        baseMain: 0,
+        apexMain: mid,
+        crossCenter: crossHalf,
+        crossHalf: crossHalf,
+      ),
+      paint,
+    );
+    canvas.drawPath(
+      _isoscelesToward(
+        baseMain: mainExtent,
+        apexMain: mid,
+        crossCenter: crossHalf,
+        crossHalf: crossHalf,
+      ),
+      paint,
+    );
   }
 
   @override
