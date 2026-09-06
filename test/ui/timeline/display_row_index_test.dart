@@ -33,6 +33,17 @@ void main() {
       expect(indexOfLayerRow(rows, const LayerId('upper')), 0);
     });
 
+    test('a lane row of the layer is not its cells row, whatever order '
+        'the list arrives in', () {
+      expect(
+        indexOfLayerRow([
+          TimelineDisplayRow.lane(upper, lane, layerIndex: 0),
+          TimelineDisplayRow.layer(upper, layerIndex: 0),
+        ], const LayerId('upper')),
+        1,
+      );
+    });
+
     test('-1 for a layer that is not drawn, and for no layer at all', () {
       expect(indexOfLayerRow(rows, const LayerId('ghost')), -1);
       expect(indexOfLayerRow(rows, null), -1);
