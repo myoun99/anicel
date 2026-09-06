@@ -19,9 +19,9 @@ const _twoPageDuration = 150;
 
 const _dataModeKey = ValueKey<String>('timesheet-data-mode-toggle-button');
 const _pageModeKey = ValueKey<String>('timesheet-page-mode-toggle-button');
-const _prevKey = ValueKey<String>('timesheet-page-prev-button');
-const _nextKey = ValueKey<String>('timesheet-page-next-button');
-const _pageLabelKey = ValueKey<String>('timesheet-page-label');
+const _prevKey = ValueKey<String>('timesheet-previous-page-button');
+const _nextKey = ValueKey<String>('timesheet-next-page-button');
+const _pageLabelKey = ValueKey<String>('timesheet-page-readout');
 const _pageInputKey = ValueKey<String>('timesheet-page-input');
 
 TimesheetDocument _document({int duration = _twoPageDuration}) {

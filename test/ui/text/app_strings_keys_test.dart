@@ -768,8 +768,6 @@ void main() {
     'sbOneStoryboardRowPerCut': (s) => s.sbOneStoryboardRowPerCut,
     'cnConte': (s) => s.cnConte,
     'cnActionColumn': (s) => s.cnActionColumn,
-    'cnPreviousPage': (s) => s.cnPreviousPage,
-    'cnNextPage': (s) => s.cnNextPage,
     'stagePaperSection': (s) => s.stagePaperSection,
     'stagePasteboardSection': (s) => s.stagePasteboardSection,
     'stagePasteboardExtent': (s) => s.stagePasteboardExtent,

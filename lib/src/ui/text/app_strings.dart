@@ -739,8 +739,6 @@ enum AppStrings {
   String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
 
   /// The conte sheet panel.
-  String get cnPreviousPage => _s('cnPreviousPage');
-  String get cnNextPage => _s('cnNextPage');
   String get cnActionColumn => _s('cnActionColumn');
   String get cnConte => _s('cnConte');
 
@@ -2007,8 +2005,6 @@ enum AppStrings {
     'tlPull': 'Pull (close frames)',
     'sbOneStoryboardRowPerCut':
         'This cut already has a storyboard row. A cut can hold only one.',
-    'cnPreviousPage': 'Previous page',
-    'cnNextPage': 'Next page',
     'cnActionColumn': 'Action',
     'cnConte': 'Conte',
     'tlBlankX': 'Blank / X',
@@ -2959,8 +2955,6 @@ enum AppStrings {
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
-    'cnPreviousPage': '前のページ',
-    'cnNextPage': '次のページ',
     'cnActionColumn': 'アクション',
     'cnConte': '絵コンテ',
     'tlBlankX': '中割なし / ×',
@@ -3909,8 +3903,6 @@ enum AppStrings {
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
-    'cnPreviousPage': '이전 페이지',
-    'cnNextPage': '다음 페이지',
     'cnActionColumn': '액션',
     'cnConte': '콘티',
     'tlBlankX': '중간 없음 / ×',

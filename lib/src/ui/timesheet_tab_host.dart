@@ -12,7 +12,7 @@ import 'brush/brush_tool_state.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
-import 'widgets/drag_value_label.dart';
+import 'widgets/page_turn_strip.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'canvas/viewport_canvas_transform.dart';
@@ -357,57 +357,16 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// page — that is not a mode, it is nothing to turn.
   List<Widget> _pageStrip(TimesheetDocumentLayout? layout) {
     final pageCount = layout?.document.pages.length ?? 0;
-    if (pageCount <= 1) {
-      return const <Widget>[];
-    }
     final page = layout == null ? 0 : _visiblePage(layout);
-    final paged = !widget.continuous;
-    return [
-      AppIconButton(
-        keyValue: 'timesheet-page-prev-button',
-        tooltip: AppText.strings.sheetPreviousPage,
-        icon: const Icon(Icons.keyboard_arrow_up),
-        size: AppIconButtonSize.strip,
-        onPressed: paged && page > 0 ? () => _turnToPage(page - 1) : null,
-      ),
-      DragValueLabel(
-        keyValue: 'timesheet-page-label',
-        inputKeyValue: 'timesheet-page-input',
-        text: layout?.pageLabel(page) ?? '-',
-        tooltip: AppText.strings.sheetPageDrag,
-        width: 30,
-        textStyle: const TextStyle(fontSize: 9),
-        // One page per 8px of drag: a 1px-per-page rate flipped whole
-        // documents on a twitch.
-        unitsPerPixel: 1 / 8,
-        onDragDelta: paged
-            ? (units) => _turnToPage(page + units.round())
-            : _noDrag,
-        onEditSubmit: (text) {
-          if (!paged) {
-            return;
-          }
-          // '3' and '3/7' both mean page three (the readout's own
-          // spelling round-trips).
-          final parsed = int.tryParse(text.split('/').first.trim());
-          if (parsed != null) {
-            _turnToPage(parsed - 1);
-          }
-        },
-      ),
-      AppIconButton(
-        keyValue: 'timesheet-page-next-button',
-        tooltip: AppText.strings.sheetNextPage,
-        icon: const Icon(Icons.keyboard_arrow_down),
-        size: AppIconButtonSize.strip,
-        onPressed: paged && page < pageCount - 1
-            ? () => _turnToPage(page + 1)
-            : null,
-      ),
-    ];
+    return pageTurnStrip(
+      keyPrefix: 'timesheet',
+      pageIndex: page,
+      pageCount: pageCount,
+      // '1/2' — the spelling shared with the printed ページ header (R26 #41).
+      label: layout?.pageLabel(page) ?? '-',
+      onTurnTo: widget.continuous ? null : _turnToPage,
+    );
   }
-
-  static void _noDrag(double units) {}
 
   @override
   Widget build(BuildContext context) {

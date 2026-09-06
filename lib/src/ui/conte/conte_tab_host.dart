@@ -23,7 +23,7 @@ import '../storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/drag_value_label.dart';
+import '../widgets/page_turn_strip.dart';
 import '../widgets/static_raster.dart';
 import 'conte_fonts.dart';
 import 'conte_ink.dart';
@@ -284,52 +284,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
     ];
   }
 
-  /// The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13) —
-  /// the timesheet's ◀ n/N ▶ grammar stood upright, drag/type on the
-  /// readout included. Empty below two pages: nothing to turn.
-  List<Widget> _pageStrip(int pageIndex, int pageCount) {
-    if (pageCount <= 1) {
-      return const <Widget>[];
-    }
-    return [
-      AppIconButton(
-        keyValue: 'conte-previous-page-button',
-        tooltip: AppText.strings.cnPreviousPage,
-        icon: const Icon(Icons.keyboard_arrow_up),
-        size: AppIconButtonSize.strip,
-        onPressed: pageIndex > 0
-            ? () => _turnToPage(pageIndex - 1, pageCount)
-            : null,
-      ),
-      DragValueLabel(
-        keyValue: 'conte-page-readout',
-        inputKeyValue: 'conte-page-input',
-        text: '${pageIndex + 1} / $pageCount',
-        tooltip: AppText.strings.sheetPageDrag,
-        width: 30,
-        textStyle: const TextStyle(fontSize: 9),
-        unitsPerPixel: 1 / 8,
-        onDragDelta: (units) =>
-            _turnToPage(pageIndex + units.round(), pageCount),
-        onEditSubmit: (text) {
-          final parsed = int.tryParse(text.split('/').first.trim());
-          if (parsed != null) {
-            _turnToPage(parsed - 1, pageCount);
-          }
-        },
-      ),
-      AppIconButton(
-        keyValue: 'conte-next-page-button',
-        tooltip: AppText.strings.cnNextPage,
-        icon: const Icon(Icons.keyboard_arrow_down),
-        size: AppIconButtonSize.strip,
-        onPressed: pageIndex < pageCount - 1
-            ? () => _turnToPage(pageIndex + 1, pageCount)
-            : null,
-      ),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     final (source, pages) = _resolveSheet();
@@ -373,7 +327,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // The paper never rotates (the timesheet's rule).
       allowViewRotation: false,
       bottomBarLeading: _panelActions(),
-      pageStrip: _pageStrip(pageIndex, pageCount),
+      // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
+      pageStrip: pageTurnStrip(
+        keyPrefix: 'conte',
+        pageIndex: pageIndex,
+        pageCount: pageCount,
+        label: '${pageIndex + 1} / $pageCount',
+        onTurnTo: (page) => _turnToPage(page, pageCount),
+      ),
       bottomBarHostToken: (pageIndex, pageCount, widget.inkEnabled),
       fitFocusRect: metrics == null
           ? null

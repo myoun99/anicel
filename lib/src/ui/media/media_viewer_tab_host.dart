@@ -30,7 +30,7 @@ import 'media_asset_drop_target.dart';
 import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/drag_value_label.dart';
+import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../listenable_rebind.dart';
@@ -847,61 +847,30 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// unless there is more than one page, because a still image has no pages
   /// to turn and a strip standing there for it would be a permanent
   /// disabled promise.
-  ///
-  /// ⚠️Up/down rather than left/right: the strip reads vertically, so a
-  /// chevron pointing sideways would point at nothing.
   List<Widget> _pageStrip(int pageIndex, int pageCount) {
-    if (pageCount <= 1) {
-      return const <Widget>[];
-    }
     final strings = AppText.strings;
-    return [
-      // 🚨PLAY sits with the page controls, not in a strip of its own:
-      // playing IS turning pages, and the user asked for 「최대한 통일」.
-      // ⛔It is present only when the document turns its own pages — the
-      // same rule this whole strip already follows (유저 확정 ⑥: a still
-      // image gets no strip rather than a permanently disabled one).
-      if (_canPlay)
-        AppIconButton(
-          keyValue: _key('play-button'),
-          tooltip: _playing ? strings.menuPause : strings.menuPlay,
-          icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-          size: AppIconButtonSize.strip,
-          onPressed: _togglePlaying,
-        ),
-      AppIconButton(
-        keyValue: _key('previous-page-button'),
-        tooltip: strings.cnPreviousPage,
-        icon: const Icon(Icons.keyboard_arrow_up),
-        size: AppIconButtonSize.strip,
-        onPressed: pageIndex > 0 ? () => _turnToPage(pageIndex - 1) : null,
-      ),
-      DragValueLabel(
-        keyValue: _key('page-readout'),
-        inputKeyValue: _key('page-input'),
-        text: '${pageIndex + 1} / $pageCount',
-        tooltip: strings.sheetPageDrag,
-        width: 30,
-        textStyle: const TextStyle(fontSize: 9),
-        unitsPerPixel: 1 / 8,
-        onDragDelta: (units) => _turnToPage(pageIndex + units.round()),
-        onEditSubmit: (text) {
-          final parsed = int.tryParse(text.split('/').first.trim());
-          if (parsed != null) {
-            _turnToPage(parsed - 1);
-          }
-        },
-      ),
-      AppIconButton(
-        keyValue: _key('next-page-button'),
-        tooltip: strings.cnNextPage,
-        icon: const Icon(Icons.keyboard_arrow_down),
-        size: AppIconButtonSize.strip,
-        onPressed: pageIndex < pageCount - 1
-            ? () => _turnToPage(pageIndex + 1)
-            : null,
-      ),
-    ];
+    return pageTurnStrip(
+      keyPrefix: widget.viewerId,
+      pageIndex: pageIndex,
+      pageCount: pageCount,
+      label: '${pageIndex + 1} / $pageCount',
+      onTurnTo: _turnToPage,
+      leading: [
+        // 🚨PLAY sits with the page controls, not in a strip of its own:
+        // playing IS turning pages, and the user asked for 「최대한 통일」.
+        // ⛔It is present only when the document turns its own pages — the
+        // same rule this whole strip already follows (유저 확정 ⑥: a still
+        // image gets no strip rather than a permanently disabled one).
+        if (_canPlay)
+          AppIconButton(
+            keyValue: _key('play-button'),
+            tooltip: _playing ? strings.menuPause : strings.menuPlay,
+            icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+            size: AppIconButtonSize.strip,
+            onPressed: _togglePlaying,
+          ),
+      ],
+    );
   }
 
   @override
