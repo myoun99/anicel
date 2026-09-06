@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -56,7 +57,11 @@ void main() {
     tester,
   ) async {
     final fill = await plateFill(tester, dimmed: false);
-    expect(fill, isNotNull, reason: 'the plate did not draw — this measures nothing');
+    expect(
+      fill,
+      isNotNull,
+      reason: 'the plate did not draw — this measures nothing',
+    );
     expect(fill!.a, closeTo(1, 0.001));
   });
 
@@ -70,5 +75,41 @@ void main() {
       closeTo(0.45, 0.001),
       reason: '유저: 「다른 버튼 off상태랑 동급으로」 — 0.45 is that alpha',
     );
+  });
+
+  testWidgets('forLayer hands the LAYER\'s visibility down — a hidden layer '
+      'dims through it too', (tester) async {
+    // The three rail surfaces raise the chip through `forLayer` since the
+    // round-8 audit (2026-09-06); the constructor must carry `isVisible`
+    // off the layer, or a hidden row would wear full colour again.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 120,
+              height: 40,
+              child: LayerMarkChip.forLayer(
+                Layer(
+                  id: const LayerId('L1'),
+                  name: 'L1',
+                  frames: const [],
+                  mark: mark,
+                  isVisible: false,
+                ),
+                keyPrefix: 'test',
+                onMarkSelected: (_, _) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final plate = tester
+        .widgetList<ColoredBox>(find.byType(ColoredBox))
+        .firstWhere((box) => box.color.a > 0);
+    expect(plate.color.a, closeTo(0.45, 0.001));
   });
 }
