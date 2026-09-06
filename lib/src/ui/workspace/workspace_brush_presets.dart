@@ -18,38 +18,23 @@ class _WorkspaceBrushPresets {
 
   /// Rename a library tip. The model has had this since the library
   /// landed; what it never had was anywhere to be called from.
+  ///
+  /// Through [AppPromptDialog] — the one "type a short string" window —
+  /// so trim, Enter-submits and cancel are decided once, not here.
   Future<void> _renameTip(BrushTipEntry tip) async {
-    final controller = TextEditingController(text: tip.name);
     final name = await showDialog<String>(
       context: _state.context,
-      builder: (dialogContext) => AlertDialog(
-        key: const ValueKey<String>('rename-tip-dialog'),
-        title: Text(AppText.strings.brRenameTip),
-        content: TextField(
-          key: const ValueKey<String>('rename-tip-name-field'),
-          controller: controller,
-          autofocus: true,
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          ControlPressClaim(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: TextButton(
-              onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
-              child: Text(AppText.strings.commonCancel),
-            ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(AppText.strings.commonRename),
-          ),
-        ],
+      builder: (_) => AppPromptDialog(
+        windowKey: const ValueKey<String>('rename-tip-dialog'),
+        title: AppText.strings.brRenameTip,
+        fieldLabel: AppText.strings.commonNameField,
+        initialValue: tip.name,
+        confirmLabel: AppText.strings.commonRename,
+        fieldKey: const ValueKey<String>('rename-tip-name-field'),
       ),
     );
-    controller.dispose();
-    final trimmed = name?.trim();
-    if (trimmed != null && trimmed.isNotEmpty) {
-      _state._tipLibrary.rename(tip.id, trimmed);
+    if (name != null && name.isNotEmpty) {
+      _state._tipLibrary.rename(tip.id, name);
     }
   }
 
@@ -89,19 +74,6 @@ class _WorkspaceBrushPresets {
     }
   }
 
-  /// Promotes the held piece into the brush tip library.
-  ///
-  /// Explicit, and it asks for a name — which is the whole reason cutting
-  /// does NOT do this by itself. Photoshop and Clip Studio both make
-  /// library registration a separate named command, and TVPaint's Tool
-  /// History is the counter-example: it accumulates unnamed near-duplicates
-  /// automatically and its own users gave up on it as a store. The user's
-  /// objection to the first design was exactly that ("잘라낼 때마다 팁
-  /// 라이브러리 늘리는 거 딱히 마음에 안 드는데").
-  ///
-  /// One field, like Photoshop's. Our tip library has no groups to file
-  /// into — that is the preset library — so a second field would be asking
-  /// about a place that does not exist.
   /// The id the stamp was last armed for, so a POSE change is not mistaken
   /// for a fresh cut (the slot notifies for both).
   String? _armedCutPieceId;
@@ -136,48 +108,38 @@ class _WorkspaceBrushPresets {
     );
   }
 
+  /// Promotes the held piece into the brush tip library.
+  ///
+  /// Explicit, and it asks for a name — which is the whole reason cutting
+  /// does NOT do this by itself. Photoshop and Clip Studio both make
+  /// library registration a separate named command, and TVPaint's Tool
+  /// History is the counter-example: it accumulates unnamed near-duplicates
+  /// automatically and its own users gave up on it as a store. The user's
+  /// objection to the first design was exactly that ("잘라낼 때마다 팁
+  /// 라이브러리 늘리는 거 딱히 마음에 안 드는데").
+  ///
+  /// One field, like Photoshop's. Our tip library has no groups to file
+  /// into — that is the preset library — so a second field would be asking
+  /// about a place that does not exist.
   Future<void> _registerCutPieceAsTip() async {
     final piece = _state._cutPieceSlot.piece;
     if (piece == null) {
       return;
     }
     _registeredCutTipSequence += 1;
-    final controller = TextEditingController(
-      text: 'Cut $_registeredCutTipSequence',
-    );
     final name = await showDialog<String>(
       context: _state.context,
-      builder: (dialogContext) => AlertDialog(
-        key: const ValueKey<String>('register-cut-tip-dialog'),
-        title: Text(AppText.strings.tipRegisterTitle),
-        content: TextField(
-          key: const ValueKey<String>('register-cut-tip-name-field'),
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: AppText.strings.commonNameField,
-          ),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          ControlPressClaim(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: TextButton(
-              onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
-              child: Text(AppText.strings.commonCancel),
-            ),
-          ),
-          FilledButton(
-            key: const ValueKey<String>('register-cut-tip-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(AppText.strings.commonRegister),
-          ),
-        ],
+      builder: (_) => AppPromptDialog(
+        windowKey: const ValueKey<String>('register-cut-tip-dialog'),
+        title: AppText.strings.tipRegisterTitle,
+        fieldLabel: AppText.strings.commonNameField,
+        initialValue: 'Cut $_registeredCutTipSequence',
+        confirmLabel: AppText.strings.commonRegister,
+        fieldKey: const ValueKey<String>('register-cut-tip-name-field'),
+        confirmKey: const ValueKey<String>('register-cut-tip-confirm'),
       ),
     );
-    controller.dispose();
-    final trimmed = name?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
+    if (name == null || name.isEmpty) {
       return;
     }
     final id = sanitizeBrushTipId(
@@ -185,7 +147,7 @@ class _WorkspaceBrushPresets {
     );
     await _state._tipLibrary.register(
       cutPieceToTipMask(piece, id: id),
-      name: trimmed,
+      name: name,
     );
   }
 
