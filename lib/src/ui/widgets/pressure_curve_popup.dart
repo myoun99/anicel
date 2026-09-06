@@ -161,25 +161,36 @@ class _MiniCurvePainter extends CustomPainter {
       canvas.drawLine(box.topRight, box.bottomLeft, paint);
       return;
     }
-    final path = Path();
-    const steps = 12;
-    for (var i = 0; i <= steps; i += 1) {
-      final t = i / steps;
-      final value = shape.evaluate(t);
-      final x = t * size.width;
-      final y = (1.0 - value) * size.height;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    canvas.drawPath(path, paint);
+    canvas.drawPath(pressureCurvePath(shape, size, steps: 12), paint);
   }
 
   @override
   bool shouldRepaint(_MiniCurvePainter oldDelegate) =>
       oldDelegate.curve != curve || oldDelegate.color != color;
+}
+
+/// [curve] sampled in [steps] equal pressure steps across [size]: pressure
+/// runs left→right and a multiplier of 1 sits at the TOP of the box. The
+/// one kernel behind the button's mini graph and the editor's big graph —
+/// they differ only in how densely they sample.
+Path pressureCurvePath(
+  BrushPressureCurve curve,
+  Size size, {
+  required int steps,
+}) {
+  final path = Path();
+  for (var i = 0; i <= steps; i += 1) {
+    final t = i / steps;
+    final value = curve.evaluate(t);
+    final x = t * size.width;
+    final y = (1.0 - value) * size.height;
+    if (i == 0) {
+      path.moveTo(x, y);
+    } else {
+      path.lineTo(x, y);
+    }
+  }
+  return path;
 }
 
 /// Shows the anchored curve editor next to [anchorContext]'s widget.
@@ -521,20 +532,17 @@ class _CurveGraphPainter extends CustomPainter {
       ..color = lineColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
-    final curve = BrushPressureCurve(List.of(points));
-    final path = Path();
-    const steps = 48;
-    for (var i = 0; i <= steps; i += 1) {
-      final t = i / steps;
-      final value = enabled ? curve.evaluate(t) : 1.0;
-      final x = t * size.width;
-      final y = (1.0 - value) * size.height;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
+    // The disabled graph is a flat line at value 1.0 — "pressure has no
+    // effect" — drawn along the top edge; the curve itself is not consulted.
+    final path = enabled
+        ? pressureCurvePath(
+            BrushPressureCurve(List.of(points)),
+            size,
+            steps: 48,
+          )
+        : (Path()
+            ..moveTo(0, 0)
+            ..lineTo(size.width, 0));
     canvas.drawPath(path, curvePaint);
 
     if (enabled) {
