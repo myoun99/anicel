@@ -30,6 +30,8 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../repaint_props.dart';
+import 'memo_token.dart';
 
 /// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
 /// hybrid painterization): the dense, mostly-static cell strip — paper
@@ -76,7 +78,7 @@ const String _holdDashGlyph = timelineHoldDashGlyph;
 TextPainter _glyphPainter(String text, TextStyle style) =>
     timelineGlyphPainter(text, style);
 
-class TimelineRowCellsPainter extends CustomPainter {
+class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   TimelineRowCellsPainter({
     required this.layer,
     required this.geometry,
@@ -976,38 +978,41 @@ class TimelineRowCellsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimelineRowCellsPainter oldDelegate) =>
-      // Geometry is absent on purpose: it arrives through `repaint`, and a
-      // rebuilt-but-identical painter must not re-record on its account.
-      //
-      // Value-compared, never `identical`: a same-receiver tear-off is a
-      // FRESH object every build but compares equal, and `AnimatedTheme`
-      // hands out a new ColorScheme instance per build — under `!identical`
-      // both read as "changed" and this painter re-recorded on every
-      // rebuild it saw (the churn that hid in the rulers, F2).
-      !identical(oldDelegate.layer, layer) ||
-      // ㉘: and what the row's coverage follows, for the rows whose
-      // coverage is not on their layer. Value-compared like the rest —
-      // a TransformTrack with one more key is a different value.
-      oldDelegate.coverageIdentity != coverageIdentity ||
-      oldDelegate.crossAxisExtent != crossAxisExtent ||
-      oldDelegate.axis != axis ||
-      !identical(oldDelegate.windowBucket, windowBucket) ||
-      oldDelegate.viewportMainExtent != viewportMainExtent ||
-      oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.exposureStateForLayer != exposureStateForLayer ||
-      oldDelegate.frameNameForLayer != frameNameForLayer ||
-      oldDelegate.celHasContentForLayer != celHasContentForLayer ||
-      oldDelegate.celContentRevision != celContentRevision ||
-      oldDelegate.substrateGeneration != substrateGeneration ||
-      !identical(oldDelegate.tileStore, tileStore) ||
-      // T16: the ground rule is a painted fact like any other. One row can
-      // switch (the collapsed overlay folds and unfolds under a live panel).
-      oldDelegate.chromeless != chromeless ||
-      // D43-2: and so is the ground the row paints — the active wash moves
-      // it, and the empty cells' lines are multiplied onto it.
-      oldDelegate.rowGround != rowGround ||
-      oldDelegate.devicePixelRatio != devicePixelRatio;
+  // Geometry is absent on purpose: it arrives through `repaint`, and a
+  // rebuilt-but-identical painter must not re-record on its account.
+  //
+  // Value-compared, never `identical`: a same-receiver tear-off is a
+  // FRESH object every build but compares equal, and `AnimatedTheme`
+  // hands out a new ColorScheme instance per build — under `!identical`
+  // both read as "changed" and this painter re-recorded on every
+  // rebuild it saw (the churn that hid in the rulers, F2). Every field
+  // below that is NOT wrapped in `ByIdentity` is value-compared for that
+  // reason.
+  Object get props => (
+    ByIdentity(layer),
+    // ㉘: and what the row's coverage follows, for the rows whose
+    // coverage is not on their layer. Value-compared like the rest —
+    // a TransformTrack with one more key is a different value.
+    coverageIdentity,
+    crossAxisExtent,
+    axis,
+    ByIdentity(windowBucket),
+    viewportMainExtent,
+    colorScheme,
+    exposureStateForLayer,
+    frameNameForLayer,
+    celHasContentForLayer,
+    celContentRevision,
+    substrateGeneration,
+    ByIdentity(tileStore),
+    // T16: the ground rule is a painted fact like any other. One row can
+    // switch (the collapsed overlay folds and unfolds under a live panel).
+    chromeless,
+    // D43-2: and so is the ground the row paints — the active wash moves
+    // it, and the empty cells' lines are multiplied onto it.
+    rowGround,
+    devicePixelRatio,
+  );
 
   // One semantics node per NON-EMPTY cell (labels only where content
   // exists), windowed with the paint pass — the per-cell widget tree

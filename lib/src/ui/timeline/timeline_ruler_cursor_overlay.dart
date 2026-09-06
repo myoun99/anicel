@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
 import 'timeline_frame_window.dart';
+import '../repaint_props.dart';
+import 'memo_token.dart';
 
 /// A frame ruler's MOVING layer: the current-frame tint and the green
 /// cached-range bar, painted OVER the static header cells and driven by
@@ -25,7 +27,7 @@ import 'timeline_frame_window.dart';
 ///
 /// Shared by the storyboard ruler and the timeline ruler (it was the
 /// storyboard's private painter first).
-class TimelineRulerCursorOverlayPainter extends CustomPainter {
+class TimelineRulerCursorOverlayPainter extends CustomPainter with RepaintOnProps {
   TimelineRulerCursorOverlayPainter({
     required this.playhead,
     required Listenable? repaintSignal,
@@ -157,18 +159,19 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(TimelineRulerCursorOverlayPainter oldDelegate) =>
-      !identical(oldDelegate.windowBucket, windowBucket) ||
-      oldDelegate.viewportMainExtent != viewportMainExtent ||
-      oldDelegate.renderedFrames != renderedFrames ||
-      oldDelegate.cellWidth != cellWidth ||
-      oldDelegate.axis != axis ||
-      !identical(oldDelegate.playhead, playhead) ||
-      // VALUE-compared, not identity: a method tear-off (`session.isCached`)
-      // is a fresh object every build but compares EQUAL, so `identical`
-      // here would repaint on every unrelated rebuild — the churn that hid
-      // in the ruler painters.
-      oldDelegate.isFrameReady != isFrameReady;
+  Object get props => (
+    ByIdentity(windowBucket),
+    viewportMainExtent,
+    renderedFrames,
+    cellWidth,
+    axis,
+    ByIdentity(playhead),
+    // VALUE-compared, not identity: a method tear-off (`session.isCached`)
+    // is a fresh object every build but compares EQUAL, so `identical`
+    // here would repaint on every unrelated rebuild — the churn that hid
+    // in the ruler painters.
+    isFrameReady,
+  );
 }
 
 /// The overlay, mounted the way both rulers want it: pointer-transparent

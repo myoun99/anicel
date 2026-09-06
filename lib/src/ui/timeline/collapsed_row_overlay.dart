@@ -7,6 +7,8 @@ import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_grid_metrics.dart';
+import '../repaint_props.dart';
+import 'memo_token.dart';
 
 /// The row you are standing on, drawn over the artwork with NO ground under
 /// it — what a collapsed frame panel says instead of disappearing.
@@ -352,7 +354,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   }
 }
 
-class _CollapsedStripPainter extends CustomPainter {
+class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   const _CollapsedStripPainter({
     required this.snapshot,
     required this.row,
@@ -544,10 +546,11 @@ class _CollapsedStripPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CollapsedStripPainter old) =>
-      old.snapshot != snapshot ||
-      !identical(old.row, row) ||
-      old.pixelsPerFrame != pixelsPerFrame ||
-      old.framesPerSecond != framesPerSecond ||
-      old.colorScheme != colorScheme;
+  Object get props => (
+    snapshot,
+    ByIdentity(row),
+    pixelsPerFrame,
+    framesPerSecond,
+    colorScheme,
+  );
 }

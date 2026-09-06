@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
@@ -11,12 +10,14 @@ import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../sheet_painting.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 /// Paints a cut envelope. The panel and every export share it, so what is
 /// on screen IS the page — the timesheet's rule.
-class CutEnvelopePainter extends CustomPainter {
+class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   const CutEnvelopePainter({
     required this.layout,
     required this.source,
@@ -262,16 +263,17 @@ class CutEnvelopePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CutEnvelopePainter oldDelegate) =>
-      oldDelegate.layout.form != layout.form ||
-      oldDelegate.layout.paperWidth != layout.paperWidth ||
-      oldDelegate.layout.paperHeight != layout.paperHeight ||
-      oldDelegate.source != source ||
-      oldDelegate.layers != layers ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.effectiveRatio != effectiveRatio ||
-      // Mounting a window HIDES that box's baked ink here; unmounting shows
-      // it again. Miss this and a stroke stays doubled (or missing) until
-      // something else happens to repaint.
-      !setEquals(oldDelegate.liveInkKeys, liveInkKeys);
+  Object get props => (
+    layout.form,
+    layout.paperWidth,
+    layout.paperHeight,
+    source,
+    ByIdentity(layers),
+    viewport,
+    effectiveRatio,
+    // Mounting a window HIDES that box's baked ink here; unmounting shows
+    // it again. Miss this and a stroke stays doubled (or missing) until
+    // something else happens to repaint.
+    BySet(liveInkKeys),
+  );
 }

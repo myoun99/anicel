@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../text/full_width_numerals.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// One position axis for the nav bar's scrub: how many stops, where the
 /// boundary ticks sit, and what a stop is called. The tab defines the
@@ -227,7 +229,7 @@ class _ExportScrubBar extends StatelessWidget {
   }
 }
 
-class _ExportScrubPainter extends CustomPainter {
+class _ExportScrubPainter extends CustomPainter with RepaintOnProps {
   _ExportScrubPainter({
     required this.axis,
     required this.position,
@@ -315,12 +317,13 @@ class _ExportScrubPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ExportScrubPainter oldDelegate) =>
-      oldDelegate.axis.length != axis.length ||
-      !identical(oldDelegate.axis.ticks, axis.ticks) ||
-      oldDelegate.position != position ||
-      oldDelegate.inMark != inMark ||
-      oldDelegate.outMark != outMark ||
-      oldDelegate.trackColor != trackColor ||
-      oldDelegate.accent != accent;
+  Object get props => (
+    axis.length,
+    ByIdentity(axis.ticks),
+    position,
+    inMark,
+    outMark,
+    trackColor,
+    accent,
+  );
 }

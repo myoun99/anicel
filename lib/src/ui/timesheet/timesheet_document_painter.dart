@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -21,6 +21,8 @@ import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
@@ -380,7 +382,7 @@ class TimesheetDocumentLayout {
 /// marks, X cells, camera keys, the data-driven cut-end strikethrough and
 /// the playhead row — under the panel viewport transform (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
-class TimesheetDocumentPainter extends CustomPainter {
+class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
@@ -707,28 +709,30 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimesheetDocumentPainter oldDelegate) {
-    return !identical(oldDelegate.document, document) ||
-        oldDelegate.layout.continuous != layout.continuous ||
-        oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
-        oldDelegate.viewport != viewport ||
-        !identical(oldDelegate.notation, notation) ||
-        !setEquals(oldDelegate.layers, layers) ||
-        // Everything `paint` reads has to be compared here or the sheet
-        // keeps printing the old value. `accent` tints the SE name boxes
-        // and `cutId` decides which cut's end line is data — the latter
-        // was masked only because `document` identity happens to change
-        // with the active cut, which is a coincidence and not a contract.
-        oldDelegate.accent != accent ||
-        oldDelegate.cutId != cutId ||
-        // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
-        // `paint` reads this for the text-zoom threshold (and now for the
-        // transform), so a monitor or UI-scale change has to reach the
-        // sheet. It did not — the threshold kept the old value until
-        // something else happened to repaint.
-        oldDelegate.effectiveRatio != effectiveRatio ||
-        !identical(oldDelegate.dragPreview, dragPreview);
-  }
+  Object get props => (
+    ByIdentity(document),
+    layout.continuous,
+    layout.resolvedSinglePage,
+    viewport,
+    ByIdentity(notation),
+    // Null means ALL strata, which is a different input from an empty set,
+    // so the null is carried instead of folded into one.
+    layers == null ? null : BySet(layers!),
+    // Everything `paint` reads has to be compared here or the sheet
+    // keeps printing the old value. `accent` tints the SE name boxes
+    // and `cutId` decides which cut's end line is data — the latter
+    // was masked only because `document` identity happens to change
+    // with the active cut, which is a coincidence and not a contract.
+    accent,
+    cutId,
+    // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
+    // `paint` reads this for the text-zoom threshold (and now for the
+    // transform), so a monitor or UI-scale change has to reach the
+    // sheet. It did not — the threshold kept the old value until
+    // something else happened to repaint.
+    effectiveRatio,
+    ByIdentity(dragPreview),
+  );
 }
 
 /// The sheet's PLAYHEAD row highlight as its own repaint-only layer
@@ -739,7 +743,7 @@ class TimesheetDocumentPainter extends CustomPainter {
 /// single share of the frame-flip hitch. This painter repaints one rect
 /// through [CustomPainter.repaint]; the sheet above never hears about the
 /// playhead at all.
-class TimesheetPlayheadPainter extends CustomPainter {
+class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
   TimesheetPlayheadPainter({
     required this.document,
     required this.layout,
@@ -804,11 +808,11 @@ class TimesheetPlayheadPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimesheetPlayheadPainter oldDelegate) {
-    return !identical(oldDelegate.document, document) ||
-        oldDelegate.layout.continuous != layout.continuous ||
-        oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
-        oldDelegate.viewport != viewport ||
-        oldDelegate.effectiveRatio != effectiveRatio;
-  }
+  Object get props => (
+    ByIdentity(document),
+    layout.continuous,
+    layout.resolvedSinglePage,
+    viewport,
+    effectiveRatio,
+  );
 }

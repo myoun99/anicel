@@ -66,8 +66,14 @@ void main() {
     });
 
     test('an equal but distinct painter does not repaint', () {
-      final old = _ValuePainter(color: const Color(0xFF102030), width: 1.5);
-      final rebuilt = _ValuePainter(color: const Color(0xFF102030), width: 1.5);
+      // Built from a runtime value, so the two are DISTINCT objects: a
+      // const literal would be canonicalised into one and prove nothing.
+      final width = 1 + DateTime.now().second * 0.0;
+      final old = _ValuePainter(color: const Color(0xFF102030), width: width);
+      final rebuilt = _ValuePainter(
+        color: const Color(0xFF102030),
+        width: width,
+      );
       expect(identical(old, rebuilt), isFalse);
       expect(rebuilt.shouldRepaint(old), isFalse);
     });
@@ -92,8 +98,18 @@ void main() {
     test('a list-compared field ignores a rebuilt list with equal items', () {
       const a = Offset(1, 2);
       const b = Offset(3, 4);
-      expect(_ListPainter([a, b]).shouldRepaint(_ListPainter([a, b])), isFalse);
-      expect(_ListPainter([a]).shouldRepaint(_ListPainter([a, b])), isTrue);
+      // Fresh lists each call — a const list would be the same object.
+      List<Offset> corners() => <Offset>[a, b];
+      expect(
+        _ListPainter(corners()).shouldRepaint(_ListPainter(corners())),
+        isFalse,
+      );
+      expect(
+        _ListPainter(corners()..removeLast()).shouldRepaint(
+          _ListPainter(corners()),
+        ),
+        isTrue,
+      );
     });
   });
 

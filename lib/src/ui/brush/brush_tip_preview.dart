@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_shape.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// A small synchronous preview of a brush tip for preset lists.
 ///
@@ -117,7 +119,7 @@ class BrushTipMaskPreview extends StatelessWidget {
   }
 }
 
-class _BrushTipMaskPreviewPainter extends CustomPainter {
+class _BrushTipMaskPreviewPainter extends CustomPainter with RepaintOnProps {
   const _BrushTipMaskPreviewPainter({
     required this.alpha,
     required this.side,
@@ -133,13 +135,10 @@ class _BrushTipMaskPreviewPainter extends CustomPainter {
       paintBrushTipAlpha(canvas, size, alpha, side, color);
 
   @override
-  bool shouldRepaint(_BrushTipMaskPreviewPainter oldDelegate) =>
-      oldDelegate.color != color ||
-      oldDelegate.side != side ||
-      !identical(oldDelegate.alpha, alpha);
+  Object get props => (color, side, ByIdentity(alpha));
 }
 
-class _BrushTipPreviewPainter extends CustomPainter {
+class _BrushTipPreviewPainter extends CustomPainter with RepaintOnProps {
   const _BrushTipPreviewPainter({required this.settings, required this.color});
 
   final BrushSettings settings;
@@ -191,7 +190,5 @@ class _BrushTipPreviewPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_BrushTipPreviewPainter oldDelegate) {
-    return oldDelegate.settings != settings || oldDelegate.color != color;
-  }
+  Object get props => (settings, color);
 }
