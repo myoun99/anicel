@@ -215,10 +215,7 @@ void _blendStampDab({
       'stamp.stage',
       () => stageTileSpans(
         native,
-        left: left,
-        top: top,
-        rightExclusive: rightExclusive,
-        bottomExclusive: bottomExclusive,
+        clip: clip,
         tileSize: tileSize,
         pointerFor: nativeScratch.pointerFor,
       ),
@@ -240,18 +237,8 @@ void _blendStampDab({
     return;
   }
 
-  final (
-    firstX: tileXStart,
-    lastX: tileXEnd,
-    firstY: _,
-    lastY: _,
-  ) = tileRangeOf(
-    left: left,
-    top: top,
-    rightExclusive: rightExclusive,
-    bottomExclusive: bottomExclusive,
-    tileSize: tileSize,
-  );
+  final (firstX: tileXStart, lastX: tileXEnd, firstY: _, lastY: _) = clip
+      .tileRange(tileSize: tileSize);
   for (var y = top; y < bottomExclusive; y += 1) {
     final tileY = floorDiv(y, tileSize);
     final localRowOffset = (y - tileY * tileSize) * tileSize;
@@ -537,10 +524,7 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
     'strokeBlend.stage',
     () => stageTileSpans(
       native,
-      left: clip.left,
-      top: clip.top,
-      rightExclusive: clip.rightExclusive,
-      bottomExclusive: clip.bottomExclusive,
+      clip: clip,
       tileSize: tileSize,
       pointerFor: staging.pointerFor,
     ),

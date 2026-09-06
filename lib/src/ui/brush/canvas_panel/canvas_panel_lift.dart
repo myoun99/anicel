@@ -68,10 +68,7 @@ class _CanvasPanelLift {
   /// Silent about coordinates it cannot answer for, deliberately: those
   /// keep the hold, which is today's behaviour and correct.
   void _composeCommittedRegionPictures(
-    int left,
-    int top,
-    int right,
-    int bottom,
+    DirtyRegion landing,
     ProvisionalInkPainter paintInk,
   ) {
     final coordinator = _state.widget._editableCoordinator;
@@ -88,13 +85,7 @@ class _CanvasPanelLift {
       return;
     }
     final coords = tileCoordsIn(
-      tileRangeOf(
-        left: left,
-        top: top,
-        rightExclusive: right,
-        bottomExclusive: bottom,
-        tileSize: postSurface.tileSize,
-      ),
+      landing.tileRange(tileSize: postSurface.tileSize),
     );
     // Under the probe because it is the one part of a confirm whose cost
     // scales with the LANDING rather than with the change: a whole-canvas

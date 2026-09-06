@@ -18,8 +18,8 @@ typedef CoveredTile = ({
 
 /// Every EXISTING tile [region] touches, row by row.
 ///
-/// The tile box comes from [tileRangeOf] — the floorDiv-not-`~/` law for
-/// negative pasteboard coordinates lives there, once.
+/// The tile box comes from [DirtyRegion.tileRange] — the floorDiv-not-`~/`
+/// law for negative pasteboard coordinates lives in [tileAxisSpan], once.
 ///
 /// ⛔MISSING TILES ARE SKIPPED, not treated as transparent: the surface is
 /// sparse, an absent tile has no bytes, and every caller has to skip it

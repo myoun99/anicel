@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
@@ -56,10 +57,12 @@ void main() {
     // (-1, 2)..(6, 5) on a 4-grid: tiles x -1..1, y 0..1 — six spans.
     final coords = stageTileSpans(
       engine,
-      left: -1,
-      top: 2,
-      rightExclusive: 6,
-      bottomExclusive: 5,
+      clip: DirtyRegion(
+        left: -1,
+        top: 2,
+        rightExclusive: 6,
+        bottomExclusive: 5,
+      ),
       tileSize: tileSize,
       pointerFor: (coord) {
         asked.add(coord);
@@ -84,10 +87,12 @@ void main() {
     expect(
       stageTileSpans(
         engine,
-        left: 17,
-        top: 20,
-        rightExclusive: 30,
-        bottomExclusive: 31,
+        clip: DirtyRegion(
+          left: 17,
+          top: 20,
+          rightExclusive: 30,
+          bottomExclusive: 31,
+        ),
         tileSize: 16,
         pointerFor: (_) => scratch,
       ),
@@ -115,10 +120,7 @@ void main() {
     final upload = engine.uploadStampBytes(stamp);
     final coords = stageTileSpans(
       engine,
-      left: 2,
-      top: 1,
-      rightExclusive: 6,
-      bottomExclusive: 3,
+      clip: DirtyRegion(left: 2, top: 1, rightExclusive: 6, bottomExclusive: 3),
       tileSize: tileSize,
       pointerFor: (coord) => tiles[coord]!,
     );

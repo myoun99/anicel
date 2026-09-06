@@ -6,6 +6,7 @@ import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/canvas_size.dart';
+import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
@@ -57,6 +58,7 @@ import 'native_tile_span_batch.dart';
 /// routes already gave.
 class BrushDabPlan {
   BrushDabPlan._({
+    required this.clip,
     required this.left,
     required this.top,
     required this.rightExclusive,
@@ -100,7 +102,9 @@ class BrushDabPlan {
   });
 
   /// The dab's region after the PASTEBOARD clip (canvas + one canvas size
-  /// in every direction — drawing off the stage is the point).
+  /// in every direction — drawing off the stage is the point), and the
+  /// same four edges as ints for the per-span and per-row reads.
+  final DirtyRegion clip;
   final int left;
   final int top;
   final int rightExclusive;
@@ -202,6 +206,8 @@ class BrushDabPlan {
     if (clip == null) {
       return null;
     }
+    // The four edges as ints beside the region: the kernels read them per
+    // span and per row, and a field read is cheaper than a getter chain.
     final left = clip.left;
     final top = clip.top;
     final rightExclusive = clip.rightExclusive;
@@ -217,15 +223,10 @@ class BrushDabPlan {
     final textureMask = dab.textureMask;
     final textureDensity = dab.textureDensity;
     final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
-    final tiles = tileRangeOf(
-      left: left,
-      top: top,
-      rightExclusive: rightExclusive,
-      bottomExclusive: bottomExclusive,
-      tileSize: tileSize,
-    );
+    final tiles = clip.tileRange(tileSize: tileSize);
 
     return BrushDabPlan._(
+      clip: clip,
       left: left,
       top: top,
       rightExclusive: rightExclusive,
@@ -400,10 +401,7 @@ class BrushDabPlan {
   // that), so there is always at least one span.
   final coords = stageTileSpans(
     native,
-    left: plan.left,
-    top: plan.top,
-    rightExclusive: plan.rightExclusive,
-    bottomExclusive: plan.bottomExclusive,
+    clip: plan.clip,
     tileSize: tileSize,
     pointerFor: pointerFor,
   );

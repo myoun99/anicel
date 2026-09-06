@@ -2,13 +2,14 @@ import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 
-/// Stages one span per tile that [left]..[rightExclusive) ×
-/// [top]..[bottomExclusive) touches into the engine's span batch and
-/// returns the coordinates in span order — index `i` of the changed
-/// flags a kernel writes back is `coords[i]` ([changedTileCoords]).
+/// Stages one span per tile that [clip] touches into the engine's span
+/// batch and returns the coordinates in span order — index `i` of the
+/// changed flags a kernel writes back is `coords[i]`
+/// ([changedTileCoords]).
 ///
 /// 🚨ONE staging walk for the generic dab, the stamp and the stroke
 /// blend (round 8 of the audit, 2026-09-06) — three hand-written copies
@@ -23,20 +24,15 @@ import '../native/qa_native_engine.dart';
 /// exactly once per span, in span order (tile row outer, column inner).
 List<TileCoord> stageTileSpans(
   QaNativeEngine native, {
-  required int left,
-  required int top,
-  required int rightExclusive,
-  required int bottomExclusive,
+  required DirtyRegion clip,
   required int tileSize,
   required Pointer<Uint8> Function(TileCoord coord) pointerFor,
 }) {
-  final (:firstX, :lastX, :firstY, :lastY) = tileRangeOf(
-    left: left,
-    top: top,
-    rightExclusive: rightExclusive,
-    bottomExclusive: bottomExclusive,
-    tileSize: tileSize,
-  );
+  final (:firstX, :lastX, :firstY, :lastY) = clip.tileRange(tileSize: tileSize);
+  final left = clip.left;
+  final top = clip.top;
+  final rightExclusive = clip.rightExclusive;
+  final bottomExclusive = clip.bottomExclusive;
   final coords = <TileCoord>[];
   native.ensureTileSpanBatch((lastY - firstY + 1) * (lastX - firstX + 1));
   for (var tileY = firstY; tileY <= lastY; tileY += 1) {

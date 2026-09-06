@@ -87,6 +87,28 @@ void main() {
       expect(coords.length, 6);
     });
 
+    test('tileRange is the inclusive tile box, floor-dividing pasteboard '
+        'edges and stopping at an exclusive edge on a boundary', () {
+      expect(
+        DirtyRegion(
+          left: -1,
+          top: 0,
+          rightExclusive: 256,
+          bottomExclusive: 513,
+        ).tileRange(tileSize: 256),
+        (firstX: -1, lastX: 0, firstY: 0, lastY: 2),
+      );
+      expect(
+        DirtyRegion(
+          left: 300,
+          top: 700,
+          rightExclusive: 301,
+          bottomExclusive: 701,
+        ).tileRange(tileSize: 256),
+        (firstX: 1, lastX: 1, firstY: 2, lastY: 2),
+      );
+    });
+
     test('rightExclusive <= left throws', () {
       expect(
         () =>

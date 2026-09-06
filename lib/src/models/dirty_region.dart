@@ -119,14 +119,22 @@ class DirtyRegion {
     return tileCoordsIn(tileRange(tileSize: tileSize)).toSet();
   }
 
-  /// The inclusive tile box this region touches ([tileRangeOf]).
-  TileRange tileRange({required int tileSize}) => tileRangeOf(
-    left: left,
-    top: top,
-    rightExclusive: rightExclusive,
-    bottomExclusive: bottomExclusive,
-    tileSize: tileSize,
-  );
+  /// The inclusive tile box this region touches — [tileAxisSpan] on both
+  /// axes; the floorDiv law for negative pasteboard coordinates lives
+  /// there, once.
+  TileRange tileRange({required int tileSize}) {
+    final x = tileAxisSpan(
+      start: left,
+      endExclusive: rightExclusive,
+      tileSize: tileSize,
+    );
+    final y = tileAxisSpan(
+      start: top,
+      endExclusive: bottomExclusive,
+      tileSize: tileSize,
+    );
+    return (firstX: x.first, lastX: x.last, firstY: y.first, lastY: y.last);
+  }
 
   Map<String, dynamic> toJson() => {
     'left': left,

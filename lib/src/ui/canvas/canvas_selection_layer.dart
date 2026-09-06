@@ -16,6 +16,7 @@ import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
@@ -106,13 +107,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   ///
   /// [paintInk] draws in CANVAS coordinates and reports whether it drew
   /// everything that belongs in the rect it was given.
-  final void Function(
-    int left,
-    int top,
-    int right,
-    int bottom,
-    ProvisionalInkPainter paintInk,
-  )?
+  final void Function(DirtyRegion landing, ProvisionalInkPainter paintInk)?
   composeCommittedRegionPictures;
 
   /// WHICH tiles of the canvas rect a session just landed into the host's
@@ -141,7 +136,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   ///
   /// A host that does not supply this clears the float immediately, which
   /// is the old behaviour; the focused tests rely on it.
-  final Set<TileCoord> Function(int left, int top, int right, int bottom)?
+  final Set<TileCoord> Function(DirtyRegion landing)?
   committedRegionPendingTiles;
 
   /// The transform tool's knobs: which of 일반/퍼스/메쉬 the box is in,
@@ -2348,10 +2343,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     // The landing rect, by the same arithmetic the stamp blend uses.
     final landing = stamp.landingRect(landed.center);
-    final left = landing.left;
-    final top = landing.top;
-    final right = landing.rightExclusive;
-    final bottom = landing.bottomExclusive;
     // FIRST, and before the pending set is read: every coordinate this
     // answers for is one the base can now paint, so it drops out of the
     // hold instead of being covered — which is also what keeps the two
@@ -2360,9 +2351,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // a picture is worth doing whether or not anything is covering for it.
     final compose = widget.composeCommittedRegionPictures;
     if (compose != null) {
-      final ink = _landedInkPainter(landed, left, top);
+      final ink = _landedInkPainter(landed, landing);
       if (ink != null) {
-        compose(left, top, right, bottom, ink);
+        compose(landing, ink);
       }
     }
     final pendingTiles = widget.committedRegionPendingTiles;
@@ -2370,7 +2361,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setState(_releaseFloatHold);
       return;
     }
-    final initial = pendingTiles(left, top, right, bottom);
+    final initial = pendingTiles(landing);
     if (initial.isEmpty) {
       setState(_releaseFloatHold);
       return;
@@ -2380,7 +2371,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _cancelFloatHold();
         return;
       }
-      final still = pendingTiles(left, top, right, bottom);
+      final still = pendingTiles(landing);
       if (still.isEmpty) {
         _cancelFloatHold();
         setState(_releaseFloatHold);
@@ -2417,7 +2408,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// A live drag is not a landing: `_moveScreenDelta` is zeroed when the
   /// gesture ends, so a non-zero one here means the float is somewhere
   /// this arithmetic does not describe.
-  ProvisionalInkPainter? _landedInkPainter(BrushDab landed, int left, int top) {
+  ProvisionalInkPainter? _landedInkPainter(
+    BrushDab landed,
+    DirtyRegion landing,
+  ) {
+    final left = landing.left;
+    final top = landing.top;
     final resampled = _resampledFloatImage;
     // The identity test stays exact here, and must: this hands the BASE a
     // picture covering the landed rect, so a viewport WINDOW would be both

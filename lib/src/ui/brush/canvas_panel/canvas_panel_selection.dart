@@ -78,12 +78,7 @@ class _CanvasPanelSelection {
   /// last tile arrived — double-compositing every partial-alpha pixel
   /// under it, and, when the float could not paint, showing the user the
   /// convergence itself, tile by tile.
-  Set<TileCoord> committedRegionPendingTiles(
-    int left,
-    int top,
-    int right,
-    int bottom,
-  ) {
+  Set<TileCoord> committedRegionPendingTiles(DirtyRegion landing) {
     final coordinator = _state.widget._editableCoordinator;
     if (coordinator == null) {
       return const <TileCoord>{};
@@ -100,14 +95,7 @@ class _CanvasPanelSelection {
     // that finds everything ready is by definition the complete one, so
     // that stall landed on the release frame of every confirm.
     var pending = const <TileCoord>{};
-    final range = tileRangeOf(
-      left: left,
-      top: top,
-      rightExclusive: right,
-      bottomExclusive: bottom,
-      tileSize: size,
-    );
-    for (final coord in tileCoordsIn(range)) {
+    for (final coord in tileCoordsIn(landing.tileRange(tileSize: size))) {
       final tile = surface.tileAt(coord);
       // `displayImageFor`, not `imageFor`: the question this predicate
       // asks is "can the base paint here", and a stand-in composed from
