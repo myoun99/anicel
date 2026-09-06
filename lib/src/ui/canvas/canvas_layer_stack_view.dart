@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../core/tree_nodes.dart';
 import '../../core/collection_equality.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
@@ -50,7 +51,8 @@ part 'layer_stack/layer_stack_paint_pass.dart';
 /// drawing inside a blended folder could never match playback. The tree (with the ACTIVE layer as a node
 /// of its own, [CanvasActiveLayerNode]) is what lets one painter close the
 /// buffer it opened.
-sealed class CanvasLayerStackNode {
+sealed class CanvasLayerStackNode
+    implements TreeNode<CanvasLayerStackNode> {
   const CanvasLayerStackNode();
 }
 
@@ -59,6 +61,9 @@ final class CanvasLayerImageNode extends CanvasLayerStackNode {
   const CanvasLayerImageNode(this.request);
 
   final CanvasLayerImageRequest request;
+
+  @override
+  List<CanvasLayerStackNode> get children => const [];
 }
 
 /// The ACTIVE layer's live surface — the one the brush is drawing into.
@@ -126,6 +131,9 @@ final class CanvasActiveLayerNode extends CanvasLayerStackNode {
   /// idempotent at Amount 100, which is exactly why it hid; at any lower
   /// Amount the two applications compound.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
+
+  @override
+  List<CanvasLayerStackNode> get children => const [];
 }
 
 /// A FOLDER's group buffer: [children] compose into one buffer, then the
@@ -138,6 +146,7 @@ final class CanvasLayerGroupNode extends CanvasLayerStackNode {
     this.effects = const [],
   });
 
+  @override
   final List<CanvasLayerStackNode> children;
   final double opacity;
   final LayerBlendMode blendMode;
@@ -156,6 +165,7 @@ final class CanvasLayerAdjustmentNode extends CanvasLayerStackNode {
     required this.mix,
   });
 
+  @override
   final List<CanvasLayerStackNode> children;
   final List<ResolvedLayerEffect> effects;
 
@@ -288,24 +298,18 @@ class CanvasLayerStackView extends StatefulWidget {
 
   /// Every cached-image request under [nodes], depth-first bottom → top.
   Iterable<CanvasLayerImageRequest> get layers sync* {
-    Iterable<CanvasLayerImageRequest> walk(
-      List<CanvasLayerStackNode> list,
-    ) sync* {
-      for (final node in list) {
-        switch (node) {
-          case CanvasLayerImageNode(:final request):
-            yield request;
-          case CanvasLayerGroupNode(:final children):
-            yield* walk(children);
-          case CanvasLayerAdjustmentNode(:final children):
-            yield* walk(children);
-          case CanvasActiveLayerNode():
-            break;
-        }
+    for (final node in preorderNodes(nodes)) {
+      // Still exhaustive: a new leaf kind fails to compile until it says
+      // whether it is a cached image.
+      switch (node) {
+        case CanvasLayerImageNode(:final request):
+          yield request;
+        case CanvasActiveLayerNode():
+        case CanvasLayerGroupNode():
+        case CanvasLayerAdjustmentNode():
+          break;
       }
     }
-
-    yield* walk(nodes);
   }
 
   final LayerFrameImageCache imageCache;
@@ -498,23 +502,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   }
 
   /// The active node's cel key, wherever the node sits in the tree.
-  static BrushFrameKey? _activeNodeFrameKey(List<CanvasLayerStackNode> nodes) {
-    for (final node in nodes) {
-      switch (node) {
-        case CanvasActiveLayerNode(:final frameKey):
-          return frameKey;
-        case CanvasLayerGroupNode(:final children):
-        case CanvasLayerAdjustmentNode(:final children):
-          final inner = _activeNodeFrameKey(children);
-          if (inner != null) {
-            return inner;
-          }
-        case CanvasLayerImageNode():
-          break;
-      }
-    }
-    return null;
-  }
+  /// The ACTIVE row's cel, wherever in the tree its node sits. There is
+  /// exactly one active row, so the first node found is the answer —
+  /// including its `null` key, which means the row has nothing exposed
+  /// here.
+  static BrushFrameKey? _activeNodeFrameKey(List<CanvasLayerStackNode> nodes) =>
+      preorderNodes(nodes)
+          .whereType<CanvasActiveLayerNode>()
+          .firstOrNull
+          ?.frameKey;
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
