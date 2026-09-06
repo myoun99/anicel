@@ -1,4 +1,17 @@
-part of '../editor_session_manager.dart';
+import 'package:flutter/foundation.dart';
+import '../../services/import/raster_cel_import.dart';
+import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/canvas_size.dart';
+import '../../models/cut.dart';
+import '../../models/frame.dart';
+import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
+import '../../models/layer_link_registry.dart';
+import '../../models/media_asset.dart';
+import '../../models/text_cel_style.dart';
+import '../text/text_cel_render.dart';
+import 'session_roles.dart';
 
 /// The TEXT-CEL BAKES — text cels are baked to pixels in a background sweep
 /// so the canvas draws them like any other cel — as their own object: what
@@ -6,11 +19,25 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: three fields of its own and eight
-/// session members touched. It reaches the session through `_session`.
-class _TextCelBakes {
-  _TextCelBakes(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class TextCelBakes {
+  TextCelBakes({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// Canonical cel key → the exact inputs its stored raster was rendered
   /// from. The CONTENT itself, not a hash — equality gates skipping a
@@ -24,6 +51,13 @@ class _TextCelBakes {
   bool _textCelSweepDirty = false;
 
   Future<void>? _textCelSweep;
+
+  /// First thing the session's dispose does: a sweep suspended across an
+  /// engine await resumes to find nothing left to bake, and so never
+  /// touches the stores of a disposed session.
+  void dispose() {
+    _textCelSweepDirty = false;
+  }
 
   /// Test hook: awaits the in-flight bake sweep (projection settles).
   @visibleForTesting
@@ -46,7 +80,7 @@ class _TextCelBakes {
 
   Future<void> _runTextCelBakeSweeps() async {
     try {
-      while (_textCelSweepDirty && !_session._disposed) {
+      while (_textCelSweepDirty && !_internals.disposed) {
         _textCelSweepDirty = false;
         await _sweepTextCelBakesOnce();
       }
@@ -60,10 +94,10 @@ class _TextCelBakes {
   /// changed anything. Linked banks share one physical projection, so a
   /// key the sweep has seen is skipped.
   Future<bool?> _bakeOneTextCel(Cut cut, Layer layer, Frame frame) async {
-    if (_session._disposed) {
+    if (_internals.disposed) {
       return null; // Mid-sweep dispose: stop touching the stores.
     }
-    final raw = _session.brushFrameKeyForCut(cut, layer.id, frame.id);
+    final raw = _internals.brushFrameKeyForCut(cut, layer.id, frame.id);
     final key = _sweepRegistry.canonicalCelKey(raw);
     if (!_sweepSeen.add(key)) {
       return false; // Linked banks share one physical projection.
@@ -81,7 +115,7 @@ class _TextCelBakes {
   final _sweepSeen = <BrushFrameKey>{};
 
   Future<void> _sweepTextCelBakesOnce() async {
-    final project = _session.repository.currentProject;
+    final project = _project.repository.currentProject;
     if (project == null) {
       _textCelBakedContent.clear();
       return;
@@ -106,8 +140,8 @@ class _TextCelBakes {
       }
     }
     _textCelBakedContent.removeWhere((key, _) => !_sweepSeen.contains(key));
-    if (changed && !_session._disposed) {
-      _session.notifyChanged();
+    if (changed && !_internals.disposed) {
+      _changes.notifyChanged();
     }
   }
 
@@ -129,7 +163,7 @@ class _TextCelBakes {
     if (known == null &&
         content != null &&
         content.text.isNotEmpty &&
-        _session.brushFrameStore.celHasRenderableContent(raw)) {
+        _internals.brushFrameStore.celHasRenderableContent(raw)) {
       // First sight of a cel that already carries pixels (a loaded
       // project): trust the stored projection instead of paying a
       // full re-render on open (saves flush in-flight bakes, so an
@@ -149,7 +183,7 @@ class _TextCelBakes {
       // undo cannot restore.
       if (known != null) {
         bakeCelSurface(
-          _session.brushFrameStore,
+          _internals.brushFrameStore,
           raw,
           BitmapSurface(canvasSize: cut.canvasSize),
         );
@@ -161,7 +195,7 @@ class _TextCelBakes {
         canvas: cut.canvasSize,
       );
       try {
-        if (_session._disposed) {
+        if (_internals.disposed) {
           return null;
         }
         final surface = await rasterizeImageToSurface(
@@ -173,10 +207,10 @@ class _TextCelBakes {
           // like any oversized drop.
           placement: rendered.placement,
         );
-        if (_session._disposed) {
+        if (_internals.disposed) {
           return null;
         }
-        bakeCelSurface(_session.brushFrameStore, raw, surface);
+        bakeCelSurface(_internals.brushFrameStore, raw, surface);
         changed = true;
       } finally {
         rendered.image.dispose();
@@ -189,23 +223,23 @@ class _TextCelBakes {
   /// The active text cel's parameters (null on blank cells and non-text
   /// rows) — the text editor dialog's read side.
   TextCelContent? get selectedTextCelContent =>
-      _session.activeLayer?.kind == LayerKind.text
-      ? _session.selectedFrame?.textContent
+      _selection.activeLayer?.kind == LayerKind.text
+      ? _selection.selectedFrame?.textContent
       : null;
 
   /// Commits the text editor's result onto the selected cel: one undo,
   /// linked-cut mirror, projection re-baked by the sweep.
   void setTextCelContentForSelectedFrame(TextCelContent content) {
-    final layer = _session.activeLayer;
-    final frame = _session.selectedFrame;
+    final layer = _selection.activeLayer;
+    final frame = _selection.selectedFrame;
     if (layer == null || layer.kind != LayerKind.text || frame == null) {
       return;
     }
-    _session.timelineController.setTextContentForFrame(
+    _timeline.timelineController.setTextContentForFrame(
       layerId: layer.id,
       frameId: frame.id,
       textContent: content,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 }

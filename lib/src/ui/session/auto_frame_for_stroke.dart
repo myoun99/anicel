@@ -1,4 +1,7 @@
-part of '../editor_session_manager.dart';
+import '../../models/app_input_settings.dart';
+import '../../services/command.dart';
+import 'session_roles.dart';
+import 'frame_verbs.dart';
 
 /// The AUTO FRAME FOR A STROKE — a stroke landing on an empty cell makes
 /// the drawing the stroke needs, and the frame it made is taken or flushed
@@ -6,11 +9,29 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and five
-/// session members touched. It reaches the session through `_session`.
-class _AutoFrameForStroke {
-  _AutoFrameForStroke(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class AutoFrameForStroke {
+  AutoFrameForStroke({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required FrameIds frameIds,
+    required TimelineAccess timeline,
+    required FrameVerbs frameVerbs,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _frameIds = frameIds,
+       _timeline = timeline,
+       _frameVerbs = frameVerbs;
 
-  final EditorSessionManager _session;
+  final FrameVerbs _frameVerbs;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final FrameIds _frameIds;
+  final TimelineAccess _timeline;
 
   /// 🚨I-10 — THE BLOCK A PEN-DOWN MADE, waiting to be undone WITH the
   /// stroke it was made for.
@@ -35,7 +56,7 @@ class _AutoFrameForStroke {
   bool get canAutoCreateFrameForStroke =>
       AppInput.settings.value.autoCreateFrameOnDraw &&
       _autoFrameForStroke == null &&
-      _session.canCreateDrawingAtCurrentFrame;
+      _frameVerbs.canCreateDrawingAtCurrentFrame;
 
   /// Makes the block a stroke is about to be drawn into, and HOLDS its
   /// command. Returns false when nothing was made.
@@ -43,19 +64,18 @@ class _AutoFrameForStroke {
     // A block from a press that never became a stroke is settled here
     // rather than left to be swept into THIS press's undo entry.
     flushAutoFrameForStroke();
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null || !canAutoCreateFrameForStroke) {
       return false;
     }
-    _session._frameSequence += 1;
-    final command = _session.timelineController
+    final command = _timeline.timelineController
         .createDrawingFrameCommandForLayer(
           layerId: layer.id,
-          frameId: FrameId(_session.nextFrameId(layer.id)),
+          frameId: _frameIds.mintFrameId(layer.id),
         );
     command.execute();
     _autoFrameForStroke = command;
-    _session.notifyChanged();
+    _changes.notifyChanged();
     return true;
   }
 
@@ -91,7 +111,7 @@ class _AutoFrameForStroke {
     _autoFrameForStroke = null;
     // Already executed at pen-down; this records it without re-running
     // anything that matters (the layer edit holds its own before/after).
-    _session.historyManager.execute(command);
-    _session.notifyChanged();
+    _project.historyManager.execute(command);
+    _changes.notifyChanged();
   }
 }

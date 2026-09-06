@@ -1,4 +1,13 @@
-part of '../editor_session_manager.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/attached_mode.dart';
+import '../../models/attached_placement.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../text/app_strings.dart';
+import '../widgets/cursor_notice.dart';
+import 'session_roles.dart';
 
 /// FOLDERS AND ATTACHMENTS — grouping the active layer or attach into a
 /// folder, dissolving one, adding an attached layer, and the synced-attach
@@ -8,21 +17,35 @@ part of '../editor_session_manager.dart';
 /// 2026-09-02). Dry-run before cutting: the rest reads it in four places
 /// (the block move and frame shift asking whether a row is a synced
 /// attach).
-class _FoldersAndAttachments {
-  _FoldersAndAttachments(this._session);
+class FoldersAndAttachments {
+  FoldersAndAttachments({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
   bool get canAddAttachedLayerToActive {
-    final active = _session.activeLayer;
+    final active = _selection.activeLayer;
     if (active == null) {
       return false;
     }
     if (isAttachedLayer(active)) {
       // Adding from an attach row targets ITS base (same group).
-      return attachedBaseOf(active, _session.requireActiveCut.layers) != null;
+      return attachedBaseOf(active, _project.requireActiveCut.layers) != null;
     }
     return canCarryAttachedLayers(active);
   }
@@ -40,12 +63,12 @@ class _FoldersAndAttachments {
     if (!canAddAttachedLayerToActive) {
       return;
     }
-    final active = _session.activeLayer!;
-    final cut = _session.requireActiveCut;
+    final active = _selection.activeLayer!;
+    final cut = _project.requireActiveCut;
     final base = isAttachedLayer(active)
         ? attachedBaseOf(active, cut.layers)!
         : active;
-    final layerId = _session._mintLayerId();
+    final layerId = _internals.mintLayerId();
     final baseIndex = cut.layers.indexWhere((layer) => layer.id == base.id);
     if (baseIndex == -1) {
       return;
@@ -77,7 +100,7 @@ class _FoldersAndAttachments {
     // always-mirror reconciliation fills one own cel + base link per base
     // cel in the same write (and keeps doing so live as the base gains
     // cels later), so every mirror cell is editable from the first frame.
-    _session.layerController.addLayer(
+    _timeline.layerController.addLayer(
       layer: Layer(
         id: layerId,
         name: nextAttachedLayerName(base, cut.layers, placement),
@@ -99,12 +122,12 @@ class _FoldersAndAttachments {
       ),
       insertionIndex: insertionIndex,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   bool get canGroupActiveLayerIntoFolder =>
-      _session.activeLayer != null &&
-      _session.activeLayer!.kind == LayerKind.animation;
+      _selection.activeLayer != null &&
+      _selection.activeLayer!.kind == LayerKind.animation;
 
   /// 폴더 생성: folds the active layer's whole attach group into a new
   /// folder row (mirrors into 겸용 cuts through the coordinator).
@@ -112,13 +135,13 @@ class _FoldersAndAttachments {
     if (!canGroupActiveLayerIntoFolder) {
       return;
     }
-    final activeLayerId = _session.activeLayer!.id;
-    _session.cutCommandCoordinator.createFolderFromLayer(
-      cutId: _session.requireActiveCut.id,
+    final activeLayerId = _selection.activeLayer!.id;
+    _project.cutCommandCoordinator.createFolderFromLayer(
+      cutId: _project.requireActiveCut.id,
       layerId: activeLayerId,
     );
-    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    _changes.notifyChanged();
   }
 
   /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
@@ -135,44 +158,44 @@ class _FoldersAndAttachments {
   /// drag said yes to. A plain folder's gate ([canGroupActiveLayerIntoFolder])
   /// never had the clause, which is the shape both now share.
   bool get canGroupActiveAttachIntoFolder {
-    final active = _session.activeLayer;
+    final active = _selection.activeLayer;
     return active != null && isAttachedLayer(active);
   }
 
   /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
   /// inside its group. Siblings join via [addAttachedLayer]'s sibling
-  /// rule; renaming is plain [_session.renameLayer].
+  /// rule; renaming is plain [_internals.renameLayer].
   void groupActiveAttachIntoFolder() {
     if (!canGroupActiveAttachIntoFolder) {
       return;
     }
-    final activeLayerId = _session.activeLayer!.id;
-    _session.cutCommandCoordinator.createAttachOrganizerFolder(
-      cutId: _session.requireActiveCut.id,
+    final activeLayerId = _selection.activeLayer!.id;
+    _project.cutCommandCoordinator.createAttachOrganizerFolder(
+      cutId: _project.requireActiveCut.id,
       layerId: activeLayerId,
     );
-    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    _changes.notifyChanged();
   }
 
   void dissolveFolder(LayerId folderId) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.dissolveFolder(
+    _project.cutCommandCoordinator.dissolveFolder(
       cutId: cutId,
       folderId: folderId,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
   /// attach row: the synced-block UI makes those rows look like ordinary
   /// blocks, so a refused drag must SAY why instead of dying silently
   /// (the pre-block ghost rows never invited the drag in the first place).
-  void _noticeSyncedAttachRefusal(LayerId layerId) {
+  void noticeSyncedAttachRefusal(LayerId layerId) {
     if (isSyncedAttachedLayerId(layerId)) {
       cursorNotices.show(AppText.strings.noticeEditAttachOwner);
     }
@@ -182,7 +205,7 @@ class _FoldersAndAttachments {
   /// the timing standdowns key off THIS (free attach rows author their
   /// own timeline like any drawing layer, UI-R21 #3).
   bool isSyncedAttachedLayerId(LayerId layerId) {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return false;
     }

@@ -1,4 +1,26 @@
-part of '../editor_session_manager.dart';
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
+import 'drags/transition_edge_drag.dart';
+import '../../controllers/timeline_controller.dart';
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
+import '../../models/cut_lead_edge_plan.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/storyboard_coverage.dart';
+import '../../models/timeline_coverage.dart';
+import '../../models/track_se_window.dart';
+import '../storyboard_layer_policy.dart';
+import '../../models/storyboard_timeline_layout.dart';
+import '../timeline/instruction_span_editing.dart';
+import '../timeline/timeline_drag_preview.dart';
+import 'session_roles.dart';
+import 'storyboard_cursor.dart';
+import 'range_selections.dart';
+import 'folders_and_attachments.dart';
+import 'track_se_display.dart';
+import 'transitions.dart';
 
 /// The EDGE DRAGS — an exposure's comma grip, a cut's end grip and a
 /// transition's edge, on the timeline and on the storyboard — as their own
@@ -12,10 +34,20 @@ part of '../editor_session_manager.dart';
 /// `_edgeDrag*` fields were read from outside in one or two places each.
 /// It reaches the session through `_session` — the same private seams it
 /// always used, in the same library, so nothing became public to move.
-class _EdgeDrag {
-  _EdgeDrag(this._session);
+class EdgeDrag {
+  EdgeDrag({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required SessionInternals internals, required FoldersAndAttachments folders, required RangeSelections rangeSelections, required StoryboardCursor storyboardCursor, required TrackSeDisplay trackSe, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _internals = internals, _folders = folders, _rangeSelections = rangeSelections, _storyboardCursor = storyboardCursor, _trackSe = trackSe, _transitions = transitions;
 
-  final EditorSessionManager _session;
+  final TrackSeDisplay _trackSe;
+  final Transitions _transitions;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final FoldersAndAttachments _folders;
+  final RangeSelections _rangeSelections;
+  final StoryboardCursor _storyboardCursor;
 
   TransitionEdgeDrag? _transitionEdgeDrag;
 
@@ -28,12 +60,12 @@ class _EdgeDrag {
     LayerId? layerId,
   }) {
     final drag = TransitionEdgeDrag.begin(
-      layer: _session.activeTrack.transitionLayer,
+      layer: _selection.activeTrack.transitionLayer,
       spanStartIndex: spanStartIndex,
       edge: edge,
       layerId: layerId,
-      preview: _session.transitionEdgeDragPreview,
-      commitInstructions: _session.updateTransitionInstructions,
+      preview: _internals.transitionEdgeDragPreview,
+      commitInstructions: _transitions.updateTransitionInstructions,
     );
     if (drag == null) {
       // A refused grip leaves an in-flight drag exactly as it was — the
@@ -181,7 +213,7 @@ class _EdgeDrag {
     // On the storyboard row this now collapses: a previewed row's end is its
     // last block's end, so `floor <= afterRowEnd` always and the duration
     // simply follows the row.
-    final syncedCut = _session.cutById(sync.cutId);
+    final syncedCut = _project.cutById(sync.cutId);
     final divisionRow = syncedCut == null
         ? null
         : storyboardLayerForCut(syncedCut);
@@ -279,7 +311,7 @@ class _EdgeDrag {
     required CutId cutId,
     required int blockStartIndex,
   }) {
-    final cut = _session.cutById(cutId);
+    final cut = _project.cutById(cutId);
     final row = cut == null ? null : storyboardLayerForCut(cut);
     final entry = row?.timeline[blockStartIndex];
     // A negative key is junk data the coverage rule merely tolerates
@@ -319,19 +351,19 @@ class _EdgeDrag {
   }) {
     // SYNCED attach rows own no timing — no comma grips (the BASE's
     // grips move both, W5); free attach rows drag like normal (UI-R21).
-    if (_session._folders.isSyncedAttachedLayerId(layerId)) {
+    if (_folders.isSyncedAttachedLayerId(layerId)) {
       return false;
     }
     // From scratch, the way the storyboard's seed already did it. The two
     // entry points set overlapping halves of the same field set, and only
     // one of them cleared the rest.
     _clearEdgeDragFields();
-    if (_session.isTrackSeLayerId(layerId)) {
-      final global = _session.trackSeGlobalLayerById(layerId);
+    if (_project.isTrackSeLayerId(layerId)) {
+      final global = _project.trackSeGlobalLayerById(layerId);
       if (global == null) {
         return false;
       }
-      final window = _session.trackSeWindow;
+      final window = _trackSe.trackSeWindow;
       if (!blockStartIsGlobal &&
           edge == TimelineBlockEdge.start &&
           window.isSpillInStart(global, blockStartIndex)) {
@@ -363,7 +395,7 @@ class _EdgeDrag {
       return true;
     }
 
-    final layer = _session.layerById(layerId);
+    final layer = _project.layerById(layerId);
     if (layer == null) {
       return false;
     }
@@ -417,10 +449,10 @@ class _EdgeDrag {
     } else if (anchor != null && ridesCutLength(anchor.kind)) {
       syncRow = anchor;
     }
-    final activeId = _session.activeCutId;
+    final activeId = _project.activeCutId;
     final activeCut = syncRow == null || activeId == null
         ? null
-        : _session.cutById(activeId);
+        : _project.cutById(activeId);
     _edgeDragCutSync = syncRow == null || activeCut == null
         ? null
         : _cutSyncSnapshotFor(cut: activeCut, row: syncRow);
@@ -436,7 +468,7 @@ class _EdgeDrag {
   }) {
     _edgeDragBulkStartsByLayer = null;
     _edgeDragBulkBefore = null;
-    final selection = _session.frameRangeSelection.value;
+    final selection = _selection.frameRangeSelection.value;
     if (!isDrawingBlock ||
         selection == null ||
         !selection.coversLayer(layerId) ||
@@ -448,15 +480,15 @@ class _EdgeDrag {
     for (final id in selection.spanLayerIds) {
       // Rows whose timing is not their own stand down — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_session.standsDownFromRetime(id)) {
+      if (_changes.standsDownFromRetime(id)) {
         continue;
       }
-      final display = _session.rangeLayerById(id);
-      final commit = _session.commitLayerById(id);
+      final display = _project.rangeLayerById(id);
+      final commit = _project.commitLayerById(id);
       if (display == null || commit == null) {
         continue;
       }
-      final starts = _session._rangeSelections._selectionBlockStarts(
+      final starts = _rangeSelections.selectionBlockStarts(
         display,
         selection.startIndex,
         selection.endIndexExclusive,
@@ -465,7 +497,7 @@ class _EdgeDrag {
         continue;
       }
       startsByLayer[id] = [
-        for (final start in starts) _session._commitBlockStart(id, start),
+        for (final start in starts) _internals.commitBlockStart(id, start),
       ];
       beforeByLayer[id] = commit;
     }
@@ -492,7 +524,7 @@ class _EdgeDrag {
       );
       return shifted == null ? before : before.copyWith(instructions: shifted);
     }
-    return _session.timelineController.shiftedLayerForEdge(
+    return _timeline.timelineController.shiftedLayerForEdge(
           layer: before,
           blockStartIndex: blockStart,
           edge: edge,
@@ -502,7 +534,7 @@ class _EdgeDrag {
   }
 
   /// Applies the drag's current cumulative frame delta as a live preview
-  /// on [_session.dragPreview] — the repository is NOT touched.
+  /// on [_internals.dragPreview] — the repository is NOT touched.
   void updateExposureEdgeDrag(int cumulativeDelta) {
     final before = _edgeDragBefore;
     final edge = _edgeDragEdge;
@@ -539,7 +571,7 @@ class _EdgeDrag {
     _edgeDragAfterDurations = resize?.durations;
     _edgeDragAfterGaps = resize?.gaps;
     if (resize != null) {
-      _session.dragPreview.value = CutTrimDragPreview(
+      _internals.dragPreview.value = CutTrimDragPreview(
         previewDurations: resize.durations,
         previewGaps: resize.gaps,
         previewLayers: {after.id: after},
@@ -551,7 +583,7 @@ class _EdgeDrag {
     // storyboard's track-global strips (UI-R7 #7); the commit uses
     // _edgeDragAfter.
     final window = _edgeDragWindow;
-    _session.dragPreview.value = after == before
+    _internals.dragPreview.value = after == before
         ? null
         : ExposureEdgeDragPreview(
             previewLayer: window == null ? after : window.displayLayer(after),
@@ -570,7 +602,7 @@ class _EdgeDrag {
       if (beforeLayer == null) {
         continue;
       }
-      final after = _session.timelineController.retimedLayerForBlocks(
+      final after = _timeline.timelineController.retimedLayerForBlocks(
         layer: beforeLayer,
         newLengthByStart: {
           for (final start in entry.value)
@@ -582,8 +614,8 @@ class _EdgeDrag {
         edits.add((before: beforeLayer, after: after));
         // Track-SE rows preview in their DISPLAY form (cut-local axis);
         // the commit keeps the global form (UI-R18 #1 seam).
-        previews[entry.key] = _session.isTrackSeLayerId(entry.key)
-            ? _session.trackSeWindow.displayLayer(after)
+        previews[entry.key] = _project.isTrackSeLayerId(entry.key)
+            ? _trackSe.trackSeWindow.displayLayer(after)
             : after;
       }
     }
@@ -602,7 +634,7 @@ class _EdgeDrag {
     }
     _edgeDragAfterDurations = resize?.durations;
     _edgeDragAfterGaps = resize?.gaps;
-    _session.dragPreview.value = previews.isEmpty
+    _internals.dragPreview.value = previews.isEmpty
         ? null
         : resize != null
         ? CutTrimDragPreview(
@@ -639,7 +671,7 @@ class _EdgeDrag {
     _edgeDragCutSync = null;
     _edgeDragAfterDurations = null;
     _edgeDragAfterGaps = null;
-    _session.dragPreview.value = null;
+    _internals.dragPreview.value = null;
     if (bulkEdits != null) {
       // The selection covers the same cels after the retime (starts kept).
       _commitEdgeDragEdits(
@@ -682,9 +714,9 @@ class _EdgeDrag {
     required Map<CutId, int>? afterGaps,
   }) {
     if (sync == null || afterDurations == null || afterGaps == null) {
-      _session.timelineController.commitLayerTimelineDrags(edits);
-      _session.warmActiveCut();
-      _session.notifyChanged();
+      _timeline.timelineController.commitLayerTimelineDrags(edits);
+      _changes.warmActiveCut();
+      _changes.notifyChanged();
       return;
     }
     final beforeDurations = <CutId, int>{sync.cutId: sync.beforeDuration};
@@ -694,7 +726,7 @@ class _EdgeDrag {
     //
     // No fade re-anchor rides along any more (R4): the fade keys are the
     // TRACK's, on the global axis — a cut resize edits the cut, not them.
-    _session.timelineController.commitLayerTimelineDragsWithCutDurations(
+    _timeline.timelineController.commitLayerTimelineDragsWithCutDurations(
       edits: edits,
       beforeDurations: beforeDurations,
       afterDurations: afterDurations,
@@ -705,9 +737,9 @@ class _EdgeDrag {
       afterGaps: afterGaps,
       description: 'Retime storyboard cells',
     );
-    _session.refreshAfterCutCommand();
-    _session.warmActiveCut();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
   }
 
   Map<CutId, int>? _cutTrimBeforeDurations;
@@ -775,7 +807,7 @@ class _EdgeDrag {
     required TimelineBlockEdge edge,
     int panelIndex = 0,
   }) {
-    final cut = _session.cutById(cutId);
+    final cut = _project.cutById(cutId);
     final row = cut == null ? null : storyboardLayerForCut(cut);
     if (cut != null && row != null) {
       // R10 R4: only the TRAILING edge still asks about the conte row, and
@@ -844,7 +876,7 @@ class _EdgeDrag {
     int panelIndex = 0,
   }) {
     final layout = buildStoryboardTimelineLayout(
-      _session.repository.requireProject(),
+      _project.repository.requireProject(),
     );
     StoryboardTimelineLayoutEntry? entry;
     for (final candidate in layout) {
@@ -928,7 +960,7 @@ class _EdgeDrag {
   }
 
   /// Applies the drag's cumulative frame delta as a live preview on
-  /// [_session.dragPreview] (the repository is NOT touched).
+  /// [_internals.dragPreview] (the repository is NOT touched).
   ///
   /// END edge: the duration changes; growth consumes the FOLLOWING cut's
   /// leading gap first (that cut holds still until the gap is spent, then
@@ -962,7 +994,7 @@ class _EdgeDrag {
     // WHICH panel is the floor differs by edge, and that is not a detail:
     // the trailing edge sits on the LAST panel, the leading edge on the one
     // it was grabbed from.
-    final trimmedCut = _session.cutById(cutId);
+    final trimmedCut = _project.cutById(cutId);
     final minDuration = trimmedCut == null
         ? 1
         : edge == TimelineBlockEdge.end
@@ -1004,7 +1036,7 @@ class _EdgeDrag {
               // Nothing but the dragged cut changes duration mid-drag, and
               // the preview never touches the repository, so a live read
               // IS the before-value for every slot.
-              duration: _session.cutById(id)?.duration ?? 1,
+              duration: _project.cutById(id)?.duration ?? 1,
             ),
         ],
         targetIndex: _cutTrimIndex!,
@@ -1041,7 +1073,7 @@ class _EdgeDrag {
     _cutTrimAfterDurations = changed ? durations : null;
     _cutTrimAfterGaps = changed ? gaps : null;
     _cutTrimAfterRowEdits = changed ? rowEdits : null;
-    _session.dragPreview.value = changed
+    _internals.dragPreview.value = changed
         ? CutTrimDragPreview(
             previewDurations: durations,
             previewGaps: gaps,
@@ -1066,7 +1098,7 @@ class _EdgeDrag {
     if (applied == 0) {
       return const [];
     }
-    final cut = _session.cutById(cutId);
+    final cut = _project.cutById(cutId);
     final row = cut == null ? null : storyboardLayerForCut(cut);
     if (row == null) {
       return const [];
@@ -1128,7 +1160,7 @@ class _EdgeDrag {
             afterDurations: afterDurations,
           );
     if (rowEdits.isNotEmpty) {
-      _session.timelineController.commitLayerTimelineDragsWithCutDurations(
+      _timeline.timelineController.commitLayerTimelineDragsWithCutDurations(
         edits: rowEdits,
         beforeDurations: scopedBeforeDurations,
         afterDurations: afterDurations,
@@ -1136,20 +1168,20 @@ class _EdgeDrag {
         afterGaps: afterGaps,
         description: 'Trim cut duration',
       );
-      _session.refreshAfterCutCommand();
-      _session.warmActiveCut();
-      _session.notifyChanged();
+      _changes.refreshAfterCutCommand();
+      _changes.warmActiveCut();
+      _changes.notifyChanged();
       return;
     }
 
-    _session.cutCommandCoordinator.commitCutDurationDrag(
+    _project.cutCommandCoordinator.commitCutDurationDrag(
       beforeDurations: scopedBeforeDurations,
       afterDurations: afterDurations,
       beforeGaps: scopedBeforeGaps,
       afterGaps: afterGaps,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// The storyboard-row rewrites a duration change owes, one per resized
@@ -1167,7 +1199,7 @@ class _EdgeDrag {
       if (beforeDurations[entry.key] == entry.value) {
         continue;
       }
-      final cut = _session.cutById(entry.key);
+      final cut = _project.cutById(entry.key);
       final row = cut == null ? null : storyboardLayerForCut(cut);
       if (row == null) {
         continue;
@@ -1207,12 +1239,12 @@ class _EdgeDrag {
     _cutTrimIndex = null;
     _cutTrimPanelIndex = null;
     _cutTrimAfterRowEdits = null;
-    _session.dragPreview.value = null;
+    _internals.dragPreview.value = null;
   }
 
   /// The cut after [cutId] on its own track, or null at the track's end.
   Cut? _nextCutInTrack(CutId cutId) {
-    for (final track in _session.repository.requireProject().tracks) {
+    for (final track in _project.repository.requireProject().tracks) {
       final cuts = track.cuts;
       for (var index = 0; index < cuts.length; index += 1) {
         if (cuts[index].id == cutId) {
@@ -1237,7 +1269,7 @@ class _EdgeDrag {
     _edgeDragCutSync = null;
     _edgeDragAfterDurations = null;
     _edgeDragAfterGaps = null;
-    _session.dragPreview.value = null;
+    _internals.dragPreview.value = null;
   }
 
   /// The storyboard's comma press: the selection's blocks, else THE BLOCK
@@ -1260,36 +1292,36 @@ class _EdgeDrag {
     // The strip's cut-local selection: the shared verb's selection branch,
     // verbatim. ⚠️Guarded so its active-layer fallback — the other panel's
     // subject — stays unreachable from this panel.
-    final selection = _session.frameRangeSelection.value;
+    final selection = _selection.frameRangeSelection.value;
     if (selection != null) {
       // Single-cel rows never appear in the collector, so a non-null map
       // IS a retimable one.
-      if (_session._rangeSelections._cutLocalSelectionBlockStartsByLayer() !=
+      if (_rangeSelections.cutLocalSelectionBlockStartsByLayer() !=
           null) {
-        _session.setCommaForSelectionOrCurrent(comma);
+        _internals.setCommaForSelectionOrCurrent(comma);
       }
       return;
     }
     // The S rows' track-axis selection: the same retime, already in global
     // commit keys (the shared verb never had this rung — its selection
     // branch reads the cut-local notifier alone).
-    final trackTargets = _session._rangeSelections
-        ._trackSelectionBlockStartsByLayer();
+    final trackTargets = _rangeSelections
+        .trackSelectionBlockStartsByLayer();
     if (trackTargets != null) {
       // ⛔No active-cut guard: these starts are ALREADY global keys and the
       // retime applies no lens, so a gap changes nothing about them (H11).
-      _session.timelineController.retimeBlocksForLayers({
+      _timeline.timelineController.retimeBlocksForLayers({
         for (final entry in trackTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
-      _session.warmActiveCut();
-      _session.notifyChanged();
+      _changes.warmActiveCut();
+      _changes.notifyChanged();
       return;
     }
-    switch (_session._storyboardCursor._storyboardCursorBlockOrNull()) {
+    switch (_storyboardCursor.storyboardCursorBlockOrNull()) {
       case null:
         return;
-      case _StoryboardCursorCutBlock(:final cut):
+      case StoryboardCursorCutBlock(:final cut):
         if (comma == cut.duration) {
           return; // A no-move drag must not land an undo step.
         }
@@ -1298,16 +1330,16 @@ class _EdgeDrag {
         }
         updateCutEdgeDrag(comma - cut.duration);
         endCutEdgeDrag();
-      case _StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
-        if (_session.activeCutOrNull == null) {
+      case StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
+        if (_project.activeCutOrNull == null) {
           return;
         }
-        _session.timelineController.retimeBlocksForLayers({
+        _timeline.timelineController.retimeBlocksForLayers({
           layerId: {blockStartIndex: comma},
         });
-        _session.warmActiveCut();
-        _session.notifyChanged();
-      case _StoryboardCursorTransitionSpan(
+        _changes.warmActiveCut();
+        _changes.notifyChanged();
+      case StoryboardCursorTransitionSpan(
         :final spanStartIndex,
         :final spanLength,
       ):
@@ -1322,7 +1354,7 @@ class _EdgeDrag {
         }
         updateTransitionEdgeDrag(comma - spanLength);
         endTransitionEdgeDrag();
-      case _StoryboardCursorStoryboardPanel(
+      case StoryboardCursorStoryboardPanel(
         :final cut,
         :final panelStartIndex,
         :final panelLength,
@@ -1343,4 +1375,20 @@ class _EdgeDrag {
         endCutEdgeDrag();
     }
   }
+}
+
+/// Which verb an in-flight cut-edge drag belongs to (feedback #5/#9). One
+/// shape of edge, and where it sat when the drag began decides what it
+/// re-times; the session keeps the answer so the continuations cannot be
+/// re-routed by anything a live preview rebuilds.
+enum _CutEdgeDragVerb {
+  /// Both cut edges' plain duration/gap drags. R10 R4 folded the lead
+  /// edge's second verb into this one: a conte row no longer changes what
+  /// dragging a cut's front edge means, only how far it may go.
+  cutTrim,
+
+  /// ANY panel's trailing edge: that cell's comma, the later panels
+  /// rippling glued and the cut's length riding the row end (feedback
+  /// #9; the edge unification retired the division verb this replaced).
+  comma,
 }

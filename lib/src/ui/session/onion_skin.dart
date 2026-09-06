@@ -1,4 +1,14 @@
-part of '../editor_session_manager.dart';
+import '../../services/commands/toggle_id_in_set_command.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../canvas/canvas_layer_stack_view.dart';
+import '../../services/command.dart';
+import '../../services/onion_skin_plan.dart';
+import 'session_roles.dart';
 
 /// The ONION SKIN — which layers ghost, the sweep over the displayed ones,
 /// and what the canvas is asked to draw for them — as its own object. The
@@ -6,14 +16,28 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no private field of its own and
-/// eight session members touched. It reaches the session through `_session`.
-class _OnionSkin {
-  _OnionSkin(this._session);
+/// eight session members touched. It names the roles it needs in its constructor.
+class OnionSkin {
+  OnionSkin({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   bool isLayerOnionSkinEnabled(LayerId layerId) =>
-      _session.onionSkinLayerIds.value.contains(layerId);
+      _internals.onionSkinLayerIds.value.contains(layerId);
 
   void toggleLayerOnionSkin(LayerId layerId) {
     // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). ⛔I
@@ -22,21 +46,21 @@ class _OnionSkin {
     // 무슨소리지? 아무튼 어니언 적용 미적용만 되면 되는건데」. Press the
     // button, press Ctrl+Z, the ghosts come back. Where the bit lives is
     // plumbing.
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       ToggleIdInSetCommand(
-        notifier: _session.onionSkinLayerIds,
+        notifier: _internals.onionSkinLayerIds,
         layerId: layerId,
         debugLabel: 'Toggle onion skin',
       ),
     );
     // Row/legend toggle glyphs read through the session listenable.
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// The drawing layers the legend's bulk onion sweep addresses: the
   /// active cut's VISIBLE brush-holding rows.
   List<Layer> get _onionSweepLayers {
-    final stack = _session.activeCutOrNull?.layers ?? const <Layer>[];
+    final stack = _project.activeCutOrNull?.layers ?? const <Layer>[];
     return [
       for (final layer in stack)
         // `rowVisible`, not `isVisible`: a row inside a hidden folder is not
@@ -80,26 +104,26 @@ class _OnionSkin {
     if (changing.isEmpty) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       CompositeCommand(
         description: 'Toggle onion skin (${changing.length} layers)',
         commands: [
           for (final layerId in changing)
             ToggleIdInSetCommand(
-              notifier: _session.onionSkinLayerIds,
+              notifier: _internals.onionSkinLayerIds,
               layerId: layerId,
               debugLabel: 'Toggle onion skin',
             ),
         ],
       ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// The `O` shortcut: toggles the ACTIVE layer's onion (the per-layer
   /// model's successor of the old master toggle).
   void toggleOnionSkin() {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return;
     }
@@ -122,9 +146,9 @@ class _OnionSkin {
   /// VISIBLE drawing layer contributes its plan (unique drawings, peg
   /// opacities, side tints) in layer-stack order.
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
-    final settings = _session.onionSkinSettings.value;
-    final cut = _session.activeCutOrNull;
-    final enabledIds = _session.onionSkinLayerIds.value;
+    final settings = _internals.onionSkinSettings.value;
+    final cut = _project.activeCutOrNull;
+    final enabledIds = _internals.onionSkinLayerIds.value;
     if (cut == null || enabledIds.isEmpty) {
       return const [];
     }
@@ -138,11 +162,11 @@ class _OnionSkin {
             layerKindAcceptsBrushInput(layer.kind))
           for (final plan in planOnionSkin(
             layer: layer,
-            frameIndex: _session.timelineController.currentFrameIndex,
+            frameIndex: _timeline.timelineController.currentFrameIndex,
             settings: settings,
           ))
             CanvasLayerImageRequest(
-              frameKey: _session.brushFrameKeyForCut(
+              frameKey: _internals.brushFrameKeyForCut(
                 cut,
                 layer.id,
                 plan.frameId,

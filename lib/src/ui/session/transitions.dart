@@ -1,4 +1,18 @@
-part of '../editor_session_manager.dart';
+import 'dart:collection' show SplayTreeMap;
+import '../../models/camera_instruction.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/timeline_row_address.dart';
+import '../../models/track.dart';
+import '../../models/track_id.dart';
+import '../../models/transition_geometry.dart';
+import '../text/app_strings.dart';
+import '../../models/storyboard_timeline_layout.dart';
+import '../../services/commands/track_transition_commands.dart';
+import '../timeline/instruction_span_editing.dart';
+import 'session_roles.dart';
+import 'camera.dart';
 
 /// The TRANSITIONS — the spans a track carries between cuts, the display
 /// layer they are drawn through, their instruction set and the warnings for
@@ -6,12 +20,24 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and eight
-/// session members touched, `activeTrack` above all. It reaches the session
-/// through `_session`.
-class _Transitions {
-  _Transitions(this._session);
+/// session members touched, `activeTrack` above all. It names the roles
+/// it needs in its constructor.
+class Transitions {
+  Transitions({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required Camera camera,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _camera = camera;
 
-  final EditorSessionManager _session;
+  final Camera _camera;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
 
   /// The active track's transition spans on the GLOBAL frame axis — the one
   /// reader for every surface that has to answer a transition question
@@ -21,13 +47,13 @@ class _Transitions {
   /// whether the span moves both cuts or only its own.
   List<TransitionSpan> get activeTrackTransitionSpans => [
     for (final entry
-        in _session.activeTrack.transitionLayer.instructions.entries)
+        in _selection.activeTrack.transitionLayer.instructions.entries)
       transitionSpanOf(entry),
   ];
 
   /// The track that owns [layerId] as its TRANSITION row, on any track.
   Track? trackTransitionOwner(LayerId layerId) {
-    for (final track in _session.repository.requireProject().tracks) {
+    for (final track in _project.repository.requireProject().tracks) {
       if (track.transitionLayer.id == layerId) {
         return track;
       }
@@ -51,9 +77,9 @@ class _Transitions {
   /// Cached on the same terms as the SE clones: same source layer + same
   /// window = the same instance back, so identity-keyed row memos hold.
   Layer get trackTransitionDisplayLayer {
-    final source = _session.activeTrack.transitionLayer;
-    final cutStart = _session.activeCutGlobalStartFrame;
-    final duration = _session.activeCutOrNull?.duration ?? 0;
+    final source = _selection.activeTrack.transitionLayer;
+    final cutStart = _project.activeCutGlobalStartFrame;
+    final duration = _project.activeCutOrNull?.duration ?? 0;
     final cached = _transitionDisplayClone;
     if (cached != null &&
         identical(cached.$1, source) &&
@@ -137,7 +163,7 @@ class _Transitions {
   /// quietly unmarked.
   String? transitionCrossingWarningAtGlobalKey(int globalStartKey) {
     final event =
-        _session.activeTrack.transitionLayer.instructions[globalStartKey];
+        _selection.activeTrack.transitionLayer.instructions[globalStartKey];
     if (event == null) {
       return null;
     }
@@ -145,7 +171,7 @@ class _Transitions {
     if (transitionSidesOf(span.mark) == TransitionSides.both) {
       return null;
     }
-    for (final placed in cutSpansOf(_session.activeTrack)) {
+    for (final placed in cutSpansOf(_selection.activeTrack)) {
       if (oneSidedSpanOwnsCut(
         span: span,
         cutStart: placed.startFrame,
@@ -166,14 +192,14 @@ class _Transitions {
   /// The terms a transition span may carry: F.I, F.O, W.I, W.O, O.L. The
   /// camera-work terms (PAN, T.U, …) stay on the cut's direction row.
   List<CameraInstructionDef> get transitionInstructionDefs => [
-    for (final def in _session.cameraInstructionSet.defs)
+    for (final def in _camera.cameraInstructionSet.defs)
       if (cameraInstructionIsTransition(def)) def,
   ];
 
   /// Whether a transition span can start at the playhead: there has to be a
   /// vocabulary to draw from and no span there already.
   ///
-  /// The playhead is [_session.editingGlobalFrame] — the ONE track-global reader — and
+  /// The playhead is [_selection.editingGlobalFrame] — the ONE track-global reader — and
   /// not "cut start + local index". A parked playhead sits in a GAP with no
   /// active cut, and a gap is a legitimate transition partner (a fade out to
   /// black, or the のりしろ an animator gets by opening a gap in front of the
@@ -201,15 +227,15 @@ class _Transitions {
     if (transitionInstructionDefs.isEmpty) {
       return null;
     }
-    final track = _session.activeTrack;
-    final selection = _session.trackFrameRangeSelection.value;
+    final track = _selection.activeTrack;
+    final selection = _selection.trackFrameRangeSelection.value;
     final overThisRow =
         selection != null &&
         selection.trackId == track.id &&
         selection.coversRow(LayerRowAddress(track.transitionLayer.id));
     final startFrame = overThisRow
         ? selection.startFrame
-        : _session.editingGlobalFrame;
+        : _selection.editingGlobalFrame;
     final length = overThisRow ? selection.lengthFrames : 1;
     if (startFrame < 0 || length < 1) {
       return null;
@@ -237,7 +263,7 @@ class _Transitions {
     if (plan == null) {
       return;
     }
-    final track = _session.activeTrack;
+    final track = _selection.activeTrack;
     final before = track.transitionLayer;
     final next = instructionMapWithEventAdded(
       before.instructions,
@@ -250,9 +276,9 @@ class _Transitions {
     if (next == null) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       UpdateTrackTransitionLayerCommand(
-        repository: _session.repository,
+        repository: _project.repository,
         trackId: track.id,
         before: before,
         after: before.copyWith(instructions: next),
@@ -260,7 +286,7 @@ class _Transitions {
       ),
     );
     _transitionDisplayClone = null;
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Replaces the whole transition span map in one undo step — the writer
@@ -269,11 +295,11 @@ class _Transitions {
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit transition',
   }) {
-    final track = _session.activeTrack;
+    final track = _selection.activeTrack;
     final before = track.transitionLayer;
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       UpdateTrackTransitionLayerCommand(
-        repository: _session.repository,
+        repository: _project.repository,
         trackId: track.id,
         before: before,
         after: before.copyWith(
@@ -283,7 +309,7 @@ class _Transitions {
       ),
     );
     _transitionDisplayClone = null;
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// The vocabulary a transition dialog picks from — the same set object the
@@ -298,7 +324,7 @@ class _Transitions {
   /// row's axis is the track's.
   MapEntry<int, InstructionEvent>? transitionSpanAt(int globalFrame) =>
       instructionSpanCovering(
-        _session.activeTrack.transitionLayer.instructions,
+        _selection.activeTrack.transitionLayer.instructions,
         globalFrame,
       );
 
@@ -312,7 +338,7 @@ class _Transitions {
       return;
     }
     final next = instructionMapWithEventReplaced(
-      _session.activeTrack.transitionLayer.instructions,
+      _selection.activeTrack.transitionLayer.instructions,
       spanStartIndex: covering.key,
       event: event,
     );
@@ -329,7 +355,7 @@ class _Transitions {
       return;
     }
     final next = instructionMapWithEventRemoved(
-      _session.activeTrack.transitionLayer.instructions,
+      _selection.activeTrack.transitionLayer.instructions,
       spanStartIndex: covering.key,
     );
     if (next == null) {
@@ -349,7 +375,7 @@ class _Transitions {
   /// `hidden_folder_is_hidden_test`); the fixture lives in no folder, so
   /// the singleton stack it stands in is its own.
   List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) {
-    for (final track in _session.repository.requireProject().tracks) {
+    for (final track in _project.repository.requireProject().tracks) {
       if (track.id == trackId) {
         final transition = track.transitionLayer;
         if (!<Layer>[transition].rowVisible(transition)) {
@@ -375,7 +401,7 @@ class _Transitions {
     start: entry.key,
     length: entry.value.length,
     mark:
-        _session.cameraInstructionSet
+        _camera.cameraInstructionSet
             .defById(entry.value.instructionId)
             ?.markType ??
         CameraInstructionMarkType.ol,

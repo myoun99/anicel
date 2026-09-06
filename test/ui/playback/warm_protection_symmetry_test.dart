@@ -73,7 +73,7 @@ void main() {
       final activeCut = s.activeCutOrNull!;
       final quality = s.playbackQuality;
 
-      final range = s.debugPlaybackProtectedRanges().single;
+      final range = s.playbackCache.debugPlaybackProtectedRanges().single;
       expect(range.endFrame, cutWarmFrameCount(activeCut) - 1);
       expect(range.endFrame, 6, reason: 'the runway reaches frame 6');
 
@@ -96,7 +96,7 @@ void main() {
 
       s.cutFrameCompositeCache.enforceBudget(
         maxBytes: 0,
-        protect: s.debugPlaybackProtectedRanges(),
+        protect: s.playbackCache.debugPlaybackProtectedRanges(),
       );
 
       expect(
@@ -138,7 +138,7 @@ void main() {
       cutWarmFrameCount(activeCut),
     );
     expect(
-      s.debugPlaybackProtectedRanges().single.endFrame + 1,
+      s.playbackCache.debugPlaybackProtectedRanges().single.endFrame + 1,
       s.prerenderScheduler.progress.value.total,
       reason: 'one function, two readers — the disagreement WAS the bug',
     );

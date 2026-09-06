@@ -1,4 +1,14 @@
-part of '../editor_session_manager.dart';
+import 'drags/lane_range_move_drag.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/transform_track.dart';
+import '../../models/layer_kind.dart';
+import '../../models/se_name_tag.dart';
+import '../../models/timeline_frame_range.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../timeline/timeline_drag_preview.dart';
+import 'session_roles.dart';
+import 'lane_verbs.dart';
+import 'effects_and_fx.dart';
 
 /// The LANE RANGE MOVE DRAG — sliding a selected range of a transform,
 /// effect or camera lane along the frames — as its own object: the subject
@@ -7,12 +17,30 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: three fields of its own and
-/// fourteen session members touched. It reaches the session through
-/// `_session`.
-class _LaneRangeMoveDrag {
-  _LaneRangeMoveDrag(this._session);
+/// fourteen session members touched. It names the roles it needs in
+/// its constructor.
+class LaneRangeMoveDragVerbs {
+  LaneRangeMoveDragVerbs({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required SessionInternals internals,
+    required LaneVerbs laneVerbs,
+    required EffectsAndFx effectsAndFx,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _internals = internals,
+       _laneVerbs = laneVerbs,
+       _effectsAndFx = effectsAndFx;
 
-  final EditorSessionManager _session;
+  final EffectsAndFx _effectsAndFx;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final SessionInternals _internals;
+  final LaneVerbs _laneVerbs;
 
   /// The lane range move in flight, or null (UI-R23 #3 part 2). ⛔The only
   /// thing this class keeps about one: the drag-start snapshot and the last
@@ -29,7 +57,7 @@ class _LaneRangeMoveDrag {
     // The V TRACK's own lanes (R4b, the carrier route).
     final carrierTrackId = trackIdOfTransformLaneCarrier(selection.layerId);
     if (carrierTrackId != null) {
-      final track = _session.trackById(carrierTrackId);
+      final track = _project.trackById(carrierTrackId);
       if (track == null) {
         return null;
       }
@@ -39,7 +67,7 @@ class _LaneRangeMoveDrag {
         transformTrack: TransformTrack.empty(),
         effects: track.effects,
         commitTransform: (_) {},
-        commitEffects: (next) => _session.updateTrackEffects(
+        commitEffects: (next) => _effectsAndFx.updateTrackEffects(
           track.id,
           next,
           description: _laneMoveWhy,
@@ -51,7 +79,7 @@ class _LaneRangeMoveDrag {
         ),
       );
     }
-    final layer = _session._laneVerbs._laneVerbLayerFor(selection.layerId);
+    final layer = _laneVerbs.laneVerbLayerFor(selection.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return null;
     }
@@ -60,7 +88,7 @@ class _LaneRangeMoveDrag {
     // which one applies is the lane's question, not the row's.
     final isCamera = layer.kind == LayerKind.camera;
     final cameraTrack = isCamera
-        ? _session.activeCutOrNull?.camera.track
+        ? _project.activeCutOrNull?.camera.track
         : null;
     if (isCamera && cameraTrack == null) {
       return null;
@@ -71,19 +99,19 @@ class _LaneRangeMoveDrag {
       effects: layer.effects,
       // The name-tag arm (C①): armed only on SE rows (the commit verb
       // throws elsewhere). The subject layer is GLOBAL for track-SE rows
-      // (_laneVerbLayerFor), so the commit goes to the coordinator
+      // ([LaneVerbs.laneVerbLayerFor]), so the commit goes to the coordinator
       // DIRECTLY — setSeNameTagForLayer window-converts on the way in,
       // and routing through it would shift track-SE keys twice (the
       // double-conversion trap the transform commit already names).
       seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
       commitSeNameTag: isSe
           ? (next) {
-              _session.cutCommandCoordinator.setSeNameTag(
+              _project.cutCommandCoordinator.setSeNameTag(
                 layerId: layer.id,
                 seNameTag: next,
                 description: _laneMoveWhy,
               );
-              _session.notifyChanged();
+              _changes.notifyChanged();
             }
           : null,
       previewSeNameTag: isSe
@@ -95,11 +123,11 @@ class _LaneRangeMoveDrag {
               // previewGlobalLayers for the storyboard's track-global
               // strips.
               final previewed = layer.copyWith(seNameTag: next);
-              final isTrackSe = _session.isTrackSeLayerId(layer.id);
+              final isTrackSe = _project.isTrackSeLayerId(layer.id);
               return BlockMoveDragPreview(
                 previewLayers: {
                   layer.id: isTrackSe
-                      ? _session.trackSeWindow.displayLayer(previewed)
+                      ? _internals.trackSeWindow.displayLayer(previewed)
                       : previewed,
                 },
                 previewGlobalLayers: isTrackSe
@@ -109,16 +137,16 @@ class _LaneRangeMoveDrag {
             }
           : null,
       commitTransform: isCamera
-          ? (next) => _session.updateActiveCutCameraTrack(
+          ? (next) => _internals.updateActiveCutCameraTrack(
               next,
               description: _laneMoveWhy,
             )
-          : (next) => _session.updateLayerTransformTrack(
+          : (next) => _internals.updateLayerTransformTrack(
               layer.id,
               next,
               description: _laneMoveWhy,
             ),
-      commitEffects: (next) => _session.updateLayerEffects(
+      commitEffects: (next) => _effectsAndFx.updateLayerEffects(
         layer.id,
         next,
         description: _laneMoveWhy,
@@ -134,7 +162,7 @@ class _LaneRangeMoveDrag {
           // still for the whole drag (B4-②).
           ? (next) => BlockMoveDragPreview(
               previewLayers: const {},
-              cameraMarkerLayer: _session.layerById(layer.id)?.copyWith(),
+              cameraMarkerLayer: _project.layerById(layer.id)?.copyWith(),
             )
           : (next) => BlockMoveDragPreview(
               previewLayers: {layer.id: layer.copyWith(transformTrack: next)},
@@ -153,7 +181,7 @@ class _LaneRangeMoveDrag {
   /// Starts moving the current lane selection; false when there is none or
   /// it covers no keys on ANY spanned lane (nothing to move).
   bool beginLaneRangeMoveDrag() {
-    final selection = _session.laneRangeSelection.value;
+    final selection = _selection.laneRangeSelection.value;
     if (selection == null) {
       return false;
     }
@@ -166,9 +194,9 @@ class _LaneRangeMoveDrag {
     final drag = LaneRangeMoveDrag.begin(
       selection: selection,
       subject: subject,
-      laneVerbTargets: _session._laneVerbs._laneVerbTargets,
-      preview: _session.dragPreview,
-      selectionChannel: _session.laneRangeSelection,
+      laneVerbTargets: _laneVerbs.laneVerbTargets,
+      preview: _internals.dragPreview,
+      selectionChannel: _selection.laneRangeSelection,
       clearCameraPreview: () => _cameraLaneTrackPreview = null,
     );
     if (drag == null) {
@@ -180,7 +208,7 @@ class _LaneRangeMoveDrag {
 
   /// A lane-move drag step: shifts EVERY spanned lane's ranged keys by
   /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across lanes)
-  /// and previews via [_session.dragPreview]. A blocked landing HOLDS the last valid
+  /// and previews via [_internals.dragPreview]. A blocked landing HOLDS the last valid
   /// preview (UI-R23 #10 — no snap-back).
   void updateLaneRangeMoveDrag({required int frameDelta}) =>
       _laneMoveDrag?.update(frameDelta: frameDelta);
@@ -205,7 +233,11 @@ class _LaneRangeMoveDrag {
   /// A camera row's transform lanes are built from the CUT, not from the
   /// row's own Layer, so the preview cannot ride the layer channel the way
   /// every other row's does — it is parked here and [activeCutCameraTrack]
-  /// hands it out. Exactly the shape [_cameraKeysDragPreview] already uses
+  /// hands it out. Exactly the shape [Camera.showCameraKeysDragPreview] already uses
   /// for the camera ROW's block move (P3b-2).
   TransformTrack? _cameraLaneTrackPreview;
+
+  /// What [Camera.activeCutCameraTrack] reads first: the lane move's
+  /// in-flight camera track, null while no camera lane is moving.
+  TransformTrack? get cameraLaneTrackPreview => _cameraLaneTrackPreview;
 }

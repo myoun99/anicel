@@ -1,4 +1,9 @@
-part of '../editor_session_manager.dart';
+import 'drags/drawing_block_move_drag.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/drawing_block_move.dart';
+import 'session_roles.dart';
+import 'folders_and_attachments.dart';
 
 /// The DRAWING BLOCK MOVE DRAG — picking up a drawing block and landing
 /// it elsewhere on its row — as its own object: the steps of it and the
@@ -6,10 +11,24 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: the rest reads none of it.
-class _DrawingBlockMoveDrag {
-  _DrawingBlockMoveDrag(this._session);
+class DrawingBlockMoveDragVerbs {
+  DrawingBlockMoveDragVerbs({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required FoldersAndAttachments folders,
+  }) : _project = project,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals,
+       _folders = folders;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final FoldersAndAttachments _folders;
 
   /// Starts a whole-block move on the block starting at [blockStartIndex];
   /// returns false when there is no such block or the row stands down.
@@ -23,17 +42,17 @@ class _DrawingBlockMoveDrag {
     final drag = DrawingBlockMoveDrag.begin(
       layerId: layerId,
       blockStartIndex: blockStartIndex,
-      layerById: _session.layerById,
-      isEligibleRow: _session._blockMoveEligible,
-      noticeIneligible: _session._folders._noticeSyncedAttachRefusal,
-      cutFrameCount: () => _session.activeCutFrameCount,
-      preview: _session.dragPreview,
+      layerById: _project.layerById,
+      isEligibleRow: _internals.blockMoveEligible,
+      noticeIneligible: _folders.noticeSyncedAttachRefusal,
+      cutFrameCount: () => _project.activeCutFrameCount,
+      preview: _internals.dragPreview,
       land: _landDrawingBlockMove,
     );
     if (drag == null) {
       return false;
     }
-    _session._blockMoveDrag = drag;
+    _internals.blockMoveDrag = drag;
     return true;
   }
 
@@ -41,8 +60,8 @@ class _DrawingBlockMoveDrag {
   /// the SHARED single-row builder, then the selection, the cache warm and
   /// the notify — all of which are this class's jobs, not the gesture's.
   void _landDrawingBlockMove(DrawingBlockMovePlan plan, Layer source) {
-    _session.historyManager.execute(
-      _session._singleRowMoveCommand(
+    _project.historyManager.execute(
+      _internals.singleRowMoveCommand(
         plan,
         source: source,
         description: 'Move drawing block',
@@ -51,14 +70,14 @@ class _DrawingBlockMoveDrag {
     // The selection follows the block onto its new layer (R12-④): the
     // user grabbed THAT drawing — keep working on it where it landed.
     if (plan.isCrossLayer) {
-      _session.layerController.selectLayer(plan.targetAfter!.id);
+      _timeline.layerController.selectLayer(plan.targetAfter!.id);
     }
-    _session.warmActiveCut();
-    _session.notifyChanged();
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
   }
 
   /// Applies the drag's cumulative deltas as a live preview on
-  /// [_session.dragPreview] (repository untouched). [targetLayerId] is the layer row
+  /// [_internals.dragPreview] (repository untouched). [targetLayerId] is the layer row
   /// currently under the pointer (null or the source id = plain slide).
   /// Blocks in the way are pushed in the direction of travel (R12-②) and
   /// ride the preview live; the rare still-illegal landing (mark collision,
@@ -67,7 +86,7 @@ class _DrawingBlockMoveDrag {
   void updateDrawingBlockMoveDrag({
     required int frameDelta,
     LayerId? targetLayerId,
-  }) => _session._blockMoveDrag?.update(
+  }) => _internals.blockMoveDrag?.update(
     frameDelta: frameDelta,
     targetLayerId: targetLayerId,
   );
@@ -78,15 +97,15 @@ class _DrawingBlockMoveDrag {
   void endDrawingBlockMoveDrag() {
     // ⚠️Forgotten BEFORE the commit runs, so neither closer can be reached
     // twice and the landing cannot see a drag that is already over.
-    final drag = _session._blockMoveDrag;
-    _session._blockMoveDrag = null;
+    final drag = _internals.blockMoveDrag;
+    _internals.blockMoveDrag = null;
     drag?.commit();
   }
 
   /// Drops an in-flight move preview without touching history.
   void cancelDrawingBlockMoveDrag() {
-    final drag = _session._blockMoveDrag;
-    _session._blockMoveDrag = null;
+    final drag = _internals.blockMoveDrag;
+    _internals.blockMoveDrag = null;
     drag?.cancel();
   }
 }

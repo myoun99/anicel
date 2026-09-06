@@ -1,14 +1,34 @@
-part of '../editor_session_manager.dart';
+import '../../controllers/timeline_controller.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timeline_coverage.dart';
+import '../timeline/timeline_cell_exposure_state.dart';
+import 'session_roles.dart';
+import 'camera.dart';
 
 /// The EXPOSURE VERBS — blanking an exposure, lengthening and shortening
 /// the selected one, and a layer's exposure state — as their own object.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: the rest reads none of it.
-class _ExposureVerbs {
-  _ExposureVerbs(this._session);
+class ExposureVerbs {
+  ExposureVerbs({
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required Camera camera,
+  }) : _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _camera = camera;
 
-  final EditorSessionManager _session;
+  final Camera _camera;
+
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
 
   /// The timesheet "X here" action: blanks the covering block's hold so the
   /// current cell (and the rest of the old hold) becomes empty.
@@ -22,9 +42,9 @@ class _ExposureVerbs {
   /// PAST the sweep, so the swept cells go empty and the block's tail stays
   /// where it stands (see [TimelineController.blankableSpanInBand]).
   Map<LayerId, ({int start, int endExclusive})> _blankableSpanForSelection() =>
-      _session.bandRowsForSelection(
+      _selection.bandRowsForSelection(
         _blankable,
-        (ids, selection) => _session.timelineController.blankableSpanInBand(
+        (ids, selection) => _timeline.timelineController.blankableSpanInBand(
           layerIds: ids,
           startIndex: selection.startIndex,
           endExclusive: selection.endIndexExclusive,
@@ -46,19 +66,19 @@ class _ExposureVerbs {
   bool get canBlankExposureForSelection =>
       _blankableSpanForSelection().isNotEmpty;
 
-  bool get canBlankExposureAtCurrentFrame => _session.bandOrActiveRow(
+  bool get canBlankExposureAtCurrentFrame => _selection.bandOrActiveRow(
     canBlankExposureForSelection,
     _blankable,
-    (layer) => _session.timelineController.canCutExposureAt(
+    (layer) => _timeline.timelineController.canCutExposureAt(
       layer: layer,
-      frameIndex: _session.timelineController.currentFrameIndex,
+      frameIndex: _timeline.timelineController.currentFrameIndex,
     ),
   );
 
   /// The timesheet "X here" — ⛔NOT the clipboard's cut.
   ///
   /// 🚨T3 rename: this was `cutExposureAtCurrentFrame` while 「잘라내기」 was
-  /// a word nothing in the app used. Now that [_session.cutRunAtCurrentFrame] exists,
+  /// a word nothing in the app used. Now that [_internals.cutRunAtCurrentFrame] exists,
   /// two different verbs would answer to "cut". The UI never said 「cut」
   /// here — the button is `×` (`blank-exposure-button`, tooltip `tlBlankX`)
   /// — so the code name follows the button and the new verb takes the word
@@ -66,17 +86,17 @@ class _ExposureVerbs {
   void blankExposureAtCurrentFrame() {
     final banded = _blankableSpanForSelection();
     if (banded.isNotEmpty) {
-      _session.timelineController.blankSpansForLayers(banded);
-      _session.notifyChanged();
+      _timeline.timelineController.blankSpansForLayers(banded);
+      _changes.notifyChanged();
       return;
     }
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null || !canBlankExposureAtCurrentFrame) {
       return;
     }
 
-    _session.timelineController.cutExposureForLayer(layerId: layer.id);
-    _session.notifyChanged();
+    _timeline.timelineController.cutExposureForLayer(layerId: layer.id);
+    _changes.notifyChanged();
   }
 
   /// The toolbar +/- buttons are one-frame comma adjustments of the
@@ -86,22 +106,22 @@ class _ExposureVerbs {
   void decreaseSelectedExposure() => _shiftSelectedExposureEnd(-1);
 
   void _shiftSelectedExposureEnd(int delta) {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return;
     }
-    final block = _session.timelineController.blockForLayerAt(layer: layer);
+    final block = _timeline.timelineController.blockForLayerAt(layer: layer);
     if (block == null) {
       return;
     }
 
-    _session.timelineController.shiftExposureEdge(
+    _timeline.timelineController.shiftExposureEdge(
       layerId: layer.id,
       blockStartIndex: block.startIndex,
       edge: TimelineBlockEdge.end,
       delta: delta,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
@@ -121,19 +141,19 @@ class _ExposureVerbs {
       // preview-aware answer (lane move, block ride, or committed), the
       // same track the member lanes and the union markers read (B4), so
       // the row follows any drag while the repository stays untouched.
-      return _session.activeCutCameraTrack?.keyframeAt(frameIndex) != null
+      return _camera.activeCutCameraTrack?.keyframeAt(frameIndex) != null
           ? TimelineCellExposureState.drawingStart
           : TimelineCellExposureState.uncovered;
     }
 
-    if (_session.timelineController.isDrawingStartForLayer(
+    if (_timeline.timelineController.isDrawingStartForLayer(
       layer: layer,
       frameIndex: frameIndex,
     )) {
       return TimelineCellExposureState.drawingStart;
     }
 
-    final held = _session.timelineController.isHeldExposureForLayer(
+    final held = _timeline.timelineController.isHeldExposureForLayer(
       layer: layer,
       frameIndex: frameIndex,
     );
@@ -141,7 +161,7 @@ class _ExposureVerbs {
     // markUncovered is never produced anymore — the enum value survives
     // solely for exhaustive switches over legacy-visual states.
     if (held &&
-        _session.timelineController.hasMarkAt(
+        _timeline.timelineController.hasMarkAt(
           layer: layer,
           frameIndex: frameIndex,
         )) {
@@ -153,19 +173,19 @@ class _ExposureVerbs {
   }
 
   bool get canDecreaseSelectedExposure {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return false;
     }
-    final block = _session.timelineController.blockForLayerAt(layer: layer);
+    final block = _timeline.timelineController.blockForLayerAt(layer: layer);
     return block != null && block.length > 1;
   }
 
   bool get canIncreaseSelectedExposure {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return false;
     }
-    return _session.timelineController.blockForLayerAt(layer: layer) != null;
+    return _timeline.timelineController.blockForLayerAt(layer: layer) != null;
   }
 }

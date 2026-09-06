@@ -1,4 +1,22 @@
-part of '../editor_session_manager.dart';
+import '../../services/project_lookup.dart' show cutIdOfLayer;
+import '../../models/cut_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/property_track.dart';
+import '../../models/track.dart';
+import '../../models/track_id.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../../services/command.dart';
+import '../../services/commands/update_layer_transform_enabled_command.dart';
+import '../timeline/effect_lane_editing.dart'
+    show
+        effectsWithAdded,
+        effectsWithEnabledToggled,
+        effectsWithGroupReset,
+        effectsWithRemoved;
+import 'session_roles.dart';
 
 /// The EFFECTS AND THE FX SWITCHES — the effect chains a layer or a track
 /// carries, their key names, and the switches that bypass a layer's, a
@@ -6,17 +24,31 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and sixteen
-/// session members touched. It reaches the session through `_session`.
-class _EffectsAndFx {
-  _EffectsAndFx(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class EffectsAndFx {
+  EffectsAndFx({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
   /// route that draws this cut filters its finished picture through. Empty
   /// for an orphan, and empty is the zero-cost path.
   List<LayerEffect> trackEffectsForCut(CutId cutId) =>
-      _session.trackOwningCut(cutId)?.effects ?? const [];
+      _project.trackOwningCut(cutId)?.effects ?? const [];
 
   /// Replaces [layerId]'s EFFECT CHAIN (R6 — the color/blur lanes); one
   /// undo step, no-op when unchanged.
@@ -25,27 +57,27 @@ class _EffectsAndFx {
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
   }) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.updateLayerEffects(
+    _project.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,
       effects: effects,
       description: description,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Whether the ACTIVE row can take an effect: a row that carries its own
   /// FX, and not a track-owned SE row (its display clone strips FX, so a
   /// chain committed through it would land nowhere the lanes could edit).
   bool get canAddEffectToActiveLayer {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     return layer != null &&
         layerKindHasLayerEffects(layer.kind) &&
-        !_session.isTrackSeLayerId(layer.id) &&
+        !_project.isTrackSeLayerId(layer.id) &&
         // Attach rows wear their BASE's FX (W5) and have no lanes of their
         // own — the effect belongs on the base.
         layer.attachedToLayerId == null;
@@ -54,7 +86,7 @@ class _EffectsAndFx {
   /// Appends a fresh effect of [kind] (every parameter at its default, so
   /// adding one changes nothing until a value moves) to the active row.
   void addEffectToActiveLayer(EffectKind kind) {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null || !canAddEffectToActiveLayer) {
       return;
     }
@@ -84,7 +116,7 @@ class _EffectsAndFx {
   ///
   /// Returns true when [name] is ALREADY taken in that space and NOTHING
   /// was written, so the caller can offer to join instead (see
-  /// [linkEffectKeyName]) — the same report [_session.renameSelectedFrame] makes
+  /// [linkEffectKeyName]) — the same report [FrameVerbs.renameSelectedFrame] makes
   /// about a colliding frame name. False means the rename applied, or could
   /// not.
   ///
@@ -98,7 +130,7 @@ class _EffectsAndFx {
     required int frameIndex,
     required String? name,
   }) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return false;
     }
@@ -113,7 +145,7 @@ class _EffectsAndFx {
       return false;
     }
     if (name != null &&
-        _session.cutCommandCoordinator.namedEffectKeyValueInSpace(
+        _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
               cutId: cutId,
               layerId: layerId,
               effectId: effectId,
@@ -138,7 +170,7 @@ class _EffectsAndFx {
   /// to the "합칠까요?" [setEffectKeyName] raises.
   ///
   /// The key takes the number rather than imposing its own, exactly as
-  /// [_session.linkSelectedFrame] takes the drawing that is already there (user
+  /// [FrameVerbs.linkSelectedFrame] takes the drawing that is already there (user
   /// 2026-08-10). A name that turns out to be free just applies, so a stale
   /// confirmation cannot blank the value.
   void linkEffectKeyName({
@@ -148,7 +180,7 @@ class _EffectsAndFx {
     required int frameIndex,
     required String name,
   }) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
@@ -159,7 +191,7 @@ class _EffectsAndFx {
       parameterId: parameterId,
       frameIndex: frameIndex,
       name: name,
-      adopted: _session.cutCommandCoordinator.namedEffectKeyValueInSpace(
+      adopted: _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
         cutId: cutId,
         layerId: layerId,
         effectId: effectId,
@@ -185,7 +217,7 @@ class _EffectsAndFx {
     required String parameterId,
     required int frameIndex,
   }) {
-    final layers = _session.cutById(cutId)?.layers ?? const <Layer>[];
+    final layers = _project.cutById(cutId)?.layers ?? const <Layer>[];
     final layerIndex = layers.indexWhere((row) => row.id == layerId);
     if (layerIndex == -1) {
       return null;
@@ -259,7 +291,7 @@ class _EffectsAndFx {
   /// Removes one effect from the active row (its keys go with it; one undo
   /// brings both back).
   void removeEffectFromActiveLayer(EffectId effectId) {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return;
     }
@@ -348,7 +380,7 @@ class _EffectsAndFx {
     if (layer == null) {
       return;
     }
-    _session.updateLayerTransformEnabled(
+    _internals.updateLayerTransformEnabled(
       layerId,
       enabled: !layer.transformEnabled,
       description: layer.transformEnabled
@@ -360,7 +392,7 @@ class _EffectsAndFx {
   /// The row a switch edit addresses: a cut layer, or a track-owned SE row
   /// (whose display clone is not the thing to write).
   Layer? fxSwitchLayerById(LayerId layerId) =>
-      _session.layerById(layerId) ?? _session.trackSeGlobalLayerById(layerId);
+      _project.layerById(layerId) ?? _project.trackSeGlobalLayerById(layerId);
 
   /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
   void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
@@ -372,7 +404,7 @@ class _EffectsAndFx {
           layer.transformEnabled != enabled) {
         commands.add(
           UpdateLayerTransformEnabledCommand(
-            repository: _session.repository,
+            repository: _project.repository,
             layerId: layer.id,
             transformEnabled: enabled,
           ),
@@ -385,14 +417,14 @@ class _EffectsAndFx {
       // 겸용컷 effect mirror, and a master that built its own would write
       // one cut of a link group and leave its twin permanently `mixed`.
       final cutId = cutIdOfLayer(
-        _session.repository.requireProject(),
+        _project.repository.requireProject(),
         layer.id,
       );
       if (cutId == null) {
         continue; // A row no cut holds (a track-SE clone) has no chain here.
       }
       commands.addAll(
-        _session.cutCommandCoordinator.layerEffectsCommands(
+        _project.cutCommandCoordinator.layerEffectsCommands(
           cutId: cutId,
           layerId: layer.id,
           effects: [
@@ -406,7 +438,7 @@ class _EffectsAndFx {
     if (commands.isEmpty) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -418,7 +450,7 @@ class _EffectsAndFx {
     // transform track, the effect chain): a switch flip is not a structural
     // cut edit, and refreshing as one threw away the frame-range selection
     // the user keeps while A/B-ing the switch.
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Whether the cut's fx (the V track's Transform group — the pose AND
@@ -434,7 +466,7 @@ class _EffectsAndFx {
   /// session, and while editing shows one cut at a time it said exactly
   /// what the track switch already says.
   bool isCutFxEnabled(CutId cutId) =>
-      _session.trackOwningCut(cutId)?.fxEnabled ?? true;
+      _project.trackOwningCut(cutId)?.fxEnabled ?? true;
 
   /// The V row's fx switch: OFF while the track's flag is down, ON
   /// otherwise. It stays a [LayerFxState] because the button it drives is
@@ -445,7 +477,7 @@ class _EffectsAndFx {
   /// the switches beneath it, so it reports what it is. A bypassed effect
   /// says so on its own lane header, where the eye already looks.
   LayerFxState trackFxState(TrackId trackId) {
-    final track = _session.trackById(trackId);
+    final track = _project.trackById(trackId);
     if (track == null) {
       return LayerFxState.on;
     }
@@ -458,20 +490,20 @@ class _EffectsAndFx {
     List<LayerEffect> effects, {
     String description = 'Edit track effects',
   }) {
-    _session.cutCommandCoordinator.updateTrackEffects(
+    _project.cutCommandCoordinator.updateTrackEffects(
       trackId: trackId,
       effects: effects,
       description: description,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Adds an effect to the V row's chain. Ids are minted the way a layer's
   /// are (the lane address embeds them, so two adds in one session must not
   /// collide) — off the TRACK id, since that is what carries the chain.
   void addEffectToTrack(TrackId trackId, EffectKind kind) {
-    final track = _session.trackById(trackId);
+    final track = _project.trackById(trackId);
     if (track == null) {
       return;
     }
@@ -491,7 +523,7 @@ class _EffectsAndFx {
   }
 
   void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
-    final track = _session.trackById(trackId);
+    final track = _project.trackById(trackId);
     if (track == null) {
       return;
     }
@@ -503,17 +535,17 @@ class _EffectsAndFx {
   }
 
   /// A V-track effect group's RESET (R5) — the track twin of
-  /// [_session.resetLaneGroup]. Track effects have no lane-range selection of their
+  /// [_internals.resetLaneGroup]. Track effects have no lane-range selection of their
   /// own, so the scope is always the playhead.
   bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) {
-    final track = _session.trackById(trackId);
+    final track = _project.trackById(trackId);
     if (track == null) {
       return false;
     }
     final next = effectsWithGroupReset(
       track.effects,
       laneId: headerLaneId,
-      frameIndexes: [_session.timelineController.currentFrameIndex],
+      frameIndexes: [_timeline.timelineController.currentFrameIndex],
     );
     if (next == null) {
       return false;
@@ -525,7 +557,7 @@ class _EffectsAndFx {
   /// One effect's own bypass on the V row — the switch on its group header,
   /// the twin of a layer effect's.
   void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) {
-    final track = _session.trackById(trackId);
+    final track = _project.trackById(trackId);
     if (track == null) {
       return;
     }
@@ -555,34 +587,34 @@ class _EffectsAndFx {
 
   /// The V row's fx toggle, one undoable write.
   void toggleTrackFx(TrackId trackId) {
-    final track = _session.trackById(trackId);
+    final track = _project.trackById(trackId);
     if (track == null) {
       return;
     }
     final turnOn = !track.fxEnabled;
-    _session.cutCommandCoordinator.updateTrackDisplay(
+    _project.cutCommandCoordinator.updateTrackDisplay(
       trackId: trackId,
       fxEnabled: turnOn,
       description: turnOn ? 'Apply track FX' : 'Bypass track FX',
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// The effect chain a lane/fx-header address names: a real layer's, or the
   /// V TRACK's through the carrier id (R4b). Null when neither exists.
-  List<LayerEffect>? _effectChainOf(LayerId layerId) {
+  List<LayerEffect>? effectChainOf(LayerId layerId) {
     final trackId = trackIdOfTransformLaneCarrier(layerId);
     if (trackId != null) {
-      return _session.trackById(trackId)?.effects;
+      return _project.trackById(trackId)?.effects;
     }
-    return _session.layerById(layerId)?.effects;
+    return _project.layerById(layerId)?.effects;
   }
 
   /// Bypasses or restores EVERY layer's fx — the legend's bulk flyout,
   /// through the same persisted switches the per-row master writes, as ONE
   /// undo step (R8).
   void setAllLayersFxBypassed(bool bypassed) {
-    _setLayerFxSwitches(_session.layers, enabled: !bypassed);
+    _setLayerFxSwitches(_project.layers, enabled: !bypassed);
   }
 }

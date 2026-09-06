@@ -1,4 +1,14 @@
-part of '../editor_session_manager.dart';
+import '../../services/commands/reorder_track_command.dart';
+import 'drags/row_order_drag.dart';
+import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../timeline/layer_row_drag.dart' show LayerRowDragSubject;
+import 'session_roles.dart';
+import 'row_selection.dart';
+import 'effects_and_fx.dart';
+import 'track_se_display.dart';
 
 /// The LAYER ROW DRAG — picking a row up in the rail and dropping it on
 /// another row, a track or an effect lane — as its own object: the order
@@ -7,11 +17,28 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and eight
-/// session members touched. It reaches the session through `_session`.
-class _LayerRowDrag {
-  _LayerRowDrag(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class LayerRowDrag {
+  LayerRowDrag({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required SessionInternals internals,
+    required EffectsAndFx effectsAndFx,
+    required RowSelection rowSelectionVerbs,
+    required TrackSeDisplay trackSe,
+  }) : _project = project,
+       _changes = changes,
+       _internals = internals,
+       _effectsAndFx = effectsAndFx,
+       _rowSelectionVerbs = rowSelectionVerbs,
+       _trackSe = trackSe;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final SessionInternals _internals;
+  final EffectsAndFx _effectsAndFx;
+  final RowSelection _rowSelectionVerbs;
+  final TrackSeDisplay _trackSe;
 
   /// The in-flight row-order drag ([RowOrderDrag]), or null. The plans, the
   /// caret labels and the four commit paths live on the drag class; these
@@ -21,49 +48,46 @@ class _LayerRowDrag {
   void beginLayerRowDrag(LayerRowDragSubject subject) {
     _rowOrderDrag = RowOrderDrag(
       subject: subject,
-      channel: _session.layerRowDrag,
-      tracksNow: () => _session.repository.requireProject().tracks,
-      effectChainOf: _session._effectsAndFx._effectChainOf,
-      trackSeAnywhere: _session._trackSe.trackSeAnywhere,
-      activeCutOrNull: () => _session.activeCutOrNull,
-      isTrackSeLayerId: _session.isTrackSeLayerId,
-      rowSelectionCarriedBy: _session._rowSelection.rowSelectionCarriedBy,
+      channel: _internals.layerRowDrag,
+      tracksNow: () => _project.repository.requireProject().tracks,
+      effectChainOf: _effectsAndFx.effectChainOf,
+      trackSeAnywhere: _trackSe.trackSeAnywhere,
+      activeCutOrNull: () => _project.activeCutOrNull,
+      isTrackSeLayerId: _project.isTrackSeLayerId,
+      rowSelectionCarriedBy: _rowSelectionVerbs.rowSelectionCarriedBy,
       trackIdOfTransformLaneCarrier: trackIdOfTransformLaneCarrier,
-      mountModeFor: _session.cutCommandCoordinator.mountModeFor,
+      mountModeFor: _project.cutCommandCoordinator.mountModeFor,
       commitTrackReorder:
           ({required fromIndex, required toIndex, required trackName}) {
-            _session.historyManager.execute(
+            _project.historyManager.execute(
               ReorderTrackCommand(
-                repository: _session.repository,
+                repository: _project.repository,
                 fromIndex: fromIndex,
                 toIndex: toIndex,
                 trackName: trackName,
               ),
             );
-            _session.notifyChanged();
+            _changes.notifyChanged();
           },
-      commitTrackEffects: (trackId, effects) => _session.updateTrackEffects(
-        trackId,
-        effects,
-        description: 'Reorder effects',
-      ),
+      commitTrackEffects: (trackId, effects) => _effectsAndFx
+          .updateTrackEffects(trackId, effects, description: 'Reorder effects'),
       commitLayerEffects:
           ({required cutId, required layerId, required effects}) {
-            _session.cutCommandCoordinator.updateLayerEffects(
+            _project.cutCommandCoordinator.updateLayerEffects(
               cutId: cutId,
               layerId: layerId,
               effects: effects,
               description: 'Reorder effects',
             );
-            _session.refreshAfterCutCommand(preferredActiveLayerId: layerId);
-            _session.notifyChanged();
+            _changes.refreshAfterCutCommand(preferredActiveLayerId: layerId);
+            _changes.notifyChanged();
           },
       commitSeOrder: ({required trackId, required order}) {
-        _session.cutCommandCoordinator.setTrackSeOrder(
+        _project.cutCommandCoordinator.setTrackSeOrder(
           trackId: trackId,
           order: order,
         );
-        _session.notifyChanged();
+        _changes.notifyChanged();
       },
       commitPlacement:
           ({
@@ -72,7 +96,7 @@ class _LayerRowDrag {
             required subjectLayerId,
             required movedIds,
           }) {
-            _session.cutCommandCoordinator.setLayerPlacement(
+            _project.cutCommandCoordinator.setLayerPlacement(
               cutId: cutId,
               order: plan.order,
               folderIds: plan.folderIds,
@@ -82,10 +106,10 @@ class _LayerRowDrag {
               attach: plan.attach,
               description: 'Move layer',
             );
-            _session.refreshAfterCutCommand(
+            _changes.refreshAfterCutCommand(
               preferredActiveLayerId: subjectLayerId,
             );
-            _session.notifyChanged();
+            _changes.notifyChanged();
           },
     );
   }
@@ -130,7 +154,7 @@ class _LayerRowDrag {
     }
     // The drag stays held until the answer arrives: nothing is committed and
     // nothing is discarded while the question is on screen.
-    _session.attachFxConfirm.ask(
+    _internals.attachFxConfirm.ask(
       rowNames: [for (final layer in losing) layer.name],
       answer: (proceed) {
         _rowOrderDrag = null;

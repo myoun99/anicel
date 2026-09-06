@@ -1,4 +1,20 @@
-part of '../editor_session_manager.dart';
+import '../../models/camera_instruction.dart';
+import '../../models/camera_pose.dart';
+import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
+import '../../models/cut.dart';
+import '../../models/cut_camera.dart';
+import '../../models/transform_track.dart';
+import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timeline_frame_range.dart';
+import '../../services/camera_pose_resolver.dart';
+import '../../services/command.dart';
+import '../../services/commands/update_cut_camera_command.dart';
+import '../../services/commands/update_project_camera_size_command.dart';
+import '../brush/brush_editor_selection.dart';
+import 'session_roles.dart';
+import 'lane_range_move_drag.dart';
 
 /// The CAMERA — the frame size, the pose at a frame, the keyframes and the
 /// track that holds them, the instruction set and the block preview — as its
@@ -7,18 +23,35 @@ part of '../editor_session_manager.dart';
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: three fields of its own and fifteen
 /// session members touched (the timeline controller, the active cut, the cut
-/// command coordinator). It reaches the session through `_session`.
-class _Camera {
-  _Camera(this._session);
+/// command coordinator). It names the roles it needs in its constructor.
+class Camera {
+  Camera({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required LaneRangeMoveDragVerbs laneMove,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals,
+       _laneMove = laneMove;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final LaneRangeMoveDragVerbs _laneMove;
 
-  CutCamera get activeCutCamera => _session.requireActiveCut.camera;
+  CutCamera get activeCutCamera => _project.requireActiveCut.camera;
 
   /// The camera's output frame size (the exported picture size); the camera
   /// view rect on canvas is this divided by the pose zoom.
   CanvasSize get cameraFrameSize =>
-      _session.repository.requireProject().cameraSize;
+      _project.repository.requireProject().cameraSize;
 
   /// Sets the project's camera (shooting) frame — one undo step, no-op
   /// when unchanged. Poses are untouched: `CameraPose.zoom` is stated
@@ -27,19 +60,19 @@ class _Camera {
     if (size.width < 1 || size.height < 1 || size == cameraFrameSize) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       UpdateProjectCameraSizeCommand(
-        repository: _session.repository,
+        repository: _project.repository,
         cameraSize: size,
       ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Resolved camera pose at an arbitrary playback frame (for rendering).
   CameraPose cameraPoseAtFrame(int frameIndex) => resolveCameraPoseAt(
-    camera: _session.requireActiveCut.camera,
-    canvasSize: _session.requireActiveCut.canvasSize,
+    camera: _project.requireActiveCut.camera,
+    canvasSize: _project.requireActiveCut.canvasSize,
     frameIndex: frameIndex,
   );
 
@@ -73,9 +106,9 @@ class _Camera {
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work).
   CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
-    camera: _session.requireActiveCut.camera,
-    canvasSize: _session.requireActiveCut.canvasSize,
-    frameIndex: _session.timelineController.currentFrameIndex,
+    camera: _project.requireActiveCut.camera,
+    canvasSize: _project.requireActiveCut.canvasSize,
+    frameIndex: _timeline.timelineController.currentFrameIndex,
   );
 
   /// The camera pose the canvas should FRAME right now — not always the
@@ -84,7 +117,7 @@ class _Camera {
   /// "Which cut am I editing" and "which cut is under the playhead" are two
   /// questions, and a live scrub makes them disagree ON PURPOSE: crossing a
   /// boundary parks per move and leaves the active cut alone, because
-  /// switching it per move rebuilt every panel ([_session.scrubGlobalFrame]). The
+  /// switching it per move rebuilt every panel ([FrameScrub.scrubGlobalFrame]). The
   /// camera frame read the active cut through that, so a T.U that ended
   /// zoomed kept framing the NEXT cut's pictures at the size the cut being
   /// left had finished on — and dragging the other way showed no camera
@@ -94,18 +127,18 @@ class _Camera {
   /// there is no cut here (a gap, or the V-row eye's hidden picture), and
   /// then there is nothing to frame. Null says exactly that.
   CameraPose? get displayedCameraPose {
-    final parked = _session.frameScrubActive.value
-        ? _session.gapGlobalFrame
+    final parked = _internals.frameScrubActive.value
+        ? _selection.gapGlobalFrame
         : null;
     if (parked == null) {
-      return _session.activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
+      return _project.activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
     }
     // 🚨[TrackFrameAxis.ownerOf] hands a gap frame to the PRECEDING cut on
     // purpose (its over-end runway) — it is an addressing rule, not a
     // containment test. [TrackFrameAxis.isGap] is the containment test, and
     // it is the same pair [selectGlobalFrame] asks, so what the drag frames
     // and what the release lands cannot disagree.
-    final axis = _session.trackFrameAxis();
+    final axis = _timeline.trackFrameAxis();
     final owner = axis.isGap(parked) ? null : axis.ownerOf(parked);
     if (owner == null) {
       return null;
@@ -117,46 +150,46 @@ class _Camera {
   }
 
   bool get hasCameraKeyframeAtCurrentFrame =>
-      _session.activeCutOrNull?.camera.keyframeAt(
-        _session.timelineController.currentFrameIndex,
+      _project.activeCutOrNull?.camera.keyframeAt(
+        _timeline.timelineController.currentFrameIndex,
       ) !=
       null;
 
   void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.setCutCameraKeyframe(
+    _project.cutCommandCoordinator.setCutCameraKeyframe(
       cutId: cutId,
-      frameIndex: _session.timelineController.currentFrameIndex,
+      frameIndex: _timeline.timelineController.currentFrameIndex,
       pose: pose,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void removeCameraKeyframeAtCurrentFrame() {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.removeCutCameraKeyframe(
+    _project.cutCommandCoordinator.removeCutCameraKeyframe(
       cutId: cutId,
-      frameIndex: _session.timelineController.currentFrameIndex,
+      frameIndex: _timeline.timelineController.currentFrameIndex,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void clearActiveCutCamera() {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.clearCutCamera(cutId: cutId);
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.clearCutCamera(cutId: cutId);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Replaces the active cut's camera track (one undo step) — the property
@@ -165,7 +198,7 @@ class _Camera {
     TransformTrack track, {
     String description = 'Edit camera keyframes',
   }) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
@@ -173,8 +206,8 @@ class _Camera {
     // belongs to its cut, so this naming space has no second use site to
     // reach — but two keys sharing a name on one lane still move together,
     // which is the whole link at its smallest.
-    final before = _session.cutById(cutId)?.camera.track;
-    _session.cutCommandCoordinator.updateCutCamera(
+    final before = _project.cutById(cutId)?.camera.track;
+    _project.cutCommandCoordinator.updateCutCamera(
       cutId: cutId,
       camera: CutCamera.fromTrack(
         before == null
@@ -186,28 +219,28 @@ class _Camera {
       ),
       description: description,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Whether the canvas is in camera manipulation mode.
   bool get isCameraLayerActive =>
-      _session.activeLayer?.kind == LayerKind.camera;
+      _selection.activeLayer?.kind == LayerKind.camera;
 
   /// What the canvas shows while the camera layer is active: the first
   /// visible drawing layer with a frame at the playhead, so there is artwork
   /// to frame. `null` when the cut has nothing drawn at this frame.
   BrushEditorSelection? get cameraBackdropSelection {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return null;
     }
-    final frameIndex = _session.timelineController.currentFrameIndex;
+    final frameIndex = _timeline.timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
       if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
         continue;
       }
-      final frame = _session.timelineController.resolveFrameForLayer(
+      final frame = _timeline.timelineController.resolveFrameForLayer(
         layer: layer,
         frameIndex: frameIndex,
       );
@@ -215,8 +248,8 @@ class _Camera {
         continue;
       }
       return BrushEditorSelection(
-        projectId: _session.repository.requireProject().id,
-        trackId: _session.selectedTrackId,
+        projectId: _project.repository.requireProject().id,
+        trackId: _selection.selectedTrackId,
         cutId: cut.id,
         layerId: layer.id,
         frameId: frame.id,
@@ -227,17 +260,17 @@ class _Camera {
 
   /// The project's instruction vocabulary (FI/FO/PAN …, user-editable).
   CameraInstructionSet get cameraInstructionSet =>
-      _session.repository.requireProject().cameraInstructions;
+      _project.repository.requireProject().cameraInstructions;
 
   /// One undo step; no-op when unchanged.
   void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
-    _session.cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
+    _changes.notifyChanged();
   }
 
   Command? cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
-    final cut = _session.activeCutOrNull;
-    final cutId = _session.editingSession.activeCutId;
+    final cut = _project.activeCutOrNull;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cut == null || cutId == null) {
       return null;
     }
@@ -267,7 +300,7 @@ class _Camera {
       return null;
     }
     return UpdateCutCameraCommand(
-      repository: _session.repository,
+      repository: _project.repository,
       cutId: cutId,
       camera: camera,
       description: 'Create camera keys',
@@ -310,12 +343,17 @@ class _Camera {
   /// drag live instead of jumping on release — and every reader moves in
   /// the same frame.
   TransformTrack? get activeCutCameraTrack =>
-      _session._laneMove._cameraLaneTrackPreview ??
+      _laneMove.cameraLaneTrackPreview ??
       _cameraBlockPreviewTrack ??
-      _session.activeCutOrNull?.camera.track;
+      _project.activeCutOrNull?.camera.track;
 
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag
   /// without the repository moving.
   Map<int, CameraPose>? _cameraKeysDragPreview;
+
+  /// The block-ride drag hands its shifted keys in here per move and
+  /// clears them (null) on release — the one writer outside this object.
+  void showCameraKeysDragPreview(Map<int, CameraPose>? keys) =>
+      _cameraKeysDragPreview = keys;
 }

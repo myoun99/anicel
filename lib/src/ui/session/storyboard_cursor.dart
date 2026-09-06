@@ -1,4 +1,20 @@
-part of '../editor_session_manager.dart';
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
+import '../../models/exposure_memo.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/storyboard_coverage.dart';
+import '../../models/timeline_coverage.dart';
+import '../../models/timeline_row_address.dart';
+import '../storyboard_layer_policy.dart';
+import '../text/app_strings.dart';
+import '../../services/command.dart';
+import 'session_roles.dart';
+import 'range_selections.dart';
+import 'cell_verbs.dart';
+import 'cut_verbs.dart';
+import 'transitions.dart';
 
 /// The STORYBOARD CURSOR — what the cell under the storyboard cursor is,
 /// and the verbs that act there: the comma, deleting the block, creating an
@@ -6,11 +22,21 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own and seventeen
-/// session members touched. It reaches the session through `_session`.
-class _StoryboardCursor {
-  _StoryboardCursor(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class StoryboardCursor {
+  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required TimelineAccess timeline, required SessionInternals internals, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _timeline = timeline, _internals = internals, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
 
-  final EditorSessionManager _session;
+  final CellVerbs _cells;
+  final CutVerbs _cutVerbs;
+  final Transitions _transitions;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final FrameIds _frameIds;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final RangeSelections _rangeSelections;
 
   /// Why the storyboard toggle is refused, or null when it is allowed.
   ///
@@ -19,11 +45,11 @@ class _StoryboardCursor {
   /// rather than silently doing nothing, and rather than making the second
   /// row that used to red-screen the V row.
   String? get targetLayerStoryboardRefusal {
-    final targetLayer = _session._targetLayerForKindToggle;
+    final targetLayer = _internals.targetLayerForKindToggle;
     if (targetLayer == null || targetLayer.kind == LayerKind.storyboard) {
       return null;
     }
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null ||
         cutAcceptsAnotherStoryboardLayer(cut, exceptLayerId: targetLayer.id)) {
       return null;
@@ -43,7 +69,7 @@ class _StoryboardCursor {
     required int cellIndex,
     required String action,
   }) {
-    final cut = _session.cutById(cutId);
+    final cut = _project.cutById(cutId);
     if (cut == null) {
       return;
     }
@@ -63,7 +89,7 @@ class _StoryboardCursor {
     if (entry == null || !entry.isDrawing || entry.ghost) {
       return;
     }
-    _session.cutCommandCoordinator.updateExposureMemo(
+    _project.cutCommandCoordinator.updateExposureMemo(
       cutId: cutId,
       layerId: layer.id,
       blockStartIndex: blockStart,
@@ -71,25 +97,25 @@ class _StoryboardCursor {
         actionMemo: action,
       ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// The BLOCK under the storyboard cursor, whatever its kind: the standing
   /// V row's cut, the standing S row's SE block, or the transition row's
   /// span. Null where the cursor covers nothing (a gap is an honest
   /// nothing, not a fallback to the other panel's subject).
-  _StoryboardCursorBlock? _storyboardCursorBlockOrNull() {
-    switch (_session.selectedRow) {
+  StoryboardCursorBlock? storyboardCursorBlockOrNull() {
+    switch (_selection.selectedRow) {
       case LayerRowAddress(:final layerId)
-          when _session.isTrackTransitionLayerId(layerId):
-        final span = _session.transitionSpanAt(_session.editingGlobalFrame);
+          when _project.isTrackTransitionLayerId(layerId):
+        final span = _transitions.transitionSpanAt(_selection.editingGlobalFrame);
         if (span == null) {
           return null;
         }
-        return _StoryboardCursorTransitionSpan(span.key, span.value.length);
+        return StoryboardCursorTransitionSpan(span.key, span.value.length);
       case LayerRowAddress(:final layerId):
-        final global = _session.trackSeGlobalLayerById(layerId);
-        final frame = _session.editingGlobalFrame;
+        final global = _project.trackSeGlobalLayerById(layerId);
+        final frame = _selection.editingGlobalFrame;
         if (global == null || frame < 0) {
           return null;
         }
@@ -97,7 +123,7 @@ class _StoryboardCursor {
         if (block == null || block.entry.ghost) {
           return null;
         }
-        return _StoryboardCursorSeBlock(layerId, block.startIndex);
+        return StoryboardCursorSeBlock(layerId, block.startIndex);
       case LaneRowAddress():
         // A lane row holds keys, not blocks — the lane-verb family owns it.
         return null;
@@ -105,10 +131,10 @@ class _StoryboardCursor {
         // Not parked in a gap ⇒ the cut-local playhead sits inside the
         // ACTIVE cut, so the cut under the cursor is that cut by
         // construction (the storyboard's cell press promotes it).
-        if (_session.editingPlayheadInGap) {
+        if (_internals.editingPlayheadInGap) {
           return null;
         }
-        final cut = _session.activeCutOrNull;
+        final cut = _project.activeCutOrNull;
         if (cut == null) {
           return null;
         }
@@ -122,10 +148,10 @@ class _StoryboardCursor {
         if (row != null) {
           final panel = coveringDrawingBlockAt(
             row.timeline,
-            _session.timelineController.currentFrameIndex,
+            _timeline.timelineController.currentFrameIndex,
           );
           if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
-            return _StoryboardCursorStoryboardPanel(
+            return StoryboardCursorStoryboardPanel(
               cut,
               row,
               panel.startIndex,
@@ -133,62 +159,62 @@ class _StoryboardCursor {
             );
           }
         }
-        return _StoryboardCursorCutBlock(cut);
+        return StoryboardCursorCutBlock(cut);
     }
   }
 
   /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live
   /// selection's blocks — either axis — else the block under the cursor.
   bool get canSetCommaForStoryboardCursor {
-    if (_session._rangeSelections.selectionBlockStartsByLayer() != null) {
+    if (_rangeSelections.selectionBlockStartsByLayer() != null) {
       return true;
     }
     // Its own dispatch already stops at a live band ([setCommaForStoryboardCursor]
     // returns inside the selection branch), so the gate stops there too —
     // otherwise the band falls through to the CURSOR rung and lights the
     // buttons off a cut block the press will never reach.
-    if (_session.cellSelectionClaimsSubject) {
+    if (_cells.cellSelectionClaimsSubject) {
       return false;
     }
-    return switch (_storyboardCursorBlockOrNull()) {
+    return switch (storyboardCursorBlockOrNull()) {
       null => false,
       // ⛔An SE block used to answer `activeCutOrNull != null` here, on the
       // grounds that "a parked playhead has no cut to lens through" — the
       // lens is 0 for a track row and the lookup no longer wants a cut
       // (H11). A global row is reachable wherever it is standing.
-      _StoryboardCursorSeBlock() ||
-      _StoryboardCursorCutBlock() ||
-      _StoryboardCursorTransitionSpan() ||
-      _StoryboardCursorStoryboardPanel() => true,
+      StoryboardCursorSeBlock() ||
+      StoryboardCursorCutBlock() ||
+      StoryboardCursorTransitionSpan() ||
+      StoryboardCursorStoryboardPanel() => true,
     };
   }
 
   /// Whether the storyboard's delete has a block under the cursor (its
   /// selection rungs are asked separately — see the toolbar context).
   bool get canDeleteBlockAtStoryboardCursor =>
-      switch (_storyboardCursorBlockOrNull()) {
+      switch (storyboardCursorBlockOrNull()) {
         null => false,
         // H11: a track row answers wherever it stands — see the create gate.
-        _StoryboardCursorSeBlock() ||
-        _StoryboardCursorCutBlock() ||
-        _StoryboardCursorTransitionSpan() ||
+        StoryboardCursorSeBlock() ||
+        StoryboardCursorCutBlock() ||
+        StoryboardCursorTransitionSpan() ||
         // D28 ⚠️: delete keeps the CUT answer for now — whether the shared
         // delete should remove the PANEL instead is a recorded user
         // question (the frame pill retargeted; the verb matrix beyond it
         // is the user's to rule).
-        _StoryboardCursorStoryboardPanel() => true,
+        StoryboardCursorStoryboardPanel() => true,
       };
 
   /// Deletes THE BLOCK UNDER THE CURSOR, whatever its kind — the cut, the
   /// SE block, or the transition span, each through its own existing
   /// removal verb. One undo step each, like the cell delete it mirrors.
   void deleteBlockAtStoryboardCursor() {
-    switch (_storyboardCursorBlockOrNull()) {
+    switch (storyboardCursorBlockOrNull()) {
       case null:
         return;
-      case _StoryboardCursorCutBlock() || _StoryboardCursorStoryboardPanel():
-        _session.deleteActiveCut();
-      case _StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
+      case StoryboardCursorCutBlock() || StoryboardCursorStoryboardPanel():
+        _cutVerbs.deleteActiveCut();
+      case StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
         // ⛔This used to return when `activeCutOrNull == null` — the fourth
         // copy of the sentence H11 retired (「a parked playhead has no cut
         // to lens through」, 유저 2026-08-22: 「각 행들은 독립적인 글로벌행이라
@@ -196,12 +222,12 @@ class _StoryboardCursor {
         // gap; the lookup below finds the track row without a cut; the verb
         // was the one still refusing. Found by the adversarial check on the
         // 2026-09-02 cut — the verb had no test of its own.
-        _session.timelineController.deleteBlocksForLayers({
+        _timeline.timelineController.deleteBlocksForLayers({
           layerId: [blockStartIndex],
         });
-        _session.notifyChanged();
-      case _StoryboardCursorTransitionSpan():
-        _session.removeTransitionSpanAt(_session.editingGlobalFrame);
+        _changes.notifyChanged();
+      case StoryboardCursorTransitionSpan():
+        _transitions.removeTransitionSpanAt(_selection.editingGlobalFrame);
     }
   }
 
@@ -217,40 +243,39 @@ class _StoryboardCursor {
     // Standing on one of the row's LANES answers with the row (C3-lane-move,
     // and [LaneRowAddress]'s own law: standing on a property must never cost
     // you the layer).
-    final rowLayerId = _session.selectedRow.owningLayerId;
-    if (rowLayerId == null || _session.isTrackTransitionLayerId(rowLayerId)) {
+    final rowLayerId = _selection.selectedRow.owningLayerId;
+    if (rowLayerId == null || _project.isTrackTransitionLayerId(rowLayerId)) {
       return false;
     }
-    final global = _session.trackSeGlobalLayerById(rowLayerId);
-    final frame = _session.editingGlobalFrame;
+    final global = _project.trackSeGlobalLayerById(rowLayerId);
+    final frame = _selection.editingGlobalFrame;
     return global != null &&
         frame >= 0 &&
         coveringDrawingBlockAt(global.timeline, frame) == null;
   }
 
   /// One blank one-frame dialogue entry at the cursor — the cut-scoped SE
-  /// creation ([_session.createSeEntryAtCurrentFrame]) said of the standing row, via
+  /// creation ([SeEntries.createSeEntryAtCurrentFrame]) said of the standing row, via
   /// the SAME fills funnel the track-range create commits through.
   void createSeEntryAtStoryboardCursor() {
     if (!canCreateSeEntryAtStoryboardCursor) {
       return;
     }
-    final row = _session.selectedRow as LayerRowAddress;
+    final row = _selection.selectedRow as LayerRowAddress;
     final layerId = row.layerId;
-    _session._frameSequence += 1;
     // ⚠️The fills funnel re-applies the track-SE display lens on the way in
     // (the active cut's global start) — pre-subtract the SAME expression,
     // exactly as [_createTrackSeEntriesForRange] does, or the entry lands
     // double-shifted.
-    final commands = _session.timelineController
+    final commands = _timeline.timelineController
         .drawingFramesCommandsForLayers({
           layerId: [
             (
               startIndex:
-                  _session.editingGlobalFrame -
-                  _session.activeCutGlobalStartFrame,
+                  _selection.editingGlobalFrame -
+                  _project.activeCutGlobalStartFrame,
               length: 1,
-              frameId: FrameId(_session.nextFrameId(layerId)),
+              frameId: _frameIds.mintFrameId(layerId),
               name: '',
             ),
           ],
@@ -258,7 +283,7 @@ class _StoryboardCursor {
     if (commands.isEmpty) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -266,7 +291,7 @@ class _StoryboardCursor {
               commands: commands,
             ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// D28: whether the frame ＋ can DIVIDE the storyboard panel under the
@@ -274,10 +299,10 @@ class _StoryboardCursor {
   /// divide there (the timeline's own creation law); gate and dispatch
   /// read the ONE cursor resolver (T25).
   bool get canCreateStoryboardPanelAtCursor {
-    if (_storyboardCursorBlockOrNull() case _StoryboardCursorStoryboardPanel(
+    if (storyboardCursorBlockOrNull() case StoryboardCursorStoryboardPanel(
       :final panelStartIndex,
     )) {
-      return _session.timelineController.currentFrameIndex != panelStartIndex;
+      return _timeline.timelineController.currentFrameIndex != panelStartIndex;
     }
     return false;
   }
@@ -286,19 +311,68 @@ class _StoryboardCursor {
   /// splits, the new drawing taking the rest of the hold, exactly as the
   /// timeline's ＋ divides a held block.
   void createStoryboardPanelAtCursor() {
-    if (_storyboardCursorBlockOrNull() case _StoryboardCursorStoryboardPanel(
+    if (storyboardCursorBlockOrNull() case StoryboardCursorStoryboardPanel(
       :final row,
       :final panelStartIndex,
     )) {
-      if (_session.timelineController.currentFrameIndex == panelStartIndex) {
+      if (_timeline.timelineController.currentFrameIndex == panelStartIndex) {
         return;
       }
-      _session._frameSequence += 1;
-      _session.timelineController.createDrawingFrameForLayer(
+      _timeline.timelineController.createDrawingFrameForLayer(
         layerId: row.id,
-        frameId: FrameId(_session.nextFrameId(row.id)),
+        frameId: _frameIds.mintFrameId(row.id),
       );
-      _session.notifyChanged();
+      _changes.notifyChanged();
     }
   }
+}
+
+/// B8 — the block under the STORYBOARD cursor (standing row × track-global
+/// playhead), resolved once per verb so the gates and the dispatches read
+/// one answer. Kinds, not rules: every kind takes the same verbs (comma =
+/// length, delete = removal), each through its own existing machinery.
+sealed class StoryboardCursorBlock {
+  const StoryboardCursorBlock();
+}
+
+class StoryboardCursorCutBlock extends StoryboardCursorBlock {
+  const StoryboardCursorCutBlock(this.cut);
+
+  final Cut cut;
+}
+
+class StoryboardCursorSeBlock extends StoryboardCursorBlock {
+  const StoryboardCursorSeBlock(this.layerId, this.blockStartIndex);
+
+  final LayerId layerId;
+
+  /// GLOBAL — the S rows' timelines live on the track's axis.
+  final int blockStartIndex;
+}
+
+class StoryboardCursorTransitionSpan extends StoryboardCursorBlock {
+  const StoryboardCursorTransitionSpan(this.spanStartIndex, this.spanLength);
+
+  final int spanStartIndex;
+  final int spanLength;
+}
+
+/// D28: the cut's STORYBOARD PANEL under the cursor — with a storyboard
+/// layer on the cut, the frame verbs target the panel, not the cut
+/// (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」, the later law
+/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel exists).
+class StoryboardCursorStoryboardPanel extends StoryboardCursorBlock {
+  const StoryboardCursorStoryboardPanel(
+    this.cut,
+    this.row,
+    this.panelStartIndex,
+    this.panelLength,
+  );
+
+  final Cut cut;
+  final Layer row;
+
+  /// CUT-LOCAL — the storyboard row lives inside its cut.
+  final int panelStartIndex;
+  final int panelLength;
 }

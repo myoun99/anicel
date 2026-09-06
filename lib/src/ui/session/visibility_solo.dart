@@ -1,4 +1,7 @@
-part of '../editor_session_manager.dart';
+import '../../models/cut_id.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer_id.dart';
+import 'session_roles.dart';
 
 /// VISIBILITY SOLO — showing one layer alone and remembering what the others
 /// looked like so leaving solo restores them — as its own object: the
@@ -6,11 +9,15 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: three fields of its own and eight
-/// session members touched. It reaches the session through `_session`.
-class _VisibilitySolo {
-  _VisibilitySolo(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class VisibilitySolo {
+  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required SessionInternals internals}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
   /// engaging it snapshots every row's eye (cut layers + track SE), turns
@@ -33,23 +40,23 @@ class _VisibilitySolo {
       exitVisibilitySolo();
     } else {
       _layerVisibilitySoloEnabled = true;
-      _visibilitySoloCutId = _session.editingSession.activeCutId;
+      _visibilitySoloCutId = _timeline.editingSession.activeCutId;
       _visibilitySoloSnapshot = {
-        for (final layer in _session.layers) layer.id: layer.isVisible,
+        for (final layer in _project.layers) layer.id: layer.isVisible,
       };
       _applyVisibilitySolo();
     }
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Re-solos to the CURRENT active layer. Rows born during the solo join
   /// the snapshot with their pre-flip eye so exiting restores them too.
   void _applyVisibilitySolo() {
-    final activeId = _session.activeLayerId;
+    final activeId = _selection.activeLayerId;
     if (activeId == null) {
       return;
     }
-    final stack = _session.layers;
+    final stack = _project.layers;
     // 🚨THE ANCESTORS STAY ON. Solo means "show this row alone", and a row
     // inside a folder is not shown by its own eye — turning every OTHER row
     // off turned its folders off with them, so soloing a row inside a folder
@@ -79,8 +86,8 @@ class _VisibilitySolo {
     }
     // Two batches, not one per row: Solo hides most of the stack and shows
     // a few, and each side is one undo step rather than a screenful.
-    _session.layerController.setLayersVisible(layerIds: toShow, visible: true);
-    _session.layerController.setLayersVisible(
+    _timeline.layerController.setLayersVisible(layerIds: toShow, visible: true);
+    _timeline.layerController.setLayersVisible(
       layerIds: toHide,
       visible: false,
     );
@@ -98,7 +105,7 @@ class _VisibilitySolo {
     // the solo have nothing to restore (skip).
     snapshot.forEach((layerId, visible) {
       try {
-        _session.repository.updateLayer(
+        _project.repository.updateLayer(
           layerId: layerId,
           update: (layer) => layer.isVisible == visible
               ? layer
@@ -116,7 +123,7 @@ class _VisibilitySolo {
     if (!_layerVisibilitySoloEnabled) {
       return;
     }
-    if (_session.editingSession.activeCutId != _visibilitySoloCutId) {
+    if (_timeline.editingSession.activeCutId != _visibilitySoloCutId) {
       exitVisibilitySolo();
     } else {
       _applyVisibilitySolo();
@@ -125,12 +132,12 @@ class _VisibilitySolo {
 
   /// Toggles an SE row's solo (pro semantics: multiple solos stack).
   void toggleLayerSolo(LayerId layerId) {
-    final next = Set<LayerId>.of(_session.soloedSeLayerIds.value);
+    final next = Set<LayerId>.of(_internals.soloedSeLayerIds.value);
     if (!next.remove(layerId)) {
       next.add(layerId);
     }
-    _session.soloedSeLayerIds.value = next;
-    _session.refreshLiveAudioSchedule();
-    _session.notifyChanged();
+    _internals.soloedSeLayerIds.value = next;
+    _changes.refreshLiveAudioSchedule();
+    _changes.notifyChanged();
   }
 }

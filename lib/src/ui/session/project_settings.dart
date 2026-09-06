@@ -1,4 +1,9 @@
-part of '../editor_session_manager.dart';
+import '../../models/project_background.dart';
+import '../../models/project.dart';
+import '../../models/project_frame_rate.dart';
+import '../../models/storyboard_timeline_layout.dart';
+import '../../services/commands/update_project_frame_rate_command.dart';
+import 'session_roles.dart';
 
 /// The PROJECT SETTINGS — the project's frame rate, backdrop, background,
 /// pasteboard, and the storyboard timeline layout memo — as their own
@@ -9,44 +14,52 @@ part of '../editor_session_manager.dart';
 /// 2026-09-02). Dry-run before cutting: two memo fields of its own, and
 /// the rest reads it in four places (the track axis and the flip asking
 /// for the layout).
-class _ProjectSettings {
-  _ProjectSettings(this._session);
+class ProjectSettings {
+  ProjectSettings({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required SessionInternals internals,
+  }) : _project = project,
+       _changes = changes,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final SessionInternals _internals;
 
   /// One undo step; no-op when unchanged. Writes the PROJECT's pasteboard
   /// (R3b promotion) — and remembers the choice as the app-level default
   /// for the NEXT project, which is all that remains of the old app-state
   /// pasteboard.
   void setPasteboardColor(int argb) {
-    _session.cutCommandCoordinator.setProjectPasteboard(argb);
-    _session.notifyChanged();
-    _session._appSettings.rememberPasteboardDefault(argb);
+    _project.cutCommandCoordinator.setProjectPasteboard(argb);
+    _changes.notifyChanged();
+    _internals.appSettings.rememberPasteboardDefault(argb);
   }
 
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
   /// opaque floor — what a fade reveals and what an opaque export bakes
   /// where nothing covers.
   void setProjectBackdrop(int argb) {
-    _session.cutCommandCoordinator.setProjectBackdrop(argb);
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.setProjectBackdrop(argb);
+    _changes.notifyChanged();
   }
 
   /// How far past the canvas the pasteboard SHOWS, in canvas widths and
   /// heights — where the pasteboard stops and the backdrop begins. One undo
   /// step; no-op when unchanged.
   void setProjectPasteboardMargin(double margin) {
-    _session.cutCommandCoordinator.setProjectPasteboardMargin(margin);
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.setProjectPasteboardMargin(margin);
+    _changes.notifyChanged();
   }
 
   /// The exact rate, for the surfaces that convert frames to REAL TIME
   /// (playback clock, audio placement, export). Everything that merely
   /// COUNTS frames wants [projectFps] instead.
   ProjectFrameRate get projectFrameRate =>
-      _session.repository.requireProject().frameRate;
+      _project.repository.requireProject().frameRate;
 
-  int get projectFps => _session.repository.requireProject().fps;
+  int get projectFps => _project.repository.requireProject().fps;
 
   void setProjectFrameRate(ProjectFrameRate frameRate) {
     if (frameRate.numerator < 1 ||
@@ -55,14 +68,14 @@ class _ProjectSettings {
         frameRate == projectFrameRate) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       UpdateProjectFrameRateCommand(
-        repository: _session.repository,
+        repository: _project.repository,
         frameRate: frameRate,
       ),
     );
-    _session.warmActiveCut();
-    _session.notifyChanged();
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
   }
 
   /// Whole-number convenience for the callers that only ever mean an
@@ -77,14 +90,14 @@ class _ProjectSettings {
   /// The project's paper/background (R10-⑥): canvas paper, playback gap
   /// fill and export backing.
   ProjectBackground get projectBackground =>
-      _session.repository.requireProject().background;
+      _project.repository.requireProject().background;
 
   /// One undo step; no-op when unchanged. Composites are untouched — the
   /// background paints at display/export time, never baked (the camera
   /// rule).
   void setProjectBackground(ProjectBackground background) {
-    _session.cutCommandCoordinator.setProjectBackground(background);
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.setProjectBackground(background);
+    _changes.notifyChanged();
   }
 
   /// The whole-project layout, memoized on PROJECT IDENTITY: scrubs ask
@@ -98,7 +111,7 @@ class _ProjectSettings {
   /// cuts through here rather than rebuilding a second layout that could
   /// disagree with the one the flip walks.
   List<StoryboardTimelineLayoutEntry> projectLayout() {
-    final project = _session.repository.requireProject();
+    final project = _project.repository.requireProject();
     return _layout.resolve(
       identity: project,
       build: () => buildStoryboardTimelineLayout(project),

@@ -1,4 +1,16 @@
-part of '../editor_session_manager.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/timeline_empty_gaps.dart';
+import '../../models/timeline_row_address.dart';
+import '../../models/track.dart';
+import '../../models/track_frame_range.dart';
+import '../../models/track_se_window.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../../services/command.dart';
+import 'session_roles.dart';
+import 'transitions.dart';
+import 'editor_voice_recording.dart';
 
 /// The TRACK SE DISPLAY — a track's SE layers as the cut's rail shows them:
 /// the window a cut sees, the display clones and their cache, which rail
@@ -7,16 +19,23 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and
-/// fourteen session members touched. It reaches the session through
-/// `_session`.
-class _TrackSeDisplay {
-  _TrackSeDisplay(this._session);
+/// fourteen session members touched. It names the roles it needs in
+/// its constructor.
+class TrackSeDisplay {
+  TrackSeDisplay({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required TimelineAccess timeline, required Transitions transitions, required EditorVoiceRecording voiceRecording}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _timeline = timeline, _transitions = transitions, _voiceRecording = voiceRecording;
 
-  final EditorSessionManager _session;
+  final EditorVoiceRecording _voiceRecording;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final FrameIds _frameIds;
+  final TimelineAccess _timeline;
+  final Transitions _transitions;
 
   TrackSeWindow get trackSeWindow => TrackSeWindow(
-    cutStartFrame: _session.activeCutGlobalStartFrame,
-    cutDurationFrames: _session.activeCutOrNull?.duration ?? 0,
+    cutStartFrame: _project.activeCutGlobalStartFrame,
+    cutDurationFrames: _project.activeCutOrNull?.duration ?? 0,
   );
 
   /// Whether [layerId] names a TRACK-owned SE row — a question about what
@@ -41,7 +60,7 @@ class _TrackSeDisplay {
   /// SE-specific (block snapping, sound order drags, range moves) keeps
   /// asking the SE question.
   bool isTrackOwnedRailLayerId(LayerId layerId) =>
-      isTrackSeLayerId(layerId) || _session.isTrackTransitionLayerId(layerId);
+      isTrackSeLayerId(layerId) || _project.isTrackTransitionLayerId(layerId);
 
   /// The track that owns [layerId] as one of its rail rows — the resolver half
   /// of [isTrackOwnedRailLayerId], for the verbs that need the track and not
@@ -49,15 +68,15 @@ class _TrackSeDisplay {
   Track? trackOwnedRailOwner(LayerId layerId) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     return trackSeAnywhere(layerId)?.track ??
-        _session._transitions.trackTransitionOwner(layerId) ??
+        _transitions.trackTransitionOwner(layerId) ??
         // C②: the V track's synthetic lane CARRIER is a rail row too — an
         // escalated lane drag anchors the track-axis selection on it.
-        (carrierTrackId == null ? null : _session.trackById(carrierTrackId));
+        (carrierTrackId == null ? null : _project.trackById(carrierTrackId));
   }
 
   /// The GLOBAL track layer for [layerId] (never a display clone).
   Layer? trackSeGlobalLayerById(LayerId layerId) {
-    for (final layer in _session.activeTrack.seLayers) {
+    for (final layer in _selection.activeTrack.seLayers) {
       if (layer.id == layerId) {
         return layer;
       }
@@ -98,9 +117,9 @@ class _TrackSeDisplay {
   /// commits and undo keep reading the repository lane untouched.
   List<Layer> get trackSeDisplayLayers {
     final window = trackSeWindow;
-    final preview = _session.voiceRecordPreviewLane.value;
+    final preview = _voiceRecording.voiceRecordPreviewLane.value;
     return [
-      for (final layer in _session.activeTrack.seLayers)
+      for (final layer in _selection.activeTrack.seLayers)
         _trackSeDisplayCloneFor(
           window,
           preview != null && preview.id == layer.id ? preview : layer,
@@ -115,20 +134,20 @@ class _TrackSeDisplay {
   Set<LayerId> get trackSeSpillInLayerIds {
     final window = trackSeWindow;
     return {
-      for (final layer in _session.activeTrack.seLayers)
+      for (final layer in _selection.activeTrack.seLayers)
         if (window.spillInBlock(layer) != null) layer.id,
     };
   }
 
   /// The PLAN half of the track rung, mutation-free: which S rows the
   /// range names and which uncovered runs they hold. Split out so the
-  /// button's enabled ([_session.canCreateInstance]) and the verb read the SAME
+  /// button's enabled ([_internals.canCreateInstance]) and the verb read the SAME
   /// walk — a twin implementation is how enabled and dispatch drift.
   Map<Layer, List<({int startIndex, int length})>> trackSeCreationGaps(
     TrackFrameRangeSelection range,
   ) {
     Track? track;
-    for (final candidate in _session.repository.requireProject().tracks) {
+    for (final candidate in _project.repository.requireProject().tracks) {
       if (candidate.id == range.trackId) {
         track = candidate;
         break;
@@ -173,16 +192,15 @@ class _TrackSeDisplay {
       // gaps are already GLOBAL — pre-subtract the SAME expression the
       // lens uses, or every entry lands double-shifted.
       final lensOffset = isTrackSeLayerId(layer.id)
-          ? _session.activeCutGlobalStartFrame
+          ? _project.activeCutGlobalStartFrame
           : 0;
       final layerFills =
           <({int startIndex, int length, FrameId frameId, String? name})>[];
       for (final gap in entry.value) {
-        _session._frameSequence += 1;
         layerFills.add((
           startIndex: gap.startIndex - lensOffset,
           length: gap.length,
-          frameId: FrameId(_session.nextFrameId(layer.id)),
+          frameId: _frameIds.mintFrameId(layer.id),
           // A blank DIALOGUE, like the cut-scope SE creation makes — the
           // entry exists to be written into.
           name: '',
@@ -193,9 +211,9 @@ class _TrackSeDisplay {
     if (fills.isEmpty) {
       return false;
     }
-    final commands = _session.timelineController
+    final commands = _timeline.timelineController
         .drawingFramesCommandsForLayers(fills);
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(
@@ -203,17 +221,17 @@ class _TrackSeDisplay {
               commands: commands,
             ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
     return true;
   }
 
   /// The track that owns [layerId] as one of its SE lanes, with the GLOBAL
   /// layer itself — ANY track, not just the selected one. A storyboard
   /// drag anchors on whatever row sits under the pointer, and resolving
-  /// through [_session.selectedTrackId]/[trackSeGlobalLayerById] (both active-track
+  /// through [_selection.selectedTrackId]/[trackSeGlobalLayerById] (both active-track
   /// bound) made every verb on an unselected track's row a silent no-op.
   ({Track track, Layer layer})? trackSeAnywhere(LayerId layerId) {
-    for (final track in _session.repository.requireProject().tracks) {
+    for (final track in _project.repository.requireProject().tracks) {
       for (final layer in track.seLayers) {
         if (layer.id == layerId) {
           return (track: track, layer: layer);

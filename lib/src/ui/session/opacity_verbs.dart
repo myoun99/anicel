@@ -1,4 +1,15 @@
-part of '../editor_session_manager.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/transform_track.dart';
+import '../../models/cut_id.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/track_id.dart';
+import '../../models/transition_geometry.dart';
+import '../../services/cut_frame_composite_plan.dart';
+import 'session_roles.dart';
+import 'transitions.dart';
 
 /// The OPACITY VERBS — a layer's, several layers' and a track's opacity:
 /// what the stack shows, the preview while a slider moves and the commit
@@ -8,10 +19,25 @@ part of '../editor_session_manager.dart';
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: the rest reads it in two places
 /// (the editing canvas stack asking what the stack shows).
-class _OpacityVerbs {
-  _OpacityVerbs(this._session);
+class OpacityVerbs {
+  OpacityVerbs({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required Transitions transitions,
+  }) : _project = project,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals,
+       _transitions = transitions;
 
-  final EditorSessionManager _session;
+  final Transitions _transitions;
+
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// The display opacity the editing stack (and the interactive view's
   /// dimming) uses for [layer]: the shared composite semantics — an attach
@@ -68,20 +94,20 @@ class _OpacityVerbs {
   /// past the end line are ordinary space and only a covering span may thin
   /// them.
   double activeCutEditingFadeOpacity({int? frameIndex}) {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return 1;
     }
     final static = trackStaticOpacityForCut(cut.id);
-    final start = _session.activeCutGlobalStartFrame;
+    final start = _project.activeCutGlobalStartFrame;
     return static *
         cutTransitionRampAt(
           cutStart: start,
           cutEnd: start + cut.duration,
-          spans: _session.activeTrackTransitionSpans,
+          spans: _transitions.activeTrackTransitionSpans,
           globalFrame:
               start +
-              (frameIndex ?? _session.timelineController.currentFrameIndex),
+              (frameIndex ?? _timeline.timelineController.currentFrameIndex),
         );
   }
 
@@ -89,53 +115,53 @@ class _OpacityVerbs {
   /// drag value while one is in flight, the stored value otherwise. The
   /// composite surfaces call the [forCut] form.
   double trackStaticOpacity(TrackId trackId) {
-    final dragging = _session.trackOpacityDragPreview.value;
+    final dragging = _internals.trackOpacityDragPreview.value;
     if (dragging != null && dragging.trackId == trackId) {
       return dragging.opacity;
     }
-    return _session.trackById(trackId)?.opacity ?? 1.0;
+    return _project.trackById(trackId)?.opacity ?? 1.0;
   }
 
   double trackStaticOpacityForCut(CutId cutId) {
-    final owner = _session.trackOwningCut(cutId);
+    final owner = _project.trackOwningCut(cutId);
     return owner == null ? 1.0 : trackStaticOpacity(owner.id);
   }
 
   void previewTrackOpacity(TrackId trackId, double opacity) {
-    _session.trackOpacityDragPreview.value = (
+    _internals.trackOpacityDragPreview.value = (
       trackId: trackId,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
   }
 
   void commitTrackOpacity(TrackId trackId, double opacity) {
-    _session.trackOpacityDragPreview.value = null;
-    _session.cutCommandCoordinator.updateTrackDisplay(
+    _internals.trackOpacityDragPreview.value = null;
+    _project.cutCommandCoordinator.updateTrackDisplay(
       trackId: trackId,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
       description: 'Track opacity',
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    _session.layerController.setLayerOpacity(
+    _timeline.layerController.setLayerOpacity(
       layerId: layerId,
       opacity: opacity,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   void previewLayerOpacity(LayerId layerId, double opacity) {
-    _session.opacityDragPreview.value = (
+    _internals.opacityDragPreview.value = (
       layerIds: {layerId},
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
   }
 
   void commitLayerOpacity(LayerId layerId, double opacity) {
-    _session.opacityDragPreview.value = null;
+    _internals.opacityDragPreview.value = null;
     setLayerOpacity(layerId: layerId, opacity: opacity);
   }
 
@@ -143,22 +169,22 @@ class _OpacityVerbs {
   /// currently DISPLAYS (filter-passing), computed by the grid. Camera
   /// stays untouched (its slider is the camera-view dim).
   void previewLayersOpacity(Set<LayerId> layerIds, double opacity) {
-    _session.opacityDragPreview.value = (
+    _internals.opacityDragPreview.value = (
       layerIds: layerIds,
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
   }
 
   void commitLayersOpacity(Set<LayerId> layerIds, double opacity) {
-    _session.opacityDragPreview.value = null;
+    _internals.opacityDragPreview.value = null;
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    _session.lastMasterOpacity = clamped;
+    _internals.lastMasterOpacity = clamped;
     // ⛔ONE undo step for one bar drag. The drag itself never reaches here
     // — `previewLayersOpacity` holds it in a notifier and only the release
     // commits — so this is one entry per gesture, not per frame.
-    _session.layerController.setLayersOpacity(
+    _timeline.layerController.setLayersOpacity(
       layerIds: [
-        for (final layer in _session.layers)
+        for (final layer in _project.layers)
           if (layerIds.contains(layer.id) &&
               layerKindHasPictureOpacity(layer.kind) &&
               layer.opacity != clamped)
@@ -166,7 +192,7 @@ class _OpacityVerbs {
       ],
       opacity: clamped,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Resets every opacity-bearing layer back to fully opaque. The camera
@@ -178,15 +204,15 @@ class _OpacityVerbs {
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    _session.layerController.setLayersOpacity(
+    _timeline.layerController.setLayersOpacity(
       layerIds: [
-        for (final layer in _session.layers)
+        for (final layer in _project.layers)
           if (layerKindHasPictureOpacity(layer.kind) &&
               layer.opacity != clamped)
             layer.id,
       ],
       opacity: clamped,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 }

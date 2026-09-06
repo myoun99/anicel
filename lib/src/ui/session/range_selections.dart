@@ -1,4 +1,21 @@
-part of '../editor_session_manager.dart';
+import 'dart:math' as math;
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/range_snap.dart';
+import '../../models/timeline_selection_kind.dart';
+import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_row_address.dart';
+import '../../models/track_frame_range.dart';
+import '../../models/track_id.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../timeline/timeline_row_span_resolver.dart'
+    show resolveSelectionSpanRows;
+import '../timeline/timeline_section_policy.dart';
+import '../timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
+import 'session_roles.dart';
+import 'track_se_display.dart';
+import 'storyboard_rows.dart';
 
 /// The RANGE SELECTIONS — the frame, track and lane range sweeps, what a
 /// selection spans, which block starts it names, standing inside it,
@@ -9,17 +26,37 @@ part of '../editor_session_manager.dart';
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and thirty
 /// session members touched; the rest reads it in six places (the cell and
-/// comma verbs asking what is selected). It reaches the session through
-/// `_session`.
-class _RangeSelections {
-  _RangeSelections(this._session);
+/// comma verbs asking what is selected). It names the roles it needs
+/// in its constructor.
+class RangeSelections {
+  RangeSelections({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required StoryboardRows storyboardRows,
+    required TrackSeDisplay trackSe,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals,
+       _storyboardRows = storyboardRows,
+       _trackSe = trackSe;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final StoryboardRows _storyboardRows;
+  final TrackSeDisplay _trackSe;
 
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
   ///
-  /// The one question [_session.standOnRow] asks before it clears. 유저 확정
+  /// The one question [_internals.standOnRow] asks before it clears. 유저 확정
   /// 2026-08-14: 「탭다운 하면 **먼저 기존 선택된거 삭제**하게 하면, 바꾸면
   /// 선택삭제고 거기서 이동하면 선택 새로 추가니까 문제없을거같은데」 — a
   /// press clears when it moves you somewhere else, and holds when it is the
@@ -35,7 +72,7 @@ class _RangeSelections {
   /// being named here, exactly like [claimSelection]'s switch.
   ///
   /// ⚠️A null [frameIndex] means "no cell is in question", so only the ROW
-  /// selection can answer. [_session.standOnRow] does not pass null — it substitutes
+  /// selection can answer. [_internals.standOnRow] does not pass null — it substitutes
   /// the playhead, because standing on a row without naming a frame IS
   /// standing there at the playhead.
   bool standingInsideSelection(
@@ -43,10 +80,10 @@ class _RangeSelections {
     int? frameIndex,
     bool frameIsGlobal = false,
   ]) {
-    if (_session.rowIsSelected(row)) {
+    if (_internals.rowIsSelected(row)) {
       return true;
     }
-    final cells = _session.frameRangeSelection.value;
+    final cells = _selection.frameRangeSelection.value;
     if (cells != null &&
         frameIndex != null &&
         !frameIsGlobal &&
@@ -65,11 +102,11 @@ class _RangeSelections {
     // a window frame converts exactly as the drag's did, or a press inside
     // the very selection it made reads as outside and the standing clear
     // (now on the DOWN) would wipe the move it was starting.
-    final lanes = _session.laneRangeSelection.value;
+    final lanes = _selection.laneRangeSelection.value;
     if (lanes != null && frameIndex != null && row is LaneRowAddress) {
       final laneAxisFrame =
-          !frameIsGlobal && _session.isTrackSeLayerId(row.layerId)
-          ? frameIndex + _session.activeCutGlobalStartFrame
+          !frameIsGlobal && _project.isTrackSeLayerId(row.layerId)
+          ? frameIndex + _project.activeCutGlobalStartFrame
           : frameIndex;
       if (lanes.coversLane(row.layerId, row.laneId) &&
           laneAxisFrame >= lanes.startIndex &&
@@ -79,7 +116,7 @@ class _RangeSelections {
     }
     // The TRACK-axis selection (the storyboard's rows) answers for the
     // global-frame callers the same way the cut-local ones answer above.
-    final trackSpan = _session.trackFrameRangeSelection.value;
+    final trackSpan = _selection.trackFrameRangeSelection.value;
     if (trackSpan != null &&
         frameIndex != null &&
         frameIsGlobal &&
@@ -123,23 +160,23 @@ class _RangeSelections {
   /// pixel verbs need both at once — but 「지금 뭔가 선택됐나」 has to count it,
   /// or a button saying 선택 해제 leaves a selection sitting on screen.
   bool get hasAnySelection =>
-      _session.frameRangeSelection.value != null ||
-      _session.laneRangeSelection.value != null ||
-      _session.trackFrameRangeSelection.value != null ||
-      _session.rowSelection.value.isNotEmpty ||
-      (_session.canvasHasSelection?.call() ?? false);
+      _selection.frameRangeSelection.value != null ||
+      _selection.laneRangeSelection.value != null ||
+      _selection.trackFrameRangeSelection.value != null ||
+      _selection.rowSelection.value.isNotEmpty ||
+      (_internals.canvasHasSelection?.call() ?? false);
 
   void clearAllSelections() {
     clearFrameRangeSelection();
     clearLaneRangeSelection();
-    _session.clearStoryboardCutSelection();
-    _session.clearRowSelection();
+    _selection.clearStoryboardCutSelection();
+    _selection.clearRowSelection();
     // ⛔ALL of them, the marquee included. 유저 2026-08-27 found two buttons
     // both called 선택 해제, both wearing `Icons.deselect`, each letting go of
     // a different half — the rail's cleared the marquee, the timeline's
     // cleared the timeline, and nothing on screen said which was which.
     // 「Let go」 means let go.
-    _session.clearCanvasSelection?.call();
+    _internals.clearCanvasSelection?.call();
   }
 
   /// 🚨THE ONE-SELECTION LAW (유저 확정 2026-08-12): 「선택범위는 하나만
@@ -162,21 +199,21 @@ class _RangeSelections {
       clearLaneRangeSelection();
     }
     if (kind != TimelineSelectionKind.cuts) {
-      _session.clearStoryboardCutSelection();
+      _selection.clearStoryboardCutSelection();
     }
     if (kind != TimelineSelectionKind.rows) {
-      _session.clearRowSelection();
+      _selection.clearRowSelection();
     }
   }
 
   /// Asks the rails to scroll whatever is selected back into view.
-  void revealSelection() => _session.revealSelectionTick.value += 1;
+  void revealSelection() => _internals.revealSelectionTick.value += 1;
 
   /// A span's real (non-ghost) drawing-block start keys on [layer], in
   /// order. Axis-free on purpose: the caller states the span in whichever
   /// axis its layer is keyed by, which is what lets the cut-local and the
   /// track-global selections share this.
-  List<int> _selectionBlockStarts(
+  List<int> selectionBlockStarts(
     Layer layer,
     int startIndex,
     int endIndexExclusive,
@@ -189,6 +226,33 @@ class _RangeSelections {
         entry.key,
   ];
 
+  /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
+  /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
+  /// inside one cut to anywhere inside another selects both whole, and a
+  /// span that only crosses a gap selects nothing there.
+  ///
+  /// This is the ONLY cut-select entry point: the storyboard's cut row now
+  /// mounts the shared range gesture, which speaks frames, so the ordinal
+  /// form it used to need is gone.
+  ///
+  /// [trackId] names the row the drag is on; omitting it means the selected
+  /// track (the panel always knows, the session's own callers rarely do).
+  void updateStoryboardCutSelectionByFrame({
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+    TrackId? trackId,
+    TimelineRowAddress? headRow,
+  }) {
+    final row = trackId ?? _selection.selectedTrackId;
+    updateTrackRangeSelection(
+      trackId: row,
+      anchorRow: TrackRowAddress(row),
+      anchorGlobalFrame: anchorGlobalFrame,
+      headGlobalFrame: headGlobalFrame,
+      headRow: headRow,
+    );
+  }
+
   /// THE track-axis select-drag step, whichever storyboard row started it.
   ///
   /// The span snaps against EVERY row it covers at once (the union snap):
@@ -196,7 +260,7 @@ class _RangeSelections {
   /// expands it to whole sounds, and a drag across both gets the union —
   /// which is what makes "the selection covers these rows" a single fact
   /// rather than one per row.
-  void _updateTrackRangeSelection({
+  void updateTrackRangeSelection({
     required TrackId trackId,
     required TimelineRowAddress anchorRow,
     required int anchorGlobalFrame,
@@ -204,7 +268,7 @@ class _RangeSelections {
     required TimelineRowAddress? headRow,
     List<TimelineRowAddress> spanRows = const [],
   }) {
-    final railRows = _session._storyboardRows.storyboardRailRows(trackId);
+    final railRows = _storyboardRows.storyboardRailRows(trackId);
     final anchorIndex = railRows.indexOf(anchorRow);
     final List<TimelineRowAddress> spanned;
     if (spanRows.isNotEmpty) {
@@ -232,9 +296,9 @@ class _RangeSelections {
       spanned = railRows.sublist(first, last + 1);
     }
 
-    final axis = _session.axisForTrack(trackId);
+    final axis = _timeline.axisForTrack(trackId);
     final lanes = <RangeBlock? Function(int)>[
-      for (final row in spanned) ?_session._trackRowSnapLane(row, axis),
+      for (final row in spanned) ?_internals.trackRowSnapLane(row, axis),
     ];
     // 🚨No `lanes.isEmpty ? null` short-circuit. A span made only of LANE
     // rows has no block lane to snap against — the lane domain's own rule
@@ -252,12 +316,12 @@ class _RangeSelections {
     // them. It simply covers no blocks, so the verbs that act on them find
     // nothing to act on — what an empty selection means everywhere else.
     if (span == null) {
-      _session.trackFrameRangeSelection.value = null;
+      _selection.trackFrameRangeSelection.value = null;
       return;
     }
     // THE ONE-SELECTION LAW — see [claimSelection].
     claimSelection(TimelineSelectionKind.cuts);
-    _session.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+    _selection.trackFrameRangeSelection.value = TrackFrameRangeSelection(
       trackId: trackId,
       anchorRow: anchorRow,
       // Single-row drags leave this empty, which is what `spanRows` reads
@@ -278,7 +342,7 @@ class _RangeSelections {
   /// has no cut-local address to be selected by. The snap runs on the
   /// GLOBAL layer, which is also the layer any edit would commit against.
   ///
-  /// 🚨The owner lookup asks [_session.isTrackOwnedRailLayerId]'s question, not "is it
+  /// 🚨The owner lookup asks [_trackSe.isTrackOwnedRailLayerId]'s question, not "is it
   /// an SE row" — that substitution is what left the transition row the one row
   /// of this rail a range drag could not touch (user 2026-08-11:
   /// 「선택범위… 트랜지션레이어만 작동안하니까 공통 규칙 그대로」). Selecting is
@@ -296,7 +360,7 @@ class _RangeSelections {
     // list (and stating the selection on [selectedTrackId]) killed every
     // drag that anchored on an unselected track's row — the rail lookup
     // missed, so a cross-row reach collapsed to the anchor alone.
-    final owner = _session._trackSe.trackOwnedRailOwner(layerId);
+    final owner = _trackSe.trackOwnedRailOwner(layerId);
     if (owner == null) {
       return;
     }
@@ -304,7 +368,7 @@ class _RangeSelections {
     // not one per row kind. [anchorRow]/[spanRows] are the escalated
     // lane-anchor form (C②): the PANEL hands the sliced span of the rows
     // it drew, exactly as the timeline's grids hand theirs.
-    _updateTrackRangeSelection(
+    updateTrackRangeSelection(
       trackId: owner.id,
       anchorRow: anchorRow ?? LayerRowAddress(layerId),
       anchorGlobalFrame: anchorGlobalFrame,
@@ -325,7 +389,7 @@ class _RangeSelections {
   /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
   /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
   /// [framesAreGlobal] says which axis the surface counted in — the same
-  /// question [_session._shiftAnchorFor] asks for the frame-shift verbs. The
+  /// question [_internals.shiftAnchorFor] asks for the frame-shift verbs. The
   /// storyboard's strips ARE the track's global axis; a cut panel's are
   /// its window, and a track-SE row's span is translated onto the global
   /// axis on the way in, because that is where the selection lives.
@@ -344,32 +408,32 @@ class _RangeSelections {
       // onto the TRACK's lanes — global frame indexes, no layer to
       // activate. Selecting the row keeps the rail's answer honest,
       // without promoting a cut (the drag is about keys, not cuts).
-      if (_session.trackById(carrierTrackId) == null) {
+      if (_project.trackById(carrierTrackId) == null) {
         return;
       }
-      _session.selectTrackRow(carrierTrackId);
+      _internals.selectTrackRow(carrierTrackId);
     } else {
-      if (_session.layerById(layerId) == null) {
+      if (_project.layerById(layerId) == null) {
         // A REAL track row that just is not the ACTIVE track's (its lane
         // law cannot hold the span here — the pre-existing gate): an
         // escalated track-axis selection this drag painted must not
         // FREEZE on the retreat, so the honest step still drops it (C②
         // review; the same press-drops-selection rule as R5 #12).
-        if (_session._trackSe.trackSeAnywhere(layerId) != null) {
-          _session.clearStoryboardCutSelection();
+        if (_trackSe.trackSeAnywhere(layerId) != null) {
+          _selection.clearStoryboardCutSelection();
         }
         return;
       }
-      if (_session.activeLayerId != layerId) {
+      if (_selection.activeLayerId != layerId) {
         // selectLayer first: it drops the OLD selection (a different
         // layer's), then the fresh span lands for the new active layer.
-        _session.selectLayer(layerId);
+        _internals.selectLayer(layerId);
       }
     }
     // THE ONE-SELECTION LAW — see [claimSelection].
     claimSelection(TimelineSelectionKind.lanes);
-    final toGlobal = !framesAreGlobal && _session.isTrackSeLayerId(layerId)
-        ? _session.activeCutGlobalStartFrame
+    final toGlobal = !framesAreGlobal && _project.isTrackSeLayerId(layerId)
+        ? _project.activeCutGlobalStartFrame
         : 0;
     final start = math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
     final endExclusive = math.max(anchorIndex, headIndex) + 1 + toGlobal;
@@ -393,7 +457,7 @@ class _RangeSelections {
     // no members so they cannot be swept, and a group opened between two
     // others joins without this method learning its name.
     final span = spanLaneIds;
-    _session.laneRangeSelection.value = TimelineLaneSelection(
+    _selection.laneRangeSelection.value = TimelineLaneSelection(
       layerId: layerId,
       laneId: laneId,
       startIndex: start,
@@ -403,8 +467,8 @@ class _RangeSelections {
   }
 
   void clearLaneRangeSelection() {
-    if (_session.laneRangeSelection.value != null) {
-      _session.laneRangeSelection.value = null;
+    if (_selection.laneRangeSelection.value != null) {
+      _selection.laneRangeSelection.value = null;
     }
   }
 
@@ -416,10 +480,10 @@ class _RangeSelections {
   bool rangeSelectionEligible(LayerId layerId) {
     // EVERY row selects now — synced attach mirrors included (P3b: the
     // ghost snap covers them; their mirror snaps to the base's blocks).
-    if (_session.isTrackSeLayerId(layerId)) {
-      return _session.trackSeGlobalLayerById(layerId) != null;
+    if (_project.isTrackSeLayerId(layerId)) {
+      return _project.trackSeGlobalLayerById(layerId) != null;
     }
-    return _session.layerById(layerId) != null;
+    return _project.layerById(layerId) != null;
   }
 
   /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
@@ -444,7 +508,7 @@ class _RangeSelections {
     if (!rangeSelectionEligible(layerId)) {
       return;
     }
-    final layer = _session.rangeLayerById(layerId);
+    final layer = _project.rangeLayerById(layerId);
     if (layer == null) {
       return;
     }
@@ -462,10 +526,10 @@ class _RangeSelections {
       layer: layer,
       anchorIndex: anchorIndex,
       headIndex: headIndex,
-      aggregateRuns: _session._aggregateRunsForRow(layer),
+      aggregateRuns: _internals.aggregateRunsForRow(layer),
     );
     if (base == null) {
-      _session.frameRangeSelection.value = null;
+      _selection.frameRangeSelection.value = null;
       return;
     }
     // The layer half of what was swept, in display order — derived from the
@@ -480,7 +544,7 @@ class _RangeSelections {
             ...{for (final row in spanRows) ?row.owningLayerId},
           ];
     if (spanIds.length <= 1) {
-      _session.frameRangeSelection.value = spanRows.isEmpty
+      _selection.frameRangeSelection.value = spanRows.isEmpty
           ? base
           : TimelineFrameRangeSelection(
               layerId: base.layerId,
@@ -504,7 +568,7 @@ class _RangeSelections {
     while (changed) {
       changed = false;
       for (final id in spanIds) {
-        final spanned = _session.rangeLayerById(id);
+        final spanned = _project.rangeLayerById(id);
         if (spanned == null) {
           continue;
         }
@@ -512,7 +576,7 @@ class _RangeSelections {
           layer: spanned,
           anchorIndex: start,
           headIndex: end - 1,
-          aggregateRuns: _session._aggregateRunsForRow(spanned),
+          aggregateRuns: _internals.aggregateRunsForRow(spanned),
         );
         if (snapped == null) {
           continue;
@@ -524,7 +588,7 @@ class _RangeSelections {
         }
       }
     }
-    _session.frameRangeSelection.value = TimelineFrameRangeSelection(
+    _selection.frameRangeSelection.value = TimelineFrameRangeSelection(
       layerId: layerId,
       startIndex: start,
       endIndexExclusive: end,
@@ -568,7 +632,7 @@ class _RangeSelections {
       return;
     }
     final span = transformLaneSpan(transformLaneDisplayOrder.first, headLaneId);
-    _session.laneRangeSelection.value = TimelineLaneSelection(
+    _selection.laneRangeSelection.value = TimelineLaneSelection(
       layerId: layerId,
       laneId: transformLaneDisplayOrder.first,
       startIndex: startIndex,
@@ -585,8 +649,8 @@ class _RangeSelections {
   /// blocked at the move seam (UI-R18 #1 safety).
   List<LayerId> _selectionSpanLayerIds(LayerId anchor, LayerId head) {
     final ordered = sectionedLayerOrder([
-      ..._session.activeCutOrNull?.layers ?? const <Layer>[],
-      ..._session.activeTrack.seLayers,
+      ..._project.activeCutOrNull?.layers ?? const <Layer>[],
+      ..._selection.activeTrack.seLayers,
     ]);
     final eligible = [
       for (final layer in ordered)
@@ -603,8 +667,8 @@ class _RangeSelections {
   }
 
   void clearFrameRangeSelection() {
-    if (_session.frameRangeSelection.value != null) {
-      _session.frameRangeSelection.value = null;
+    if (_selection.frameRangeSelection.value != null) {
+      _selection.frameRangeSelection.value = null;
     }
   }
 
@@ -616,11 +680,11 @@ class _RangeSelections {
   /// the track-global one is already stated in commit keys. The two are
   /// mutually exclusive, so at most one answers.
   Map<LayerId, List<int>>? selectionBlockStartsByLayer() =>
-      _cutLocalSelectionBlockStartsByLayer() ??
-      _trackSelectionBlockStartsByLayer();
+      cutLocalSelectionBlockStartsByLayer() ??
+      trackSelectionBlockStartsByLayer();
 
-  Map<LayerId, List<int>>? _cutLocalSelectionBlockStartsByLayer() {
-    final selection = _session.frameRangeSelection.value;
+  Map<LayerId, List<int>>? cutLocalSelectionBlockStartsByLayer() {
+    final selection = _selection.frameRangeSelection.value;
     if (selection == null) {
       return null;
     }
@@ -633,21 +697,21 @@ class _RangeSelections {
       //
       // and SINGLE-CEL (image) rows with them — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_session.standsDownFromRetime(id)) {
+      if (_changes.standsDownFromRetime(id)) {
         continue;
       }
-      final layer = _session.rangeLayerById(id);
+      final layer = _project.rangeLayerById(id);
       if (layer == null) {
         continue;
       }
-      final starts = _selectionBlockStarts(
+      final starts = selectionBlockStarts(
         layer,
         selection.startIndex,
         selection.endIndexExclusive,
       );
       if (starts.isNotEmpty) {
         byLayer[id] = [
-          for (final start in starts) _session._commitBlockStart(id, start),
+          for (final start in starts) _internals.commitBlockStart(id, start),
         ];
       }
     }
@@ -658,9 +722,9 @@ class _RangeSelections {
   /// the track-SE rows, whose global layer is the commit layer AND the one
   /// the range is stated against — so there is nothing to translate here.
   /// (Its track row's blocks are cuts; deleting those is
-  /// [_session.deleteSelectedCuts]'s job, not a layer edit.)
-  Map<LayerId, List<int>>? _trackSelectionBlockStartsByLayer() {
-    final selection = _session.trackFrameRangeSelection.value;
+  /// [CutVerbs.deleteSelectedCuts]'s job, not a layer edit.)
+  Map<LayerId, List<int>>? trackSelectionBlockStartsByLayer() {
+    final selection = _selection.trackFrameRangeSelection.value;
     if (selection == null) {
       return null;
     }
@@ -673,11 +737,11 @@ class _RangeSelections {
       if (rowLayerId == null) {
         continue;
       }
-      final layer = _session.trackSeGlobalLayerById(rowLayerId);
+      final layer = _project.trackSeGlobalLayerById(rowLayerId);
       if (layer == null) {
         continue;
       }
-      final starts = _selectionBlockStarts(
+      final starts = selectionBlockStarts(
         layer,
         selection.startFrame,
         selection.endFrameExclusive,
@@ -698,7 +762,7 @@ class _RangeSelections {
   ) {
     int? end;
     for (final entry in startsByLayer.entries) {
-      final layer = _session.layerById(entry.key);
+      final layer = _project.layerById(entry.key);
       if (layer == null) {
         continue;
       }
@@ -717,7 +781,7 @@ class _RangeSelections {
         }
       }
     }
-    _session.frameRangeSelection.value = end == null
+    _selection.frameRangeSelection.value = end == null
         ? null
         : TimelineFrameRangeSelection(
             layerId: selection.layerId,
@@ -731,15 +795,16 @@ class _RangeSelections {
 
   void beginSelectionInteraction() {
     _selectionInteractionHolds += 1;
-    _session.selectionInteractionActive.value = true;
-    _session.prerenderScheduler.beginInputHold();
+    _internals.selectionInteractionActive.value = true;
+    _internals.prerenderScheduler.beginInputHold();
   }
 
   void endSelectionInteraction() {
     if (_selectionInteractionHolds > 0) {
       _selectionInteractionHolds -= 1;
-      _session.prerenderScheduler.endInputHold();
+      _internals.prerenderScheduler.endInputHold();
     }
-    _session.selectionInteractionActive.value = _selectionInteractionHolds > 0;
+    _internals.selectionInteractionActive.value =
+        _selectionInteractionHolds > 0;
   }
 }

@@ -1,4 +1,12 @@
-part of '../editor_session_manager.dart';
+import '../../services/editing/default_layer_helpers.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/layer_blend_mode.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/storyboard_coverage.dart';
+import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
+import 'session_roles.dart';
+import 'storyboard_cursor.dart';
 
 /// THE LAYER SWITCHES — a row's eye, its mute, its audio, its blend mode
 /// (one row or many), the all-rows visibility and SE mute, and the
@@ -8,45 +16,63 @@ part of '../editor_session_manager.dart';
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP
 /// cut, Round 6, 2026-09-03). Measured before cutting: nine host methods
 /// whose only non-infrastructure fields were the layer controller and the
-/// cut command coordinator. It reaches the session through `_session`.
-class _LayerSwitchVerbs {
-  _LayerSwitchVerbs(this._session);
+/// cut command coordinator. It names the roles it needs in its constructor.
+class LayerSwitchVerbs {
+  LayerSwitchVerbs({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required FrameIds frameIds,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required StoryboardCursor storyboardCursor,
+  }) : _project = project,
+       _changes = changes,
+       _frameIds = frameIds,
+       _timeline = timeline,
+       _internals = internals,
+       _storyboardCursor = storyboardCursor;
 
-  final EditorSessionManager _session;
+  final StoryboardCursor _storyboardCursor;
+
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final FrameIds _frameIds;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   void toggleLayerVisibility(LayerId layerId) {
-    _session.layerController.toggleLayerVisibility(layerId);
-    _session.notifyChanged();
+    _timeline.layerController.toggleLayerVisibility(layerId);
+    _changes.notifyChanged();
   }
 
   /// Silences/unsilences an SE row's sounds (the mute button — view state
   /// like visibility, not undoable): playback and export skip muted
   /// layers' clips, waveforms keep displaying.
   void toggleLayerMuted(LayerId layerId) {
-    _session.layerController.toggleLayerMuted(layerId);
-    _session.refreshLiveAudioSchedule();
-    _session.notifyChanged();
+    _timeline.layerController.toggleLayerMuted(layerId);
+    _changes.refreshLiveAudioSchedule();
+    _changes.notifyChanged();
   }
 
   /// The SE row's track fader + pan (mix state like mute, repo-direct).
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _session.layerController.setLayerAudio(
+    _timeline.layerController.setLayerAudio(
       layerId: layerId,
       gain: gain,
       pan: pan,
     );
-    _session.refreshLiveAudioSchedule();
-    _session.notifyChanged();
+    _changes.refreshLiveAudioSchedule();
+    _changes.notifyChanged();
   }
 
   /// R26 #30: the layer's composite blend — display state alongside the
   /// eye/static opacity (repo-direct, link-group mirrored).
   void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {
-    _session.layerController.setLayerBlendMode(
+    _timeline.layerController.setLayerBlendMode(
       layerId: layerId,
       blendMode: blendMode,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// R27 #6: the legend's BLEND bulk — the master opacity bar's rule for
@@ -56,18 +82,18 @@ class _LayerSwitchVerbs {
   void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
     // ⛔ONE undo step for one blend pick, however many rows it lands on.
     final targets = [
-      for (final layer in _session.layers)
+      for (final layer in _project.layers)
         if (layerIds.contains(layer.id) &&
             layerKindShowsBlendControl(layer.kind) &&
             layer.blendMode != mode)
           layer.id,
     ];
     if (targets.isNotEmpty) {
-      _session.layerController.setLayersBlendMode(
+      _timeline.layerController.setLayersBlendMode(
         layerIds: targets,
         blendMode: mode,
       );
-      _session.notifyChanged();
+      _changes.notifyChanged();
     }
   }
 
@@ -76,30 +102,30 @@ class _LayerSwitchVerbs {
     // ⛔ONE undo step for one legend press — the loop used to make one per
     // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
     // 다 한번에 언두되야하는데 안됨」 in the place it is easiest to hit.
-    _session.layerController.setLayersVisible(
+    _timeline.layerController.setLayersVisible(
       layerIds: [
-        for (final layer in _session.layers)
+        for (final layer in _project.layers)
           if (layer.isVisible != visible) layer.id,
       ],
       visible: visible,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Mutes/unmutes every SE layer of the active cut.
   void setAllSeLayersMuted(bool muted) {
-    _session.layerController.setLayersMuted(
+    _timeline.layerController.setLayersMuted(
       layerIds: [
-        for (final layer in _session.layers)
+        for (final layer in _project.layers)
           if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
       ],
       muted: muted,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   bool get canToggleTargetLayerKind {
-    final targetLayer = _session._targetLayerForKindToggle;
+    final targetLayer = _internals.targetLayerForKindToggle;
     // Only the animation ⇄ storyboard pair; other kinds have their own
     // toggles (SE) or are fixed (camera/instruction/attach rows).
     if (targetLayer == null ||
@@ -112,15 +138,16 @@ class _LayerSwitchVerbs {
       return true;
     }
 
-    return !_session.layerController.layers.any(
+    return !_timeline.layerController.layers.any(
       (layer) =>
           layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
     );
   }
 
   void toggleTargetLayerKind() {
-    final targetLayer = _session._targetLayerForKindToggle;
-    if (targetLayer == null || _session.targetLayerStoryboardRefusal != null) {
+    final targetLayer = _internals.targetLayerForKindToggle;
+    if (targetLayer == null ||
+        _storyboardCursor.targetLayerStoryboardRefusal != null) {
       return;
     }
 
@@ -133,7 +160,7 @@ class _LayerSwitchVerbs {
     // rule, showed none. An empty row becomes a fresh blank panel, which
     // is what a new storyboard row is born as.
     if (toStoryboard) {
-      final cut = _session.requireActiveCut;
+      final cut = _project.requireActiveCut;
       final filled = storyboardTimelineFilledToCover(
         timeline: targetLayer.timeline,
         cutDuration: cut.duration,
@@ -141,24 +168,24 @@ class _LayerSwitchVerbs {
       final covered = filled == null
           ? createStoryboardLayer(
               layerId: targetLayer.id,
-              frameId: FrameId(_session.nextFrameId(targetLayer.id)),
+              frameId: _frameIds.mintFrameId(targetLayer.id),
               cut: cut,
             ).copyWith(name: targetLayer.name)
           : targetLayer.copyWith(timeline: filled);
       if (covered != targetLayer) {
-        _session.timelineController.commitLayerTimelineDrag(
+        _timeline.timelineController.commitLayerTimelineDrag(
           before: targetLayer,
           after: covered,
         );
       }
     }
 
-    _session.cutCommandCoordinator.updateLayerKind(
-      cutId: _session.requireActiveCut.id,
+    _project.cutCommandCoordinator.updateLayerKind(
+      cutId: _project.requireActiveCut.id,
       layerId: targetLayer.id,
       kind: nextKind,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 }

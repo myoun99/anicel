@@ -1,4 +1,14 @@
-part of '../editor_session_manager.dart';
+import '../../models/canvas_resize_anchor.dart';
+import '../../models/canvas_size.dart';
+import '../../models/cut.dart';
+import '../../models/drawing_guide.dart';
+import '../../models/cut_id.dart';
+import '../../models/layer_id.dart';
+import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../../services/commands/set_cut_guides_command.dart';
+import '../../services/commands/cut_reorder_planner.dart';
+import 'session_roles.dart';
+import 'storyboard_rows.dart';
 
 /// The CUT VERBS — creating, deleting, duplicating, renaming and moving
 /// the active cut, linking it, resizing its canvas, its note, guides and
@@ -7,23 +17,41 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own and twelve
-/// session members touched; the rest reads none of it. It reaches the
-/// session through `_session`.
-class _CutVerbs {
-  _CutVerbs(this._session);
+/// session members touched; the rest reads none of it. It names the
+/// roles it needs in its constructor.
+class CutVerbs {
+  CutVerbs({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required StoryboardRows storyboardRows,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals,
+       _storyboardRows = storyboardRows;
 
-  final EditorSessionManager _session;
+  final StoryboardRows _storyboardRows;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   void createCut() {
-    final plan = _session.cutCreationPlan;
+    final plan = _internals.cutCreationPlan;
     if (plan == null) {
       return;
     }
-    _session.cutCommandCoordinator.createCut(
+    _project.cutCommandCoordinator.createCut(
       trackId: plan.trackId,
       // New cuts inherit the active cut's canvas size, like new scenes in
       // TVPaint/Clip Studio inherit the project size.
-      canvasSize: _session.activeCutOrNull?.canvasSize,
+      canvasSize: _project.activeCutOrNull?.canvasSize,
       placement: plan.index == null
           ? null
           : (
@@ -32,63 +60,63 @@ class _CutVerbs {
               duration: plan.duration,
             ),
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void resizeActiveCutCanvas(
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
   }) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.resizeCutCanvas(
+    _project.cutCommandCoordinator.resizeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void duplicateActiveCut() {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.duplicateCut(
+    _project.cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
-      targetTrackId: _session.selectedTrackId,
+      targetTrackId: _selection.selectedTrackId,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the
     // whole run instead of the active cut (UI-R18 #1).
-    if (_session.storyboardSelectedCutIds.isNotEmpty) {
+    if (_storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       deleteSelectedCuts();
       return;
     }
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.deleteCut(cutId: cutId);
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.deleteCut(cutId: cutId);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   CutPosition? get _activeCutPositionOrNull {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return null;
     }
-    return _session._cutReorderPlanner.findCutPosition(
-      project: _session.repository.requireProject(),
+    return _internals.cutReorderPlanner.findCutPosition(
+      project: _project.repository.requireProject(),
       cutId: cutId,
     );
   }
@@ -97,7 +125,7 @@ class _CutVerbs {
     final position = _activeCutPositionOrNull;
     if (position == null) {
       throw StateError(
-        'Active Cut not found: ${_session.editingSession.activeCutId}',
+        'Active Cut not found: ${_timeline.editingSession.activeCutId}',
       );
     }
     return position;
@@ -114,7 +142,7 @@ class _CutVerbs {
   bool _canMoveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPositionOrNull;
     return position != null &&
-        _session._cutReorderPlanner.canMove(position, direction);
+        _internals.cutReorderPlanner.canMove(position, direction);
   }
 
   /// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
@@ -122,66 +150,66 @@ class _CutVerbs {
   /// the reorder would have done it in one direction only.
   void _moveActiveCut(CutMoveDirection direction) {
     final position = _activeCutPosition;
-    if (!_session._cutReorderPlanner.canMove(position, direction)) {
+    if (!_internals.cutReorderPlanner.canMove(position, direction)) {
       return;
     }
-    _session.cutCommandCoordinator.reorderCut(
+    _project.cutCommandCoordinator.reorderCut(
       trackId: position.trackId,
       cutId: position.cutId,
-      newIndex: _session._cutReorderPlanner.moveTargetIndex(
+      newIndex: _internals.cutReorderPlanner.moveTargetIndex(
         position,
         direction,
       ),
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
-  String? get activeCutNote => _session.activeCutOrNull?.metadata.note;
+  String? get activeCutNote => _project.activeCutOrNull?.metadata.note;
 
   void updateActiveCutNote(String note) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note);
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Whether the active cut's storyboard thumbnail is pinned to the
   /// playhead frame (drives the toolbar toggle's state).
   bool get isActiveCutThumbnailPinnedHere =>
-      _session.activeCutOrNull?.metadata.thumbnailFrameIndex ==
-          _session.timelineController.currentFrameIndex &&
-      _session.activeCutOrNull?.metadata.thumbnailFrameIndex != null;
+      _project.activeCutOrNull?.metadata.thumbnailFrameIndex ==
+          _timeline.timelineController.currentFrameIndex &&
+      _project.activeCutOrNull?.metadata.thumbnailFrameIndex != null;
 
   /// Pins the active cut's storyboard thumbnail to the playhead frame, or
   /// releases the pin back to the first frame when pressed on the pinned
   /// frame itself (toggle; one undo step either way).
   void toggleActiveCutThumbnailFrame() {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return;
     }
-    final frame = _session.timelineController.currentFrameIndex;
+    final frame = _timeline.timelineController.currentFrameIndex;
     final pinned = cut.metadata.thumbnailFrameIndex;
-    _session.cutCommandCoordinator.updateCutThumbnailFrame(
+    _project.cutCommandCoordinator.updateCutThumbnailFrame(
       cutId: cut.id,
       frameIndex: pinned == frame ? null : frame,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   void renameActiveCut(String newName) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.renameCut(cutId: cutId, newName: newName);
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.renameCut(cutId: cutId, newName: newName);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// R26 #32: sets the PROJECT's frame rate (one undo step, no-op when
@@ -190,7 +218,7 @@ class _CutVerbs {
   /// the whole project's time.
   /// The active cut's drawing guides — empty when parked in a gap.
   CutGuides get activeCutGuides =>
-      _session.activeCutOrNull?.guides ?? CutGuides.empty;
+      _project.activeCutOrNull?.guides ?? CutGuides.empty;
 
   /// Writes the active cut's guides, fanning out to its 겸용 siblings in one
   /// undoable step (see [SetCutGuidesCommand]).
@@ -199,41 +227,41 @@ class _CutVerbs {
   /// paints from the drag layer's own value and never touches the project,
   /// so a drag is one undo entry rather than one per pointer sample.
   void setActiveCutGuides(CutGuides guides) {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null || cut.guides == guides) {
       return;
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       SetCutGuidesCommand(
-        repository: _session.repository,
+        repository: _project.repository,
         cutId: cut.id,
         guides: guides,
       ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
   /// active cut's (empty timelines — same pictures, own timing).
   void createLinkedCutFromActiveCut() {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId);
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _project.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// 겸용 변경 preview: what linking the active cut with [targetCutId]
   /// would do (drives the confirmation dialog's 안내문). Null when there
   /// is no active cut or the target is the active cut itself.
   ConvertToLinkedCutPlan? convertToLinkedCutPreview(CutId targetCutId) {
-    final originCutId = _session.editingSession.activeCutId;
+    final originCutId = _timeline.editingSession.activeCutId;
     if (originCutId == null || originCutId == targetCutId) {
       return null;
     }
-    return _session.cutCommandCoordinator.convertToLinkedCutPreview(
+    return _project.cutCommandCoordinator.convertToLinkedCutPreview(
       originCutId: originCutId,
       targetCutId: targetCutId,
     );
@@ -242,12 +270,12 @@ class _CutVerbs {
   /// Cuts the active cut can 겸용-convert WITH (every other cut, all
   /// tracks — dialog picker data).
   List<({CutId id, String name})> get convertToLinkedCutCandidates {
-    final activeCutId = _session.editingSession.activeCutId;
+    final activeCutId = _timeline.editingSession.activeCutId;
     if (activeCutId == null) {
       return const [];
     }
     return [
-      for (final track in _session.repository.requireProject().tracks)
+      for (final track in _project.repository.requireProject().tracks)
         for (final cut in track.cuts)
           if (cut.id != activeCutId) (id: cut.id, name: cut.name),
     ];
@@ -259,11 +287,11 @@ class _CutVerbs {
     CutId targetCutId,
   ) {
     final plan = convertToLinkedCutPreview(targetCutId);
-    final originCut = _session.activeCutOrNull;
+    final originCut = _project.activeCutOrNull;
     if (plan == null || originCut == null) {
       return null;
     }
-    final project = _session.repository.requireProject();
+    final project = _project.repository.requireProject();
     Cut? targetCut;
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
@@ -299,27 +327,27 @@ class _CutVerbs {
   /// 겸용 변경: links the active cut (origin — 원본 승리) with
   /// [targetCutId]. Callers confirm through the preview dialog first.
   void convertActiveCutToLinked(CutId targetCutId) {
-    final originCutId = _session.editingSession.activeCutId;
+    final originCutId = _timeline.editingSession.activeCutId;
     if (originCutId == null || originCutId == targetCutId) {
       return;
     }
-    _session.cutCommandCoordinator.convertCutToLinked(
+    _project.cutCommandCoordinator.convertCutToLinked(
       originCutId: originCutId,
       targetCutId: targetCutId,
     );
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Whether the selection can delete: cuts selected AND at least one
   /// cut survives (the project never empties).
   bool get canDeleteSelectedCuts {
-    final selection = _session._liveSelectedCutIds;
+    final selection = _internals.liveSelectedCutIds;
     if (selection.isEmpty) {
       return false;
     }
     var total = 0;
-    for (final track in _session.repository.requireProject().tracks) {
+    for (final track in _project.repository.requireProject().tracks) {
       total += track.cuts.length;
     }
     return total > selection.length;
@@ -331,11 +359,11 @@ class _CutVerbs {
     if (!canDeleteSelectedCuts) {
       return;
     }
-    _session.cutCommandCoordinator.deleteCuts(
-      cutIds: _session._liveSelectedCutIds,
+    _project.cutCommandCoordinator.deleteCuts(
+      cutIds: _internals.liveSelectedCutIds,
     );
-    _session.clearStoryboardCutSelection();
-    _session.refreshAfterCutCommand();
-    _session.notifyChanged();
+    _selection.clearStoryboardCutSelection();
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 }

@@ -1,34 +1,69 @@
-part of '../editor_session_manager.dart';
+import '../../services/project_lookup.dart' show requireLayerAnywhere;
+import '../../models/cut.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/se_name_tag.dart';
+import '../../services/se_name_tag_plan.dart';
+import '../../models/storyboard_timeline_layout.dart';
+import 'session_roles.dart';
+import 'camera.dart';
+import 'frame_verbs.dart';
+import 'track_se_display.dart';
 
 /// The SE ENTRIES AND NAME TAGS — creating and updating an SE entry, and
 /// the name tag an SE row carries at a frame — as their own object.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own; the rest
-/// reads none of it. It reaches the session through `_session`.
-class _SeEntries {
-  _SeEntries(this._session);
+/// reads none of it. It names the roles it needs in its constructor.
+class SeEntries {
+  SeEntries({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required FrameIds frameIds,
+    required TimelineAccess timeline,
+    required Camera camera,
+    required FrameVerbs frameVerbs,
+    required TrackSeDisplay trackSe,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _frameIds = frameIds,
+       _timeline = timeline,
+       _camera = camera,
+       _frameVerbs = frameVerbs,
+       _trackSe = trackSe;
 
-  final EditorSessionManager _session;
+  final Camera _camera;
+  final FrameVerbs _frameVerbs;
+  final TrackSeDisplay _trackSe;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final FrameIds _frameIds;
+  final TimelineAccess _timeline;
 
   /// Whether the active row can carry an on-canvas name tag (R5b): the
   /// SE rows, and only while a cut gives the canvas its geometry.
   bool get canEditActiveSeNameTag =>
-      _session.activeLayer?.kind == LayerKind.se &&
-      _session.activeCutOrNull != null;
+      _selection.activeLayer?.kind == LayerKind.se &&
+      _project.activeCutOrNull != null;
 
   /// Sets (or with null resets) the active SE row's name tag — one undo,
   /// reaching the TRACK-owned row through the anywhere seam.
   void setActiveSeNameTag(SeNameTag? tag) {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    _session.cutCommandCoordinator.setSeNameTag(
+    _project.cutCommandCoordinator.setSeNameTag(
       layerId: layer.id,
       seNameTag: tag,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// A NAME TAG lane edit landing on [layerId] (R5 #7) — one undo.
@@ -40,15 +75,15 @@ class _SeEntries {
   /// after the edit, before the commit.
   void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) {
     final keys = tag?.track;
-    _session.cutCommandCoordinator.setSeNameTag(
+    _project.cutCommandCoordinator.setSeNameTag(
       layerId: layerId,
-      seNameTag: keys == null || !_session.isTrackSeLayerId(layerId)
+      seNameTag: keys == null || !_project.isTrackSeLayerId(layerId)
           ? tag
           : tag!.copyWith(
-              track: _session.trackSeWindow.globalSeNameTagTrack(keys),
+              track: _trackSe.trackSeWindow.globalSeNameTagTrack(keys),
             ),
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
@@ -63,7 +98,7 @@ class _SeEntries {
     // scrub preview already clamps this way, so drag and release agree.
     final maxLocal = cut.duration > 0 ? cut.duration - 1 : 0;
     final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
-    final project = _session.repository.requireProject();
+    final project = _project.repository.requireProject();
     // Rows on the tracks BELOW this one: unconfigured defaults stack the
     // whole project's SE rows, so two covered tracks in the multitrack
     // stack never land on the same spot.
@@ -79,7 +114,7 @@ class _SeEntries {
             cutStartFrame: start,
             localFrameIndex: localFrame,
             canvas: cut.canvasSize,
-            cameraFrame: _session.cameraFrameSize,
+            cameraFrame: _camera.cameraFrameSize,
             rowOffset: rowOffset,
           );
         }
@@ -90,7 +125,7 @@ class _SeEntries {
   }
 
   /// SE rows: the selected entry's speaker/effect name (the accent box).
-  String? get selectedFrameSeName => _session.selectedFrame?.seName;
+  String? get selectedFrameSeName => _selection.selectedFrame?.seName;
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
@@ -106,38 +141,37 @@ class _SeEntries {
     String? seName,
     int? lengthFrames,
   }) {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null ||
         layer.kind != LayerKind.se ||
-        !_session.canCreateDrawingAtCurrentFrame) {
+        !_frameVerbs.canCreateDrawingAtCurrentFrame) {
       return;
     }
 
     final remaining =
-        _session.requireActiveCut.duration -
-        _session.timelineController.currentFrameIndex;
+        _project.requireActiveCut.duration -
+        _timeline.timelineController.currentFrameIndex;
     final toCutEnd = remaining < 1 ? 1 : remaining;
     final requested = lengthFrames ?? toCutEnd;
-    _session._frameSequence += 1;
-    _session.timelineController.createDrawingFrameForLayer(
+    _timeline.timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
-      frameId: FrameId(_session.nextFrameId(layer.id)),
+      frameId: _frameIds.mintFrameId(layer.id),
       length: requested < 1 ? 1 : requested,
       name: name,
       seName: seName,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// SE rows: updates the selected entry's dialogue (Frame.name) and
   /// speaker name in ONE undo step. Duplicates are allowed — the same
   /// dialogue can legitimately repeat on a sheet.
   void updateSelectedSeEntry({required String dialogue, String? seName}) {
-    final layer = _session.activeLayer;
-    final frame = _session.selectedFrame;
+    final layer = _selection.activeLayer;
+    final frame = _selection.selectedFrame;
     if (layer == null ||
         frame == null ||
-        !_session.canRenameFrameAtCurrentFrame) {
+        !_frameVerbs.canRenameFrameAtCurrentFrame) {
       return;
     }
     updateSeEntryForLayer(
@@ -151,7 +185,7 @@ class _SeEntries {
   /// The same edit addressed by ROW + ENTRY instead of by standing (B6
   /// 2026-08-17): the storyboard's SE editor commits here, because that
   /// rail's standing row never moves the drawing target (유저 2026-07-27)
-  /// and so [_session.activeLayer]/[_session.selectedFrame] cannot carry its answer. The
+  /// and so [_selection.activeLayer]/[_selection.selectedFrame] cannot carry its answer. The
   /// timeline's [updateSelectedSeEntry] funnels into this too — one commit
   /// body, two addressings.
   void updateSeEntryForLayer(
@@ -161,13 +195,13 @@ class _SeEntries {
     String? seName,
   }) {
     final layer = requireLayerAnywhere(
-      _session.repository.requireProject(),
+      _project.repository.requireProject(),
       layerId,
     );
     if (layer.kind != LayerKind.se) {
       return;
     }
-    _session.timelineController.renameFrameForLayer(
+    _timeline.timelineController.renameFrameForLayer(
       layerId: layerId,
       frameId: frameId,
       name: dialogue,
@@ -175,6 +209,6 @@ class _SeEntries {
       seName: seName,
       updateSeName: true,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 }

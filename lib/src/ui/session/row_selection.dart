@@ -1,4 +1,11 @@
-part of '../editor_session_manager.dart';
+import '../../models/layer_id.dart';
+import '../../models/timeline_selection_kind.dart';
+import '../../models/timeline_row_address.dart';
+import '../timeline/property_lane_model.dart' show TimelineDisplayRow;
+import '../timeline/timeline_row_span_resolver.dart'
+    show resolveSelectionSpanRows;
+import 'session_roles.dart';
+import 'range_selections.dart';
 
 /// The ROW SELECTION — the rows the user swept in the rail, the anchor the
 /// sweep started from, and what folding a group does to it — as its own
@@ -6,24 +13,30 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and two
-/// session members touched. It reaches the session through `_session`.
-class _RowSelection {
-  _RowSelection(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class RowSelection {
+  RowSelection({
+    required SelectionAccess selection,
+    required RangeSelections rangeSelections,
+  }) : _selection = selection,
+       _rangeSelections = rangeSelections;
 
-  final EditorSessionManager _session;
+  final RangeSelections _rangeSelections;
+
+  final SelectionAccess _selection;
 
   /// Where the live row-select drag started; null between drags.
   TimelineRowAddress? _rowSelectionAnchor;
 
   bool rowIsSelected(TimelineRowAddress row) =>
-      _session.rowSelection.value.contains(row);
+      _selection.rowSelection.value.contains(row);
 
   /// A press that lands OUTSIDE the current selection starts a fresh one —
   /// the cells' rule, transposed (their range gesture's `isInSelection`).
   void beginRowSelection(TimelineRowAddress anchor) {
-    _session.claimSelection(TimelineSelectionKind.rows);
+    _rangeSelections.claimSelection(TimelineSelectionKind.rows);
     _rowSelectionAnchor = anchor;
-    _session.rowSelection.value = [anchor];
+    _selection.rowSelection.value = [anchor];
   }
 
   /// Grows the live selection to [rowDelta] rows from its anchor, through
@@ -40,7 +53,7 @@ class _RowSelection {
       rowDelta: rowDelta,
     );
     if (span.isNotEmpty) {
-      _session.rowSelection.value = span;
+      _selection.rowSelection.value = span;
     }
   }
 
@@ -50,8 +63,8 @@ class _RowSelection {
 
   void clearRowSelection() {
     _rowSelectionAnchor = null;
-    if (_session.rowSelection.value.isNotEmpty) {
-      _session.rowSelection.value = const [];
+    if (_selection.rowSelection.value.isNotEmpty) {
+      _selection.rowSelection.value = const [];
     }
   }
 
@@ -76,7 +89,7 @@ class _RowSelection {
     required bool Function(TimelineRowAddress address) vanished,
     required TimelineRowAddress swallower,
   }) {
-    final selection = _session.rowSelection.value;
+    final selection = _selection.rowSelection.value;
     if (selection.isEmpty) {
       return;
     }
@@ -87,7 +100,7 @@ class _RowSelection {
     if (kept.length == selection.length) {
       return;
     }
-    _session.rowSelection.value = kept.isEmpty
+    _selection.rowSelection.value = kept.isEmpty
         ? [swallower]
         : (kept.contains(swallower) ? kept : [...kept, swallower]);
   }
@@ -100,7 +113,7 @@ class _RowSelection {
   /// lanes and headers ride their layer, they do not re-order.
   Set<LayerId> rowSelectionCarriedBy(LayerId movingId) {
     final ids = <LayerId>{
-      for (final row in _session.rowSelection.value)
+      for (final row in _selection.rowSelection.value)
         if (row is LayerRowAddress) row.layerId,
     };
     return ids.contains(movingId) ? ids : const <LayerId>{};

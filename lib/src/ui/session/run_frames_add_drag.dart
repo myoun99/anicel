@@ -1,4 +1,6 @@
-part of '../editor_session_manager.dart';
+import 'drags/run_frames_add_drag.dart';
+import '../../models/layer_id.dart';
+import 'session_roles.dart';
 
 /// The RUN FRAMES ADD DRAG — dragging the end of a run to add frames to
 /// it — as its own object: the drag in flight and its steps.
@@ -6,10 +8,21 @@ part of '../editor_session_manager.dart';
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: one field of its own, and the
 /// rest reads none of it.
-class _RunFramesAddDrag {
-  _RunFramesAddDrag(this._session);
+class RunFramesAddDragVerbs {
+  RunFramesAddDragVerbs({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+  }) : _project = project,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
   /// deterministic id reservation that keeps preview == commit lives on
@@ -27,18 +40,18 @@ class _RunFramesAddDrag {
       layerId: layerId,
       blockStartIndex: blockStartIndex,
       atEnd: atEnd,
-      blockMoveEligible: _session._blockMoveEligible,
-      layerById: _session.layerById,
-      tracksNow: () => _session.repository.requireProject().tracks,
-      activeCutFrameCount: () => _session.activeCutFrameCount,
-      preview: _session.dragPreview,
+      blockMoveEligible: _internals.blockMoveEligible,
+      layerById: _project.layerById,
+      tracksNow: () => _project.repository.requireProject().tracks,
+      activeCutFrameCount: () => _project.activeCutFrameCount,
+      preview: _internals.dragPreview,
       commitLayerDrag: ({required before, required after}) {
-        _session.timelineController.commitLayerTimelineDrag(
+        _timeline.timelineController.commitLayerTimelineDrag(
           before: before,
           after: after,
         );
-        _session.warmActiveCut();
-        _session.notifyChanged();
+        _changes.warmActiveCut();
+        _changes.notifyChanged();
       },
     );
     if (drag == null) {

@@ -1,5 +1,4 @@
 import 'dart:async' show Timer, unawaited;
-import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -15,8 +14,6 @@ import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
 import '../services/commands/import_media_command.dart';
-import '../services/commands/reorder_track_command.dart';
-import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
 import '../services/persistence/media_blob_codec.dart';
@@ -54,14 +51,8 @@ import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
 import 'session/drags/audio_clip_offset_drag.dart';
-import 'session/drags/cut_move_drag.dart';
 import 'session/drags/drawing_block_move_drag.dart';
-import 'session/drags/lane_range_move_drag.dart';
-import 'session/drags/movie_end_drag.dart';
 import 'session/attach_fx_confirm.dart';
-import 'session/drags/row_order_drag.dart';
-import 'session/drags/run_frames_add_drag.dart';
-import 'session/drags/transition_edge_drag.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
@@ -92,9 +83,6 @@ import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
-import '../models/cut_warm_extent.dart';
-import '../models/cut_lead_edge_plan.dart';
-import '../models/exposure_memo.dart';
 import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -103,36 +91,26 @@ import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../services/canvas_selection_region.dart';
 import '../services/cel_pixel_overwrite.dart';
-import '../services/cel_pixel_region.dart';
-import '../services/commands/cel_pixel_overwrite_command.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
-import '../models/key_range_move.dart';
 import '../models/layer_kind.dart';
-import '../models/layer_link_registry.dart';
 import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/media_asset.dart';
 import '../models/onion_skin_settings.dart';
-import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
-import '../models/property_track.dart';
 import '../models/range_snap.dart';
 import '../models/se_name_tag.dart';
-import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
 import '../models/flip_column_step.dart';
-import '../models/timeline_exposure.dart';
-import '../services/editing/cut_duplicate_helpers.dart'
-    show duplicateFrameContent;
 import '../models/timeline_splice.dart';
 import '../models/delete_subject.dart';
 import '../models/edit_instance_subject.dart';
@@ -144,13 +122,10 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
-import '../models/track_transform_lane_carrier.dart';
 import '../models/transition_geometry.dart';
 import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../services/brush_frame_store.dart';
-import '../services/camera_pose_resolver.dart';
-import '../services/clipboard/layer_copy_payload.dart';
 import '../services/commands/convert_to_linked_cut_plan.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/playback_quality.dart';
@@ -172,32 +147,21 @@ import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
-import 'storyboard_layer_policy.dart';
 import 'text/app_strings.dart';
-import 'text/text_cel_render.dart';
-import 'widgets/cursor_notice.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
-import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
-import '../services/commands/update_cut_camera_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
-import '../services/commands/set_cut_guides_command.dart';
-import '../services/commands/update_layer_instructions_command.dart';
-import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
-import '../services/commands/update_project_camera_size_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
-import '../services/commands/update_project_trailing_frames_command.dart';
-import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/anicel_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -216,7 +180,6 @@ import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
-import '../services/commands/track_transition_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
@@ -228,95 +191,58 @@ import 'timeline/layer_drop_policy.dart'
 import 'timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowDragSubject;
 import 'timeline/property_lane_model.dart'
-    show TimelineDisplayRow, folderAggregateRuns;
+    show TimelineDisplayRow;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
-import 'timeline/timeline_row_span_resolver.dart' show resolveSelectionSpanRows;
-import 'timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
-import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_instruction_row_visual.dart'
     show instructionCellExposureState;
 import 'timeline/timeline_drag_preview.dart';
-import 'timeline/timeline_section_policy.dart';
-import 'timeline/effect_lane_editing.dart'
-    show
-        effectLaneKeyFrames,
-        effectsWithAdded,
-        effectsWithEnabledToggled,
-        effectsWithGroupReset,
-        effectsWithLaneKeyRemoved,
-        effectsWithLaneKeyToggled,
-        effectsWithLaneRangeNamed,
-        effectsWithRemoved;
-import 'timeline/effect_lane_policy.dart'
-    show effectLaneDisplayOrder, parseEffectLaneId;
-import 'timeline/transform_lane_editing.dart'
-    show
-        transformLaneKeyFrames,
-        transformTrackWithGroupReset,
-        transformTrackWithLaneKeyRemoved,
-        transformTrackWithLaneKeyToggled,
-        transformTrackWithLaneRangeNamed;
-import 'timeline/se_name_tag_lane_policy.dart'
-    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
-import 'timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 import 'session/session_roles.dart';
+import 'session/frame_range_move_drag.dart';
+import 'session/edge_drag.dart';
+import 'session/movie_end_drag.dart';
+import 'session/folder_bands.dart';
+import 'session/visibility_solo.dart';
+import 'session/text_cel_bakes.dart';
+import 'session/transitions.dart';
+import 'session/camera.dart';
+import 'session/frame_scrub.dart';
+import 'session/row_selection.dart';
+import 'session/layer_row_drag.dart';
+import 'session/lane_range_move_drag.dart';
+import 'session/instructions.dart';
+import 'session/onion_skin.dart';
+import 'session/effects_and_fx.dart';
+import 'session/lane_verbs.dart';
+import 'session/auto_frame_for_stroke.dart';
+import 'session/track_se_display.dart';
+import 'session/storyboard_cursor.dart';
+import 'session/storyboard_rows.dart';
+import 'session/frame_clipboard.dart';
+import 'session/layer_clipboard.dart';
+import 'session/playback_cache_budget.dart';
+import 'session/layer_verbs.dart';
+import 'session/cut_verbs.dart';
+import 'session/range_selections.dart';
+import 'session/se_entries.dart';
+import 'session/drawing_block_move_drag.dart';
+import 'session/run_frames_add_drag.dart';
+import 'session/opacity_verbs.dart';
+import 'session/layer_marks.dart';
+import 'session/exposure_verbs.dart';
+import 'session/cell_instances.dart';
+import 'session/cell_verbs.dart';
+import 'session/folders_and_attachments.dart';
+import 'session/project_settings.dart';
+import 'session/frame_verbs.dart';
+import 'session/standing.dart';
+import 'session/cut_move_drag.dart';
+import 'session/layer_switch_verbs.dart';
 
-part 'session/frame_range_move_drag.dart';
-part 'session/edge_drag.dart';
-part 'session/movie_end_drag.dart';
-part 'session/folder_bands.dart';
-part 'session/visibility_solo.dart';
-part 'session/text_cel_bakes.dart';
 part 'session/editing_stack_map.dart';
-part 'session/transitions.dart';
-part 'session/camera.dart';
-part 'session/frame_scrub.dart';
-part 'session/row_selection.dart';
-part 'session/layer_row_drag.dart';
-part 'session/lane_range_move_drag.dart';
-part 'session/instructions.dart';
-part 'session/onion_skin.dart';
-part 'session/effects_and_fx.dart';
-part 'session/lane_verbs.dart';
-part 'session/auto_frame_for_stroke.dart';
-part 'session/track_se_display.dart';
-part 'session/storyboard_cursor.dart';
-part 'session/storyboard_rows.dart';
-part 'session/frame_clipboard.dart';
-part 'session/playback_cache_budget.dart';
-part 'session/layer_verbs.dart';
-part 'session/cut_verbs.dart';
-part 'session/range_selections.dart';
-part 'session/se_entries.dart';
-part 'session/drawing_block_move_drag.dart';
-part 'session/run_frames_add_drag.dart';
-part 'session/opacity_verbs.dart';
-part 'session/layer_marks.dart';
-part 'session/exposure_verbs.dart';
-part 'session/cell_instances.dart';
-part 'session/cell_verbs.dart';
-part 'session/folders_and_attachments.dart';
-part 'session/project_settings.dart';
-part 'session/frame_verbs.dart';
-part 'session/standing.dart';
-part 'session/cut_move_drag.dart';
-part 'session/layer_switch_verbs.dart';
-
-/// A planned SE row-change pair in COMMIT (global track) form: the source
-/// row after its blocks leave, the target row after they arrive.
-typedef SeRowMovePair = ({
-  LayerId sourceId,
-  LayerId targetId,
-  Layer sourceBefore,
-  Layer sourceAfter,
-  Layer targetBefore,
-  Layer targetAfter,
-});
 
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
@@ -328,7 +254,7 @@ typedef SeRowMovePair = ({
 /// in the widget.
 
 class EditorSessionManager extends ChangeNotifier
-    implements ProjectAccess, SelectionAccess, ChangeSink, FrameIds, TimelineAccess {
+    implements ProjectAccess, SelectionAccess, ChangeSink, FrameIds, TimelineAccess, SessionInternals {
   EditorSessionManager({
     required Project initialProject,
     AudioConformStore? audioConformStore,
@@ -343,7 +269,7 @@ class EditorSessionManager extends ChangeNotifier
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
-       _appSettings = EditorAppSettings(
+       appSettings = EditorAppSettings(
          languageSettingsStore: languageSettingsStore,
          accentSettingsStore: accentSettingsStore,
          workspaceColorsStore: workspaceColorsStore,
@@ -353,7 +279,7 @@ class EditorSessionManager extends ChangeNotifier
          uiScaleStore: uiScaleStore,
        ),
        repository = ProjectRepository(initialProject: initialProject) {
-    _appSettings.restore();
+    appSettings.restore();
     historyManager = HistoryManager();
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
@@ -361,13 +287,13 @@ class EditorSessionManager extends ChangeNotifier
       historyManager: historyManager,
       brushFrameStore: brushFrameStore,
     );
-    _rebuildActiveCutControllers();
+    rebuildActiveCutControllers();
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
     // Transport FIRST: listener order is its contract with the fallback —
     // carryingPlayback must be decided before the sync consults it.
     audioDeviceTransport.attach();
     audioPlaybackSync.attach();
-    playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
+    playback.globalFrameIndexListenable.addListener(followPlaybackCut);
     // The lane span's cut-window view follows the span itself; the other
     // half of its input (which cut is open) republishes on cut switch.
     laneRangeSelection.addListener(_publishCutLocalLaneRange);
@@ -418,41 +344,42 @@ class EditorSessionManager extends ChangeNotifier
   /// keeps and why the live values sit on app-wide notifiers instead.
   ///
   /// Everything below is this session's unchanged face on it.
-  final EditorAppSettings _appSettings;
+  @override
+  final EditorAppSettings appSettings;
 
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
   ValueNotifier<AppLanguageSettings> get languageSettings =>
-      _appSettings.languageSettings;
+      appSettings.languageSettings;
 
   /// The PROGRAM-language string table, read at call time — for session
   /// verbs that produce user-facing messages and for widgets that already
   /// hold the session.
-  AppStrings get uiStrings => _appSettings.uiStrings;
+  AppStrings get uiStrings => appSettings.uiStrings;
 
   void setLanguageSettings(AppLanguageSettings settings) =>
-      _appSettings.setLanguageSettings(settings);
+      appSettings.setLanguageSettings(settings);
 
   void setAccentSettings(AppAccentSettings settings) =>
-      _appSettings.setAccentSettings(settings);
+      appSettings.setAccentSettings(settings);
 
   /// R11: the chrome's scale. Reading it is [AppUiScale.value], app-wide
   /// like the accents — this is only the write half.
-  void setUiScale(double scale) => _appSettings.setUiScale(scale);
+  void setUiScale(double scale) => appSettings.setUiScale(scale);
 
   void setInputSettings(AppInputSettings settings) =>
-      _appSettings.setInputSettings(settings);
+      appSettings.setInputSettings(settings);
 
   void setSaveSettings(AppSaveSettings settings) =>
-      _appSettings.setSaveSettings(settings);
+      appSettings.setSaveSettings(settings);
 
   /// The user's A/V offset — the residual correction for THIS machine's
   /// output path (screen pipeline, Bluetooth, an AV receiver).
   ValueNotifier<AudioSyncSettings> get audioSyncSettings =>
-      _appSettings.audioSyncSettings;
+      appSettings.audioSyncSettings;
 
   void setAudioSyncSettings(AudioSyncSettings settings) =>
-      _appSettings.setAudioSyncSettings(settings);
+      appSettings.setAudioSyncSettings(settings);
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
   //
@@ -464,7 +391,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/project_settings.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _ProjectSettings _projectSettings = _ProjectSettings(this);
+  late final ProjectSettings _projectSettings = ProjectSettings(project: this, changes: this, internals: this);
 
   void setProjectBackdrop(int argb) =>
       _projectSettings.setProjectBackdrop(argb);
@@ -498,6 +425,7 @@ class EditorSessionManager extends ChangeNotifier
   ///
   /// The link resolver reads the CURRENT project's registry on every
   /// resolve (L1) — link edits need no event plumbing to reach the store.
+  @override
   late final BrushFrameStore brushFrameStore = BrushFrameStore()
     // 유저 확정 (2026-08-16): the hot budget scales to the MACHINE —
     // RAM/4 clamped — instead of assuming a desktop. Unknown RAM (no
@@ -519,8 +447,7 @@ class EditorSessionManager extends ChangeNotifier
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();
-    _playbackCache._playbackCacheBudgetEnforcer.respondToMemoryPressure();
-    enforcePlaybackCacheBudget();
+    playbackCache.respondToMemoryPressure();
     memoryPressureTicks.value += 1;
   }
 
@@ -581,15 +508,18 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.
+  @override
   final EditorCacheInvalidationHub cacheInvalidationHub =
       EditorCacheInvalidationHub();
 
   // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
 
+  @override
   late final LayerFrameImageCache layerFrameImageCache = LayerFrameImageCache(
     frameStore: brushFrameStore,
   );
 
+  @override
   late final CutFrameCompositeCache cutFrameCompositeCache =
       CutFrameCompositeCache(
         layerImages: layerFrameImageCache,
@@ -601,23 +531,17 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/playback_cache_budget.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _PlaybackCacheBudget _playbackCache = _PlaybackCacheBudget(this);
+  late final PlaybackCacheBudget playbackCache = PlaybackCacheBudget(project: this, internals: this);
 
-  /// A test's budget for the playback caches (see the collaborator).
-  @visibleForTesting
-  void debugSetPlaybackCacheBudgetBytes(int bytes) =>
-      _playbackCache._debugMaxBytes = bytes;
-
-  int get playbackCacheByteBudget => _playbackCache.playbackCacheByteBudget;
+  int get playbackCacheByteBudget => playbackCache.playbackCacheByteBudget;
   void enforcePlaybackCacheBudget() =>
-      _playbackCache.enforcePlaybackCacheBudget();
-  List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
-      _playbackCache.debugPlaybackProtectedRanges();
+      playbackCache.enforcePlaybackCacheBudget();
   bool isPlaybackFrameReady(int frameIndex) =>
-      _playbackCache.isPlaybackFrameReady(frameIndex);
+      playbackCache.isPlaybackFrameReady(frameIndex);
   bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) =>
-      _playbackCache.isPlaybackFrameReadyForCut(cut, frameIndex);
+      playbackCache.isPlaybackFrameReadyForCut(cut, frameIndex);
 
+  @override
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
         composites: cutFrameCompositeCache,
@@ -638,6 +562,7 @@ class EditorSessionManager extends ChangeNotifier
       );
 
   /// Playback preview quality (Premiere/AE monitor resolution analogue).
+  @override
   PlaybackQuality playbackQuality = defaultPlaybackQuality;
 
   void setPlaybackQuality(PlaybackQuality quality) {
@@ -651,6 +576,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Canvas playback state machine; only the playback view and transport
   /// controls listen (the session playhead syncs once on stop).
+  @override
   late final CanvasPlaybackController playback = CanvasPlaybackController(
     resolveProject: repository.requireProject,
     resolveActiveCutId: () => editingSession.activeCutId,
@@ -702,6 +628,7 @@ class EditorSessionManager extends ChangeNotifier
   /// (2D): one `play(frame, frame+1)` per crossed frame on the same
   /// transport playback uses. Stands down silently without a device or
   /// resident PCM — the scrub stays visual-only, as before.
+  @override
   late final AudioScrubber audioScrubber = AudioScrubber(
     controller: playback,
     resolveFrameRate: () => projectFrameRate,
@@ -777,7 +704,8 @@ class EditorSessionManager extends ChangeNotifier
   /// mid-playback (that stutter was audible as the cut-transition lag).
   /// Live position display rides the playback listenables; activeCut
   /// consumers catch up on the stop notify.
-  void _followPlaybackCut() {
+  @override
+  void followPlaybackCut() {
     if (playback.globalFrameIndexListenable.value == null) {
       return;
     }
@@ -786,8 +714,8 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     editingSession.setActiveCutId(position.cutId);
-    _clipboard._copiedFrame = null;
-    _rebuildActiveCutControllers(preferredFrameIndex: position.localFrameIndex);
+    _clipboard.dropCopiedFrame();
+    rebuildActiveCutControllers(preferredFrameIndex: position.localFrameIndex);
   }
 
   void _onPlaybackPlaylistWarmRequested(
@@ -817,7 +745,8 @@ class EditorSessionManager extends ChangeNotifier
   late final HistoryManager historyManager;
   @override
   late final CutCommandCoordinator cutCommandCoordinator;
-  final CutReorderPlanner _cutReorderPlanner = const CutReorderPlanner();
+  @override
+  final CutReorderPlanner cutReorderPlanner = const CutReorderPlanner();
   @override
   late LayerController layerController;
   @override
@@ -842,7 +771,8 @@ class EditorSessionManager extends ChangeNotifier
   ///
   /// [usedIds] lets a caller minting MANY ids hand the scan in once; see
   /// [_importIdMint], which is the only such caller.
-  LayerId _mintLayerId({Set<String>? usedIds}) {
+  @override
+  LayerId mintLayerId({Set<String>? usedIds}) {
     final used = usedIds ?? _usedLayerIdValues();
     _layerSequence += 1;
     var candidate = defaultLayerIdForSequence(_layerSequence);
@@ -863,13 +793,14 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _FrameClipboard _clipboard = _FrameClipboard(this);
+  late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, timeline: this, internals: this);
+  late final LayerClipboard _layerClipboard = LayerClipboard(project: this, selection: this, changes: this, internals: this);
 
   // ── the layer verbs: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _LayerVerbs _layerVerbs = _LayerVerbs(this);
+  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, timeline: this, internals: this);
 
   bool get canDeleteActiveLayer => _layerVerbs.canDeleteActiveLayer;
   bool canDeleteLayer(Layer activeLayer) =>
@@ -885,11 +816,11 @@ class EditorSessionManager extends ChangeNotifier
   void unlinkActiveLayer() => _layerVerbs.unlinkActiveLayer();
   bool isLayerLinked(LayerId layerId) => _layerVerbs.isLayerLinked(layerId);
   void renameActiveLayer(String name) => _layerVerbs.renameActiveLayer(name);
-  void copyActiveLayer() => _layerVerbs.copyActiveLayer();
+  void copyActiveLayer() => _layerClipboard.copyActiveLayer();
 
   bool get canCopyFrameAtCurrentFrame => _clipboard.canCopyFrameAtCurrentFrame;
   void copyFrameAtCurrentFrame() => _clipboard.copyFrameAtCurrentFrame();
-  void pasteLayerFromClipboard() => _clipboard.pasteLayerFromClipboard();
+  void pasteLayerFromClipboard() => _layerClipboard.pasteLayerFromClipboard();
   bool get canPasteLinkedFrameAtCurrentFrame =>
       _clipboard.canPasteLinkedFrameAtCurrentFrame;
   bool get canPasteIndependentFrameAtCurrentFrame =>
@@ -898,8 +829,8 @@ class EditorSessionManager extends ChangeNotifier
       _clipboard.pasteIndependentFrameAtCurrentFrame();
   void pasteLinkedFrameAtCurrentFrame() =>
       _clipboard.pasteLinkedFrameAtCurrentFrame();
-  String? get layerClipboardName => _clipboard.layerClipboardName;
-  bool get hasLayerClipboard => _clipboard.hasLayerClipboard;
+  String? get layerClipboardName => _layerClipboard.layerClipboardName;
+  bool get hasLayerClipboard => _layerClipboard.hasLayerClipboard;
   String get copiedFrameStatusText => _clipboard.copiedFrameStatusText;
   String get linkedFrameUsesStatusText => _clipboard.linkedFrameUsesStatusText;
 
@@ -912,12 +843,13 @@ class EditorSessionManager extends ChangeNotifier
   bool get canUndo => historyManager.canUndo;
   bool get canRedo => historyManager.canRedo;
 
-  void _rebuildActiveCutControllers({
+  @override
+  void rebuildActiveCutControllers({
     LayerId? preferredActiveLayerId,
     int preferredFrameIndex = 0,
   }) {
     final activeCutId = editingSession.activeCutId;
-    final initialActiveLayerId = _activeCutHasLayer(preferredActiveLayerId)
+    final initialActiveLayerId = activeCutHasLayer(preferredActiveLayerId)
         ? preferredActiveLayerId
         : null;
 
@@ -942,16 +874,7 @@ class EditorSessionManager extends ChangeNotifier
       trackSeLayers: () => activeTrack.seLayers,
     );
     editingFrameCursor.value = timelineController.currentFrameIndex;
-    // F-20, the DELETE half: a row whose layer no longer exists is not a
-    // deliberate stand anywhere — it is a dangling id. A row that still
-    // resolves is left alone, which is what keeps the storyboard's S rows
-    // (they resolve through the track) out of this.
-    final strandedOwner = _standing._verbRow?.owningLayerId;
-    if (strandedOwner != null && rangeLayerById(strandedOwner) == null) {
-      _standing._verbRow = null;
-      _standing._timelineRow = null;
-      _standing.seatVerbRowOnActiveLayer();
-    }
+    _standing.unseatStrandedVerbRow();
     // A cut switch re-seats the active layer, which is what the drawn row
     // falls back to when nothing is engaged.
     _standing.publishCurrentRow();
@@ -961,10 +884,12 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final _Standing _standing = _Standing(this);
+  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, clipboard: _clipboard, rowSelectionVerbs: _rowSelection, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this);
 
   void selectCut(CutId cutId) => _standing.selectCut(cutId);
+  @override
   TimelineRowAddress get currentRow => _standing.currentRow;
+  @override
   void standOnRow(
     TimelineRowAddress row, {
     int? frameIndex,
@@ -976,6 +901,7 @@ class EditorSessionManager extends ChangeNotifier
     globalFrameIndex: globalFrameIndex,
     takesLayerActive: takesLayerActive,
   );
+  @override
   void selectLayer(LayerId layerId) => _standing.selectLayer(layerId);
   void selectRow(TimelineRowAddress row) => _standing.selectRow(row);
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
@@ -1026,9 +952,9 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/storyboard_rows.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _StoryboardRows _storyboardRows = _StoryboardRows(this);
+  late final StoryboardRows _storyboardRows = StoryboardRows(project: this, selection: this, timeline: this, projectSettings: _projectSettings);
 
-  void claimStoryboardRow() => _storyboardRows.claimStoryboardRow();
+  void claimStoryboardRow() => _standing.claimStoryboardRow();
   List<CutId> get storyboardSelectedCutIds =>
       _storyboardRows.storyboardSelectedCutIds;
   void updateStoryboardCutSelectionByFrame({
@@ -1036,7 +962,7 @@ class EditorSessionManager extends ChangeNotifier
     required int headGlobalFrame,
     TrackId? trackId,
     TimelineRowAddress? headRow,
-  }) => _storyboardRows.updateStoryboardCutSelectionByFrame(
+  }) => _rangeSelections.updateStoryboardCutSelectionByFrame(
     anchorGlobalFrame: anchorGlobalFrame,
     headGlobalFrame: headGlobalFrame,
     trackId: trackId,
@@ -1055,6 +981,7 @@ class EditorSessionManager extends ChangeNotifier
   /// A [ValueNotifier] only notifies on a real change, so pressing again
   /// in the row you are already standing on costs nothing — which is the
   /// common case, and the reason this can be published eagerly.
+  @override
   final ValueNotifier<TimelineRowAddress?> currentRowListenable =
       ValueNotifier<TimelineRowAddress?>(null);
 
@@ -1078,8 +1005,9 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/row_selection.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _RowSelection _rowSelection = _RowSelection(this);
+  late final RowSelection _rowSelection = RowSelection(selection: this, rangeSelections: _rangeSelections);
 
+  @override
   bool rowIsSelected(TimelineRowAddress row) =>
       _rowSelection.rowIsSelected(row);
   void beginRowSelection(TimelineRowAddress anchor) =>
@@ -1094,7 +1022,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/range_selections.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _RangeSelections _rangeSelections = _RangeSelections(this);
+  late final RangeSelections _rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, internals: this);
 
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
@@ -1169,6 +1097,7 @@ class EditorSessionManager extends ChangeNotifier
   /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
+  @override
   List<LayerId> deletableSelectedLayerIds() =>
       _selectedLayerIdsWhere(canDeleteLayer);
 
@@ -1255,9 +1184,11 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   /// Whether the artwork carries a marquee, published by whoever owns it.
+  @override
   bool Function()? canvasHasSelection;
 
   /// Lets go of the marquee, published by whoever owns it.
+  @override
   void Function()? clearCanvasSelection;
 
   /// The live editing coordinator, published by the canvas host.
@@ -1265,6 +1196,7 @@ class EditorSessionManager extends ChangeNotifier
   /// 🚨Null before the canvas has built one — a fresh project, a gap parking,
   /// a test that mounts the timeline alone. Every pixel verb asks, and the
   /// buttons dim rather than the press throwing.
+  @override
   BrushFrameEditingCoordinator? pixelEditingCoordinator;
 
   /// The marquee on the artwork, published by whoever owns it.
@@ -1273,6 +1205,7 @@ class EditorSessionManager extends ChangeNotifier
   /// tool switches (`CanvasSelectionCommands.region`), and a snapshot taken
   /// when the toolbar was built would act on a selection the user has since
   /// redrawn.
+  @override
   CanvasSelectionRegion? Function()? pixelSelectionRegion;
 
   /// The drawing colour, published by whoever owns the paint tool state.
@@ -1282,9 +1215,11 @@ class EditorSessionManager extends ChangeNotifier
   /// it at the moment of the press, which is also the only moment it is true.
   ///
   /// 🚨Its ALPHA is ignored downstream — RGB only (유저 확정).
+  @override
   int Function()? pixelBrushColour;
 
   /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
+  @override
   PixelVerbSubject get pixelVerbSubject {
     if (pixelVerbCellKeys().isEmpty) {
       return PixelVerbSubject.nothing;
@@ -1298,7 +1233,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _CellVerbs _cells = _CellVerbs(this);
+  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, laneVerbs: _laneVerbs, rangeSelections: _rangeSelections, clipboard: _clipboard, internals: this);
 
   bool get canDeleteCellForSelection => _cells.canDeleteCellForSelection;
   bool get cellSelectionClaimsSubject => _cells.cellSelectionClaimsSubject;
@@ -1311,42 +1246,21 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRunPixelVerb => _cells.canRunPixelVerb;
   void runPixelVerb(CelPixelVerb verb) => _cells.runPixelVerb(verb);
 
-  /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
-  /// was picked, the way the timeline has exactly one selected layer row.
-  ///
-  /// State of its OWN, not a projection of [activeLayerId]. The two row
-  /// selections are separate things (user decision 2026-07-27): a CUT's
-  /// selected row is the active layer — the drawing target, remembered per
-  /// cut — while this one says which row of THIS RAIL the user is on.
-  /// Deriving it is what forced the previous "only a track-SE layer names a
-  /// row here" rule, which made the rail's two row kinds unequal for no
-  /// reason the rail itself has.
-  ///
-  /// Picking a row here therefore never moves the drawing target — not for
-  /// a V row (a track has no layer to select) and not for an S row.
-  ///
-  /// A stored row that the rail no longer shows (its track's SE slot went
-  /// away) falls back to the track row rather than lighting nothing.
   @override
-  TimelineRowAddress get selectedRow {
-    final row = _storyboardRows._storyboardRow;
-    if (row is LayerRowAddress && isTrackOwnedRailLayerId(row.layerId)) {
-      return row;
-    }
-    return TrackRowAddress(selectedTrackId);
-  }
+  TimelineRowAddress get selectedRow => _standing.selectedRow;
 
   /// Makes a V row THE selected row and nothing else — no cut promotion, no
   /// seek. The cells press wants this half on its own: the frame it presses
   /// decides the cut, so promoting the playhead's cut first would switch
   /// cuts twice for one press.
+  @override
   void selectTrackRow(TrackId trackId) {
     if (editingInteractionBusy) {
       return;
     }
     final trackBefore = selectedTrackId;
     editingSession.setSelectedTrackId(trackId);
-    if (_storyboardRows.storeStoryboardRow(TrackRowAddress(trackId)) ||
+    if (_standing.storeStoryboardRow(TrackRowAddress(trackId)) ||
         selectedTrackId != trackBefore) {
       notifyListeners();
     }
@@ -1372,7 +1286,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/transitions.dart, a part of this library). The
   // session keeps the public queries and commands as forwarders.
-  late final _Transitions _transitions = _Transitions(this);
+  late final Transitions _transitions = Transitions(project: this, selection: this, changes: this, camera: _camera);
 
   List<TransitionSpan> get activeTrackTransitionSpans =>
       _transitions.activeTrackTransitionSpans;
@@ -1422,8 +1336,9 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/track_se_display.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _TrackSeDisplay _trackSe = _TrackSeDisplay(this);
+  late final TrackSeDisplay _trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, timeline: this, transitions: _transitions, voiceRecording: _voiceRecording);
 
+  @override
   TrackSeWindow get trackSeWindow => _trackSe.trackSeWindow;
   @override
   bool isTrackSeLayerId(LayerId layerId) => _trackSe.isTrackSeLayerId(layerId);
@@ -1439,7 +1354,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _SeEntries _seEntries = _SeEntries(this);
+  late final SeEntries _seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, timeline: this, camera: _camera, trackSe: _trackSe, frameVerbs: _frameVerbs);
 
   void createSeEntryAtCurrentFrame({
     required String name,
@@ -1480,7 +1395,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/folder_bands.dart, a part of this library). The
   // session keeps the public queries as forwarders.
-  late final _FolderBands _folderBands = _FolderBands(this);
+  late final FolderBands _folderBands = FolderBands(project: this);
 
   Layer folderBandLayerFor(Layer folder) =>
       _folderBands.folderBandLayerFor(folder);
@@ -1494,9 +1409,9 @@ class EditorSessionManager extends ChangeNotifier
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
   }) {
-    _clipboard._copiedFrame = null;
+    _clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
-    _rebuildActiveCutControllers(
+    rebuildActiveCutControllers(
       // The ACTIVE layer survives cut commands by default (UI-R20 #1:
       // adding a camera key must not throw the selection to the bottom
       // row) — commands that switch cuts fall back naturally because the
@@ -1518,6 +1433,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The brush store key of a layer frame within [cut] — same derivation the
   /// canvas selection uses (track containing the cut, first track fallback).
+  @override
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
     final project = repository.requireProject();
     var trackId = project.tracks.isEmpty
@@ -1568,7 +1484,7 @@ class EditorSessionManager extends ChangeNotifier
     _warmDebounce?.cancel();
     _warmDebounce = Timer(_warmDebounceWindow, () {
       _warmDebounce = null;
-      if (_disposed) {
+      if (disposed) {
         return;
       }
       warmActiveCut();
@@ -1600,8 +1516,8 @@ class EditorSessionManager extends ChangeNotifier
     // First: a bake sweep suspended across an engine await must find the
     // flag set when it resumes — it stops touching the stores and never
     // notifies a disposed ChangeNotifier.
-    _disposed = true;
-    _textCelBakes._textCelSweepDirty = false;
+    disposed = true;
+    _textCelBakes.dispose();
     brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
     brushFrameStore.celPixelRevision.removeListener(_bumpCelTintRevision);
     brushInputActive.removeListener(_bumpCelTintRevision);
@@ -1614,7 +1530,7 @@ class EditorSessionManager extends ChangeNotifier
     memoryPressureTicks.dispose();
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
-    playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
+    playback.globalFrameIndexListenable.removeListener(followPlaybackCut);
     historyManager.removeListener(_markProjectDirty);
     historyManager.removeListener(refreshLiveAudioSchedule);
     historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
@@ -1627,7 +1543,7 @@ class EditorSessionManager extends ChangeNotifier
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioConformStore.dispose();
-    _appSettings.dispose();
+    appSettings.dispose();
     soloedSeLayerIds.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
@@ -1873,7 +1789,7 @@ class EditorSessionManager extends ChangeNotifier
   /// 조작하면 액티브레이어가 액션레이어로 바뀜.** 또 통일안하고 멋대로 이상한
   /// 규칙 만들어낸흔적」.
   ///
-  /// ⛔[_activeCutHasLayer] USED TO RE-DERIVE THIS MEMBERSHIP BY KIND, and
+  /// ⛔[activeCutHasLayer] USED TO RE-DERIVE THIS MEMBERSHIP BY KIND, and
   /// had been told about only two of the three sources: the cut's layers,
   /// and track-SE rows (a hand-written arm added by W4). The track
   /// TRANSITION row joined the composed list later 「on the same terms as
@@ -1900,7 +1816,8 @@ class EditorSessionManager extends ChangeNotifier
     ];
   }
 
-  bool _activeCutHasLayer(LayerId? layerId) {
+  @override
+  bool activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {
       return false;
     }
@@ -1928,6 +1845,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The range rung answers only when the range lies entirely in EMPTY
   /// track space — a cut cannot be created over cuts, and saying null
   /// here is what turns the button off instead of letting it lie.
+  @override
   ({TrackId trackId, int? index, int leadingGapFrames, int? duration})?
   get cutCreationPlan {
     final range = trackFrameRangeSelection.value;
@@ -1986,7 +1904,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cut_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _CutVerbs _cutVerbs = _CutVerbs(this);
+  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, internals: this);
 
   void deleteActiveCut() => _cutVerbs.deleteActiveCut();
   bool get canDeleteSelectedCuts => _cutVerbs.canDeleteSelectedCuts;
@@ -2143,7 +2061,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/camera.dart, a part of this library). The session
   // keeps the public queries and commands as forwarders.
-  late final _Camera _camera = _Camera(this);
+  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, laneMove: _laneMove, internals: this);
 
   CutCamera get activeCutCamera => _camera.activeCutCamera;
   CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
@@ -2162,6 +2080,7 @@ class EditorSessionManager extends ChangeNotifier
   void removeCameraKeyframeAtCurrentFrame() =>
       _camera.removeCameraKeyframeAtCurrentFrame();
   void clearActiveCutCamera() => _camera.clearActiveCutCamera();
+  @override
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',
@@ -2299,7 +2218,7 @@ class EditorSessionManager extends ChangeNotifier
         ? cut
         : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
 
-    final walk = _EditingStackMap(
+    final walk = EditingStackMap(
       session: this,
       cut: cut,
       stackCut: stackCut,
@@ -2388,7 +2307,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/opacity_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _OpacityVerbs _opacity = _OpacityVerbs(this);
+  late final OpacityVerbs _opacity = OpacityVerbs(project: this, changes: this, timeline: this, transitions: _transitions, internals: this);
 
   double activeCutEditingFadeOpacity({int? frameIndex}) =>
       _opacity.activeCutEditingFadeOpacity(frameIndex: frameIndex);
@@ -2415,7 +2334,7 @@ class EditorSessionManager extends ChangeNotifier
       _opacity.setAllLayersOpacity(opacity);
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
-  late final _FrameVerbs _frameVerbs = _FrameVerbs(this);
+  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, internals: this);
 
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
       _frameVerbs.layerCanvasPoseSample(layerId);
@@ -2454,7 +2373,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/effects_and_fx.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _EffectsAndFx _effectsAndFx = _EffectsAndFx(this);
+  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this);
 
   List<LayerEffect> trackEffectsForCut(CutId cutId) =>
       _effectsAndFx.trackEffectsForCut(cutId);
@@ -2639,6 +2558,7 @@ class EditorSessionManager extends ChangeNotifier
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
   /// drawing layer — applied at composite time, never baked); one undo
   /// step, no-op when unchanged.
+  @override
   void updateLayerTransformTrack(
     LayerId layerId,
     TransformTrack track, {
@@ -2661,7 +2581,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/lane_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _LaneVerbs _laneVerbs = _LaneVerbs(this);
+  late final LaneVerbs _laneVerbs = LaneVerbs(project: this, selection: this, timeline: this, effectsAndFx: _effectsAndFx, internals: this);
 
   bool get canNameLaneKeys => _laneVerbs.canNameLaneKeys;
   String? get laneKeyNameForSelection => _laneVerbs.laneKeyNameForSelection;
@@ -2669,6 +2589,7 @@ class EditorSessionManager extends ChangeNotifier
       _laneVerbs.setLaneKeyNamesForSelection(name);
   void linkLaneKeyNamesForSelection(String name) =>
       _laneVerbs.linkLaneKeyNamesForSelection(name);
+  @override
   bool resetLaneGroup(LayerId layerId, String headerLaneId) =>
       _laneVerbs.resetLaneGroup(layerId, headerLaneId);
   bool setTransformKeyName({
@@ -2715,6 +2636,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The layer's resolved anchor point at [frameIndex] — the anchor-point
   /// lane's value column and key-freeze source (canvas center while
   /// unkeyed).
+  @override
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
     return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
         CanvasPoint(
@@ -2725,6 +2647,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The layer's animated Opacity sample (0..1; 1 while unkeyed) — the
   /// opacity lane's value column and key-freeze source.
+  @override
   double layerOpacityAtFrame(Layer layer, int frameIndex) {
     return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
   }
@@ -2732,6 +2655,7 @@ class EditorSessionManager extends ChangeNotifier
   // --- Layer FX switches (PERSISTED layer state, R8) -----------------------
 
   /// Writes one row's TRANSFORM switch; one undo step, no-op when unchanged.
+  @override
   void updateLayerTransformEnabled(
     LayerId layerId, {
     required bool enabled,
@@ -2758,7 +2682,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/visibility_solo.dart, a part of this library). The
   // session keeps the public toggles as forwarders.
-  late final _VisibilitySolo _solo = _VisibilitySolo(this);
+  late final VisibilitySolo _solo = VisibilitySolo(project: this, selection: this, changes: this, timeline: this, internals: this);
 
   bool get layerVisibilitySoloEnabled => _solo.layerVisibilitySoloEnabled;
   void toggleLayerVisibilitySolo() => _solo.toggleLayerVisibilitySolo();
@@ -2777,6 +2701,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The live V-row opacity drag (session-owned, per the drag-verb rule):
   /// per-move preview, ONE write on release.
+  @override
   final ValueNotifier<({TrackId trackId, double opacity})?>
   trackOpacityDragPreview = ValueNotifier(null);
 
@@ -2908,6 +2833,7 @@ class EditorSessionManager extends ChangeNotifier
   /// predicates rather than restated: a track-owned SE row has no clipboard
   /// shape, a per-cut singleton cannot have a second, and an attach row's
   /// copy would double-link its base's cels.
+  @override
   List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
     (layer) =>
         layerKindIsClipboardCopyable(layer.kind) &&
@@ -2944,10 +2870,12 @@ class EditorSessionManager extends ChangeNotifier
   /// Read-only-in-cut rows are the exception, and they are the same ones
   /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
   /// inside a cut is not this cut's to edit.
+  @override
   List<LayerId> renameableSelectedLayerIds() =>
       _selectedLayerIdsWhere((layer) => !layerKindIsReadOnlyInCut(layer.kind));
 
   /// Renames any row by id — folders included, because a folder is a row.
+  @override
   void renameLayer(LayerId layerId, String name) {
     cutCommandCoordinator.renameLayer(
       cutId: requireActiveCut.id,
@@ -2968,6 +2896,7 @@ class EditorSessionManager extends ChangeNotifier
   /// once a singleton kind already has its one row. The Add Layer menu
   /// reads this to disable the entry rather than swallowing the tap, so a
   /// dead menu item never looks like a bug.
+  @override
   bool canAddLayerOfKind(LayerKind kind) {
     final cut = activeCutOrNull;
     if (cut == null) {
@@ -2987,7 +2916,7 @@ class EditorSessionManager extends ChangeNotifier
     if (!canAddLayerOfKind(kind)) {
       return; // The cut already holds its one row of a singleton kind.
     }
-    final layerId = _mintLayerId();
+    final layerId = mintLayerId();
     switch (kind) {
       case LayerKind.transition:
         // A track fixture, created with the track — "Add layer" never makes
@@ -3092,7 +3021,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/folders_and_attachments.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _FoldersAndAttachments _folders = _FoldersAndAttachments(this);
+  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, internals: this);
 
   bool get canAddAttachedLayerToActive => _folders.canAddAttachedLayerToActive;
   void addAttachedLayer(
@@ -3168,7 +3097,7 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
-  late final _LayerSwitchVerbs _layerSwitches = _LayerSwitchVerbs(this);
+  late final LayerSwitchVerbs _layerSwitches = LayerSwitchVerbs(project: this, changes: this, frameIds: this, timeline: this, storyboardCursor: _storyboardCursor, internals: this);
 
   void toggleLayerVisibility(LayerId layerId) =>
       _layerSwitches.toggleLayerVisibility(layerId);
@@ -3226,6 +3155,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The row drag in flight, as the rails draw it. A notifier rather than a
   /// session notify: a drag moves per pointer step, and the only things
   /// that change are the caret and the lifted row's opacity.
+  @override
   final ValueNotifier<LayerRowDragState?> layerRowDrag =
       ValueNotifier<LayerRowDragState?>(null);
 
@@ -3245,13 +3175,14 @@ class EditorSessionManager extends ChangeNotifier
   /// of playback — revealing on those would yank the view out from under
   /// the hand that put it there. It fires where the selection moves without
   /// the pointer: the arrow keys.
+  @override
   final ValueNotifier<int> revealSelectionTick = ValueNotifier<int>(0);
 
   // ── the layer row drag: its own object, in its own file ─────────────
   //
   // A collaborator (session/layer_row_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _LayerRowDrag _layerRowDrag = _LayerRowDrag(this);
+  late final LayerRowDrag _layerRowDrag = LayerRowDrag(project: this, changes: this, effectsAndFx: _effectsAndFx, rowSelectionVerbs: _rowSelection, trackSe: _trackSe, internals: this);
 
   void beginLayerRowDrag(LayerRowDragSubject subject) =>
       _layerRowDrag.beginLayerRowDrag(subject);
@@ -3283,12 +3214,14 @@ class EditorSessionManager extends ChangeNotifier
   /// 🚨Owned here rather than by a surface: TWO of them end a row drag, and
   /// a dialog raised by whichever happened to be on screen is a second copy
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
+  @override
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
 
   /// The row's twirl. R27 #24: FOLDING a folder that holds the active
   /// layer moves the selection to the folder row itself — otherwise the
   /// fold simply wouldn't look folded (the member row would have to stay
   /// on screen to keep something selected).
+  @override
   void toggleLayerCollapsed(LayerId layerId) {
     final cut = activeCutOrNull;
     if (cut == null) {
@@ -3329,6 +3262,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The solo set — pure MONITORING state (never persisted, never
   /// exported): non-empty narrows playback/scrub to these SE rows.
+  @override
   final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
       ValueNotifier<Set<LayerId>>(const {});
 
@@ -3340,11 +3274,13 @@ class EditorSessionManager extends ChangeNotifier
   /// panel per pointer move and made the slider feel heavy. Release
   /// commits ONE write + notify. The legend's master bar previews a SET of
   /// rows through the same channel.
+  @override
   final ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
   opacityDragPreview = ValueNotifier(null);
 
   /// The master bar's LAST committed value — the bar rests on this, not a
   /// live average (UI-R6 #2).
+  @override
   double lastMasterOpacity = 1.0;
 
   /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
@@ -3454,7 +3390,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_marks.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _LayerMarks _marks = _LayerMarks(this);
+  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this);
 
   void setLayerMark(LayerId layerId, LayerMark mark) =>
       _marks.setLayerMark(layerId, mark);
@@ -3545,7 +3481,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/instructions.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _Instructions _instructions = _Instructions(this);
+  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, cutVerbs: _cutVerbs, camera: _camera);
 
   void updateLayerInstructions(
     LayerId layerId,
@@ -3593,7 +3529,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final _EdgeDrag _edgeDrag = _EdgeDrag(this);
+  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, timeline: this, folders: _folders, rangeSelections: _rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
 
   bool beginExposureEdgeDrag({
     required LayerId layerId,
@@ -3649,6 +3585,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The transition row as the in-flight edge drag would leave it — the
   /// strip renders THIS while a grip is held, so the mark follows the hand
   /// instead of jumping on release. Null when no drag is in flight.
+  @override
   final ValueNotifier<Layer?> transitionEdgeDragPreview = ValueNotifier(null);
 
   /// Whether the active layer can take an audio clip (SE rows only).
@@ -3786,7 +3723,7 @@ class EditorSessionManager extends ChangeNotifier
         for (final cut in track.cuts) cut.id.value,
     };
     return ImportIdMint(
-      nextLayerId: () => _mintLayerId(usedIds: usedLayerIds),
+      nextLayerId: () => mintLayerId(usedIds: usedLayerIds),
       // Through the MINT, not the formatter. `nextFrameId` reads
       // `_frameSequence` and does not advance it, so calling it directly
       // leaves the wall clock as the only thing telling two cels apart —
@@ -4628,12 +4565,12 @@ class EditorSessionManager extends ChangeNotifier
     conteInkPageStore.restoreFromFile(const {});
     envelopeInkStore.restoreFromFile(const {});
     historyManager.clear();
-    _clipboard._copiedFrame = null;
-    _clipboard._layerClipboard = null;
+    _clipboard.clear();
+    _layerClipboard.clear();
     clearAllSelections();
     trackFrameRangeSelection.value = null;
     editingSession.setActiveCutId(firstCutId);
-    _rebuildActiveCutControllers();
+    rebuildActiveCutControllers();
     _voiceRecording.forgetShelfTakes();
     _projectFilePath = null;
     _recoveredFromSidecar = null;
@@ -4914,15 +4851,15 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/text_cel_bakes.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _TextCelBakes _textCelBakes = _TextCelBakes(this);
+  late final TextCelBakes _textCelBakes = TextCelBakes(project: this, selection: this, changes: this, timeline: this, internals: this);
 
-  Future<void> get debugTextCelSweepDone => _textCelBakes.debugTextCelSweepDone;
   TextCelContent? get selectedTextCelContent =>
       _textCelBakes.selectedTextCelContent;
   void setTextCelContentForSelectedFrame(TextCelContent content) =>
       _textCelBakes.setTextCelContentForSelectedFrame(content);
 
-  bool _disposed = false;
+  @override
+  bool disposed = false;
 
   // --- Voice recording, ADR, input meter, take preview ----------------------
   //
@@ -5643,13 +5580,14 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
-  Layer? get _targetLayerForKindToggle => activeLayer;
+  @override
+  Layer? get targetLayerForKindToggle => activeLayer;
 
   // ── the storyboard cursor: its own object, in its own file ──────────
   //
   // A collaborator (session/storyboard_cursor.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _StoryboardCursor _storyboardCursor = _StoryboardCursor(this);
+  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, timeline: this, rangeSelections: _rangeSelections, cells: _cells, cutVerbs: _cutVerbs, transitions: _transitions, internals: this);
 
   bool get canSetCommaForStoryboardCursor =>
       _storyboardCursor.canSetCommaForStoryboardCursor;
@@ -5683,7 +5621,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/exposure_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _ExposureVerbs _exposure = _ExposureVerbs(this);
+  late final ExposureVerbs _exposure = ExposureVerbs(selection: this, changes: this, timeline: this, camera: _camera);
 
   bool get canBlankExposureForSelection =>
       _exposure.canBlankExposureForSelection;
@@ -5718,7 +5656,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/auto_frame_for_stroke.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _AutoFrameForStroke _autoFrame = _AutoFrameForStroke(this);
+  late final AutoFrameForStroke _autoFrame = AutoFrameForStroke(project: this, selection: this, changes: this, frameIds: this, timeline: this, frameVerbs: _frameVerbs);
 
   bool get canAutoCreateFrameForStroke =>
       _autoFrame.canAutoCreateFrameForStroke;
@@ -5730,10 +5668,11 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _CellInstances _instances = _CellInstances(this);
+  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, timeline: this, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, trackSe: _trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
 
   bool createInstancesForSelection() =>
       _instances.createInstancesForSelection();
+  @override
   bool get canCreateInstance => _instances.canCreateInstance;
   bool get activeCellHoldsAnInstance => _instances.activeCellHoldsAnInstance;
   bool get canCreateInstanceForSelection =>
@@ -5755,7 +5694,8 @@ class EditorSessionManager extends ChangeNotifier
   /// coverage counts as covered".) A range over a repeat/hold tail
   /// therefore fills the projected cells with authored ones, and the
   /// rederive pass re-clamps the projection around them.
-  List<({int startIndex, int length})> _emptyGapsInRange(
+  @override
+  List<({int startIndex, int length})> emptyGapsInRange(
     Layer layer,
     TimelineFrameRangeSelection selection,
   ) => emptyGapsBetween(
@@ -5796,12 +5736,13 @@ class EditorSessionManager extends ChangeNotifier
     return canCopyFrameAtCurrentFrame;
   }
 
+  @override
   void cutRunAtCurrentFrame() {
     final layer = activeLayer;
     if (layer == null || !canCutRunAtCurrentFrame) {
       return;
     }
-    final run = _spliceRunOnActiveRow();
+    final run = spliceRunOnActiveRow();
     if (run == null) {
       return;
     }
@@ -5813,16 +5754,16 @@ class EditorSessionManager extends ChangeNotifier
     // back — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가
     // 아니다」.
     final selection = frameRangeSelection.value;
-    final banked = _clipboard._copiedFrame?.rows ?? const <_CopiedRow>[];
+    final banked = _clipboard.bankedRowLayerIds;
     timelineController.spliceRunsForLayers(
       runs: [
-        for (final row in banked)
+        for (final bankedLayerId in banked)
           (
-            layerId: row.layerId,
-            index: row.layerId == layer.id
+            layerId: bankedLayerId,
+            index: bankedLayerId == layer.id
                 ? run.index
-                : _commitBlockStart(row.layerId, selection!.startIndex),
-            liftCount: row.layerId == layer.id
+                : commitBlockStart(bankedLayerId, selection!.startIndex),
+            liftCount: bankedLayerId == layer.id
                 ? run.count
                 : selection!.lengthFrames,
             clip: null,
@@ -5855,7 +5796,8 @@ class EditorSessionManager extends ChangeNotifier
   /// the session does not have — [TimelineController.spliceRunsForLayers]
   /// already takes a list so the extension is additive, but nothing here
   /// pretends to do it yet.
-  ({int index, int count})? _spliceRunOnActiveRow() {
+  @override
+  ({int index, int count})? spliceRunOnActiveRow() {
     final layer = activeLayer;
     if (layer == null) {
       return null;
@@ -5863,7 +5805,7 @@ class EditorSessionManager extends ChangeNotifier
     final selection = frameRangeSelection.value;
     if (selection != null && selection.coversLayer(layer.id)) {
       return (
-        index: _commitBlockStart(layer.id, selection.startIndex),
+        index: commitBlockStart(layer.id, selection.startIndex),
         count: selection.lengthFrames,
       );
     }
@@ -5901,6 +5843,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The scoped edit-drag preview channel (exposure commas + cut trims).
   /// Value-only: per-step updates never fire a session notify.
+  @override
   final ValueNotifier<TimelineDragPreview?> dragPreview =
       ValueNotifier<TimelineDragPreview?>(null);
 
@@ -5916,7 +5859,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/movie_end_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _MovieEndDrag _movieEnd = _MovieEndDrag(this);
+  late final MovieEndDragVerbs _movieEnd = MovieEndDragVerbs(project: this, changes: this, internals: this);
 
   int get movieContentEndFrame => _movieEnd.movieContentEndFrame;
   bool beginMovieEndDrag() => _movieEnd.beginMovieEndDrag();
@@ -6019,7 +5962,8 @@ class EditorSessionManager extends ChangeNotifier
 
   /// "Where does this row's blocks live" as a snap lane, or null for a row
   /// that has none to snap to.
-  RangeBlock? Function(int)? _trackRowSnapLane(
+  @override
+  RangeBlock? Function(int)? trackRowSnapLane(
     TimelineRowAddress row,
     TrackFrameAxis axis,
   ) {
@@ -6066,12 +6010,13 @@ class EditorSessionManager extends ChangeNotifier
   /// any more: [storyboardSelectedCutIds] reads the CURRENT layout, so a
   /// cut another command deleted since the drag painted the range is simply
   /// not in it.
-  List<CutId> get _liveSelectedCutIds => storyboardSelectedCutIds;
+  @override
+  List<CutId> get liveSelectedCutIds => storyboardSelectedCutIds;
 
   // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
 
   // The cut move drag (Round 6): begun, moved, ended or cancelled.
-  late final _CutMoveDragVerbs _cutMove = _CutMoveDragVerbs(this);
+  late final CutMoveDragVerbs _cutMove = CutMoveDragVerbs(project: this, selection: this, changes: this, storyboardRows: _storyboardRows, internals: this);
 
   bool beginCutMoveDrag(CutId cutId) => _cutMove.beginCutMoveDrag(cutId);
   void updateCutMoveDrag(int cumulativeDelta) =>
@@ -6090,15 +6035,17 @@ class EditorSessionManager extends ChangeNotifier
   /// The drag in flight, or null. ⛔The only thing this class keeps about a
   /// block move now: its mid-drag state lives on the object and dies with
   /// the gesture (see [DrawingBlockMoveDrag]).
-  DrawingBlockMoveDrag? _blockMoveDrag;
+  @override
+  DrawingBlockMoveDrag? blockMoveDrag;
 
-  bool get isBlockMoveDragActive => _blockMoveDrag != null;
+  bool get isBlockMoveDragActive => blockMoveDrag != null;
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
   /// with audio attached; the rest of the standing-down is the shared
   /// retime law ([standsDownFromRetime]).
-  bool _blockMoveEligible(LayerId layerId) {
+  @override
+  bool blockMoveEligible(LayerId layerId) {
     // FREE attach rows move blocks like any drawing layer (UI-R21 #3) —
     // only the SYNCED ones stand down, which the shared law knows.
     if (standsDownFromRetime(layerId) || isTrackSeLayerId(layerId)) {
@@ -6128,8 +6075,9 @@ class EditorSessionManager extends ChangeNotifier
   /// A track-axis selection (the storyboard's S rows) arrives already in
   /// commit keys; a cut-local one has to be translated for those same rows.
   /// Carrying the axis is what keeps the shove from translating twice.
+  @override
   ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
-  _frameShiftScope({TimelineRowAddress? currentRow}) {
+  frameShiftScope({TimelineRowAddress? currentRow}) {
     final trackSelection = trackFrameRangeSelection.value;
     if (trackSelection != null) {
       final rows = <LayerId>[
@@ -6188,18 +6136,20 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The layer a shift MEASURES against, in the axis the anchor will be
   /// translated to: track-SE rows ALWAYS answer with the global layer —
-  /// [_shiftAnchorFor] puts every anchor on that axis for them — and
+  /// [shiftAnchorFor] puts every anchor on that axis for them — and
   /// everything else with the cut-local range layer, matching a cut-local
   /// anchor. Measuring the SE display clone against the translated global
   /// anchor mixed the axes: the pull verb read zero slack in any cut past
   /// the first, and a mixed selection's pull sailed past the SE wall into
   /// an overlap crash.
-  Layer? _shiftLayerFor(LayerId layerId) => isTrackSeLayerId(layerId)
+  @override
+  Layer? shiftLayerFor(LayerId layerId) => isTrackSeLayerId(layerId)
       ? trackSeGlobalLayerById(layerId)
       : rangeLayerById(layerId);
 
   /// The scope's anchor as [layerId]'s own timeline keys it.
-  int _shiftAnchorFor(
+  @override
+  int shiftAnchorFor(
     LayerId layerId,
     int anchorIndex, {
     required bool anchorIsGlobal,
@@ -6208,22 +6158,22 @@ class EditorSessionManager extends ChangeNotifier
       // be translated before it can address their blocks. A global one is
       // already there.
       !anchorIsGlobal && isTrackSeLayerId(layerId)
-      ? _commitBlockStart(layerId, anchorIndex)
+      ? commitBlockStart(layerId, anchorIndex)
       : anchorIndex;
 
   bool canPushFrames({TimelineRowAddress? currentRow}) =>
-      _frameShiftScope(currentRow: currentRow) != null;
+      frameShiftScope(currentRow: currentRow) != null;
 
   /// How far a frame PULL can travel: the LEAST slack across the scope's
   /// rows, so the whole scope stops where the first one touches.
   int framePullSlack({TimelineRowAddress? currentRow}) {
-    final scope = _frameShiftScope(currentRow: currentRow);
+    final scope = frameShiftScope(currentRow: currentRow);
     if (scope == null) {
       return 0;
     }
     var slack = 0x7fffffff;
     for (final layerId in scope.layerIds) {
-      final layer = _shiftLayerFor(layerId);
+      final layer = shiftLayerFor(layerId);
       if (layer == null) {
         continue;
       }
@@ -6231,7 +6181,7 @@ class EditorSessionManager extends ChangeNotifier
         slack,
         rowPullSlack(
           blocks: timelineShiftableBlocks(layer.timeline),
-          anchorIndex: _shiftAnchorFor(
+          anchorIndex: shiftAnchorFor(
             layerId,
             scope.anchorIndex,
             anchorIsGlobal: scope.anchorIsGlobal,
@@ -6423,7 +6373,7 @@ class EditorSessionManager extends ChangeNotifier
       ValueNotifier<TimelineLaneSelection?>(null);
 
   void _publishCutLocalLaneRange() {
-    if (_disposed) {
+    if (disposed) {
       return;
     }
     final span = laneRangeSelection.value;
@@ -6452,7 +6402,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/lane_range_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _LaneRangeMoveDrag _laneMove = _LaneRangeMoveDrag(this);
+  late final LaneRangeMoveDragVerbs _laneMove = LaneRangeMoveDragVerbs(project: this, selection: this, changes: this, laneVerbs: _laneVerbs, effectsAndFx: _effectsAndFx, internals: this);
 
   bool beginLaneRangeMoveDrag() => _laneMove.beginLaneRangeMoveDrag();
   void updateLaneRangeMoveDrag({required int frameDelta}) =>
@@ -6477,7 +6427,8 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Maps a DISPLAY block start to the layer's COMMIT form key: identity
   /// for cut layers; the global-axis start for track-SE rows.
-  int _commitBlockStart(LayerId layerId, int displayStart) {
+  @override
+  int commitBlockStart(LayerId layerId, int displayStart) {
     if (!isTrackSeLayerId(layerId)) {
       return displayStart;
     }
@@ -6514,7 +6465,8 @@ class EditorSessionManager extends ChangeNotifier
   /// The snap lane a FOLDER row selects against (R9 #1): the very runs its
   /// band draws, which are its subtree members' exposures merged. Empty for
   /// every row that owns its own blocks.
-  List<({int start, int endExclusive})> _aggregateRunsForRow(Layer layer) {
+  @override
+  List<({int start, int endExclusive})> aggregateRunsForRow(Layer layer) {
     if (!layerKindGroupsLayers(layer.kind)) {
       return const [];
     }
@@ -6588,7 +6540,7 @@ class EditorSessionManager extends ChangeNotifier
     for (final entry in layer.instructions.entries) {
       widen(entry.key, entry.key + entry.value.length);
     }
-    for (final run in _aggregateRunsForRow(layer)) {
+    for (final run in aggregateRunsForRow(layer)) {
       widen(run.start, run.endExclusive);
     }
     final start = first;
@@ -6602,9 +6554,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _DrawingBlockMoveDrag _drawingBlockMove = _DrawingBlockMoveDrag(
-    this,
-  );
+  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, timeline: this, folders: _folders, internals: this);
 
   bool beginDrawingBlockMoveDrag({
     required LayerId layerId,
@@ -6634,7 +6584,8 @@ class EditorSessionManager extends ChangeNotifier
   /// nothing else, so that is all this takes. (The multi-row rigid move is
   /// a different shape: SE row pairs, instruction and camera riders, and a
   /// rekey list built from the plan instead of the moved frame ids.)
-  Command _singleRowMoveCommand(
+  @override
+  Command singleRowMoveCommand(
     DrawingBlockMovePlan plan, {
     required Layer source,
     required String description,
@@ -6683,11 +6634,11 @@ class EditorSessionManager extends ChangeNotifier
   // ── the frame-range move drag: its own object, in its own file ────────
   //
   // The first collaborator carved out of this class (2026-09-02, the audit's
-  // SRP cut): the drag's state and steps live in `_FrameRangeMoveDrag`
+  // SRP cut): the drag's state and steps live in `FrameRangeMoveDrag`
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final _FrameRangeMoveDrag _rangeMove = _FrameRangeMoveDrag(this);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, timeline: this, camera: _camera, folders: _folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -6727,7 +6678,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/run_frames_add_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _RunFramesAddDrag _runFramesAdd = _RunFramesAddDrag(this);
+  late final RunFramesAddDragVerbs _runFramesAdd = RunFramesAddDragVerbs(project: this, changes: this, timeline: this, internals: this);
 
   bool beginRunFramesAddDrag({
     required LayerId layerId,
@@ -6803,14 +6754,15 @@ class EditorSessionManager extends ChangeNotifier
   /// ghost, so the non-ghost block scans downstream no longer exclude them.
   @override
   bool standsDownFromRetime(LayerId layerId) =>
-      _folders.isSyncedAttachedLayerId(layerId) || _isSingleCelLayerId(layerId);
+      _folders.isSyncedAttachedLayerId(layerId) || isSingleCelLayerId(layerId);
 
   /// Whether [layerId] names a SINGLE-CEL (image) row of the active cut:
   /// its one covering block is pinned by the write normalization, so the
   /// reshaping verbs (range move, push/pull, comma set, X-here) stand
   /// down — committing them would be reverted in the same write, leaving
   /// a phantom no-op on the undo stack.
-  bool _isSingleCelLayerId(LayerId layerId) {
+  @override
+  bool isSingleCelLayerId(LayerId layerId) {
     final layer = layerById(layerId);
     return layer != null && layerKindHoldsSingleCel(layer.kind);
   }
@@ -6825,6 +6777,7 @@ class EditorSessionManager extends ChangeNotifier
   /// places before this (the cut menu, the layer menu, a loose layer button),
   /// each hard-wired to one noun, which is why the same word did different
   /// things depending on where you reached for it.
+  @override
   DeleteSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
 
   /// [deleteSubject], asked of a PANEL — see [editInstanceSubjectFor] for
@@ -6864,7 +6817,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and
   /// 잘라내기 — all resolve against the active layer. A band covering that
   /// row is served: 잘라내기 splices exactly the swept span
-  /// ([_spliceRunOnActiveRow]), and the playhead verbs act on the row the
+  /// ([spliceRunOnActiveRow]), and the playhead verbs act on the row the
   /// user highlighted. A band naming only OTHER rows is a different
   /// statement, and acting on the active row then edits something the
   /// user never swept while the highlight sits elsewhere explaining
@@ -6974,6 +6927,7 @@ class EditorSessionManager extends ChangeNotifier
   /// TVP). One composite undo across spanned layers; the selection
   /// follows the retimed span so repeated comma presses keep operating on
   /// the same cels.
+  @override
   void setCommaForSelectionOrCurrent(int comma) {
     if (comma < 1) {
       return;
@@ -7082,6 +7036,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Selection-tool interactions (marquee/move/transform drags) — counted
   /// so overlapping holds nest (R15-⑤).
+  @override
   final ValueNotifier<bool> selectionInteractionActive = ValueNotifier<bool>(
     false,
   );
@@ -7089,6 +7044,7 @@ class EditorSessionManager extends ChangeNotifier
   /// R15-⑤: any live editing interaction (brush stroke, selection drag)
   /// blocks frame seeks, scrubs and cut switches entirely — the playhead
   /// moves when the pen lifts, never under it.
+  @override
   bool get editingInteractionBusy =>
       brushInputActive.value || selectionInteractionActive.value;
 
@@ -7152,6 +7108,7 @@ class EditorSessionManager extends ChangeNotifier
   ///
   /// ⚠️This is the sweep the getter's own doc promised whoever unclamped:
   /// the term did not need updating, it needed removing.
+  @override
   bool get editingPlayheadInGap => gapGlobalFrame != null;
 
   /// The gap parking's exact global frame, or null when the playhead sits
@@ -7242,13 +7199,13 @@ class EditorSessionManager extends ChangeNotifier
     _standing.rememberActiveLayerForCut();
     // The visibility solo is cut-scoped: restore the eyes before leaving
     // (the selectCut contract).
-    if (_solo._layerVisibilitySoloEnabled) {
+    if (_solo.layerVisibilitySoloEnabled) {
       _solo.exitVisibilitySolo();
     }
     editingSession.setActiveCutId(null);
-    _clipboard._copiedFrame = null;
+    _clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
-    _rebuildActiveCutControllers();
+    rebuildActiveCutControllers();
     return true;
   }
 
@@ -7258,6 +7215,7 @@ class EditorSessionManager extends ChangeNotifier
   /// fx/eye subject rule). The landing keeps the global position: the new
   /// cut's local frame is the same global frame. A gap on the tapped
   /// track is a no-op, like the fx/eye buttons there.
+  @override
   void selectTrackCutAtPlayhead(TrackId trackId) {
     if (editingInteractionBusy) {
       return;
@@ -7347,7 +7305,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_scrub.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _FrameScrub _frameScrub = _FrameScrub(this);
+  late final FrameScrub _frameScrub = FrameScrub(project: this, selection: this, changes: this, timeline: this, internals: this);
 
   void scrubGlobalFrame(int globalFrame) =>
       _frameScrub.scrubGlobalFrame(globalFrame);
@@ -7360,12 +7318,14 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Session view state — a ValueNotifier so the canvas underlay and the
   /// onion panel subscribe without whole-session notifies.
+  @override
   final ValueNotifier<OnionSkinSettings> onionSkinSettings =
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
 
   /// PER-LAYER onion application (UI-R17 #5, TVPaint's light table): the
   /// layers whose ghosts composite. The panel's master switch is GONE —
   /// row/legend toggles drive this set.
+  @override
   final ValueNotifier<Set<LayerId>> onionSkinLayerIds =
       ValueNotifier<Set<LayerId>>(<LayerId>{});
 
@@ -7373,7 +7333,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/onion_skin.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final _OnionSkin _onionSkin = _OnionSkin(this);
+  late final OnionSkin _onionSkin = OnionSkin(project: this, selection: this, changes: this, timeline: this, internals: this);
 
   bool isLayerOnionSkinEnabled(LayerId layerId) =>
       _onionSkin.isLayerOnionSkinEnabled(layerId);
@@ -8474,8 +8434,8 @@ class EditorSessionManager extends ChangeNotifier
     conteInkPageStore.restoreFromFile(cels.inkPage);
     envelopeInkStore.restoreFromFile(cels.envelope);
     historyManager.clear();
-    _clipboard._copiedFrame = null;
-    _clipboard._layerClipboard = null;
+    _clipboard.clear();
+    _layerClipboard.clear();
     // The selections name rows of the project being discarded, so no grid
     // can draw them — and a band nothing shows still CLAIMS the cell verbs
     // ([cellSelectionClaimsSubject]), which would leave Delete and the
@@ -8484,7 +8444,7 @@ class EditorSessionManager extends ChangeNotifier
     clearAllSelections();
     trackFrameRangeSelection.value = null;
     editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
-    _rebuildActiveCutControllers();
+    rebuildActiveCutControllers();
     // The replaced project's shelf takes are no longer this session's to
     // adopt — they stay on the shelf, findable.
     _voiceRecording.forgetShelfTakes();
@@ -8548,7 +8508,8 @@ class EditorSessionManager extends ChangeNotifier
   /// This is also the axis a GAP is walked on: [selectGlobalFrame] lands
   /// the result inside a cut or parks it in the void, so a playhead
   /// standing between cuts can step out under its own power.
-  void _flipCuts(TrackId trackId, {required bool forward}) {
+  @override
+  void flipCuts(TrackId trackId, {required bool forward}) {
     // The MEMOIZED layout (identity-keyed on the project): a flip step is
     // a per-move cost, and rebuilding the whole cross-track layout for
     // each one is exactly the tax that memo exists to remove.
@@ -8589,6 +8550,7 @@ class EditorSessionManager extends ChangeNotifier
   /// included — lands here, so cursor-driven widgets (timeline cursor
   /// layer, frame counter, the canvas scrub preview) follow pointer-fast
   /// without a session notify rebuilding the tree.
+  @override
   final ValueNotifier<int> editingFrameCursor = ValueNotifier<int>(0);
 
   /// Bumped once per committed seek ([selectFrameIndex]) — a serial, not a
@@ -8634,6 +8596,7 @@ class EditorSessionManager extends ChangeNotifier
   /// ⛔What it still decides is the GAP ANSWER: a parked global reads as a
   /// gap only while the gesture is live (the `gapGlobalFrame` read below),
   /// so the flag stays and the canvas rebuilds at enter and leave.
+  @override
   final ValueNotifier<bool> frameScrubActive = ValueNotifier<bool>(false);
 
   /// D6: whether the LIVE global scrub currently stands OUT of the active
@@ -8650,6 +8613,7 @@ class EditorSessionManager extends ChangeNotifier
   /// stays as quiet as UI-R7 #9 demands. Set only while the gesture is
   /// live — a plain tap over another cut parks on pointer-down but never
   /// scrubs, so this stays false and nothing flashes (the no-flash rule).
+  @override
   final ValueNotifier<bool> scrubOutOfTerritory = ValueNotifier<bool>(false);
 
   // 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**
@@ -8768,7 +8732,8 @@ class EditorSessionManager extends ChangeNotifier
     return 'Layer: ${layer?.name ?? 'None'}';
   }
 
-  String _drawingStartStatusForLayer(Layer layer, int frameIndex) {
+  @override
+  String drawingStartStatusForLayer(Layer layer, int frameIndex) {
     final frameName = frameNameForLayer(layer, frameIndex);
     if (frameName == null || frameName.isEmpty) {
       return 'Drawing start';
@@ -8792,140 +8757,4 @@ class EditorSessionManager extends ChangeNotifier
       frameLabel: _frameVerbs.currentFrameDisplayLabel(layer, frame),
     );
   }
-}
-
-/// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
-///
-/// The board held a single row until copy learned the band. It holds a LIST
-/// now, and this is one entry: which row it came from, the run of cells, and
-/// the cels those cells point at.
-class _CopiedRow {
-  const _CopiedRow({
-    required this.layerId,
-    required this.clip,
-    this.cels = const [],
-  });
-
-  final LayerId layerId;
-  final TimelineClipRow clip;
-
-  /// Carried BY VALUE, for [_CopiedFrameReference.cels]'s reason: a
-  /// 잘라내기 orphans what it lifted, and a clipboard that does not hold
-  /// what was put on it is not one.
-  final List<Frame> cels;
-}
-
-class _CopiedFrameReference {
-  const _CopiedFrameReference({
-    required this.layerId,
-    required this.frameId,
-    required this.frameName,
-    this.clip,
-    this.cels = const [],
-    this.rows = const [],
-  });
-
-  /// 🚨결정 14 ②ⓐ — EVERY swept row, in display order, the anchor first.
-  ///
-  /// > 「지우기 눌렀다고해서 현재 행만 지우는게아니라 **선택된 모든게**
-  /// > 지워지는걸 말하는거임. **복사든 뭐든 마찬가지**」
-  ///
-  /// ⚠️The scalar fields below still describe the ANCHOR — the status line
-  /// and the paste gates read those. This is the whole board. A copy with no
-  /// band writes ONE entry, so the single-row clipboard is this list of
-  /// length one rather than a second shape standing beside it.
-  final List<_CopiedRow> rows;
-
-  final LayerId layerId;
-
-  /// The ANCHOR cel — what the status line names and what the old one-cel
-  /// paste gate asks about. It is the clip's first drawing, kept as its own
-  /// field because "is there something to paste into this row" is a
-  /// question about a cel belonging to a layer, not about a run.
-  final FrameId frameId;
-  final String? frameName;
-
-  /// 🚨T3 — the run that was copied, 코마째. Null only for a clipboard
-  /// written before the run existed (no such writer remains); readers treat
-  /// null as "one cell of [frameId]", which is exactly what the retired
-  /// behaviour did.
-  final TimelineClipRow? clip;
-
-  /// 🚨The CELS the clip's exposures point at, carried by value.
-  ///
-  /// Without this a 잘라내기 is lossy: the lift orphans the cels it took
-  /// out, the layer drops them, and pasting them back finds nothing to point
-  /// at — cut-then-paste, the most ordinary thing anyone does with a
-  /// clipboard, would silently do nothing. A clipboard that does not hold
-  /// what was put on it is not one.
-  ///
-  /// ⛔Re-added only when MISSING. A copy leaves the originals where they
-  /// are, and adding them again would put one cel in the layer twice.
-  final List<Frame> cels;
-}
-
-/// Which verb an in-flight cut-edge drag belongs to (feedback #5/#9). One
-/// shape of edge, and where it sat when the drag began decides what it
-/// re-times; the session keeps the answer so the continuations cannot be
-/// re-routed by anything a live preview rebuilds.
-enum _CutEdgeDragVerb {
-  /// Both cut edges' plain duration/gap drags. R10 R4 folded the lead
-  /// edge's second verb into this one: a conte row no longer changes what
-  /// dragging a cut's front edge means, only how far it may go.
-  cutTrim,
-
-  /// ANY panel's trailing edge: that cell's comma, the later panels
-  /// rippling glued and the cut's length riding the row end (feedback
-  /// #9; the edge unification retired the division verb this replaced).
-  comma,
-}
-
-/// B8 — the block under the STORYBOARD cursor (standing row × track-global
-/// playhead), resolved once per verb so the gates and the dispatches read
-/// one answer. Kinds, not rules: every kind takes the same verbs (comma =
-/// length, delete = removal), each through its own existing machinery.
-sealed class _StoryboardCursorBlock {
-  const _StoryboardCursorBlock();
-}
-
-class _StoryboardCursorCutBlock extends _StoryboardCursorBlock {
-  const _StoryboardCursorCutBlock(this.cut);
-
-  final Cut cut;
-}
-
-class _StoryboardCursorSeBlock extends _StoryboardCursorBlock {
-  const _StoryboardCursorSeBlock(this.layerId, this.blockStartIndex);
-
-  final LayerId layerId;
-
-  /// GLOBAL — the S rows' timelines live on the track's axis.
-  final int blockStartIndex;
-}
-
-class _StoryboardCursorTransitionSpan extends _StoryboardCursorBlock {
-  const _StoryboardCursorTransitionSpan(this.spanStartIndex, this.spanLength);
-
-  final int spanStartIndex;
-  final int spanLength;
-}
-
-/// D28: the cut's STORYBOARD PANEL under the cursor — with a storyboard
-/// layer on the cut, the frame verbs target the panel, not the cut
-/// (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」, the later law
-/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel exists).
-class _StoryboardCursorStoryboardPanel extends _StoryboardCursorBlock {
-  const _StoryboardCursorStoryboardPanel(
-    this.cut,
-    this.row,
-    this.panelStartIndex,
-    this.panelLength,
-  );
-
-  final Cut cut;
-  final Layer row;
-
-  /// CUT-LOCAL — the storyboard row lives inside its cut.
-  final int panelStartIndex;
-  final int panelLength;
 }

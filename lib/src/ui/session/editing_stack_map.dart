@@ -11,8 +11,8 @@ part of '../editor_session_manager.dart';
 /// opacity and its source effects — because this walk is where the
 /// active node's chain is already resolved. Asking a second time
 /// somewhere else is how the panel and the stack would come to disagree.
-class _EditingStackMap {
-  _EditingStackMap({
+class EditingStackMap {
+  EditingStackMap({
     required this.session,
     required this.cut,
     required this.stackCut,

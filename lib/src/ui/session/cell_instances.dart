@@ -1,4 +1,18 @@
-part of '../editor_session_manager.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/edit_instance_subject.dart';
+import '../../models/timeline_frame_range.dart';
+import '../../services/command.dart';
+import 'session_roles.dart';
+import 'camera.dart';
+import 'instructions.dart';
+import 'lane_verbs.dart';
+import 'track_se_display.dart';
+import 'frame_verbs.dart';
+import 'cell_verbs.dart';
 
 /// The CELL INSTANCES — creating instances for a selection, whether the
 /// active cell holds one, and the subject an instance edit acts on — as
@@ -6,10 +20,46 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: the rest reads none of it.
-class _CellInstances {
-  _CellInstances(this._session);
+class CellInstances {
+  CellInstances({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required FrameIds frameIds,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required Camera camera,
+    required Instructions instructionVerbs,
+    required LaneVerbs laneVerbs,
+    required TrackSeDisplay trackSe,
+    required FrameVerbs frameVerbs,
+    required CellVerbs cells,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _frameIds = frameIds,
+       _timeline = timeline,
+       _internals = internals,
+       _camera = camera,
+       _instructionVerbs = instructionVerbs,
+       _laneVerbs = laneVerbs,
+       _trackSe = trackSe,
+       _frameVerbs = frameVerbs,
+       _cells = cells;
 
-  final EditorSessionManager _session;
+  final FrameVerbs _frameVerbs;
+  final CellVerbs _cells;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final FrameIds _frameIds;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final Camera _camera;
+  final Instructions _instructionVerbs;
+  final LaneVerbs _laneVerbs;
+  final TrackSeDisplay _trackSe;
 
   /// UI-R25 #3: Add with a LIVE selection fills the WHOLE selection —
   /// wherever creation is possible, kind by kind (the rule: anywhere
@@ -29,9 +79,9 @@ class _CellInstances {
     // cut-local selection this verb used to read, so creation fell
     // through to the stale active layer — the wrong row entirely. The
     // ladder rung was simply missing.
-    final trackRange = _session.trackFrameRangeSelection.value;
+    final trackRange = _selection.trackFrameRangeSelection.value;
     if (trackRange != null &&
-        _session._trackSe.createTrackSeEntriesForRange(trackRange)) {
+        _trackSe.createTrackSeEntriesForRange(trackRange)) {
       return true;
     }
     // R10 #19: a live lane SPAN, or the property row you are STANDING on
@@ -39,16 +89,16 @@ class _CellInstances {
     // what makes a group HEADER key its whole member set and an effect
     // lane key its chain without a second code path (the user's
     // "카메라레이어랑 같은 동작이지? 로직 통일화해서").
-    final lane = _session._laneVerbs.laneVerbRange;
+    final lane = _laneVerbs.laneVerbRange;
     if (lane != null) {
-      _session._laneVerbs.createLaneKeysForSelection(lane);
+      _laneVerbs.createLaneKeysForSelection(lane);
       return true;
     }
-    final selection = _session.frameRangeSelection.value;
+    final selection = _selection.frameRangeSelection.value;
     if (selection == null) {
       return false;
     }
-    final displayById = {for (final layer in _session.layers) layer.id: layer};
+    final displayById = {for (final layer in _project.layers) layer.id: layer};
     final fills =
         <
           LayerId,
@@ -65,14 +115,14 @@ class _CellInstances {
         continue;
       }
       if (layer.kind == LayerKind.camera) {
-        final command = _session._camera.cameraKeysCommandForRange(selection);
+        final command = _camera.cameraKeysCommandForRange(selection);
         if (command != null) {
           cameraCommands.add(command);
         }
         continue;
       }
       if (layer.kind == LayerKind.instruction) {
-        final command = _session._instructions.instructionEventsCommandForRange(
+        final command = _instructionVerbs.instructionEventsCommandForRange(
           layer,
           selection,
         );
@@ -90,10 +140,10 @@ class _CellInstances {
       ...cameraCommands,
       ...instructionCommands,
       if (fills.isNotEmpty)
-        ..._session.timelineController.drawingFramesCommandsForLayers(fills),
+        ..._timeline.timelineController.drawingFramesCommandsForLayers(fills),
     ];
     if (commands.isNotEmpty) {
-      _session.historyManager.execute(
+      _project.historyManager.execute(
         commands.length == 1
             ? commands.single
             : CompositeCommand(
@@ -102,10 +152,10 @@ class _CellInstances {
               ),
       );
       if (cameraCommands.isNotEmpty || instructionCommands.isNotEmpty) {
-        _session.refreshAfterCutCommand();
+        _changes.refreshAfterCutCommand();
       }
     }
-    _session.notifyChanged();
+    _changes.notifyChanged();
     return true;
   }
 
@@ -129,12 +179,11 @@ class _CellInstances {
     }
     final layerFills =
         <({int startIndex, int length, FrameId frameId, String? name})>[];
-    for (final gap in _session._emptyGapsInRange(layer, selection)) {
-      _session._frameSequence += 1;
+    for (final gap in _internals.emptyGapsInRange(layer, selection)) {
       layerFills.add((
         startIndex: gap.startIndex,
         length: gap.length,
-        frameId: FrameId(_session.nextFrameId(layer.id)),
+        frameId: _frameIds.mintFrameId(layer.id),
         name: null,
       ));
     }
@@ -164,12 +213,12 @@ class _CellInstances {
     if (canCreateInstanceForSelection) {
       return true;
     }
-    final layer = _session.activeLayer;
-    if (layer == null || !_session.hasActiveNonNegativeCell) {
+    final layer = _selection.activeLayer;
+    if (layer == null || !_cells.hasActiveNonNegativeCell) {
       return false;
     }
     return switch (layer.kind) {
-      LayerKind.se => _session.canCreateDrawingAtCurrentFrame,
+      LayerKind.se => _frameVerbs.canCreateDrawingAtCurrentFrame,
       LayerKind.folder || LayerKind.adjustment || LayerKind.transition => false,
       _ => true,
     };
@@ -191,17 +240,17 @@ class _CellInstances {
   /// compiler here rather than silently landing in a default arm, which is
   /// the guard that keeps this and [createActiveInstance] from drifting.
   bool get activeCellHoldsAnInstance {
-    final layer = _session.activeLayer;
-    if (layer == null || !_session.hasActiveNonNegativeCell) {
+    final layer = _selection.activeLayer;
+    if (layer == null || !_cells.hasActiveNonNegativeCell) {
       // No cell at all is not an empty cell: there is nowhere to create.
       return true;
     }
-    final frameIndex = _session.timelineController.currentFrameIndex;
+    final frameIndex = _timeline.timelineController.currentFrameIndex;
     return switch (layer.kind) {
       LayerKind.camera =>
-        _session.activeCutOrNull?.camera.keyframeAt(frameIndex) != null,
+        _project.activeCutOrNull?.camera.keyframeAt(frameIndex) != null,
       LayerKind.instruction =>
-        _session.instructionSpanAt(layer.id, frameIndex) != null,
+        _instructionVerbs.instructionSpanAt(layer.id, frameIndex) != null,
       // ⛔Read-only inside a cut and nothing to author on a row that holds
       // no cel of its own: reporting FULL keeps the fork from offering a
       // creation their own verbs already refuse.
@@ -210,7 +259,7 @@ class _CellInstances {
       LayerKind.animation ||
       LayerKind.storyboard ||
       LayerKind.image ||
-      LayerKind.text => _session.selectedFrame != null,
+      LayerKind.text => _selection.selectedFrame != null,
     };
   }
 
@@ -219,15 +268,15 @@ class _CellInstances {
   /// rung; the storyboard's toolbar context reads THIS and then asks its
   /// own standing row, where the timeline falls to the active layer.
   bool get canCreateInstanceForSelection {
-    final trackRange = _session.trackFrameRangeSelection.value;
+    final trackRange = _selection.trackFrameRangeSelection.value;
     if (trackRange != null &&
-        _session._trackSe.trackSeCreationGaps(trackRange).isNotEmpty) {
+        _trackSe.trackSeCreationGaps(trackRange).isNotEmpty) {
       return true;
     }
-    if (_session._laneVerbs.laneVerbRange != null) {
+    if (_laneVerbs.laneVerbRange != null) {
       return true;
     }
-    return _session.frameRangeSelection.value != null;
+    return _selection.frameRangeSelection.value != null;
   }
 
   /// 🚨T25 — whether the CELL under the playhead has an instance editor.
@@ -236,7 +285,7 @@ class _CellInstances {
   /// its NAME, a camera or direction cell's is the key/event dialog, an SE
   /// cell's is the entry — or the creation of one. This lived in the
   /// toolbar as a private getter while the button was hard-wired to cells;
-  /// [editInstanceSubject] asked [_session.canRenameFrameAtCurrentFrame] instead, and
+  /// [editInstanceSubject] asked [_frameVerbs.canRenameFrameAtCurrentFrame] instead, and
   /// the two disagreed for every non-drawing kind. The button stayed lit and
   /// the press did nothing, which is the worst of the three possible
   /// answers. One question, one getter.
@@ -251,25 +300,25 @@ class _CellInstances {
     // the active row instead. There is no selection-wide rename to route
     // to, so a claiming band whose rows hold no editable block simply
     // ends the ladder.
-    if (_session.bandNamesRowsThisPressWouldMiss) {
+    if (_selection.bandNamesRowsThisPressWouldMiss) {
       return false;
     }
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return false;
     }
     // Standing on a LANE row, the instance is that lane's KEY — which the
     // owning layer's kind cannot answer.
-    if (_session.canNameLaneKeys) {
+    if (_laneVerbs.canNameLaneKeys) {
       return true;
     }
     return switch (layer.kind) {
       LayerKind.camera ||
-      LayerKind.instruction => _session.hasActiveNonNegativeCell,
+      LayerKind.instruction => _cells.hasActiveNonNegativeCell,
       LayerKind.se =>
-        _session.selectedFrame != null ||
-            _session.canCreateDrawingAtCurrentFrame,
-      _ => _session.canRenameFrameAtCurrentFrame,
+        _selection.selectedFrame != null ||
+            _frameVerbs.canCreateDrawingAtCurrentFrame,
+      _ => _frameVerbs.canRenameFrameAtCurrentFrame,
     };
   }
 
@@ -278,7 +327,7 @@ class _CellInstances {
   /// 유저 확정 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동. 그래서
   /// **선택범위 통해 동사통일화** 가능하게.」
   ///
-  /// ★Deliberately the SAME ladder as [_session.deleteSubject], in the same order and
+  /// ★Deliberately the SAME ladder as [_internals.deleteSubject], in the same order and
   /// for the same reason. Two shared-pill verbs that both ask 「지금 무엇이
   /// 선택됐나」 and answer it differently would be a rule the user has to
   /// hold two versions of.
@@ -304,10 +353,11 @@ class _CellInstances {
   EditInstanceSubject editInstanceSubjectFor({
     required bool cutsAreThisPanels,
   }) {
-    if (cutsAreThisPanels && _session.trackFrameRangeSelection.value != null) {
+    if (cutsAreThisPanels &&
+        _selection.trackFrameRangeSelection.value != null) {
       return EditInstanceSubject.cuts;
     }
-    if (_session.renameableSelectedLayerIds().isNotEmpty) {
+    if (_internals.renameableSelectedLayerIds().isNotEmpty) {
       return EditInstanceSubject.layers;
     }
     return canEditCellInstanceAtCurrentFrame

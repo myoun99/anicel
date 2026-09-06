@@ -1,4 +1,38 @@
-part of '../editor_session_manager.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/camera_pose.dart';
+import '../../models/canvas_point.dart';
+import '../../models/transform_track.dart';
+import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_row_address.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../../services/camera_pose_resolver.dart';
+import '../../services/cut_frame_composite_plan.dart';
+import '../timeline/effect_lane_editing.dart'
+    show
+        effectLaneKeyFrames,
+        effectsWithGroupReset,
+        effectsWithLaneKeyRemoved,
+        effectsWithLaneKeyToggled,
+        effectsWithLaneRangeNamed;
+import '../timeline/effect_lane_policy.dart'
+    show effectLaneDisplayOrder, parseEffectLaneId;
+import '../timeline/transform_lane_editing.dart'
+    show
+        transformLaneKeyFrames,
+        transformTrackWithGroupReset,
+        transformTrackWithLaneKeyRemoved,
+        transformTrackWithLaneKeyToggled,
+        transformTrackWithLaneRangeNamed;
+import '../timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
+import '../timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane, transformLaneDisplayOrder;
+import 'session_roles.dart';
+import 'effects_and_fx.dart';
 
 /// The LANE VERBS — what a verb on a transform or effect lane acts on (the
 /// targets, the range, the layer and frame behind a lane row), the keys it
@@ -7,14 +41,29 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no field of its own and eighteen
-/// session members touched. It reaches the session through `_session`.
-class _LaneVerbs {
-  _LaneVerbs(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class LaneVerbs {
+  LaneVerbs({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required EffectsAndFx effectsAndFx,
+  }) : _project = project,
+       _selection = selection,
+       _timeline = timeline,
+       _internals = internals,
+       _effectsAndFx = effectsAndFx;
 
-  final EditorSessionManager _session;
+  final EffectsAndFx _effectsAndFx;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   /// Names (or un-names, with null) one TRANSFORM lane KEY — the twin of
-  /// [_session.setEffectKeyName], under the same contract: true means [name] was
+  /// [_effectsAndFx.setEffectKeyName], under the same contract: true means [name] was
   /// ALREADY taken in that lane's naming space and NOTHING was written, so
   /// the caller can offer to join instead (see [linkTransformKeyName]).
   ///
@@ -28,8 +77,8 @@ class _LaneVerbs {
     required int frameIndex,
     required String? name,
   }) {
-    final cutId = _session.editingSession.activeCutId;
-    final layer = _session.layerById(layerId);
+    final cutId = _timeline.editingSession.activeCutId;
+    final layer = _project.layerById(layerId);
     if (cutId == null || layer == null) {
       return false;
     }
@@ -39,7 +88,7 @@ class _LaneVerbs {
       return false;
     }
     if (name != null &&
-        _session.cutCommandCoordinator.transformTrackHoldingName(
+        _project.cutCommandCoordinator.transformTrackHoldingName(
               cutId: cutId,
               layerId: layerId,
               property: property,
@@ -48,7 +97,7 @@ class _LaneVerbs {
             null) {
       return true;
     }
-    _session.updateLayerTransformTrack(
+    _internals.updateLayerTransformTrack(
       layerId,
       transformTrackWithKeyName(track, property, frameIndex, name),
       description: name == null ? 'Unname key' : 'Name key',
@@ -58,19 +107,19 @@ class _LaneVerbs {
 
   /// Joins [name] on a transform lane, ADOPTING the value that name already
   /// holds — the answer to the "합칠까요?" [setTransformKeyName] raises, and
-  /// the same pull [_session.linkEffectKeyName] does.
+  /// the same pull [_effectsAndFx.linkEffectKeyName] does.
   void linkTransformKeyName({
     required LayerId layerId,
     required TransformPropertyId property,
     required int frameIndex,
     required String name,
   }) {
-    final cutId = _session.editingSession.activeCutId;
-    final layer = _session.layerById(layerId);
+    final cutId = _timeline.editingSession.activeCutId;
+    final layer = _project.layerById(layerId);
     if (cutId == null || layer == null) {
       return;
     }
-    final holder = _session.cutCommandCoordinator.transformTrackHoldingName(
+    final holder = _project.cutCommandCoordinator.transformTrackHoldingName(
       cutId: cutId,
       layerId: layerId,
       property: property,
@@ -89,7 +138,7 @@ class _LaneVerbs {
         name,
       );
     }
-    _session.updateLayerTransformTrack(
+    _internals.updateLayerTransformTrack(
       layerId,
       transformTrackWithKeyName(next, property, frameIndex, name),
       description: 'Name key',
@@ -119,13 +168,13 @@ class _LaneVerbs {
     )) {
       return track;
     }
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null ||
         layer.kind == LayerKind.camera ||
         trackIdOfTransformLaneCarrier(layer.id) != null) {
       return null;
     }
-    return _session.cutCommandCoordinator.transformTrackHoldingName(
+    return _project.cutCommandCoordinator.transformTrackHoldingName(
       cutId: cutId,
       layerId: layer.id,
       property: property,
@@ -144,7 +193,7 @@ class _LaneVerbs {
   /// SHOWS: the header band paints its members' key union, so a move that
   /// grabs it moves those keys ("한번에 잡아 이동"). Keeping the two apart
   /// is the whole of #20 — one used to be doing the other's job.
-  List<String> _laneVerbTargets(
+  List<String> laneVerbTargets(
     List<String> spanLaneIds, {
     List<LayerEffect> effects = const [],
   }) {
@@ -190,11 +239,11 @@ class _LaneVerbs {
   /// group header's whole-member expansion and the effect-lane branch
   /// come along either way.
   TimelineLaneSelection? get laneVerbRange {
-    final span = _session.laneRangeSelection.value;
+    final span = _selection.laneRangeSelection.value;
     if (span != null) {
       return span;
     }
-    if (_session.currentRow case LaneRowAddress(
+    if (_internals.currentRow case LaneRowAddress(
       :final layerId,
       :final laneId,
     )) {
@@ -218,7 +267,7 @@ class _LaneVerbs {
   /// the lane the marker's context menu used to.
   TransformTrack _laneTransformTrackOf(Layer layer) =>
       layer.kind == LayerKind.camera
-      ? (_session.activeCutOrNull?.camera.track ?? layer.transformTrack)
+      ? (_project.activeCutOrNull?.camera.track ?? layer.transformTrack)
       : layer.transformTrack;
 
   /// The layer a LANE verb READS and WRITES.
@@ -232,7 +281,7 @@ class _LaneVerbs {
   /// to show.
   ///
   /// This is the axis rule the frame-shift verbs already follow
-  /// ([_session._shiftLayerFor], UI-R18 #1), now said once more for the lane
+  /// ([_internals.shiftLayerFor], UI-R18 #1), now said once more for the lane
   /// family. R5 #8's window conversion on the way OUT retires with it:
   /// what goes in was global to begin with.
   /// ★And a V TRACK's own lane rows answer with a CARRIER layer — the
@@ -242,10 +291,10 @@ class _LaneVerbs {
   /// reported "no keys here": Delete then fell through to the CEL path and
   /// removed the active layer's drawing instead. The commit funnels below
   /// send it home to the track.
-  Layer? _laneVerbLayerFor(LayerId layerId) {
+  Layer? laneVerbLayerFor(LayerId layerId) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     if (carrierTrackId != null) {
-      final track = _session.trackById(carrierTrackId);
+      final track = _project.trackById(carrierTrackId);
       return track == null
           ? null
           : Layer(
@@ -257,18 +306,18 @@ class _LaneVerbs {
               effects: track.effects,
             );
     }
-    return _session.isTrackSeLayerId(layerId)
-        ? _session.trackSeGlobalLayerById(layerId)
-        : _session.layerById(layerId);
+    return _project.isTrackSeLayerId(layerId)
+        ? _project.trackSeGlobalLayerById(layerId)
+        : _project.layerById(layerId);
   }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
   /// [_laneVerbLayerFor]. A track-SE row is on the global axis, so the
   /// cut-local cursor has to be translated before it can name a key.
   int _laneVerbFrameFor(LayerId layerId) =>
-      _session.timelineController.currentFrameIndex +
-      (_session.isTrackSeLayerId(layerId)
-          ? _session.activeCutGlobalStartFrame
+      _timeline.timelineController.currentFrameIndex +
+      (_project.isTrackSeLayerId(layerId)
+          ? _project.activeCutGlobalStartFrame
           : 0);
 
   void _commitLaneTransformTrack(
@@ -277,7 +326,7 @@ class _LaneVerbs {
     required String description,
   }) {
     if (layer.kind == LayerKind.camera) {
-      _session.updateActiveCutCameraTrack(track, description: description);
+      _internals.updateActiveCutCameraTrack(track, description: description);
       return;
     }
     // A V row's carrier has no transform to go home to any more: the row's
@@ -286,10 +335,10 @@ class _LaneVerbs {
     if (trackIdOfTransformLaneCarrier(layer.id) != null) {
       return;
     }
-    // No window conversion: [_laneVerbLayerFor] hands these verbs the
+    // No window conversion: [laneVerbLayerFor] hands these verbs the
     // GLOBAL layer for a track-SE row, so the track they edited is already
     // on the axis it belongs to. Converting here would shift it twice.
-    _session.updateLayerTransformTrack(
+    _internals.updateLayerTransformTrack(
       layer.id,
       track,
       description: description,
@@ -309,14 +358,18 @@ class _LaneVerbs {
   }) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
     if (carrierTrackId != null) {
-      _session.updateTrackEffects(
+      _effectsAndFx.updateTrackEffects(
         carrierTrackId,
         effects,
         description: description,
       );
       return;
     }
-    _session.updateLayerEffects(layer.id, effects, description: description);
+    _effectsAndFx.updateLayerEffects(
+      layer.id,
+      effects,
+      description: description,
+    );
   }
 
   /// The lanes a verb may act on for [layer]. The CAMERA row draws only
@@ -335,15 +388,15 @@ class _LaneVerbs {
 
   /// The value a lane verb freezes at [frameIndex]. The camera's pose does
   /// not live on the camera pseudo-layer — its own transform track is
-  /// permanently empty — so reading [_session.layerPoseAtFrame] there froze the
+  /// permanently empty — so reading [_timeline.layerPoseAtFrame] there froze the
   /// canvas-centre identity pose and snapped the camera mid-move.
   CameraPose _laneResolvedPose(Layer layer, int frameIndex) {
     if (layer.kind != LayerKind.camera) {
-      return _session.layerPoseAtFrame(layer, frameIndex);
+      return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
-      return _session.layerPoseAtFrame(layer, frameIndex);
+      return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
     return resolveCameraPoseAt(
       camera: cut.camera,
@@ -416,11 +469,11 @@ class _LaneVerbs {
   ({Layer layer, List<String> targets, bool effectLanes})? _laneVerbScope(
     TimelineLaneSelection lane,
   ) {
-    final layer = _laneVerbLayerFor(lane.layerId);
+    final layer = laneVerbLayerFor(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return null;
     }
-    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final targets = laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
     return (
       layer: layer,
       targets: targets,
@@ -539,7 +592,7 @@ class _LaneVerbs {
       return false;
     }
     final layer = scope.layer;
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     final targets = scope.targets;
     final preferred = _laneVerbFrameFor(lane.layerId);
     final why = name == null ? 'Unname keys' : 'Name keys';
@@ -562,7 +615,7 @@ class _LaneVerbs {
         }
         double? adopted;
         if (name != null && cutId != null) {
-          adopted = _session.cutCommandCoordinator.namedEffectKeyValueInSpace(
+          adopted = _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
             cutId: cutId,
             layerId: layer.id,
             effectId: address.effectId,
@@ -653,11 +706,11 @@ class _LaneVerbs {
   /// [headerLaneId] names the group: the transform header resets the
   /// transform track, an `fx-group:` header its own effect.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
-    final layer = _laneVerbLayerFor(layerId);
+    final layer = laneVerbLayerFor(layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
-    final span = _session.laneRangeSelection.value;
+    final span = _selection.laneRangeSelection.value;
     // A span covering this very group is the only one that scopes the
     // reset: standing elsewhere with a selection alive on another row must
     // not silently retarget it.
@@ -685,7 +738,7 @@ class _LaneVerbs {
     if (headerLaneId != transformGroupHeaderLane.laneId) {
       return false;
     }
-    final canvasSize = _session.requireActiveCut.canvasSize;
+    final canvasSize = _project.requireActiveCut.canvasSize;
     final next = transformTrackWithGroupReset(
       _laneTransformTrackOf(layer),
       frameIndexes: frames,
@@ -710,13 +763,13 @@ class _LaneVerbs {
     // different set of keys than the one Delete is about to remove: a
     // track-SE row's clone holds only this cut's, on this cut's numbers,
     // and the span is stated globally.
-    final layer = lane == null ? null : _laneVerbLayerFor(lane.layerId);
+    final layer = lane == null ? null : laneVerbLayerFor(lane.layerId);
     if (lane == null || layer == null || isAttachedLayer(layer)) {
       return false;
     }
     final targets = _laneVerbTargetsFor(
       layer,
-      _laneVerbTargets(lane.spanLaneIds, effects: layer.effects),
+      laneVerbTargets(lane.spanLaneIds, effects: layer.effects),
     );
     return targets.any(
       (laneId) => parseEffectLaneId(laneId) != null
@@ -789,10 +842,10 @@ class _LaneVerbs {
           resolvedPose: _laneResolvedPose(layer, frame),
           resolvedAnchorPoint: isCamera
               ? null
-              : _session.layerAnchorPointAtFrame(layer, frame),
+              : _internals.layerAnchorPointAtFrame(layer, frame),
           resolvedOpacity: isCamera
               ? 1
-              : _session.layerOpacityAtFrame(layer, frame),
+              : _internals.layerOpacityAtFrame(layer, frame),
         );
         if (next != null) {
           track = next;

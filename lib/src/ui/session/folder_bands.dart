@@ -1,4 +1,12 @@
-part of '../editor_session_manager.dart';
+import 'package:flutter/foundation.dart';
+import '../../models/layer_folder.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timeline_exposure.dart';
+import '../timeline/property_lane_model.dart' show folderAggregateRuns;
+import 'session_roles.dart';
 
 /// The FOLDER BANDS — which layer a folder's band stands on, who its members
 /// are and which runs it shows — as a cache that knows what it was built
@@ -6,11 +14,11 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: three fields of its own and one
-/// session member read (`layers`). It reaches the session through `_session`.
-class _FolderBands {
-  _FolderBands(this._session);
+/// session member read (`layers`). It names the roles it needs in its constructor.
+class FolderBands {
+  FolderBands({required ProjectAccess project}) : _project = project;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
 
   /// The folder BAND cache (R10): a folder row's display clone, whose
   /// `timeline` IS its subtree's exposure union.
@@ -52,7 +60,7 @@ class _FolderBands {
   final Map<LayerId, List<Layer>> _folderBandMembers = {};
 
   void _fillFolderBandCache() {
-    final stack = _session.layers;
+    final stack = _project.layers;
     if (identical(_folderBandSource, stack)) {
       return;
     }

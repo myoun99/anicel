@@ -1,4 +1,7 @@
-part of '../editor_session_manager.dart';
+import 'drags/movie_end_drag.dart';
+import '../../models/storyboard_timeline_layout.dart';
+import '../../services/commands/update_project_trailing_frames_command.dart';
+import 'session_roles.dart';
 
 /// The MOVIE-END DRAG — the grip on the movie's last frame — as its own object:
 /// where the movie's content actually ends, and the steps of dragging the end
@@ -6,11 +9,19 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: the family owned one field and
-/// touched three session members. It reaches the session through `_session`.
-class _MovieEndDrag {
-  _MovieEndDrag(this._session);
+/// touched three session members. It names the roles it needs in its constructor.
+class MovieEndDragVerbs {
+  MovieEndDragVerbs({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required SessionInternals internals,
+  }) : _project = project,
+       _changes = changes,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final ChangeSink _changes;
+  final SessionInternals _internals;
 
   /// The in-flight end-line drag ([MovieEndDrag]), or null.
   MovieEndDrag? _movieEndDrag;
@@ -19,7 +30,7 @@ class _MovieEndDrag {
   int get movieContentEndFrame {
     var end = 0;
     for (final entry in buildStoryboardTimelineLayout(
-      _session.repository.requireProject(),
+      _project.repository.requireProject(),
     )) {
       if (entry.endFrame > end) {
         end = entry.endFrame;
@@ -34,16 +45,16 @@ class _MovieEndDrag {
   /// gap on this timeline).
   bool beginMovieEndDrag() {
     _movieEndDrag = MovieEndDrag(
-      beforeTrailing: _session.repository.requireProject().trailingFrames,
-      preview: _session.dragPreview,
+      beforeTrailing: _project.repository.requireProject().trailingFrames,
+      preview: _internals.dragPreview,
       commitTrailing: (trailingFrames) {
-        _session.historyManager.execute(
+        _project.historyManager.execute(
           UpdateProjectTrailingFramesCommand(
-            repository: _session.repository,
+            repository: _project.repository,
             trailingFrames: trailingFrames,
           ),
         );
-        _session.notifyChanged();
+        _changes.notifyChanged();
       },
     );
     return true;

@@ -1,4 +1,17 @@
-part of '../editor_session_manager.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer.dart';
+import '../../models/pixel_verb_subject.dart';
+import '../../services/cel_pixel_overwrite.dart';
+import '../../services/cel_pixel_region.dart';
+import '../../services/commands/cel_pixel_overwrite_command.dart';
+import '../../models/layer_kind.dart';
+import '../timeline/timeline_cell_exposure_state.dart';
+import 'session_roles.dart';
+import 'lane_verbs.dart';
+import 'range_selections.dart';
+import 'frame_clipboard.dart';
 
 /// The CELL VERBS — deleting the cell under the cursor or the selection,
 /// the status text a cell shows, and the pixel verbs (the keys they act
@@ -6,10 +19,34 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: the rest reads none of it.
-class _CellVerbs {
-  _CellVerbs(this._session);
+class CellVerbs {
+  CellVerbs({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+    required LaneVerbs laneVerbs,
+    required RangeSelections rangeSelections,
+    required FrameClipboard clipboard,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals,
+       _laneVerbs = laneVerbs,
+       _rangeSelections = rangeSelections,
+       _clipboard = clipboard;
 
-  final EditorSessionManager _session;
+  final FrameClipboard _clipboard;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
+  final LaneVerbs _laneVerbs;
+  final RangeSelections _rangeSelections;
 
   /// The cels a pixel verb would touch: a live frame range's whole block, or
   /// the one cel you are standing on.
@@ -19,11 +56,11 @@ class _CellVerbs {
   /// 옛날에 했다가 폐기했어」. A frame range is different in kind: it is drawn
   /// across the cels themselves.
   List<BrushFrameKey> pixelVerbCellKeys() {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
     }
-    final byId = {for (final layer in _session.layers) layer.id: layer};
+    final byId = {for (final layer in _project.layers) layer.id: layer};
     final keys = <BrushFrameKey>[];
     // ⛔NO DEDUPE HERE. `CelPixelOverwriteCommand.execute` already skips a cel
     // it has done, keyed by `frameStore.canonicalKeyOf` — which is the RIGHT
@@ -45,14 +82,14 @@ class _CellVerbs {
       if (!layerAcceptsBrushInput(layer) || !cut.layers.rowVisible(layer)) {
         return;
       }
-      final frame = _session.timelineController.resolveFrameForLayer(
+      final frame = _timeline.timelineController.resolveFrameForLayer(
         layer: layer,
         frameIndex: frameIndex,
       );
       if (frame == null) {
         return;
       }
-      final key = _session.brushFrameKeyForCut(cut, layer.id, frame.id);
+      final key = _internals.brushFrameKeyForCut(cut, layer.id, frame.id);
       // 🚨AND IT HAS TO HAVE A DRAWING IN IT. 유저 2026-08-27: 「색변환은
       // 레이어에 그림이 존재 해야 활성화시키는게 맞고. 픽셀삭제는 그림이
       // 있어야 활성화시키는게 맞고」.
@@ -63,13 +100,13 @@ class _CellVerbs {
       // it and the buttons stayed lit over an empty block. This is the same
       // question the block's tint asks, which is why it is that call and not
       // a second rule of its own.
-      if (!_session.brushFrameStore.celHasRenderableContent(key)) {
+      if (!_internals.brushFrameStore.celHasRenderableContent(key)) {
         return;
       }
       keys.add(key);
     }
 
-    final range = _session.frameRangeSelection.value;
+    final range = _selection.frameRangeSelection.value;
     if (range != null) {
       final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
       for (final layerId in rows) {
@@ -85,7 +122,7 @@ class _CellVerbs {
     }
     // The playhead rung reads the ACTIVE layer, which F-20 (#1216) made the
     // one answer — a stored verb row naming a different layer is stale.
-    final activeId = _session.activeLayerId;
+    final activeId = _selection.activeLayerId;
     final active = activeId == null ? null : byId[activeId];
     if (active != null) {
       take(active, null);
@@ -96,8 +133,8 @@ class _CellVerbs {
   /// Whether a pixel verb has anything to do — the buttons' gate, and the
   /// same question the press runs (T25: one answer behind both).
   bool get canRunPixelVerb =>
-      _session.pixelEditingCoordinator != null &&
-      _session.pixelVerbSubject != PixelVerbSubject.nothing;
+      _internals.pixelEditingCoordinator != null &&
+      _internals.pixelVerbSubject != PixelVerbSubject.nothing;
 
   /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
   /// operation with the channel swapped, which is why they are one method.
@@ -110,7 +147,7 @@ class _CellVerbs {
   ///
   /// One undo step across every cel, however many the ladder named.
   void runPixelVerb(CelPixelVerb verb) {
-    final coordinator = _session.pixelEditingCoordinator;
+    final coordinator = _internals.pixelEditingCoordinator;
     if (coordinator == null) {
       return;
     }
@@ -121,10 +158,10 @@ class _CellVerbs {
     // 🚨THE SPACE AXIS, and it is one law for every cel the ladder named:
     // 「선택 있으면 그 영역, 없으면 전체(페이스트보드 포함)」 — said three
     // times now across ③·⑤·색 변환, so it is a law and not a preference.
-    final region = _session.pixelSelectionRegion?.call();
-    final size = _session.requireActiveCut.canvasSize;
-    final frameIndex = _session.currentFrameIndex;
-    final byId = {for (final layer in _session.layers) layer.id: layer};
+    final region = _internals.pixelSelectionRegion?.call();
+    final size = _project.requireActiveCut.canvasSize;
+    final frameIndex = _selection.currentFrameIndex;
+    final byId = {for (final layer in _project.layers) layer.id: layer};
     final targets = <CelPixelTarget>[];
     for (final key in keys) {
       final layer = byId[key.layerId];
@@ -139,13 +176,13 @@ class _CellVerbs {
               ? region
               : regionInArtworkSpace(
                   region: region,
-                  pose: _session.layerPoseAtFrame(layer, frameIndex),
+                  pose: _timeline.layerPoseAtFrame(layer, frameIndex),
                   canvasSize: size,
                 ),
         ),
       );
     }
-    _session.historyManager.execute(
+    _project.historyManager.execute(
       CelPixelOverwriteCommand.forVerb(
         coordinator: coordinator,
         targets: targets,
@@ -157,20 +194,20 @@ class _CellVerbs {
         // coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데 캔버스쪽에서
         // 라이브로 갱신안되서 다른 프레임 갔다가 와야 반영되있어. 이런 캔버스
         // 조작은 바로바로 반영되야지」.
-        cacheInvalidationSink: _session.cacheInvalidationHub,
+        cacheInvalidationSink: _internals.cacheInvalidationHub,
         // Read at the MOMENT OF THE PRESS — the bar does not hold the brush
         // colour, it asks for it. ⛔The fallback is the brush's own default,
         // not white or transparent: a press with no publisher wired must
         // still do the thing the user asked for, in the colour they would
         // have got.
-        argb: _session.pixelBrushColour?.call() ?? 0xFF000000,
+        argb: _internals.pixelBrushColour?.call() ?? 0xFF000000,
       ),
     );
   }
 
   bool get hasActiveNonNegativeCell {
-    return _session.activeLayer != null &&
-        _session.timelineController.currentFrameIndex >= 0;
+    return _selection.activeLayer != null &&
+        _timeline.timelineController.currentFrameIndex >= 0;
   }
 
   /// The SELECTION-borne rungs of the cell delete, alone (B8): lane keys
@@ -183,10 +220,10 @@ class _CellVerbs {
       // row, Delete removes its keys, not a cel. It also closes a gap the
       // other way round: a live LANE span used to fall through to the cell
       // path and delete the active layer's cel instead of the keys under it.
-      _session._laneVerbs.laneVerbRangeHasKeys ||
+      _laneVerbs.laneVerbRangeHasKeys ||
       // A live selection is deletable wherever the playhead stands (UI-R17
       // #2).
-      _session._rangeSelections.selectionBlockStartsByLayer() != null;
+      _rangeSelections.selectionBlockStartsByLayer() != null;
 
   /// Whether a live CELL band owns the next cell-verb press.
   ///
@@ -201,7 +238,7 @@ class _CellVerbs {
   /// band is editable". Reading only the collector let a refused band
   /// fall through and delete an unselected row's drawing.
   bool get cellSelectionClaimsSubject =>
-      _session.frameRangeSelection.value != null;
+      _selection.frameRangeSelection.value != null;
 
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {
@@ -210,7 +247,7 @@ class _CellVerbs {
     if (cellSelectionClaimsSubject) {
       return false;
     }
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     // SYNCED attach rows: cel removal is out of v1 scope (delete the row
     // or undo the creation) — cells are display material there. Free
     // attach rows delete cells like normal (UI-R21 #3).
@@ -226,30 +263,29 @@ class _CellVerbs {
       return false;
     }
 
-    return _session.timelineController.canDeleteCellAt(
+    return _timeline.timelineController.canDeleteCellAt(
       layer: layer,
-      frameIndex: _session.timelineController.currentFrameIndex,
+      frameIndex: _timeline.timelineController.currentFrameIndex,
     );
   }
 
   void deleteCellAtCurrentFrame() {
     // R10 #19: a property row is its own subject — see
     // [canDeleteCellAtCurrentFrame].
-    final lane = _session._laneVerbs.laneVerbRange;
-    if (lane != null && _session._laneVerbs.removeLaneKeysForSelection(lane)) {
+    final lane = _laneVerbs.laneVerbRange;
+    if (lane != null && _laneVerbs.removeLaneKeysForSelection(lane)) {
       return;
     }
     // A live selection routes the delete to EVERY selected block on
     // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
     // leftover selection covers empty cells so it clears with the delete.
-    final selectionTargets = _session._rangeSelections
-        .selectionBlockStartsByLayer();
+    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
     if (selectionTargets != null) {
-      _session.timelineController.deleteBlocksForLayers(selectionTargets);
+      _timeline.timelineController.deleteBlocksForLayers(selectionTargets);
       // Whichever axis answered: the leftover span covers empty cells now.
-      _session.clearFrameRangeSelection();
-      _session.clearStoryboardCutSelection();
-      _session.notifyChanged();
+      _selection.clearFrameRangeSelection();
+      _selection.clearStoryboardCutSelection();
+      _changes.notifyChanged();
       return;
     }
     if (cellSelectionClaimsSubject) {
@@ -257,17 +293,17 @@ class _CellVerbs {
       // not a licence to edit whatever row is active.
       return;
     }
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
       return;
     }
 
-    _session.timelineController.deleteCellForLayer(layerId: layer.id);
-    _session.notifyChanged();
+    _timeline.timelineController.deleteCellForLayer(layerId: layer.id);
+    _changes.notifyChanged();
   }
 
   String get currentCellStatusText {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return 'Cell: No layer';
     }
@@ -276,14 +312,14 @@ class _CellVerbs {
   }
 
   String get compactCellActionText {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null) {
       return 'No layer';
     }
 
-    final frameIndex = _session.timelineController.currentFrameIndex;
-    final exposureState = _session.exposureStateForLayer(layer, frameIndex);
-    final canPaste = _session.canPasteLinkedFrameAtCurrentFrame;
+    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
+    final canPaste = _clipboard.canPasteLinkedFrameAtCurrentFrame;
 
     switch (exposureState) {
       case TimelineCellExposureState.drawingStart:
@@ -308,11 +344,11 @@ class _CellVerbs {
   }
 
   String _cellStatusLabelForLayer(Layer layer) {
-    final frameIndex = _session.timelineController.currentFrameIndex;
-    final exposureState = _session.exposureStateForLayer(layer, frameIndex);
+    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {
       TimelineCellExposureState.drawingStart =>
-        _session._drawingStartStatusForLayer(layer, frameIndex),
+        _internals.drawingStartStatusForLayer(layer, frameIndex),
       TimelineCellExposureState.held => 'Held drawing',
       TimelineCellExposureState.markHeld => 'Held drawing + Mark ●',
       TimelineCellExposureState.uncovered => 'Empty (X)',

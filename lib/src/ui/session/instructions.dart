@@ -1,4 +1,15 @@
-part of '../editor_session_manager.dart';
+import '../../models/camera_instruction.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timesheet_document.dart' show timesheetMemoInstructionLine;
+import '../../models/timeline_frame_range.dart';
+import '../../services/command.dart';
+import '../../services/commands/update_layer_instructions_command.dart';
+import '../timeline/instruction_span_editing.dart';
+import 'session_roles.dart';
+import 'cut_verbs.dart';
+import 'camera.dart';
 
 /// The INSTRUCTIONS — the events a layer carries on its instruction lane,
 /// the span at a frame, and creating, upserting and removing them — as
@@ -6,11 +17,29 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no field of its own and eight
-/// session members touched. It reaches the session through `_session`.
-class _Instructions {
-  _Instructions(this._session);
+/// session members touched. It names the roles it needs in its constructor.
+class Instructions {
+  Instructions({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required CutVerbs cutVerbs,
+    required Camera camera,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _cutVerbs = cutVerbs,
+       _camera = camera;
 
-  final EditorSessionManager _session;
+  final CutVerbs _cutVerbs;
+  final Camera _camera;
+
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
 
   /// Replaces [layerId]'s instruction span map (instruction rows only).
   /// One undo step; no-op when unchanged. Never touches rendering caches —
@@ -20,17 +49,17 @@ class _Instructions {
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit instructions',
   }) {
-    final cutId = _session.editingSession.activeCutId;
+    final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
-    _session.cutCommandCoordinator.updateLayerInstructions(
+    _project.cutCommandCoordinator.updateLayerInstructions(
       cutId: cutId,
       layerId: layerId,
       instructions: instructions,
       description: description,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// The instruction span covering [frameIndex] on [layerId], as
@@ -39,7 +68,7 @@ class _Instructions {
     LayerId layerId,
     int frameIndex,
   ) {
-    final layer = _session.layerById(layerId);
+    final layer = _project.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return null;
     }
@@ -51,21 +80,21 @@ class _Instructions {
   /// entry directly — the Edit Instance dialog changes it afterwards.
   /// Covered cells no-op (creation never edits).
   void createDefaultInstructionEventAtCurrentFrame() {
-    final layer = _session.activeLayer;
+    final layer = _selection.activeLayer;
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
-    final frameIndex = _session.timelineController.currentFrameIndex;
+    final frameIndex = _timeline.timelineController.currentFrameIndex;
     if (frameIndex < 0 ||
         instructionSpanAt(layer.id, frameIndex) != null ||
-        _session.cameraInstructionSet.defs.isEmpty) {
+        _camera.cameraInstructionSet.defs.isEmpty) {
       return;
     }
     upsertInstructionEventAt(
       layer.id,
       frameIndex,
       InstructionEvent(
-        instructionId: _session.cameraInstructionSet.defs.first.id,
+        instructionId: _camera.cameraInstructionSet.defs.first.id,
         length: 1,
       ),
       createLengthFrames: 1,
@@ -81,7 +110,7 @@ class _Instructions {
     InstructionEvent event, {
     int? createLengthFrames,
   }) {
-    final layer = _session.layerById(layerId);
+    final layer = _project.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
@@ -89,7 +118,7 @@ class _Instructions {
     // New events take the dialog's length (clamped into the cut; the add
     // helper clamps at the next span too); null fills to the cut end.
     // A resolvable instruction layer implies an active cut.
-    final available = (_session.requireActiveCut.duration - frameIndex).clamp(
+    final available = (_project.requireActiveCut.duration - frameIndex).clamp(
       1,
       1 << 20,
     );
@@ -118,26 +147,26 @@ class _Instructions {
     if (covering == null) {
       final line = timesheetMemoInstructionLine(
         event,
-        _session.cameraInstructionSet.defById(event.instructionId),
+        _camera.cameraInstructionSet.defById(event.instructionId),
       );
       if (line.isNotEmpty) {
-        final note = _session.activeCutNote ?? '';
+        final note = _cutVerbs.activeCutNote ?? '';
         appendedNote = note.isEmpty ? line : '$note\n$line';
       }
     }
-    _session.cutCommandCoordinator.updateLayerInstructions(
-      cutId: _session.requireActiveCut.id,
+    _project.cutCommandCoordinator.updateLayerInstructions(
+      cutId: _project.requireActiveCut.id,
       layerId: layerId,
       instructions: next,
       description: covering == null ? 'Add instruction' : 'Edit instruction',
       note: appendedNote,
     );
-    _session.notifyChanged();
+    _changes.notifyChanged();
   }
 
   /// Removes the instruction span covering [frameIndex]; one undo step.
   void removeInstructionEventAt(LayerId layerId, int frameIndex) {
-    final layer = _session.layerById(layerId);
+    final layer = _project.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
@@ -159,10 +188,10 @@ class _Instructions {
     Layer layer,
     TimelineFrameRangeSelection selection,
   ) {
-    final cutId = _session.editingSession.activeCutId;
-    final defaultDef = _session.cameraInstructionSet.defs.isEmpty
+    final cutId = _timeline.editingSession.activeCutId;
+    final defaultDef = _camera.cameraInstructionSet.defs.isEmpty
         ? null
-        : _session.cameraInstructionSet.defs.first;
+        : _camera.cameraInstructionSet.defs.first;
     if (defaultDef == null || cutId == null) {
       return null;
     }
@@ -202,7 +231,7 @@ class _Instructions {
       return null;
     }
     return UpdateLayerInstructionsCommand(
-      repository: _session.repository,
+      repository: _project.repository,
       cutId: cutId,
       layerId: layer.id,
       instructions: next,

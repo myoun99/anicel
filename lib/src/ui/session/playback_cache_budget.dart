@@ -1,4 +1,11 @@
-part of '../editor_session_manager.dart';
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
+import '../../models/cut.dart';
+import '../../models/cut_warm_extent.dart';
+import '../../services/cut_frame_composite_plan.dart';
+import '../playback/cut_frame_composite_cache.dart';
+import '../playback/playback_cache_budget.dart';
+import 'session_roles.dart';
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
 /// the ranges it must not evict (what is playing, what is about to), the
@@ -10,15 +17,20 @@ part of '../editor_session_manager.dart';
 /// refused: the session read it from twenty-two places (its lifecycle —
 /// selectCut, dispose, the frame-rate setters — IS the following). This
 /// is the part that stands on its own.
-class _PlaybackCacheBudget {
-  _PlaybackCacheBudget(this._session);
+class PlaybackCacheBudget {
+  PlaybackCacheBudget({
+    required ProjectAccess project,
+    required SessionInternals internals,
+  }) : _project = project,
+       _internals = internals;
 
-  final EditorSessionManager _session;
+  final ProjectAccess _project;
+  final SessionInternals _internals;
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
       PlaybackCacheBudgetEnforcer(
-        layerImages: _session.layerFrameImageCache,
-        composites: _session.cutFrameCompositeCache,
+        layerImages: _internals.layerFrameImageCache,
+        composites: _internals.cutFrameCompositeCache,
         maxBytes: _debugMaxBytes ?? playbackCacheBudgetBytes,
       );
 
@@ -29,6 +41,10 @@ class _PlaybackCacheBudget {
   /// [enforcePlaybackCacheBudget] a no-op and every test stayed green: the
   /// enforcer was measured, the session's wiring to it was not.
   int? _debugMaxBytes;
+
+  /// A test's budget for the playback caches — see [_debugMaxBytes].
+  @visibleForTesting
+  void debugSetPlaybackCacheBudgetBytes(int bytes) => _debugMaxBytes = bytes;
 
   /// The composite-cache budget trim, runnable by every producer: the
   /// warmer after each cached frame, and the parked track stack after each
@@ -49,8 +65,15 @@ class _PlaybackCacheBudget {
 
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),
-    reservedForDisplayBytes: _session.layerFrameImageCache.pinnedBytes,
+    reservedForDisplayBytes: _internals.layerFrameImageCache.pinnedBytes,
   );
+
+  /// The OS memory warning, the playback caches' share: the enforcer
+  /// lowers its cap, and the trim runs against the lowered cap at once.
+  void respondToMemoryPressure() {
+    _playbackCacheBudgetEnforcer.respondToMemoryPressure();
+    enforcePlaybackCacheBudget();
+  }
 
   /// What budget eviction must never touch: the full PLAYING playlist while
   /// playback is active (a looping pass must keep every cut warm so the
@@ -65,19 +88,19 @@ class _PlaybackCacheBudget {
   /// plays exactly its duration, and protecting more than plays would
   /// starve the budget during the one activity that needs it most.
   List<PlaybackProtectedRange> _playbackProtectedRanges() {
-    if (_session.playback.isActive) {
+    if (_internals.playback.isActive) {
       return [
-        for (final entry in _session.playback.playlist)
+        for (final entry in _internals.playback.playlist)
           PlaybackProtectedRange(
             cutId: entry.cutId,
             startFrame: 0,
             endFrame: math.max(0, entry.duration - 1),
-            quality: _session.playbackQuality,
+            quality: _internals.playbackQuality,
           ),
       ];
     }
 
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
     }
@@ -86,7 +109,7 @@ class _PlaybackCacheBudget {
         cutId: cut.id,
         startFrame: 0,
         endFrame: cutWarmFrameCount(cut) - 1,
-        quality: _session.playbackQuality,
+        quality: _internals.playbackQuality,
       ),
     ];
   }
@@ -101,7 +124,7 @@ class _PlaybackCacheBudget {
   /// Whether [frameIndex] is READY to play at the current quality — the
   /// timeline ruler's green bar.
   bool isPlaybackFrameReady(int frameIndex) {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return false;
     }
@@ -123,10 +146,10 @@ class _PlaybackCacheBudget {
   /// The empty answer reads the same shared visit the signature rides, so
   /// it cannot disagree with what the compose loop would actually paint.
   bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
-    if (_session.cutFrameCompositeCache.validCompositeOrNull(
+    if (_internals.cutFrameCompositeCache.validCompositeOrNull(
           cut: cut,
           frameIndex: frameIndex,
-          quality: _session.playbackQuality,
+          quality: _internals.playbackQuality,
         ) !=
         null) {
       return true;

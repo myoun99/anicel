@@ -1,4 +1,11 @@
-part of '../editor_session_manager.dart';
+import '../../services/editing/layer_standing_after_change.dart';
+import '../../models/attached_layer_resolve.dart';
+import '../../models/cut.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../services/commands/track_se_layer_commands.dart';
+import 'session_roles.dart';
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
 /// renaming and copying a layer, and adding a row above the active one —
@@ -7,17 +14,29 @@ part of '../editor_session_manager.dart';
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own and sixteen
-/// session members touched; the rest reads it in three places. It reaches
-/// the session through `_session`.
-class _LayerVerbs {
-  _LayerVerbs(this._session);
+/// session members touched; the rest reads it in three places. It names
+/// the roles it needs in its constructor.
+class LayerVerbs {
+  LayerVerbs({
+    required ProjectAccess project,
+    required SelectionAccess selection,
+    required ChangeSink changes,
+    required TimelineAccess timeline,
+    required SessionInternals internals,
+  }) : _project = project,
+       _selection = selection,
+       _changes = changes,
+       _timeline = timeline,
+       _internals = internals;
 
-  final EditorSessionManager _session;
-
-  void copyActiveLayer() => _session._clipboard.copyActiveLayer();
+  final ProjectAccess _project;
+  final SelectionAccess _selection;
+  final ChangeSink _changes;
+  final TimelineAccess _timeline;
+  final SessionInternals _internals;
 
   bool get canDeleteActiveLayer {
-    final activeLayer = _session.activeLayer;
+    final activeLayer = _selection.activeLayer;
     return activeLayer != null && canDeleteLayer(activeLayer);
   }
 
@@ -38,7 +57,7 @@ class _LayerVerbs {
     if (isAttachedLayer(activeLayer)) {
       return true;
     }
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return false;
     }
@@ -50,7 +69,7 @@ class _LayerVerbs {
       LayerKind.transition => false,
       // The sheet's fixture floors: at least two SE rows (S1·S2, now
       // track-owned) and one instruction row survive.
-      LayerKind.se => _session.activeTrack.seLayers.length > 2,
+      LayerKind.se => _selection.activeTrack.seLayers.length > 2,
       LayerKind.instruction =>
         layers.where((layer) => layer.kind == LayerKind.instruction).length > 1,
       // R28 #14: NO drawing floor. The action section may stand empty —
@@ -73,33 +92,33 @@ class _LayerVerbs {
 
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin.
   void duplicateSelectedLayers() {
-    final cut = _session.activeCutOrNull;
-    final ids = _session.duplicatableSelectedLayerIds();
+    final cut = _project.activeCutOrNull;
+    final ids = _internals.duplicatableSelectedLayerIds();
     if (cut == null || ids.isEmpty) {
       return;
     }
     LayerId? landed;
-    _session.historyManager.runAsOneStep('Duplicate rows', () {
+    _project.historyManager.runAsOneStep('Duplicate rows', () {
       for (final layerId in ids) {
-        landed = _session.cutCommandCoordinator.duplicateLayer(
+        landed = _project.cutCommandCoordinator.duplicateLayer(
           cutId: cut.id,
           sourceLayerId: layerId,
         );
       }
     });
-    _session.refreshAfterCutCommand(preferredActiveLayerId: landed);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: landed);
+    _changes.notifyChanged();
   }
 
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
   /// falls back to the row you are standing on. Every caller — the pill
   /// button, a shortcut — inherits that without asking twice.
   void duplicateActiveLayer() {
-    if (_session.duplicatableSelectedLayerIds().isNotEmpty) {
+    if (_internals.duplicatableSelectedLayerIds().isNotEmpty) {
       duplicateSelectedLayers();
       return;
     }
-    final activeLayer = _session.activeLayer;
+    final activeLayer = _selection.activeLayer;
     // Track-owned SE rows: duplication stands down (same clipboard-shape
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
     // double-link the same base cels).
@@ -111,24 +130,24 @@ class _LayerVerbs {
       return;
     }
 
-    final duplicatedLayerId = _session.cutCommandCoordinator.duplicateLayer(
+    final duplicatedLayerId = _project.cutCommandCoordinator.duplicateLayer(
       // A non-null active layer implies an active cut (gap state has no
       // rows at all).
-      cutId: _session.requireActiveCut.id,
+      cutId: _project.requireActiveCut.id,
       sourceLayerId: activeLayer.id,
     );
-    _session.refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
+    _changes.notifyChanged();
   }
 
   /// Whether the layer is a member of a link group in the ACTIVE cut
   /// (drives the link badge on its label).
   bool isLayerLinked(LayerId layerId) {
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return false;
     }
-    return _session.repository.requireProject().linkRegistry.useCountOf(
+    return _project.repository.requireProject().linkRegistry.useCountOf(
           cutId: cut.id,
           layerId: layerId,
         ) >
@@ -136,7 +155,7 @@ class _LayerVerbs {
   }
 
   bool get canLinkDuplicateActiveLayer {
-    final activeLayer = _session.activeLayer;
+    final activeLayer = _selection.activeLayer;
     // Same stand-downs as plain duplication; an attach row's LINK
     // duplicate is reached through its base (the group goes whole).
     return activeLayer != null &&
@@ -153,25 +172,25 @@ class _LayerVerbs {
     if (!canLinkDuplicateActiveLayer) {
       return;
     }
-    final activeLayer = _session.activeLayer!;
-    _session.cutCommandCoordinator.linkDuplicateLayer(
-      cutId: _session.requireActiveCut.id,
+    final activeLayer = _selection.activeLayer!;
+    _project.cutCommandCoordinator.linkDuplicateLayer(
+      cutId: _project.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
+    _changes.notifyChanged();
   }
 
   bool get canUnlinkActiveLayer {
-    final activeLayer = _session.activeLayer;
-    final cut = _session.activeCutOrNull;
+    final activeLayer = _selection.activeLayer;
+    final cut = _project.activeCutOrNull;
     if (activeLayer == null || cut == null) {
       return false;
     }
     // The verb unlinks the whole attach group; it is offered when ANY
     // member is linked (mirrors the coordinator's own guard).
     final baseId = activeLayer.attachedToLayerId ?? activeLayer.id;
-    final registry = _session.repository.requireProject().linkRegistry;
+    final registry = _project.repository.requireProject().linkRegistry;
     return cut.layers.any(
       (layer) =>
           (layer.id == baseId || layer.attachedToLayerId == baseId) &&
@@ -185,55 +204,55 @@ class _LayerVerbs {
     if (!canUnlinkActiveLayer) {
       return;
     }
-    final activeLayer = _session.activeLayer!;
-    _session.cutCommandCoordinator.unlinkLayer(
-      cutId: _session.requireActiveCut.id,
+    final activeLayer = _selection.activeLayer!;
+    _project.cutCommandCoordinator.unlinkLayer(
+      cutId: _project.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _session.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
+    _changes.notifyChanged();
   }
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
   void deleteActiveLayer() {
-    final activeLayer = _session.activeLayer;
+    final activeLayer = _selection.activeLayer;
     if (activeLayer == null || !canDeleteActiveLayer) {
       return;
     }
 
     if (activeLayer.kind == LayerKind.se) {
-      final beforeSe = _session.activeTrack.seLayers;
+      final beforeSe = _selection.activeTrack.seLayers;
       final nextActiveLayerId = stableLayerIdAfterDeleting(
         beforeLayers: beforeSe,
         deletedLayerId: activeLayer.id,
       );
-      _session.historyManager.execute(
+      _project.historyManager.execute(
         RemoveTrackSeLayerCommand(
-          repository: _session.repository,
-          trackId: _session.selectedTrackId,
+          repository: _project.repository,
+          trackId: _selection.selectedTrackId,
           layerId: activeLayer.id,
         ),
       );
-      _session.refreshAfterCutCommand(
+      _changes.refreshAfterCutCommand(
         preferredActiveLayerId: nextActiveLayerId,
       );
-      _session.notifyChanged();
+      _changes.notifyChanged();
       return;
     }
 
-    final beforeLayers = List<Layer>.of(_session.requireActiveCut.layers);
+    final beforeLayers = List<Layer>.of(_project.requireActiveCut.layers);
     final nextActiveLayerId = stableLayerIdAfterDeleting(
       beforeLayers: beforeLayers,
       deletedLayerId: activeLayer.id,
     );
 
-    _session.cutCommandCoordinator.deleteLayer(
-      cutId: _session.requireActiveCut.id,
+    _project.cutCommandCoordinator.deleteLayer(
+      cutId: _project.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _session.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    _session.notifyChanged();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    _changes.notifyChanged();
   }
 
   /// ⑨: deletes every selected row that names a deletable layer, as ONE
@@ -244,11 +263,11 @@ class _LayerVerbs {
   /// written against: taking a lower row out first would shift the ones
   /// above it under the loop's feet.
   void deleteSelectedLayers() {
-    final ids = _session.deletableSelectedLayerIds();
+    final ids = _internals.deletableSelectedLayerIds();
     if (ids.isEmpty) {
       return;
     }
-    final cut = _session.activeCutOrNull;
+    final cut = _project.activeCutOrNull;
     if (cut == null) {
       return;
     }
@@ -262,25 +281,25 @@ class _LayerVerbs {
       beforeLayers: List<Layer>.of(cut.layers),
       deletedLayerId: ordered.last,
     );
-    _session.historyManager.runAsOneStep('Delete rows', () {
+    _project.historyManager.runAsOneStep('Delete rows', () {
       for (final layerId in ordered) {
-        _session.cutCommandCoordinator.deleteLayer(
+        _project.cutCommandCoordinator.deleteLayer(
           cutId: cut.id,
           layerId: layerId,
         );
       }
     });
-    _session.clearRowSelection();
-    _session.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    _session.notifyChanged();
+    _selection.clearRowSelection();
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    _changes.notifyChanged();
   }
 
   void renameActiveLayer(String name) {
-    final activeLayer = _session.activeLayer;
+    final activeLayer = _selection.activeLayer;
     if (activeLayer == null) {
       return;
     }
-    _session.renameLayer(activeLayer.id, name);
+    _internals.renameLayer(activeLayer.id, name);
   }
 
   /// Inserts a NEW ROW the way one joins the stack above the active layer.
@@ -296,8 +315,8 @@ class _LayerVerbs {
   ///   folder invariant and composites in the wrong scope; for R6b's
   ///   adjustment that meant filtering nothing at all, silently.
   void addRowAboveActive(Layer Function(Cut cut) build) {
-    final cut = _session.requireActiveCut;
-    final active = _session.activeLayer;
+    final cut = _project.requireActiveCut;
+    final active = _selection.activeLayer;
     final built = build(cut);
     final layer = active?.folderId == null
         ? built
@@ -311,13 +330,13 @@ class _LayerVerbs {
       final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
       final groupStart = attachedGroupStartIndex(baseId, cut.layers);
       if (groupEnd - groupStart > 1) {
-        _session.layerController.addLayer(
+        _timeline.layerController.addLayer(
           layer: layer,
           insertionIndex: groupEnd,
         );
         return;
       }
     }
-    _session.layerController.addLayer(layer: layer);
+    _timeline.layerController.addLayer(layer: layer);
   }
 }
