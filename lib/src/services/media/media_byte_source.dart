@@ -102,7 +102,18 @@ sealed class MediaByteSource {
   ({String path, int offset, int length})? get range => null;
 }
 
-/// Cheap facts about a source, from `stat` alone.
+/// Cheap facts about a source, from `stat` alone — the CHEAP half of "has
+/// this source changed".
+///
+/// Not an identity — that is `ConformSourceFingerprint`, which reads the
+/// bytes. This is a hint that lets the common case skip that read: if the
+/// source still has the length and timestamp it had when the conform was
+/// written, nothing has touched it on this machine and the conform stands.
+///
+/// A miss means nothing on its own. A copied, restored or re-synced file
+/// gets a fresh timestamp with identical bytes, and that is exactly the
+/// case a timestamp identity used to answer wrong — so a miss falls
+/// through to the content hash rather than deciding anything.
 class MediaSourceStamp {
   const MediaSourceStamp({
     required this.lengthBytes,

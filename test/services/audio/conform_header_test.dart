@@ -62,7 +62,7 @@ void main() {
     int channels = 2,
     int sampleRate = 48000,
     ConformSourceFingerprint? fingerprint,
-    ConformSourceStat? sourceStat,
+    MediaSourceStamp? sourceStat,
     int speedNumerator = 1,
     int speedDenominator = 1,
   }) => encodeConform(
@@ -94,9 +94,9 @@ void main() {
           sourceLength: 987654321,
           sourceCrc32: 0xDEADBEEF,
         ),
-        sourceStat: const ConformSourceStat(
-          sourceLength: 987654321,
-          sourceModifiedMicros: 1735689600000000,
+        sourceStat: const MediaSourceStamp(
+          lengthBytes: 987654321,
+          modifiedMicros: 1735689600000000,
         ),
         speedNumerator: 1001,
         speedDenominator: 1000,
@@ -109,7 +109,7 @@ void main() {
       expect(head.speedDenominator, 1000);
       expect(head.fingerprint?.sourceLength, 987654321);
       expect(head.fingerprint?.sourceCrc32, 0xDEADBEEF);
-      expect(head.sourceStat?.sourceModifiedMicros, 1735689600000000);
+      expect(head.sourceStat?.modifiedMicros, 1735689600000000);
     });
 
     test('a missing fingerprint is absent, not zero', () {
@@ -128,9 +128,9 @@ void main() {
       final head = ConformHeader.parse(
         conform(
           frames: 8,
-          sourceStat: const ConformSourceStat(
-            sourceLength: 5,
-            sourceModifiedMicros: 7,
+          sourceStat: const MediaSourceStamp(
+            lengthBytes: 5,
+            modifiedMicros: 7,
           ),
         ),
       );
