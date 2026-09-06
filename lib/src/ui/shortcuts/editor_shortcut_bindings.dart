@@ -67,17 +67,21 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// Action ids whose activators collide with another action's (the
   /// settings dialog highlights them).
-  Set<String> get conflictedActionIds {
-    final byActivator = <String, List<String>>{};
+  Set<String> get conflictedActionIds => _conflictedIds(
+    (actionId) => activatorsFor(actionId).map(activatorKey),
+  );
+
+  /// Every action id that shares one of its [keysOf] keys with another
+  /// action — the key→actions inversion both conflict queries are.
+  Set<String> _conflictedIds<K>(Iterable<K> Function(String actionId) keysOf) {
+    final byKey = <K, List<String>>{};
     for (final definition in definitions) {
-      for (final activator in activatorsFor(definition.id)) {
-        byActivator
-            .putIfAbsent(activatorKey(activator), () => [])
-            .add(definition.id);
+      for (final key in keysOf(definition.id)) {
+        byKey.putIfAbsent(key, () => []).add(definition.id);
       }
     }
     return {
-      for (final ids in byActivator.values)
+      for (final ids in byKey.values)
         if (ids.length > 1) ...ids,
     };
   }
@@ -150,19 +154,10 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   /// Action ids whose touch gesture collides with another action's.
-  Set<String> get touchConflictedActionIds {
-    final byGesture = <TouchGesture, List<String>>{};
-    for (final definition in definitions) {
-      final gesture = touchGestureFor(definition.id);
-      if (gesture != null) {
-        byGesture.putIfAbsent(gesture, () => []).add(definition.id);
-      }
-    }
-    return {
-      for (final ids in byGesture.values)
-        if (ids.length > 1) ...ids,
-    };
-  }
+  Set<String> get touchConflictedActionIds => _conflictedIds((actionId) {
+    final gesture = touchGestureFor(actionId);
+    return gesture == null ? const <TouchGesture>[] : [gesture];
+  });
 
   /// Binds (or with null, unbinds) [actionId]'s touch gesture; a value
   /// equal to the registry default clears the override.
