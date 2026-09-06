@@ -9,9 +9,13 @@ import 'package:anicel/src/ui/timeline/memo_token.dart';
 void main() {
   group('ByIdentity', () {
     test('the same instance matches; an equal-by-value one does not', () {
-      final a = [1, 2];
-      final b = [1, 2];
-      expect(a, b, reason: 'the lists compare equal by value');
+      // Two DISTINCT instances that `==` each other (a List would not: its
+      // `==` is identity already, so it could not tell the two apart).
+      final seconds = DateTime.now().second + 1;
+      final a = Duration(seconds: seconds);
+      final b = Duration(seconds: seconds);
+      expect(a == b, isTrue, reason: 'the durations compare equal by value');
+      expect(identical(a, b), isFalse);
       expect(ByIdentity(a), ByIdentity(a));
       expect(ByIdentity(a), isNot(ByIdentity(b)));
       expect(ByIdentity(a).hashCode, ByIdentity(a).hashCode);
