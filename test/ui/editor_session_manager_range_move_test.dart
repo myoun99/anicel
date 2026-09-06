@@ -1406,4 +1406,36 @@ void main() {
       reason: 'an empty command list must not become an undo step',
     );
   });
+
+  test('the outline never slides past frame 0: a selection whose empty '
+      'head reaches further left than the block can travel keeps the '
+      'outline it had', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame(); // the row's only block, at 3
+    final aId = s.activeLayer!.id;
+
+    // Sweep from the empty frame 0 through the block: [0, 4).
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 4);
+
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    // The block can only travel 3 frames left; the outline would need to
+    // start at -3.
+    s.updateFrameRangeMoveDrag(frameDelta: -3);
+    expect(
+      s.frameRangeSelection.value!.startIndex,
+      0,
+      reason: 'a negative start is not a selection',
+    );
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 4);
+    s.endFrameRangeMoveDrag();
+    expect(s.layers.firstWhere((l) => l.id == aId).timeline[0], isNotNull);
+  });
 }
