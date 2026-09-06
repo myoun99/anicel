@@ -400,5 +400,3 @@ class _DerivedSurface {
 final Expando<_DerivedSurface> _derived = Expando<_DerivedSurface>(
   'celSourceEffectSurfaces',
 );
-
-
