@@ -310,10 +310,41 @@ void main() {
       await walkBytes(shrunk, overlay, cleared.worldRect),
       reason: 'yesterday\'s pasteboard ink must not survive in the flat',
     );
+
+    // ⚠️And a MIDDLE coordinate, which is the case that actually needs the
+    // clear: removing the leftmost tile SHRINKS the world rect, so its
+    // pixels fall outside the new flat whether or not anything cleared
+    // them. Take out tile 1 and the rect still spans it, so the only
+    // thing that can remove yesterday's green is the clear itself.
+    final holed = BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: 8,
+      tiles: Map.of(shrunk.tiles)..remove(TileCoord(x: 1, y: 0)),
+    );
+    final holePatched = ActiveLayerFlatProjection.patchOrNull(
+      previous: cleared,
+      changedCoords: {TileCoord(x: 1, y: 0)},
+      surface: holed,
+      tileImages: cache,
+      overlay: overlay,
+    );
+    expect(holePatched, isNotNull);
+    expect(
+      holePatched!.worldRect.contains(const ui.Offset(9, 4)),
+      isTrue,
+      reason: 'premise: the hole is still INSIDE the flat',
+    );
+    expect(
+      await bytesOf(holePatched.image),
+      await walkBytes(holed, overlay, holePatched.worldRect),
+      reason: 'the removed tile reads as empty, not as what was there',
+    );
+
     first.image.dispose();
     patched.image.dispose();
     rebuilt.image.dispose();
     cleared.image.dispose();
+    holePatched.image.dispose();
   });
 
   test('null is the answer whenever the strict subset breaks', () async {
@@ -380,6 +411,20 @@ void main() {
         overlay: settling,
       ),
       isNull,
+    );
+
+    // (d) NO TILES AT ALL: the operands resolve fine — to nothing — so
+    // there is no world rect to place a flat in. A layer with no ink is
+    // not a flat of zero size, it is no flat: the second half of the
+    // "⛔NULL IS THE LAW" guard, and the half a full-surface fixture
+    // never reaches.
+    expect(
+      ActiveLayerFlatProjection.buildOrNull(
+        surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+        tileImages: cache,
+      ),
+      isNull,
+      reason: 'no tiles, no rect, no flat',
     );
   });
 }
