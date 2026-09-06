@@ -11,8 +11,8 @@ import '../../tool/refactor/clean_code_scan.dart';
 /// ceiling so the ratchet keeps its bite. ⛔Not a reason to split for
 /// the score — the cognitive-complexity round said why.
 void main() {
-  const wideSignatures = 385;
-  const longBodies = 463;
+  const wideSignatures = 383;
+  const longBodies = 460;
   const longClasses = 52;
 
   late CleanCodeScan scan;
