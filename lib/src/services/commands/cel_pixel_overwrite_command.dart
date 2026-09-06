@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../core/argb_channels.dart';
 import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../cache_invalidation_executor.dart';
@@ -79,11 +80,7 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     targets: targets,
     channel: verb.channel,
     value: verb.channel == CelPixelChannel.colour
-        ? Uint8List.fromList([
-            (argb >> 16) & 0xFF,
-            (argb >> 8) & 0xFF,
-            argb & 0xFF,
-          ])
+        ? Uint8List.fromList([argbRed(argb), argbGreen(argb), argbBlue(argb)])
         : Uint8List.fromList([0]),
     selector: verb.selectorFor(argb),
     description: switch (verb) {

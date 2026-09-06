@@ -2,6 +2,7 @@ import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/argb_channels.dart';
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -179,9 +180,9 @@ class LazyCanvasRasterRgb {
        width = rasterWidth,
        height = rasterHeight,
        rgb = handles?.rgbView ?? Uint8List(rasterWidth * rasterHeight * 4),
-       _paperR = (paperColor >> 16) & 0xFF,
-       _paperG = (paperColor >> 8) & 0xFF,
-       _paperB = paperColor & 0xFF,
+       _paperR = argbRed(paperColor),
+       _paperG = argbGreen(paperColor),
+       _paperB = argbBlue(paperColor),
        _tilesX = (rasterWidth + _tileSize - 1) ~/ _tileSize,
        _composed =
            handles?.composedView ??
@@ -1248,9 +1249,9 @@ BrushDab _colorStampDab({
   required int originY,
   required double opacity,
 }) {
-  final r = (color >> 16) & 0xFF;
-  final g = (color >> 8) & 0xFF;
-  final b = color & 0xFF;
+  final r = argbRed(color);
+  final g = argbGreen(color);
+  final b = argbBlue(color);
   final rgba = labProbe('fill.stamp-build', () {
     final mask = region.mask;
     final bytes = Uint8List(region.width * region.height * 4);

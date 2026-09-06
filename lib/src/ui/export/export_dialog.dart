@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../core/argb_channels.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/export_format_selection.dart';
@@ -1441,9 +1442,9 @@ class ExportDialogState extends State<ExportDialog> {
     final pixelCount = image.width * image.height;
     final rgb = Uint8List(pixelCount * 3);
     final bg = format.backgroundArgb;
-    final bgR = (bg >> 16) & 0xFF;
-    final bgG = (bg >> 8) & 0xFF;
-    final bgB = bg & 0xFF;
+    final bgR = argbRed(bg);
+    final bgG = argbGreen(bg);
+    final bgB = argbBlue(bg);
     for (var i = 0; i < pixelCount; i += 1) {
       final a = rgba[i * 4 + 3];
       if (a == 255) {

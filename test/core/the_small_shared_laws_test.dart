@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/argb_channels.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/inserted_at.dart';
 import 'package:anicel/src/core/mapped_or_same.dart';
@@ -14,6 +15,23 @@ import 'package:anicel/src/services/brush_preset_id_mint.dart';
 /// to four hand-written copies, and none was named by a test (the audit's
 /// untested-file pass, 2026-09-05).
 void main() {
+  group('argb channels — the four bytes of 0xAARRGGBB, named once', () {
+    test('each accessor reads its own byte and nothing of its neighbours', () {
+      expect(argbAlpha(0x80123456), 0x80);
+      expect(argbRed(0x80123456), 0x12);
+      expect(argbGreen(0x80123456), 0x34);
+      expect(argbBlue(0x80123456), 0x56);
+    });
+
+    test('a full-range colour masks to bytes — no sign, no spill', () {
+      expect(argbAlpha(0xFFFFFFFF), 0xFF);
+      expect(argbRed(0x00FF0000), 0xFF);
+      expect(argbGreen(0x0000FF00), 0xFF);
+      expect(argbBlue(0x000000FF), 0xFF);
+      expect(argbRed(0xFF00FFFF), 0);
+    });
+  });
+
   group('premultiply — one rounding, or a seam between a stroke and its '
       'landed pixels', () {
     Uint8List pixel(int r, int g, int b, int a) =>

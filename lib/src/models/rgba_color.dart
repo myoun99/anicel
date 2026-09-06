@@ -1,3 +1,5 @@
+import '../core/argb_channels.dart';
+
 class RgbaColor {
   RgbaColor({
     required this.r,
@@ -14,10 +16,10 @@ class RgbaColor {
   factory RgbaColor.fromArgbInt(int color) {
     _validateArgbInt(color);
     return RgbaColor(
-      r: (color >> 16) & 0xFF,
-      g: (color >> 8) & 0xFF,
-      b: color & 0xFF,
-      a: (color >> 24) & 0xFF,
+      r: argbRed(color),
+      g: argbGreen(color),
+      b: argbBlue(color),
+      a: argbAlpha(color),
     );
   }
 

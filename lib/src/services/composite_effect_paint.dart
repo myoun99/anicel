@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
 
+import '../core/argb_channels.dart';
 import '../core/color_matrix.dart';
 import '../core/draw_space.dart';
 import '../models/layer_blend_mode.dart';
@@ -220,10 +221,10 @@ List<double>? resolveColorMatrixIgnoringSpatial(
 /// out.a = tint.a × in.a. The translation column is 0…255, per
 /// `ColorFilter.matrix`'s contract.
 List<double> onionTintColorMatrix(int argb) {
-  final alpha = ((argb >> 24) & 0xFF) / 255.0;
-  final red = ((argb >> 16) & 0xFF).toDouble();
-  final green = ((argb >> 8) & 0xFF).toDouble();
-  final blue = (argb & 0xFF).toDouble();
+  final alpha = argbAlpha(argb) / 255.0;
+  final red = argbRed(argb).toDouble();
+  final green = argbGreen(argb).toDouble();
+  final blue = argbBlue(argb).toDouble();
   return <double>[
     0, 0, 0, 0, red, //
     0, 0, 0, 0, green,

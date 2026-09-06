@@ -124,6 +124,22 @@ void main() {
     expect(darknessAtCentre(faint), greaterThan(0));
   });
 
+  test('the brush alpha times the layer opacity lands as ONE 8-bit round: '
+      '0x80 black at opacity 0.5 is alpha 64 over the paper', () async {
+    final pixels = await paint(
+      StrokePainter(
+        paintableLayers: [
+          PaintableLayer(
+            layer: layer('a', opacity: 0.5),
+            frame: frameWith([strokeAt(line, color: 0x80000000)]),
+          ),
+        ],
+      ),
+    );
+    // (0x80 * 0.5).round() = 64; black at 64/255 over white leaves 191.
+    expect(darknessAtCentre(pixels), 64);
+  });
+
   test('🚨LAYERS win over the loose stroke list — a painter given both '
       'draws the layers, not both', () async {
     final pixels = await paint(

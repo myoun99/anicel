@@ -6,6 +6,8 @@
 /// string should do.
 library;
 
+import '../../core/argb_channels.dart';
+
 /// `0xAARRGGBB` → `#RRGGBB`, uppercase, alpha dropped (this app's colours
 /// are opaque; alpha lives on the layer).
 String colorHexOf(int argb) =>
@@ -38,11 +40,8 @@ int? parseColorHex(String text) {
 
 /// The three channels of `0xAARRGGBB`, in the order the status bar prints
 /// them.
-({int r, int g, int b}) colorChannels(int argb) => (
-  r: (argb >> 16) & 0xFF,
-  g: (argb >> 8) & 0xFF,
-  b: argb & 0xFF,
-);
+({int r, int g, int b}) colorChannels(int argb) =>
+    (r: argbRed(argb), g: argbGreen(argb), b: argbBlue(argb));
 
 /// The channels back into an opaque colour, each clamped to a byte.
 int colorFromChannels({required int r, required int g, required int b}) =>

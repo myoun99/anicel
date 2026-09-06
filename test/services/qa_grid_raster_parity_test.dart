@@ -277,6 +277,13 @@ void main() {
     expect(reference(unknown), -4);
   });
 
+  test('timelineGridPackRgba lays ARGB out as the op stream\'s little-endian '
+      'RGBA word: r | g<<8 | b<<16 | a<<24', () {
+    expect(timelineGridPackRgba(const Color(0x80123456)), 0x80563412);
+    expect(timelineGridPackRgba(const Color(0xFF000000)), 0xFF000000);
+    expect(timelineGridPackRgba(const Color(0x00FF0000)), 0x000000FF);
+  });
+
   test('the reference alone is deterministic and clips off-tile ops to '
       'no-ops (fallback-path pin, no binary needed)', () {
     final writer = TimelineGridTileOpWriter()

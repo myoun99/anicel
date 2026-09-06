@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
+import '../../core/argb_channels.dart';
+
 /// The grid-tile op stream (UI-R18 O7 / R18-T T1): the timeline frame
 /// grids describe a tile's contents as a flat int32 word list — flat
 /// rect fills, hairlines and A8-atlas glyph blits, which is the WHOLE
@@ -44,11 +46,10 @@ int timelineGridQ8(double pixels) => (pixels * 256).round();
 /// Packs a straight-alpha color into the op stream's RGBA word.
 int timelineGridPackRgba(Color color) {
   final argb = color.toARGB32();
-  final a = (argb >> 24) & 0xFF;
-  final r = (argb >> 16) & 0xFF;
-  final g = (argb >> 8) & 0xFF;
-  final b = argb & 0xFF;
-  return r | (g << 8) | (b << 16) | (a << 24);
+  return argbRed(argb) |
+      (argbGreen(argb) << 8) |
+      (argbBlue(argb) << 16) |
+      (argbAlpha(argb) << 24);
 }
 
 /// Grow-only builder for one tile's op stream.

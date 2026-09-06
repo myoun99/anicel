@@ -1,4 +1,5 @@
 import '../models/brush_dab.dart';
+import '../core/argb_channels.dart';
 import '../models/brush_shape.dart';
 
 /// The colour already on the cel under a dab, as the mixer needs it.
@@ -85,10 +86,7 @@ class BrushGroundColorMixer {
       final depositRgb = ground.coverage > 0.0
           ? _lerpRgb(ground.rgb, _reservoir!, amount)
           : _reservoir!;
-      final alpha = (((sourceArgb >> 24) & 0xFF) * density).round().clamp(
-        0,
-        255,
-      );
+      final alpha = (argbAlpha(sourceArgb) * density).round().clamp(0, 255);
       mixed.add(dab.copyWith(color: (alpha << 24) | depositRgb));
     }
     return mixed;
@@ -103,17 +101,10 @@ int _lerpRgb(int from, int to, double t) {
   if (t >= 1.0) {
     return to;
   }
-  final r =
-      (((from >> 16) & 0xFF) + (((to >> 16) & 0xFF) - ((from >> 16) & 0xFF)) * t)
-          .round()
-          .clamp(0, 255);
-  final g =
-      (((from >> 8) & 0xFF) + (((to >> 8) & 0xFF) - ((from >> 8) & 0xFF)) * t)
-          .round()
-          .clamp(0, 255);
-  final b = ((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * t).round().clamp(
-    0,
-    255,
-  );
+  int channel(int fromChannel, int toChannel) =>
+      (fromChannel + (toChannel - fromChannel) * t).round().clamp(0, 255);
+  final r = channel(argbRed(from), argbRed(to));
+  final g = channel(argbGreen(from), argbGreen(to));
+  final b = channel(argbBlue(from), argbBlue(to));
   return (r << 16) | (g << 8) | b;
 }

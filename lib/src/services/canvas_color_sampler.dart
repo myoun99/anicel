@@ -1,3 +1,4 @@
+import '../core/argb_channels.dart';
 import '../core/color_matrix.dart';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
@@ -315,9 +316,9 @@ int sampleCompositeColor({
   }
   // The paper joins LAST, under the graded stack — the order the routes
   // paint in.
-  final paperR = ((paperColor >> 16) & 0xFF).toDouble();
-  final paperG = ((paperColor >> 8) & 0xFF).toDouble();
-  final paperB = (paperColor & 0xFF).toDouble();
+  final paperR = argbRed(paperColor).toDouble();
+  final paperG = argbGreen(paperColor).toDouble();
+  final paperB = argbBlue(paperColor).toDouble();
   final outR = r + paperR * (1 - coverage);
   final outG = g + paperG * (1 - coverage);
   final outB = b + paperB * (1 - coverage);

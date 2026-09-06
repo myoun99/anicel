@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/argb_channels.dart';
 import '../../models/brush_settings.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
@@ -105,14 +106,12 @@ class StrokePainter extends CustomPainter {
 
   Color _colorForBrush(BrushSettings brushSettings, double opacityMultiplier) {
     final argb = brushSettings.color;
-    final alpha = (argb >> 24) & 0xFF;
-    final red = (argb >> 16) & 0xFF;
-    final green = (argb >> 8) & 0xFF;
-    final blue = argb & 0xFF;
     final opacity = (brushSettings.opacity * opacityMultiplier)
         .clamp(0.0, 1.0)
         .toDouble();
-
-    return Color.fromARGB((alpha * opacity).round(), red, green, blue);
+    // 8-bit integer rounding on purpose: `withValues(alpha: a * opacity)`
+    // round-trips through a double and can land a .5 case on the other
+    // side of what this has always drawn.
+    return Color(argb).withAlpha((argbAlpha(argb) * opacity).round());
   }
 }

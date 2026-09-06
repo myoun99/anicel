@@ -2,6 +2,7 @@ import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
@@ -182,7 +183,7 @@ class BrushDabPlan {
       return null;
     }
     final sourceArgb = dab.color;
-    final sourceA = (sourceArgb >> 24) & 0xFF;
+    final sourceA = argbAlpha(sourceArgb);
     if (sourceA == 0 || dab.opacity == 0.0 || dab.flow == 0.0) {
       return null;
     }
@@ -235,9 +236,9 @@ class BrushDabPlan {
       tileXEnd: tiles.lastX,
       tileYStart: tiles.firstY,
       tileYEnd: tiles.lastY,
-      sourceR: (sourceArgb >> 16) & 0xFF,
-      sourceG: (sourceArgb >> 8) & 0xFF,
-      sourceB: sourceArgb & 0xFF,
+      sourceR: argbRed(sourceArgb),
+      sourceG: argbGreen(sourceArgb),
+      sourceB: argbBlue(sourceArgb),
       sourceAlphaNorm: sourceA / 255.0,
       centerX: centerX,
       centerY: centerY,

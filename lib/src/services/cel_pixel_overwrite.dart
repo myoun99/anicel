@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../core/argb_channels.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
@@ -51,9 +52,9 @@ enum CelPixelVerb {
       return null;
     }
     return CelColorKey(
-      red: (argb >> 16) & 0xFF,
-      green: (argb >> 8) & 0xFF,
-      blue: argb & 0xFF,
+      red: argbRed(argb),
+      green: argbGreen(argb),
+      blue: argbBlue(argb),
       tolerance: 0,
       amount: 1,
       keepsMatches: this == CelPixelVerb.keepColour,
