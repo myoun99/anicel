@@ -99,7 +99,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
       subsystem: 'Audio import decoder',
       active: decoder != null
           ? 'Native (dr_libs WAV/FLAC/MP3, stb_vorbis OGG, '
-                '${_osAudioCodecName()} for AAC/M4A)'
+                '${_HostOs.current.audioCodec} for AAC/M4A)'
           : 'none — audio does not conform',
       isPrimary: decoder != null,
       detail:
@@ -119,7 +119,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     RuntimePathEntry(
       subsystem: 'Video export encoder',
       active: videoSupported
-          ? '${_osVideoEncoderName()} (H.264/AAC MP4)'
+          ? '${_HostOs.current.videoEncoder} (H.264/AAC MP4)'
           : 'ffmpeg fallback',
       isPrimary: videoSupported,
       detail:
@@ -197,28 +197,33 @@ List<RuntimePathEntry> collectRuntimePathReport() {
   return entries;
 }
 
-String _osAudioCodecName() {
-  if (Platform.isWindows) {
-    return 'Media Foundation';
-  }
-  if (Platform.isMacOS || Platform.isIOS) {
-    return 'AudioToolbox';
-  }
-  if (Platform.isAndroid) {
-    return 'MediaCodec';
-  }
-  return 'OS codecs';
-}
+/// The host operating system as the report classifies it, with the names
+/// of the codec stack and the video encoder it hands the two OS-named rows.
+///
+/// ONE classification for both rows: the audio codec and the video
+/// encoder used to each carry their own copy of this ladder, which is
+/// where a Linux arm could have been added to one and not the other.
+enum _HostOs {
+  windows(audioCodec: 'Media Foundation', videoEncoder: 'Media Foundation'),
+  apple(audioCodec: 'AudioToolbox', videoEncoder: 'AVAssetWriter'),
+  android(audioCodec: 'MediaCodec', videoEncoder: 'MediaCodec (NDK)'),
+  other(audioCodec: 'OS codecs', videoEncoder: 'OS encoder');
 
-String _osVideoEncoderName() {
-  if (Platform.isWindows) {
-    return 'Media Foundation';
+  const _HostOs({required this.audioCodec, required this.videoEncoder});
+
+  final String audioCodec;
+  final String videoEncoder;
+
+  static _HostOs get current {
+    if (Platform.isWindows) {
+      return windows;
+    }
+    if (Platform.isMacOS || Platform.isIOS) {
+      return apple;
+    }
+    if (Platform.isAndroid) {
+      return android;
+    }
+    return other;
   }
-  if (Platform.isMacOS || Platform.isIOS) {
-    return 'AVAssetWriter';
-  }
-  if (Platform.isAndroid) {
-    return 'MediaCodec (NDK)';
-  }
-  return 'OS encoder';
 }
