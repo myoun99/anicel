@@ -216,6 +216,17 @@ void main() {
       expect(model.background, wash);
     });
 
+    test('and the wash reaches ONLY the tail: a cell inside the playback '
+        'range keeps the paper', () {
+      const wash = Color(0xFF123456);
+      final model = scale(
+        playbackFrameCount: 10,
+        pastPlaybackWash: wash,
+      ).modelAt(3);
+      expect(model.outsidePlaybackRange, isFalse, reason: 'fixture premise');
+      expect(model.background, light.surface);
+    });
+
     test('the CURRENT frame outranks the wash: it is tinted, not washed', () {
       const wash = Color(0xFF123456);
       final model = scale(
