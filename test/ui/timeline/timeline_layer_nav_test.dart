@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -201,6 +202,19 @@ void main() {
         const LayerId('upper'),
         reason: '"현재 위치한 레이어를 액티브레이어로" — the owner is right '
             'there in the address',
+      );
+    });
+
+    test('a current row that is NOT on screen (a track row, a row a filter '
+        'hid) falls back to the active layer\'s own cells row', () {
+      expect(
+        walk(const TrackRowAddress(TrackId('t')), -1),
+        const LaneRowAddress(LayerId('upper'), 'position'),
+        reason: 'from lower\'s cells row, one up is upper\'s property',
+      );
+      expect(
+        walk(const LaneRowAddress(LayerId('ghost'), 'position'), 1),
+        const LaneRowAddress(LayerId('lower'), 'position'),
       );
     });
 

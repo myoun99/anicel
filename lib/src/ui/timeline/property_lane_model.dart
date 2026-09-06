@@ -336,6 +336,37 @@ class TimelineDisplayRow {
       : LaneRowAddress(layer.id, lane!.laneId);
 }
 
+/// The index of [layerId]'s CELLS row (its first non-lane row) in [rows],
+/// or -1 — the walk the ↑/↓ nav, the flip HUD and the span resolvers all
+/// make before they answer their own question.
+int indexOfLayerRow(List<TimelineDisplayRow> rows, LayerId? layerId) {
+  for (var index = 0; index < rows.length; index += 1) {
+    if (!rows[index].isLane && rows[index].layer.id == layerId) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/// Where a walk stands in [rows]: the row addressed [current], or, when
+/// that row is not on screen — a track row (the storyboard owns one), a
+/// row a filter has hidden — the active layer's own cells row. -1 when
+/// neither is drawn.
+///
+/// The ↑/↓ walk falls back to the active layer's own row in exactly this
+/// case, so the flip HUD's window does too rather than pointing at
+/// whatever sits at the top; both read it from here.
+int indexOfDisplayRow(
+  List<TimelineDisplayRow> rows, {
+  required TimelineRowAddress? current,
+  required LayerId? activeLayerId,
+}) {
+  final currentIndex = rows.indexWhere((row) => row.address == current);
+  return currentIndex >= 0
+      ? currentIndex
+      : indexOfLayerRow(rows, activeLayerId);
+}
+
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
 /// into its transform track today, and every layer (and FX property) plugs
 /// into the same signatures with the layer-transform work.

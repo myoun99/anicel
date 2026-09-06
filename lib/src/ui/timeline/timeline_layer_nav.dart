@@ -65,28 +65,13 @@ TimelineRowAddress? adjacentDisplayedRow({
     return null;
   }
 
-  TimelineRowAddress addressOf(TimelineDisplayRow row) => row.isLane
-      ? LaneRowAddress(row.layer.id, row.lane!.laneId)
-      : LayerRowAddress(row.layer.id);
-
   // Where we are: the row the caller says it is on, falling back to the
   // active layer's own row for callers that have no row notion yet.
-  var activeIndex = -1;
-  for (var index = 0; index < rows.length; index += 1) {
-    final address = addressOf(rows[index]);
-    if (currentRow != null ? address == currentRow : address == LayerRowAddress(activeLayerId ?? const LayerId(''))) {
-      activeIndex = index;
-      break;
-    }
-  }
-  if (activeIndex == -1) {
-    for (var index = 0; index < rows.length; index += 1) {
-      if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
-        activeIndex = index;
-        break;
-      }
-    }
-  }
+  final activeIndex = indexOfDisplayRow(
+    rows,
+    current: currentRow ?? LayerRowAddress(activeLayerId ?? const LayerId('')),
+    activeLayerId: activeLayerId,
+  );
 
   final int targetIndex;
   if (activeIndex == -1) {
@@ -98,7 +83,7 @@ TimelineRowAddress? adjacentDisplayedRow({
     }
     targetIndex = next;
   }
-  final target = addressOf(rows[targetIndex]);
+  final target = rows[targetIndex].address;
   return target == currentRow ? null : target;
 }
 

@@ -114,7 +114,11 @@ import 'canvas/flip_hud_model.dart';
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'
-    show TimelineDisplayRow, buildTimelineDisplayRows, parseLaneGroupKey;
+    show
+        TimelineDisplayRow,
+        buildTimelineDisplayRows,
+        indexOfDisplayRow,
+        parseLaneGroupKey;
 import 'timeline/timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';

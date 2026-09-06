@@ -18,13 +18,7 @@ TimelineDisplayRow? _rowAtDelta(
   if (rows.isEmpty) {
     return null;
   }
-  var sourceIndex = -1;
-  for (var index = 0; index < rows.length; index += 1) {
-    if (!rows[index].isLane && rows[index].layer.id == sourceLayerId) {
-      sourceIndex = index;
-      break;
-    }
-  }
+  final sourceIndex = indexOfLayerRow(rows, sourceLayerId);
   if (sourceIndex < 0) {
     return null;
   }

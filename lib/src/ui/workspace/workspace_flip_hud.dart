@@ -58,31 +58,11 @@ class _WorkspaceFlipHud {
     if (rows.isEmpty) {
       return FlipHudSnapshot.empty;
     }
-    final currentRow = session.currentRow;
-    var rowIndex = -1;
-    for (var index = 0; index < rows.length; index += 1) {
-      final row = rows[index];
-      final address = row.isLane
-          ? LaneRowAddress(row.layer.id, row.lane!.laneId)
-          : LayerRowAddress(row.layer.id);
-      if (address == currentRow) {
-        rowIndex = index;
-        break;
-      }
-    }
-    if (rowIndex == -1) {
-      // The row on record is not on screen — a track row (the storyboard
-      // owns one), or a row a filter has hidden. The ↑/↓ walk falls back
-      // to the active layer's own row in exactly this case, so the window
-      // does too rather than pointing at whatever sits at the top.
-      final activeLayerId = session.activeLayerId;
-      for (var index = 0; index < rows.length; index += 1) {
-        if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
-          rowIndex = index;
-          break;
-        }
-      }
-    }
+    var rowIndex = indexOfDisplayRow(
+      rows,
+      current: session.currentRow,
+      activeLayerId: session.activeLayerId,
+    );
     if (rowIndex == -1) {
       rowIndex = 0;
     }
