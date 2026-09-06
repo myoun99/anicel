@@ -202,30 +202,33 @@ class TimelineFrameAxisBox extends SingleChildRenderObjectWidget {
     ..axis = axis;
 }
 
-class RenderTimelineFrameAxisBox extends RenderProxyBox {
-  RenderTimelineFrameAxisBox({
-    required TimelineFrameGeometryHandle geometry,
-    required double crossAxisExtent,
-    required Axis axis,
-  }) : _geometry = geometry,
-       _crossAxisExtent = crossAxisExtent,
-       _axis = axis;
-
-  TimelineFrameGeometryHandle _geometry;
-  TimelineFrameGeometryHandle get geometry => _geometry;
+/// A render object subscribed to the live geometry handle for its lifetime,
+/// with the row's cross extent and axis beside it — the frame-axis render
+/// objects' shared arm ([RenderTimelineFrameAxisBox],
+/// [RenderTimelineFrameSpanLayout]), the way the SDK shares
+/// `RenderAnimatedOpacityMixin` across two base classes.
+///
+/// This is the geometry's LAYOUT arm: a zoom step changes the row's total
+/// extent through the live handle, and the render object relays that out
+/// without a single widget rebuilding. Swapping the handle moves the
+/// subscription with it; every setter marks layout, never a rebuild.
+mixin TimelineFrameAxisRenderMixin on RenderBox {
+  TimelineFrameGeometryHandle? _geometryHandle;
+  TimelineFrameGeometryHandle get geometry => _geometryHandle!;
   set geometry(TimelineFrameGeometryHandle value) {
-    if (identical(_geometry, value)) {
+    final current = _geometryHandle;
+    if (identical(current, value)) {
       return;
     }
     if (attached) {
-      _geometry.removeListener(markNeedsLayout);
+      current?.removeListener(markNeedsLayout);
       value.addListener(markNeedsLayout);
     }
-    _geometry = value;
+    _geometryHandle = value;
     markNeedsLayout();
   }
 
-  double _crossAxisExtent;
+  double _crossAxisExtent = 0;
   double get crossAxisExtent => _crossAxisExtent;
   set crossAxisExtent(double value) {
     if (_crossAxisExtent == value) {
@@ -235,7 +238,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
     markNeedsLayout();
   }
 
-  Axis _axis;
+  Axis _axis = Axis.horizontal;
   Axis get axis => _axis;
   set axis(Axis value) {
     if (_axis == value) {
@@ -248,18 +251,31 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _geometry.addListener(markNeedsLayout);
+    _geometryHandle!.addListener(markNeedsLayout);
   }
 
   @override
   void detach() {
-    _geometry.removeListener(markNeedsLayout);
+    _geometryHandle!.removeListener(markNeedsLayout);
     super.detach();
   }
+}
 
-  Size _sizeFor(double main) => _axis == Axis.horizontal
-      ? Size(main, _crossAxisExtent)
-      : Size(_crossAxisExtent, main);
+class RenderTimelineFrameAxisBox extends RenderProxyBox
+    with TimelineFrameAxisRenderMixin {
+  RenderTimelineFrameAxisBox({
+    required TimelineFrameGeometryHandle geometry,
+    required double crossAxisExtent,
+    required Axis axis,
+  }) {
+    this.geometry = geometry;
+    this.crossAxisExtent = crossAxisExtent;
+    this.axis = axis;
+  }
+
+  Size _sizeFor(double main) => axis == Axis.horizontal
+      ? Size(main, crossAxisExtent)
+      : Size(crossAxisExtent, main);
 
   /// What the CHILD is laid out at. Windowed, it is the constant window
   /// extent and the incoming constraints are deliberately NOT enforced: the
@@ -269,24 +285,24 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
   /// off-screen by construction (the window covers the viewport with margin)
   /// and nothing here clips.
   BoxConstraints _innerConstraints(BoxConstraints constraints) {
-    final geometry = _geometry.value;
-    final inner = BoxConstraints.tight(_sizeFor(geometry.mainExtent));
-    return geometry.isWindowed ? inner : inner.enforce(constraints);
+    final frames = geometry.value;
+    final inner = BoxConstraints.tight(_sizeFor(frames.mainExtent));
+    return frames.isWindowed ? inner : inner.enforce(constraints);
   }
 
   /// The box's OWN size stays content-space, so everything above the row —
   /// the grid Stack, the scrolled content, the absolute overlays — sees the
   /// row it always saw.
   Size _outerSize(BoxConstraints constraints) =>
-      constraints.constrain(_sizeFor(_geometry.value.contentMainExtent));
+      constraints.constrain(_sizeFor(geometry.value.contentMainExtent));
 
   /// Where the child sits inside this box.
   Offset get _childOffset {
-    final origin = _geometry.value.windowOriginPx;
+    final origin = geometry.value.windowOriginPx;
     if (origin == 0) {
       return Offset.zero;
     }
-    return offsetAlong(_axis, along: origin, across: 0);
+    return offsetAlong(axis, along: origin, across: 0);
   }
 
   @override
@@ -297,7 +313,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
       return;
     }
     child.layout(_innerConstraints(constraints), parentUsesSize: true);
-    size = _geometry.value.isWindowed ? _outerSize(constraints) : child.size;
+    size = geometry.value.isWindowed ? _outerSize(constraints) : child.size;
   }
 
   @override
@@ -331,18 +347,18 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
   }
 
   @override
-  double computeMinIntrinsicWidth(double height) => _axis == Axis.horizontal
-      ? _geometry.value.contentMainExtent
-      : _crossAxisExtent;
+  double computeMinIntrinsicWidth(double height) => axis == Axis.horizontal
+      ? geometry.value.contentMainExtent
+      : crossAxisExtent;
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
       computeMinIntrinsicWidth(height);
 
   @override
-  double computeMinIntrinsicHeight(double width) => _axis == Axis.horizontal
-      ? _crossAxisExtent
-      : _geometry.value.contentMainExtent;
+  double computeMinIntrinsicHeight(double width) => axis == Axis.horizontal
+      ? crossAxisExtent
+      : geometry.value.contentMainExtent;
 
   @override
   double computeMaxIntrinsicHeight(double width) =>
@@ -350,7 +366,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
 
   @override
   Size computeDryLayout(BoxConstraints constraints) {
-    if (_geometry.value.isWindowed) {
+    if (geometry.value.isWindowed) {
       return _outerSize(constraints);
     }
     return child?.getDryLayout(_innerConstraints(constraints)) ??

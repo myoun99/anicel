@@ -232,59 +232,16 @@ class RenderTimelineFrameSpanLayout extends RenderBox
         RenderBoxContainerDefaultsMixin<
           RenderBox,
           TimelineFrameSpanParentData
-        > {
+        >,
+        TimelineFrameAxisRenderMixin {
   RenderTimelineFrameSpanLayout({
     required TimelineFrameGeometryHandle geometry,
     required double crossAxisExtent,
     required Axis axis,
-  }) : _geometry = geometry,
-       _crossAxisExtent = crossAxisExtent,
-       _axis = axis;
-
-  TimelineFrameGeometryHandle _geometry;
-  TimelineFrameGeometryHandle get geometry => _geometry;
-  set geometry(TimelineFrameGeometryHandle value) {
-    if (identical(_geometry, value)) {
-      return;
-    }
-    if (attached) {
-      _geometry.removeListener(markNeedsLayout);
-      value.addListener(markNeedsLayout);
-    }
-    _geometry = value;
-    markNeedsLayout();
-  }
-
-  double _crossAxisExtent;
-  double get crossAxisExtent => _crossAxisExtent;
-  set crossAxisExtent(double value) {
-    if (_crossAxisExtent == value) {
-      return;
-    }
-    _crossAxisExtent = value;
-    markNeedsLayout();
-  }
-
-  Axis _axis;
-  Axis get axis => _axis;
-  set axis(Axis value) {
-    if (_axis == value) {
-      return;
-    }
-    _axis = value;
-    markNeedsLayout();
-  }
-
-  @override
-  void attach(PipelineOwner owner) {
-    super.attach(owner);
-    _geometry.addListener(markNeedsLayout);
-  }
-
-  @override
-  void detach() {
-    _geometry.removeListener(markNeedsLayout);
-    super.detach();
+  }) {
+    this.geometry = geometry;
+    this.crossAxisExtent = crossAxisExtent;
+    this.axis = axis;
   }
 
   @override
@@ -338,15 +295,15 @@ class RenderTimelineFrameSpanLayout extends RenderBox
       mainExtent = 0;
     }
     final main = placement.anchorAtTrailingEdge ? anchor - mainExtent : anchor;
-    final cross = placement.crossExtent ?? _crossAxisExtent;
-    return _axis == Axis.horizontal
+    final cross = placement.crossExtent ?? crossAxisExtent;
+    return axis == Axis.horizontal
         ? Rect.fromLTWH(main, placement.crossInset, mainExtent, cross)
         : Rect.fromLTWH(placement.crossInset, main, cross, mainExtent);
   }
 
   @override
   void performLayout() {
-    final frames = _geometry.value;
+    final frames = geometry.value;
     var child = firstChild;
     while (child != null) {
       final parentData = child.parentData! as TimelineFrameSpanParentData;
