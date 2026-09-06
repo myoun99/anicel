@@ -19,8 +19,7 @@ import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_frame_ruler_painter.dart'
-    show TimelineRulerHeaderModel, TimelineRulerScale, timelineRulerSecondsLabel;
+import 'timeline_frame_ruler_painter.dart' show TimelineRulerScale;
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
@@ -1202,8 +1201,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
         trailingFrameSpacerHeight;
     // PAINTERIZED (UI-R14 #1, the ruler's UI-R13 #1 treatment — 통일화):
     // the whole rail is one CustomPaint; per-frame row widgets are gone.
-    // Tests probe [XSheetFrameRailPainter.modelAt]/`rowRectFor` through
-    // the 'xsheet-frame-rail-paint' key; selection stays on the rail's
+    // Tests probe [TimelineRulerScale.modelAt]/`cellRectFor` through the
+    // 'xsheet-frame-rail-paint' key; selection stays on the rail's
     // viewport-level scrub listener.
     return SizedBox(
       key: const ValueKey<String>('xsheet-frame-number-rail'),
@@ -1214,17 +1213,22 @@ class _XSheetFrameNumberRail extends StatelessWidget {
         size: Size(metrics.layerControlsWidth, height),
         painter: XSheetFrameRailPainter(
           scale: TimelineRulerScale(
+            axis: Axis.vertical,
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
             currentFrameIndex: currentFrameIndex,
             playbackFrameCount: playbackFrameCount,
             leadingFrameSpacer: leadingFrameSpacerHeight,
+            crossExtent: metrics.layerControlsWidth,
             metrics: metrics,
             colorScheme: colorScheme,
             framesPerSecond: framesPerSecond,
             showSeconds: showSeconds,
             windowBucket: windowBucket,
             viewportMainExtent: viewportMainExtent,
+            // The RAIL grays its past-playback tail where the ruler does
+            // not (UI-R18 #9) — see [TimelineRulerScale.pastPlaybackWash].
+            pastPlaybackWash: AppColors.washUp.withValues(alpha: 0.72),
           ),
         ),
       ),
@@ -1241,51 +1245,9 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
     : super(repaint: scale.windowBucket);
 
   /// The frame scale this rail draws — the ruler's, field for field
-  /// ([TimelineRulerScale]); only the rect and the paint are transposed.
+  /// ([TimelineRulerScale]), the rect and the model with it. Only the paint
+  /// is this rail's own.
   final TimelineRulerScale scale;
-
-  /// The row's rect in the rail's local coordinates.
-  Rect rowRectFor(int frameIndex) => Rect.fromLTWH(
-    0,
-    scale.leadingFrameSpacer +
-        (frameIndex - scale.frameStartIndex) * scale.metrics.frameCellWidth,
-    scale.metrics.layerControlsWidth,
-    scale.metrics.frameCellWidth,
-  );
-
-  /// The resolved per-row model — the probe surface (the shared ruler's
-  /// model class).
-  ///
-  /// R9 #4: the cadence is the SHARED one now
-  /// ([TimelineGridMetrics.frameLabelEveryFrames], the paper-timesheet
-  /// ladder anchored at frame 1). This painter is a transposed
-  /// re-implementation of the horizontal ruler and had never called it —
-  /// so zooming out crowded every row's number into the next, while the
-  /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
-  /// content: the "never disappears" rule is about what a cell holds.
-  TimelineRulerHeaderModel modelAt(int frameIndex) {
-    final selected = frameIndex == scale.currentFrameIndex;
-    final outside = frameIndex >= scale.playbackFrameCount;
-    final labeled = frameIndex % scale.metrics.frameLabelEveryFrames == 0;
-    return TimelineRulerHeaderModel(
-      frameIndex: frameIndex,
-      label: labeled ? scale.frameNumberLabel(frameIndex) : '',
-      secondsLabel: timelineRulerSecondsLabel(
-        frameIndex: frameIndex,
-        framesPerSecond: scale.framesPerSecond,
-      ),
-      selected: selected,
-      outsidePlaybackRange: outside,
-      background: selected
-          ? Color.alphaBlend(
-              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-              scale.colorScheme.surface,
-            )
-          : outside
-          ? AppColors.washUp.withValues(alpha: 0.72)
-          : scale.colorScheme.surface,
-    );
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1309,8 +1271,8 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = modelAt(frameIndex);
-      final rect = rowRectFor(frameIndex);
+      final model = scale.modelAt(frameIndex);
+      final rect = scale.cellRectFor(frameIndex);
       canvas.drawRect(rect, fillPaint..color = model.background);
       final ink = timelineFrameBoundaryLineInk(
         frameIndex: frameIndex,
@@ -1360,7 +1322,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
             fontSize: timelineFittedGlyphFontSize(
               11,
               metrics.frameCellWidth,
-              crossExtent: metrics.layerControlsWidth,
+              crossExtent: scale.crossExtent,
             ),
             color: model.outsidePlaybackRange
                 ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
@@ -1400,7 +1362,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   SemanticsBuilderCallback get semanticsBuilder => (size) =>
       frameWindowSemantics(
         window: scale.visibleWindow(),
-        rectFor: rowRectFor,
+        rectFor: scale.cellRectFor,
         labelFor: (frameIndex) => 'frame ${frameIndex + 1}',
       );
 }

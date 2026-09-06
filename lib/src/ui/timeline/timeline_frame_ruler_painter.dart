@@ -1,6 +1,7 @@
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'axis_turn.dart' show offsetAlong;
 import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
@@ -72,44 +73,8 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
     : super(repaint: scale.windowBucket);
 
   /// The frame scale this strip draws — shared, field for field, with the
-  /// X-sheet's rail painter.
+  /// X-sheet's rail painter, and the rect and the model with it.
   final TimelineRulerScale scale;
-
-  /// The header cell's rect in the strip's local coordinates (the probe
-  /// geometry tests and taps share).
-  Rect headerRectFor(int frameIndex) => Rect.fromLTWH(
-    scale.leadingFrameSpacer +
-        (frameIndex - scale.frameStartIndex) * scale.metrics.frameCellWidth,
-    0,
-    scale.metrics.frameCellWidth,
-    scale.metrics.layerRowHeight,
-  );
-
-  /// The resolved per-header model — the probe surface.
-  TimelineRulerHeaderModel headerModelAt(int frameIndex) {
-    final selected = frameIndex == scale.currentFrameIndex;
-    final outside = frameIndex >= scale.playbackFrameCount;
-    final labeled = frameIndex % scale.metrics.frameLabelEveryFrames == 0;
-    return TimelineRulerHeaderModel(
-      frameIndex: frameIndex,
-      label: labeled ? scale.frameNumberLabel(frameIndex) : '',
-      secondsLabel: timelineRulerSecondsLabel(
-        frameIndex: frameIndex,
-        framesPerSecond: scale.framesPerSecond,
-      ),
-      selected: selected,
-      outsidePlaybackRange: outside,
-      // No past-playback graying on the RULER (UI-R18 #9): small zooms
-      // made the strip read broken from the right; the cut-end boundary
-      // line marks the end, the BODY cells keep their own dim wash.
-      background: selected
-          ? Color.alphaBlend(
-              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-              scale.colorScheme.surface,
-            )
-          : scale.colorScheme.surface,
-    );
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -134,9 +99,9 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = headerModelAt(frameIndex);
+      final model = scale.modelAt(frameIndex);
       canvas.drawRect(
-        headerRectFor(frameIndex),
+        scale.cellRectFor(frameIndex),
         fillPaint..color = model.background,
       );
     }
@@ -157,7 +122,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
       if (ink == null) {
         continue;
       }
-      final rect = headerRectFor(frameIndex);
+      final rect = scale.cellRectFor(frameIndex);
       // The LAW's snap (it was this ruler's own +0.5 first — D8 promoted
       // it so the overlay lands on the same pixel).
       //
@@ -173,7 +138,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
         linePaint
           ..color = timelineGridLineInkOnGround(
             ink,
-            headerModelAt(frameIndex).background,
+            scale.modelAt(frameIndex).background,
           )
           ..strokeWidth = ink.strokeWidth,
       );
@@ -186,8 +151,8 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = headerModelAt(frameIndex);
-      final rect = headerRectFor(frameIndex);
+      final model = scale.modelAt(frameIndex);
+      final rect = scale.cellRectFor(frameIndex);
       // Bottom line: in-cell centered when every cell labels itself, the
       // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27).
       if (model.label.isNotEmpty) {
@@ -198,7 +163,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
                 fontSize: timelineFittedGlyphFontSize(
                   11,
                   metrics.frameCellWidth,
-                  crossExtent: metrics.layerRowHeight,
+                  crossExtent: scale.crossExtent,
                 ),
                 color: colorScheme.onSurface,
               )
@@ -262,8 +227,8 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
   SemanticsBuilderCallback get semanticsBuilder => (size) =>
       frameWindowSemantics(
         window: scale.visibleWindow(),
-        rectFor: headerRectFor,
-        labelFor: (frameIndex) => headerModelAt(frameIndex).label.isEmpty
+        rectFor: scale.cellRectFor,
+        labelFor: (frameIndex) => scale.modelAt(frameIndex).label.isEmpty
             ? null
             : 'frame ${frameIndex + 1}',
       );
@@ -278,23 +243,34 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
 /// `shouldRepaint`, the same visible-window call and the same frame-number
 /// label (the audit's clone scan, 2026-09-06). The field list exists once,
 /// where the fields live, so a field cannot be compared on one strip and
-/// forgotten on the other. What stays on the painters is what genuinely
-/// differs — the rect (the transposed part), the per-frame model and the
-/// paint.
+/// forgotten on the other.
+///
+/// Round 8 brought the CELL RECT and the per-frame MODEL in after them —
+/// the two the painters still each spelled, one with the frame axis across
+/// and one with it down, one washing its past-playback tail and one not.
+/// [axis] turns the rect and [pastPlaybackWash] is the wash, both VALUES,
+/// so what is left on a painter is only the paint.
 final class TimelineRulerScale {
   const TimelineRulerScale({
+    required this.axis,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
     required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacer,
+    required this.crossExtent,
     required this.metrics,
     required this.colorScheme,
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.pastPlaybackWash,
   });
+
+  /// The axis the FRAMES run along: across the timeline's ruler, down the
+  /// X-sheet's rail.
+  final Axis axis;
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -304,6 +280,13 @@ final class TimelineRulerScale {
   /// The spacer before frame [frameStartIndex] along the strip's MAIN axis
   /// — a width on the ruler, a height on the rail.
   final double leadingFrameSpacer;
+
+  /// The strip's thickness ACROSS the frame axis — the ruler's height
+  /// ([TimelineGridMetrics.layerRowHeight]) and the rail's width
+  /// ([TimelineGridMetrics.layerControlsWidth]). Two different metrics for
+  /// the same dimension, which is why it is stated and not derived.
+  final double crossExtent;
+
   final TimelineGridMetrics metrics;
   final ColorScheme colorScheme;
   final int framesPerSecond;
@@ -318,6 +301,71 @@ final class TimelineRulerScale {
   /// for the full bounds. Null keeps the classic pre-windowed contract.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The ground under a cell PAST the playback range, or null when the
+  /// strip leaves its tail the colour of its paper.
+  ///
+  /// ⛔No past-playback graying on the RULER (UI-R18 #9): small zooms made
+  /// the strip read broken from the right; the cut-end boundary line marks
+  /// the end, the BODY cells keep their own dim wash. The X-sheet's RAIL
+  /// does wash its tail, so the two differ by this VALUE — not by a flag
+  /// asking which strip is asking.
+  final Color? pastPlaybackWash;
+
+  /// The cell's rect in the strip's local coordinates — the header cell on
+  /// the ruler, the number row on the rail (the probe geometry tests and
+  /// taps share).
+  ///
+  /// The turn is [offsetAlong]'s, twice: the cell begins [leadingFrameSpacer]
+  /// plus its own frames along the axis and spans the whole [crossExtent]
+  /// across it.
+  Rect cellRectFor(int frameIndex) {
+    final along =
+        leadingFrameSpacer +
+        (frameIndex - frameStartIndex) * metrics.frameCellWidth;
+    return Rect.fromPoints(
+      offsetAlong(axis, along: along, across: 0),
+      offsetAlong(
+        axis,
+        along: along + metrics.frameCellWidth,
+        across: crossExtent,
+      ),
+    );
+  }
+
+  /// The resolved per-cell model — the probe surface.
+  ///
+  /// R9 #4: the cadence is the SHARED one
+  /// ([TimelineGridMetrics.frameLabelEveryFrames], the paper-timesheet
+  /// ladder anchored at frame 1). The rail was a transposed
+  /// re-implementation of the horizontal ruler and had never called it —
+  /// so zooming out crowded every row's number into the next, while the
+  /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
+  /// content: the "never disappears" rule is about what a cell holds.
+  TimelineRulerHeaderModel modelAt(int frameIndex) {
+    final selected = frameIndex == currentFrameIndex;
+    final outside = frameIndex >= playbackFrameCount;
+    final labeled = frameIndex % metrics.frameLabelEveryFrames == 0;
+    final ground = outside
+        ? (pastPlaybackWash ?? colorScheme.surface)
+        : colorScheme.surface;
+    return TimelineRulerHeaderModel(
+      frameIndex: frameIndex,
+      label: labeled ? frameNumberLabel(frameIndex) : '',
+      secondsLabel: timelineRulerSecondsLabel(
+        frameIndex: frameIndex,
+        framesPerSecond: framesPerSecond,
+      ),
+      selected: selected,
+      outsidePlaybackRange: outside,
+      background: selected
+          ? Color.alphaBlend(
+              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+              colorScheme.surface,
+            )
+          : ground,
+    );
+  }
 
   /// The frame window paint() actually draws (probe surface).
   ({int startIndex, int endIndexExclusive}) visibleWindow() =>
@@ -348,6 +396,9 @@ final class TimelineRulerScale {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is TimelineRulerScale &&
+          other.axis == axis &&
+          other.crossExtent == crossExtent &&
+          other.pastPlaybackWash == pastPlaybackWash &&
           other.frameStartIndex == frameStartIndex &&
           other.frameEndIndexExclusive == frameEndIndexExclusive &&
           other.currentFrameIndex == currentFrameIndex &&
@@ -361,7 +412,10 @@ final class TimelineRulerScale {
           other.colorScheme == colorScheme;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
+    axis,
+    crossExtent,
+    pastPlaybackWash,
     frameStartIndex,
     frameEndIndexExclusive,
     currentFrameIndex,
@@ -373,5 +427,5 @@ final class TimelineRulerScale {
     identityHashCode(windowBucket),
     viewportMainExtent,
     colorScheme,
-  );
+  ]);
 }

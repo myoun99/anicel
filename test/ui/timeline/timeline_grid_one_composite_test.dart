@@ -160,11 +160,13 @@ void main() {
       final spy = _LineSpy();
       TimelineFrameRulerPainter(
         scale: TimelineRulerScale(
+          axis: Axis.horizontal,
           frameStartIndex: 0,
           frameEndIndexExclusive: 30,
           currentFrameIndex: currentFrameIndex,
           playbackFrameCount: 30,
           leadingFrameSpacer: 0,
+          crossExtent: 28,
           metrics: TimelineGridMetrics.defaults,
           colorScheme: scheme,
         ),
@@ -189,15 +191,17 @@ void main() {
       final spy = paintRuler(currentFrameIndex: 6);
       final selectedGround = TimelineFrameRulerPainter(
         scale: TimelineRulerScale(
+          axis: Axis.horizontal,
           frameStartIndex: 0,
           frameEndIndexExclusive: 30,
           currentFrameIndex: 6,
           playbackFrameCount: 30,
           leadingFrameSpacer: 0,
+          crossExtent: 28,
           metrics: TimelineGridMetrics.defaults,
           colorScheme: scheme,
         ),
-      ).headerModelAt(6).background;
+      ).scale.modelAt(6).background;
       expect(
         selectedGround,
         isNot(scheme.surface),
@@ -230,11 +234,13 @@ void main() {
     final ruler = _LineSpy();
     TimelineFrameRulerPainter(
       scale: TimelineRulerScale(
+        axis: Axis.horizontal,
         frameStartIndex: 0,
         frameEndIndexExclusive: 30,
         currentFrameIndex: -1,
         playbackFrameCount: 30,
         leadingFrameSpacer: 0,
+        crossExtent: 28,
         metrics: TimelineGridMetrics.defaults,
         colorScheme: scheme,
       ),

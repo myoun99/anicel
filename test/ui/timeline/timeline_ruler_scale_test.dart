@@ -12,29 +12,35 @@ void main() {
   final dark = ThemeData.dark().colorScheme;
 
   TimelineRulerScale scale({
+    Axis axis = Axis.horizontal,
     int frameStartIndex = 0,
     int frameEndIndexExclusive = 30,
     int currentFrameIndex = -1,
     int playbackFrameCount = 30,
     double leadingFrameSpacer = 0,
+    double crossExtent = 28,
     TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
     ColorScheme? colorScheme,
     int framesPerSecond = 24,
     bool showSeconds = false,
     ValueNotifier<int>? windowBucket,
     double viewportMainExtent = 0,
+    Color? pastPlaybackWash,
   }) => TimelineRulerScale(
+    axis: axis,
     frameStartIndex: frameStartIndex,
     frameEndIndexExclusive: frameEndIndexExclusive,
     currentFrameIndex: currentFrameIndex,
     playbackFrameCount: playbackFrameCount,
     leadingFrameSpacer: leadingFrameSpacer,
+    crossExtent: crossExtent,
     metrics: metrics,
     colorScheme: colorScheme ?? light,
     framesPerSecond: framesPerSecond,
     showSeconds: showSeconds,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
+    pastPlaybackWash: pastPlaybackWash,
   );
 
   group('equality is the repaint gate', () {
@@ -58,6 +64,9 @@ void main() {
         scale(framesPerSecond: 30),
         scale(showSeconds: true),
         scale(viewportMainExtent: 400),
+        scale(axis: Axis.vertical),
+        scale(crossExtent: 72),
+        scale(pastPlaybackWash: const Color(0xFF123456)),
       ]) {
         expect(other, isNot(base), reason: '$other');
       }
@@ -120,6 +129,103 @@ void main() {
         scale(showSeconds: true, framesPerSecond: 0).frameNumberLabel(25),
         '2',
       );
+    });
+  });
+
+  // ── the AXIS is the only turn (round 8) ────────────────────────────────
+  //
+  // The ruler's `headerRectFor`/`headerModelAt` and the rail's
+  // `rowRectFor`/`modelAt` were the same two sentences written twice, one
+  // with the frame axis across and one with it down. They live here now, so
+  // these ask the transposed question and demand the transposed answer.
+  group('cellRectFor turns with the axis', () {
+    const cell = TimelineGridMetrics.defaults;
+
+    test('the horizontal strip lays cells across and fills its height', () {
+      final rect = scale(
+        leadingFrameSpacer: 10,
+        frameStartIndex: 2,
+        crossExtent: 28,
+      ).cellRectFor(5);
+      expect(rect.left, 10 + 3 * cell.frameCellWidth);
+      expect(rect.width, cell.frameCellWidth);
+      expect(rect.top, 0);
+      expect(rect.height, 28);
+    });
+
+    test('the vertical strip is that rect transposed, exactly', () {
+      final across = scale(
+        leadingFrameSpacer: 10,
+        frameStartIndex: 2,
+        crossExtent: 28,
+      ).cellRectFor(5);
+      final down = scale(
+        axis: Axis.vertical,
+        leadingFrameSpacer: 10,
+        frameStartIndex: 2,
+        crossExtent: 28,
+      ).cellRectFor(5);
+      expect(down.top, across.left);
+      expect(down.height, across.width);
+      expect(down.left, across.top);
+      expect(down.width, across.height);
+    });
+
+    test('a strip with a different thickness keeps the same cells', () {
+      final thin = scale(crossExtent: 28).cellRectFor(9);
+      final thick = scale(crossExtent: 72).cellRectFor(9);
+      expect(thick.left, thin.left);
+      expect(thick.width, thin.width);
+      expect(thick.height, 72);
+    });
+  });
+
+  group('modelAt is one law, and the wash is a value', () {
+    test('label, seconds line and states do not know the axis', () {
+      for (final frame in [0, 1, 24, 25]) {
+        final across = scale(currentFrameIndex: 24).modelAt(frame);
+        final down = scale(
+          axis: Axis.vertical,
+          currentFrameIndex: 24,
+        ).modelAt(frame);
+        expect(down.label, across.label, reason: 'frame $frame');
+        expect(down.secondsLabel, across.secondsLabel, reason: 'frame $frame');
+        expect(down.selected, across.selected, reason: 'frame $frame');
+        expect(
+          down.outsidePlaybackRange,
+          across.outsidePlaybackRange,
+          reason: 'frame $frame',
+        );
+        expect(down.background, across.background, reason: 'frame $frame');
+      }
+    });
+
+    test('⛔with no wash the tail is the strip\'s own paper (UI-R18 #9)', () {
+      final model = scale(playbackFrameCount: 10).modelAt(20);
+      expect(model.outsidePlaybackRange, isTrue, reason: 'fixture premise');
+      expect(model.background, light.surface);
+    });
+
+    test('with a wash the tail takes it — the same code, a different '
+        'value', () {
+      const wash = Color(0xFF123456);
+      final model = scale(
+        playbackFrameCount: 10,
+        pastPlaybackWash: wash,
+      ).modelAt(20);
+      expect(model.background, wash);
+    });
+
+    test('the CURRENT frame outranks the wash: it is tinted, not washed', () {
+      const wash = Color(0xFF123456);
+      final model = scale(
+        playbackFrameCount: 10,
+        currentFrameIndex: 20,
+        pastPlaybackWash: wash,
+      ).modelAt(20);
+      expect(model.selected, isTrue);
+      expect(model.background, isNot(wash));
+      expect(model.background, isNot(light.surface));
     });
   });
 }
