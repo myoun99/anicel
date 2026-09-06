@@ -22,6 +22,7 @@ import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
+import '../text/trimmed_decimal.dart';
 import '../widgets/settings_prompt_text.dart';
 import '../listenable_rebind.dart';
 
@@ -649,13 +650,6 @@ class _MoveSettingsState extends State<_MoveSettings> {
     super.dispose();
   }
 
-  String _trim(double value) {
-    final rounded = double.parse(value.toStringAsFixed(2));
-    return rounded == rounded.roundToDouble()
-        ? rounded.round().toString()
-        : rounded.toString();
-  }
-
   void _syncFromSession() {
     if (!mounted) {
       return;
@@ -765,7 +759,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         _channel(
           keyValue: 'move-x-field',
           label: 'X',
-          text: _trim(_tx),
+          text: formatTrimmedDecimal(_tx, fractionDigits: 2),
           onDrag: (units) {
             setState(() => _tx += units);
             _apply();
@@ -779,7 +773,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         _channel(
           keyValue: 'move-y-field',
           label: 'Y',
-          text: _trim(_ty),
+          text: formatTrimmedDecimal(_ty, fractionDigits: 2),
           onDrag: (units) {
             setState(() => _ty += units);
             _apply();
@@ -793,7 +787,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         _channel(
           keyValue: 'move-angle-field',
           label: AppText.strings.brAngle,
-          text: '${_trim(_angleDeg)}°',
+          text: '${formatTrimmedDecimal(_angleDeg, fractionDigits: 2)}°',
           onDrag: (units) {
             setState(() => _angleDeg += units);
             _apply();
@@ -807,7 +801,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         _channel(
           keyValue: 'move-scale-field',
           label: AppText.strings.brScale,
-          text: '${_trim(_scalePct)}%',
+          text: '${formatTrimmedDecimal(_scalePct, fractionDigits: 2)}%',
           onDrag: (units) {
             setState(() => _scalePct = (_scalePct + units).clamp(1.0, 3200.0));
             _apply();

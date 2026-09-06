@@ -2,6 +2,7 @@ import 'dart:ui' show Offset;
 
 import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
+import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
@@ -160,9 +161,9 @@ bool effectGroupHeaderCovered(String headerLaneId, List<String> spanLaneIds) {
 /// AE-style value formatting for an effect parameter.
 String formatEffectLaneValue(EffectParameterSpec spec, double value) {
   return switch (spec.unit) {
-    EffectParameterUnit.number => _number(value),
-    EffectParameterUnit.degrees => '${_number(value)}°',
-    EffectParameterUnit.pixels => '${_number(value)} px',
+    EffectParameterUnit.number => formatTrimmedDecimal(value),
+    EffectParameterUnit.degrees => '${formatTrimmedDecimal(value)}°',
+    EffectParameterUnit.pixels => '${formatTrimmedDecimal(value)} px',
   };
 }
 
@@ -196,11 +197,4 @@ String? scrubEffectLaneValue(
     return null;
   }
   return formatEffectLaneValue(spec, spec.clamp(current + dragDelta.dx * 0.5));
-}
-
-String _number(double value) {
-  final rounded = double.parse(value.toStringAsFixed(1));
-  return rounded == rounded.roundToDouble()
-      ? rounded.round().toString()
-      : rounded.toStringAsFixed(1);
 }
