@@ -161,6 +161,7 @@ import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
+import '../core/identity_memo.dart';
 import 'playback/audio_device_transport.dart';
 import 'playback/audio_playback_sync.dart';
 import 'playback/audio_scrubber.dart';
@@ -476,7 +477,7 @@ class EditorSessionManager extends ChangeNotifier {
   void setProjectBackground(ProjectBackground background) =>
       _projectSettings.setProjectBackground(background);
   List<StoryboardTimelineLayoutEntry> projectTimelineLayout() =>
-      _projectSettings.projectTimelineLayout();
+      _projectSettings.projectLayout();
 
   /// The tool a temporary hold sprang FROM; null = no hold live.
   ///

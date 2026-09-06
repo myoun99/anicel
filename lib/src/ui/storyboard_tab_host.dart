@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../models/cut_id.dart';
+import '../core/identity_memo.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
@@ -139,22 +139,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// frame column per repaint — none of them may rebuild the layout list
   /// each time. Cuts are immutable, so the project + active cut identity
   /// pair decides staleness.
-  List<StoryboardTimelineLayoutEntry>? _trackLayoutCache;
-  Object? _trackLayoutProject;
-  CutId? _trackLayoutActiveCutId;
+  final _trackLayout = IdentityMemo<List<StoryboardTimelineLayoutEntry>>();
 
-  List<StoryboardTimelineLayoutEntry> _activeTrackLayout() {
-    final project = _session.repository.requireProject();
-    final activeCutId = _session.activeCutId;
-    if (_trackLayoutCache == null ||
-        !identical(project, _trackLayoutProject) ||
-        activeCutId != _trackLayoutActiveCutId) {
-      _trackLayoutProject = project;
-      _trackLayoutActiveCutId = activeCutId;
-      _trackLayoutCache = storyboardActiveTrackLayout(_session);
-    }
-    return _trackLayoutCache!;
-  }
+  List<StoryboardTimelineLayoutEntry> _activeTrackLayout() =>
+      _trackLayout.resolve(
+        identity: _session.repository.requireProject(),
+        key: _session.activeCutId,
+        build: () => storyboardActiveTrackLayout(_session),
+      );
 
   void _refreshPlayheadGlobalFrame() {
     _playheadGlobalFrame.value = storyboardPlayheadFrame(

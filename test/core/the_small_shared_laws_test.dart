@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/argb_channels.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
+import 'package:anicel/src/core/identity_memo.dart';
 import 'package:anicel/src/core/inserted_at.dart';
 import 'package:anicel/src/core/mapped_or_same.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
@@ -29,6 +30,48 @@ void main() {
       expect(argbGreen(0x0000FF00), 0xFF);
       expect(argbBlue(0x000000FF), 0xFF);
       expect(argbRed(0xFF00FFFF), 0);
+    });
+  });
+
+  group('IdentityMemo — rebuilt when the identity or the key moves, and '
+      'only then', () {
+    test('the same identity and key answers the SAME instance without a '
+        'second build', () {
+      final memo = IdentityMemo<List<int>>();
+      final subject = Object();
+      var builds = 0;
+      List<int> build() {
+        builds += 1;
+        return [builds];
+      }
+
+      final first = memo.resolve(identity: subject, key: 'a', build: build);
+      final again = memo.resolve(identity: subject, key: 'a', build: build);
+      expect(identical(first, again), isTrue);
+      expect(builds, 1);
+    });
+
+    test('a new identity rebuilds; so does a new key on the old identity', () {
+      final memo = IdentityMemo<int>();
+      final one = Object();
+      final two = Object();
+      var builds = 0;
+      int build() => ++builds;
+
+      expect(memo.resolve(identity: one, key: 1, build: build), 1);
+      expect(memo.resolve(identity: two, key: 1, build: build), 2);
+      expect(memo.resolve(identity: two, key: 2, build: build), 3);
+      expect(memo.resolve(identity: two, key: 2, build: build), 3);
+    });
+
+    test('identity is `identical`, never `==` — an equal-but-distinct '
+        'object is a change', () {
+      final memo = IdentityMemo<int>();
+      var builds = 0;
+      int build() => ++builds;
+      // Two equal lists are two objects.
+      expect(memo.resolve(identity: const <int>[1], build: build), 1);
+      expect(memo.resolve(identity: <int>[1], build: build), 2);
     });
   });
 

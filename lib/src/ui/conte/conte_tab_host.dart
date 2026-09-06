@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/identity_memo.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -131,10 +132,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   // it is rebuilt only when the project object (or the camera aspect that
   // shapes the cells) actually changes — the immutable repository makes
   // identity the staleness check, the timesheet host's pattern.
-  ConteSheetSource? _source;
-  late List<ContePageLayout> _pages;
-  Object? _sourceProject;
-  double? _sourceCameraAspect;
+  final _sheet = IdentityMemo<(ConteSheetSource, List<ContePageLayout>)>();
 
   /// Ink strokes hold the prerender warmer exactly like canvas strokes.
   void _syncInkWarmHold() {
@@ -179,18 +177,20 @@ class _ConteTabHostState extends State<ConteTabHost> {
   (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
     final project = _session.repository.requireProject();
     final aspect = _session.cameraFrameAspect;
-    if (_source == null ||
-        !identical(project, _sourceProject) ||
-        aspect != _sourceCameraAspect) {
-      _sourceProject = project;
-      _sourceCameraAspect = aspect;
-      _source = buildConteSheetSource(project);
-      _pages = layoutConteSheet(
-        _source!,
-        metrics: ConteSheetMetrics(cameraAspect: aspect),
-      );
-    }
-    return (_source!, _pages);
+    return _sheet.resolve(
+      identity: project,
+      key: aspect,
+      build: () {
+        final source = buildConteSheetSource(project);
+        return (
+          source,
+          layoutConteSheet(
+            source,
+            metrics: ConteSheetMetrics(cameraAspect: aspect),
+          ),
+        );
+      },
+    );
   }
 
   /// A cell press: the cut, its storyboard row and the frame — the

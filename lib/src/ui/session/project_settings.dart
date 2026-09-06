@@ -92,23 +92,18 @@ class _ProjectSettings {
   /// identity on an edit — rebuilding the whole cross-track layout each
   /// call was a fixed per-move tax (the same memo the storyboard host
   /// keeps).
-  /// The memoized layout, for surfaces outside this class that need the
-  /// same cut ranges — the flip HUD's gap window reads the track's cuts
-  /// through here rather than rebuilding a second layout that could
+  ///
+  /// Also the memoized layout for surfaces outside this class that need
+  /// the same cut ranges — the flip HUD's gap window reads the track's
+  /// cuts through here rather than rebuilding a second layout that could
   /// disagree with the one the flip walks.
-  List<StoryboardTimelineLayoutEntry> projectTimelineLayout() =>
-      projectLayout();
-
   List<StoryboardTimelineLayoutEntry> projectLayout() {
     final project = _session.repository.requireProject();
-    if (!identical(project, _projectLayoutProject)) {
-      _projectLayoutProject = project;
-      _projectLayoutMemo = buildStoryboardTimelineLayout(project);
-    }
-    return _projectLayoutMemo;
+    return _layout.resolve(
+      identity: project,
+      build: () => buildStoryboardTimelineLayout(project),
+    );
   }
 
-  Project? _projectLayoutProject;
-
-  late List<StoryboardTimelineLayoutEntry> _projectLayoutMemo;
+  final _layout = IdentityMemo<List<StoryboardTimelineLayoutEntry>>();
 }
