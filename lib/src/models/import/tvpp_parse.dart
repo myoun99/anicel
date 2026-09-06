@@ -336,13 +336,16 @@ bool _isFourCc(Uint8List bytes, int at) {
 int _u32(Uint8List bytes, int at) =>
     ByteData.sublistView(bytes, at, at + 4).getUint32(0);
 
-int _find(Uint8List bytes, String needle, int from, [int? until]) {
-  final t = needle.codeUnits;
-  final end = (until ?? bytes.length) - t.length;
+/// The first index at or after [from] where [needle] starts, with the
+/// whole needle ending at or before [until] (the file's end by default);
+/// -1 when absent. THE byte-needle scan — a FourCC, a UTF-16BE key, a
+/// property name are all this with a different needle.
+int _find(Uint8List bytes, List<int> needle, int from, [int? until]) {
+  final end = (until ?? bytes.length) - needle.length;
   for (var i = from; i <= end; i++) {
     var ok = true;
-    for (var k = 0; k < t.length; k++) {
-      if (bytes[i + k] != t[k]) {
+    for (var k = 0; k < needle.length; k++) {
+      if (bytes[i + k] != needle[k]) {
         ok = false;
         break;
       }
@@ -352,6 +355,21 @@ int _find(Uint8List bytes, String needle, int from, [int? until]) {
     }
   }
   return -1;
+}
+
+/// The LAST index in `[from, until)` where [needle] starts — [_find]
+/// repeated past each hit — or -1.
+int _findLast(Uint8List bytes, List<int> needle, int from, int until) {
+  var best = -1;
+  var scan = from;
+  while (true) {
+    final at = _find(bytes, needle, scan, until);
+    if (at < 0) {
+      return best;
+    }
+    best = at;
+    scan = at + needle.length;
+  }
 }
 
 /// UTF-8, stopping at the first NUL: LNAM/LNAW carry the name twice in
@@ -389,7 +407,7 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
   final clipStarts = <int>[];
   var scan = 0;
   while (true) {
-    final at = _find(bytes, 'DLOC', scan);
+    final at = _find(bytes, 'DLOC'.codeUnits, scan);
     if (at < 0) {
       break;
     }
@@ -431,25 +449,21 @@ int? _projectProperty(Uint8List bytes, String key) {
     ByteData.sublistView(needle).setUint16(2 + i * 2, key.codeUnitAt(i));
   }
   final limit = bytes.length < 1 << 20 ? bytes.length : 1 << 20;
-  outer:
-  for (var i = 0; i + needle.length + 2 < limit; i++) {
-    for (var j = 0; j < needle.length; j++) {
-      if (bytes[i + j] != needle[j]) {
-        continue outer;
-      }
-    }
-    final at = i + needle.length;
-    final valLen = ByteData.sublistView(bytes).getUint16(at);
-    if (valLen == 0 || valLen > 16 || at + 2 + valLen * 2 > bytes.length) {
-      return null;
-    }
-    final chars = <int>[];
-    for (var k = 0; k < valLen; k++) {
-      chars.add(ByteData.sublistView(bytes).getUint16(at + 2 + k * 2));
-    }
-    return int.tryParse(String.fromCharCodes(chars));
+  // The value's u16 length must fit under the limit too, hence `limit - 3`.
+  final i = _find(bytes, needle, 0, limit - 3);
+  if (i < 0) {
+    return null;
   }
-  return null;
+  final at = i + needle.length;
+  final valLen = ByteData.sublistView(bytes).getUint16(at);
+  if (valLen == 0 || valLen > 16 || at + 2 + valLen * 2 > bytes.length) {
+    return null;
+  }
+  final chars = <int>[];
+  for (var k = 0; k < valLen; k++) {
+    chars.add(ByteData.sublistView(bytes).getUint16(at + 2 + k * 2));
+  }
+  return int.tryParse(String.fromCharCodes(chars));
 }
 
 /// The clip name lives in a UTF-16BE property list BEFORE the clip's
@@ -457,29 +471,7 @@ int? _projectProperty(Uint8List bytes, String key) {
 /// before DLOC belongs to this clip.
 String _clipName(Uint8List bytes, int from, int until, int clipIndex) {
   const key = <int>[0x00, 0x04, 0x00, 0x4e, 0x00, 0x61, 0x00, 0x6d, 0x00, 0x65];
-  var best = -1;
-  var scan = from;
-  while (true) {
-    var at = -1;
-    for (var i = scan; i + key.length <= until; i++) {
-      var ok = true;
-      for (var k = 0; k < key.length; k++) {
-        if (bytes[i + k] != key[k]) {
-          ok = false;
-          break;
-        }
-      }
-      if (ok) {
-        at = i;
-        break;
-      }
-    }
-    if (at < 0) {
-      break;
-    }
-    best = at;
-    scan = at + key.length;
-  }
+  final best = _findLast(bytes, key, from, until);
   if (best < 0) {
     return 'Clip ${clipIndex + 1}';
   }

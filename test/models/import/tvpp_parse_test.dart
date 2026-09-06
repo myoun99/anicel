@@ -100,8 +100,13 @@ mpoints-1-bezieraftery=0.000000
       b.clipHeader(width: 320, height: 180);
       b.layerHead('카메라레이어', headerChunk: 'LRCA', end: 9);
       b.layerExt(const {});
-      b.layerHead('solo', end: 0, count: 1, visible: false,
-          ansiNameBytes: const [0x83, 0x4a, 0x83, 0x81, 0x00]);
+      b.layerHead(
+        'solo',
+        end: 0,
+        count: 1,
+        visible: false,
+        ansiNameBytes: const [0x83, 0x4a, 0x83, 0x81, 0x00],
+      );
       b.layerExt(const {});
       b.zchkSlot(srawRecord(List.filled(320 * 180, 0), 320, 180));
       b.clipConfig();
@@ -192,6 +197,20 @@ mpoints-1-bezieraftery=0.000000
       // records its length — measured on PROFILE_CAL).
       expect(clip13.frameCount, 10);
       expect(clip13.audioTracks, isEmpty);
+    });
+
+    test('the LAST Name pair before DLOC names the clip — an earlier one '
+        'belongs to whatever came before', () {
+      final b = TvppBuilder();
+      b.clipProperties('stale');
+      b.clipProperties('fresh');
+      b.clipHeader(width: 16, height: 16);
+      b.layerHead('CUT', end: 0, count: 1);
+      b.layerExt(const {});
+      b.rawSlot(srawRecord(List.filled(16 * 16, 0), 16, 16));
+      b.clipConfig();
+
+      expect(parseTvppStructure(b.bytes).clips.single.name, 'fresh');
     });
 
     test('reads v10 files: bare SRAW/DBOD chunks, no folders', () {
