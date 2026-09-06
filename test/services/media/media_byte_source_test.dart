@@ -3,6 +3,10 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:anicel/src/services/media/media_byte_source.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show AnicelZipEntry;
+import 'package:anicel/src/services/persistence/media_blob_codec.dart'
+    show mediaFramedEntrySuffix;
 import 'package:flutter_test/flutter_test.dart';
 
 /// The one named answer to "where are this asset's bytes", introduced while
@@ -138,6 +142,42 @@ void main() {
       expect(buffer[10], 0, reason: '0xBB from the next entry never appears');
       expect(source.readIntoSync(buffer, 120, 4), 0);
       expect(source.readIntoSync(buffer, -1, 4), 0);
+    });
+
+    test('an ENTRY names its own framing — the factory reads the name, the '
+        'call site does not', () {
+      final archive = fakeArchive();
+      AnicelZipEntry entry(String name) => AnicelZipEntry(
+        name: name,
+        localHeaderOffset: 0,
+        dataOffset: archive.offset,
+        length: archive.length,
+        crc32: 0x1234,
+      );
+
+      final plain = MediaArchiveBytes.ofEntry(
+        archivePath: archive.path,
+        entry: entry('media/take.wav'),
+      );
+      expect(plain.storedIsFramed, isFalse);
+      expect(plain.range, (
+        path: archive.path,
+        offset: archive.offset,
+        length: archive.length,
+      ), reason: 'decodable in place');
+      expect(plain.knownCrc32, 0x1234);
+      expect(plain.lengthSync(), archive.length);
+
+      final framed = MediaArchiveBytes.ofEntry(
+        archivePath: archive.path,
+        entry: entry('media/take.wav$mediaFramedEntrySuffix'),
+      );
+      expect(framed.storedIsFramed, isTrue);
+      expect(
+        framed.range,
+        isNull,
+        reason: 'framed bytes are compressed blocks, not the container',
+      );
     });
 
     test('a mid-entry window starts where it was asked to', () {
