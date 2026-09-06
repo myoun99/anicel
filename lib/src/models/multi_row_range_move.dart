@@ -6,6 +6,7 @@ import 'layer.dart';
 import 'layer_id.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
+import 'timeline_repeat.dart' show ghostFreeTimeline;
 
 /// The resolved result of a multi-row range move (UI-R23 #9): the affected
 /// drawing layers with their blocks relocated, plus the cross-row cel
@@ -104,16 +105,6 @@ class _MultiRowRangeMovePlanner {
   /// owning layer, so its brush frame must re-key.
   final rekeys = <({LayerId from, LayerId to, FrameId frameId})>[];
 
-  static SplayTreeMap<int, TimelineExposure> ghostFree(Layer layer) {
-    final base = SplayTreeMap<int, TimelineExposure>();
-    layer.timeline.forEach((index, entry) {
-      if (!(entry.isDrawing && entry.ghost)) {
-        base[index] = entry;
-      }
-    });
-    return base;
-  }
-
   /// Phase 1: each source row's selected blocks + travelling cels,
   /// validating the block-snap and the link-safety of every cel that
   /// would travel. False when a rule voids the whole move.
@@ -133,7 +124,7 @@ class _MultiRowRangeMovePlanner {
 
   bool _gatherRow(LayerId sourceId, int sourceIndex) {
     final source = orderedLayers[sourceIndex];
-    final base = ghostFree(source);
+    final base = ghostFreeTimeline(source);
     final selected = _blockSnappedSelection(base);
     if (selected == null) {
       return false; // The range was not block-snapped on this row.
@@ -230,7 +221,7 @@ class _MultiRowRangeMovePlanner {
       final incomingSourceIndex = layerIndex - rowDelta;
       final isTarget = sourceIndexes.contains(incomingSourceIndex);
 
-      final timeline = ghostFree(layer);
+      final timeline = ghostFreeTimeline(layer);
       var frames = [...layer.frames];
 
       // This row is a SOURCE: its own selected blocks (and cels) leave.

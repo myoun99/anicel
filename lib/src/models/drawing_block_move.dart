@@ -8,6 +8,7 @@ import 'layer.dart';
 import 'layer_kind.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
+import 'timeline_repeat.dart' show ghostFreeTimeline;
 
 /// Where the axis stops for [layer]'s blocks, given the cut is
 /// [cutFrameCount] frames long — or null when nothing stops them.
@@ -464,21 +465,4 @@ SplayTreeMap<int, TimelineExposure> _timelineWithPushes(
     timeline[push.newStart] = push.block.entry;
   }
   return timeline;
-}
-
-/// [layer]'s timeline without its ghosts — the base a block move plans on.
-///
-/// Derived repeat/hold ghosts neither move nor obstruct, and (sharing the
-/// moved cel's frameId) must never count as an external link — the caller
-/// re-derives the run behaviors after the slide (UI-R23 #5). Both planners
-/// read this one function; until 2026-09-03 each kept its own copy, and the
-/// mutation campaign found a copy nobody tested.
-SplayTreeMap<int, TimelineExposure> ghostFreeTimeline(Layer layer) {
-  final base = SplayTreeMap<int, TimelineExposure>();
-  layer.timeline.forEach((index, entry) {
-    if (!(entry.isDrawing && entry.ghost)) {
-      base[index] = entry;
-    }
-  });
-  return base;
 }

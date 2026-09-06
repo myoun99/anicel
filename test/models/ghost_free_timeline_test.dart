@@ -4,10 +4,13 @@
 // Both block-move planners kept their own copy of this filter until
 // 2026-09-03; the mutation campaign turned one copy's `&&` into `||` (every
 // drawing was dropped, not just the ghosts) and nothing noticed. One
-// function now, and these pins say what it keeps.
+// function now, and these pins say what it keeps. The round-8 audit
+// (2026-09-06) found the multi-row planner, the run-edge insert and the
+// rederive pass each still holding a copy; the one function lives with the
+// ghost's constructor in timeline_repeat.dart and all four read it.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/drawing_block_move.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';

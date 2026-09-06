@@ -11,6 +11,31 @@ export 'timeline_run_behavior.dart';
 
 typedef _Run = ({int startIndex, int endIndexExclusive, FrameId anchorFrameId});
 
+/// [layer]'s timeline without its ghosts — the base a block move plans on.
+///
+/// Derived repeat/hold ghosts neither move nor obstruct, and (sharing the
+/// moved cel's frameId) must never count as an external link — the caller
+/// re-derives the run behaviors after the slide (UI-R23 #5). Every planner
+/// reads this one function — [planDrawingRangeMove], the multi-row planner,
+/// [layerWithNewFramesAtRunEdge] and [rederiveRunBehaviors]'s pass 1; until
+/// 2026-09-03 each kept its own copy, and the mutation campaign found a copy
+/// nobody tested. (The round-8 audit, 2026-09-06, found two more copies the
+/// 2026-09-03 unification had stopped short of, and moved the one function
+/// here, beside the ghost's only constructor.)
+///
+/// The rederive pass used to filter on `!entry.ghost` alone; that is the
+/// same predicate, because [TimelineExposure.drawing] is the only
+/// constructor, so every entry answers `isDrawing`.
+SplayTreeMap<int, TimelineExposure> ghostFreeTimeline(Layer layer) {
+  final base = SplayTreeMap<int, TimelineExposure>();
+  layer.timeline.forEach((index, entry) {
+    if (!(entry.isDrawing && entry.ghost)) {
+      base[index] = entry;
+    }
+  });
+  return base;
+}
+
 /// [rederiveRunBehaviors]'s working state — the authored base, the result
 /// being written, the behaviors resolved to their run edges — so every
 /// pass reads the same sheet and each is a named step. (The audit's
@@ -39,17 +64,6 @@ class _RunBehaviorPass {
   /// Pass 4's answer: the specs that survive (a fully occluded behavior
   /// stays kept until room opens up again).
   final kept = <TimelineRunBehavior>[];
-
-  /// Pass 1: strip every ghost entry (derived state, never authored).
-  static SplayTreeMap<int, TimelineExposure> stripGhosts(Layer layer) {
-    final base = SplayTreeMap<int, TimelineExposure>();
-    layer.timeline.forEach((index, entry) {
-      if (!entry.ghost) {
-        base[index] = entry;
-      }
-    });
-    return base;
-  }
 
   int? anchorStartOf(FrameId frameId) {
     for (final entry in base.entries) {
@@ -382,8 +396,9 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
   if (layer.runBehaviors.isEmpty && !hasGhosts) {
     return layer;
   }
+  // Pass 1: strip every ghost entry (derived state, never authored).
   final pass = _RunBehaviorPass(
-    _RunBehaviorPass.stripGhosts(layer),
+    ghostFreeTimeline(layer),
     cutFrameCount: cutFrameCount,
   );
   for (final item in pass.resolve(layer.runBehaviors)) {

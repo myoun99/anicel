@@ -35,12 +35,7 @@ import 'timeline_repeat.dart';
   }
 
   // Plan on the ghost-free base; the caller re-derives repeats after.
-  final base = SplayTreeMap<int, TimelineExposure>();
-  layer.timeline.forEach((index, entry) {
-    if (!(entry.isDrawing && entry.ghost)) {
-      base[index] = entry;
-    }
-  });
+  final base = ghostFreeTimeline(layer);
 
   if (atEnd) {
     final insertStart = run.endIndexExclusive;
