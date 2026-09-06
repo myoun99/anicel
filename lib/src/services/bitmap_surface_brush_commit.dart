@@ -18,6 +18,7 @@ import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
+import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
 import 'native_tile_span_batch.dart';
@@ -194,6 +195,7 @@ void _blendStampDab({
   final rightExclusive = clip.rightExclusive;
   final bottomExclusive = clip.bottomExclusive;
   final rgba = stamp.rgba;
+  final erase = dab.erase;
 
   // R18 A-0/A-1.5/F-1: the native core blends whole (dab, tile) spans in
   // ONE call each (the per-row FFI call overhead was the fill commit's
@@ -230,7 +232,7 @@ void _blendStampDab({
         stampLeft: stampLeft,
         stampTop: stampTop,
         opacity: dabOpacity,
-        erase: dab.erase,
+        erase: erase,
       ),
     );
     changedCoords.addAll(changedTileCoords(changed, coords));
@@ -251,125 +253,16 @@ void _blendStampDab({
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
 
       final buffer = scratch.bufferFor(coord);
-      for (var x = spanLeft; x < spanRightExclusive; x += 1) {
-        final sourceOffset = (stampRowOffset + (x - stampLeft)) * 4;
-        final stampA = rgba[sourceOffset + 3];
-        if (stampA == 0) {
-          continue;
-        }
-        final offset =
-            (localRowOffset + (x - tileLeft)) * BitmapTile.bytesPerPixel;
-
-        // Opaque full-coverage fast paths (R16-④ measured: full-canvas
-        // fill/lift stamps spent ~0.5s in the per-pixel double math) —
-        // a fully covering stamp pixel at opacity 1 is a byte copy
-        // (srcOver) or a byte zero (erase).
-        if (stampA == 255 && dabOpacity == 1.0) {
-          if (dab.erase) {
-            if (buffer[offset] != 0 ||
-                buffer[offset + 1] != 0 ||
-                buffer[offset + 2] != 0 ||
-                buffer[offset + 3] != 0) {
-              buffer[offset] = 0;
-              buffer[offset + 1] = 0;
-              buffer[offset + 2] = 0;
-              buffer[offset + 3] = 0;
-              changedCoords.add(coord);
-            }
-          } else {
-            if (buffer[offset] != rgba[sourceOffset] ||
-                buffer[offset + 1] != rgba[sourceOffset + 1] ||
-                buffer[offset + 2] != rgba[sourceOffset + 2] ||
-                buffer[offset + 3] != 255) {
-              buffer[offset] = rgba[sourceOffset];
-              buffer[offset + 1] = rgba[sourceOffset + 1];
-              buffer[offset + 2] = rgba[sourceOffset + 2];
-              buffer[offset + 3] = 255;
-              changedCoords.add(coord);
-            }
-          }
-          continue;
-        }
-        final sourceAlpha = (stampA / 255.0) * dabOpacity;
-        final destR = buffer[offset];
-        final destG = buffer[offset + 1];
-        final destB = buffer[offset + 2];
-        final destA = buffer[offset + 3];
-        final destinationAlpha = destA / 255.0;
-
-        int outRByte;
-        int outGByte;
-        int outBByte;
-        int outAByte;
-        if (dab.erase) {
-          // Stamp-ERASE (R15-④): destination-out from the stamp's EXACT
-          // alpha — no tip-mask resampling, so a lift's cut edge is
-          // byte-hard (the bilinear tip-mask erase left a half-alpha ring
-          // at the selection silhouette: the fringe + origin remnant).
-          final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
-          if (outAlpha == 0.0) {
-            outRByte = 0;
-            outGByte = 0;
-            outBByte = 0;
-            outAByte = 0;
-          } else {
-            outRByte = destR;
-            outGByte = destG;
-            outBByte = destB;
-            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
-          }
-          if (outRByte != destR ||
-              outGByte != destG ||
-              outBByte != destB ||
-              outAByte != destA) {
-            buffer[offset] = outRByte;
-            buffer[offset + 1] = outGByte;
-            buffer[offset + 2] = outBByte;
-            buffer[offset + 3] = outAByte;
-            changedCoords.add(coord);
-          }
-          continue;
-        }
-
-        final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
-        if (outAlpha == 0.0) {
-          outRByte = 0;
-          outGByte = 0;
-          outBByte = 0;
-          outAByte = 0;
-        } else {
-          final inverseSourceAlpha = 1.0 - sourceAlpha;
-          outRByte =
-              ((rgba[sourceOffset] * sourceAlpha +
-                          destR * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          outGByte =
-              ((rgba[sourceOffset + 1] * sourceAlpha +
-                          destG * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          outBByte =
-              ((rgba[sourceOffset + 2] * sourceAlpha +
-                          destB * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          outAByte = (outAlpha * 255.0).round().clamp(0, 255);
-        }
-
-        if (outRByte != destR ||
-            outGByte != destG ||
-            outBByte != destB ||
-            outAByte != destA) {
-          buffer[offset] = outRByte;
-          buffer[offset + 1] = outGByte;
-          buffer[offset + 2] = outBByte;
-          buffer[offset + 3] = outAByte;
-          changedCoords.add(coord);
-        }
+      if (blendStampSpanInPlace(
+        buffer,
+        (localRowOffset + (spanLeft - tileLeft)) * BitmapTile.bytesPerPixel,
+        rgba,
+        (stampRowOffset + (spanLeft - stampLeft)) * 4,
+        spanRightExclusive - spanLeft,
+        dabOpacity: dabOpacity,
+        erase: erase,
+      )) {
+        changedCoords.add(coord);
       }
     }
   }
