@@ -34,15 +34,30 @@ Future<T?> loadVersionedSettings<T>({
     if (!await file.exists()) {
       return null;
     }
-    final decoded =
-        jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-    if ((decoded['version'] as int? ?? 0) > version) {
-      return null;
-    }
-    return fromJson(decoded);
+    return _liftVersionedSettings(
+      await file.readAsString(),
+      version: version,
+      fromJson: fromJson,
+    );
   } on Object {
     return null;
   }
+}
+
+/// The part of a load that is not IO: decode, version-gate, lift. Shared
+/// by both readers the way the SDK's own `readAsString` and
+/// `readAsStringSync` share their decode — only the IO half is per colour.
+/// Throws on a corrupt document; each shell's catch turns that into null.
+T? _liftVersionedSettings<T>(
+  String text, {
+  required int version,
+  required T? Function(Map<String, dynamic> json) fromJson,
+}) {
+  final decoded = jsonDecode(text) as Map<String, dynamic>;
+  if ((decoded['version'] as int? ?? 0) > version) {
+    return null;
+  }
+  return fromJson(decoded);
 }
 
 /// Writes [json] to [filePath] under [version], creating the directory.
@@ -73,11 +88,11 @@ T? loadVersionedSettingsSync<T>({
     if (!file.existsSync()) {
       return null;
     }
-    final decoded = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    if ((decoded['version'] as int? ?? 0) > version) {
-      return null;
-    }
-    return fromJson(decoded);
+    return _liftVersionedSettings(
+      file.readAsStringSync(),
+      version: version,
+      fromJson: fromJson,
+    );
   } on Object {
     return null;
   }
