@@ -5,6 +5,7 @@ import '../../models/canvas_size.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../conte/conte_page_painter.dart';
+import 'offscreen_raster.dart';
 
 /// Renders one conte page offscreen with the panel's own renderer
 /// ([ContePagePainter], fit-to-size path) — what the Conte tab shows is
@@ -24,18 +25,14 @@ Future<ui.Image> renderContePageImage({
   final metrics = page.metrics;
   final width = outputSize?.width ?? (metrics.pageWidth * scale).round();
   final height = outputSize?.height ?? (metrics.pageHeight * scale).round();
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  ContePagePainter(
-    page: page,
-    source: source,
-    pictureFor: pictureFor,
-    inkImageFor: inkImageFor,
-  ).paint(canvas, ui.Size(width.toDouble(), height.toDouble()));
-  final picture = recorder.endRecording();
-  try {
-    return picture.toImage(width, height);
-  } finally {
-    picture.dispose();
-  }
+  return rasterizeOffscreen(
+    width: width,
+    height: height,
+    paint: (canvas) => ContePagePainter(
+      page: page,
+      source: source,
+      pictureFor: pictureFor,
+      inkImageFor: inkImageFor,
+    ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),
+  );
 }

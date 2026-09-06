@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import 'export_cel_group_plan.dart';
+import 'offscreen_raster.dart';
 
 /// Renders one instruction event (지시 — PAN etc.) as an image cel for
 /// the 撮影 hand-off: the row text large over a spanning arrow, the
@@ -13,9 +14,23 @@ Future<ui.Image> renderInstructionCelImage({
   required ExportInstructionTask task,
   required CanvasSize size,
   ui.Color? background,
-}) async {
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
+}) => rasterizeOffscreen(
+  width: size.width,
+  height: size.height,
+  paint: (canvas) => _paintInstructionCel(
+    canvas,
+    task: task,
+    size: size,
+    background: background,
+  ),
+);
+
+void _paintInstructionCel(
+  ui.Canvas canvas, {
+  required ExportInstructionTask task,
+  required CanvasSize size,
+  required ui.Color? background,
+}) {
   final width = size.width.toDouble();
   final height = size.height.toDouble();
   if (background != null && background.a > 0) {
@@ -86,11 +101,4 @@ Future<ui.Image> renderInstructionCelImage({
       arrowY + height * 0.03,
     ),
   );
-
-  final picture = recorder.endRecording();
-  try {
-    return await picture.toImage(size.width, size.height);
-  } finally {
-    picture.dispose();
-  }
 }

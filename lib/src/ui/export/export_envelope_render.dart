@@ -5,6 +5,7 @@ import '../../models/cut.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../envelope/cut_envelope_painter.dart';
+import 'offscreen_raster.dart';
 
 /// One envelope the export writes: the sheet of one cut (and of every
 /// 겸용 sibling it shares a folder with), already laid out on its paper.
@@ -47,19 +48,16 @@ Future<ui.Image> renderCutEnvelopeImage({
     1,
     1 << 16,
   );
-  final recorder = ui.PictureRecorder();
-  CutEnvelopePainter(
-    layout: layout,
-    source: source,
-    layers: layers,
-    imageFor: imageFor,
-    inkKeyFor: inkKeyFor,
-    inkImageFor: inkImageFor,
-  ).paint(ui.Canvas(recorder), ui.Size(width.toDouble(), height.toDouble()));
-  final picture = recorder.endRecording();
-  try {
-    return picture.toImage(width, height);
-  } finally {
-    picture.dispose();
-  }
+  return rasterizeOffscreen(
+    width: width,
+    height: height,
+    paint: (canvas) => CutEnvelopePainter(
+      layout: layout,
+      source: source,
+      layers: layers,
+      imageFor: imageFor,
+      inkKeyFor: inkKeyFor,
+      inkImageFor: inkImageFor,
+    ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),
+  );
 }
