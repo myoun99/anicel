@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
+import '../core/floor_math.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'timeline_coverage.dart' show coveringDrawingBlockAt;
@@ -10,6 +11,15 @@ import 'timeline_run_behavior.dart';
 export 'timeline_run_behavior.dart';
 
 typedef _Run = ({int startIndex, int endIndexExclusive, FrameId anchorFrameId});
+
+/// One entry of a repeat pattern, positioned relative to the pattern's own
+/// start.
+typedef _PatternPart = ({
+  int offset,
+  FrameId frameId,
+  int length,
+  List<int> dots,
+});
 
 /// [layer]'s timeline without its ghosts — the base a block move plans on.
 ///
@@ -219,33 +229,14 @@ class _RunBehaviorPass {
         }
       }
     }
-    final span = run.endIndexExclusive - patternStart;
-    final parts = [
-      // From RESULT, not base: the pattern may include this run's own
-      // front-hold ghost (UI-R13 #5); inside the run the two agree.
-      for (final entry in result.entries)
-        if (entry.key >= patternStart && entry.key < run.endIndexExclusive)
-          (
-            offset: entry.key - patternStart,
-            frameId: entry.value.frameId!,
-            length: entry.value.length!,
-            dots: entry.value.breakdownOffsets,
-          ),
-    ];
-    for (var cycleStart = ghostStart; cycleStart < limit; cycleStart += span) {
-      for (final part in parts) {
-        final start = cycleStart + part.offset;
-        if (start >= limit) {
-          break;
-        }
-        result[start] = ghostEntry(
-          frameId: part.frameId,
-          length: part.length.clamp(1, limit - start),
-          ownerId: behavior.ghostOwnerId,
-          dots: part.dots,
-        );
-      }
-    }
+    _tileGhosts(
+      parts: _patternParts(patternStart, run.endIndexExclusive),
+      span: run.endIndexExclusive - patternStart,
+      lo: ghostStart,
+      hi: limit,
+      alignAt: ghostStart,
+      ownerId: behavior.ghostOwnerId,
+    );
   }
 
   /// Start side: the mirror, ghosts FLUSH-aligned to the run start (a
@@ -303,44 +294,73 @@ class _RunBehaviorPass {
         }
       }
     }
-    final span = patternEnd - runStart;
-    final parts = [
-      // From RESULT, not base: the pattern may include this run's own
-      // rear-hold ghost (UI-R13 #5); inside the run the two agree.
-      for (final entry in result.entries)
-        if (entry.key >= runStart && entry.key < patternEnd)
-          (
-            offset: entry.key - runStart,
-            frameId: entry.value.frameId!,
-            length: math.min(entry.value.length!, patternEnd - entry.key),
-            dots: entry.value.breakdownOffsets,
-          ),
-    ];
-    // Tile leftward from the run start; the leftmost partial cycle keeps
-    // the pattern's TAIL (lead-in alignment).
+    _tileGhosts(
+      parts: _patternParts(runStart, patternEnd),
+      span: patternEnd - runStart,
+      lo: limitStart,
+      hi: runStart,
+      alignAt: runStart,
+      ownerId: behavior.ghostOwnerId,
+    );
+  }
+
+  /// The pattern's parts, offsets relative to [patternStart].
+  ///
+  /// From RESULT, not base: the pattern may include this run's own
+  /// front-hold / rear-hold ghost (UI-R13 #5); inside the run the two
+  /// agree.
+  List<_PatternPart> _patternParts(int patternStart, int patternEnd) => [
+    for (final entry in result.entries)
+      if (entry.key >= patternStart && entry.key < patternEnd)
+        (
+          offset: entry.key - patternStart,
+          frameId: entry.value.frameId!,
+          length: math.min(entry.value.length!, patternEnd - entry.key),
+          dots: entry.value.breakdownOffsets,
+        ),
+  ];
+
+  /// Tiles [parts] across the free interval `[lo, hi)`, with the cycle
+  /// phase pinned so that a cycle boundary lands exactly on [alignAt].
+  ///
+  /// ★[alignAt] is what tells the two sides apart, and it is a frame
+  /// NUMBER, not a mode. The end side pins the phase to the first ghost
+  /// frame, so a partial cycle at the far end is cut off its HEAD; the
+  /// start side pins it to the run start, so the leftmost partial cycle
+  /// keeps the pattern's TAIL — lead-in alignment (UI-R13 #5). Which wall
+  /// clips is then simply which side of [lo, hi) the part runs off.
+  ///
+  /// A part straddling a wall keeps its VISIBLE half, and its breakdown
+  /// dots move with it. (Dots past the far end need no arithmetic:
+  /// [TimelineExposure] drops any that fall outside the clipped length.)
+  void _tileGhosts({
+    required List<_PatternPart> parts,
+    required int span,
+    required int lo,
+    required int hi,
+    required int alignAt,
+    required String ownerId,
+  }) {
     for (
-      var cycleStart = runStart - span;
-      cycleStart + span > limitStart;
-      cycleStart -= span
+      var cycleStart = alignAt + floorDiv(lo - alignAt, span) * span;
+      cycleStart < hi;
+      cycleStart += span
     ) {
       for (final part in parts) {
-        var start = cycleStart + part.offset;
-        final end = start + part.length;
-        if (end <= limitStart) {
-          continue; // Fully cut off by the boundary.
+        final placed = cycleStart + part.offset;
+        final start = math.max(placed, lo);
+        final end = math.min(placed + part.length, hi);
+        if (end <= start) {
+          continue; // Fully cut off by a wall.
         }
-        var dots = part.dots;
-        if (start < limitStart) {
-          // Clip the straddling lead-in part: keep its visible tail.
-          final shift = limitStart - start;
-          dots = [for (final dot in part.dots) dot - shift];
-          start = limitStart;
-        }
+        final shift = start - placed;
         result[start] = ghostEntry(
           frameId: part.frameId,
           length: end - start,
-          ownerId: behavior.ghostOwnerId,
-          dots: dots,
+          ownerId: ownerId,
+          dots: shift == 0
+              ? part.dots
+              : [for (final dot in part.dots) dot - shift],
         );
       }
     }
