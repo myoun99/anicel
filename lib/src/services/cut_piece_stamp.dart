@@ -6,6 +6,7 @@ import '../models/canvas_point.dart';
 import '../models/cut_piece.dart';
 import 'canvas_selection.dart';
 import 'resample/resample_kernel.dart';
+import 'segment_spacing_walk.dart';
 
 /// One stamp of [piece], centred on [center], at [opacity].
 ///
@@ -132,9 +133,12 @@ List<CanvasPoint> cutStampCentersAlong({
   if (distance < spacing) {
     return const [];
   }
-  final steps = distance ~/ spacing;
-  return [
-    for (var step = 1; step <= steps; step += 1)
-      CanvasPoint.lerp(from, to, step * spacing / distance),
-  ];
+  final centres = <CanvasPoint>[];
+  placeAlongSegment(
+    length: distance,
+    spacing: spacing,
+    firstAt: spacing,
+    place: (t) => centres.add(CanvasPoint.lerp(from, to, t)),
+  );
+  return centres;
 }

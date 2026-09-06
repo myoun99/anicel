@@ -4,6 +4,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/brush_input_sample.dart';
 import '../models/brush_settings.dart';
+import 'segment_spacing_walk.dart';
 
 BrushDabSequence brushInputSamplesToBrushDabs({
   required Iterable<BrushInputSample> samples,
@@ -39,20 +40,18 @@ BrushDabSequence brushInputSamplesToBrushDabs({
     final segmentDistance = math.sqrt(dx * dx + dy * dy);
     if (segmentDistance == 0.0) continue;
 
-    var distanceIntoSegment = spacingDistance - distanceSinceLastDab;
-    while (distanceIntoSegment <= segmentDistance) {
-      final t = distanceIntoSegment / segmentDistance;
-      emit(
+    final placedDistance = placeAlongSegment(
+      length: segmentDistance,
+      spacing: spacingDistance,
+      firstAt: spacingDistance - distanceSinceLastDab,
+      place: (t) => emit(
         BrushInputSample(
           x: previous.x + dx * t,
           y: previous.y + dy * t,
           pressure: previous.pressure + (next.pressure - previous.pressure) * t,
         ),
-      );
-      distanceIntoSegment += spacingDistance;
-    }
-
-    final placedDistance = distanceIntoSegment - spacingDistance;
+      ),
+    );
     distanceSinceLastDab = segmentDistance - placedDistance;
   }
 
