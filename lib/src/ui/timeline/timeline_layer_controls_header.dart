@@ -299,36 +299,72 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         : null;
   }
 
-  Widget _buildTimesheet(LayerLegendCallbacks? legend, Color restColor) {
+  /// One legend cell whose flyout is BULK OPS then, only where the host
+  /// shows row solos, a divider and the SOLO entries.
+  ///
+  /// The template four cells spell out (timesheet, mark, fill-ref, fx).
+  /// A null [legend] means no flyout at all; a solo half that comes back
+  /// EMPTY takes its divider with it, so a host with row solos on but
+  /// nothing to solo never shows a stray line.
+  ///
+  /// [_buildTypeButton] deliberately calls [_cell] directly instead: its
+  /// whole flyout is solos with no bulk half, so it nulls the builder
+  /// outright — an all-or-nothing law, not this one.
+  Widget _legendFlyoutCell({
+    required String keyValue,
+    required String tooltip,
+    required Widget child,
+    required LayerLegendCallbacks? legend,
+    required List<PanelFlyoutEntry> Function(LayerLegendCallbacks legend) bulk,
+    required List<PanelFlyoutEntry> Function(LayerLegendCallbacks legend) solo,
+  }) {
     return _cell(
-      keyValue: 'legend-sheet',
-      tooltip: AppText.strings.tlColTimesheet,
+      keyValue: keyValue,
+      tooltip: tooltip,
+      child: child,
       entriesBuilder: legend == null
           ? null
-          : () => [
-              PanelFlyoutItem(
-                keyValue: 'legend-sheet-all-on',
-                label: AppText.strings.tlAllOnTimesheet,
-                icon: Icons.table_chart,
-                onSelected: legend.onSheetAllOn,
-              ),
-              PanelFlyoutItem(
-                keyValue: 'legend-sheet-all-off',
-                label: AppText.strings.tlAllOffTimesheet,
-                icon: Icons.table_chart_outlined,
-                onSelected: legend.onSheetAllOff,
-              ),
-              if (showRowSolos) ...[
-                const PanelFlyoutDivider(),
-                PanelFlyoutItem(
-                  keyValue: 'legend-filter-sheet',
-                  label: AppText.strings.tlSoloSheetOnRows,
-                  icon: Icons.center_focus_strong_outlined,
-                  checked: rowFilter.onTimesheetOnly,
-                  onSelected: legend.onToggleSheetOnlyFilter,
-                ),
-              ],
-            ],
+          : () {
+              final solos = showRowSolos
+                  ? solo(legend)
+                  : const <PanelFlyoutEntry>[];
+              return [
+                ...bulk(legend),
+                if (solos.isNotEmpty) const PanelFlyoutDivider(),
+                ...solos,
+              ];
+            },
+    );
+  }
+
+  Widget _buildTimesheet(LayerLegendCallbacks? legend, Color restColor) {
+    return _legendFlyoutCell(
+      keyValue: 'legend-sheet',
+      tooltip: AppText.strings.tlColTimesheet,
+      legend: legend,
+      bulk: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-sheet-all-on',
+          label: AppText.strings.tlAllOnTimesheet,
+          icon: Icons.table_chart,
+          onSelected: legend.onSheetAllOn,
+        ),
+        PanelFlyoutItem(
+          keyValue: 'legend-sheet-all-off',
+          label: AppText.strings.tlAllOffTimesheet,
+          icon: Icons.table_chart_outlined,
+          onSelected: legend.onSheetAllOff,
+        ),
+      ],
+      solo: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-filter-sheet',
+          label: AppText.strings.tlSoloSheetOnRows,
+          icon: Icons.center_focus_strong_outlined,
+          checked: rowFilter.onTimesheetOnly,
+          onSelected: legend.onToggleSheetOnlyFilter,
+        ),
+      ],
       child: _legendIcon(
         Icons.table_chart_outlined,
         restColor: restColor,
@@ -338,38 +374,42 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildMark(LayerLegendCallbacks? legend, Color restColor) {
-    return _cell(
+    return _legendFlyoutCell(
       keyValue: 'legend-mark',
       tooltip: AppText.strings.tlColMark,
-      entriesBuilder: legend == null
-          ? null
-          : () => [
-              PanelFlyoutItem(
-                keyValue: 'legend-mark-clear',
-                label: AppText.strings.tlClearAllMarks,
-                icon: Icons.label_off_outlined,
-                onSelected: legend.onClearAllMarks,
-              ),
-              if (showRowSolos && marksInUse.isNotEmpty) ...[
-                const PanelFlyoutDivider(),
-                PanelFlyoutHeader(AppText.strings.tlSoloColor),
-                // 🚨THE MARKS IN USE, not every mark there
-                // could be. A mark is a 공정/수정 pair now,
-                // so «every value» is a product of two lists
-                // and most of it would never appear in this
-                // project — the filter was always about what
-                // is actually on the rows, and this says so.
-                for (final mark
-                    in marksInUse.toList()
-                      ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
-                  if (!mark.isNone)
-                    PanelFlyoutItem(
-                      keyValue: 'legend-filter-mark-${mark.keySlug}',
-                      label: layerMarkDisplayName(mark),
-                      checked: rowFilter.markColors.contains(mark),
-                      onSelected: () => legend.onToggleMarkFilter(mark),
-                    ),
-              ],
+      legend: legend,
+      bulk: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-mark-clear',
+          label: AppText.strings.tlClearAllMarks,
+          icon: Icons.label_off_outlined,
+          onSelected: legend.onClearAllMarks,
+        ),
+      ],
+      // 🚨THE MARKS IN USE, not every mark there
+      // could be. A mark is a 공정/수정 pair now,
+      // so «every value» is a product of two lists
+      // and most of it would never appear in this
+      // project — the filter was always about what
+      // is actually on the rows, and this says so.
+      //
+      // Answering EMPTY when nothing is marked is what drops the divider
+      // too — the old `showRowSolos && marksInUse.isNotEmpty` gate, said
+      // once by the template instead of here.
+      solo: (legend) => marksInUse.isEmpty
+          ? const []
+          : [
+              PanelFlyoutHeader(AppText.strings.tlSoloColor),
+              for (final mark
+                  in marksInUse.toList()
+                    ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
+                if (!mark.isNone)
+                  PanelFlyoutItem(
+                    keyValue: 'legend-filter-mark-${mark.keySlug}',
+                    label: layerMarkDisplayName(mark),
+                    checked: rowFilter.markColors.contains(mark),
+                    onSelected: () => legend.onToggleMarkFilter(mark),
+                  ),
             ],
       child: _legendIcon(
         Icons.label_outline,
@@ -406,29 +446,27 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildFillReference(LayerLegendCallbacks? legend, Color restColor) {
-    return _cell(
+    return _legendFlyoutCell(
       keyValue: 'legend-fill-ref',
       tooltip: AppText.strings.tlColFillReference,
-      entriesBuilder: legend == null
-          ? null
-          : () => [
-              PanelFlyoutItem(
-                keyValue: 'legend-fill-ref-clear',
-                label: AppText.strings.tlClearAllFillRefs,
-                icon: Icons.format_color_reset_outlined,
-                onSelected: legend.onClearAllFillReferences,
-              ),
-              if (showRowSolos) ...[
-                const PanelFlyoutDivider(),
-                PanelFlyoutItem(
-                  keyValue: 'legend-filter-fill-ref',
-                  label: AppText.strings.tlSoloFillReferences,
-                  icon: Icons.center_focus_strong_outlined,
-                  checked: rowFilter.fillReferenceOnly,
-                  onSelected: legend.onToggleFillReferenceOnlyFilter,
-                ),
-              ],
-            ],
+      legend: legend,
+      bulk: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-fill-ref-clear',
+          label: AppText.strings.tlClearAllFillRefs,
+          icon: Icons.format_color_reset_outlined,
+          onSelected: legend.onClearAllFillReferences,
+        ),
+      ],
+      solo: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-filter-fill-ref',
+          label: AppText.strings.tlSoloFillReferences,
+          icon: Icons.center_focus_strong_outlined,
+          checked: rowFilter.fillReferenceOnly,
+          onSelected: legend.onToggleFillReferenceOnlyFilter,
+        ),
+      ],
       child: _legendIcon(
         Icons.format_color_fill,
         restColor: restColor,
@@ -438,33 +476,31 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildFx(BuildContext context, LayerLegendCallbacks? legend) {
-    return _cell(
+    return _legendFlyoutCell(
       keyValue: 'legend-fx',
       tooltip: AppText.strings.tlColFx,
-      entriesBuilder: legend == null
-          ? null
-          : () => [
-              PanelFlyoutItem(
-                keyValue: 'legend-fx-enable-all',
-                label: AppText.strings.tlApplyAllFx,
-                onSelected: legend.onEnableAllFx,
-              ),
-              PanelFlyoutItem(
-                keyValue: 'legend-fx-bypass-all',
-                label: AppText.strings.tlBypassAllFx,
-                onSelected: legend.onBypassAllFx,
-              ),
-              if (showRowSolos) ...[
-                const PanelFlyoutDivider(),
-                PanelFlyoutItem(
-                  keyValue: 'legend-filter-fx',
-                  label: AppText.strings.tlSoloFxOnRows,
-                  icon: Icons.center_focus_strong_outlined,
-                  checked: rowFilter.fxOnly,
-                  onSelected: legend.onToggleFxOnlyFilter,
-                ),
-              ],
-            ],
+      legend: legend,
+      bulk: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-fx-enable-all',
+          label: AppText.strings.tlApplyAllFx,
+          onSelected: legend.onEnableAllFx,
+        ),
+        PanelFlyoutItem(
+          keyValue: 'legend-fx-bypass-all',
+          label: AppText.strings.tlBypassAllFx,
+          onSelected: legend.onBypassAllFx,
+        ),
+      ],
+      solo: (legend) => [
+        PanelFlyoutItem(
+          keyValue: 'legend-filter-fx',
+          label: AppText.strings.tlSoloFxOnRows,
+          icon: Icons.center_focus_strong_outlined,
+          checked: rowFilter.fxOnly,
+          onSelected: legend.onToggleFxOnlyFilter,
+        ),
+      ],
       // The shared fx glyph (R28 follow-up) — the column
       // header and the row switches read the same mark.
       child: fxGlyph(context: context, active: rowFilter.fxOnly, fontSize: 11),
