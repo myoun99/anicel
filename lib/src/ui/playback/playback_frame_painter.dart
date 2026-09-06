@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -247,12 +246,8 @@ class PlaybackFramePainter extends CustomPainter {
       );
     }
     if (pose != null) {
-      final frameSize = cameraFrameSize!;
       canvas.save();
-      canvas.translate(frameSize.width / 2, frameSize.height / 2);
-      canvas.scale(pose.zoom);
-      canvas.rotate(-pose.rotationDegrees * math.pi / 180);
-      canvas.translate(-pose.center.x, -pose.center.y);
+      applyCameraProjection(canvas, pose, cameraFrameSize!);
       _paintPaper(canvas, canvasRect);
     }
     final composite = image;

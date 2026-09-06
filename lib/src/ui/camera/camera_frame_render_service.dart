@@ -14,6 +14,7 @@ import '../../models/canvas_size.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
+import '../../services/layer_pose_paint.dart' show applyCameraProjection;
 import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
@@ -214,12 +215,12 @@ class CameraFrameRenderService {
     );
 
     final previewScale = resolvedOutput.width / cameraFrameSize.width;
-    canvas.translate(resolvedOutput.width / 2, resolvedOutput.height / 2);
-    canvas.scale(previewScale * pose.zoom);
-    // The camera is rotated clockwise over the canvas, so the world appears
-    // rotated the opposite way through it.
-    canvas.rotate(-pose.rotationDegrees * math.pi / 180);
-    canvas.translate(-pose.center.x, -pose.center.y);
+    applyCameraProjection(
+      canvas,
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
 
     // The group buffer's size hint, in CANVAS space — the space the canvas
     // is now in. It used to be the camera frame anchored at the canvas
