@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../dialogs/delete_layer_dialog.dart';
+import '../dialogs/dialog_verb.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
@@ -34,42 +35,36 @@ import '../editor_session_manager.dart';
 Future<void> deleteRowSelectionWithDialog(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   final ids = session.deletableSelectedLayerIds();
   if (ids.isEmpty) {
-    return;
+    return Future<void>.value();
   }
   final byId = {for (final layer in session.layers) layer.id: layer};
   final names = [
     for (final id in ids)
       if (byId[id] case final layer?) layer.name,
   ];
-  final shouldDelete = await showDialog<bool>(
-    context: context,
-    builder: (context) => DeleteLayerDialog(layerName: names.join(', ')),
+  return confirmThenCommit(
+    context,
+    dialog: (_) => DeleteLayerDialog(layerName: names.join(', ')),
+    commit: session.deleteSelectionSubject,
   );
-  if (!context.mounted || shouldDelete != true) {
-    return;
-  }
-  session.deleteSelectionSubject();
 }
 
 Future<void> deleteActiveLayerWithDialog(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   final activeLayer = session.activeLayer;
   if (activeLayer == null || !session.canDeleteActiveLayer) {
-    return;
+    return Future<void>.value();
   }
-  final shouldDelete = await showDialog<bool>(
-    context: context,
-    builder: (context) => DeleteLayerDialog(layerName: activeLayer.name),
+  return confirmThenCommit(
+    context,
+    dialog: (_) => DeleteLayerDialog(layerName: activeLayer.name),
+    commit: session.deleteActiveLayer,
   );
-  if (!context.mounted || shouldDelete != true) {
-    return;
-  }
-  session.deleteActiveLayer();
 }
 
 /// ⑨: 「이름편집은 선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」.
@@ -86,11 +81,11 @@ Future<void> deleteActiveLayerWithDialog(
 Future<void> renameActiveLayerWithDialog(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   final selected = session.renameableSelectedLayerIds();
   final activeLayer = session.activeLayer;
   if (selected.isEmpty && activeLayer == null) {
-    return;
+    return Future<void>.value();
   }
   final soleId = selected.length == 1 ? selected.single : null;
   final sole = soleId == null
@@ -99,18 +94,13 @@ Future<void> renameActiveLayerWithDialog(
   final initialName = selected.length > 1
       ? ''
       : (sole ?? activeLayer)?.name ?? '';
-  final nextName = await showDialog<String>(
-    context: context,
-    builder: (context) => RenameLayerDialog(initialName: initialName),
+  return askThenCommit<String>(
+    context,
+    dialog: (_) => RenameLayerDialog(initialName: initialName),
+    commit: (nextName) => selected.isEmpty
+        ? session.renameActiveLayer(nextName)
+        : session.renameSelectedLayers(nextName),
   );
-  if (!context.mounted || nextName == null) {
-    return;
-  }
-  if (selected.isNotEmpty) {
-    session.renameSelectedLayers(nextName);
-    return;
-  }
-  session.renameActiveLayer(nextName);
 }
 
 /// The CUT rename, lifted out of `CutCommandGroup` so the shared pill's
@@ -120,20 +110,22 @@ Future<void> renameActiveLayerWithDialog(
 /// on both frame panels, and a private `State` method is reachable from
 /// exactly one of them. That is the trap the layer dialogs were already in
 /// before they moved here.
+///
+/// ⚠️No empty-name check here. [RenameCutDialog] pops the TRIMMED text and
+/// refuses an empty one inline — deciding that is what the prompt window
+/// is for — so a caller-side re-check was a second copy of the dialog's
+/// own law, and the copy is the thing that drifts.
 Future<void> renameActiveCutWithDialog(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   final cut = session.activeCutOrNull;
   if (cut == null) {
-    return; // Gap state: no cut to rename.
+    return Future<void>.value(); // Gap state: no cut to rename.
   }
-  final nextName = await showDialog<String>(
-    context: context,
-    builder: (context) => RenameCutDialog(initialName: cut.name),
+  return askThenCommit<String>(
+    context,
+    dialog: (_) => RenameCutDialog(initialName: cut.name),
+    commit: session.renameActiveCut,
   );
-  if (!context.mounted || nextName == null || nextName.trim().isEmpty) {
-    return;
-  }
-  session.renameActiveCut(nextName);
 }

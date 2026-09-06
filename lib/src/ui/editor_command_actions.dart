@@ -18,6 +18,7 @@ import '../models/cut_id.dart';
 import '../models/layer_kind.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'dialogs/convert_to_linked_cut_dialog.dart';
+import 'dialogs/dialog_verb.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
 import 'export/ae_keyframe_data.dart';
@@ -80,23 +81,20 @@ bool canConvertActiveCutToLinked(EditorSessionManager session) =>
 Future<void> showConvertActiveCutToLinked(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   final activeCut = session.activeCutOrNull;
   if (activeCut == null) {
-    return;
+    return Future<void>.value();
   }
-  final targetCutId = await showDialog<CutId>(
-    context: context,
-    builder: (context) => ConvertToLinkedCutDialog(
+  return askThenCommit<CutId>(
+    context,
+    dialog: (_) => ConvertToLinkedCutDialog(
       activeCutName: activeCut.name,
       candidates: session.convertToLinkedCutCandidates,
       previewOf: session.convertToLinkedCutPreviewData,
     ),
+    commit: session.convertActiveCutToLinked,
   );
-  if (!context.mounted || targetCutId == null) {
-    return;
-  }
-  session.convertActiveCutToLinked(targetCutId);
 }
 
 /// Bakes the active cut's camera work as After Effects keyframe data on the

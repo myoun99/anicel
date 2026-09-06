@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'cut/cut_note_dialog.dart';
 import 'editor_command_actions.dart';
 import 'dialogs/app_progress_dialog.dart';
+import 'dialogs/dialog_verb.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
@@ -47,51 +48,45 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
   Future<void> _renameActiveCut() =>
       renameActiveCutWithDialog(context, session);
 
-  Future<void> _editActiveCutNote() async {
+  Future<void> _editActiveCutNote() {
     final initialNote = session.activeCutNote;
     if (initialNote == null) {
-      return;
+      return Future<void>.value();
     }
-    final nextNote = await showDialog<String>(
-      context: context,
-      builder: (context) => CutNoteDialog(initialNote: initialNote),
+    return askThenCommit<String>(
+      context,
+      dialog: (_) => CutNoteDialog(initialNote: initialNote),
+      commit: session.updateActiveCutNote,
     );
-    if (!mounted || nextNote == null) {
-      return;
-    }
-    session.updateActiveCutNote(nextNote);
   }
 
-  Future<void> _resizeActiveCutCanvas() async {
+  Future<void> _resizeActiveCutCanvas() {
     final cut = session.activeCutOrNull;
     if (cut == null) {
-      return; // Gap state: no cut canvas to resize.
+      return Future<void>.value(); // Gap state: no cut canvas to resize.
     }
-    final request = await showDialog<CanvasResizeRequest>(
-      context: context,
-      builder: (context) => CanvasSizeDialog(initialSize: cut.canvasSize),
-    );
-    if (!mounted || request == null) {
-      return;
-    }
-    // D3: the app's ONE wait-for-this window, exactly as save wears it.
-    // The command is synchronous, but runWithAppProgress paints the
-    // window before starting the task; the trailing endOfFrame holds the
-    // modal barrier over the SECOND half of the resize — the canvas
-    // host's adoption pass and the first recomposite land on the next
-    // frame, and no input may slip between the halves (an edit there
-    // would commit a stroke at the wrong canvas size).
-    await runWithAppProgress<void>(
-      context: context,
-      title: AppText.strings.canvasSizeTitle,
-      titleIcon: Icons.aspect_ratio,
-      runningLabel: AppText.strings.resizeProgressRunning,
-      doneLabel: AppText.strings.resizeProgressDone,
-      windowKey: const ValueKey<String>('resize-progress-dialog'),
-      task: (report) async {
-        session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
-        await WidgetsBinding.instance.endOfFrame;
-      },
+    return askThenCommit<CanvasResizeRequest>(
+      context,
+      dialog: (_) => CanvasSizeDialog(initialSize: cut.canvasSize),
+      // D3: the app's ONE wait-for-this window, exactly as save wears it.
+      // The command is synchronous, but runWithAppProgress paints the
+      // window before starting the task; the trailing endOfFrame holds the
+      // modal barrier over the SECOND half of the resize — the canvas
+      // host's adoption pass and the first recomposite land on the next
+      // frame, and no input may slip between the halves (an edit there
+      // would commit a stroke at the wrong canvas size).
+      commit: (request) => runWithAppProgress<void>(
+        context: context,
+        title: AppText.strings.canvasSizeTitle,
+        titleIcon: Icons.aspect_ratio,
+        runningLabel: AppText.strings.resizeProgressRunning,
+        doneLabel: AppText.strings.resizeProgressDone,
+        windowKey: const ValueKey<String>('resize-progress-dialog'),
+        task: (report) async {
+          session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
+          await WidgetsBinding.instance.endOfFrame;
+        },
+      ),
     );
   }
 
