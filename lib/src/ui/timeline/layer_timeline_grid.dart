@@ -412,34 +412,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ///
   /// One row/cell of margin, so a walk keeps a neighbour in sight and reads
   /// as a walk rather than as a jump to the edge.
-  void _revealSelection() {
-    final cell = _metrics.frameCellWidth;
-    if (_horizontalScrollController.hasClients && cell > 0) {
-      jumpToReveal(
-        _horizontalScrollController,
-        (
-          start: widget.hooks.frameCursor.value * cell,
-          extent: cell,
-          margin: cell,
-        ),
-      );
-    }
-    final rowHeight = _metrics.layerRowHeight;
-    final rowIndex = _railRows.selectedRowIndex();
-    if (!_verticalScrollController.hasClients ||
-        rowIndex == null ||
-        rowHeight <= 0) {
-      return;
-    }
-    jumpToReveal(
-      _verticalScrollController,
-        (
-          start: rowIndex * rowHeight,
-          extent: rowHeight,
-          margin: rowHeight,
-        ),
-    );
-  }
+  void _revealSelection() => revealSelectionOnBothAxes(
+    (
+      controller: _horizontalScrollController,
+      extent: _metrics.frameCellWidth,
+      at: widget.hooks.frameCursor.value,
+    ),
+    (
+      controller: _verticalScrollController,
+      extent: _metrics.layerRowHeight,
+      at: indexOfDisplayRow(
+        _dragRows,
+        current: widget.hooks.currentRowHooks?.currentRow.value,
+        activeLayerId: widget.hooks.activeLayerId,
+      ),
+    ),
+  );
 
   // ── the lanes: their own object, in their own file ──────────────────
   //
