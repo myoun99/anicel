@@ -48,6 +48,7 @@ const _startRepeat = TimelineRunBehavior(
 );
 
 void main() {
+  group("remapFrameIds", _remapTests);
   test('no behaviors and no ghosts returns the SAME layer instance', () {
     final layer = _layer(timeline: {0: _draw('a', 3)});
     expect(
@@ -382,5 +383,61 @@ void main() {
       TimelineRunEdgeMode.hold,
     );
     expect(runEdgeBehaviorAt(layer, 0, TimelineRunEdgeSide.start), isNull);
+  });
+}
+
+/// remapFrameIds — the anchor-remap the three copy paths share (the copy
+/// of a layer, the paste planner, the attach mount). What an UNMAPPABLE
+/// anchor means is the caller's law, told by what the mapping returns.
+void _remapTests() {
+  const pattern = TimelineRunBehavior(
+    anchorFrameId: FrameId('a'),
+    side: TimelineRunEdgeSide.end,
+    mode: TimelineRunEdgeMode.repeat,
+    patternAnchorFrameId: FrameId('b'),
+  );
+
+  test('both anchors move, and side and mode ride along', () {
+    final remapped = pattern.remapFrameIds(
+      (id) => FrameId('new-${id.value}'),
+    )!;
+    expect(remapped.anchorFrameId, const FrameId('new-a'));
+    expect(remapped.patternAnchorFrameId, const FrameId('new-b'));
+    expect(remapped.side, TimelineRunEdgeSide.end);
+    expect(remapped.mode, TimelineRunEdgeMode.repeat);
+  });
+
+  test('no pattern anchor stays no pattern anchor', () {
+    expect(
+      _endHold.remapFrameIds((id) => FrameId('new-${id.value}'))!
+          .patternAnchorFrameId,
+      isNull,
+    );
+  });
+
+  test('⛔an unmappable ANCHOR answers null — the caller drops the '
+      'behaviour', () {
+    expect(pattern.remapFrameIds((id) => null), isNull);
+  });
+
+  test('an unmappable PATTERN anchor reads as "no pattern", which is the '
+      'whole-run reading — the behaviour survives', () {
+    final remapped = pattern.remapFrameIds(
+      (id) => id == const FrameId('a') ? const FrameId('a2') : null,
+    )!;
+    expect(remapped.anchorFrameId, const FrameId('a2'));
+    expect(remapped.patternAnchorFrameId, isNull);
+  });
+
+  test('a mapping that keeps unknown ids keeps the behaviour whole — what '
+      'the duplicate and the paste pass', () {
+    final map = {const FrameId('a'): const FrameId('a2')};
+    final remapped = pattern.remapFrameIds((id) => map[id] ?? id)!;
+    expect(remapped.anchorFrameId, const FrameId('a2'));
+    expect(
+      remapped.patternAnchorFrameId,
+      const FrameId('b'),
+      reason: 'unmapped means unchanged here, never dropped',
+    );
   });
 }

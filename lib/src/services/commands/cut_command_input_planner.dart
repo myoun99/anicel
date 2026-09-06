@@ -7,8 +7,8 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
-import '../../models/timeline_repeat.dart';
 import '../clipboard/layer_copy_payload.dart';
+import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
@@ -79,26 +79,15 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
     layerIdMap[layer.id] = newLayerId;
 
     for (final frame in layer.frames) {
-      if (frameIdMap.containsKey(frame.id)) {
-        continue;
-      }
-      final newFrameId = FrameId(
-        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-      );
-      ids.frameIds.add(newFrameId.value);
-      frameIdMap[frame.id] = newFrameId;
+      ids.mintFrameIdFor(frame.id, frameIdMap);
     }
 
     for (final exposure in layer.timeline.values) {
       final frameId = exposure.frameId;
-      if (frameId == null || frameIdMap.containsKey(frameId)) {
+      if (frameId == null) {
         continue;
       }
-      final newFrameId = FrameId(
-        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-      );
-      ids.frameIds.add(newFrameId.value);
-      frameIdMap[frameId] = newFrameId;
+      ids.mintFrameIdFor(frameId, frameIdMap);
     }
   }
 
@@ -123,24 +112,12 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
 
   final frameIdMap = <FrameId, FrameId>{};
   for (final frame in payload.frames) {
-    frameIdMap.putIfAbsent(frame.id, () {
-      final id = FrameId(
-        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-      );
-      ids.frameIds.add(id.value);
-      return id;
-    });
+    ids.mintFrameIdFor(frame.id, frameIdMap);
   }
   for (final exposure in payload.timeline.values) {
     final frameId = exposure.frameId;
     if (frameId == null) continue;
-    frameIdMap.putIfAbsent(frameId, () {
-      final id = FrameId(
-        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-      );
-      ids.frameIds.add(id.value);
-      return id;
-    });
+    ids.mintFrameIdFor(frameId, frameIdMap);
   }
 
   final hasStoryboardLayer = targetCut.layers.any(
@@ -160,20 +137,12 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     frames: payload.frames
         .map((frame) => frame.copyWith(id: frameIdMap[frame.id]))
         .toList(),
-    timeline: payload.timeline.map((index, exposure) {
-      final sourceFrameId = exposure.frameId;
-      final newFrameId = sourceFrameId == null
-          ? null
-          : frameIdMap[sourceFrameId];
-      if (sourceFrameId == null || newFrameId == null) {
-        throw ArgumentError.value(
-          frameIdMap,
-          'frameIdMap',
-          'Missing mapped FrameId for timeline exposure ${exposure.frameId}.',
-        );
-      }
-      return MapEntry(index, exposure.copyWith(frameId: newFrameId));
-    }),
+    timeline: payload.timeline.map(
+      (index, exposure) => MapEntry(
+        index,
+        remapTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
+      ),
+    ),
     // Instruction spans only belong on instruction rows and audio clips on
     // SE rows; cross-kind pastes drop them.
     instructions: pastedKind == LayerKind.instruction
@@ -195,21 +164,12 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,
     isFillReference: payload.isFillReference,
-    // Run behaviours are addressed by FRAME ID, so their anchors remap onto
-    // the copied frames — carrying them verbatim would name blocks this
-    // copy does not have, and the next rederive would drop them.
+    // Why the anchors remap at all: see
+    // [TimelineRunBehavior.remapFrameIds]. An id the map does not cover
+    // stays itself, so the anchor is always kept.
     runBehaviors: [
       for (final behavior in payload.runBehaviors)
-        TimelineRunBehavior(
-          anchorFrameId:
-              frameIdMap[behavior.anchorFrameId] ?? behavior.anchorFrameId,
-          side: behavior.side,
-          mode: behavior.mode,
-          patternAnchorFrameId: behavior.patternAnchorFrameId == null
-              ? null
-              : (frameIdMap[behavior.patternAnchorFrameId!] ??
-                    behavior.patternAnchorFrameId),
-        ),
+        behavior.remapFrameIds((id) => frameIdMap[id] ?? id)!,
     ],
   );
 
@@ -598,6 +558,18 @@ class _ProjectIdSnapshot {
   final Set<String> cutIds;
   final Set<String> layerIds;
   final Set<String> frameIds;
+
+  /// The fresh frame id [source] copies to, minted on first sight and
+  /// remembered in [map] after that — one cel exposed twice must come out
+  /// as one cel, not two that look alike. Both planners mint this way.
+  FrameId mintFrameIdFor(FrameId source, Map<FrameId, FrameId> map) =>
+      map.putIfAbsent(source, () {
+        final id = FrameId(
+          _firstAvailableId(prefix: 'frame', usedIds: frameIds),
+        );
+        frameIds.add(id.value);
+        return id;
+      });
 
   void includeCut(Cut cut) {
     cutIds.add(cut.id.value);

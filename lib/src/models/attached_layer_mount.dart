@@ -210,17 +210,13 @@ Layer detachedLayer({
       baked[index] = exposure;
     }
   });
+  // The mount only knows the cels it linked: a behaviour whose anchor has
+  // no link is dropped, and an unlinked pattern anchor reads as "no
+  // pattern". Both answers come out of the LOOKUP, which is what
+  // [TimelineRunBehavior.remapFrameIds] takes.
   final behaviors = <TimelineRunBehavior>[
     for (final behavior in base.runBehaviors)
-      if (links[behavior.anchorFrameId] != null)
-        TimelineRunBehavior(
-          anchorFrameId: links[behavior.anchorFrameId]!,
-          side: behavior.side,
-          mode: behavior.mode,
-          patternAnchorFrameId: behavior.patternAnchorFrameId == null
-              ? null
-              : links[behavior.patternAnchorFrameId!],
-        ),
+      ?behavior.remapFrameIds((id) => links[id]),
   ];
   return rederiveRunBehaviors(
     attached.copyWith(

@@ -74,6 +74,36 @@ class TimelineRunBehavior {
   /// ([TimelineExposure.ghostOwnerId]).
   String get ghostOwnerId => '${anchorFrameId.value}:${side.name}';
 
+  /// This behaviour under a new set of frame ids, or NULL when [map]
+  /// cannot answer for the anchor.
+  ///
+  /// 🚨Run behaviours are addressed by FRAME ID (the anchor block, and the
+  /// pattern block for a ranged repeat), so carrying them verbatim into a
+  /// copy whose frames were all re-minted names blocks that do not exist
+  /// there — `rederiveRunBehaviors` then drops the behaviour on the first
+  /// edit, which is the same loss with extra steps.
+  ///
+  /// ⛔What happens to an UNMAPPABLE anchor is the caller's law, told by
+  /// what [map] returns, not by a flag: a duplicate whose map covers every
+  /// frame passes `(id) => map[id] ?? id` and never sees null; a mount
+  /// that only knows the cels it linked passes the lookup itself and drops
+  /// the behaviour when it comes back null. The pattern anchor follows the
+  /// same answer — unmapped there means "no pattern", which is the
+  /// whole-run reading.
+  TimelineRunBehavior? remapFrameIds(FrameId? Function(FrameId id) map) {
+    final anchor = map(anchorFrameId);
+    if (anchor == null) {
+      return null;
+    }
+    final pattern = patternAnchorFrameId;
+    return TimelineRunBehavior(
+      anchorFrameId: anchor,
+      side: side,
+      mode: mode,
+      patternAnchorFrameId: pattern == null ? null : map(pattern),
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'anchor': anchorFrameId.toJson(),
     'side': side.toJson(),
