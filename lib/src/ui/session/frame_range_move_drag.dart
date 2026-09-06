@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/key_range_move.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_stack_order.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
@@ -731,17 +732,6 @@ class FrameRangeMoveDrag {
   /// display hop into its own lattice below.
   List<Layer> _rangeRowOrder() => sectionedLayerOrder(_project.layers);
 
-  /// The display-row hop from [anchorId] to [targetId]; null when either
-  /// row is not on screen.
-  int? _displayRowDelta(List<Layer> rows, LayerId anchorId, LayerId targetId) {
-    final anchorIndex = rows.indexWhere((layer) => layer.id == anchorId);
-    final targetIndex = rows.indexWhere((layer) => layer.id == targetId);
-    if (anchorIndex == -1 || targetIndex == -1) {
-      return null;
-    }
-    return targetIndex - anchorIndex;
-  }
-
   /// The one lattice hop every content-bearing row in [ids] agrees on.
   /// `blocked` when a row cannot land, or when two rows would need
   /// different hops (the rigid move is all-or-nothing); a null `delta`
@@ -980,7 +970,7 @@ class FrameRangeMoveDrag {
   ) {
     final cast = step.cast;
     final lattices = step.lattices;
-    final displayDelta = _displayRowDelta(
+    final displayDelta = layerIndexDelta(
       lattices.rows,
       _rangeMoveGrabLayerId ?? step.selection.layerId,
       targetLayerId,
@@ -2142,12 +2132,6 @@ class FrameRangeMoveDrag {
     if (landingIndex < 0 || landingIndex >= rows.length) {
       return null;
     }
-    final landingId = rows[landingIndex].id;
-    final from = lattice.indexWhere((layer) => layer.id == layerId);
-    final to = lattice.indexWhere((layer) => layer.id == landingId);
-    if (from == -1 || to == -1) {
-      return null;
-    }
-    return to - from;
+    return layerIndexDelta(lattice, layerId, rows[landingIndex].id);
   }
 }

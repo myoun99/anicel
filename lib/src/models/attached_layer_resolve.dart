@@ -18,6 +18,8 @@ import 'layer_folder.dart';
 
 export 'layer_folder.dart' show attachOrganizerBaseOf;
 import 'layer_id.dart';
+import 'layer_kind.dart';
+import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
@@ -399,18 +401,15 @@ AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
 /// Which side of [anchor] [subject] sits on in the model stack, or null
 /// when either is missing — a dangling anchor (deleting a base out from
 /// under its group is a supported state) answers -1, which must not read
-/// as "below".
+/// as "below". [layerIndexDelta]'s null IS that guarantee.
 AttachedPlacement? _stackPlacement(
   List<Layer> layers, {
   required LayerId subject,
   required LayerId anchor,
 }) {
-  final subjectIndex = layers.indexWhere((other) => other.id == subject);
-  final anchorIndex = layers.indexWhere((other) => other.id == anchor);
-  if (subjectIndex < 0 || anchorIndex < 0) {
+  final delta = layerIndexDelta(layers, anchor, subject);
+  if (delta == null) {
     return null;
   }
-  return subjectIndex > anchorIndex
-      ? AttachedPlacement.above
-      : AttachedPlacement.below;
+  return delta > 0 ? AttachedPlacement.above : AttachedPlacement.below;
 }
