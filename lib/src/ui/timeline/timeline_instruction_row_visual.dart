@@ -613,12 +613,6 @@ class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (
-    axis,
-    markType,
-    eventLength,
-    color,
-    hasStartName,
-    hasEndName,
-  );
+  Object get props =>
+      (axis, markType, eventLength, color, hasStartName, hasEndName);
 }

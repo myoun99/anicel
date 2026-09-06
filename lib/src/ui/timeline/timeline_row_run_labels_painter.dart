@@ -205,13 +205,8 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
 
   @override
   // Geometry is absent on purpose — it arrives through `repaint`.
-  Object get props => (
-    ByIdentity(layer),
-    crossAxisExtent,
-    showSeconds,
-    countingBase,
-    axis,
-  );
+  Object get props =>
+      (ByIdentity(layer), crossAxisExtent, showSeconds, countingBase, axis);
   // ⛔The cel-content comparison went with F-24. It was here because a
   // moved revision was a moved GROUND (the empty-cel blend) and the ink
   // read that ground; the ink is the block's own now, so what a block

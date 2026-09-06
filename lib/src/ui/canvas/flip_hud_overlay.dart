@@ -722,11 +722,6 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (
-    ByIdentity(snapshot),
-    axis,
-    frameStep,
-    scrollCentre,
-    colorScheme,
-  );
+  Object get props =>
+      (ByIdentity(snapshot), axis, frameStep, scrollCentre, colorScheme);
 }

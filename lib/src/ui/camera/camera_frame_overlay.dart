@@ -523,14 +523,8 @@ class CameraFramePainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (
-    pose,
-    cameraFrameSize,
-    viewport,
-    dimOpacity,
-    outlineColor,
-    showHandles,
-  );
+  Object get props =>
+      (pose, cameraFrameSize, viewport, dimOpacity, outlineColor, showHandles);
 }
 
 /// PEN-13: the camera pan that never hands its drag to a late finger —

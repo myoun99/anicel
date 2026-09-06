@@ -27,7 +27,8 @@ import 'memo_token.dart';
 ///
 /// Shared by the storyboard ruler and the timeline ruler (it was the
 /// storyboard's private painter first).
-class TimelineRulerCursorOverlayPainter extends CustomPainter with RepaintOnProps {
+class TimelineRulerCursorOverlayPainter extends CustomPainter
+    with RepaintOnProps {
   TimelineRulerCursorOverlayPainter({
     required this.playhead,
     required Listenable? repaintSignal,

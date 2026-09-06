@@ -546,11 +546,6 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (
-    snapshot,
-    ByIdentity(row),
-    pixelsPerFrame,
-    framesPerSecond,
-    colorScheme,
-  );
+  Object get props =>
+      (snapshot, ByIdentity(row), pixelsPerFrame, framesPerSecond, colorScheme);
 }
