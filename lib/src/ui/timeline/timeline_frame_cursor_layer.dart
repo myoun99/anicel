@@ -192,34 +192,6 @@ class TimelineCursorLayer extends StatelessWidget {
     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
   );
 
-  /// Whether a frame span has any cell inside the built window.
-  bool _touchesWindow(
-    int startIndex,
-    int endIndexExclusive,
-    ({int startIndex, int endIndexExclusive}) window,
-  ) => frameRangesOverlap(
-    startIndex,
-    endIndexExclusive,
-    window.startIndex,
-    window.endIndexExclusive,
-  );
-
-  /// The rows a band covers: the first covered row and the count through the
-  /// last covered one — contiguous in display order by construction.
-  ({int first, int count})? _rowSpan(
-    bool Function(TimelineDisplayRow row) covers,
-  ) {
-    int? first;
-    var count = 1;
-    for (var index = 0; index < rows.length; index += 1) {
-      if (!covers(rows[index])) continue;
-      first ??= index;
-      count = index - first + 1;
-    }
-    if (first == null) return null;
-    return (first: first, count: count);
-  }
-
   int? _rowIndexWhere(bool Function(TimelineDisplayRow row) test) {
     for (var index = 0; index < rows.length; index += 1) {
       if (test(rows[index])) return index;
@@ -227,22 +199,44 @@ class TimelineCursorLayer extends StatelessWidget {
     return null;
   }
 
-  /// One band over [span] rows and the frames [startIndex]..[endIndexExclusive]
-  /// — the SAME band for a cell span and a lane span (R27 #14).
-  Widget _bandOver(
-    ({int first, int count}) span, {
+  /// One band for a selection of the frames [startIndex]..[endIndexExclusive]
+  /// over the rows [coversRow] answers for — the SAME band for a cell span
+  /// and a lane span (R27 #14). Null when the span has no cell inside the
+  /// built [window] or covers no row on screen.
+  ///
+  /// The rows a band covers are the first covered row through the last —
+  /// contiguous in display order by construction.
+  Widget? _selectionBand(
+    ({int startIndex, int endIndexExclusive}) window, {
     required int startIndex,
     required int endIndexExclusive,
+    required bool Function(TimelineDisplayRow row) coversRow,
     required Key key,
     required String label,
   }) {
+    if (!frameRangesOverlap(
+      startIndex,
+      endIndexExclusive,
+      window.startIndex,
+      window.endIndexExclusive,
+    )) {
+      return null;
+    }
+    int? first;
+    var count = 1;
+    for (var index = 0; index < rows.length; index += 1) {
+      if (!coversRow(rows[index])) continue;
+      first ??= index;
+      count = index - first + 1;
+    }
+    if (first == null) return null;
     final spanStart = _frameX(startIndex);
     return placedAlong(
       axis,
       along: spanStart,
-      across: span.first * metrics.layerRowHeight,
+      across: first * metrics.layerRowHeight,
       alongExtent: _frameX(endIndexExclusive) - spanStart,
-      acrossExtent: span.count * metrics.layerRowHeight,
+      acrossExtent: count * metrics.layerRowHeight,
       child: Semantics(
         key: key,
         label: label,
@@ -293,16 +287,12 @@ class TimelineCursorLayer extends StatelessWidget {
   /// predicate, and a new row kind joins by existing.
   Widget? _rangeBand(({int startIndex, int endIndexExclusive}) window) {
     final range = frameRangeSelection?.value;
-    if (range == null ||
-        !_touchesWindow(range.startIndex, range.endIndexExclusive, window)) {
-      return null;
-    }
-    final span = _rowSpan((row) => range.coversRow(row.address));
-    if (span == null) return null;
-    return _bandOver(
-      span,
+    if (range == null) return null;
+    return _selectionBand(
+      window,
       startIndex: range.startIndex,
       endIndexExclusive: range.endIndexExclusive,
+      coversRow: (row) => range.coversRow(row.address),
       key: const ValueKey<String>('timeline-frame-range-selection'),
       label: AppText.strings.tlSelectedFrameRange,
     );
@@ -322,20 +312,12 @@ class TimelineCursorLayer extends StatelessWidget {
   Widget? _laneBand(({int startIndex, int endIndexExclusive}) window) {
     if (frameRangeSelection?.value != null) return null;
     final laneRange = laneRangeSelection?.value;
-    if (laneRange == null ||
-        !_touchesWindow(
-          laneRange.startIndex,
-          laneRange.endIndexExclusive,
-          window,
-        )) {
-      return null;
-    }
-    final span = _rowSpan((row) => _laneRowInBand(row, laneRange));
-    if (span == null) return null;
-    return _bandOver(
-      span,
+    if (laneRange == null) return null;
+    return _selectionBand(
+      window,
       startIndex: laneRange.startIndex,
       endIndexExclusive: laneRange.endIndexExclusive,
+      coversRow: (row) => _laneRowInBand(row, laneRange),
       key: const ValueKey<String>('timeline-lane-range-selection'),
       label: AppText.strings.tlSelectedLaneRange,
     );
