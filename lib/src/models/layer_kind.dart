@@ -322,6 +322,16 @@ bool timelineRowOwnsTransform({
 /// resolves the whole row one way.
 enum LayerFxState { on, off, mixed }
 
+/// Whether a row's FX apply, read off its master [state]: only OFF means
+/// no — a MIXED row is still doing something. Null (no resolver, the host
+/// hides the master) reads as applied.
+///
+/// The one spelling: the session's `isLayerFxEnabled`, the grid hooks and
+/// the storyboard's rail rows each wrote `state != LayerFxState.off` with
+/// the null-means-on default (the audit's clone scan, 2026-09-06).
+bool fxEnabledFromState(LayerFxState? state) =>
+    (state ?? LayerFxState.on) != LayerFxState.off;
+
 /// Whether [kind]'s [Layer.transformEnabled] switch means anything (R8).
 ///
 /// Everything but the ADJUSTMENT row, which has no transform at all — so

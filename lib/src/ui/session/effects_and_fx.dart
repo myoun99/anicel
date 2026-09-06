@@ -321,7 +321,7 @@ class _EffectsAndFx {
   /// Whether ANY of the row's FX apply — the row-level facet question the
   /// timeline filter asks ("show me the rows that are doing something").
   bool isLayerFxEnabled(LayerId layerId) =>
-      layerFxState(layerId) != LayerFxState.off;
+      fxEnabledFromState(layerFxState(layerId));
 
   /// Whether the row's TRANSFORM applies. Every reader of a transform
   /// PROPERTY (pose, animated opacity, the position gizmo) asks this and

@@ -49,7 +49,7 @@ import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';
 import '../input/pen_friendly_scroll_controller.dart';
-import 'stylus_glide_stop.dart';
+import 'timeline_grid_shell.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
 import 'timeline_ruler_norishiro_boundary.dart';
@@ -848,319 +848,296 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     final colorScheme = Theme.of(context).colorScheme;
     const layerAxisScrollbarExtent = timelineBottomScrollbarRailHeight;
 
-    // PEN-9: a stylus approach stops a coasting fling — mid-glide the
-    // viewports ignore-pointer their children, so without the stop a pen
-    // landing right after a touch fling scrolls instead of selecting.
-    //
-    // 🚨D43-2 재개: the grid's ground, stated once above both the overlay
-    // and the rows that cover it — the horizontal grid's twin.
-    return TimelineGridLaw(
+    // The law, the glide stop and the overscroll clamp — [TimelineGridShell]
+    // carries the PEN-9 / PEN-12 #7 / D43-2 decisions for both grids; this
+    // is the horizontal grid's twin.
+    return TimelineGridShell(
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
-      child: StylusGlideStop(
-        controllers: [_frameScrollController, _layerScrollController],
-        // PEN-12 #7: no overscroll stretch/glow — the painterized rails
-        // mirror the offset and cannot stretch with the cells (see the
-        // horizontal grid).
-        child: ScrollConfiguration(
-          behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-          child: ValueListenableBuilder<double?>(
-            valueListenable: _railScrub._railExtent,
-            builder: (context, _, _) => LayoutBuilder(
-              builder: (context, constraints) {
-                // The header block is ALWAYS its natural extent; the splitter
-                // says how much of it the panel shows. R10 R6 packed the name
-                // and R6a scaled the whole column — both are retired, and with
-                // them the arithmetic that had to guarantee the sheet a
-                // minimum reserve the header could not eat.
-                final naturalHeaderBlockExtent = _headers._naturalHeaderBlockExtent;
-                // What the sheet can spare for the header block: everything
-                // but its own chrome and the frame area's two-row reserve.
-                // Computed ONCE and handed to every part of the rail —
-                // window, scrollbar and splitter — so they cannot disagree.
-                final availableHeaderExtent = constraints.hasBoundedHeight
-                    ? (constraints.maxHeight -
-                              layerAxisScrollbarExtent -
-                              LayerRailSplitter.thickness -
-                              layerRailFrameReserveExtent)
-                          .clamp(0.0, double.infinity)
-                          .toDouble()
-                    : null;
-                final headerBlockHeight = _railScrub._railExtent.windowExtent(
-                  naturalHeaderBlockExtent,
-                  availableExtent: availableHeaderExtent,
-                );
-                // The grip's own slot gives ground last: in a panel so short
-                // that even a zero-height window plus 5px would overflow
-                // (the header sweep goes down to 20px), the slot is what
-                // shrinks rather than a yellow stripe appearing.
-                final splitterSlotExtent = constraints.hasBoundedHeight
-                    ? math.min(
-                        LayerRailSplitter.thickness,
-                        math.max(
-                          0.0,
-                          constraints.maxHeight -
-                              layerAxisScrollbarExtent -
-                              headerBlockHeight,
-                        ),
-                      )
-                    : LayerRailSplitter.thickness;
-                final bodyViewportHeight = constraints.hasBoundedHeight
-                    ? (constraints.maxHeight -
-                              layerAxisScrollbarExtent -
-                              headerBlockHeight -
-                              splitterSlotExtent)
-                          .clamp(0.0, double.infinity)
-                          .toDouble()
-                    : 0.0;
-                // Viewport paper fill (UI-R12 #16): the frame column runs to the
-                // body's bottom edge — recorded before every consumer of
-                // [_renderedFrameCount] below.
-                _viewportFillFrameCells = endlessViewportFillFrames(
-                  viewportExtent: bodyViewportHeight,
-                  frameCellExtent: _metrics.frameCellWidth,
-                );
-                _lastEffectiveFrameScrollOffset = _frameAxisOffset.value;
-                _frameSync.synchronize(
-                  _frameScroll.effectiveFrameScrollOffset(
-                    requestedOffset: _frameAxisOffset.value,
-                    viewportExtent: bodyViewportHeight,
-                  ),
-                );
-
-                // Hidden sections contribute no columns; the section band above
-                // the headers carries each section's bracket (shared row/run
-                // policy with the horizontal grid).
-                final entries = buildTimelineDisplayRows(
-                  layers: widget.layers,
-                  expandedLayerIds: widget.hooks.expandedLaneLayerIds,
-                  lanesForLayer: _lanesFor,
-                  hiddenSections: widget.hooks.hiddenSections,
-                  rowFilter: widget.hooks.rowFilter,
-                  collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
-                  activeLayerId: widget.hooks.activeLayerId,
-                  fxEnabledOf: (layerId) =>
-                      (widget.hooks.layerFxStateOf?.call(layerId) ??
-                          LayerFxState.on) !=
-                      LayerFxState.off,
-                  // R9 #23: the sheet's lanes open LEFTWARD — one axis rule
-                  // with the horizontal grid's downward one, so "further from
-                  // the layer means applied later" reads the same in both.
-                  lanesPrecedeLayer: true,
-                );
-                // The row drag counts COLUMNS and lands on slots; only this
-                // list knows how many columns sit between two fx headers.
-                _dragRows = entries;
-                // The bundles are FIELDS here (the x-sheet reads them from more
-                // than one builder), so the assignment stays and only the
-                // construction moved.
-                _rangeGesture = _rangeGestures.rangeGestureFor(entries);
-                _laneRange = _rangeGestures.laneRangeFor(entries);
-                final sectionRuns = timelineSectionRuns(entries);
-
-                // The shared virtualization plan with the frame axis fed through the
-                // "horizontal" inputs (the axes are swapped in this grid). Computed
-                // INSIDE the window-bucket subscribers (UI-R9 #12a): scroll pixels
-                // re-window nothing.
-                final totalFrameContentHeight = _frameScroll._totalFrameContentHeight;
-                // Every column is ONE width (`timelineDisplayRowExtent` returns
-                // `layerRowHeight` unconditionally). The old note here claimed
-                // collapsed sections folded to a slim strip; they never did, and
-                // believing it would send someone to the height-table row
-                // resolver when `uniformRowDeltaForCrossOffset` — which requires
-                // this uniformity — is the right one.
-                final columnsContentWidth = timelineDisplayRowsExtent(
-                  entries,
-                  _metrics,
-                );
-                final cutEndBoundaryOffset = timelineCutEndBoundaryX(
-                  playbackFrameCount: widget.hooks.playbackFrameCount,
-                  metrics: _metrics,
-                );
-                // ONE value for the seven numbers above — see [_SheetGeometry].
-                final geometry = _SheetGeometry(
-                  availableHeaderExtent: availableHeaderExtent,
-                  naturalHeaderBlockExtent: naturalHeaderBlockExtent,
-                  splitterSlotExtent: splitterSlotExtent,
-                  bodyViewportHeight: bodyViewportHeight,
-                  totalFrameContentHeight: totalFrameContentHeight,
-                  columnsContentWidth: columnsContentWidth,
-                  cutEndBoundaryOffset: cutEndBoundaryOffset,
-                );
-                // The DRAWN end, following a live trim so the blue line, the wash
-                // edge and the ruler's letters never split from the red line
-                // mid-drag (one function, four surfaces).
-
-                return Stack(
-                  children: [
-                    Column(
-                      children: [
-                        // The LAYER axis runs across the sheet, so its scrollbar is
-                        // the strip along the top — and the corner beside it holds
-                        // the seconds toggle, off the command bar.
-                        SizedBox(
-                          height: layerAxisScrollbarExtent,
-                          child: Row(
-                            children: [
-                              SizedBox(width: _metrics.layerControlsWidth),
-                              TimelineSecondsToggleCorner(
-                                key: const ValueKey<String>(
-                                  'xsheet-time-display-toggle-button',
-                                ),
-                                width: _metrics.verticalScrollbarWidth,
-                                height: layerAxisScrollbarExtent,
-                                showSeconds: widget.hooks.showSeconds,
-                                onChanged: widget.hooks.onShowSecondsChanged,
-                              ),
-                              Expanded(
-                                child: LayoutBuilder(
-                                  builder: (context, constraints) =>
-                                      TimelineHorizontalScrollbarRail(
-                                        key: const ValueKey<String>(
-                                          'xsheet-horizontal-scrollbar',
-                                        ),
-                                        controller: _layerScrollController,
-                                        viewportWidth:
-                                            constraints.hasBoundedWidth
-                                            ? constraints.maxWidth
-                                            : 0.0,
-                                        contentWidth: math.max(
-                                          columnsContentWidth,
-                                          _metrics.layerRowHeight,
-                                        ),
-                                        height: layerAxisScrollbarExtent,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              SizedBox(
-                                width: _metrics.layerControlsWidth,
-                                child: Column(
-                                  children: [
-                                    // R10 R6: the corner is the LEGEND COLUMN now.
-                                    // It used to read 'Frame' and label nothing —
-                                    // the sheet was the one grid whose columns had
-                                    // no headings at all. Same legend widget as the
-                                    // timeline's, stood up, so each icon lands on
-                                    // the header slot it names — and inside the same
-                                    // window, so the two are cut at one line.
-                                    LayerRailWindow(
-                                      axis: Axis.vertical,
-                                      rail: _railScrub._railExtent,
-                                      naturalExtent: naturalHeaderBlockExtent,
-                                      availableExtent: availableHeaderExtent,
-                                      child: TimelineLayerControlsHeader(
-                                        axis: Axis.vertical,
-                                        metrics: _metrics,
-                                        railExtent: naturalHeaderBlockExtent,
-                                        // The legend has no flyouts here to infer
-                                        // the optional columns from, so it is told
-                                        // what the ROWS carry — or its icons stop
-                                        // naming the columns under them.
-                                        hasOnionColumn:
-                                            widget
-                                                .hooks
-                                                .onToggleLayerOnionSkin !=
-                                            null,
-                                        hasBlendColumn:
-                                            widget
-                                                .hooks
-                                                .onLayerBlendModeSelected !=
-                                            null,
-                                        hiddenSections:
-                                            widget.hooks.hiddenSections,
-                                      ),
-                                    ),
-                                    SizedBox(height: splitterSlotExtent),
-                                    Expanded(
-                                      child: _buildRailScrubArea(geometry),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // ONE 16px column, split by the splitter: the RAIL's
-                              // own bar above it, the FRAME axis's below. The
-                              // column was already here at 14px carrying only the
-                              // frame bar — widening it and halving it is the whole
-                              // change (the user saw this before I did).
-                              SizedBox(
-                                width: _metrics.verticalScrollbarWidth,
-                                child: Column(
-                                  children: [
-                                    LayerRailScrollbar(
-                                      axis: Axis.vertical,
-                                      rail: _railScrub._railExtent,
-                                      naturalExtent: naturalHeaderBlockExtent,
-                                      availableExtent: availableHeaderExtent,
-                                      laneExtent:
-                                          _metrics.verticalScrollbarWidth,
-                                      keyPrefix: 'xsheet',
-                                    ),
-                                    SizedBox(height: splitterSlotExtent),
-                                    Expanded(
-                                      child: _buildVerticalScrollbar(geometry),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: widget.layers.isEmpty
-                                    ? Align(
-                                        alignment: Alignment.topLeft,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(8),
-                                          child: Text(
-                                            AppText.strings.tlNoLayers,
-                                            style: TextStyle(
-                                              color:
-                                                  colorScheme.onSurfaceVariant,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    : ScrollConfiguration(
-                                        // The custom rails ARE the scrollbars — the
-                                        // desktop auto-overlay doubled the vertical one
-                                        // (UI-R10 #22).
-                                        behavior: ScrollConfiguration.of(
-                                          context,
-                                        ).copyWith(scrollbars: false),
-                                        child: _buildLayerHorizontalViewport(
-                                          colorScheme,
-                                          entries,
-                                          sectionRuns,
-                                          geometry,
-                                        ),
-                                      ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+      controllers: [_frameScrollController, _layerScrollController],
+      child: ValueListenableBuilder<double?>(
+        valueListenable: _railScrub._railExtent,
+        builder: (context, _, _) => LayoutBuilder(
+          builder: (context, constraints) {
+            // The header block is ALWAYS its natural extent; the splitter
+            // says how much of it the panel shows. R10 R6 packed the name
+            // and R6a scaled the whole column — both are retired, and with
+            // them the arithmetic that had to guarantee the sheet a
+            // minimum reserve the header could not eat.
+            final naturalHeaderBlockExtent = _headers._naturalHeaderBlockExtent;
+            // What the sheet can spare for the header block — the ONE
+            // value the window, scrollbar and splitter read
+            // ([layerRailAvailableExtent]; the header is the rail stood
+            // up, so its axis is vertical).
+            final availableHeaderExtent = layerRailAvailableExtent(
+              constraints,
+              railAxis: Axis.vertical,
+              scrollbarLaneExtent: layerAxisScrollbarExtent,
+            );
+            final headerBlockHeight = _railScrub._railExtent.windowExtent(
+              naturalHeaderBlockExtent,
+              availableExtent: availableHeaderExtent,
+            );
+            // The grip's own slot gives ground last: in a panel so short
+            // that even a zero-height window plus 5px would overflow
+            // (the header sweep goes down to 20px), the slot is what
+            // shrinks rather than a yellow stripe appearing.
+            final splitterSlotExtent = constraints.hasBoundedHeight
+                ? math.min(
+                    LayerRailSplitter.thickness,
+                    math.max(
+                      0.0,
+                      constraints.maxHeight -
+                          layerAxisScrollbarExtent -
+                          headerBlockHeight,
                     ),
-                    // The grip floats over the 5px slot all three columns
-                    // reserve, so one grab spans the legend, the scrollbar
-                    // column and the headers. It starts after the frame-number
-                    // rail: that column is the FRAME axis's and the splitter
-                    // has nothing to say about it.
-                    Positioned(
-                      left: _metrics.layerControlsWidth,
-                      right: 0,
-                      top: layerAxisScrollbarExtent + headerBlockHeight,
-                      height: splitterSlotExtent,
-                      child: _buildRailSplitter(geometry),
+                  )
+                : LayerRailSplitter.thickness;
+            final bodyViewportHeight = constraints.hasBoundedHeight
+                ? (constraints.maxHeight -
+                          layerAxisScrollbarExtent -
+                          headerBlockHeight -
+                          splitterSlotExtent)
+                      .clamp(0.0, double.infinity)
+                      .toDouble()
+                : 0.0;
+            // Viewport paper fill (UI-R12 #16): the frame column runs to the
+            // body's bottom edge — recorded before every consumer of
+            // [_renderedFrameCount] below.
+            _viewportFillFrameCells = endlessViewportFillFrames(
+              viewportExtent: bodyViewportHeight,
+              frameCellExtent: _metrics.frameCellWidth,
+            );
+            _lastEffectiveFrameScrollOffset = _frameAxisOffset.value;
+            _frameSync.synchronize(
+              _frameScroll.effectiveFrameScrollOffset(
+                requestedOffset: _frameAxisOffset.value,
+                viewportExtent: bodyViewportHeight,
+              ),
+            );
+
+            // Hidden sections contribute no columns; the section band above
+            // the headers carries each section's bracket (shared row/run
+            // policy with the horizontal grid).
+            final entries = widget.hooks.displayRows(
+              widget.layers,
+              lanesForLayer: _lanesFor,
+              // R9 #23: the sheet's lanes open LEFTWARD — one axis rule
+              // with the horizontal grid's downward one, so "further from
+              // the layer means applied later" reads the same in both.
+              lanesPrecedeLayer: true,
+            );
+            // The row drag counts COLUMNS and lands on slots; only this
+            // list knows how many columns sit between two fx headers.
+            _dragRows = entries;
+            // The bundles are FIELDS here (the x-sheet reads them from more
+            // than one builder), so the assignment stays and only the
+            // construction moved.
+            _rangeGesture = _rangeGestures.rangeGestureFor(entries);
+            _laneRange = _rangeGestures.laneRangeFor(entries);
+            final sectionRuns = timelineSectionRuns(entries);
+
+            // The shared virtualization plan with the frame axis fed through the
+            // "horizontal" inputs (the axes are swapped in this grid). Computed
+            // INSIDE the window-bucket subscribers (UI-R9 #12a): scroll pixels
+            // re-window nothing.
+            final totalFrameContentHeight = _frameScroll._totalFrameContentHeight;
+            // Every column is ONE width (`timelineDisplayRowExtent` returns
+            // `layerRowHeight` unconditionally). The old note here claimed
+            // collapsed sections folded to a slim strip; they never did, and
+            // believing it would send someone to the height-table row
+            // resolver when `uniformRowDeltaForCrossOffset` — which requires
+            // this uniformity — is the right one.
+            final columnsContentWidth = timelineDisplayRowsExtent(
+              entries,
+              _metrics,
+            );
+            final cutEndBoundaryOffset = timelineCutEndBoundaryX(
+              playbackFrameCount: widget.hooks.playbackFrameCount,
+              metrics: _metrics,
+            );
+            // ONE value for the seven numbers above — see [_SheetGeometry].
+            final geometry = _SheetGeometry(
+              availableHeaderExtent: availableHeaderExtent,
+              naturalHeaderBlockExtent: naturalHeaderBlockExtent,
+              splitterSlotExtent: splitterSlotExtent,
+              bodyViewportHeight: bodyViewportHeight,
+              totalFrameContentHeight: totalFrameContentHeight,
+              columnsContentWidth: columnsContentWidth,
+              cutEndBoundaryOffset: cutEndBoundaryOffset,
+            );
+            // The DRAWN end, following a live trim so the blue line, the wash
+            // edge and the ruler's letters never split from the red line
+            // mid-drag (one function, four surfaces).
+
+            return Stack(
+              children: [
+                Column(
+                  children: [
+                    // The LAYER axis runs across the sheet, so its scrollbar is
+                    // the strip along the top — and the corner beside it holds
+                    // the seconds toggle, off the command bar.
+                    SizedBox(
+                      height: layerAxisScrollbarExtent,
+                      child: Row(
+                        children: [
+                          SizedBox(width: _metrics.layerControlsWidth),
+                          TimelineSecondsToggleCorner(
+                            key: const ValueKey<String>(
+                              'xsheet-time-display-toggle-button',
+                            ),
+                            width: _metrics.verticalScrollbarWidth,
+                            height: layerAxisScrollbarExtent,
+                            showSeconds: widget.hooks.showSeconds,
+                            onChanged: widget.hooks.onShowSecondsChanged,
+                          ),
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) =>
+                                  TimelineHorizontalScrollbarRail(
+                                    key: const ValueKey<String>(
+                                      'xsheet-horizontal-scrollbar',
+                                    ),
+                                    controller: _layerScrollController,
+                                    viewportWidth:
+                                        constraints.hasBoundedWidth
+                                        ? constraints.maxWidth
+                                        : 0.0,
+                                    contentWidth: math.max(
+                                      columnsContentWidth,
+                                      _metrics.layerRowHeight,
+                                    ),
+                                    height: layerAxisScrollbarExtent,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: _metrics.layerControlsWidth,
+                            child: Column(
+                              children: [
+                                // R10 R6: the corner is the LEGEND COLUMN now.
+                                // It used to read 'Frame' and label nothing —
+                                // the sheet was the one grid whose columns had
+                                // no headings at all. Same legend widget as the
+                                // timeline's, stood up, so each icon lands on
+                                // the header slot it names — and inside the same
+                                // window, so the two are cut at one line.
+                                LayerRailWindow(
+                                  axis: Axis.vertical,
+                                  rail: _railScrub._railExtent,
+                                  naturalExtent: naturalHeaderBlockExtent,
+                                  availableExtent: availableHeaderExtent,
+                                  child: TimelineLayerControlsHeader(
+                                    axis: Axis.vertical,
+                                    metrics: _metrics,
+                                    railExtent: naturalHeaderBlockExtent,
+                                    // The legend has no flyouts here to infer
+                                    // the optional columns from, so it is told
+                                    // what the ROWS carry — or its icons stop
+                                    // naming the columns under them.
+                                    hasOnionColumn:
+                                        widget
+                                            .hooks
+                                            .onToggleLayerOnionSkin !=
+                                        null,
+                                    hasBlendColumn:
+                                        widget
+                                            .hooks
+                                            .onLayerBlendModeSelected !=
+                                        null,
+                                    hiddenSections:
+                                        widget.hooks.hiddenSections,
+                                  ),
+                                ),
+                                SizedBox(height: splitterSlotExtent),
+                                Expanded(
+                                  child: _buildRailScrubArea(geometry),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // ONE 16px column, split by the splitter: the RAIL's
+                          // own bar above it, the FRAME axis's below. The
+                          // column was already here at 14px carrying only the
+                          // frame bar — widening it and halving it is the whole
+                          // change (the user saw this before I did).
+                          SizedBox(
+                            width: _metrics.verticalScrollbarWidth,
+                            child: Column(
+                              children: [
+                                LayerRailScrollbar(
+                                  axis: Axis.vertical,
+                                  rail: _railScrub._railExtent,
+                                  naturalExtent: naturalHeaderBlockExtent,
+                                  availableExtent: availableHeaderExtent,
+                                  laneExtent:
+                                      _metrics.verticalScrollbarWidth,
+                                  keyPrefix: 'xsheet',
+                                ),
+                                SizedBox(height: splitterSlotExtent),
+                                Expanded(
+                                  child: _buildVerticalScrollbar(geometry),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: widget.layers.isEmpty
+                                ? Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Text(
+                                        AppText.strings.tlNoLayers,
+                                        style: TextStyle(
+                                          color:
+                                              colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : ScrollConfiguration(
+                                    // The custom rails ARE the scrollbars — the
+                                    // desktop auto-overlay doubled the vertical one
+                                    // (UI-R10 #22).
+                                    behavior: ScrollConfiguration.of(
+                                      context,
+                                    ).copyWith(scrollbars: false),
+                                    child: _buildLayerHorizontalViewport(
+                                      colorScheme,
+                                      entries,
+                                      sectionRuns,
+                                      geometry,
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
-                );
-              },
-            ),
-          ),
+                ),
+                // The grip floats over the 5px slot all three columns
+                // reserve, so one grab spans the legend, the scrollbar
+                // column and the headers. It starts after the frame-number
+                // rail: that column is the FRAME axis's and the splitter
+                // has nothing to say about it.
+                Positioned(
+                  left: _metrics.layerControlsWidth,
+                  right: 0,
+                  top: layerAxisScrollbarExtent + headerBlockHeight,
+                  height: splitterSlotExtent,
+                  child: _buildRailSplitter(geometry),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

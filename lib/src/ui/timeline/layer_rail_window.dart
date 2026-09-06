@@ -23,6 +23,7 @@ import 'package:flutter/rendering.dart';
 
 import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
+import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
 import '../input/control_press_claim.dart';
@@ -46,6 +47,34 @@ const double layerRailScrollbarLaneExtent = AppScrollbarLane.wide;
 /// reserve in zoomed cells would move the rail's ceiling every time the
 /// user touched the zoom slider.
 const double layerRailFrameReserveExtent = 2 * timelineFrameCellWidth;
+
+/// What the panel can spare for the rail: everything but its own chrome
+/// (the [scrollbarLaneExtent] lane and the splitter) and the frame area's
+/// two-cell reserve — null when the panel is unbounded along the rail.
+///
+/// This is also what closes the grid's old <448px overflow — the rail used
+/// to be a fixed 434 whatever the panel had. Computed ONCE and handed to
+/// every part of the rail so they cannot disagree: the window, the
+/// scrollbar and the splitter all read the one value. The timeline, the
+/// x-sheet and the storyboard each spelled the subtraction (the audit's
+/// clone scan, 2026-09-06); [railAxis] is the rail's own direction, the
+/// x-sheet's header being the rail stood up.
+double? layerRailAvailableExtent(
+  BoxConstraints constraints, {
+  required Axis railAxis,
+  required double scrollbarLaneExtent,
+}) {
+  final panelExtent = extentAlong(railAxis, constraints.biggest);
+  if (!panelExtent.isFinite) {
+    return null;
+  }
+  return (panelExtent -
+          scrollbarLaneExtent -
+          LayerRailSplitter.thickness -
+          layerRailFrameReserveExtent)
+      .clamp(0.0, double.infinity)
+      .toDouble();
+}
 
 /// The rails that size themselves, one entry per PANEL.
 ///

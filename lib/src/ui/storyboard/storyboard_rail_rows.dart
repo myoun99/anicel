@@ -243,8 +243,9 @@ class _StoryboardRailRows {
     }
     return _state.widget.rowFilter.allows(
       layer,
-      fxEnabled:
-          _state.widget.layerFxStateOf?.call(layer.id) != LayerFxState.off,
+      fxEnabled: fxEnabledFromState(
+        _state.widget.layerFxStateOf?.call(layer.id),
+      ),
     );
   }
 
@@ -265,7 +266,7 @@ class _StoryboardRailRows {
       return true;
     }
     return _state.widget.rowFilter.allowsFacets(
-      fxEnabled: _state.widget.trackFxStateOf?.call(track) != LayerFxState.off,
+      fxEnabled: fxEnabledFromState(_state.widget.trackFxStateOf?.call(track)),
     );
   }
 

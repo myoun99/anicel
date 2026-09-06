@@ -420,4 +420,34 @@ class TimelineGridHooks {
   /// touches the host.
   final ValueListenable<double>? Function(LayerId layerId)?
   layerOpacityOverrideOf;
+
+  /// Whether ANY of [layerId]'s FX apply — [layerFxStateOf]'s answer read
+  /// through the one rule ([fxEnabledFromState]); no resolver means on.
+  bool isLayerFxEnabled(LayerId layerId) =>
+      fxEnabledFromState(layerFxStateOf?.call(layerId));
+
+  /// The rows a grid shows for [layers]: [buildTimelineDisplayRows] fed the
+  /// bundle's own view state — open twirls, hidden sections, the row
+  /// filter, folded attach groups, the active layer and the fx predicate.
+  ///
+  /// The rail and the sheet each listed these six hand-offs (the audit's
+  /// clone scan, 2026-09-06); a grid that forgot one showed rows the other
+  /// hid. What is a surface's own stays a parameter: its lane provider and
+  /// which side of the layer its lanes open on ([lanesPrecedeLayer], R9
+  /// #23 — the sheet's open LEFTWARD).
+  List<TimelineDisplayRow> displayRows(
+    List<Layer> layers, {
+    required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
+    bool lanesPrecedeLayer = false,
+  }) => buildTimelineDisplayRows(
+    layers: layers,
+    expandedLayerIds: expandedLaneLayerIds,
+    lanesForLayer: lanesForLayer,
+    hiddenSections: hiddenSections,
+    rowFilter: rowFilter,
+    collapsedAttachBaseIds: collapsedAttachBaseIds,
+    activeLayerId: activeLayerId,
+    fxEnabledOf: isLayerFxEnabled,
+    lanesPrecedeLayer: lanesPrecedeLayer,
+  );
 }

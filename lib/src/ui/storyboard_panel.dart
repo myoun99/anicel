@@ -1290,17 +1290,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             // Viewport paper fill (UI-R12 #16): the strips run to the
             // viewport's right edge — recorded FIRST so the SE strip rows and
             // the body agree on the rendered extent within one build.
-            // What the panel can spare for the rail: everything but its own
-            // chrome and the strips' two-cell reserve. Recorded so
-            // `_buildBody` and every part of the rail read the ONE value.
-            _availableRailWidth = constraints.hasBoundedWidth
-                ? (constraints.maxWidth -
-                          StoryboardPanel._scrollbarLaneWidth -
-                          LayerRailSplitter.thickness -
-                          layerRailFrameReserveExtent)
-                      .clamp(0.0, double.infinity)
-                      .toDouble()
-                : null;
+            // What the panel can spare for the rail ([layerRailAvailableExtent]).
+            // Recorded so `_buildBody` and every part of the rail read the
+            // ONE value.
+            _availableRailWidth = layerRailAvailableExtent(
+              constraints,
+              railAxis: Axis.horizontal,
+              scrollbarLaneExtent: StoryboardPanel._scrollbarLaneWidth,
+            );
             _stripViewportWidth = constraints.hasBoundedWidth
                 ? (constraints.maxWidth -
                           StoryboardPanel._scrollbarLaneWidth -
