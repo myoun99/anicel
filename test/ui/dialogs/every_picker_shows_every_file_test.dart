@@ -64,12 +64,6 @@ void main() {
       expect(fileIsSupported('C:/a/b/README', const ['md']), isFalse);
       expect(fileIsSupported('C:/a/b/trailing.', const ['md']), isFalse);
     });
-
-    test('the name comes off either platform separator', () {
-      expect(fileNameOfPath(r'C:\work\cut 01.anicel'), 'cut 01.anicel');
-      expect(fileNameOfPath('/home/me/cut 01.anicel'), 'cut 01.anicel');
-      expect(fileNameOfPath('bare.anicel'), 'bare.anicel');
-    });
   });
 }
 

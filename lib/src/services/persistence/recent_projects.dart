@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/path_names.dart';
+
 /// PICK-4: the projects this user opened last.
 ///
 /// Every native app has this menu, and going all-native makes it load-bearing
@@ -23,6 +25,10 @@ class RecentProject {
     // returns `C:\Users\…\Cut12.anicel`, and [name] — which splits on `/` —
     // would then label every menu row with its entire absolute path. The
     // reconnect join `'$folder/$name'` assumes the same spelling.
+    //
+    // ⚠️[name] answers through [fileNameOfPath] now, which normalises for
+    // itself — the clause above is kept because the OTHER two readers still
+    // need this: the reconnect join, and [path]'s "always forward slashes".
   }) : path = path.replaceAll('\\', '/');
 
   /// The project file. Always forward slashes.
@@ -50,10 +56,7 @@ class RecentProject {
   /// deleting the row would hide a project they may well still have.
   final bool needsReconnect;
 
-  String get name {
-    final slash = path.lastIndexOf('/');
-    return slash < 0 ? path : path.substring(slash + 1);
-  }
+  String get name => fileNameOfPath(path);
 
   RecentProject copyWith({bool? needsReconnect, String? folderBookmark}) =>
       RecentProject(
