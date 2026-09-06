@@ -3,7 +3,11 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/active_cut_edits.dart';
+import 'package:anicel/src/ui/session/session_roles.dart';
 
 /// FOUR VERBS, ONE ENVELOPE: gate, take the ACTIVE row's id, run one
 /// coordinator command keyed by (cutId, layerId), then refresh KEEPING
@@ -77,7 +81,65 @@ void main() {
     );
   });
 
-  test('a closed gate runs nothing at all', () {
+  /// The envelope names the row it STARTED on, not whatever the selection
+  /// happens to be after the command ran. Today the two coincide —
+  /// `refreshAfterCutCommand` falls back to `activeLayerId` — so the four
+  /// verbs above cannot tell the difference; this drives the envelope
+  /// directly, where they can.
+  test('the refresh is told the row the verb started on', () {
+    final s = session();
+    final rows = s.requireActiveCut.layers;
+    final first = rows.first;
+    final second = rows.last;
+    expect(first.id, isNot(second.id), reason: 'premise: two rows');
+
+    final selection = _StandingOn(first);
+    final changes = _RecordingChanges();
+    final edits = ActiveCutEdits(
+      project: _OneCut(s.requireActiveCut),
+      selection: selection,
+      changes: changes,
+    );
+
+    var ran = 0;
+    edits.onActiveLayer(
+      when: true,
+      command: (cutId, layerId) {
+        ran += 1;
+        expect(layerId, first.id);
+        expect(cutId, s.requireActiveCut.id);
+        // The command re-seats the selection, as a cut command may.
+        selection.standing = second;
+      },
+    );
+
+    expect(ran, 1);
+    expect(
+      changes.preferred,
+      first.id,
+      reason: '⛔the row the verb acted on, not the one left standing',
+    );
+    expect(changes.refreshes, 1);
+    expect(changes.notifies, 1);
+  });
+
+  test('a closed gate runs nothing at all — no command, no refresh, no '
+      'notify', () {
+    final s = session();
+    final changes = _RecordingChanges();
+    final edits = ActiveCutEdits(
+      project: _OneCut(s.requireActiveCut),
+      selection: _StandingOn(s.requireActiveCut.layers.first),
+      changes: changes,
+    );
+
+    edits.onActiveLayer(when: false, command: (_, _) => fail('gated out'));
+
+    expect(changes.refreshes, 0);
+    expect(changes.notifies, 0);
+  });
+
+  test('a closed gate on a real verb changes nothing', () {
     final s = session();
     final instruction = s.layers
         .where((l) => l.kind != LayerKind.animation)
@@ -95,4 +157,58 @@ void main() {
       expect(s.activeLayerId, LayerId(instruction.value));
     }
   });
+}
+
+/// Only [activeLayer] is read by the envelope; the rest of the role is
+/// forwarded so the fake does not have to restate an interface it is not
+/// about.
+class _StandingOn implements SelectionAccess {
+  _StandingOn(this.standing);
+
+  Layer standing;
+
+  @override
+  Layer? get activeLayer => standing;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _OneCut implements ProjectAccess {
+  _OneCut(this._cut);
+
+  final Cut _cut;
+
+  @override
+  Cut get requireActiveCut => _cut;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingChanges implements ChangeSink {
+  LayerId? preferred;
+  int refreshes = 0;
+  int notifies = 0;
+
+  @override
+  void notifyChanged() => notifies += 1;
+
+  @override
+  void refreshAfterCutCommand({
+    LayerId? preferredActiveLayerId,
+    int? preferredFrameIndex,
+  }) {
+    refreshes += 1;
+    preferred = preferredActiveLayerId;
+  }
+
+  @override
+  void refreshLiveAudioSchedule() {}
+
+  @override
+  bool standsDownFromRetime(LayerId layerId) => false;
+
+  @override
+  void warmActiveCut() {}
 }
