@@ -128,18 +128,13 @@ List<CanvasPoint> cutStampCentersAlong({
   final spacing = math
       .max(piece.stampWidth, piece.stampHeight)
       .toDouble();
-  final dx = to.x - from.x;
-  final dy = to.y - from.y;
-  final distance = math.sqrt(dx * dx + dy * dy);
+  final distance = from.distanceTo(to);
   if (distance < spacing) {
     return const [];
   }
   final steps = distance ~/ spacing;
   return [
     for (var step = 1; step <= steps; step += 1)
-      CanvasPoint(
-        x: from.x + dx * (step * spacing / distance),
-        y: from.y + dy * (step * spacing / distance),
-      ),
+      CanvasPoint.lerp(from, to, step * spacing / distance),
   ];
 }

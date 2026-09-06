@@ -149,7 +149,7 @@ class TransformTrack {
       center: position.resolveAt(
         frameIndex: frameIndex,
         orElse: () => fallback().center,
-        lerp: lerpCanvasPoint,
+        lerp: CanvasPoint.lerp,
       ),
       zoom: scale.resolveAt(
         frameIndex: frameIndex,
@@ -472,12 +472,9 @@ CanvasPoint? resolveAnchorTrackAt(
   return track.resolveAt(
     frameIndex: frameIndex,
     orElse: () => CanvasPoint(x: 0, y: 0),
-    lerp: lerpCanvasPoint,
+    lerp: CanvasPoint.lerp,
   );
 }
-
-CanvasPoint lerpCanvasPoint(CanvasPoint a, CanvasPoint b, double t) =>
-    CanvasPoint(x: lerpDouble(a.x, b.x, t), y: lerpDouble(a.y, b.y, t));
 
 double lerpDouble(double a, double b, double t) => a + (b - a) * t;
 

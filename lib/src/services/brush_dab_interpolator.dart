@@ -29,9 +29,7 @@ class BrushDabInterpolator {
     }
 
     final spacing = spacingForBrushSize(nextRaw.size, spacingRatio);
-    final dx = nextRaw.center.x - previous.center.x;
-    final dy = nextRaw.center.y - previous.center.y;
-    final distance = math.sqrt(dx * dx + dy * dy);
+    final distance = previous.center.distanceTo(nextRaw.center);
     if (distance < spacing) {
       return const <BrushDab>[];
     }
@@ -42,10 +40,7 @@ class BrushDabInterpolator {
     return List<BrushDab>.generate(stepCount, (index) {
       final fraction = (index + 1) / stepCount;
       return nextRaw.copyWith(
-        center: CanvasPoint(
-          x: previous.center.x + dx * fraction,
-          y: previous.center.y + dy * fraction,
-        ),
+        center: CanvasPoint.lerp(previous.center, nextRaw.center, fraction),
         // Interpolate pressure along the segment so pressure-driven size or
         // opacity ramps smoothly between input samples instead of snapping
         // to the endpoint value on every inserted dab.

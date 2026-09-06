@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import '../models/canvas_point.dart';
 
 /// Pull-string stroke stabilization (P7): the pen drags a brush point on a
@@ -23,16 +21,14 @@ class StrokeStabilizer {
 
   /// Feeds one pen sample; returns the (possibly unmoved) brush point.
   CanvasPoint follow(CanvasPoint pen) {
-    final dx = pen.x - _brush.x;
-    final dy = pen.y - _brush.y;
-    final distance = math.sqrt(dx * dx + dy * dy);
+    final distance = _brush.distanceTo(pen);
     if (distance <= ropeLength || distance == 0) {
       return _brush;
     }
-    final travel = (distance - ropeLength) / distance;
-    return _brush = CanvasPoint(
-      x: _brush.x + dx * travel,
-      y: _brush.y + dy * travel,
+    return _brush = CanvasPoint.lerp(
+      _brush,
+      pen,
+      (distance - ropeLength) / distance,
     );
   }
 }
