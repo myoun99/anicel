@@ -11,6 +11,7 @@ import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
+import '../../services/project_lookup.dart' show cutLocationOrNull;
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 
 // The size/naming values moved to the model layer (EX1 — the export spec
@@ -86,29 +87,15 @@ List<Cut> resolveExportCuts({
   required CutId activeCutId,
   required ExportRange range,
 }) {
-  Track? activeTrack;
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == activeCutId) {
-        activeTrack = track;
-        break;
-      }
-    }
-  }
-  activeTrack ??= project.tracks.isEmpty ? null : project.tracks.first;
+  final location = cutLocationOrNull(project, activeCutId);
+  final activeTrack = location?.track ?? project.tracks.firstOrNull;
   if (activeTrack == null) {
     return const [];
   }
-
   if (range == ExportRange.allCuts) {
     return activeTrack.cuts;
   }
-  for (final cut in activeTrack.cuts) {
-    if (cut.id == activeCutId) {
-      return [cut];
-    }
-  }
-  return const [];
+  return location == null ? const [] : [location.cut];
 }
 
 /// Ordered composite frames for the chosen range. Every cut plays at least

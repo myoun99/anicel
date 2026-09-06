@@ -5,6 +5,7 @@ import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../../services/project_lookup.dart' show cutLocationOrNull;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import 'active_cut_edits.dart';
@@ -268,14 +269,7 @@ class CutVerbs {
       return null;
     }
     final project = _project.repository.requireProject();
-    Cut? targetCut;
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == targetCutId) {
-          targetCut = cut;
-        }
-      }
-    }
+    final targetCut = cutLocationOrNull(project, targetCutId)?.cut;
     if (targetCut == null) {
       return null;
     }
