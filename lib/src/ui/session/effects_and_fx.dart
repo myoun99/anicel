@@ -520,23 +520,17 @@ class EffectsAndFx {
     );
   }
 
-  /// Runs one `effectsWith*` transform over [trackId]'s chain and banks the
-  /// result as one undo step; false when there is no such track or the
-  /// transform declines (it answers null when nothing would change).
-  ///
-  /// The transform half already lived in effect_lane_editing.dart; this is
-  /// the envelope around it, which the three track verbs had each written
-  /// out.
+  /// Runs one `effectsWith*` transform over [trackId]'s chain and banks it
+  /// as one undo step; false when there is no such track, or the transform
+  /// declines (null = nothing would change). The envelope the three track
+  /// verbs each wrote out around effect_lane_editing.dart's transforms.
   bool _editTrackEffects(
     TrackId trackId, {
     required String description,
-    required List<LayerEffect>? Function(List<LayerEffect> effects) edit,
+    required List<LayerEffect>? Function(List<LayerEffect> fx) edit,
   }) {
     final track = _project.trackById(trackId);
-    if (track == null) {
-      return false;
-    }
-    final next = edit(track.effects);
+    final next = track == null ? null : edit(track.effects);
     if (next == null) {
       return false;
     }
@@ -548,7 +542,7 @@ class EffectsAndFx {
       _editTrackEffects(
         trackId,
         description: 'Remove effect',
-        edit: (effects) => effectsWithRemoved(effects, effectId),
+        edit: (fx) => effectsWithRemoved(fx, effectId),
       );
 
   /// A V-track effect group's RESET (R5) — the track twin of
@@ -558,8 +552,8 @@ class EffectsAndFx {
       _editTrackEffects(
         trackId,
         description: 'Reset group',
-        edit: (effects) => effectsWithGroupReset(
-          effects,
+        edit: (fx) => effectsWithGroupReset(
+          fx,
           laneId: headerLaneId,
           frameIndexes: [_timeline.timelineController.currentFrameIndex],
         ),
