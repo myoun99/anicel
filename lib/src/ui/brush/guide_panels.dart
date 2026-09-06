@@ -9,6 +9,7 @@ import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/settings_prompt_text.dart';
 
 /// A fresh symmetry guide for [canvasSize].
 ///
@@ -318,22 +319,13 @@ class GuideSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final theme = Theme.of(context);
     final id = selectedGuideId;
     final guide = id == null ? null : guides.guideFor(id);
     if (guide == null) {
       return Padding(
         key: const ValueKey<String>('guide-settings-none'),
         padding: const EdgeInsets.all(12),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Text(
-            strings.guideSelectPrompt,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
+        child: SettingsPromptText(strings.guideSelectPrompt),
       );
     }
     final shape = guide.shape;

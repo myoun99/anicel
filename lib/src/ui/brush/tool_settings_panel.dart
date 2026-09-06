@@ -22,6 +22,7 @@ import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
+import '../widgets/settings_prompt_text.dart';
 import '../listenable_rebind.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
@@ -255,7 +256,6 @@ class _CutGrabSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Padding(
       key: const ValueKey<String>('tool-settings-cut-grab'),
       padding: const EdgeInsets.all(12),
@@ -263,15 +263,7 @@ class _CutGrabSettings extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Align(
-            alignment: Alignment.topLeft,
-            child: Text(
-              AppText.strings.toolCutHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+          SettingsPromptText(AppText.strings.toolCutHint),
           _ClosePolygonButton(
             shapeKind: shapeKind,
             selectionCommands: selectionCommands,
@@ -358,15 +350,7 @@ class _CutStampSettings extends StatelessWidget {
           return Padding(
             key: const ValueKey<String>('tool-settings-cut-stamp'),
             padding: const EdgeInsets.all(12),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Text(
-                AppText.strings.toolCutNothingHeld,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
+            child: SettingsPromptText(AppText.strings.toolCutNothingHeld),
           );
         }
         return ListView(

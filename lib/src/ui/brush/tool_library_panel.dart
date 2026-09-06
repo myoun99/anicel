@@ -5,6 +5,7 @@ import '../../models/canvas_shape_kind.dart';
 import '../text/app_strings.dart';
 import 'brush_tool_state.dart';
 import 'transform_tool_options.dart';
+import '../widgets/settings_prompt_text.dart';
 
 /// One shape tile, in rail order.
 ///
@@ -314,19 +315,10 @@ class _ToolNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Padding(
       key: ValueKey<String>(keyValue),
       padding: const EdgeInsets.all(12),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          note,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
+      child: SettingsPromptText(note),
     );
   }
 }
