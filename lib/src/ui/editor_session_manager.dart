@@ -7045,7 +7045,7 @@ class EditorSessionManager extends ChangeNotifier
   /// their project. A complete archive staged up front costs the same
   /// move and can never strand a husk.
   /// Returns the media entry names the archive was written with, which is
-  /// what [adoptPlacedArchive] needs if this copy becomes the project.
+  /// what [adoptArchiveAt] needs if this copy becomes the project.
   Future<Map<String, String>> writeArchiveCopy(
     String path, {
     void Function(double)? onProgress,
@@ -7092,13 +7092,30 @@ class EditorSessionManager extends ChangeNotifier
   /// MOVED cannot back a ref, and the destination may be somewhere the app
   /// cannot read back on demand either. The pixels stay where they were —
   /// in RAM — which is what a never-saved session was already doing.
-  void adoptPlacedArchive(
-    String placedPath, {
+  /// THE "the session now lives at [path]" transition, for the placed
+  /// archive above AND for an ordinary save's tail — nine steps that were
+  /// written out twice, once here and once at the end of
+  /// [_writeProjectToFile], because the placed variant was carved out for
+  /// iOS as a copy of the save's tail rather than by extracting it.
+  ///
+  /// The recovered work now lives in the project file, so the snapshot is
+  /// ordinary again and the retirement below is free to take it.
+  ///
+  /// A save is the session saying it is worth keeping after all; whatever
+  /// was discarded before it is not this session's state any more.
+  ///
+  /// No conform refresh here any more. It existed because a take MOVED
+  /// into the project on first save, which changed the path a conform is
+  /// keyed by; takes stay put now, and the cache is keyed by source
+  /// rather than by anything the project owns, so a save moves nothing a
+  /// conform depends on.
+  void adoptArchiveAt(
+    String path, {
     required Map<String, String> mediaEntryNames,
   }) {
     final previousPath = _projectFilePath;
     _mediaEntryNames = mediaEntryNames;
-    _projectFilePath = placedPath;
+    _projectFilePath = path;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;
     _invalidateConformStoredBytes();
@@ -7107,7 +7124,7 @@ class EditorSessionManager extends ChangeNotifier
     if (previousPath != null) {
       ProjectAutosaveService.retireSidecarsFor(previousPath);
     }
-    ProjectAutosaveService.retireSidecarsFor(placedPath);
+    ProjectAutosaveService.retireSidecarsFor(path);
     notifyListeners();
   }
 
@@ -7247,34 +7264,15 @@ class EditorSessionManager extends ChangeNotifier
         onProgress: onProgress,
       );
     }
-    _mediaEntryNames = mediaEntryNamesFor(mediaToStore);
     // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
     // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE
     // rather than on close or on import-undo, because this is the one
-    // moment the bytes provably live somewhere else.
+    // moment the bytes provably live somewhere else. The save's own step,
+    // so it stays here rather than joining the adoption below.
     for (final path in mediaToStore.keys) {
       mediaStagingStore.retire(path);
     }
-    _projectFilePath = filePath;
-    _hasUnsavedChanges = false;
-    _completedSaveGeneration += 1;
-    _invalidateConformStoredBytes();
-    // The recovered work now lives in the project file, so the snapshot is
-    // ordinary again and the retirement below is free to take it.
-    _recoveredFromSidecar = null;
-    // A save is the session saying it is worth keeping after all; whatever
-    // was discarded before it is not this session's state any more.
-    _discardedUnsavedWork = false;
-    // No conform refresh here any more. It existed because a take MOVED
-    // into the project on first save, which changed the path a conform is
-    // keyed by; takes stay put now, and the cache is keyed by source
-    // rather than by anything the project owns, so a save moves nothing a
-    // conform depends on.
-    if (previousPath != null) {
-      ProjectAutosaveService.retireSidecarsFor(previousPath);
-    }
-    ProjectAutosaveService.retireSidecarsFor(filePath);
-    notifyListeners();
+    adoptArchiveAt(filePath, mediaEntryNames: mediaEntryNamesFor(mediaToStore));
   }
 
   /// The sidecar this session was RECOVERED from, while its contents still

@@ -1917,7 +1917,7 @@ Future<void> promptSaveProjectAs(
     // write to afterwards, and Save As died with 「the location refused
     // both a direct write and a coordinated replace」 on a path it had
     // just successfully filled (실기 08-27, iPhone).
-    session.adoptPlacedArchive(path, mediaEntryNames: written);
+    session.adoptArchiveAt(path, mediaEntryNames: written);
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );
