@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
+import '../../models/audio_clip.dart' show AudioVolumeKey;
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
-import '../../services/audio/audio_mixer_reference.dart' show envelopeGainAt;
+import '../../services/audio/audio_mixer_reference.dart'
+    show audioVolumeShapeAt, envelopeGainAt;
 import 'audio_playback_schedule.dart';
 import 'canvas_playback_controller.dart';
 
@@ -226,29 +227,19 @@ class AudioPlaybackSync {
   /// overlapping shapes multiply. Clamped into 0..1 — platform players
   /// don't amplify past 1 (the device mixer applies everything exactly).
   double _volumeAt(ScheduledAudioClip clip, int frame) {
-    var volume = clip.gain;
     final position = frame - clip.startFrame;
-    if (clip.volumeKeys.isNotEmpty) {
-      volume *= _envelopeGainAt(clip.volumeKeys, position);
-    }
-    if (clip.fadeInFrames > 0 && position < clip.fadeInFrames) {
-      volume *= _rampShape(
-        math.max(0, position / clip.fadeInFrames),
-        clip.fadeCurve,
-      );
-    }
-    final remaining = clip.endFrameExclusive - frame;
-    if (clip.fadeOutFrames > 0 && remaining < clip.fadeOutFrames) {
-      volume *= _rampShape(
-        math.max(0, remaining / clip.fadeOutFrames),
-        clip.fadeCurve,
-      );
-    }
-    return volume.clamp(0.0, 1.0);
+    return audioVolumeShapeAt(
+      gain: clip.gain,
+      envelopeGain: _envelopeGainAt(clip.volumeKeys, position),
+      position: position,
+      remaining: clip.endFrameExclusive - frame,
+      fadeInLength: clip.fadeInFrames,
+      fadeOutLength: clip.fadeOutFrames,
+      // The curve's ordinal is the mixer's 0/1 — the bridge the schedule
+      // converter already crosses for AudioMixClip.fadeCurve.
+      fadeCurve: clip.fadeCurve.index,
+    ).clamp(0.0, 1.0);
   }
-
-  static double _rampShape(double ramp, AudioFadeCurve curve) =>
-      curve == AudioFadeCurve.equalPower ? math.sqrt(ramp) : ramp;
 
   /// Frame-domain twin of the mixer's envelope: [envelopeGainAt] with the
   /// frame as the position, so both domains read the same law.

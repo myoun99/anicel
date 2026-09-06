@@ -528,4 +528,74 @@ void main() {
     rampController.seekToGlobalFrame(8);
     expect(volumeLog, ['a.wav 0.80']);
   });
+
+  test('the envelope and the equal-power curve shape the platform volume the '
+      'way the mixer shapes the bus', () {
+    // One fold in two domains (the round-8 audit, 2026-09-06): the mixer's
+    // audioVolumeShapeAt in samples, this sync in frames. A half-gain
+    // envelope under a 4-frame equal-power fade-in: frame 0 → 0, frame 2 →
+    // 0.5 × √(2/4) = 0.35.
+    final rampLog = <String>[];
+    final volumeLog = <String>[];
+    final project = Project(
+      id: const ProjectId('shape-project'),
+      name: 'Shape',
+      createdAt: DateTime.utc(2026, 7, 10),
+      tracks: [
+        Track(
+          id: const TrackId('shape-track'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('shape-cut'),
+              name: 'S',
+              duration: 10,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: const [],
+            ),
+          ],
+          seLayers: [
+            _seLayer('se-shape', file: 'a.wav', start: 0, length: 10).copyWith(
+              audioClips: const [
+                AudioClip(
+                  filePath: 'a.wav',
+                  frameId: FrameId('se-shape-frame'),
+                  fadeInFrames: 4,
+                  fadeCurve: AudioFadeCurve.equalPower,
+                  volumeKeys: [
+                    AudioVolumeKey(frame: 0, gain: 0.5),
+                    AudioVolumeKey(frame: 10, gain: 0.5),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final shapeController = CanvasPlaybackController(
+      resolveProject: () => project,
+      resolveActiveCutId: () => const CutId('shape-cut'),
+      resolveActiveTrackId: () => const TrackId('shape-track'),
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
+    );
+    final sync = AudioPlaybackSync(
+      controller: shapeController,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
+      durationSecondsFor: (path) => _durations[path],
+      playerFactory: () => _FakeClipPlayer(rampLog, volumeLog: volumeLog),
+      resolveProject: () => project,
+    )..attach();
+    addTearDown(sync.dispose);
+    addTearDown(shapeController.dispose);
+
+    shapeController.play(scope: PlaybackScope.activeCut);
+    expect(volumeLog, ['a.wav 0.00']);
+    volumeLog.clear();
+    shapeController.seekToGlobalFrame(2);
+    expect(volumeLog, ['a.wav 0.35']);
+    volumeLog.clear();
+    shapeController.seekToGlobalFrame(6);
+    expect(volumeLog, ['a.wav 0.50'], reason: 'past the fade, the envelope');
+  });
 }

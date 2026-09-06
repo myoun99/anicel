@@ -114,6 +114,26 @@ void main() {
     expect(audioClipVolumeAt(clip, 50), closeTo(1.0, 1e-12));
   });
 
+  test('the fade-out ramps into the clip end with the equal-power curve, '
+      'and the mixer volume is NOT clamped', () {
+    // The same shape the playback sync applies in frames
+    // (audio_playback_sync_test) — one fold since the round-8 audit
+    // (2026-09-06); the sync clamps at ITS call site, the bus keeps its
+    // headroom.
+    const clip = AudioMixClip(
+      sourceIndex: 0,
+      startSample: 0,
+      endSample: 100,
+      gain: 2.0,
+      fadeOutSamples: 10,
+      fadeCurve: 1,
+    );
+    expect(audioClipVolumeAt(clip, 50), 2.0, reason: 'past unity, unclamped');
+    // Remaining 5 of 10 → sqrt(0.5), times gain 2.
+    expect(audioClipVolumeAt(clip, 95), closeTo(2 * math.sqrt(0.5), 1e-12));
+    expect(audioClipVolumeAt(clip, 100), 0.0, reason: 'the end is silence');
+  });
+
   test('the SE layer model carries fader/pan and the clip carries curve/'
       'envelope through JSON', () {
     final layer = Layer(

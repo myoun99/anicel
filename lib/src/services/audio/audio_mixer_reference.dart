@@ -179,6 +179,40 @@ class AudioMixSource {
   int get length => channels <= 0 ? 0 : samples.length ~/ channels;
 }
 
+/// The volume shape at one position of a clip: gain × envelope × fade-in
+/// ramp × fade-out ramp, the ramps through [audioFadeRamp] with
+/// [fadeCurve] (0 linear, 1 equal-power).
+///
+/// ⛔ONE LAW, TWO DOMAINS, one level up from [envelopeGainAt]: the mixer
+/// asks in clip-local SAMPLES ([audioClipVolumeAt]) and the playback sync
+/// asks in FRAMES, so [position] (from the clip's start), [remaining] (to
+/// its end) and the two fade lengths arrive as plain numbers — no point
+/// type, no per-sample closure. The sync kept its own fold with its own
+/// ramp until the round-8 audit (2026-09-06).
+///
+/// ⚠️The multiplication order is UNCHANGED from the C `qa_audio_clip_volume`
+/// — gain, envelope, fade-in, fade-out — which is what keeps the native
+/// parity test byte-equal.
+double audioVolumeShapeAt({
+  required double gain,
+  required double envelopeGain,
+  required int position,
+  required int remaining,
+  required int fadeInLength,
+  required int fadeOutLength,
+  required int fadeCurve,
+}) {
+  var volume = gain;
+  volume *= envelopeGain;
+  if (fadeInLength > 0 && position < fadeInLength) {
+    volume *= audioFadeRamp(position / fadeInLength, fadeCurve);
+  }
+  if (fadeOutLength > 0 && remaining < fadeOutLength) {
+    volume *= audioFadeRamp(remaining / fadeOutLength, fadeCurve);
+  }
+  return volume;
+}
+
 /// The clip's volume envelope at one timeline position.
 ///
 /// Deliberately NOT clamped to [0, 1] — see the note on the C twin: the old
@@ -187,19 +221,16 @@ class AudioMixSource {
 /// in preview than in the rendered file. The bus has headroom; clipping is
 /// the output stage's job.
 double audioClipVolumeAt(AudioMixClip clip, int positionSample) {
-  var volume = clip.gain;
   final position = positionSample - clip.startSample;
-  if (clip.envelope.isNotEmpty) {
-    volume *= audioEnvelopeAt(clip.envelope, position);
-  }
-  if (clip.fadeInSamples > 0 && position < clip.fadeInSamples) {
-    volume *= audioFadeRamp(position / clip.fadeInSamples, clip.fadeCurve);
-  }
-  final remaining = clip.endSample - positionSample;
-  if (clip.fadeOutSamples > 0 && remaining < clip.fadeOutSamples) {
-    volume *= audioFadeRamp(remaining / clip.fadeOutSamples, clip.fadeCurve);
-  }
-  return volume;
+  return audioVolumeShapeAt(
+    gain: clip.gain,
+    envelopeGain: audioEnvelopeAt(clip.envelope, position),
+    position: position,
+    remaining: clip.endSample - positionSample,
+    fadeInLength: clip.fadeInSamples,
+    fadeOutLength: clip.fadeOutSamples,
+    fadeCurve: clip.fadeCurve,
+  );
 }
 
 /// Which source channel feeds [outChannel]: a mono source feeds every
