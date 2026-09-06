@@ -394,6 +394,28 @@ String _extensionOf(String fileName) {
 
 const Set<String> _imageExtensions = {'png', 'jpg', 'jpeg', 'webp', 'bmp'};
 
+/// Rule F, stated once for cels and pictures alike: revisions sort by
+/// rank, the LATEST is the one kept, and every older one is listed beside
+/// it by file. [rankOf] and [fileOf] are the two things a revision of
+/// either kind can say about itself.
+({List<T> sorted, T latest, List<String> olderFiles}) _foldRevisions<T>(
+  List<T> revisions, {
+  required int Function(T revision) rankOf,
+  required String Function(T revision) fileOf,
+}) {
+  final sorted = [...revisions]
+    ..sort((a, b) => rankOf(a).compareTo(rankOf(b)));
+  final latest = sorted.last;
+  return (
+    sorted: sorted,
+    latest: latest,
+    olderFiles: [
+      for (final older in sorted)
+        if (!identical(older, latest)) fileOf(older),
+    ],
+  );
+}
+
 /// Rule F for the pictures: BG and BOOK revisions fold to the latest, the
 /// older ones listed beside it, sorted by name.
 List<ParsedPicture> _foldPictures(
@@ -401,17 +423,16 @@ List<ParsedPicture> _foldPictures(
 ) {
   final pictures = <ParsedPicture>[];
   for (final entry in pictureFiles.entries) {
-    final revisions = [...entry.value]
-      ..sort((a, b) => a.rank.compareTo(b.rank));
-    final latest = revisions.last;
+    final folded = _foldRevisions(
+      entry.value,
+      rankOf: (revision) => revision.rank,
+      fileOf: (revision) => revision.file,
+    );
     pictures.add(
       ParsedPicture(
         name: entry.key,
-        file: latest.file,
-        olderRevisions: [
-          for (final older in revisions)
-            if (!identical(older, latest)) older.file,
-        ],
+        file: folded.latest.file,
+        olderRevisions: folded.olderFiles,
       ),
     );
   }
@@ -441,7 +462,7 @@ List<ParsedProcessGroup> _processGroups({
       }
       continue;
     }
-    final subCells = <String, List<({ParsedCel cel, String file})>>{};
+    final subCells = <String, List<ParsedCel>>{};
     for (final file in entry.value) {
       final fileName = _fileNameOf(file.relativePath);
       final stem = _stemOf(fileName);
@@ -473,7 +494,7 @@ List<ParsedProcessGroup> _processGroups({
         file: '${entry.key}/${file.relativePath}',
       );
       (subCells['${match.group(1)!}|${cel.number}|${cel.insertion}'] ??= [])
-          .add((cel: cel, file: cel.file));
+          .add(cel);
     }
     if (subCells.isNotEmpty) {
       processGroups.add(
@@ -500,43 +521,41 @@ List<ParsedProcessGroup> _processGroups({
 /// with each layer's cels in natural order (number, then insertion
 /// letter) — the sort rule 「G3 · G3a · G3b · G4」 needs.
 List<ParsedCelLayer> _buildLayers(
-  Map<String, List<({ParsedCel cel, String file})>> byCell, {
+  Map<String, List<ParsedCel>> byCell, {
   required CelRevisionPolicy revisionPolicy,
   required List<String> warnings,
 }) {
   final bySymbol = <String, List<ParsedCel>>{};
   for (final entry in byCell.entries) {
     final symbol = entry.key.split('|').first;
-    final revisions = [...entry.value]
-      ..sort((a, b) => a.cel.revisionRank.compareTo(b.cel.revisionRank));
+    final folded = _foldRevisions(
+      entry.value,
+      rankOf: (cel) => cel.revisionRank,
+      fileOf: (cel) => cel.file,
+    );
     switch (revisionPolicy) {
       case CelRevisionPolicy.latestOnly:
-        final latest = revisions.last;
+        final latest = folded.latest;
         (bySymbol[symbol] ??= []).add(
           ParsedCel(
-            number: latest.cel.number,
-            insertion: latest.cel.insertion,
-            revisionRank: latest.cel.revisionRank,
+            number: latest.number,
+            insertion: latest.insertion,
+            revisionRank: latest.revisionRank,
             file: latest.file,
-            olderRevisions: [
-              for (final older in revisions)
-                if (!identical(older, latest)) older.file,
-            ],
+            olderRevisions: folded.olderFiles,
           ),
         );
       case CelRevisionPolicy.all:
-        for (final revision in revisions) {
-          (bySymbol[symbol] ??= []).add(revision.cel);
-        }
+        (bySymbol[symbol] ??= []).addAll(folded.sorted);
       case CelRevisionPolicy.originalOnly:
-        final original = revisions.first;
-        if (original.cel.revisionRank == 0) {
-          (bySymbol[symbol] ??= []).add(original.cel);
+        final original = folded.sorted.first;
+        if (original.revisionRank == 0) {
+          (bySymbol[symbol] ??= []).add(original);
         } else {
           // Rule F: a cel may exist only as a revision (`A7_` with no
           // `A7`) — originalOnly keeps the earliest so the cel does
           // not vanish, with a warning.
-          (bySymbol[symbol] ??= []).add(original.cel);
+          (bySymbol[symbol] ??= []).add(original);
           warnings.add(
             '${original.file}: no unmarked original — kept the earliest '
             'revision.',
@@ -577,7 +596,7 @@ class _EntryBins {
   final List<ParsedExclusion> excluded;
 
   /// (symbol, cell label) → revisions seen, top-level cel grammar.
-  final celFiles = <String, List<({ParsedCel cel, String file})>>{};
+  final celFiles = <String, List<ParsedCel>>{};
   final pictureFiles = <String, List<({int rank, String file})>>{};
   final references = <ParsedReference>[];
   final subfolderFiles = <String, List<CutFolderEntry>>{};
@@ -715,10 +734,7 @@ class _EntryBins {
           revisionRank: rank,
           file: entry.relativePath,
         );
-        (celFiles['$symbol|$number|$insertion'] ??= []).add((
-          cel: cel,
-          file: entry.relativePath,
-        ));
+        (celFiles['$symbol|$number|$insertion'] ??= []).add(cel);
         return;
       }
     }
