@@ -8,6 +8,7 @@ import '../models/brush_preset_id.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_preset_defaults.dart';
 import 'persistence/app_support_path.dart';
+import 'persistence/versioned_settings_file.dart';
 
 /// A whole brush library: the groups in display order plus every preset.
 ///
@@ -224,19 +225,16 @@ class BrushPresetFileService {
   }
 
   /// Writes the preset library, creating the app-data directory as needed.
-  Future<void> save(BrushPresetLibraryData library) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({
-        'version': libraryVersion,
-        'groups': [for (final group in library.groups) group.toJson()],
-        'presets': [
-          for (final preset in library.presets) _presetJsonWithTipIds(preset),
-        ],
-      }),
-    );
-  }
+  Future<void> save(BrushPresetLibraryData library) => saveVersionedSettings(
+    filePath: filePath,
+    version: libraryVersion,
+    json: {
+      'groups': [for (final group in library.groups) group.toJson()],
+      'presets': [
+        for (final preset in library.presets) _presetJsonWithTipIds(preset),
+      ],
+    },
+  );
 
   /// The three mask-valued settings, by json key.
   static const List<String> _maskKeys = ['tipMask', 'dualMask', 'textureMask'];

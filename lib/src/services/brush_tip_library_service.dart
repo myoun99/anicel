@@ -5,6 +5,7 @@ import '../models/brush_tip_entry.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_tip_image_codec.dart';
 import 'persistence/app_support_path.dart';
+import 'persistence/versioned_settings_file.dart';
 
 /// Reads and writes the shared brush tip library: a FOLDER of PNGs plus a
 /// small index.
@@ -73,19 +74,16 @@ class BrushTipLibraryService {
     }
   }
 
-  Future<void> saveIndex(List<BrushTipEntry> entries) async {
-    final file = File(indexPath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({
-        'version': indexVersion,
-        'tips': [
-          for (final entry in entries)
-            if (!entry.builtIn) entry.toJson(),
-        ],
-      }),
-    );
-  }
+  Future<void> saveIndex(List<BrushTipEntry> entries) => saveVersionedSettings(
+    filePath: indexPath,
+    version: indexVersion,
+    json: {
+      'tips': [
+        for (final entry in entries)
+          if (!entry.builtIn) entry.toJson(),
+      ],
+    },
+  );
 
   /// Writes [mask] as this library's copy of a tip and returns its entry.
   /// The caller owns the index; this only puts the image on disk.
