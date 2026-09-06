@@ -65,13 +65,15 @@ void main() {
     });
 
     test('identity is `identical`, never `==` — an equal-but-distinct '
-        'object is a change', () {
+        'object is a change (a Project\'s == is a deep value compare)', () {
       final memo = IdentityMemo<int>();
       var builds = 0;
       int build() => ++builds;
-      // Two equal lists are two objects.
-      expect(memo.resolve(identity: const <int>[1], build: build), 1);
-      expect(memo.resolve(identity: <int>[1], build: build), 2);
+      expect(memo.resolve(identity: _Twin(), build: build), 1);
+      expect(memo.resolve(identity: _Twin(), build: build), 2);
+      final same = _Twin();
+      expect(memo.resolve(identity: same, build: build), 3);
+      expect(memo.resolve(identity: same, build: build), 3);
     });
   });
 
@@ -281,4 +283,15 @@ void main() {
       expect(copyWithSentinel, isNot(isNull));
     });
   });
+}
+
+/// Every instance is EQUAL to every other — what a rebuilt-equal Project
+/// looks like to `==`, and exactly what the memo must not mistake for the
+/// same object.
+class _Twin {
+  @override
+  bool operator ==(Object other) => other is _Twin;
+
+  @override
+  int get hashCode => 0;
 }
