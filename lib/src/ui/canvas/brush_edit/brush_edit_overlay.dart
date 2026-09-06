@@ -122,25 +122,23 @@ class _BrushEditOverlay {
       resetOverlay();
       return;
     }
-    _state._settlingState._settling = false;
-    _state._settlingState._settlingBounds = null;
-    _state._settlingState._settlingFallbackTimer?.cancel();
-    _state._settlingState._settlingFallbackTimer = null;
-    _state._fillOverlayToken += 1;
+    _endSettleWindowAndFillDecode();
     _overlayModel.beginStrokeKeepingStandIns();
   }
 
   /// Clears the visible overlay (live or settling) and its tile images.
   void resetOverlay() {
-    _state._settlingState._settling = false;
-    _state._settlingState._settlingBounds = null;
-    _state._settlingState._settlingFallbackTimer?.cancel();
-    _state._settlingState._settlingFallbackTimer = null;
-    // Invalidate any in-flight fill stamp decode (R23): applying it
-    // after this reset would leave a ghost overlay with no settling to
-    // clear it.
-    _state._fillOverlayToken += 1;
+    _endSettleWindowAndFillDecode();
     _overlayModel.reset();
+  }
+
+  /// Everything both of the above do before they part company: end the
+  /// settle window, and invalidate any in-flight fill stamp decode (R23)
+  /// — applying it after this reset would leave a ghost overlay with no
+  /// settling to clear it.
+  void _endSettleWindowAndFillDecode() {
+    _state._settlingState.endWindow();
+    _state._fillOverlayToken += 1;
   }
 
   void _appendOverlayDabs(List<BrushDab> newDabs) {
