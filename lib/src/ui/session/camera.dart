@@ -13,6 +13,7 @@ import '../../services/command.dart';
 import '../../services/commands/update_cut_camera_command.dart';
 import '../../services/commands/update_project_camera_size_command.dart';
 import '../brush/brush_editor_selection.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'lane_range_move_drag.dart';
 
@@ -32,12 +33,16 @@ class Camera {
     required TimelineAccess timeline,
     required SessionInternals internals,
     required LaneRangeMoveDragVerbs laneMove,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
-       _laneMove = laneMove;
+       _laneMove = laneMove,
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -155,53 +160,32 @@ class Camera {
       ) !=
       null;
 
-  void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.setCutCameraKeyframe(
+  void setCameraKeyframeAtCurrentFrame(CameraPose pose) =>
+      _activeCut.onActiveCut(
+        (cutId) => _project.cutCommandCoordinator.setCutCameraKeyframe(
+          cutId: cutId,
+          frameIndex: _timeline.timelineController.currentFrameIndex,
+          pose: pose,
+        ),
+      );
+
+  void removeCameraKeyframeAtCurrentFrame() => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.removeCutCameraKeyframe(
       cutId: cutId,
       frameIndex: _timeline.timelineController.currentFrameIndex,
-      pose: pose,
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
-  void removeCameraKeyframeAtCurrentFrame() {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.removeCutCameraKeyframe(
-      cutId: cutId,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
-
-  void clearActiveCutCamera() {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.clearCutCamera(cutId: cutId);
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+  void clearActiveCutCamera() => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.clearCutCamera(cutId: cutId),
+  );
 
   /// Replaces the active cut's camera track (one undo step) — the property
   /// lanes' per-property key edits route through here.
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
+  }) => _activeCut.onActiveCut((cutId) {
     // "Same name, same value" INSIDE the camera's own track. A camera
     // belongs to its cut, so this naming space has no second use site to
     // reach — but two keys sharing a name on one lane still move together,
@@ -219,9 +203,7 @@ class Camera {
       ),
       description: description,
     );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+  });
 
   /// Whether the canvas is in camera manipulation mode.
   bool get isCameraLayerActive =>

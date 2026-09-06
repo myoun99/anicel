@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// FOLDERS AND ATTACHMENTS — grouping the active layer or attach into a
@@ -24,11 +25,15 @@ class FoldersAndAttachments {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -178,18 +183,12 @@ class FoldersAndAttachments {
     _changes.notifyChanged();
   }
 
-  void dissolveFolder(LayerId folderId) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.dissolveFolder(
+  void dissolveFolder(LayerId folderId) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.dissolveFolder(
       cutId: cutId,
       folderId: folderId,
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
   /// attach row: the synced-block UI makes those rows look like ordinary

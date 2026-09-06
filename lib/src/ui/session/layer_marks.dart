@@ -5,6 +5,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_layer_mark_command.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// The LAYER MARKS — the mark a layer carries, the frames a selection can
@@ -18,10 +19,14 @@ class LayerMarks {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline;
+       _timeline = timeline,
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -29,18 +34,14 @@ class LayerMarks {
   final TimelineAccess _timeline;
 
   /// Sets [layerId]'s organizational color mark. One undo step.
-  void setLayerMark(LayerId layerId, LayerMark mark) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.setLayerMark(
-      cutId: cutId,
-      layerId: layerId,
-      mark: mark,
-    );
-    _changes.notifyChanged();
-  }
+  void setLayerMark(LayerId layerId, LayerMark mark) =>
+      _activeCut.onActiveCutQuietly(
+        (cutId) => _project.cutCommandCoordinator.setLayerMark(
+          cutId: cutId,
+          layerId: layerId,
+          mark: mark,
+        ),
+      );
 
   /// Clears every layer mark of the active cut (track-owned SE rows
   /// included, like the sheet sweep) — one undo.

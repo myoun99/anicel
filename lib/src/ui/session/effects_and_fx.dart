@@ -16,6 +16,7 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithEnabledToggled,
         effectsWithGroupReset,
         effectsWithRemoved;
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// The EFFECTS AND THE FX SWITCHES — the effect chains a layer or a track
@@ -32,11 +33,15 @@ class EffectsAndFx {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -56,19 +61,14 @@ class EffectsAndFx {
     LayerId layerId,
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateLayerEffects(
+  }) => _activeCut.onActiveCutQuietly(
+    (cutId) => _project.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,
       effects: effects,
       description: description,
-    );
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// Whether the ACTIVE row can take an effect: a row that carries its own
   /// FX, and not a track-owned SE row (its display clone strips FX, so a

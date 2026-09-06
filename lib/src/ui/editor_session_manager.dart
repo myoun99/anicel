@@ -227,6 +227,7 @@ import 'session/se_entries.dart';
 import 'session/drawing_block_move_drag.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
+import 'session/active_cut_edits.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
@@ -1867,11 +1868,18 @@ class EditorSessionManager extends ChangeNotifier
   /// The pill button reads THIS — the same sentence the verb runs on.
   bool get canCreateCut => cutCreationPlan != null;
 
+  // The envelope thirteen active-cut verbs share, in five collaborators
+  // (session/active_cut_edits.dart).
+  late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    timeline: this,
+    changes: this,
+  );
+
   // ── the cut verbs: their own object, in their own file ──────────────
   //
   // A collaborator (session/cut_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, internals: this);
+  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits);
 
   void deleteActiveCut() => _cutVerbs.deleteActiveCut();
   bool get canDeleteSelectedCuts => _cutVerbs.canDeleteSelectedCuts;
@@ -2028,7 +2036,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/camera.dart, a part of this library). The session
   // keeps the public queries and commands as forwarders.
-  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, laneMove: _laneMove, internals: this);
+  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, laneMove: _laneMove, internals: this, activeCut: _activeCutEdits);
 
   CutCamera get activeCutCamera => _camera.activeCutCamera;
   CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
@@ -2340,7 +2348,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/effects_and_fx.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
 
   List<LayerEffect> trackEffectsForCut(CutId cutId) =>
       _effectsAndFx.trackEffectsForCut(cutId);
@@ -2988,7 +2996,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/folders_and_attachments.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
 
   bool get canAddAttachedLayerToActive => _folders.canAddAttachedLayerToActive;
   void addAttachedLayer(
@@ -3357,7 +3365,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_marks.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this);
+  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this, activeCut: _activeCutEdits);
 
   void setLayerMark(LayerId layerId, LayerMark mark) =>
       _marks.setLayerMark(layerId, mark);
