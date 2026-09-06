@@ -353,7 +353,9 @@ class _WorkspaceTabs {
                             onPresetsReordered: _state._presetLibrary.reorder,
                             onPresetImportRequested: () {
                               unawaited(
-                                _state._brushPresets._importBrushFile(),
+                                _state._brushPresets._importAndNotice(
+                                  _state._presetLibrary.importFromFile,
+                                ),
                               );
                             },
                             onGroupCreated: _state._presetLibrary.createGroup,
@@ -464,7 +466,9 @@ class _WorkspaceTabs {
                                           onTipImportRequested: () {
                                             unawaited(
                                               _state._brushPresets
-                                                  ._importTipImage(),
+                                                  ._importAndNotice(
+                                                    _state._tipLibrary.importFromFile,
+                                                  ),
                                             );
                                           },
                                           fillOptions: fillOptions,

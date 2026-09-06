@@ -272,22 +272,14 @@ class _WorkspaceBrushPresets {
     return null;
   }
 
-  Future<void> _importTipImage() async {
-    final message = await _state._tipLibrary.importFromFile();
-    if (message == null || !_state.mounted) {
-      return;
-    }
-    unawaited(
-      showAppNotice(
-        _state.context,
-        title: AppText.strings.commonNotice,
-        message: message,
-      ),
-    );
-  }
-
-  Future<void> _importBrushFile() async {
-    final message = await _state._presetLibrary.importFromFile();
+  /// Runs one of the libraries' file imports and puts its message, if any,
+  /// in a notice. Both libraries answer the same contract — a user-facing
+  /// message on failure, null on success or a cancelled picker — so which
+  /// library is the one value that differs.
+  Future<void> _importAndNotice(
+    Future<String?> Function() importFromFile,
+  ) async {
+    final message = await importFromFile();
     if (message == null || !_state.mounted) {
       return;
     }
