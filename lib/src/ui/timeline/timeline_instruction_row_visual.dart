@@ -12,6 +12,7 @@ import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
 import 'timeline_se_row_visual.dart' show timelineBlockCornerWarning;
+import '../repaint_props.dart';
 
 /// Instruction rows render like the paper sheet's CAM column on white
 /// frame blocks: the cells paint the paper (via
@@ -425,7 +426,7 @@ class _InstructionSpan extends StatelessWidget {
 /// instead — R7-①), FI/FO the light-gray fade wedges (wide where the
 /// screen is covered), O.L the translucent bowtie (two triangles meeting
 /// at the span's center).
-class _InstructionMarkPainter extends CustomPainter {
+class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
   _InstructionMarkPainter({
     required this.axis,
     required this.markType,
@@ -612,12 +613,12 @@ class _InstructionMarkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_InstructionMarkPainter oldDelegate) {
-    return axis != oldDelegate.axis ||
-        markType != oldDelegate.markType ||
-        eventLength != oldDelegate.eventLength ||
-        color != oldDelegate.color ||
-        hasStartName != oldDelegate.hasStartName ||
-        hasEndName != oldDelegate.hasEndName;
-  }
+  Object get props => (
+    axis,
+    markType,
+    eventLength,
+    color,
+    hasStartName,
+    hasEndName,
+  );
 }

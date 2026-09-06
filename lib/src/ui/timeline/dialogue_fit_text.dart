@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/vertical_writing_text.dart';
 import 'axis_turn.dart';
+import '../repaint_props.dart';
 
 /// SE dialogue distributed evenly over the available extent — one glyph per
 /// [dialogueGlyphCenters] position along [axis], centered on the cross
@@ -48,7 +49,7 @@ class DialogueFitText extends StatelessWidget {
   }
 }
 
-class _DialogueFitPainter extends CustomPainter {
+class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
   _DialogueFitPainter({
     required this.text,
     required this.axis,
@@ -103,10 +104,5 @@ class _DialogueFitPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DialogueFitPainter oldDelegate) {
-    return text != oldDelegate.text ||
-        axis != oldDelegate.axis ||
-        color != oldDelegate.color ||
-        fontSize != oldDelegate.fontSize;
-  }
+  Object get props => (text, axis, color, fontSize);
 }

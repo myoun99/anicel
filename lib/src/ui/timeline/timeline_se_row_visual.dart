@@ -17,6 +17,7 @@ import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_span_layout.dart';
 import 'axis_turn.dart';
+import '../repaint_props.dart';
 
 /// SE rows reuse the drawing rows' white paper frame blocks (the cells
 /// themselves paint the paper); this overlay adds the sheet's SE writing on
@@ -593,7 +594,7 @@ class SePaperSpan extends StatelessWidget {
   }
 }
 
-class _SePaperPainter extends CustomPainter {
+class _SePaperPainter extends CustomPainter with RepaintOnProps {
   _SePaperPainter({
     required this.axis,
     required this.frameCellExtent,
@@ -644,11 +645,11 @@ class _SePaperPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SePaperPainter oldDelegate) {
-    return axis != oldDelegate.axis ||
-        frameCellExtent != oldDelegate.frameCellExtent ||
-        // A mark change repaints the block (⑲) — without this the row would
-        // keep the colour it was first painted with.
-        paper != oldDelegate.paper;
-  }
+  Object get props => (
+    axis,
+    frameCellExtent,
+    // A mark change repaints the block (⑲) — without this the row would
+    // keep the colour it was first painted with.
+    paper,
+  );
 }

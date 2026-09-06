@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'canvas_playback_controller.dart';
 import '../text/app_strings.dart' show AppText;
+import '../repaint_props.dart';
 
 /// The playback level meter (AUDIO-PRO R2): two thin bars fed by the
 /// device transport's PRE-CLIP bus peaks. Green through the working
@@ -46,7 +47,7 @@ class AudioLevelMeter extends StatelessWidget {
   }
 }
 
-class _MeterPainter extends CustomPainter {
+class _MeterPainter extends CustomPainter with RepaintOnProps {
   const _MeterPainter({required this.left, required this.right});
 
   final double left;
@@ -85,6 +86,5 @@ class _MeterPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MeterPainter oldDelegate) =>
-      oldDelegate.left != left || oldDelegate.right != right;
+  Object get props => (left, right);
 }

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'vertical_writing.dart';
+import '../repaint_props.dart';
 
 // Hosts pick a Latin form when they mount the widget, so the choice has to
 // travel with the renderer they already import — the table itself stays a
@@ -349,7 +350,7 @@ double _maxShiftEm(
   return most;
 }
 
-class _VerticalWritingPainter extends CustomPainter {
+class _VerticalWritingPainter extends CustomPainter with RepaintOnProps {
   const _VerticalWritingPainter({
     required this.text,
     required this.style,
@@ -397,14 +398,14 @@ class _VerticalWritingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_VerticalWritingPainter oldDelegate) {
-    return text != oldDelegate.text ||
-        style != oldDelegate.style ||
-        lineHeight != oldDelegate.lineHeight ||
-        minFontSize != oldDelegate.minFontSize ||
-        tateChuYokoDigits != oldDelegate.tateChuYokoDigits ||
-        latinForm != oldDelegate.latinForm ||
-        mainAlignment != oldDelegate.mainAlignment ||
-        overflow != oldDelegate.overflow;
-  }
+  Object get props => (
+    text,
+    style,
+    lineHeight,
+    minFontSize,
+    tateChuYokoDigits,
+    latinForm,
+    mainAlignment,
+    overflow,
+  );
 }
