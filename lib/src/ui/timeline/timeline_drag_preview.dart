@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
 import '../../services/project_tree_editor.dart';
+import '../listenable_rebind.dart';
 import '../collection_equality.dart';
 
 /// The scoped edit-drag preview channel.
@@ -386,10 +387,11 @@ class _TimelineDragPreviewRowGateState
   @override
   void didUpdateWidget(covariant TimelineDragPreviewRowGate oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.dragPreview, widget.dragPreview)) {
-      oldWidget.dragPreview?.removeListener(_handlePreviewChanged);
-      widget.dragPreview?.addListener(_handlePreviewChanged);
-    }
+    rebindListener(
+      oldWidget.dragPreview,
+      widget.dragPreview,
+      _handlePreviewChanged,
+    );
     // A parent rebuild mid-drag (or an element re-match after the row
     // window scrolled) must re-derive against the new layer identity.
     _previewLayer = _resolvePreviewLayer();

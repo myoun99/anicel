@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import '../listenable_rebind.dart';
 
 /// Whether the surrounding panel tab is the ACTIVE tab of its group.
 ///
@@ -82,10 +83,7 @@ class _PanelAwareListenableBuilderState
   @override
   void didUpdateWidget(covariant PanelAwareListenableBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.listenable, widget.listenable)) {
-      oldWidget.listenable.removeListener(_handleNotify);
-      widget.listenable.addListener(_handleNotify);
-    }
+    rebindListener(oldWidget.listenable, widget.listenable, _handleNotify);
   }
 
   @override

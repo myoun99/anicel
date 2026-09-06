@@ -32,6 +32,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
+import '../listenable_rebind.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -415,15 +416,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   @override
   void didUpdateWidget(covariant MediaViewerTabHost oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.request, widget.request)) {
-      oldWidget.request.removeListener(_onRequestChanged);
-      widget.request.addListener(_onRequestChanged);
+    if (rebindListener(oldWidget.request, widget.request, _onRequestChanged)) {
       _onRequestChanged();
     }
-    if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
-      widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
-    }
+    rebindListener(
+      oldWidget.session.memoryPressureTicks,
+      widget.session.memoryPressureTicks,
+      _onMemoryPressure,
+    );
   }
 
   @override

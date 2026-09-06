@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'listenable_rebind.dart';
 
 /// A [ValueListenableBuilder] that rebuilds only when a SLICE of the
 /// value changes.
@@ -50,9 +51,11 @@ class _SlicedValueListenableBuilderState<T, S>
   @override
   void didUpdateWidget(SlicedValueListenableBuilder<T, S> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.valueListenable, widget.valueListenable)) {
-      oldWidget.valueListenable.removeListener(_onChanged);
-      widget.valueListenable.addListener(_onChanged);
+    if (rebindListener(
+      oldWidget.valueListenable,
+      widget.valueListenable,
+      _onChanged,
+    )) {
       _slice = widget.slice(widget.valueListenable.value);
     }
   }

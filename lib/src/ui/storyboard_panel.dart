@@ -142,6 +142,7 @@ import 'timeline/timeline_se_row_visual.dart'
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
+import 'listenable_rebind.dart';
 
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
@@ -1121,10 +1122,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void didUpdateWidget(covariant StoryboardPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.revealSelectionTick != widget.revealSelectionTick) {
-      oldWidget.revealSelectionTick?.removeListener(_handleRevealSelection);
-      widget.revealSelectionTick?.addListener(_handleRevealSelection);
-    }
+    rebindListener(
+      oldWidget.revealSelectionTick,
+      widget.revealSelectionTick,
+      _handleRevealSelection,
+    );
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
     // anchors. Shared policy with the timeline grids.

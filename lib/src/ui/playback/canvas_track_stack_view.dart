@@ -23,6 +23,7 @@ import '../track_effect_paint_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../listenable_rebind.dart';
 
 /// The parked-state canvas content — the multitrack display path.
 ///
@@ -202,10 +203,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   @override
   void didUpdateWidget(covariant CanvasTrackStackView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.globalFrame, widget.globalFrame)) {
-      oldWidget.globalFrame.removeListener(_onFrameMoved);
-      widget.globalFrame.addListener(_onFrameMoved);
-    }
+    rebindListener(oldWidget.globalFrame, widget.globalFrame, _onFrameMoved);
   }
 
   @override

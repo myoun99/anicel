@@ -22,6 +22,7 @@ import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
+import '../listenable_rebind.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
 /// knobs for the ACTIVE tool. Painting tools show the brush settings, the
@@ -649,9 +650,11 @@ class _MoveSettingsState extends State<_MoveSettings> {
   @override
   void didUpdateWidget(covariant _MoveSettings oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
-      oldWidget.selectionCommands?.removeListener(_syncFromSession);
-      widget.selectionCommands?.addListener(_syncFromSession);
+    if (rebindListener(
+      oldWidget.selectionCommands,
+      widget.selectionCommands,
+      _syncFromSession,
+    )) {
       _syncFromSession();
     }
   }

@@ -83,6 +83,7 @@ import '../widgets/superellipse_clip.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
+import '../listenable_rebind.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
@@ -1162,12 +1163,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
       _viewportState._listenedViewport = notifier..addListener(_viewportState.handleViewportMovedByOwner);
     }
-    if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
-      oldWidget.selectionCommands?.removeListener(
-        _selectionSeat.handleSelectionChannelChanged,
-      );
-      widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
-    }
+    rebindListener(
+      oldWidget.selectionCommands,
+      widget.selectionCommands,
+      _selectionSeat.handleSelectionChannelChanged,
+    );
     // 유저 확정: an open polygon trace survives a frame change and a CUT
     // change, but putting the TOOL or the SHAPE down cancels it.
     //

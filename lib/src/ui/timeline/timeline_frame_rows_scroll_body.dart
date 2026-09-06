@@ -24,6 +24,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 
 import '../../models/project_frame_rate.dart';
+import '../listenable_rebind.dart';
 
 /// See [TimelineFrameRowsScrollBody.memoAux].
 class TimelineRowMemoAux {
@@ -373,10 +374,7 @@ class _TimelineFrameRowsScrollBodyState
   @override
   void didUpdateWidget(covariant TimelineFrameRowsScrollBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.windowBucket, widget.windowBucket)) {
-      oldWidget.windowBucket?.removeListener(_handleWindowBucket);
-      widget.windowBucket?.addListener(_handleWindowBucket);
-    }
+    rebindListener(oldWidget.windowBucket, widget.windowBucket, _handleWindowBucket);
   }
 
   @override
