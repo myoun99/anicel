@@ -589,22 +589,21 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // Opacity drags preview per move and commit ONE write on release
   // (R4 #4): the camera row's slider is the camera-view dim notifier —
   // already cheap and live, so it applies on both hooks.
-  void _previewLayerOpacity(LayerId layerId, double opacity) {
+  //
+  // ONE router for both hooks, because the routing question is one
+  // question. [sessionWrite] is the only thing the preview and the commit
+  // disagree about, and it is a value.
+  void _applyLayerOpacity(
+    LayerId layerId,
+    double opacity,
+    void Function(LayerId layerId, double opacity) sessionWrite,
+  ) {
     final dim = widget.cameraDimOpacity;
     if (dim != null && _kindOf(layerId) == LayerKind.camera) {
       dim.value = opacity;
       return;
     }
-    _session.previewLayerOpacity(layerId, opacity);
-  }
-
-  void _commitLayerOpacity(LayerId layerId, double opacity) {
-    final dim = widget.cameraDimOpacity;
-    if (dim != null && _kindOf(layerId) == LayerKind.camera) {
-      dim.value = opacity;
-      return;
-    }
-    _session.commitLayerOpacity(layerId, opacity);
+    sessionWrite(layerId, opacity);
   }
 
   @override
@@ -801,8 +800,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
             onToggleLayerVisibility: _toggleLayerVisibility,
-            onLayerOpacityChanged: _previewLayerOpacity,
-            onLayerOpacityChangeEnd: _commitLayerOpacity,
+            onLayerOpacityChanged: (layerId, opacity) => _applyLayerOpacity(
+              layerId,
+              opacity,
+              _session.previewLayerOpacity,
+            ),
+            onLayerOpacityChangeEnd: (layerId, opacity) => _applyLayerOpacity(
+              layerId,
+              opacity,
+              _session.commitLayerOpacity,
+            ),
             onToggleLayerTimesheet: _session.toggleLayerTimesheet,
             onToggleLayerFillReference: _session.toggleLayerFillReference,
             onLayerMarkSelected: _session.setLayerMark,
