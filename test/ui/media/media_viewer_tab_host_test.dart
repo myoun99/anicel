@@ -9,7 +9,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, buildAppTheme;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
@@ -219,6 +221,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('2 / 3'), findsOneWidget);
     expect(find.text('1 / 2'), findsOneWidget, reason: 'the main did not move');
+  });
+
+  testWidgets('유저 확정 ⑬: a browser row dragged over the viewer lights the '
+      'accent frame while it hovers, and dropping it opens HERE', (
+    tester,
+  ) async {
+    final dropped = <MediaAssetDragData>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: Column(
+            children: [
+              const Draggable<MediaAssetDragData>(
+                data: MediaAssetDragData(
+                  path: 'C:/art/layout.pdf',
+                  name: 'layout',
+                ),
+                feedback: SizedBox(width: 40, height: 20),
+                child: ColoredBox(
+                  color: Color(0xFF404040),
+                  child: SizedBox(width: 80, height: 40),
+                ),
+              ),
+              Expanded(
+                child: MediaViewerTabHost(
+                  viewerId: 'media-viewer',
+                  session: session,
+                  request: slot.request,
+                  onAssetDropped: dropped.add,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final viewer = find.byKey(const ValueKey<String>('media-viewer-panel'));
+    bool accentFrameShown() => tester
+        .widgetList<DecoratedBox>(find.byType(DecoratedBox))
+        .any(
+          (box) =>
+              box.decoration is BoxDecoration &&
+              (box.decoration as BoxDecoration).border?.top.color ==
+                  AppColors.accent &&
+              (box.decoration as BoxDecoration).border?.top.width == 2,
+        );
+    expect(accentFrameShown(), isFalse, reason: 'idle: no frame');
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(Draggable<MediaAssetDragData>)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(viewer));
+    await tester.pump();
+    expect(accentFrameShown(), isTrue, reason: 'hovering: the accent frame');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(accentFrameShown(), isFalse, reason: 'landed: the frame is gone');
+    expect(dropped.map((data) => data.path), ['C:/art/layout.pdf']);
   });
 
   testWidgets('an image request decodes through the import codec and '

@@ -22,13 +22,12 @@ import 'media_asset_drag_data.dart';
 class MediaAssetDropTarget extends StatelessWidget {
   const MediaAssetDropTarget({super.key, required this.onDrop});
 
-  final void Function(String path, Offset globalPosition) onDrop;
+  final void Function(MediaAssetDragData data, Offset globalPosition) onDrop;
 
   @override
   Widget build(BuildContext context) {
     return DragTarget<MediaAssetDragData>(
-      onAcceptWithDetails: (details) =>
-          onDrop(details.data.path, details.offset),
+      onAcceptWithDetails: (details) => onDrop(details.data, details.offset),
       // Lit only while a matching drag is in flight, and an empty SizedBox
       // absorbs no hit test — so the surface underneath (a brush stroke, a
       // cell tap, a range pan) keeps every pointer the rest of the time.

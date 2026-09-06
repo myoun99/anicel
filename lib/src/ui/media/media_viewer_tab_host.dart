@@ -26,6 +26,7 @@ import '../editor_session_manager.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import 'media_asset_drag_data.dart';
+import 'media_asset_drop_target.dart';
 import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
 import '../widgets/app_icon_button.dart';
@@ -1093,32 +1094,20 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     // already `Draggable<MediaAssetDragData>` for the SE blocks, so this
     // is a second destination for a drag people already do — and it says
     // which viewer with the hand instead of with a menu entry.
-    return DragTarget<MediaAssetDragData>(
-      onAcceptWithDetails: (details) => onAssetDropped(details.data),
-      // ⚠️`surface` is the Stack's UNPOSITIONED child and the highlight is
-      // the positioned one, never the other way round: a Stack whose
-      // children are ALL positioned takes the smallest size its
-      // constraints allow, which in a rail collapsed this whole panel and
-      // left its pill sitting on top of its own canvas, unhittable.
-      builder: (context, candidate, rejected) => Stack(
-        fit: StackFit.expand,
-        children: [
-          surface,
-          if (candidate.isNotEmpty)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.primary,
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    //
+    // ⚠️`surface` is the Stack's UNPOSITIONED child and the highlight is
+    // the positioned one, never the other way round: a Stack whose
+    // children are ALL positioned takes the smallest size its
+    // constraints allow, which in a rail collapsed this whole panel and
+    // left its pill sitting on top of its own canvas, unhittable.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        surface,
+        Positioned.fill(
+          child: MediaAssetDropTarget(onDrop: (data, _) => onAssetDropped(data)),
+        ),
+      ],
     );
   }
 }

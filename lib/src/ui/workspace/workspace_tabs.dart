@@ -254,8 +254,8 @@ class _WorkspaceTabs {
               Positioned.fill(
                 child: MediaAssetDropTarget(
                   key: const ValueKey<String>('canvas-asset-drop'),
-                  onDrop: (path, _) => _state._openImportWindow(
-                    initialPaths: [path],
+                  onDrop: (data, _) => _state._openImportWindow(
+                    initialPaths: [data.path],
                     placeOnly: true,
                   ),
                 ),

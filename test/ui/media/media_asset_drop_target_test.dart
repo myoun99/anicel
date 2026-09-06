@@ -16,7 +16,8 @@ const _underKey = ValueKey<String>('under-the-target');
 /// the second half matters as much as the first.
 Future<void> _pump(
   WidgetTester tester, {
-  required void Function(String path, Offset globalPosition) onDrop,
+  required void Function(MediaAssetDragData data, Offset globalPosition)
+  onDrop,
   required VoidCallback onTapUnder,
 }) async {
   await tester.pumpWidget(
@@ -90,8 +91,8 @@ void main() {
     Offset? droppedAt;
     await _pump(
       tester,
-      onDrop: (path, globalPosition) {
-        droppedPath = path;
+      onDrop: (data, globalPosition) {
+        droppedPath = data.path;
         droppedAt = globalPosition;
       },
       onTapUnder: () {},

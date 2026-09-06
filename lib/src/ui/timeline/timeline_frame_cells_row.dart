@@ -674,8 +674,8 @@ class _LayerAssetDropTarget extends StatelessWidget {
   Widget build(BuildContext context) {
     return MediaAssetDropTarget(
       key: dropKey,
-      onDrop: (path, globalPosition) =>
-          onDrop(layerId, _frameIndexAt(context, globalPosition), path),
+      onDrop: (data, globalPosition) =>
+          onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
     );
   }
 }
