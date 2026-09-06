@@ -2341,6 +2341,26 @@ class _StoryboardLabelShell extends StatelessWidget {
   }
 }
 
+/// A storyboard label row's NAME: the one row-name style every surface
+/// wears ([layerRowNameStyle], F-26 #1226 — 「스토리보드패널도 겸사겸사 싹 다
+/// 폰트 통일」), the colour this row's own. Selection reads by COLOR only
+/// (user rule). The SE and transition rows each hand-typed a `fontSize:
+/// 11` here until the round-8 audit (2026-09-06).
+Widget _storyboardRowName(
+  BuildContext context,
+  String name, {
+  required bool active,
+}) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return Text(
+    name,
+    overflow: TextOverflow.ellipsis,
+    style: layerRowNameStyle(context).copyWith(
+      color: active ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+    ),
+  );
+}
+
 class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({
     required this.track,
@@ -2466,27 +2486,18 @@ class _StoryboardSeLabel extends StatelessWidget {
                 // widget, same kind gate, same session verb. The flag is a
                 // LAYER field ([Layer.onTimesheet]) and this row's layer is
                 // track-owned, so the toggle needs no cut to act.
-                timesheet:
-                    layer != null &&
-                        onToggleLayerTimesheet != null &&
-                        layerKindEligibleForTimesheetToggle(layer.kind) &&
-                        layer.attachedToLayerId == null
-                    ? RailSwipeColumnPointer(
-                        child: LayerTimesheetToggleButton(
-                          keyPrefix: 'storyboard',
-                          layerId: layer.id,
-                          onTimesheet: layer.onTimesheet,
-                          onToggle: onToggleLayerTimesheet!,
-                        ),
-                      )
-                    : null,
-                mark: layer != null && onLayerMarkSelected != null
-                    ? LayerMarkChip(
+                timesheet: layer == null || onToggleLayerTimesheet == null
+                    ? null
+                    : layerRailTimesheetCell(
                         keyPrefix: 'storyboard',
-                        layerId: layer.id,
-                        mark: layer.mark,
+                        layer: layer,
+                        onToggle: onToggleLayerTimesheet!,
+                      ),
+                mark: layer != null && onLayerMarkSelected != null
+                    ? LayerMarkChip.forLayer(
+                        layer,
+                        keyPrefix: 'storyboard',
                         onMarkSelected: onLayerMarkSelected!,
-                        isVisible: layer.isVisible,
                       )
                     : null,
                 typeButton: LayerTypeButton(
@@ -2502,18 +2513,12 @@ class _StoryboardSeLabel extends StatelessWidget {
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: _storyboardRowName(
+                    context,
                     // The TRACK layer's stored name — the same label the
                     // timeline row shows (W3 ordering unification).
                     trackLayer?.name ?? 'S${slot + 1}',
-                    overflow: TextOverflow.ellipsis,
-                    // Selection reads by COLOR only (user rule).
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: active
-                          ? colorScheme.onSurface
-                          : colorScheme.onSurfaceVariant,
-                    ),
+                    active: active,
                   ),
                 ),
               ),
@@ -2620,7 +2625,6 @@ class _StoryboardTransitionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final onSelect = onSelectLayer;
     return _StoryboardLabelShell(
       selectKey: ValueKey<String>(
@@ -2637,26 +2641,18 @@ class _StoryboardTransitionLabel extends StatelessWidget {
               ...layerRailLeadingCells(
                 // B5③: the timeline row's sheet toggle and mark chip in
                 // their shared slots — same widgets, same gates.
-                timesheet:
-                    onToggleLayerTimesheet != null &&
-                        layerKindEligibleForTimesheetToggle(layer.kind) &&
-                        layer.attachedToLayerId == null
-                    ? RailSwipeColumnPointer(
-                        child: LayerTimesheetToggleButton(
-                          keyPrefix: 'storyboard',
-                          layerId: layer.id,
-                          onTimesheet: layer.onTimesheet,
-                          onToggle: onToggleLayerTimesheet!,
-                        ),
-                      )
-                    : null,
-                mark: onLayerMarkSelected != null
-                    ? LayerMarkChip(
+                timesheet: onToggleLayerTimesheet == null
+                    ? null
+                    : layerRailTimesheetCell(
                         keyPrefix: 'storyboard',
-                        layerId: layer.id,
-                        mark: layer.mark,
+                        layer: layer,
+                        onToggle: onToggleLayerTimesheet!,
+                      ),
+                mark: onLayerMarkSelected != null
+                    ? LayerMarkChip.forLayer(
+                        layer,
+                        keyPrefix: 'storyboard',
                         onMarkSelected: onLayerMarkSelected!,
-                        isVisible: layer.isVisible,
                       )
                     : null,
                 typeButton: LayerTypeButton(
@@ -2670,15 +2666,10 @@ class _StoryboardTransitionLabel extends StatelessWidget {
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: _storyboardRowName(
+                    context,
                     layer.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: active
-                          ? colorScheme.onSurface
-                          : colorScheme.onSurfaceVariant,
-                    ),
+                    active: active,
                   ),
                 ),
               ),

@@ -4,6 +4,7 @@ import '../../models/app_language.dart' show AppLanguage;
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
 import '../../models/attached_placement.dart';
+import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -384,6 +385,17 @@ class LayerBlendModeChip extends StatelessWidget {
 /// but empty.
 bool layerKindEligibleForTimesheetToggle(LayerKind kind) =>
     !layerKindGroupsLayers(kind);
+
+/// Whether [layer]'s row carries a live sheet toggle: its kind prints AND
+/// it is not an attach row (W5) — attach rows are display accessories of
+/// their base, never sheet columns. The gate is the same on both surfaces:
+/// the sheet once had no `attachedToLayerId` check, so an attach column
+/// showed a live sheet toggle the rail hides. ONE predicate since the
+/// round-8 audit (2026-09-06): the rail's cell, the storyboard's two label
+/// rows and both column-swipe lists each spelled the pair themselves.
+bool layerCarriesTimesheetToggle(Layer layer) =>
+    layerKindEligibleForTimesheetToggle(layer.kind) &&
+    layer.attachedToLayerId == null;
 
 /// Almost every layer kind shows the opacity slider (unified layer controls
 /// — "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
@@ -895,6 +907,27 @@ class LayerMarkChip extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.isVisible = true,
   });
+
+  /// The chip for [layer]'s row: its id, its mark and its `isVisible`
+  /// handed down from the one place that already answers 「is this row
+  /// shown」 (see [isVisible]). The three rail surfaces used to pull the
+  /// three fields off the layer each in their own argument list (the
+  /// round-8 audit, 2026-09-06).
+  LayerMarkChip.forLayer(
+    Layer layer, {
+    Key? key,
+    required String keyPrefix,
+    required void Function(LayerId layerId, LayerMark mark) onMarkSelected,
+    Axis axis = Axis.horizontal,
+  }) : this(
+         key: key,
+         keyPrefix: keyPrefix,
+         layerId: layer.id,
+         mark: layer.mark,
+         onMarkSelected: onMarkSelected,
+         axis: axis,
+         isVisible: layer.isVisible,
+       );
 
   final String keyPrefix;
   final LayerId layerId;

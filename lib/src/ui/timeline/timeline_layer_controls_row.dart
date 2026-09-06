@@ -516,7 +516,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
     axis: axis,
     includeSectionSlot: _horizontal,
     laneToggle: _laneToggle(),
-    timesheet: _timesheetCell(),
+    timesheet: layerRailTimesheetCell(
+      keyPrefix: keyPrefix,
+      layer: layer,
+      onToggle: onToggleLayerTimesheet,
+      attachArrowPlacement: attachArrowPlacement,
+    ),
     mark: _markChip(),
     typeButton: _typeButton(),
   );
@@ -541,46 +546,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
-  /// Timesheet + mark chips lead the label. Attach rows (W5) hide the sheet
-  /// toggle — they are display accessories of their base, never sheet
-  /// columns — and R10 R3 put their ARROW in the slot the toggle vacates, so
-  /// the column reads "sheet, or what this row is attached to". The gate is
-  /// the same on both surfaces: the sheet once had no `attachedToLayerId`
-  /// check, so an attach column showed a live sheet toggle the rail hides.
-  ///
-  /// I-1: the column the report named 「타임시트버튼이든 뭐 그런것들」. The
-  /// claim goes on at the RAIL, not inside the button.
-  Widget? _timesheetCell() {
-    final placement = attachArrowPlacement;
-    if (placement != null) {
-      return LayerAttachArrowCell(
-        keyPrefix: keyPrefix,
-        idValue: '${layer.id}',
-        placement: placement,
-      );
-    }
-    if (!layerKindEligibleForTimesheetToggle(layer.kind) ||
-        layer.attachedToLayerId != null) {
-      return null;
-    }
-    return RailSwipeColumnPointer(
-      child: LayerTimesheetToggleButton(
-        keyPrefix: keyPrefix,
-        layerId: layer.id,
-        onTimesheet: layer.onTimesheet,
-        onToggle: onToggleLayerTimesheet,
-      ),
-    );
-  }
-
   /// The stood-up header's slot is 14px TALL, so the plate wears no upright
   /// text there (A6) — the chip reads the axis.
-  Widget _markChip() => LayerMarkChip(
+  Widget _markChip() => LayerMarkChip.forLayer(
+    layer,
     keyPrefix: keyPrefix,
-    layerId: layer.id,
-    mark: layer.mark,
     onMarkSelected: onLayerMarkSelected,
-    isVisible: layer.isVisible,
     axis: axis,
   );
 

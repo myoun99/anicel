@@ -290,15 +290,18 @@ void _oneWidgetBothSurfaces() {
       contains('TimelineLayerControlsRow('),
       reason: 'x시트의 열 머리는 레일의 행 위젯이다',
     );
+    // `LayerMarkChip(` or its `.forLayer(` constructor (the round-8 audit,
+    // 2026-09-06): either spelling raises the chip.
+    final raisesChip = RegExp(r'LayerMarkChip(\.forLayer)?\(');
     expect(
       grid,
-      isNot(contains('LayerMarkChip(')),
+      isNot(matches(raisesChip)),
       reason: '⛔x시트가 칩을 따로 세우면 행 위젯 밖에 두 번째 자리가 생긴 것이다',
     );
     final row = File(
       'lib/src/ui/timeline/timeline_layer_controls_row.dart',
     ).readAsStringSync();
-    expect(row, contains('LayerMarkChip('), reason: '칩을 세우는 곳은 행 위젯 하나');
+    expect(row, matches(raisesChip), reason: '칩을 세우는 곳은 행 위젯 하나');
     expect(
       row,
       contains('axis: axis,'),

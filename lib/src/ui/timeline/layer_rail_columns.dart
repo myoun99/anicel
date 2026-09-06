@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'axis_turn.dart';
 
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -161,6 +162,51 @@ List<Widget> layerRailLeadingCells({
     layerRailSlot(axis, layerTypeSlotWidth, typeButton),
     layerRailSlot(axis, layerControlChipGap),
   ];
+}
+
+/// The TIMESHEET slot's cell for [layer]'s row on any rail surface — the
+/// timeline's rows and the storyboard's label rows raise the same cell
+/// through this one factory (the round-8 audit, 2026-09-06: each surface
+/// had spelled the gate and the wrap itself, and the storyboard copies
+/// had no attach-arrow branch).
+///
+/// Timesheet + mark chips lead the label. Attach rows (W5) hide the sheet
+/// toggle — they are display accessories of their base, never sheet
+/// columns — and R10 R3 put their ARROW in the slot the toggle vacates, so
+/// the column reads "sheet, or what this row is attached to". The gate is
+/// the same on both surfaces: the sheet once had no `attachedToLayerId`
+/// check, so an attach column showed a live sheet toggle the rail hides.
+///
+/// I-1: the column the report named 「타임시트버튼이든 뭐 그런것들」. The
+/// claim goes on at the RAIL, not inside the button.
+///
+/// [attachArrowPlacement] non-null is the attach row's arrow; otherwise
+/// the toggle when [layerCarriesTimesheetToggle], else null (the slot
+/// stays reserved and empty).
+Widget? layerRailTimesheetCell({
+  required String keyPrefix,
+  required Layer layer,
+  required ValueChanged<LayerId> onToggle,
+  AttachedPlacement? attachArrowPlacement,
+}) {
+  if (attachArrowPlacement != null) {
+    return LayerAttachArrowCell(
+      keyPrefix: keyPrefix,
+      idValue: '${layer.id}',
+      placement: attachArrowPlacement,
+    );
+  }
+  if (!layerCarriesTimesheetToggle(layer)) {
+    return null;
+  }
+  return RailSwipeColumnPointer(
+    child: LayerTimesheetToggleButton(
+      keyPrefix: keyPrefix,
+      layerId: layer.id,
+      onTimesheet: layer.onTimesheet,
+      onToggle: onToggle,
+    ),
+  );
 }
 
 /// How far a row at [depth] indents its NAME — the whole of nesting now.

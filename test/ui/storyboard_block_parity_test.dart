@@ -493,6 +493,44 @@ void main() {
         reason: 'the eye hides the contribution, never the data',
       );
     });
+
+    testWidgets('the SE and transition row names wear the ONE row-name style '
+        'the V row and the timeline rows wear (F-26)', (tester) async {
+      // 유저 2026-08-24 (F-26): 「레이어명의 폰트가 다른거같음 … 가로모드에
+      // 맞춰서 통일하고, 스토리보드패널도 겸사겸사 싹 다 폰트 통일」. The
+      // track label read `layerRowNameStyle` from that round; these two
+      // rows kept a hand-typed `fontSize: 11` until the round-8 audit
+      // (2026-09-06).
+      await _openStoryboard(tester);
+      final track = _track(tester);
+      final trackLabel = tester.widget<Text>(
+        find.byKey(
+          ValueKey<String>('storyboard-track-label-${_trackId.value}'),
+        ),
+      );
+      final reference = trackLabel.style?.fontSize;
+      expect(reference, isNotNull, reason: 'the reference style names a size');
+
+      final seName = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(
+            ValueKey<String>('storyboard-se-label-${_trackId.value}-1'),
+          ),
+          matching: find.text(track.seLayers.single.name),
+        ),
+      );
+      expect(seName.style?.fontSize, reference);
+
+      final transitionName = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(
+            ValueKey<String>('storyboard-transition-label-${_trackId.value}'),
+          ),
+          matching: find.text(track.transitionLayer.name),
+        ),
+      );
+      expect(transitionName.style?.fontSize, reference);
+    });
   });
 
   group('the row-addressed session verbs (the storyboard\'s door)', () {

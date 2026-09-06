@@ -117,10 +117,7 @@ void _fxToggle(TimelineGridHooks hooks, TimelineDisplayRow row) {
 /// An ATTACH row is null rather than false: its sheet slot holds the
 /// placement arrow (R10 R3), so there is no toggle under the swipe.
 RailToggle<TimelineDisplayRow> _timesheet(TimelineGridHooks hooks) => (
-  valueOf: (row) =>
-      !row.isLane &&
-          layerKindEligibleForTimesheetToggle(row.layer.kind) &&
-          row.layer.attachedToLayerId == null
+  valueOf: (row) => !row.isLane && layerCarriesTimesheetToggle(row.layer)
       ? row.layer.onTimesheet
       : null,
   toggle: (row) => hooks.onToggleLayerTimesheet(row.layer.id),

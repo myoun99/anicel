@@ -509,9 +509,7 @@ class _StoryboardRailRows {
   /// an eligible unattached layer row — null elsewhere.
   bool? _rowOnTimesheet(StoryboardRailRow row) {
     final layer = row.layer;
-    return layer != null &&
-            layerKindEligibleForTimesheetToggle(layer.kind) &&
-            layer.attachedToLayerId == null
+    return layer != null && layerCarriesTimesheetToggle(layer)
         ? (_state.widget.layerOnTimesheetOf?.call(layer.id) ??
               layer.onTimesheet)
         : null;
