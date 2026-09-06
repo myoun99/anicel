@@ -244,15 +244,15 @@ _sameLayerRunMove({
   required int frameDelta,
   int? axisEndExclusive,
 }) {
-  final slots = <BlockMoveSlot>[];
-  var previousEnd = 0;
-  for (final block in blocks) {
-    slots.add((
-      leadingGap: block.startIndex - previousEnd,
-      length: block.length,
-    ));
-    previousEnd = block.endIndexExclusive;
-  }
+  final lengths = [for (final block in blocks) block.length];
+  final gaps = leadingGapsOf(
+    starts: [for (final block in blocks) block.startIndex],
+    lengths: lengths,
+  );
+  final slots = <BlockMoveSlot>[
+    for (var index = 0; index < blocks.length; index += 1)
+      (leadingGap: gaps[index], length: lengths[index]),
+  ];
 
   final layout = planBlockRunMove(
     slots: slots,

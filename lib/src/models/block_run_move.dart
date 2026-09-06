@@ -35,6 +35,36 @@ library;
 /// lets "the commas never change" be one sentence on both axes.
 typedef BlockMoveSlot = ({int leadingGap, int length});
 
+/// Each slot's absolute start, in order: the cursor walk every planner
+/// opens with — gap, start, length, gap, start, length…
+List<int> slotStartsOf(List<BlockMoveSlot> slots) {
+  final starts = <int>[];
+  var cursor = 0;
+  for (final slot in slots) {
+    cursor += slot.leadingGap;
+    starts.add(cursor);
+    cursor += slot.length;
+  }
+  return starts;
+}
+
+/// The inverse of [slotStartsOf]: each position's leading gap, given the
+/// starts and lengths of the positions in order — the distance from the
+/// previous position's end (frame 0 for the first). What every planner
+/// closes with, since a layout speaks in gaps.
+List<int> leadingGapsOf({
+  required List<int> starts,
+  required List<int> lengths,
+}) {
+  final gaps = <int>[];
+  var previousEnd = 0;
+  for (var position = 0; position < starts.length; position += 1) {
+    gaps.add(starts[position] - previousEnd);
+    previousEnd = starts[position] + lengths[position];
+  }
+  return gaps;
+}
+
 /// Where every slot sits after the move.
 class BlockRunMoveLayout {
   BlockRunMoveLayout({
@@ -45,7 +75,13 @@ class BlockRunMoveLayout {
          order.length == leadingGaps.length,
          'Every slot in the new order needs its leading gap.',
        ),
-       starts = _startsFor(slots, order, leadingGaps);
+       starts = slotStartsOf([
+         for (var position = 0; position < order.length; position += 1)
+           (
+             leadingGap: leadingGaps[position],
+             length: slots[order[position]].length,
+           ),
+       ]);
 
   /// The slots' ORIGINAL indices, in the order the release would leave.
   final List<int> order;
@@ -72,21 +108,6 @@ class BlockRunMoveLayout {
 
   /// Where the slot originally at [slotIndex] now starts.
   int startOf(int slotIndex) => starts[order.indexOf(slotIndex)];
-
-  static List<int> _startsFor(
-    List<BlockMoveSlot> slots,
-    List<int> order,
-    List<int> leadingGaps,
-  ) {
-    final starts = <int>[];
-    var cursor = 0;
-    for (var position = 0; position < order.length; position += 1) {
-      cursor += leadingGaps[position];
-      starts.add(cursor);
-      cursor += slots[order[position]].length;
-    }
-    return starts;
-  }
 }
 
 /// Plans a move of `slots[runStart..runEnd]` (inclusive, contiguous) by
@@ -114,13 +135,7 @@ BlockRunMoveLayout planBlockRunMove({
   required int frameDelta,
   int? axisEndExclusive,
 }) {
-  final starts = <int>[];
-  var cursor = 0;
-  for (final slot in slots) {
-    cursor += slot.leadingGap;
-    starts.add(cursor);
-    cursor += slot.length;
-  }
+  final starts = slotStartsOf(slots);
 
   final runFrom = starts[runStart];
   final runTo = starts[runEnd] + slots[runEnd].length;
@@ -280,18 +295,11 @@ BlockRunMoveLayout planBlockRunMove({
 
   // The layout speaks in leading gaps, so the absolute places become the
   // distances between them.
-  final gaps = _leadingGapsOf(order, placed, slots);
+  final gaps = leadingGapsOf(
+    starts: placed,
+    lengths: [for (final index in order) slots[index].length],
+  );
   return BlockRunMoveLayout(slots: slots, order: order, leadingGaps: gaps);
-}
-
-List<int> _leadingGapsOf(List<int> order, List<int> placed, List<BlockMoveSlot> slots) {
-  final gaps = <int>[];
-  var previousEnd = 0;
-  for (var position = 0; position < order.length; position += 1) {
-    gaps.add(placed[position] - previousEnd);
-    previousEnd = placed[position] + slots[order[position]].length;
-  }
-  return gaps;
 }
 
 List<int> _placeAll(List<int> order, int runPosition, int afterRun, int landed, List<int> starts, int runFrom, List<BlockMoveSlot> slots, Map<int, int> anchorOf, int runLength) {

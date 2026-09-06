@@ -56,13 +56,7 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
 
   // Absolute starts, so the contact questions read the way they read on
   // screen; the answer converts back to gaps at the end.
-  final starts = <int>[];
-  var cursor = 0;
-  for (final slot in slots) {
-    cursor += slot.leadingGap;
-    starts.add(cursor);
-    cursor += slot.length;
-  }
+  final starts = slotStartsOf(slots);
 
   final target = slots[targetIndex];
   // Shrinking stops at the floor; growing stops at the head of the axis,
@@ -100,13 +94,10 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
     nextNewStart = newStarts[i];
   }
 
-  final leadingGaps = <int>[];
-  var previousEnd = 0;
-  for (var i = 0; i < slots.length; i += 1) {
-    leadingGaps.add(newStarts[i] - previousEnd);
-    previousEnd = newStarts[i] + lengths[i];
-  }
-  return BlockRunLeadEdgeLayout(leadingGaps: leadingGaps, lengths: lengths);
+  return BlockRunLeadEdgeLayout(
+    leadingGaps: leadingGapsOf(starts: newStarts, lengths: lengths),
+    lengths: lengths,
+  );
 }
 
 /// How much of the axis before [index] is BLOCK rather than gap — the
