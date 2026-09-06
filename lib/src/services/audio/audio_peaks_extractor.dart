@@ -39,6 +39,64 @@ class AudioPeaks {
   }
 }
 
+/// The bucket state machine behind every `|peak|` envelope: a running
+/// maximum per bucket, counted to [samplesPerBucket], pushed clamped and
+/// reset.
+///
+/// One object because it was two — the file fold below and the live
+/// recording meter each kept four pieces of mutable state and each drove
+/// them by hand, and they had already drifted in two ways that happen to
+/// give equal numbers (clamp before the max vs clamp at the push;
+/// flush-the-partial vs never flush). Whether a partial bucket lands is now
+/// the CALLER's decision, said out loud by calling [flush] or not: a file
+/// has an end, a take in progress does not.
+final class AudioPeakBucketFold {
+  AudioPeakBucketFold({required this.samplesPerBucket});
+
+  /// Frames per bucket — `sampleRate ~/ bucketsPerSecond`.
+  final int samplesPerBucket;
+
+  /// The buckets landed so far, in order.
+  final List<double> peaks = [];
+
+  double _bucketMax = 0;
+  int _bucketFill = 0;
+
+  /// Feeds one frame's magnitude. Clamping happens at the PUSH, which is
+  /// the same answer as clamping first (max and clamp commute) and one
+  /// comparison per bucket instead of one per frame.
+  @pragma('vm:prefer-inline')
+  void add(double magnitude) {
+    if (magnitude > _bucketMax) {
+      _bucketMax = magnitude;
+    }
+    _bucketFill += 1;
+    if (_bucketFill == samplesPerBucket) {
+      peaks.add(_bucketMax > 1.0 ? 1.0 : _bucketMax);
+      _bucketMax = 0;
+      _bucketFill = 0;
+    }
+  }
+
+  /// Lands a partial bucket — the end-of-file rule. A live take never
+  /// calls this: its partial bucket waits for the next chunk.
+  void flush() {
+    if (_bucketFill > 0) {
+      peaks.add(_bucketMax > 1.0 ? 1.0 : _bucketMax);
+      _bucketMax = 0;
+      _bucketFill = 0;
+    }
+  }
+
+  void reset() {
+    peaks.clear();
+    _bucketMax = 0;
+    _bucketFill = 0;
+  }
+
+  Float32List toFloat32List() => Float32List.fromList(peaks);
+}
+
 /// Folds decoded PCM into the same `|peak|` envelope the waveform paints,
 /// taking the LOUDEST channel at each point rather than mixing them down.
 ///
@@ -71,30 +129,23 @@ AudioPeaks peaksFromSamples({
     return AudioPeaks(bucketsPerSecond: bucketsPerSecond, peaks: Float32List(0));
   }
   final frameCount = samples.length ~/ channels;
-  final peaks = <double>[];
-  var bucketMax = 0.0;
-  var bucketCount = 0;
+  final fold = AudioPeakBucketFold(samplesPerBucket: samplesPerBucket);
   for (var frame = 0; frame < frameCount; frame += 1) {
     final base = frame * channels;
+    var loudest = 0.0;
     for (var channel = 0; channel < channels; channel += 1) {
       final value = samples[base + channel];
       final magnitude = value < 0 ? -value : value;
-      if (magnitude > bucketMax) {
-        bucketMax = magnitude;
+      if (magnitude > loudest) {
+        loudest = magnitude;
       }
     }
-    bucketCount += 1;
-    if (bucketCount == samplesPerBucket) {
-      peaks.add(bucketMax > 1.0 ? 1.0 : bucketMax);
-      bucketMax = 0;
-      bucketCount = 0;
-    }
+    fold.add(loudest);
   }
-  if (bucketCount > 0) {
-    peaks.add(bucketMax > 1.0 ? 1.0 : bucketMax);
-  }
+  // A file has an end: the last partial bucket lands.
+  fold.flush();
   return AudioPeaks(
     bucketsPerSecond: bucketsPerSecond,
-    peaks: Float32List.fromList(peaks),
+    peaks: fold.toFloat32List(),
   );
 }

@@ -8,6 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
+import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
@@ -106,6 +107,91 @@ void main() {
 
     await manager.stopVoiceRecordingAndPlace();
     manager.dispose();
+  });
+
+  // REC1-D: the METER folds a stereo frame the way the TAKE will. Three of
+  // the four modes are the take's own fold (average / left / right); the
+  // fourth — device — is the meter's own rule, because the take keeps every
+  // channel and the meter needs one scalar, so it takes the loudest.
+  group('the live meter folds a stereo frame', () {
+    /// One bucket of 1200 frames, every frame carrying (left, right), read
+    /// back as the single peak that lands.
+    Future<double> peakOf(
+      VoiceInputChannelMode mode, {
+      required double left,
+      required double right,
+    }) async {
+      final manager = session();
+      manager.setAudioSyncSettings(
+        AudioSyncSettings(inputChannelMode: mode),
+      );
+      manager.selectLayer(manager.activeTrack.seLayers.first.id);
+      manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+      expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+
+      final chunk = Float32List(2400);
+      for (var frame = 0; frame < 1200; frame += 1) {
+        chunk[frame * 2] = left;
+        chunk[frame * 2 + 1] = right;
+      }
+      manager.debugIngestVoiceRecordChunk(chunk, 2);
+      manager.playback.seekToGlobalFrame(1);
+
+      final peaks = manager.audioPeaksForDisplay(
+        EditorSessionManager.voiceRecordPreviewPath,
+      )!;
+      await manager.stopVoiceRecordingAndPlace();
+      manager.dispose();
+      return peaks.peaks.first;
+    }
+
+    test('monoMix averages the pair', () async {
+      expect(
+        await peakOf(
+          VoiceInputChannelMode.monoMix,
+          left: 0.4,
+          right: 0.8,
+        ),
+        closeTo(0.6, 1e-6),
+      );
+    });
+
+    test('left and right each keep their own side', () async {
+      expect(
+        await peakOf(VoiceInputChannelMode.left, left: 0.4, right: 0.8),
+        closeTo(0.4, 1e-6),
+      );
+      expect(
+        await peakOf(VoiceInputChannelMode.right, left: 0.4, right: 0.8),
+        closeTo(0.8, 1e-6),
+      );
+    });
+
+    test('a side pick reads the MAGNITUDE, so a negative side still shows',
+        () async {
+      expect(
+        await peakOf(VoiceInputChannelMode.left, left: -0.4, right: 0.8),
+        closeTo(0.4, 1e-6),
+      );
+      expect(
+        await peakOf(
+          VoiceInputChannelMode.monoMix,
+          left: -0.8,
+          right: -0.4,
+        ),
+        closeTo(0.6, 1e-6),
+        reason: 'the average is folded, then its size taken',
+      );
+    });
+
+    test('⛔device is the METER\'s own rule: the loudest channel, not the '
+        'fold — the take keeps both', () async {
+      expect(
+        await peakOf(VoiceInputChannelMode.device, left: 0.4, right: -0.8),
+        closeTo(0.8, 1e-6),
+        reason: 'an average would have answered 0.2 and a side pick 0.4',
+      );
+    });
   });
 
   testWidgets('REC1-C: the timeline shows the growing take WITHOUT a '

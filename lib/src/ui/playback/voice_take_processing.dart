@@ -137,20 +137,7 @@ ProcessedVoiceTake _foldedToMono(
   var clipped = false;
   for (var frame = 0; frame < frames; frame += 1) {
     final base = frame * channels;
-    double picked;
-    switch (fold) {
-      case VoiceInputChannelMode.monoMix:
-        var sum = 0.0;
-        for (var channel = 0; channel < channels; channel += 1) {
-          sum += samples[base + channel];
-        }
-        picked = sum / channels;
-      case VoiceInputChannelMode.right:
-        picked = samples[base + 1];
-      case VoiceInputChannelMode.left || VoiceInputChannelMode.device:
-        picked = samples[base];
-    }
-    var value = picked * factor;
+    var value = fold.pickFrame(samples, base, channels) * factor;
     if (value >= voiceClipThreshold) {
       if (value > 1.0) value = 1.0;
       clipped = true;
@@ -161,4 +148,36 @@ ProcessedVoiceTake _foldedToMono(
     out[frame] = value;
   }
   return ProcessedVoiceTake(samples: out, channels: 1, clipped: clipped);
+}
+
+/// The one value a frame folds to under a channel mode.
+///
+/// The TAKE folds with it ([_foldedToMono]) and the live METER folds with
+/// it, which is what "the channel fold picks what the take will keep" says
+/// out loud. `device` is not a fold — the take keeps every channel — so it
+/// answers the first channel here and the meter states its own rule (the
+/// loudest channel) beside this call.
+extension VoiceInputChannelFold on VoiceInputChannelMode {
+  /// The frame starting at [base] in an interleaved [samples] buffer of
+  /// [channels], folded to one value.
+  ///
+  /// ⚠️Per FRAME, not per sample — the clamp beside the callers stays
+  /// written out for exactly that reason. Statically dispatched (an
+  /// extension method on an enum) and marked for inlining, so the fold
+  /// costs no call in a release build.
+  @pragma('vm:prefer-inline')
+  double pickFrame(Float32List samples, int base, int channels) {
+    switch (this) {
+      case VoiceInputChannelMode.monoMix:
+        var sum = 0.0;
+        for (var channel = 0; channel < channels; channel += 1) {
+          sum += samples[base + channel];
+        }
+        return sum / channels;
+      case VoiceInputChannelMode.right:
+        return samples[base + 1];
+      case VoiceInputChannelMode.left || VoiceInputChannelMode.device:
+        return samples[base];
+    }
+  }
 }
