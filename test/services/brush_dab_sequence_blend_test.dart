@@ -45,11 +45,11 @@ void main() {
     );
   }
 
-  group('brushPixelBlendOperationsForDab', () {
+  group('brushPixelBlendOperationsForDabSequence - one dab', () {
     test('returns empty list for non-effective dab', () {
       expect(
-        brushPixelBlendOperationsForDab(
-          dab: onePixelDab(opacity: 0),
+        brushPixelBlendOperationsForDabSequence(
+          sequence: BrushDabSequence([onePixelDab(opacity: 0)]),
           destinationAt: (_, _) => transparent,
         ),
         isEmpty,
@@ -60,8 +60,8 @@ void main() {
       'returns one operation for one-pixel dab over transparent destination',
       () {
         expect(
-          brushPixelBlendOperationsForDab(
-            dab: onePixelDab(),
+          brushPixelBlendOperationsForDabSequence(
+            sequence: BrushDabSequence([onePixelDab()]),
             destinationAt: (_, _) => transparent,
           ),
           [
@@ -78,8 +78,8 @@ void main() {
 
     test('skips no-op transparent source alpha', () {
       expect(
-        brushPixelBlendOperationsForDab(
-          dab: onePixelDab(color: 0x00FF0000),
+        brushPixelBlendOperationsForDabSequence(
+          sequence: BrushDabSequence([onePixelDab(color: 0x00FF0000)]),
           destinationAt: (_, _) => transparent,
         ),
         isEmpty,
@@ -87,16 +87,16 @@ void main() {
     });
 
     test('uses destinationAt for before color', () {
-      final values = brushPixelBlendOperationsForDab(
-        dab: onePixelDab(opacity: 0.5),
+      final values = brushPixelBlendOperationsForDabSequence(
+        sequence: BrushDabSequence([onePixelDab(opacity: 0.5)]),
         destinationAt: (_, _) => blue,
       );
       expect(values.single.before, blue);
     });
 
     test('returns unmodifiable list', () {
-      final values = brushPixelBlendOperationsForDab(
-        dab: onePixelDab(),
+      final values = brushPixelBlendOperationsForDabSequence(
+        sequence: BrushDabSequence([onePixelDab()]),
         destinationAt: (_, _) => transparent,
       );
       expect(

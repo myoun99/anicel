@@ -1,4 +1,3 @@
-import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/brush_pixel_blend_operation.dart';
 import '../models/rgba_color.dart';
@@ -6,37 +5,6 @@ import 'brush_dab_coverage.dart';
 import 'brush_pixel_blend.dart';
 
 typedef DestinationPixelReader = RgbaColor Function(int x, int y);
-
-List<BrushPixelBlendOperation> brushPixelBlendOperationsForDab({
-  required BrushDab dab,
-  required DestinationPixelReader destinationAt,
-}) {
-  final operations = <BrushPixelBlendOperation>[];
-
-  for (final coverage in brushPixelCoveragesForDab(dab)) {
-    final before = destinationAt(coverage.x, coverage.y);
-    final after = blendBrushDabPixelCoverage(
-      dab: dab,
-      coverage: coverage,
-      destination: before,
-    );
-
-    if (after == before) {
-      continue;
-    }
-
-    operations.add(
-      BrushPixelBlendOperation(
-        x: coverage.x,
-        y: coverage.y,
-        before: before,
-        after: after,
-      ),
-    );
-  }
-
-  return List<BrushPixelBlendOperation>.unmodifiable(operations);
-}
 
 List<BrushPixelBlendOperation> brushPixelBlendOperationsForDabSequence({
   required BrushDabSequence sequence,
