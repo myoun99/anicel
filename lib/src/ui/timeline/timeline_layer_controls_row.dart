@@ -35,6 +35,10 @@ import 'property_lane_model.dart' show TimelineDisplayRow;
 /// it — the collapsed overlay is a different surface.
 const double timelineLayerRowLeadingBorder = 1;
 
+/// What the controls row SHOWS of a [Layer] — the rail row memo's token
+/// field for the layer, comparing equal exactly when the row would look
+/// the same.
+///
 /// Layer identity is the wrong question here: a timesheet edit (a drawing
 /// landed, an exposure cut, a block moved) hands back a new Layer instance
 /// whose every RAIL-visible field is unchanged, and the rail row is ~200
@@ -53,21 +57,50 @@ const double timelineLayerRowLeadingBorder = 1;
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
 /// `audioGain`/`audioPan` (the mixer reads them from the session while it
 /// is open), `attachedMode` and `folderId`.
-bool timelineLayerControlsRowShowsSameState(Layer a, Layer b) {
-  return identical(a, b) ||
-      (a.id == b.id &&
-          a.name == b.name &&
-          a.kind == b.kind &&
-          a.opacity == b.opacity &&
-          a.isVisible == b.isVisible &&
-          a.muted == b.muted &&
-          a.mark == b.mark &&
-          a.onTimesheet == b.onTimesheet &&
-          a.blendMode == b.blendMode &&
-          a.collapsed == b.collapsed &&
-          a.isFillReference == b.isFillReference &&
-          a.attachedToLayerId == b.attachedToLayerId &&
-          a.attachedPlacement == b.attachedPlacement);
+final class ControlsRowFace {
+  const ControlsRowFace(this.layer);
+
+  final Layer layer;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! ControlsRowFace) {
+      return false;
+    }
+    final a = layer;
+    final b = other.layer;
+    return identical(a, b) ||
+        (a.id == b.id &&
+            a.name == b.name &&
+            a.kind == b.kind &&
+            a.opacity == b.opacity &&
+            a.isVisible == b.isVisible &&
+            a.muted == b.muted &&
+            a.mark == b.mark &&
+            a.onTimesheet == b.onTimesheet &&
+            a.blendMode == b.blendMode &&
+            a.collapsed == b.collapsed &&
+            a.isFillReference == b.isFillReference &&
+            a.attachedToLayerId == b.attachedToLayerId &&
+            a.attachedPlacement == b.attachedPlacement);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    layer.id,
+    layer.name,
+    layer.kind,
+    layer.opacity,
+    layer.isVisible,
+    layer.muted,
+    layer.mark,
+    layer.onTimesheet,
+    layer.blendMode,
+    layer.collapsed,
+    layer.isFillReference,
+    layer.attachedToLayerId,
+    layer.attachedPlacement,
+  );
 }
 
 /// A layer's controls — the twelve-slot strip the rail shows along a row and

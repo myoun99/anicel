@@ -18,7 +18,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// widgets and a timesheet edit changes nothing it renders, so the memo asks
 /// what the row SHOWS instead of which Layer instance it came from.
 ///
-/// The completeness contract lives on [timelineLayerControlsRowShowsSameState];
+/// The completeness contract lives on [ControlsRowFace];
 /// this drives one mutation per compared field so an entry cannot be dropped
 /// silently, and pins the two behaviors that matter at the widget level.
 void main() {
@@ -62,7 +62,7 @@ void main() {
       test('${entry.key} is a shown field — it must break the token', () {
         final mutated = entry.value(base);
         expect(
-          timelineLayerControlsRowShowsSameState(base, mutated),
+          ControlsRowFace(base) == ControlsRowFace(mutated),
           isFalse,
           reason:
               'the rail row renders ${entry.key}; a memo that survives its '
@@ -72,12 +72,12 @@ void main() {
     }
 
     test('the same instance always matches', () {
-      expect(timelineLayerControlsRowShowsSameState(base, base), isTrue);
+      expect(ControlsRowFace(base), ControlsRowFace(base));
     });
 
     test('a fresh instance with identical shown fields matches', () {
       expect(
-        timelineLayerControlsRowShowsSameState(base, base.copyWith()),
+        ControlsRowFace(base) == ControlsRowFace(base.copyWith()),
         isTrue,
         reason: 'copyWith hands back a NEW instance — that alone must not '
             'rebuild the row',

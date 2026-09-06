@@ -99,7 +99,7 @@ class _LayerGridRailRows {
     }
     final fold = _groupFoldFor(row);
     final inputs = (
-      layer: row.layer,
+      layer: ControlsRowFace(row.layer),
       active: _layerRowIsActive(row.layer),
       selected: _state.widget.hooks.selectedRows.contains(row.address),
       hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
@@ -131,11 +131,11 @@ class _LayerGridRailRows {
       layerRowHeight: _state._metrics.layerRowHeight,
       layerControlsWidth: _state._metrics.layerControlsWidth,
       sectionLabelGutterWidth: _state._metrics.sectionLabelGutterWidth,
-      opacityDragPreview: _state.widget.hooks.opacityDragPreview,
+      opacityDragPreview: ByIdentity(_state.widget.hooks.opacityDragPreview),
       blendLanguage: _state.widget.hooks.blendLanguage,
     );
     final cached = _state._railRowMemo[row.layer.id];
-    if (cached != null && _railRowInputsMatch(cached.inputs, inputs)) {
+    if (cached != null && cached.inputs == inputs) {
       return _state._rowDrags._draggable(row, cached.row);
     }
     final built = _railRow(row);
@@ -152,31 +152,6 @@ class _LayerGridRailRows {
     '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
   );
 
-  bool _railRowInputsMatch(_RailRowMemoInputs a, _RailRowMemoInputs b) {
-    // What the row SHOWS gates content, not the Layer's identity: a
-    // timesheet edit rebuilds the edited layer's instance while every
-    // rail-visible field stays put (see the completeness contract on
-    // [timelineLayerControlsRowShowsSameState]).
-    return timelineLayerControlsRowShowsSameState(a.layer, b.layer) &&
-        a.active == b.active &&
-        a.selected == b.selected &&
-        a.hasLanes == b.hasLanes &&
-        a.lanesExpanded == b.lanesExpanded &&
-        a.depth == b.depth &&
-        a.hasGroupFold == b.hasGroupFold &&
-        a.groupFoldExpanded == b.groupFoldExpanded &&
-        a.fxState == b.fxState &&
-        a.onionSkinEnabled == b.onionSkinEnabled &&
-        a.isLinked == b.isLinked &&
-        a.soloed == b.soloed &&
-        a.attachArrow == b.attachArrow &&
-        a.layerRowHeight == b.layerRowHeight &&
-        a.layerControlsWidth == b.layerControlsWidth &&
-        a.sectionLabelGutterWidth == b.sectionLabelGutterWidth &&
-        identical(a.opacityDragPreview, b.opacityDragPreview) &&
-        a.blendLanguage == b.blendLanguage;
-  }
-
   /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
   /// legend-visible fact changes — zoom steps and unrelated session
   /// notifies reuse the instance, skipping its ~15 tooltip/flyout cells.
@@ -186,14 +161,14 @@ class _LayerGridRailRows {
       layerRowHeight: _state._metrics.layerRowHeight,
       layerControlsWidth: _state._metrics.layerControlsWidth,
       hasLegend: _state.widget.legend != null,
-      hiddenSections: _state.widget.hooks.hiddenSections,
+      hiddenSections: BySet(_state.widget.hooks.hiddenSections),
       rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: _state._marksInUse(),
-      kindsInUse: _state._kindsInUse(),
+      marksInUse: BySet(_state._marksInUse()),
+      kindsInUse: BySet(_state._kindsInUse()),
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
       anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
       allSeMuted: _state._allSeMuted(),
-      displayedIds: displayedIds,
+      displayedIds: BySet(displayedIds),
       masterOpacityValue: _state.widget.masterOpacityValue,
       hasLaneToggles: _state.widget.hooks.onToggleLayerLanes != null,
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
@@ -201,7 +176,7 @@ class _LayerGridRailRows {
       hasBlendBulk: _state.widget.legend?.onSetBlendModeForDisplayed != null,
     );
     final cached = _state._legendHeaderMemo;
-    if (cached != null && _state._legendInputsMatch(cached.inputs, inputs)) {
+    if (cached != null && cached.inputs == inputs) {
       return cached.header;
     }
     final header = TimelineLayerControlsHeader(
@@ -210,12 +185,12 @@ class _LayerGridRailRows {
       hiddenSections: _state.widget.hooks.hiddenSections,
       onToggleSection: _state.widget.onToggleSection,
       rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: inputs.marksInUse,
-      kindsInUse: inputs.kindsInUse,
+      marksInUse: inputs.marksInUse.value,
+      kindsInUse: inputs.kindsInUse.value,
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
       anyLanesExpanded: inputs.anyLanesExpanded,
       allSeMuted: inputs.allSeMuted,
-      // The fresh set is captured here — the token's setEquals invalidates
+      // The fresh set is captured here — the token's BySet invalidates
       // the cached header whenever the displayed rows change.
       displayedLayerIds: () => displayedIds,
       displayedOpacity: _state.widget.masterOpacityValue,

@@ -45,6 +45,7 @@ import 'timeline_layer_frame_body_layout.dart';
 import '../input/pen_friendly_scroll_controller.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
+import 'memo_token.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
@@ -122,7 +123,11 @@ class LayerTimelineGrid extends StatefulWidget {
 /// zoom-independent by construction: nothing here reads frameCellWidth,
 /// so zoom steps always hit.
 typedef _RailRowMemoInputs = ({
-  Layer layer,
+  // What the row SHOWS gates content, not the Layer's identity: a
+  // timesheet edit rebuilds the edited layer's instance while every
+  // rail-visible field stays put (see the completeness contract on
+  // [ControlsRowFace]).
+  ControlsRowFace layer,
   bool active,
   // ㉞: the row selection wash. SESSION state like [active] and invisible to
   // the Layer comparison — ⑨ passed `selected` to the row without giving the
@@ -143,7 +148,7 @@ typedef _RailRowMemoInputs = ({
   double layerRowHeight,
   double layerControlsWidth,
   double sectionLabelGutterWidth,
-  ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  ByIdentity<ValueListenable<({Set<LayerId> layerIds, double opacity})?>?>
   opacityDragPreview,
   // R27 #6: the blend chip prints a LANGUAGE-dependent name — a language
   // switch must invalidate the memo like any other visible fact.
@@ -157,14 +162,14 @@ typedef _LegendMemoInputs = ({
   double layerRowHeight,
   double layerControlsWidth,
   bool hasLegend,
-  Set<TimelineSection> hiddenSections,
+  BySet<TimelineSection> hiddenSections,
   TimelineRowFilter rowFilter,
-  Set<LayerMark> marksInUse,
-  Set<LayerKind> kindsInUse,
+  BySet<LayerMark> marksInUse,
+  BySet<LayerKind> kindsInUse,
   bool visibilitySoloEnabled,
   bool anyLanesExpanded,
   bool allSeMuted,
-  Set<LayerId> displayedIds,
+  BySet<LayerId> displayedIds,
   double masterOpacityValue,
   bool hasLaneToggles,
   bool displayedOnionSkinOn,
@@ -485,25 +490,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   // A collaborator (timeline/layer_grid/layer_grid_row_drags.dart, a part of this
   // library). The State keeps the entry points its build tree calls.
   late final _LayerGridRowDrags _rowDrags = _LayerGridRowDrags(this);
-
-  bool _legendInputsMatch(_LegendMemoInputs a, _LegendMemoInputs b) {
-    return a.layerRowHeight == b.layerRowHeight &&
-        a.layerControlsWidth == b.layerControlsWidth &&
-        a.hasLegend == b.hasLegend &&
-        setEquals(a.hiddenSections, b.hiddenSections) &&
-        a.rowFilter == b.rowFilter &&
-        setEquals(a.marksInUse, b.marksInUse) &&
-        setEquals(a.kindsInUse, b.kindsInUse) &&
-        a.visibilitySoloEnabled == b.visibilitySoloEnabled &&
-        a.anyLanesExpanded == b.anyLanesExpanded &&
-        a.allSeMuted == b.allSeMuted &&
-        setEquals(a.displayedIds, b.displayedIds) &&
-        a.masterOpacityValue == b.masterOpacityValue &&
-        a.hasLaneToggles == b.hasLaneToggles &&
-        a.displayedOnionSkinOn == b.displayedOnionSkinOn &&
-        a.blendLanguage == b.blendLanguage &&
-        a.hasBlendBulk == b.hasBlendBulk;
-  }
 
   /// The section ZONES over the rail rows' reserved band slots (UI-R7 #2):
   /// one tinted zone per section run — the pre-R5 gutter bracket inside

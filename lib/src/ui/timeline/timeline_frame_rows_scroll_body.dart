@@ -14,6 +14,7 @@ import 'se_audio_lane.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'memo_token.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_cel_content_source.dart';
@@ -233,7 +234,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 /// stable session only, so a cached row's captured hooks stay
 /// behaviorally identical even when their object identities churn.
 typedef _RowMemoInputs = ({
-  Layer layer,
+  // The Layer INSTANCE: on a commit-time rebuild the untouched layers come
+  // back as the same instances from the repository, and `Layer.==` is a
+  // deep walk over frames that this gate must never pay.
+  ByIdentity<Layer> layer,
   bool active,
   int playbackFrameCount,
   // The frame-axis GEOMETRY, present only for rows that still read it at
@@ -263,10 +267,10 @@ typedef _RowMemoInputs = ({
   bool hasCommaDrag,
   bool hasRangeGesture,
   bool hasActivateCell,
-  ValueListenable<TimelineDragPreview?>? dragPreview,
+  ByIdentity<ValueListenable<TimelineDragPreview?>?> dragPreview,
   // The sparse rows' EXTERNAL inputs (UI-R20 #4): identity tokens for
   // the camera track / instruction registry, and the SE spill-in flag.
-  Object? auxiliaryIdentity,
+  ByIdentity<Object?> auxiliaryIdentity,
   bool seSpillsIn,
   // REC1-D: the clip-marker switch is a display fact — toggling it must
   // invalidate SE rows (the memo-token discipline).
@@ -403,27 +407,6 @@ class _TimelineFrameRowsScrollBodyState
     // band is an identity-cached display clone, so the memo key answers
     // for them like any other row.
     return !row.isLane;
-  }
-
-  bool _inputsMatch(_RowMemoInputs a, _RowMemoInputs b) {
-    return identical(a.layer, b.layer) &&
-        a.active == b.active &&
-        a.playbackFrameCount == b.playbackFrameCount &&
-        a.geometry == b.geometry &&
-        a.crossAxisExtent == b.crossAxisExtent &&
-        a.projectFrameRate == b.projectFrameRate &&
-        a.substrateGeneration == b.substrateGeneration &&
-        a.viewportMainExtent == b.viewportMainExtent &&
-        a.exposureStateForLayer == b.exposureStateForLayer &&
-        a.frameNameForLayer == b.frameNameForLayer &&
-        a.hasCommaDrag == b.hasCommaDrag &&
-        a.hasRangeGesture == b.hasRangeGesture &&
-        a.hasActivateCell == b.hasActivateCell &&
-        identical(a.dragPreview, b.dragPreview) &&
-        identical(a.auxiliaryIdentity, b.auxiliaryIdentity) &&
-        a.seSpillsIn == b.seSpillsIn &&
-        a.seClipMarkerTooltip == b.seClipMarkerTooltip &&
-        a.showSeconds == b.showSeconds;
   }
 
   /// The row kind's external-input identity for the memo token.
@@ -588,7 +571,7 @@ class _TimelineFrameRowsScrollBodyState
     }
 
     final inputs = (
-      layer: row.layer,
+      layer: ByIdentity(row.layer),
       active: row.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
       // THE line: every row's geometry consumers are live now — painters
@@ -605,14 +588,14 @@ class _TimelineFrameRowsScrollBodyState
       hasCommaDrag: widget.commaDrag != null,
       hasRangeGesture: widget.rangeGesture != null,
       hasActivateCell: widget.onActivateCell != null,
-      dragPreview: widget.dragPreview,
-      auxiliaryIdentity: _auxiliaryIdentityFor(row.layer),
+      dragPreview: ByIdentity(widget.dragPreview),
+      auxiliaryIdentity: ByIdentity(_auxiliaryIdentityFor(row.layer)),
       seSpillsIn: widget.seSpillInLayerIds.contains(row.layer.id),
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       showSeconds: widget.showSeconds,
     );
     final cached = _rowMemo[rowKey.value];
-    if (cached != null && _inputsMatch(cached.inputs, inputs)) {
+    if (cached != null && cached.inputs == inputs) {
       return cached.widget;
     }
     final built = buildGated();
