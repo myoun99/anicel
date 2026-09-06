@@ -41,7 +41,7 @@ class CanvasController {
 
   int _strokeSequence = 0;
 
-  FrameId get currentFrameId => _resolveCurrentFrameId() ?? _frameId;
+  FrameId get currentFrameId => _resolveActiveFrame()?.id ?? _frameId;
 
   List<Stroke> get strokes {
     if (_layerController != null && _timelineController != null) {
@@ -84,7 +84,7 @@ class CanvasController {
       brushSettings: _brushSettings,
     );
 
-    final frameId = _resolveCurrentFrameId();
+    final frameId = _resolveActiveFrame()?.id;
     if (frameId == null) {
       _activePoints.clear();
       return;
@@ -254,26 +254,6 @@ class CanvasController {
     }
 
     return timelineController.resolveFrameForLayer(layer: layer);
-  }
-
-  FrameId? _resolveCurrentFrameId() {
-    final layerController = _layerController;
-    final timelineController = _timelineController;
-    if (layerController == null || timelineController == null) {
-      return null;
-    }
-
-    final layer = layerController.activeLayer;
-    if (layer == null) {
-      return null;
-    }
-
-    final resolvedFrame = timelineController.resolveFrameForLayer(layer: layer);
-    if (resolvedFrame != null) {
-      return resolvedFrame.id;
-    }
-
-    return null;
   }
 
   Frame? _findFrame(FrameId frameId) {
