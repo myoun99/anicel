@@ -230,23 +230,17 @@ class _StoryboardRailRows {
   /// S2 above it); the section ZONE spans the whole group (UI-R7 #2).
   /// Whether the legend's filter lets this S row show (R5 #9).
   ///
-  /// An S row IS a layer, so it answers every chip. The row you are
-  /// STANDING on is exempt — the timeline's rule, and for the same reason:
-  /// a filter must never hide the row you are editing.
+  /// An S row IS a layer, so it answers every chip
+  /// ([TimelineRowFilter.allowsLayerRow]).
   bool _filterAllowsSeRow(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    if (layer == null || !_state.widget.rowFilter.isActive) {
-      return true;
-    }
-    if (_state.widget.selectedRow == LayerRowAddress(layer.id)) {
-      return true;
-    }
-    return _state.widget.rowFilter.allows(
-      layer,
-      fxEnabled: fxEnabledFromState(
-        _state.widget.layerFxStateOf?.call(layer.id),
-      ),
-    );
+    return layer == null ||
+        _state.widget.rowFilter.allowsLayerRow(
+          layer,
+          standing: _state.widget.selectedRow == LayerRowAddress(layer.id),
+          fxEnabled:
+              _state.widget.layerFxStateOf?.call(layer.id) != LayerFxState.off,
+        );
   }
 
   /// Whether the filter lets this V row show.
@@ -258,17 +252,12 @@ class _StoryboardRailRows {
   ///
   /// When tracks gain a mark (the user means to), pass it here and the mark
   /// chip starts filtering V rows with no change to the rule.
-  bool _filterAllowsTrackRow(Track track) {
-    if (!_state.widget.rowFilter.isActive) {
-      return true;
-    }
-    if (_state.widget.selectedRow == TrackRowAddress(track.id)) {
-      return true;
-    }
-    return _state.widget.rowFilter.allowsFacets(
-      fxEnabled: fxEnabledFromState(_state.widget.trackFxStateOf?.call(track)),
-    );
-  }
+  bool _filterAllowsTrackRow(Track track) =>
+      _state.widget.rowFilter.allowsRow(
+        standing: _state.widget.selectedRow == TrackRowAddress(track.id),
+        fxEnabled:
+            _state.widget.trackFxStateOf?.call(track) != LayerFxState.off,
+      );
 
   /// C5 (2026-08-17): whether the [slot]th S row's twirl-down shows the
   /// Audio (waveform) lane — the row is twirled open AND the TIMELINE's
@@ -509,7 +498,9 @@ class _StoryboardRailRows {
   /// an eligible unattached layer row — null elsewhere.
   bool? _rowOnTimesheet(StoryboardRailRow row) {
     final layer = row.layer;
-    return layer != null && layerCarriesTimesheetToggle(layer)
+    return layer != null &&
+            layerKindEligibleForTimesheetToggle(layer.kind) &&
+            layer.attachedToLayerId == null
         ? (_state.widget.layerOnTimesheetOf?.call(layer.id) ??
               layer.onTimesheet)
         : null;

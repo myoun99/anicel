@@ -31,20 +31,20 @@ void main() {
     test('empty filter is inactive and passes everything', () {
       const filter = TimelineRowFilter.none;
       expect(filter.isActive, isFalse);
-      expect(filter.allows(_layer('a'), fxEnabled: true), isTrue);
+      expect(filter.allowsLayerRow(_layer('a'), standing: false, fxEnabled: true), isTrue);
     });
 
     test('mark set passes only matching marks', () {
       final filter = TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)});
       expect(
-        filter.allows(_layer('a', mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
+        filter.allowsLayerRow(_layer('a', mark: const LayerMark(process: LayerProcess.layout)), standing: false, fxEnabled: true),
         isTrue,
       );
       expect(
-        filter.allows(_layer('b', mark: const LayerMark(process: LayerProcess.conte)), fxEnabled: true),
+        filter.allowsLayerRow(_layer('b', mark: const LayerMark(process: LayerProcess.conte)), standing: false, fxEnabled: true),
         isFalse,
       );
-      expect(filter.allows(_layer('c'), fxEnabled: true), isFalse);
+      expect(filter.allowsLayerRow(_layer('c'), standing: false, fxEnabled: true), isFalse);
     });
 
     test('facets combine with AND', () {
@@ -54,23 +54,24 @@ void main() {
       );
       // red + sheet-on passes.
       expect(
-        filter.allows(
+        filter.allowsLayerRow(
           _layer('a', mark: const LayerMark(process: LayerProcess.layout), onTimesheet: true),
+          standing: false,
           fxEnabled: true,
         ),
         isTrue,
       );
       // red but sheet-off fails.
       expect(
-        filter.allows(_layer('b', mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
+        filter.allowsLayerRow(_layer('b', mark: const LayerMark(process: LayerProcess.layout)), standing: false, fxEnabled: true),
         isFalse,
       );
     });
 
     test('fx-only reads the session fxEnabled parameter', () {
       const filter = TimelineRowFilter(fxOnly: true);
-      expect(filter.allows(_layer('a'), fxEnabled: true), isTrue);
-      expect(filter.allows(_layer('a'), fxEnabled: false), isFalse);
+      expect(filter.allowsLayerRow(_layer('a'), standing: false, fxEnabled: true), isTrue);
+      expect(filter.allowsLayerRow(_layer('a'), standing: false, fxEnabled: false), isFalse);
     });
 
     test('toggledMark flips membership', () {
@@ -85,22 +86,23 @@ void main() {
       const filter = TimelineRowFilter(kinds: {LayerKind.se});
       expect(filter.isActive, isTrue);
       expect(
-        filter.allows(_layer('s', kind: LayerKind.se), fxEnabled: true),
+        filter.allowsLayerRow(_layer('s', kind: LayerKind.se), standing: false, fxEnabled: true),
         isTrue,
       );
-      expect(filter.allows(_layer('a'), fxEnabled: true), isFalse);
+      expect(filter.allowsLayerRow(_layer('a'), standing: false, fxEnabled: true), isFalse);
 
       final combined = TimelineRowFilter(
         kinds: {LayerKind.animation},
         markColors: {const LayerMark(process: LayerProcess.layout)},
       );
       expect(
-        combined.allows(_layer('a', mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
+        combined.allowsLayerRow(_layer('a', mark: const LayerMark(process: LayerProcess.layout)), standing: false, fxEnabled: true),
         isTrue,
       );
       expect(
-        combined.allows(
+        combined.allowsLayerRow(
           _layer('s', kind: LayerKind.se, mark: const LayerMark(process: LayerProcess.layout)),
+          standing: false,
           fxEnabled: true,
         ),
         isFalse,
@@ -112,6 +114,41 @@ void main() {
       final withSe = filter.toggledKind(LayerKind.se);
       expect(withSe.kinds, {LayerKind.se});
       expect(withSe.toggledKind(LayerKind.se).kinds, isEmpty);
+    });
+  });
+
+  group('TimelineRowFilter.allowsRow — the standing row is exempt', () {
+    final filter = TimelineRowFilter(
+      markColors: {const LayerMark(process: LayerProcess.layout)},
+    );
+    final failing = _layer('b', mark: const LayerMark(process: LayerProcess.conte));
+
+    test('a failing row hides, the standing one shows, an inactive filter '
+        'shows both', () {
+      expect(
+        filter.allowsLayerRow(failing, standing: false, fxEnabled: true),
+        isFalse,
+      );
+      expect(
+        filter.allowsLayerRow(failing, standing: true, fxEnabled: true),
+        isTrue,
+      );
+      expect(
+        TimelineRowFilter.none.allowsLayerRow(
+          failing,
+          standing: false,
+          fxEnabled: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a row with no facets but fx is judged on fx alone, standing '
+        'exempt', () {
+      const fx = TimelineRowFilter(fxOnly: true);
+      expect(fx.allowsRow(standing: false, fxEnabled: false), isFalse);
+      expect(fx.allowsRow(standing: true, fxEnabled: false), isTrue);
+      expect(filter.allowsRow(standing: false, fxEnabled: false), isTrue);
     });
   });
 

@@ -46,9 +46,43 @@ class TimelineRowFilter {
       fxOnly ||
       fillReferenceOnly;
 
-  /// Whether [layer] passes every active facet (AND). [fxEnabled] resolves
-  /// the layer's session-level fx state for the [fxOnly] facet.
-  bool allows(Layer layer, {required bool fxEnabled}) => allowsFacets(
+  /// Whether a ROW shows under this filter: an inactive filter shows every
+  /// row, and past that the row is judged on the facets it carries
+  /// ([allowsFacets]). The row you are STANDING on is exempt — the
+  /// timeline's rule, and for the same reason: a filter must never hide
+  /// the row you are editing.
+  ///
+  /// One rule for the timeline's layer rows, the storyboard's S rows and
+  /// its V rows; only [standing] and the facets differ, because the rows
+  /// differ. Callers with a [Layer] in hand go through [allowsLayerRow].
+  bool allowsRow({
+    required bool standing,
+    LayerMark? mark,
+    LayerKind? kind,
+    bool? onTimesheet,
+    required bool fxEnabled,
+    bool? isFillReference,
+  }) =>
+      !isActive ||
+      standing ||
+      allowsFacets(
+        mark: mark,
+        kind: kind,
+        onTimesheet: onTimesheet,
+        fxEnabled: fxEnabled,
+        isFillReference: isFillReference,
+      );
+
+  /// [allowsRow] for a row that IS a layer, so it answers every chip.
+  /// [fxEnabled] resolves the layer's session-level fx state for the
+  /// [fxOnly] facet; `standing: false` asks the plain facet question (the
+  /// workspace picks a new active layer with it).
+  bool allowsLayerRow(
+    Layer layer, {
+    required bool standing,
+    required bool fxEnabled,
+  }) => allowsRow(
+    standing: standing,
     mark: layer.mark,
     kind: layer.kind,
     onTimesheet: layer.onTimesheet,

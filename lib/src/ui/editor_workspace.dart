@@ -817,8 +817,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // layer above it (instead of lingering through the exemption).
     if (filter.isActive) {
       widget.session.moveSelectionToFilteredLayer(
-        (layer) => filter.allows(
+        (layer) => filter.allowsLayerRow(
           layer,
+          standing: false,
           fxEnabled: widget.session.isLayerFxEnabled(layer.id),
         ),
       );

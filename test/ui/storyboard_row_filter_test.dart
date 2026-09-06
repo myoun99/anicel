@@ -34,19 +34,19 @@ void main() {
     test('mark', () {
       final filter = TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)});
       expect(
-        filter.allows(layer(mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
+        filter.allowsLayerRow(layer(mark: const LayerMark(process: LayerProcess.layout)), standing: false, fxEnabled: true),
         isTrue,
       );
       expect(
-        filter.allows(layer(mark: const LayerMark(process: LayerProcess.conte)), fxEnabled: true),
+        filter.allowsLayerRow(layer(mark: const LayerMark(process: LayerProcess.conte)), standing: false, fxEnabled: true),
         isFalse,
       );
     });
 
     test('fx — the one facet a TRACK also carries', () {
       const filter = TimelineRowFilter(fxOnly: true);
-      expect(filter.allows(layer(), fxEnabled: true), isTrue);
-      expect(filter.allows(layer(), fxEnabled: false), isFalse);
+      expect(filter.allowsLayerRow(layer(), standing: false, fxEnabled: true), isTrue);
+      expect(filter.allowsLayerRow(layer(), standing: false, fxEnabled: false), isFalse);
       // Same chip, same answer, on a row with nothing but fx.
       expect(filter.allowsFacets(fxEnabled: true), isTrue);
       expect(filter.allowsFacets(fxEnabled: false), isFalse);
@@ -96,18 +96,18 @@ void main() {
       fxOnly: true,
     );
     expect(
-      filter.allows(layer(mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: false),
+      filter.allowsLayerRow(layer(mark: const LayerMark(process: LayerProcess.layout)), standing: false, fxEnabled: false),
       isFalse,
       reason: 'the mark passes, the fx does not',
     );
     expect(
-      filter.allows(layer(mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
+      filter.allowsLayerRow(layer(mark: const LayerMark(process: LayerProcess.layout)), standing: false, fxEnabled: true),
       isTrue,
     );
     expect(TimelineRowFilter.none.isActive, isFalse);
   });
 
-  test('`allows` is `allowsFacets` with every field present — one rule, not '
+  test('`allowsLayerRow` is `allowsFacets` with every field present — one rule, not '
       'two implementations', () {
     final filter = TimelineRowFilter(
       markColors: {const LayerMark(process: LayerProcess.layout)},
@@ -115,7 +115,7 @@ void main() {
     );
     final row = layer(mark: const LayerMark(process: LayerProcess.layout), onTimesheet: false);
     expect(
-      filter.allows(row, fxEnabled: true),
+      filter.allowsLayerRow(row, standing: false, fxEnabled: true),
       filter.allowsFacets(
         mark: row.mark,
         kind: row.kind,

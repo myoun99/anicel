@@ -557,12 +557,11 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
         collapsedAttachBaseIds.contains(attachBaseId)) {
       continue;
     }
-    if (rowFilter.isActive &&
-        layer.id != activeLayerId &&
-        !rowFilter.allows(
-          layer,
-          fxEnabled: fxEnabledOf?.call(layer.id) ?? true,
-        )) {
+    if (!rowFilter.allowsLayerRow(
+      layer,
+      standing: layer.id == activeLayerId,
+      fxEnabled: fxEnabledOf?.call(layer.id) ?? true,
+    )) {
       continue;
     }
     // R27 #24: a collapsed folder folds ALL its members, the active layer
