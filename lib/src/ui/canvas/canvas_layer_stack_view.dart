@@ -9,6 +9,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
+import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/canvas_size.dart';
@@ -42,35 +43,26 @@ import '../../services/cel_source_effect_pass.dart';
 
 part 'layer_stack/layer_stack_paint_pass.dart';
 
-/// One node of the editing canvas's composite tree.
+/// One ROW that paints in the editing canvas's composite tree: a cached
+/// layer image ([CanvasLayerImageRequest]) or the ACTIVE layer's live
+/// surface.
 ///
 /// The stack used to be two FLAT lists — below the active layer and above
 /// it — painted by two sibling widgets with the interactive view between
 /// them. A folder composites into one offscreen — a `ui.Image` its own walk
 /// rasters — and one offscreen cannot span three sibling painters, so
 /// drawing inside a blended folder could never match playback. The tree (with the ACTIVE layer as a node
-/// of its own, [CanvasActiveLayerNode]) is what lets one painter close the
+/// of its own, [CanvasActiveLayerRow]) is what lets one painter close the
 /// buffer it opened.
-sealed class CanvasLayerStackNode
-    implements TreeNode<CanvasLayerStackNode> {
-  const CanvasLayerStackNode();
-}
-
-/// A cached layer image.
-final class CanvasLayerImageNode extends CanvasLayerStackNode {
-  const CanvasLayerImageNode(this.request);
-
-  final CanvasLayerImageRequest request;
-
-  @override
-  List<CanvasLayerStackNode> get children => const [];
+sealed class CanvasStackRow {
+  const CanvasStackRow();
 }
 
 /// The ACTIVE layer's live surface — the one the brush is drawing into.
 /// The painter delegates to the surface painter here, in place, so the
 /// stroke lands inside whatever group buffer encloses it.
-final class CanvasActiveLayerNode extends CanvasLayerStackNode {
-  const CanvasActiveLayerNode({
+final class CanvasActiveLayerRow extends CanvasStackRow {
+  const CanvasActiveLayerRow({
     required this.opacity,
     this.frameKey,
     this.blendMode = LayerBlendMode.normal,
@@ -131,50 +123,10 @@ final class CanvasActiveLayerNode extends CanvasLayerStackNode {
   /// idempotent at Amount 100, which is exactly why it hid; at any lower
   /// Amount the two applications compound.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
-
-  @override
-  List<CanvasLayerStackNode> get children => const [];
-}
-
-/// A FOLDER's group buffer: [children] compose into one buffer, then the
-/// folder's opacity/blend land on it once (R27 #29).
-final class CanvasLayerGroupNode extends CanvasLayerStackNode {
-  const CanvasLayerGroupNode({
-    required this.children,
-    required this.opacity,
-    required this.blendMode,
-    this.effects = const [],
-  });
-
-  @override
-  final List<CanvasLayerStackNode> children;
-  final double opacity;
-  final LayerBlendMode blendMode;
-
-  /// The folder's effect chain (R6), applied once to the group buffer.
-  final List<ResolvedLayerEffect> effects;
-}
-
-/// An ADJUSTMENT row's SCOPE (R6b): [children] compose into one buffer and
-/// the row's [effects] filter it there — so a stroke drawn on a layer below
-/// an adjustment reads through the grade while you draw it.
-final class CanvasLayerAdjustmentNode extends CanvasLayerStackNode {
-  const CanvasLayerAdjustmentNode({
-    required this.children,
-    required this.effects,
-    required this.mix,
-  });
-
-  @override
-  final List<CanvasLayerStackNode> children;
-  final List<ResolvedLayerEffect> effects;
-
-  /// The effect MIX (the row's opacity), 0…1.
-  final double mix;
 }
 
 /// One non-active layer to composite around the interactive canvas.
-class CanvasLayerImageRequest {
+class CanvasLayerImageRequest extends CanvasStackRow {
   const CanvasLayerImageRequest({
     required this.frameKey,
     required this.opacity,
@@ -289,10 +241,10 @@ class CanvasLayerStackView extends StatefulWidget {
   final SelectionFloatOverlay? floatOverlay;
 
   /// The composite tree, bottom → top.
-  final List<CanvasLayerStackNode> nodes;
+  final List<CompositeNode<CanvasStackRow>> nodes;
 
   /// Draws the ACTIVE layer's live surface wherever a
-  /// [CanvasActiveLayerNode] sits in [nodes]; null paints nothing there
+  /// [CanvasActiveLayerRow] sits in [nodes]; null paints nothing there
   /// (hosts that still mount their own interactive view).
   final BitmapSurfacePainter? activeSurfacePainter;
 
@@ -302,11 +254,11 @@ class CanvasLayerStackView extends StatefulWidget {
       // Still exhaustive: a new leaf kind fails to compile until it says
       // whether it is a cached image.
       switch (node) {
-        case CanvasLayerImageNode(:final request):
+        case CompositeLeaf(payload: final CanvasLayerImageRequest request):
           yield request;
-        case CanvasActiveLayerNode():
-        case CanvasLayerGroupNode():
-        case CanvasLayerAdjustmentNode():
+        case CompositeLeaf(payload: CanvasActiveLayerRow()):
+        case CompositeGroup():
+        case CompositeAdjustment():
           break;
       }
     }
@@ -506,11 +458,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// exactly one active row, so the first node found is the answer —
   /// including its `null` key, which means the row has nothing exposed
   /// here.
-  static BrushFrameKey? _activeNodeFrameKey(List<CanvasLayerStackNode> nodes) =>
-      preorderNodes(nodes)
-          .whereType<CanvasActiveLayerNode>()
-          .firstOrNull
-          ?.frameKey;
+  static BrushFrameKey? _activeNodeFrameKey(
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) => preorderNodes(nodes)
+      .whereType<CompositeLeaf<CanvasStackRow>>()
+      .map((leaf) => leaf.payload)
+      .whereType<CanvasActiveLayerRow>()
+      .firstOrNull
+      ?.frameKey;
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
@@ -803,84 +758,45 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// The tree with each image request replaced by the clone we hold —
   /// requests whose image is not ready yet simply drop out, and a group
   /// left empty by that drops with them (an empty buffer is a wasted
-  /// saveLayer).
-  List<_PaintNode> _resolvedTree(List<CanvasLayerStackNode> nodes) {
-    final out = <_PaintNode>[];
-    for (final node in nodes) {
-      switch (node) {
-        case CanvasLayerImageNode(:final request):
-          final held = _images[request.frameKey];
-          if (held == null) {
-            continue;
-          }
-          out.add(
-            _PaintImage(
-              image: held.clone,
-              worldRect: held.worldRect,
-              opacity: request.opacity,
-              blendMode: request.blendMode,
-              pose: request.pose,
-              anchorPoint: request.anchorPoint,
-              tint: request.tint,
-              // The PAINT half only — the keys are already in the image the
-              // cache handed back.
-              effects: request.paintEffects,
-            ),
-          );
-        case CanvasActiveLayerNode(
-          :final opacity,
-          :final blendMode,
-          :final pose,
-          :final anchorPoint,
-        ):
-          if (widget.activeSurfacePainter == null) {
-            continue;
-          }
-          out.add(
-            _PaintActiveSurface(
-              opacity: opacity,
-              blendMode: blendMode,
-              pose: pose,
-              anchorPoint: anchorPoint,
-              // The PAINT half only — like the cached row above. A leading
-              // key is already on the surface this node draws.
-              effects: node.paintEffects,
-              standIn: _activeStandIn,
-            ),
-          );
-        case CanvasLayerGroupNode(
-          :final children,
-          :final opacity,
-          :final blendMode,
-          :final effects,
-        ):
-          final mapped = _resolvedTree(children);
-          if (mapped.isEmpty) {
-            continue;
-          }
-          out.add(
-            _PaintGroup(
-              children: mapped,
-              opacity: opacity,
-              blendMode: blendMode,
-              effects: effects,
-            ),
-          );
-        case CanvasLayerAdjustmentNode(
-          :final children,
-          :final effects,
-          :final mix,
-        ):
-          final mapped = _resolvedTree(children);
-          if (mapped.isEmpty) {
-            continue;
-          }
-          out.add(
-            _PaintAdjustment(children: mapped, effects: effects, mix: mix),
-          );
-      }
+  /// saveLayer — [mapCompositeLeaves] carries that law for every route).
+  List<CompositeNode<_PaintRow>> _resolvedTree(
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) => mapCompositeLeaves(nodes, _paintRowFor);
+
+  _PaintRow? _paintRowFor(CanvasStackRow row) {
+    switch (row) {
+      case final CanvasLayerImageRequest request:
+        final held = _images[request.frameKey];
+        if (held == null) {
+          return null;
+        }
+        return _PaintImage(
+          image: held.clone,
+          worldRect: held.worldRect,
+          opacity: request.opacity,
+          blendMode: request.blendMode,
+          pose: request.pose,
+          anchorPoint: request.anchorPoint,
+          tint: request.tint,
+          // The PAINT half only — the keys are already in the image the
+          // cache handed back.
+          effects: request.paintEffects,
+        );
+      case final CanvasActiveLayerRow active:
+        if (widget.activeSurfacePainter == null) {
+          return null;
+        }
+        return _PaintActiveSurface(
+          opacity: active.opacity,
+          blendMode: active.blendMode,
+          pose: active.pose,
+          anchorPoint: active.anchorPoint,
+          // The PAINT half only — like the cached row above. A leading
+          // key is already on the surface this node draws.
+          effects: active.paintEffects,
+          standIn: _activeStandIn,
+        );
     }
-    return out;
   }
 
   @override
@@ -1039,12 +955,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 }
 
 /// The painter's own node shape: the request tree with images resolved.
-sealed class _PaintNode {
-  const _PaintNode();
+sealed class _PaintRow {
+  const _PaintRow();
 
-  /// Whether [other] draws the same picture as this node — the repaint
+  /// Whether [other] draws the same picture as this row — the repaint
   /// gate's question, field by field, images by IDENTITY.
-  bool matches(_PaintNode other);
+  bool matches(_PaintRow other);
 
   /// 🚨(v) — [matches] as a VALUE, for the bake's key.
   ///
@@ -1065,20 +981,20 @@ sealed class _PaintNode {
 /// more per group's `saveLayer`. This is the S7 predicate's input: it is
 /// a static fact of the node tree, so the backdrop decision needs no
 /// clock and cannot flap within a key.
-int _replayOpsOf(List<_PaintNode> list) {
+int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
   var ops = 0;
   for (final node in list) {
     ops += switch (node) {
-      _PaintImage() => 1,
-      _PaintActiveSurface() => 1,
-      _PaintGroup(:final children) => 1 + _replayOpsOf(children),
-      _PaintAdjustment(:final children) => 1 + _replayOpsOf(children),
+      CompositeLeaf<_PaintRow>() => 1,
+      CompositeGroup<_PaintRow>(:final children) => 1 + _replayOpsOf(children),
+      CompositeAdjustment<_PaintRow>(:final children) =>
+        1 + _replayOpsOf(children),
     };
   }
   return ops;
 }
 
-final class _PaintImage extends _PaintNode {
+final class _PaintImage extends _PaintRow {
   const _PaintImage({
     required this.image,
     required this.worldRect,
@@ -1100,7 +1016,7 @@ final class _PaintImage extends _PaintNode {
   final List<ResolvedLayerEffect> effects;
 
   @override
-  bool matches(_PaintNode other) =>
+  bool matches(_PaintRow other) =>
       other is _PaintImage &&
       identical(image, other.image) &&
       worldRect == other.worldRect &&
@@ -1232,7 +1148,7 @@ class _ActiveLayerStandIn {
   }
 }
 
-final class _PaintActiveSurface extends _PaintNode {
+final class _PaintActiveSurface extends _PaintRow {
   const _PaintActiveSurface({
     required this.opacity,
     required this.blendMode,
@@ -1271,7 +1187,7 @@ final class _PaintActiveSurface extends _PaintNode {
   // value only when some unrelated fact moved (the ㉘/㉞ shape: the value
   // is right and the gate says "unchanged").
   @override
-  bool matches(_PaintNode other) =>
+  bool matches(_PaintRow other) =>
       other is _PaintActiveSurface &&
       opacity == other.opacity &&
       blendMode == other.blendMode &&
@@ -1284,58 +1200,61 @@ final class _PaintActiveSurface extends _PaintNode {
       Object.hash(opacity, blendMode, pose, anchorPoint, Object.hashAll(effects));
 }
 
-final class _PaintGroup extends _PaintNode {
-  const _PaintGroup({
-    required this.children,
-    required this.opacity,
-    required this.blendMode,
-    required this.effects,
-  });
+/// Whether [a] draws the same picture as [b] — the STRUCTURE compared
+/// here, the painted row's own fields by [_PaintRow.matches].
+bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
+    switch (a) {
+      CompositeLeaf<_PaintRow>(:final payload) =>
+        b is CompositeLeaf<_PaintRow> && payload.matches(b.payload),
+      CompositeGroup<_PaintRow>(
+        :final children,
+        :final opacity,
+        :final blendMode,
+        :final effects,
+      ) =>
+        b is CompositeGroup<_PaintRow> &&
+            opacity == b.opacity &&
+            blendMode == b.blendMode &&
+            listEquals(effects, b.effects) &&
+            _treesMatch(children, b.children),
+      CompositeAdjustment<_PaintRow>(
+        :final children,
+        :final effects,
+        :final mix,
+      ) =>
+        b is CompositeAdjustment<_PaintRow> &&
+            mix == b.mix &&
+            listEquals(effects, b.effects) &&
+            _treesMatch(children, b.children),
+    };
 
-  final List<_PaintNode> children;
-  final double opacity;
-  final LayerBlendMode blendMode;
-  final List<ResolvedLayerEffect> effects;
-
-  @override
-  bool matches(_PaintNode other) =>
-      other is _PaintGroup &&
-      opacity == other.opacity &&
-      blendMode == other.blendMode &&
-      listEquals(effects, other.effects) &&
-      _treesMatch(children, other.children);
-
-  @override
-  int get signature => Object.hash(
-    opacity,
-    blendMode,
-    Object.hashAll(effects),
-    _treeSignature(children),
-  );
-}
-
-final class _PaintAdjustment extends _PaintNode {
-  const _PaintAdjustment({
-    required this.children,
-    required this.effects,
-    required this.mix,
-  });
-
-  final List<_PaintNode> children;
-  final List<ResolvedLayerEffect> effects;
-  final double mix;
-
-  @override
-  bool matches(_PaintNode other) =>
-      other is _PaintAdjustment &&
-      mix == other.mix &&
-      listEquals(effects, other.effects) &&
-      _treesMatch(children, other.children);
-
-  @override
-  int get signature =>
-      Object.hash(mix, Object.hashAll(effects), _treeSignature(children));
-}
+/// 🚨(v) — [_nodesMatch] as a VALUE, for the bake's key.
+///
+/// ⛔It must fold in exactly what [_nodesMatch] compares, and it sits
+/// directly beside it so the two are read together: a field compared there
+/// and left out here makes the recordings outlive the change they should
+/// have ended.
+int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
+  CompositeLeaf<_PaintRow>(:final payload) => payload.signature,
+  CompositeGroup<_PaintRow>(
+    :final children,
+    :final opacity,
+    :final blendMode,
+    :final effects,
+  ) =>
+    Object.hash(
+      opacity,
+      blendMode,
+      Object.hashAll(effects),
+      _treeSignature(children),
+    ),
+  CompositeAdjustment<_PaintRow>(
+    :final children,
+    :final effects,
+    :final mix,
+  ) =>
+    Object.hash(mix, Object.hashAll(effects), _treeSignature(children)),
+};
 
 /// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
 ///
@@ -1387,7 +1306,7 @@ Paint _withLayerPaint(Paint draw, Paint? layer) {
 }
 
 Rect _paintNodeExtent(
-  _PaintNode node, {
+  CompositeNode<_PaintRow> node, {
   required CanvasSize canvasSize,
   required Rect Function() activeSurfaceExtent,
 }) {
@@ -1402,12 +1321,16 @@ Rect _paintNodeExtent(
   }
 
   switch (node) {
-    case _PaintImage(:final worldRect, :final pose, :final anchorPoint):
+    case CompositeLeaf(
+      payload: _PaintImage(:final worldRect, :final pose, :final anchorPoint),
+    ):
       return posed(worldRect, pose, anchorPoint);
-    case _PaintActiveSurface(:final pose, :final anchorPoint):
+    case CompositeLeaf(
+      payload: _PaintActiveSurface(:final pose, :final anchorPoint),
+    ):
       return posed(activeSurfaceExtent(), pose, anchorPoint);
-    case _PaintGroup(:final children):
-    case _PaintAdjustment(:final children):
+    case CompositeGroup(:final children):
+    case CompositeAdjustment(:final children):
       var union = Rect.zero;
       for (final child in children) {
         final childRect = _paintNodeExtent(
@@ -1509,7 +1432,7 @@ class _LayerStackPainter extends CustomPainter {
   /// would only ever compare against itself.
   static String? _lastStackProbe;
 
-  final List<_PaintNode> nodes;
+  final List<CompositeNode<_PaintRow>> nodes;
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   ///
@@ -1798,16 +1721,20 @@ class _LayerStackPainter extends CustomPainter {
   /// because the stroke's pixels pass through those buffers — smears a dab
   /// past its own tile. Both are answered by re-rastering the whole buffer,
   /// which is what every paint did before any of this existed.
-  static bool _liveSurfaceIsSpatiallyStable(List<_PaintNode> list) {
+  static bool _liveSurfaceIsSpatiallyStable(
+    List<CompositeNode<_PaintRow>> list,
+  ) {
     for (final node in list) {
-      if (node is _PaintActiveSurface) {
-        return node.pose == null && !resolvedEffectsSpreadPixels(node.effects);
+      if (node case CompositeLeaf(payload: final _PaintActiveSurface active)) {
+        return active.pose == null &&
+            !resolvedEffectsSpreadPixels(active.effects);
       }
-      if (node is _PaintGroup && node.children.any(_enclosesActiveSurface)) {
+      if (node is CompositeGroup<_PaintRow> &&
+          node.children.any(_enclosesActiveSurface)) {
         return !resolvedEffectsSpreadPixels(node.effects) &&
             _liveSurfaceIsSpatiallyStable(node.children);
       }
-      if (node is _PaintAdjustment &&
+      if (node is CompositeAdjustment<_PaintRow> &&
           node.children.any(_enclosesActiveSurface)) {
         return !resolvedEffectsSpreadPixels(node.effects) &&
             _liveSurfaceIsSpatiallyStable(node.children);
@@ -1817,12 +1744,15 @@ class _LayerStackPainter extends CustomPainter {
   }
 
   /// Whether the live surface is this node, or anywhere inside it.
-  static bool _enclosesActiveSurface(_PaintNode node) => switch (node) {
-    _PaintActiveSurface() => true,
-    _PaintGroup(:final children) => children.any(_enclosesActiveSurface),
-    _PaintAdjustment(:final children) => children.any(_enclosesActiveSurface),
-    _PaintImage() => false,
-  };
+  static bool _enclosesActiveSurface(CompositeNode<_PaintRow> node) =>
+      switch (node) {
+        CompositeLeaf(payload: _PaintActiveSurface()) => true,
+        CompositeGroup(:final children) =>
+          children.any(_enclosesActiveSurface),
+        CompositeAdjustment(:final children) =>
+          children.any(_enclosesActiveSurface),
+        CompositeLeaf(payload: _PaintImage()) => false,
+      };
 
   @override
   bool shouldRepaint(covariant _LayerStackPainter oldDelegate) {
@@ -1846,13 +1776,16 @@ class _LayerStackPainter extends CustomPainter {
 }
 
 /// Whether [a] and [b] draw the same picture, node for node
-/// ([_PaintNode.matches]).
-bool _treesMatch(List<_PaintNode> a, List<_PaintNode> b) {
+/// ([_nodesMatch]).
+bool _treesMatch(
+  List<CompositeNode<_PaintRow>> a,
+  List<CompositeNode<_PaintRow>> b,
+) {
   if (a.length != b.length) {
     return false;
   }
   for (var index = 0; index < a.length; index += 1) {
-    if (!a[index].matches(b[index])) {
+    if (!_nodesMatch(a[index], b[index])) {
       return false;
     }
   }
@@ -1860,11 +1793,11 @@ bool _treesMatch(List<_PaintNode> a, List<_PaintNode> b) {
 }
 
 /// [_treesMatch] as a VALUE, for the bake's key — the nodes' signatures
-/// folded in order ([_PaintNode.signature]).
-int _treeSignature(List<_PaintNode> list) {
+/// folded in order ([_nodeSignature]).
+int _treeSignature(List<CompositeNode<_PaintRow>> list) {
   var hash = list.length;
   for (final node in list) {
-    hash = Object.hash(hash, node.signature);
+    hash = Object.hash(hash, _nodeSignature(node));
   }
   return hash;
 }

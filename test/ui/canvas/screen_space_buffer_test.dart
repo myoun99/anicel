@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/canvas/paper_background.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// ⓔ 5단계 — BELOW THE KNEE THE BUFFER RUNS AT SCREEN SCALE.
 ///
@@ -95,7 +96,7 @@ void main() {
               width: 300,
               height: 8,
               child: CanvasLayerStackView(
-                nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: viewport ?? CanvasViewport(zoom: 0.025),

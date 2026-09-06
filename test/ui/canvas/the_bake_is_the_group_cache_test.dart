@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★THE GROUP CACHE ALREADY EXISTS, AND MAKING A GROUP AN IMAGE IS WHAT
 /// FINISHED IT.
@@ -113,9 +114,9 @@ void main() {
 
   /// A folder holding a DRAWN row — content a stroke on another layer cannot
   /// move — under the live layer.
-  CanvasLayerStackNode staticFolder(String id) => CanvasLayerGroupNode(
+  CompositeNode<CanvasStackRow> staticFolder(String id) => CompositeGroup<CanvasStackRow>(
     children: [
-      CanvasLayerImageNode(
+      CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(frameKey: keyFor(id), opacity: 1),
       ),
     ],
@@ -129,7 +130,7 @@ void main() {
   /// while the bake still holds.
   Future<void> strokeStep(
     WidgetTester tester, {
-    required List<CanvasLayerStackNode> tree,
+    required List<CompositeNode<CanvasStackRow>> tree,
     required LayerFrameImageCache cache,
     required int inkX,
   }) async {
@@ -180,7 +181,7 @@ void main() {
     final cache = cacheWithStroke('under');
     final tree = [
       staticFolder('under'),
-      const CanvasActiveLayerNode(opacity: 1),
+      const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
     ];
     // ⚠️Warm the row's image first: the cache builds it across a real async
     // round trip, and an unresolved row is DROPPED from the tree — the
@@ -216,8 +217,8 @@ void main() {
     // has content that key cannot see. It is not baked, and must not be.
     final cache = cacheWithStroke('unused');
     final tree = [
-      const CanvasLayerGroupNode(
-        children: [CanvasActiveLayerNode(opacity: 1)],
+      const CompositeGroup<CanvasStackRow>(
+        children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
         opacity: 0.5,
         blendMode: LayerBlendMode.multiply,
       ),

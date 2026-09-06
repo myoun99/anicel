@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★A GROUP IS AN IMAGE — AND IT IS THE SAME PIXELS `saveLayer` MADE.
 ///
@@ -478,8 +479,8 @@ void main() {
                 height: 150,
                 child: CanvasLayerStackView(
                   nodes: [
-                    const CanvasLayerGroupNode(
-                      children: [CanvasActiveLayerNode(opacity: 1)],
+                    const CompositeGroup<CanvasStackRow>(
+                      children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                       opacity: 1,
                       blendMode: LayerBlendMode.multiply,
                     ),

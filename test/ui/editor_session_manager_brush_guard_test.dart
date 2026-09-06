@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// R6-④: the brush only lands on drawing-section layers — SE cels are
 /// timing/dialogue data and camera rows are notation, so they never produce
@@ -100,7 +101,8 @@ void main() {
 
     final stackLayerIds = [
       for (final node in session.editingCanvasStack.nodes)
-        if (node is CanvasLayerImageNode) node.request.frameKey.layerId,
+        if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r))
+          r.frameKey.layerId,
     ];
     expect(
       stackLayerIds,

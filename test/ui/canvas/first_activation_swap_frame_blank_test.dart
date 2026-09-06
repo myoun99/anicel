@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// The FIRST-ACTIVATION swap-frame law (device report 2026-08-17: old file
 /// opened, layers with existing art; the FIRST time each layer was made
@@ -149,7 +150,7 @@ void main() {
   /// on device.
   Future<void> pumpStack(
     WidgetTester tester, {
-    required List<CanvasLayerStackNode> nodes,
+    required List<CompositeNode<CanvasStackRow>> nodes,
     required LayerFrameImageCache imageCache,
     required CanvasSize canvasSize,
     BitmapSurfacePainter? activeSurfacePainter,
@@ -291,7 +292,7 @@ void main() {
     await pumpStack(
       tester,
       nodes: const [
-        CanvasLayerImageNode(
+        CompositeLeaf<CanvasStackRow>(
           CanvasLayerImageRequest(frameKey: key, opacity: 1),
         ),
       ],
@@ -319,7 +320,7 @@ void main() {
     );
     await pumpStack(
       tester,
-      nodes: const [CanvasActiveLayerNode(opacity: 1, frameKey: key)],
+      nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, frameKey: key))],
       imageCache: imageCache,
       canvasSize: canvasSize,
       activeSurfacePainter: painter,
@@ -436,7 +437,7 @@ void main() {
     await pumpStack(
       tester,
       nodes: const [
-        CanvasLayerImageNode(
+        CompositeLeaf<CanvasStackRow>(
           CanvasLayerImageRequest(frameKey: key, opacity: 1),
         ),
       ],
@@ -454,7 +455,7 @@ void main() {
     );
     await pumpStack(
       tester,
-      nodes: const [CanvasActiveLayerNode(opacity: 1, frameKey: key)],
+      nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, frameKey: key))],
       imageCache: imageCache,
       canvasSize: canvasSize,
       activeSurfacePainter: painter,
@@ -579,7 +580,7 @@ void main() {
     await pumpStack(
       tester,
       nodes: const [
-        CanvasLayerImageNode(
+        CompositeLeaf<CanvasStackRow>(
           CanvasLayerImageRequest(frameKey: key, opacity: 1),
         ),
       ],
@@ -611,7 +612,7 @@ void main() {
     );
     await pumpStack(
       tester,
-      nodes: const [CanvasActiveLayerNode(opacity: 1, frameKey: key)],
+      nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, frameKey: key))],
       imageCache: imageCache,
       canvasSize: canvasSize,
       activeSurfacePainter: painter,
@@ -681,7 +682,7 @@ void main() {
     await pumpStack(
       tester,
       nodes: const [
-        CanvasLayerImageNode(
+        CompositeLeaf<CanvasStackRow>(
           CanvasLayerImageRequest(frameKey: key, opacity: 1),
         ),
       ],
@@ -699,7 +700,7 @@ void main() {
     );
     await pumpStack(
       tester,
-      nodes: const [CanvasActiveLayerNode(opacity: 1, frameKey: key)],
+      nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, frameKey: key))],
       imageCache: imageCache,
       canvasSize: canvasSize,
       activeSurfacePainter: painter,

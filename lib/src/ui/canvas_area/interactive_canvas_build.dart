@@ -19,7 +19,7 @@ class _InteractiveCanvasBuild {
   late final bool _inGap;
   late final bool _cameraOverlayVisible;
   late final ({
-    List<CanvasLayerStackNode> nodes,
+    List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
     List<ResolvedLayerEffect> activeSourceEffects,
   })
@@ -65,7 +65,7 @@ class _InteractiveCanvasBuild {
         showCameraOverlay && session.activeCutOrNull != null;
     _layerStack = _inGap
         ? (
-            nodes: const <CanvasLayerStackNode>[],
+            nodes: const <CompositeNode<CanvasStackRow>>[],
             activeLayerOpacity: 1.0,
             activeSourceEffects: const <ResolvedLayerEffect>[],
           )

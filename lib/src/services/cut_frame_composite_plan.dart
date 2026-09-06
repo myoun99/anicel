@@ -2,6 +2,7 @@ import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/composite_tree.dart';
 import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
@@ -128,12 +129,25 @@ double resolveLayerEffectiveOpacityAt({
 typedef LayerFrameSurfaceResolver =
     BitmapSurface? Function(Layer layer, Frame frame);
 
+/// One ROW that paints in a cut frame's composite tree, bottom → top: an
+/// entry resolved from stored pixels, or the row being DRAWN ON with none
+/// exposed here.
+///
+/// Built by [resolveCutFrameCompositeTree] and mapped — never rebuilt —
+/// into the shapes the routes need: surfaces for the paint routes
+/// ([planCutFrameComposite]) and identities for the playback cache
+/// ([computeCutFrameCompositeSignature]). One structure, so playback,
+/// export and the editing canvas cannot drift.
+sealed class CutFrameCompositeRow {
+  const CutFrameCompositeRow();
+}
+
 /// One resolved contributor to the cut's picture at a frame — the SHARED
 /// visit both the composite plan and the composite cache signature consume,
 /// so every route (playback, export, thumbnails, editing stack) agrees on
 /// skip rules, exposure resolution AND the attach-layer expansion by
 /// construction.
-class CutFrameCompositeEntry {
+class CutFrameCompositeEntry extends CutFrameCompositeRow {
   const CutFrameCompositeEntry({
     required this.layer,
     required this.frame,
@@ -160,24 +174,6 @@ class CutFrameCompositeEntry {
   /// CARRIER, so an attach row wears its base's effects exactly as it wears
   /// its base's pose, and the carrier's fx switch bypasses both.
   final List<ResolvedLayerEffect> effects;
-}
-
-/// One node of a cut frame's composite TREE, bottom → top: an entry that
-/// paints, or a FOLDER's group buffer holding the ones inside it.
-///
-/// Built by [resolveCutFrameCompositeTree] and mapped — never rebuilt —
-/// into the shapes the routes need: surfaces for the paint routes
-/// ([planCutFrameComposite]) and identities for the playback cache
-/// ([computeCutFrameCompositeSignature]). One structure, so playback,
-/// export and the editing canvas cannot drift.
-sealed class CutFrameCompositeEntryNode {
-  const CutFrameCompositeEntryNode();
-}
-
-final class CutFrameCompositeEntryLeaf extends CutFrameCompositeEntryNode {
-  const CutFrameCompositeEntryLeaf(this.entry);
-
-  final CutFrameCompositeEntry entry;
 }
 
 /// What the plan resolved about HOW a row draws, apart from its pixels —
@@ -211,88 +207,13 @@ typedef ResolvedRowRender = ({
 /// signature pass no live row, so they never see this node — but they
 /// switch over it, because a route that started drawing live pixels would
 /// otherwise do it silently.
-final class CutFrameCompositeEntryLive extends CutFrameCompositeEntryNode {
-  const CutFrameCompositeEntryLive({
-    required this.layer,
-    required this.render,
-  });
+final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
+  const CutFrameCompositeLiveRow({required this.layer, required this.render});
 
   final Layer layer;
 
   /// Resolved exactly as an entry's is — same gates, same folds.
   final ResolvedRowRender render;
-}
-
-/// A FOLDER's GROUP BUFFER (R27 #29, 유저 확정: "그룹 한번합쳐서 한번
-/// 블렌드"). [children] compose into one buffer, and only then does the
-/// folder's [opacity] and [blendMode] apply — once, to that buffer. So
-/// overlapping members inside a multiply folder read as one picture
-/// instead of darkening where they cross.
-///
-/// Only a folder that NEEDS a buffer becomes one of these
-/// ([folderNeedsCompositeBuffer]); a plain pass-through folder leaves no
-/// node at all and its members sit directly in the parent's list.
-final class CutFrameCompositeEntryGroup extends CutFrameCompositeEntryNode {
-  const CutFrameCompositeEntryGroup({
-    required this.folder,
-    required this.children,
-    required this.opacity,
-    required this.blendMode,
-    this.effects = const [],
-  });
-
-  final Layer folder;
-
-  /// Bottom → top; may hold nested groups.
-  final List<CutFrameCompositeEntryNode> children;
-
-  /// The FOLDER's effective opacity (static × animated sample).
-  final double opacity;
-
-  /// The FOLDER's blend against everything below the group.
-  final LayerBlendMode blendMode;
-
-  /// The FOLDER's effect chain sampled at this frame (R6), applied ONCE to
-  /// the composed buffer — which is the whole reason effects force a folder
-  /// to buffer ([folderNeedsCompositeBuffer]): a blur over the group is not
-  /// the same picture as a blur over each member.
-  final List<ResolvedLayerEffect> effects;
-}
-
-/// An ADJUSTMENT layer's SCOPE (R6b): everything composited below the row,
-/// composed into one buffer so the row's [effects] can filter it as the
-/// single picture it is.
-///
-/// The scope is decided by the folder rules Photoshop and CSP already
-/// taught the stack (§6-z3): the walk collects every sibling below the
-/// adjustment, keeps going OUT through pass-through folders (통과 — the
-/// adjustment leaks past them, filtering what lies below the folder too)
-/// and stops at the first BUFFERING one, whose buffer is a picture of its
-/// own that nothing inside it can reach past.
-///
-/// [mix] is the row's opacity, and it means MIX, not fade: 0.5 is a
-/// half-strength grade, never a half-transparent stack. See
-/// [resolveAdjustmentScopePass] for how a route paints that.
-final class CutFrameCompositeEntryAdjustment
-    extends CutFrameCompositeEntryNode {
-  const CutFrameCompositeEntryAdjustment({
-    required this.adjustment,
-    required this.children,
-    required this.effects,
-    required this.mix,
-  });
-
-  final Layer adjustment;
-
-  /// Everything in scope, bottom → top; may hold nested groups.
-  final List<CutFrameCompositeEntryNode> children;
-
-  /// The row's chain sampled at this frame — never empty (an adjustment
-  /// that resolves to nothing leaves no node at all).
-  final List<ResolvedLayerEffect> effects;
-
-  /// The effect MIX, 0…1 (the row's static opacity).
-  final double mix;
 }
 
 /// Whether [folder] must compose into its own buffer at [frameIndex].
@@ -379,7 +300,7 @@ resolveFolderChainAt({
   required Layer layer,
   required int frameIndex,
   /// When false, a BUFFERING folder's opacity and blend are left out —
-  /// they belong to its [CutFrameCompositeEntryGroup] instead. Poses fold
+  /// they belong to its [CompositeGroup] instead. Poses fold
   /// either way (see [folderNeedsCompositeBuffer] for why).
   bool foldBufferedFolders = true,
 }) {
@@ -529,13 +450,14 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
           foldBufferedFolders: foldBufferedFolders,
           liveLayerId: null,
         ))
-        case CutFrameCompositeEntryLeaf(:final entry))
+        case final CutFrameCompositeEntry entry)
       entry,
 ];
 
-/// What one layer contributes at a frame: its resolved [CutFrameCompositeEntry]
-/// as a leaf, a [CutFrameCompositeEntryLive] when it is the LIVE row and has
-/// no cel exposed here, or null when it contributes nothing.
+/// What one layer contributes at a frame: its resolved
+/// [CutFrameCompositeEntry], a [CutFrameCompositeLiveRow] when it is the
+/// LIVE row and has no cel exposed here, or null when it contributes
+/// nothing.
 ///
 /// ⛔EVERY GATE IS IN THIS ONE FUNCTION — the eye, the static opacity, the
 /// folder chain's visibility and its opacity factor, the dangling attach
@@ -544,7 +466,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
 /// switched off went on being drawn on the canvas and nowhere else, and a
 /// stroke inside a 20% folder drew at full strength while playback showed
 /// it at 20%.
-CutFrameCompositeEntryNode? _resolveLayerNode(
+CutFrameCompositeRow? _resolveLayerNode(
   Cut cut,
   Layer layer,
   ({int frameIndex, bool foldBufferedFolders, LayerId? liveLayerId}) at,
@@ -552,7 +474,7 @@ CutFrameCompositeEntryNode? _resolveLayerNode(
   final frameIndex = at.frameIndex;
   // Folder rows composite their MEMBERS, not a surface of their own —
   // their eye/opacity/blend/FX reach the picture through
-  // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
+  // [resolveFolderChainAt] (flat) or [CompositeGroup] (tree).
   if (!layerKindPaintsArtwork(layer.kind)) {
     return null;
   }
@@ -652,7 +574,7 @@ CutFrameCompositeEntryNode? _resolveLayerNode(
     if (layer.id != at.liveLayerId) {
       return null;
     }
-    return CutFrameCompositeEntryLive(
+    return CutFrameCompositeLiveRow(
       layer: layer,
       render: (
         opacity: opacity,
@@ -662,16 +584,14 @@ CutFrameCompositeEntryNode? _resolveLayerNode(
       ),
     );
   }
-  return CutFrameCompositeEntryLeaf(
-    CutFrameCompositeEntry(
-      layer: layer,
-      frame: frame,
-      opacity: opacity,
-      blendMode: blendMode,
-      pose: combined?.pose,
-      anchorPoint: combined?.anchorPoint,
-      effects: effects,
-    ),
+  return CutFrameCompositeEntry(
+    layer: layer,
+    frame: frame,
+    opacity: opacity,
+    blendMode: blendMode,
+    pose: combined?.pose,
+    anchorPoint: combined?.anchorPoint,
+    effects: effects,
   );
 }
 
@@ -690,12 +610,12 @@ CutFrameCompositeEntryNode? _resolveLayerNode(
 /// reaches and take those buckets. Buckets are emptied as they are taken,
 /// so the rows that arrive after the adjustment land on top of the wrap,
 /// unfiltered — exactly the picture the stack shows.
-({CutFrameCompositeEntryNode node, LayerId? targetFolderId})?
+({CompositeNode<CutFrameCompositeRow> node, LayerId? targetFolderId})?
 _adjustmentScopeNode({
   required Layer adjustment,
   required Cut cut,
   required int frameIndex,
-  required Map<LayerId?, List<CutFrameCompositeEntryNode>> childrenOf,
+  required Map<LayerId?, List<CompositeNode<CutFrameCompositeRow>>> childrenOf,
 }) {
   if (!adjustment.isVisible) {
     return null;
@@ -744,15 +664,14 @@ _adjustmentScopeNode({
 
   // Outermost bucket first: a folder's members are one contiguous run, so
   // everything already gathered in an OUTER bucket sits below that run.
-  final children = <CutFrameCompositeEntryNode>[
+  final children = <CompositeNode<CutFrameCompositeRow>>[
     for (final key in scopeKeys.reversed) ...?childrenOf.remove(key),
   ];
   if (children.isEmpty) {
     return null; // Nothing below to filter.
   }
   return (
-    node: CutFrameCompositeEntryAdjustment(
-      adjustment: adjustment,
+    node: CompositeAdjustment<CutFrameCompositeRow>(
       children: List.unmodifiable(children),
       effects: effects,
       mix: mix,
@@ -763,9 +682,9 @@ _adjustmentScopeNode({
 
 /// The cut's picture at [frameIndex] as a TREE, bottom → top: every
 /// visible entry, with each BUFFERING folder's members wrapped in a
-/// [CutFrameCompositeEntryGroup] so the folder's opacity and blend apply
+/// [CompositeGroup] so the folder's opacity and blend apply
 /// ONCE to their composed buffer (R27 #29), and each ADJUSTMENT row's
-/// scope wrapped in a [CutFrameCompositeEntryAdjustment] (R6b).
+/// scope wrapped in a [CompositeAdjustment] (R6b).
 ///
 /// The stack list IS the structure: a folder's members occupy a
 /// contiguous run with the folder row directly above it, so this single
@@ -773,19 +692,20 @@ _adjustmentScopeNode({
 /// reaches the folder. A plain pass-through folder leaves no node — its
 /// members simply belong to the parent, which is what makes an organizing
 /// folder cost exactly nothing.
-List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
+List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   /// The row being DRAWN ON, when there is one. It stands in the tree even
-  /// with no cel exposed at [frameIndex], as a [CutFrameCompositeEntryLive]
+  /// with no cel exposed at [frameIndex], as a [CutFrameCompositeLiveRow]
   /// — see that class for why the plan and not the canvas places it. Null
   /// for every route that composites stored pixels only.
   LayerId? liveLayerId,
 }) {
   // folder id (null = top level) → the nodes gathered under it so far.
-  final childrenOf = <LayerId?, List<CutFrameCompositeEntryNode>>{};
-  void addTo(LayerId? folderId, CutFrameCompositeEntryNode node) =>
-      (childrenOf[folderId] ??= <CutFrameCompositeEntryNode>[]).add(node);
+  final childrenOf = <LayerId?, List<CompositeNode<CutFrameCompositeRow>>>{};
+  void addTo(LayerId? folderId, CompositeNode<CutFrameCompositeRow> node) =>
+      (childrenOf[folderId] ??= <CompositeNode<CutFrameCompositeRow>>[])
+          .add(node);
 
   for (final layer in cut.layers) {
     if (layerKindFiltersBelow(layer.kind)) {
@@ -829,8 +749,7 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
       }
       addTo(
         layer.folderId,
-        CutFrameCompositeEntryGroup(
-          folder: layer,
+        CompositeGroup<CutFrameCompositeRow>(
           children: List.unmodifiable(children),
           opacity: opacity,
           // A translucent PASS-THROUGH folder buffers for the opacity
@@ -846,17 +765,17 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
       );
       continue;
     }
-    final node = _resolveLayerNode(cut, layer, (
+    final row = _resolveLayerNode(cut, layer, (
       frameIndex: frameIndex,
       foldBufferedFolders: false,
       liveLayerId: liveLayerId,
     ));
-    if (node != null) {
-      addTo(layer.folderId, node);
+    if (row != null) {
+      addTo(layer.folderId, CompositeLeaf(row));
     }
   }
   return List.unmodifiable(
-    childrenOf[null] ?? const <CutFrameCompositeEntryNode>[],
+    childrenOf[null] ?? const <CompositeNode<CutFrameCompositeRow>>[],
   );
 }
 
@@ -902,134 +821,42 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   return plan;
 }
 
-/// One node of a PAINTABLE composite tree — [resolveCutFrameCompositeTree]
-/// with surfaces resolved.
-sealed class CutFrameCompositeSurfaceNode {
-  const CutFrameCompositeSurfaceNode();
-}
-
-final class CutFrameCompositeSurfaceLeaf extends CutFrameCompositeSurfaceNode {
-  const CutFrameCompositeSurfaceLeaf(this.layer);
-
-  final CutFrameCompositeLayer layer;
-}
-
-final class CutFrameCompositeSurfaceGroup extends CutFrameCompositeSurfaceNode {
-  const CutFrameCompositeSurfaceGroup({
-    required this.children,
-    required this.opacity,
-    required this.blendMode,
-    this.effects = const [],
-  });
-
-  final List<CutFrameCompositeSurfaceNode> children;
-  final double opacity;
-  final LayerBlendMode blendMode;
-
-  /// The group's effect chain (R6), applied once to the composed buffer.
-  final List<ResolvedLayerEffect> effects;
-}
-
-/// An ADJUSTMENT row's scope with surfaces resolved (R6b).
-final class CutFrameCompositeSurfaceAdjustment
-    extends CutFrameCompositeSurfaceNode {
-  const CutFrameCompositeSurfaceAdjustment({
-    required this.children,
-    required this.effects,
-    required this.mix,
-  });
-
-  final List<CutFrameCompositeSurfaceNode> children;
-  final List<ResolvedLayerEffect> effects;
-
-  /// The effect MIX (the row's opacity), 0…1.
-  final double mix;
-}
-
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
 /// entries whose frame has no artwork drop out, and a group left empty by
 /// that drops with them (an empty buffer is a wasted saveLayer).
-List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
+List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
 }) {
-  List<CutFrameCompositeSurfaceNode> mapNodes(
-    List<CutFrameCompositeEntryNode> nodes,
-  ) {
-    final out = <CutFrameCompositeSurfaceNode>[];
-    for (final node in nodes) {
-      switch (node) {
-        case CutFrameCompositeEntryLive():
-          // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
-          // tree for a live row, and only it owns the surface to fill the
-          // slot with; every other route resolves surfaces from stored
-          // frames. Reached here it would be a caller handing a live row to
-          // a route that cannot draw it, so it contributes nothing rather
-          // than guessing.
-          continue;
-        case CutFrameCompositeEntryLeaf(:final entry):
-          final surface = surfaceResolver(entry.layer, entry.frame);
-          if (surface == null) {
-            continue;
-          }
-          out.add(
-            CutFrameCompositeSurfaceLeaf(
-              CutFrameCompositeLayer(
-                surface: surface,
-                opacity: entry.opacity,
-                blendMode: entry.blendMode,
-                pose: entry.pose,
-                anchorPoint: entry.anchorPoint,
-                effects: entry.effects,
-              ),
-            ),
-          );
-        case CutFrameCompositeEntryGroup(
-          :final children,
-          :final opacity,
-          :final blendMode,
-          :final effects,
-        ):
-          final mapped = mapNodes(children);
-          if (mapped.isEmpty) {
-            continue;
-          }
-          out.add(
-            CutFrameCompositeSurfaceGroup(
-              children: List.unmodifiable(mapped),
-              opacity: opacity,
-              blendMode: blendMode,
-              effects: effects,
-            ),
-          );
-        case CutFrameCompositeEntryAdjustment(
-          :final children,
-          :final effects,
-          :final mix,
-        ):
-          final mapped = mapNodes(children);
-          if (mapped.isEmpty) {
-            continue; // Every row in scope turned out to have no artwork.
-          }
-          out.add(
-            CutFrameCompositeSurfaceAdjustment(
-              children: List.unmodifiable(mapped),
-              effects: effects,
-              mix: mix,
-            ),
-          );
-      }
+  CutFrameCompositeLayer? surfaceOf(CutFrameCompositeEntry entry) {
+    final surface = surfaceResolver(entry.layer, entry.frame);
+    if (surface == null) {
+      return null;
     }
-    return out;
+    return CutFrameCompositeLayer(
+      surface: surface,
+      opacity: entry.opacity,
+      blendMode: entry.blendMode,
+      pose: entry.pose,
+      anchorPoint: entry.anchorPoint,
+      effects: entry.effects,
+    );
   }
 
   return List.unmodifiable(
-    mapNodes(
-      resolveCutFrameCompositeTree(
-        cut: cut,
-        frameIndex: frameIndex,
-      ),
+    mapCompositeLeaves(
+      resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+      (row) => switch (row) {
+        // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
+        // tree for a live row, and only it owns the surface to fill the
+        // slot with; every other route resolves surfaces from stored
+        // frames. Reached here it would be a caller handing a live row to
+        // a route that cannot draw it, so it contributes nothing rather
+        // than guessing.
+        CutFrameCompositeLiveRow() => null,
+        CutFrameCompositeEntry() => surfaceOf(row),
+      },
     ),
   );
 }

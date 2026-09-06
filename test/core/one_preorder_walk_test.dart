@@ -13,6 +13,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// **The recursion over a composite tree is ONE algorithm.**
 ///
@@ -116,12 +117,12 @@ void main() {
       imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
       viewport: CanvasViewport(),
       nodes: [
-        CanvasLayerImageNode(request('a')),
-        CanvasLayerGroupNode(
+        CompositeLeaf<CanvasStackRow>(request('a')),
+        CompositeGroup<CanvasStackRow>(
           opacity: 1,
           blendMode: LayerBlendMode.normal,
           children: [
-            const CanvasActiveLayerNode(
+            const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(
               opacity: 1,
               frameKey: BrushFrameKey(
                 projectId: ProjectId('p'),
@@ -130,15 +131,15 @@ void main() {
                 layerId: LayerId('active'),
                 frameId: FrameId('active-cel'),
               ),
-            ),
-            CanvasLayerAdjustmentNode(
+            )),
+            CompositeAdjustment<CanvasStackRow>(
               effects: const [],
               mix: 1,
-              children: [CanvasLayerImageNode(request('b'))],
+              children: [CompositeLeaf<CanvasStackRow>(request('b'))],
             ),
           ],
         ),
-        CanvasLayerImageNode(request('c')),
+        CompositeLeaf<CanvasStackRow>(request('c')),
       ],
     );
 

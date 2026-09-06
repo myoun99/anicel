@@ -23,6 +23,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨A6 — HELD PIXELS ARE DECLARED PIXELS.
 ///
@@ -284,7 +285,7 @@ void main() {
               height: 8,
               child: CanvasLayerStackView(
                 nodes: [
-                  CanvasLayerImageNode(
+                  CompositeLeaf<CanvasStackRow>(
                     CanvasLayerImageRequest(
                       frameKey: keyFor('frame-a'),
                       opacity: 1,
@@ -347,7 +348,7 @@ void main() {
                 height: 8,
                 child: CanvasLayerStackView(
                   nodes: [
-                    CanvasLayerImageNode(
+                    CompositeLeaf<CanvasStackRow>(
                       CanvasLayerImageRequest(
                         frameKey: keyFor('frame-a'),
                         opacity: 1,

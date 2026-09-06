@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -75,13 +76,13 @@ void main() {
         home: Scaffold(
           body: CanvasLayerStackView(
             nodes: [
-              CanvasLayerImageNode(
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(
                   frameKey: key('layer-below'),
                   opacity: 0.5,
                 ),
               ),
-              CanvasLayerImageNode(
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(
                   frameKey: key('layer-undrawn'),
                   opacity: 1,
@@ -126,7 +127,7 @@ void main() {
     Widget stack(List<CanvasLayerImageRequest> layers) => MaterialApp(
       home: Scaffold(
         body: CanvasLayerStackView(
-          nodes: [for (final layer in layers) CanvasLayerImageNode(layer)],
+          nodes: [for (final layer in layers) CompositeLeaf<CanvasStackRow>(layer)],
           imageCache: cache,
           canvasSize: canvasSize,
           viewport: CanvasViewport(),
@@ -235,8 +236,8 @@ void main() {
                 child: CanvasLayerStackView(
                   // Bottom → top: the active row, then a row above it.
                   nodes: [
-                    const CanvasActiveLayerNode(opacity: 1),
-                    CanvasLayerImageNode(
+                    const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+                    CompositeLeaf<CanvasStackRow>(
                       CanvasLayerImageRequest(
                         frameKey: key('layer-below'),
                         opacity: 1,

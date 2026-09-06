@@ -2,6 +2,7 @@ import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
@@ -272,7 +273,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required BrushFrameRevisionResolver revisionOf,
 }) {
   List<CompositeNodeSignature> mapNodes(
-    List<CutFrameCompositeEntryNode> nodes,
+    List<CompositeNode<CutFrameCompositeRow>> nodes,
   ) => [
     for (final node in nodes)
       switch (node) {
@@ -285,22 +286,23 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
         // a cache key for something about to change under it. If this route
         // ever starts passing one, the throw says so rather than banking a
         // composite that is already wrong.
-        CutFrameCompositeEntryLive() => throw StateError(
+        CompositeLeaf(payload: CutFrameCompositeLiveRow()) => throw StateError(
           'The composite signature has no key for a live row.',
         ),
-        CutFrameCompositeEntryLeaf(:final entry) => CompositeLeafSignature(
-          CompositeLayerSignature(
-            layerId: entry.layer.id,
-            frameId: entry.frame.id,
-            opacity: entry.opacity,
-            sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
-            blendMode: entry.blendMode,
-            pose: entry.pose,
-            anchorPoint: entry.anchorPoint,
-            effects: entry.effects,
+        CompositeLeaf(payload: final CutFrameCompositeEntry entry) =>
+          CompositeLeafSignature(
+            CompositeLayerSignature(
+              layerId: entry.layer.id,
+              frameId: entry.frame.id,
+              opacity: entry.opacity,
+              sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
+              blendMode: entry.blendMode,
+              pose: entry.pose,
+              anchorPoint: entry.anchorPoint,
+              effects: entry.effects,
+            ),
           ),
-        ),
-        CutFrameCompositeEntryGroup(
+        CompositeGroup(
           :final children,
           :final opacity,
           :final blendMode,
@@ -312,11 +314,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
             blendMode: blendMode,
             effects: effects,
           ),
-        CutFrameCompositeEntryAdjustment(
-          :final children,
-          :final effects,
-          :final mix,
-        ) =>
+        CompositeAdjustment(:final children, :final effects, :final mix) =>
           CompositeAdjustmentSignature(
             children: mapNodes(children),
             effects: effects,

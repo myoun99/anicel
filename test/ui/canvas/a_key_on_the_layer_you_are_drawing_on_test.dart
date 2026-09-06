@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★A COLOUR KEY ON THE LAYER YOU ARE DRAWING ON.
 ///
@@ -78,7 +79,7 @@ void main() {
               height: 64,
               child: CanvasLayerStackView(
                 nodes: [
-                  CanvasActiveLayerNode(opacity: 1, effects: effects),
+                  CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, effects: effects)),
                 ],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,

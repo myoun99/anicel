@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// ⛔**A TRIPWIRE, and it now pins the OPPOSITE of what it used to.** No
 /// canvas-content picture carries `willChange: true` any more; the
@@ -132,7 +133,7 @@ void main() {
               width: 100,
               height: 100,
               child: CanvasLayerStackView(
-                nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                 imageCache: LayerFrameImageCache(
                   frameStore: BrushFrameStore(),
                 ),

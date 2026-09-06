@@ -40,6 +40,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★ SCRUB ↔ STILL PARITY (device report B2, 2026-08-17).
 ///
@@ -252,9 +253,9 @@ void main() {
               child: CanvasLayerStackView(
                 nodes: [
                   if (inFolder)
-                    CanvasLayerGroupNode(
+                    CompositeGroup<CanvasStackRow>(
                       children: [
-                        CanvasLayerImageNode(
+                        CompositeLeaf<CanvasStackRow>(
                           CanvasLayerImageRequest(
                             frameKey: frameKey(cut(), layerId, frameId),
                             opacity: 1,
@@ -265,7 +266,7 @@ void main() {
                       blendMode: LayerBlendMode.multiply,
                     )
                   else
-                    CanvasLayerImageNode(
+                    CompositeLeaf<CanvasStackRow>(
                       CanvasLayerImageRequest(
                         frameKey: frameKey(cut(), layerId, frameId),
                         opacity: 1,

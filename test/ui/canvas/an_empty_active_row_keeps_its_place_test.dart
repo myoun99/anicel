@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★유저 확정 2026-09-04 (ARCH-active-node): **재생과 똑같이.**
 ///
@@ -40,18 +41,18 @@ void main() {
     return (session: s, folderId: folderId);
   }
 
-  CanvasActiveLayerNode? activeIn(List<CanvasLayerStackNode> nodes) {
+  CanvasActiveLayerRow? activeIn(List<CompositeNode<CanvasStackRow>> nodes) {
     for (final node in nodes) {
-      if (node is CanvasActiveLayerNode) {
-        return node;
+      if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
+        return row;
       }
-      if (node is CanvasLayerGroupNode) {
+      if (node is CompositeGroup<CanvasStackRow>) {
         final found = activeIn(node.children);
         if (found != null) {
           return found;
         }
       }
-      if (node is CanvasLayerAdjustmentNode) {
+      if (node is CompositeAdjustment<CanvasStackRow>) {
         final found = activeIn(node.children);
         if (found != null) {
           return found;
@@ -61,8 +62,11 @@ void main() {
     return null;
   }
 
-  bool activeIsTopLevel(List<CanvasLayerStackNode> nodes) =>
-      nodes.any((node) => node is CanvasActiveLayerNode);
+  bool activeIsTopLevel(List<CompositeNode<CanvasStackRow>> nodes) => nodes.any(
+    (node) =>
+        node is CompositeLeaf<CanvasStackRow> &&
+        node.payload is CanvasActiveLayerRow,
+  );
 
   test('an EMPTY active row inside a buffering folder is INSIDE its group, '
       'not appended at the top', () {
@@ -120,7 +124,7 @@ void main() {
     s.selectFrameIndex(40);
 
     final nodes = s.editingCanvasStack.nodes;
-    final group = nodes.whereType<CanvasLayerGroupNode>().single;
+    final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
     expect(
       group.opacity,
       closeTo(0.2, 1e-9),

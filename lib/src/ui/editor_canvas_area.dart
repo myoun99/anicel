@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/layer_effect.dart';
 import '../models/canvas_size.dart';
+import '../models/composite_tree.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
@@ -184,60 +185,62 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// [nodes] with the onion ghosts inserted directly UNDER the active
   /// layer — where they belong visually, and (since the merge) inside
   /// whatever folder buffer the active layer sits in.
-  static List<CanvasLayerStackNode> _stackNodesWithGhosts(
-    List<CanvasLayerStackNode> nodes,
+  static List<CompositeNode<CanvasStackRow>> _stackNodesWithGhosts(
+    List<CompositeNode<CanvasStackRow>> nodes,
     List<CanvasLayerImageRequest> ghosts,
   ) {
     if (ghosts.isEmpty) {
       return nodes;
     }
     final ghostNodes = [
-      for (final ghost in ghosts) CanvasLayerImageNode(ghost),
+      for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost),
     ];
     var placed = false;
-    List<CanvasLayerStackNode> walk(List<CanvasLayerStackNode> list) {
-      final out = <CanvasLayerStackNode>[];
+    List<CompositeNode<CanvasStackRow>> walk(
+      List<CompositeNode<CanvasStackRow>> list,
+    ) {
+      final out = <CompositeNode<CanvasStackRow>>[];
       for (final node in list) {
         switch (node) {
-          case CanvasActiveLayerNode():
+          case CompositeLeaf(payload: CanvasActiveLayerRow()):
             if (!placed) {
               out.addAll(ghostNodes);
               placed = true;
             }
             out.add(node);
-          case CanvasLayerGroupNode(
+          case CompositeGroup(
             :final children,
             :final opacity,
             :final blendMode,
             :final effects,
           ):
             out.add(
-              // Rebuilt field by field: the folder's effects (R6) have to
-              // be carried or turning onion skin on would drop them.
-              CanvasLayerGroupNode(
+              // The folder's effects (R6) travel with it — turning onion
+              // skin on must not drop them. One structural class carries
+              // every field, so only the children are replaced.
+              CompositeGroup<CanvasStackRow>(
                 children: walk(children),
                 opacity: opacity,
                 blendMode: blendMode,
                 effects: effects,
               ),
             );
-          case CanvasLayerAdjustmentNode(
+          case CompositeAdjustment(
             :final children,
             :final effects,
             :final mix,
           ):
-            // Rebuilt field by field like the group above: the ghosts have
-            // to be able to land INSIDE an adjustment's scope, or the row
-            // you are drawing on would show the grade while its onion
-            // ghosts did not.
+            // Like the group above: the ghosts have to be able to land
+            // INSIDE an adjustment's scope, or the row you are drawing on
+            // would show the grade while its onion ghosts did not.
             out.add(
-              CanvasLayerAdjustmentNode(
+              CompositeAdjustment<CanvasStackRow>(
                 children: walk(children),
                 effects: effects,
                 mix: mix,
               ),
             );
-          case CanvasLayerImageNode():
+          case CompositeLeaf(payload: CanvasLayerImageRequest()):
             out.add(node);
         }
       }
@@ -543,7 +546,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       row is! LaneRowAddress;
 
 
-  void _noteCanvasProbe(EditorSessionManager session, bool inGap, ({double activeLayerOpacity, List<ResolvedLayerEffect> activeSourceEffects, List<CanvasLayerStackNode> nodes}) layerStack) {
+  void _noteCanvasProbe(EditorSessionManager session, bool inGap, ({double activeLayerOpacity, List<ResolvedLayerEffect> activeSourceEffects, List<CompositeNode<CanvasStackRow>> nodes}) layerStack) {
     if (InputInspector.visible.value) {
       // The FRAME leads, and it is not decoration: without it "no new line"
       // reads two ways — the four answers were the same, or this build never

@@ -13,7 +13,11 @@ typedef _MissPlan = ({
 /// walk that descends the chain enclosing the active layer and replays a
 /// recording for the rest.
 typedef _ChildPainter =
-    void Function(Canvas canvas, List<_PaintNode> children, double rasterScale);
+    void Function(
+      Canvas canvas,
+      List<CompositeNode<_PaintRow>> children,
+      double rasterScale,
+    );
 
 /// ONE PAINT OF THE LAYER STACK — the walk that draws the composite tree
 /// under the viewport, the split that paints the chain enclosing the active
@@ -360,17 +364,18 @@ class _LayerStackPaintPass {
         final painter => surfaceContentWorldRect(painter.surface),
       };
 
-  Rect _bufferBoundsFor(_PaintNode node) => _visibleCanvasRect.intersect(
-    _paintNodeExtent(
-      node,
-      canvasSize: _painter.canvasSize,
-      activeSurfaceExtent: _activeSurfaceExtent,
-    ),
-  );
+  Rect _bufferBoundsFor(CompositeNode<_PaintRow> node) =>
+      _visibleCanvasRect.intersect(
+        _paintNodeExtent(
+          node,
+          canvasSize: _painter.canvasSize,
+          activeSurfaceExtent: _activeSurfaceExtent,
+        ),
+      );
 
   void _paintNodesWith(
     Canvas canvas,
-    List<_PaintNode> list,
+    List<CompositeNode<_PaintRow>> list,
     // The scale the CTM this walk draws under is at. A group that
     // rasterises ITSELF needs it, and a `Canvas` will not tell anyone.
     double rasterScale,
@@ -380,14 +385,15 @@ class _LayerStackPaintPass {
       // Poses apply at composite time — the stack shows the same picture
       // playback composes (route parity).
       final nodePose = switch (node) {
-        _PaintImage(:final pose) => pose,
-        _PaintActiveSurface(:final pose) => pose,
-        _PaintGroup() || _PaintAdjustment() => null,
+        CompositeLeaf(payload: _PaintImage(:final pose)) => pose,
+        CompositeLeaf(payload: _PaintActiveSurface(:final pose)) => pose,
+        CompositeGroup() || CompositeAdjustment() => null,
       };
       final nodeAnchor = switch (node) {
-        _PaintImage(:final anchorPoint) => anchorPoint,
-        _PaintActiveSurface(:final anchorPoint) => anchorPoint,
-        _PaintGroup() || _PaintAdjustment() => null,
+        CompositeLeaf(payload: _PaintImage(:final anchorPoint)) => anchorPoint,
+        CompositeLeaf(payload: _PaintActiveSurface(:final anchorPoint)) =>
+          anchorPoint,
+        CompositeGroup() || CompositeAdjustment() => null,
       };
       // The wrap straddles the live-surface node too, which HAS a pose
       // and no image — that is why the pose and the draw are separate
@@ -399,18 +405,18 @@ class _LayerStackPaintPass {
         anchorPoint: nodeAnchor,
         body: () {
           switch (node) {
-            case final _PaintGroup group:
+            case final CompositeGroup<_PaintRow> group:
               _paintGroupNode(canvas, group, rasterScale, paintChildren);
-            case final _PaintAdjustment adjustment:
+            case final CompositeAdjustment<_PaintRow> adjustment:
               _paintAdjustmentNode(
                 canvas,
                 adjustment,
                 rasterScale,
                 paintChildren,
               );
-            case final _PaintActiveSurface active:
-              _paintActiveSurfaceNode(canvas, active, rasterScale);
-            case final _PaintImage image:
+            case CompositeLeaf(payload: final _PaintActiveSurface active):
+              _paintActiveSurfaceNode(canvas, node, active, rasterScale);
+            case CompositeLeaf(payload: final _PaintImage image):
               _paintImageNode(canvas, image);
           }
         },
@@ -422,11 +428,12 @@ class _LayerStackPaintPass {
   /// folder's paint.
   void _paintGroupNode(
     Canvas canvas,
-    _PaintGroup node,
+    CompositeGroup<_PaintRow> node,
     double rasterScale,
     _ChildPainter paintChildren,
   ) {
-    final _PaintGroup(:children, :opacity, :blendMode, :effects) = node;
+    final CompositeGroup<_PaintRow>(:children, :opacity, :blendMode, :effects) =
+        node;
     // R27 #29: one buffer for the group, one blend on it — and
     // because the ACTIVE layer is a node in here, a stroke drawn
     // inside a blended folder finally reads the way it will play
@@ -472,11 +479,11 @@ class _LayerStackPaintPass {
   /// An adjustment scope: the rows under it buffered and graded as one.
   void _paintAdjustmentNode(
     Canvas canvas,
-    _PaintAdjustment node,
+    CompositeAdjustment<_PaintRow> node,
     double rasterScale,
     _ChildPainter paintChildren,
   ) {
-    final _PaintAdjustment(:children, :effects, :mix) = node;
+    final CompositeAdjustment<_PaintRow>(:children, :effects, :mix) = node;
     // R6b: the scope into one buffer, the row's chain onto it —
     // which is what lets a stroke drawn UNDER an adjustment read
     // through the grade while you draw it.
@@ -506,10 +513,11 @@ class _LayerStackPaintPass {
   /// overlapping coverage, a float overlay, or pre-steps).
   void _paintActiveSurfaceNode(
     Canvas canvas,
-    _PaintActiveSurface node,
+    CompositeNode<_PaintRow> node,
+    _PaintActiveSurface row,
     double rasterScale,
   ) {
-    final _PaintActiveSurface(:opacity, :blendMode, :effects, :standIn) = node;
+    final _PaintActiveSurface(:opacity, :blendMode, :effects, :standIn) = row;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
     // viewport-transformed, so only the content body runs.
@@ -531,7 +539,7 @@ class _LayerStackPaintPass {
     // blend applied per tile would compose each tile against the
     // rows below it independently — overlapping coverage inside one
     // row would then darken at the seams. One buffer, one blend, is
-    // the same answer [_PaintGroup] already gives for a folder.
+    // the same answer [CompositeGroup] already gives for a folder.
     final activePlan = resolveCompositeEffectPlan(effects);
     final activeEffects = activePlan.finalPaint;
     final activePaint = layerCompositePaint(
@@ -744,12 +752,15 @@ class _LayerStackPaintPass {
     );
   }
 
-  void _paintNodes(Canvas canvas, List<_PaintNode> list, double rasterScale) =>
-      _paintNodesWith(canvas, list, rasterScale, _paintNodes);
+  void _paintNodes(
+    Canvas canvas,
+    List<CompositeNode<_PaintRow>> list,
+    double rasterScale,
+  ) => _paintNodesWith(canvas, list, rasterScale, _paintNodes);
 
   void _paintSplit(
     Canvas canvas,
-    List<_PaintNode> list,
+    List<CompositeNode<_PaintRow>> list,
     int depth,
     double rasterScale,
   ) {

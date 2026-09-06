@@ -11,6 +11,7 @@ import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
+import '../../models/composite_tree.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
@@ -148,21 +149,21 @@ class CameraFrameRenderService {
   /// alone.
   Future<ui.Image> renderThroughCamera({
     List<CutFrameCompositeLayer> layers = const [],
-    List<CutFrameCompositeSurfaceNode>? nodes,
+    List<CompositeNode<CutFrameCompositeLayer>>? nodes,
     required CameraPose pose,
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
     void Function(ui.Canvas canvas)? overlayPass,
   }) async {
-    final tree =
-        nodes ??
-        [for (final layer in layers) CutFrameCompositeSurfaceLeaf(layer)];
+    final tree = nodes ?? [for (final layer in layers) CompositeLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
     final layerImages = <CutFrameCompositeLayer, PositionedSurfaceImage>{};
-    Future<void> composeImages(List<CutFrameCompositeSurfaceNode> list) async {
+    Future<void> composeImages(
+      List<CompositeNode<CutFrameCompositeLayer>> list,
+    ) async {
       for (final node in list) {
         switch (node) {
-          case CutFrameCompositeSurfaceLeaf(:final layer):
+          case CompositeLeaf(payload: final layer):
             // Per-tile GPU compose (already-decoded tiles draw without any
             // new upload — the storyboard thumbnail after a stroke reuses
             // the editing canvas's tiles); the camera transform then
@@ -192,9 +193,9 @@ class CameraFrameRenderService {
                   layer.surface,
                   reuse: BitmapTileImageCache.instance,
                 ))!;
-          case CutFrameCompositeSurfaceGroup(:final children):
+          case CompositeGroup(:final children):
             await composeImages(children);
-          case CutFrameCompositeSurfaceAdjustment(:final children):
+          case CompositeAdjustment(:final children):
             await composeImages(children);
         }
       }
@@ -251,12 +252,12 @@ class CameraFrameRenderService {
     final cameraRasterScale = (previewScale * pose.zoom).abs();
     void paintNodes(
       Canvas canvas,
-      List<CutFrameCompositeSurfaceNode> list,
+      List<CompositeNode<CutFrameCompositeLayer>> list,
       double rasterScale,
     ) {
       for (final node in list) {
         switch (node) {
-          case CutFrameCompositeSurfaceGroup(
+          case CompositeGroup(
             :final children,
             :final opacity,
             :final blendMode,
@@ -285,11 +286,7 @@ class CameraFrameRenderService {
               compose: (blit) => blit(groupPaint),
               steps: groupPlan.preSteps,
             );
-          case CutFrameCompositeSurfaceAdjustment(
-            :final children,
-            :final effects,
-            :final mix,
-          ):
+          case CompositeAdjustment(:final children, :final effects, :final mix):
             // R6b: the scope composes into one buffer and the row's chain
             // filters it there. Below full strength the scope is COMPOSED
             // twice — the mix is a crossfade, not a fade-out — but it is the
@@ -309,7 +306,7 @@ class CameraFrameRenderService {
               compose: composeAdjustmentScope(canvas, pass),
               steps: pass.preSteps,
             );
-          case CutFrameCompositeSurfaceLeaf(:final layer):
+          case CompositeLeaf(payload: final layer):
             // Layer transforms apply at composite time (never baked);
             // identity layers skip the save/restore.
             final layerImage = layerImages[layer]!;

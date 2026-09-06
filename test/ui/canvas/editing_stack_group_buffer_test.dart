@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// The EDITING canvas composites the same tree playback does, so a folder
 /// buffer looks the same while you draw as it will when you play.
@@ -35,20 +36,21 @@ void main() {
     return s;
   }
 
-  int countGroups(List<CanvasLayerStackNode> nodes) {
+  int countGroups(List<CompositeNode<CanvasStackRow>> nodes) {
     var total = 0;
     for (final node in nodes) {
-      if (node is CanvasLayerGroupNode) {
+      if (node is CompositeGroup<CanvasStackRow>) {
         total += 1 + countGroups(node.children);
       }
     }
     return total;
   }
 
-  bool holdsActive(List<CanvasLayerStackNode> nodes) => nodes.any(
+  bool holdsActive(List<CompositeNode<CanvasStackRow>> nodes) => nodes.any(
     (node) =>
-        node is CanvasActiveLayerNode ||
-        (node is CanvasLayerGroupNode && holdsActive(node.children)),
+        (node is CompositeLeaf<CanvasStackRow> &&
+            node.payload is CanvasActiveLayerRow) ||
+        (node is CompositeGroup<CanvasStackRow> && holdsActive(node.children)),
   );
 
   test('a PASS-THROUGH folder produces no group node on the editing canvas '
@@ -72,7 +74,7 @@ void main() {
     final nodes = s.editingCanvasStack.nodes;
 
     expect(countGroups(nodes), 1);
-    final group = nodes.whereType<CanvasLayerGroupNode>().single;
+    final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
     expect(group.blendMode, LayerBlendMode.multiply);
     expect(
       holdsActive(group.children),
@@ -87,12 +89,16 @@ void main() {
       'is on the buffer, so nothing double-applies', () {
     final s = sessionWithFolder(blend: LayerBlendMode.multiply, opacity: 0.5);
     final group = s.editingCanvasStack.nodes
-        .whereType<CanvasLayerGroupNode>()
+        .whereType<CompositeGroup<CanvasStackRow>>()
         .single;
     expect(group.opacity, closeTo(0.5, 1e-9));
     expect(group.blendMode, LayerBlendMode.multiply);
 
-    final active = group.children.whereType<CanvasActiveLayerNode>().single;
+    final active = group.children
+        .whereType<CompositeLeaf<CanvasStackRow>>()
+        .map((leaf) => leaf.payload)
+        .whereType<CanvasActiveLayerRow>()
+        .single;
     expect(
       active.opacity,
       1,

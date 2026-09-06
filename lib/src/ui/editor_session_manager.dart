@@ -70,6 +70,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/track_se_migration.dart';
+import '../models/composite_tree.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
@@ -2148,7 +2149,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The editing canvas's composite TREE at the playhead — the same tree
   /// playback and export composite, with the ACTIVE layer standing in it
-  /// as a [CanvasActiveLayerNode] instead of a cached image.
+  /// as a [CanvasActiveLayerRow] instead of a cached image.
   ///
   /// That node is the whole point: the stack used to be two flat lists
   /// painted around the interactive view, so a folder's group buffer —
@@ -2161,7 +2162,7 @@ class EditorSessionManager extends ChangeNotifier
   /// through [layerCanvasPoseSample] into the interactive draw-through
   /// wrap, so it is repeated on the node for the merged painter.
   ({
-    List<CanvasLayerStackNode> nodes,
+    List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
     List<ResolvedLayerEffect> activeSourceEffects,
   })
@@ -2170,7 +2171,7 @@ class EditorSessionManager extends ChangeNotifier
     final activeLayerId = this.activeLayerId;
     if (cut == null) {
       return (
-        nodes: const <CanvasLayerStackNode>[],
+        nodes: const <CompositeNode<CanvasStackRow>>[],
         activeLayerOpacity: 1.0,
         activeSourceEffects: const <ResolvedLayerEffect>[],
       );
@@ -2192,18 +2193,19 @@ class EditorSessionManager extends ChangeNotifier
       frameIndex: frameIndex,
       activeLayerId: activeLayerId,
     );
-    final nodes = <CanvasLayerStackNode>[
-      for (final node in resolveCutFrameCompositeTree(
-        cut: stackCut,
-        frameIndex: frameIndex,
-        liveLayerId:
-            activeLayerId != null &&
-                stackCut.layers.byId(activeLayerId) != null &&
-                layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
-            ? activeLayerId
-            : null,
-      ))
-        ?walk.map(node),
+    final nodes = <CompositeNode<CanvasStackRow>>[
+      ...walk.mapTree(
+        resolveCutFrameCompositeTree(
+          cut: stackCut,
+          frameIndex: frameIndex,
+          liveLayerId:
+              activeLayerId != null &&
+                  stackCut.layers.byId(activeLayerId) != null &&
+                  layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
+              ? activeLayerId
+              : null,
+        ),
+      ),
       // Track-owned SE rows join as their cut-local display clones — they
       // composite read-only like before the ownership move (their
       // transform tracks are stripped, so the plain resolve path
@@ -2233,7 +2235,7 @@ class EditorSessionManager extends ChangeNotifier
   ];
 
   /// The track's SE rows as cut-local display clones, read-only.
-  Iterable<CanvasLayerStackNode> _trackSeDisplayNodes(
+  Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
     Cut cut, {
     required int frameIndex,
     required ({Set<LayerId> layerIds, double opacity})? preview,
@@ -2259,7 +2261,7 @@ class EditorSessionManager extends ChangeNotifier
       if (frame == null) {
         continue;
       }
-      yield CanvasLayerImageNode(
+      yield CompositeLeaf(
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: opacity,
