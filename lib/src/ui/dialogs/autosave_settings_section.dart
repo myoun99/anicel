@@ -366,19 +366,23 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
     final strings = AppText.strings;
     final proceed = await askConfirm(
       context,
-      keys: (
-        window: const ValueKey<String>('recovery-delete-dialog'),
-        decline: const ValueKey<String>('recovery-delete-cancel'),
-        accept: const ValueKey<String>('recovery-delete-confirm'),
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('recovery-delete-dialog'),
+          decline: const ValueKey<String>('recovery-delete-cancel'),
+          accept: const ValueKey<String>('recovery-delete-confirm'),
+        ),
+        title: strings.recoveryDeleteTitle,
+        titleIcon: Icons.delete_outline,
+        message: strings.recoveryDeleteMessageTemplate.replaceAll(
+          '{n}',
+          '${_selected.length}',
+        ),
       ),
-      title: strings.recoveryDeleteTitle,
-      titleIcon: Icons.delete_outline,
-      message: strings.recoveryDeleteMessageTemplate.replaceAll(
-        '{n}',
-        '${_selected.length}',
+      accept: ConfirmChoice(
+        strings.commonDelete,
+        emphasis: AppWindowActionEmphasis.danger,
       ),
-      acceptLabel: strings.commonDelete,
-      acceptEmphasis: AppWindowActionEmphasis.danger,
     );
     if (proceed != true || !mounted) {
       return;

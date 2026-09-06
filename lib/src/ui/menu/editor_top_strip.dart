@@ -309,18 +309,22 @@ class EditorTopStrip extends StatelessWidget {
     }
     final recover = await askConfirm(
       context,
-      keys: (
-        window: const ValueKey<String>('recover-autosave-dialog'),
-        decline: const ValueKey<String>('recover-open-saved-button'),
-        accept: const ValueKey<String>('recover-autosave-button'),
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('recover-autosave-dialog'),
+          decline: const ValueKey<String>('recover-open-saved-button'),
+          accept: const ValueKey<String>('recover-autosave-button'),
+        ),
+        title: AppText.strings.recoverAutosaveTitle,
+        titleIcon: Icons.restore_outlined,
+        message: AppText.strings.recoverAutosaveBody,
       ),
-      title: AppText.strings.recoverAutosaveTitle,
-      titleIcon: Icons.restore_outlined,
-      message: AppText.strings.recoverAutosaveBody,
-      declineLabel: AppText.strings.recoverOpenSaved,
-      declineEmphasis: AppWindowActionEmphasis.danger,
-      declineTooltip: AppText.strings.recoverOpenSavedHint,
-      acceptLabel: AppText.strings.recoverAction,
+      decline: ConfirmChoice(
+        AppText.strings.recoverOpenSaved,
+        emphasis: AppWindowActionEmphasis.danger,
+        tooltip: AppText.strings.recoverOpenSavedHint,
+      ),
+      accept: ConfirmChoice(AppText.strings.recoverAction),
     );
     if (recover == null) {
       return null;
@@ -1562,19 +1566,23 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
     final strings = AppText.strings;
     final replace = await askConfirm(
       context,
-      keys: (
-        window: const ValueKey<String>('save-as-replace-dialog'),
-        decline: const ValueKey<String>('save-as-replace-cancel'),
-        accept: const ValueKey<String>('save-as-replace-confirm'),
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('save-as-replace-dialog'),
+          decline: const ValueKey<String>('save-as-replace-cancel'),
+          accept: const ValueKey<String>('save-as-replace-confirm'),
+        ),
+        title: strings.replaceFileTitle,
+        titleIcon: Icons.save_as_outlined,
+        message: strings.replaceFileMessageTemplate.replaceAll(
+          '{name}',
+          suffixed.split('/').last,
+        ),
       ),
-      title: strings.replaceFileTitle,
-      titleIcon: Icons.save_as_outlined,
-      message: strings.replaceFileMessageTemplate.replaceAll(
-        '{name}',
-        suffixed.split('/').last,
+      accept: ConfirmChoice(
+        strings.commonReplace,
+        emphasis: AppWindowActionEmphasis.danger,
       ),
-      acceptLabel: strings.commonReplace,
-      acceptEmphasis: AppWindowActionEmphasis.danger,
     );
     if (replace != true || !context.mounted) {
       return null;

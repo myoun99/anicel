@@ -211,6 +211,47 @@ void showFileError(BuildContext context, Object error) => unawaited(
   ),
 );
 
+/// One of the two answers a yes/no window offers: what the button SAYS
+/// and how loudly it says it.
+///
+/// ⚠️The key it wears and the value it pops are NOT here. Those belong to
+/// the window — [confirmActions] puts them on — so no caller can hand the
+/// accept button the decline's key, or pop the wrong answer.
+class ConfirmChoice {
+  const ConfirmChoice(this.label, {this.emphasis, this.tooltip});
+
+  final String label;
+
+  /// Null wears the ink the ROLE gives it: accent for the accept, quiet
+  /// for the decline. Spelled out only where the confirm is destructive
+  /// (the recovery gate's "open the saved one" throws work away).
+  final AppWindowActionEmphasis? emphasis;
+
+  /// The consequence the label cannot hold — see [AppWindowAction.tooltip]
+  /// for why it is never the only line of defence.
+  final String? tooltip;
+}
+
+/// What a yes/no window ASKS: the name it wears and the sentence it puts
+/// to the user.
+class ConfirmQuestion {
+  const ConfirmQuestion({
+    required this.keys,
+    required this.title,
+    required this.message,
+    this.titleIcon,
+  });
+
+  /// ⛔THE THREE KEYS ARE ONE NAME (see [confirmDialogKeys]), so they ride
+  /// with the question rather than with the two answers: the prefix that
+  /// spells all three IS the question's name.
+  final ConfirmDialogKeys keys;
+
+  final String title;
+  final String message;
+  final IconData? titleIcon;
+}
+
 /// Asks a yes/no question in the app's own window and answers what the
 /// user did: `true` accepted, `false` declined, **null** dismissed — the
 /// barrier or escape.
@@ -231,34 +272,22 @@ void showFileError(BuildContext context, Object error) => unawaited(
 /// and `frame_name_conflict_dialog.dart` are built on [AppConfirmDialog]
 /// as widgets, which is a different thing from this recipe.
 Future<bool?> askConfirm(
-  BuildContext context, {
-  required ConfirmDialogKeys keys,
-  required String title,
-  IconData? titleIcon,
-  required String message,
-  List<String> details = const [],
-  String? declineLabel,
-  AppWindowActionEmphasis declineEmphasis = AppWindowActionEmphasis.quiet,
-  String? declineTooltip,
-  required String acceptLabel,
-  AppWindowActionEmphasis acceptEmphasis = AppWindowActionEmphasis.primary,
+  BuildContext context,
+  ConfirmQuestion question, {
+  required ConfirmChoice accept,
+  ConfirmChoice? decline,
 }) => showDialog<bool>(
   context: context,
   builder: (context) => AppConfirmDialog(
-    windowKey: keys.window,
-    title: title,
-    titleIcon: titleIcon,
-    message: message,
-    details: details,
+    windowKey: question.keys.window,
+    title: question.title,
+    titleIcon: question.titleIcon,
+    message: question.message,
     actions: confirmActions(
       context,
-      declineLabel: declineLabel ?? AppText.strings.commonCancel,
-      declineKey: keys.decline,
-      declineEmphasis: declineEmphasis,
-      declineTooltip: declineTooltip,
-      acceptLabel: acceptLabel,
-      acceptKey: keys.accept,
-      acceptEmphasis: acceptEmphasis,
+      keys: question.keys,
+      decline: decline ?? ConfirmChoice(AppText.strings.commonCancel),
+      accept: accept,
     ),
   ),
 );
@@ -272,25 +301,22 @@ Future<bool?> askConfirm(
 /// and this is the pair of actions inside it.
 List<AppWindowAction> confirmActions(
   BuildContext context, {
-  required String declineLabel,
-  required Key declineKey,
-  AppWindowActionEmphasis declineEmphasis = AppWindowActionEmphasis.quiet,
-  String? declineTooltip,
-  required String acceptLabel,
-  required Key acceptKey,
-  AppWindowActionEmphasis acceptEmphasis = AppWindowActionEmphasis.primary,
+  required ConfirmDialogKeys keys,
+  required ConfirmChoice decline,
+  required ConfirmChoice accept,
 }) => [
   AppWindowAction(
-    label: declineLabel,
-    actionKey: declineKey,
-    emphasis: declineEmphasis,
-    tooltip: declineTooltip,
+    label: decline.label,
+    actionKey: keys.decline,
+    emphasis: decline.emphasis ?? AppWindowActionEmphasis.quiet,
+    tooltip: decline.tooltip,
     onPressed: () => Navigator.of(context).pop(false),
   ),
   AppWindowAction(
-    label: acceptLabel,
-    actionKey: acceptKey,
-    emphasis: acceptEmphasis,
+    label: accept.label,
+    actionKey: keys.accept,
+    emphasis: accept.emphasis ?? AppWindowActionEmphasis.primary,
+    tooltip: accept.tooltip,
     onPressed: () => Navigator.of(context).pop(true),
   ),
 ];

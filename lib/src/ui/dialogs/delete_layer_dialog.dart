@@ -23,10 +23,9 @@ class DeleteLayerDialog extends StatelessWidget {
       ),
       actions: confirmActions(
         context,
-        declineLabel: strings.commonCancel,
-        declineKey: keys.decline,
-        acceptLabel: strings.commonDelete,
-        acceptKey: keys.accept,
+        keys: keys,
+        decline: ConfirmChoice(strings.commonCancel),
+        accept: ConfirmChoice(strings.commonDelete),
       ),
     );
   }

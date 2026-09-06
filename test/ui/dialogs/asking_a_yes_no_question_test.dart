@@ -17,9 +17,8 @@ void main() {
 
   Future<bool?> ask(
     WidgetTester tester, {
-    String? declineLabel,
-    AppWindowActionEmphasis declineEmphasis = AppWindowActionEmphasis.quiet,
-    AppWindowActionEmphasis acceptEmphasis = AppWindowActionEmphasis.primary,
+    ConfirmChoice? decline,
+    AppWindowActionEmphasis? acceptEmphasis,
   }) async {
     bool? answer;
     var answered = false;
@@ -31,13 +30,13 @@ void main() {
               onPressed: () async {
                 answer = await askConfirm(
                   context,
-                  keys: keys,
-                  title: 'Delete it?',
-                  message: 'This cannot be undone.',
-                  declineLabel: declineLabel,
-                  declineEmphasis: declineEmphasis,
-                  acceptLabel: 'Delete',
-                  acceptEmphasis: acceptEmphasis,
+                  const ConfirmQuestion(
+                    keys: keys,
+                    title: 'Delete it?',
+                    message: 'This cannot be undone.',
+                  ),
+                  decline: decline,
+                  accept: ConfirmChoice('Delete', emphasis: acceptEmphasis),
                 );
                 answered = true;
               },
@@ -77,10 +76,12 @@ void main() {
                 onPressed: () async => sink(
                   await askConfirm(
                     context,
-                    keys: keys,
-                    title: 'Delete it?',
-                    message: 'This cannot be undone.',
-                    acceptLabel: 'Delete',
+                    const ConfirmQuestion(
+                      keys: keys,
+                      title: 'Delete it?',
+                      message: 'This cannot be undone.',
+                    ),
+                    accept: const ConfirmChoice('Delete'),
                   ),
                 ),
                 child: const Text('go'),
@@ -123,8 +124,24 @@ void main() {
     await answerWith(tester, find.byKey(keys.decline));
   });
 
+  testWidgets('an unspoken emphasis is the ROLE\'s — the accept is the '
+      'accent-filled one and the decline the quiet one', (tester) async {
+    // A [ConfirmChoice] carries no emphasis of its own until a caller
+    // names one; six of the eight sites name none, and they all mean this.
+    await ask(tester);
+
+    expect(tester.widget(find.byKey(keys.accept)), isA<FilledButton>());
+    expect(
+      tester.widget<TextButton>(find.byKey(keys.decline)).style
+          ?.foregroundColor,
+      isNull,
+      reason: 'quiet, not danger: danger is the only one that inks the label',
+    );
+    await answerWith(tester, find.byKey(keys.decline));
+  });
+
   testWidgets('a given decline label wins over the default', (tester) async {
-    await ask(tester, declineLabel: 'Keep it');
+    await ask(tester, decline: const ConfirmChoice('Keep it'));
     expect(find.text('Keep it'), findsOneWidget);
     expect(find.text(AppText.strings.commonCancel), findsNothing);
     await answerWith(tester, find.byKey(keys.decline));
@@ -145,7 +162,13 @@ void main() {
 
   testWidgets('DANGER ink reaches the decline button too — the recovery '
       'gate\'s "open the saved one" throws work away', (tester) async {
-    await ask(tester, declineEmphasis: AppWindowActionEmphasis.danger);
+    await ask(
+      tester,
+      decline: const ConfirmChoice(
+        'Open the saved one',
+        emphasis: AppWindowActionEmphasis.danger,
+      ),
+    );
 
     final decline = find.byKey(keys.decline);
     final scheme = Theme.of(tester.element(decline)).colorScheme;

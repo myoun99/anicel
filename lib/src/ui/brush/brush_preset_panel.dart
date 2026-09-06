@@ -447,14 +447,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         .length;
     final confirmed = await askConfirm(
       context,
-      keys: keys,
-      title: AppText.strings.brDeleteGroup,
-      titleIcon: Icons.delete_outline,
-      message: memberCount == 0
-          ? 'Delete the empty group "${group.name}"?'
-          : 'Delete "${group.name}" and the $memberCount '
-                '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
-      acceptLabel: AppText.strings.commonDelete,
+      ConfirmQuestion(
+        keys: keys,
+        title: AppText.strings.brDeleteGroup,
+        titleIcon: Icons.delete_outline,
+        message: memberCount == 0
+            ? 'Delete the empty group "${group.name}"?'
+            : 'Delete "${group.name}" and the $memberCount '
+                  '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
+      ),
+      accept: ConfirmChoice(AppText.strings.commonDelete),
     );
     if (!mounted || confirmed != true) {
       return;
@@ -470,11 +472,13 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }
     final confirmed = await askConfirm(
       context,
-      keys: keys,
-      title: AppText.strings.brResetLibrary,
-      titleIcon: Icons.restart_alt,
-      message: AppText.strings.brResetLibraryBody,
-      acceptLabel: AppText.strings.commonReset,
+      ConfirmQuestion(
+        keys: keys,
+        title: AppText.strings.brResetLibrary,
+        titleIcon: Icons.restart_alt,
+        message: AppText.strings.brResetLibraryBody,
+      ),
+      accept: ConfirmChoice(AppText.strings.commonReset),
     );
     if (!mounted || confirmed != true) {
       return;

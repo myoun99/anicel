@@ -842,18 +842,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final strings = AppText.strings;
     final confirmed = await askConfirm(
       context,
-      // ⚠️Hand-built keys, not `confirmDialogKeys`: the buttons here are
-      // named for what they DO (revert / apply), not cancel / confirm.
-      keys: (
-        window: const ValueKey<String>('selection-move-confirm-dialog'),
-        decline: const ValueKey<String>('selection-move-revert-button'),
-        accept: const ValueKey<String>('selection-move-apply-button'),
+      ConfirmQuestion(
+        // ⚠️Hand-built keys, not `confirmDialogKeys`: the buttons here are
+        // named for what they DO (revert / apply), not cancel / confirm.
+        keys: (
+          window: const ValueKey<String>('selection-move-confirm-dialog'),
+          decline: const ValueKey<String>('selection-move-revert-button'),
+          accept: const ValueKey<String>('selection-move-apply-button'),
+        ),
+        title: strings.selectionMoveConfirmTitle,
+        titleIcon: Icons.open_with_outlined,
+        message: strings.selectionMoveConfirmBody,
       ),
-      title: strings.selectionMoveConfirmTitle,
-      titleIcon: Icons.open_with_outlined,
-      message: strings.selectionMoveConfirmBody,
-      declineLabel: strings.selectionMoveRevert,
-      acceptLabel: strings.selectionMoveApply,
+      decline: ConfirmChoice(strings.selectionMoveRevert),
+      accept: ConfirmChoice(strings.selectionMoveApply),
     );
     if (!mounted || !_movePending) {
       return;

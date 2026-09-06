@@ -68,7 +68,7 @@ import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
-    show askConfirm, showAppNotice;
+    show ConfirmChoice, ConfirmQuestion, askConfirm, showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -1253,14 +1253,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     final strings = AppText.strings;
     final proceed = await askConfirm(
       context,
-      keys: (
-        window: const ValueKey<String>('attach-drops-fx-dialog'),
-        decline: const ValueKey<String>('attach-drops-fx-cancel'),
-        accept: const ValueKey<String>('attach-drops-fx-confirm'),
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('attach-drops-fx-dialog'),
+          decline: const ValueKey<String>('attach-drops-fx-cancel'),
+          accept: const ValueKey<String>('attach-drops-fx-confirm'),
+        ),
+        title: strings.tlAttachDropsFxTitle,
+        message: strings.tlAttachDropsFxBody,
       ),
-      title: strings.tlAttachDropsFxTitle,
-      message: strings.tlAttachDropsFxBody,
-      acceptLabel: strings.commonApply,
+      accept: ConfirmChoice(strings.commonApply),
     );
     request.answer(proceed ?? false);
   }

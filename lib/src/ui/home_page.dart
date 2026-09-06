@@ -961,16 +961,18 @@ class _HomePageState extends State<HomePage> {
     _unsavedAutosavePromptShown = true;
     final save = await askConfirm(
       context,
-      keys: (
-        window: const ValueKey<String>('unsaved-autosave-dialog'),
-        decline: const ValueKey<String>('unsaved-autosave-later'),
-        accept: const ValueKey<String>('unsaved-autosave-save'),
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('unsaved-autosave-dialog'),
+          decline: const ValueKey<String>('unsaved-autosave-later'),
+          accept: const ValueKey<String>('unsaved-autosave-save'),
+        ),
+        title: AppText.strings.unsavedAutosaveTitle,
+        titleIcon: Icons.save_outlined,
+        message: AppText.strings.unsavedAutosaveBody,
       ),
-      title: AppText.strings.unsavedAutosaveTitle,
-      titleIcon: Icons.save_outlined,
-      message: AppText.strings.unsavedAutosaveBody,
-      declineLabel: AppText.strings.commonNotNow,
-      acceptLabel: AppText.strings.commonSaveAs,
+      decline: ConfirmChoice(AppText.strings.commonNotNow),
+      accept: ConfirmChoice(AppText.strings.commonSaveAs),
     );
     if ((save ?? false) && mounted) {
       await promptSaveProjectAs(context, _session);
