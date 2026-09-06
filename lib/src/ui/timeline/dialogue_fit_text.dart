@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../text/dialogue_fit_layout.dart';
-import '../text/vertical_writing_text.dart';
+import '../text/dialogue_fit_paint.dart';
 import 'axis_turn.dart';
 import '../repaint_props.dart';
 
@@ -64,41 +64,38 @@ class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final style = TextStyle(
+      color: color,
+      fontSize: fontSize,
+      fontWeight: FontWeight.w600,
+    );
+    if (axis == Axis.vertical) {
+      paintDialogueFitColumn(
+        canvas,
+        text,
+        topCenter: Offset(size.width / 2, 0),
+        extent: size.height,
+        style: style,
+        maxCrossExtent: size.width,
+      );
+      return;
+    }
     final glyphs = text.characters.toList(growable: false);
-    final mainExtent = extentAlong(axis, size);
     final centers = dialogueGlyphCenters(
       glyphCount: glyphs.length,
-      mainExtent: mainExtent,
+      mainExtent: extentAlong(axis, size),
     );
     for (var i = 0; i < glyphs.length; i += 1) {
       final painter = TextPainter(
-        text: TextSpan(
-          text: glyphs[i],
-          style: TextStyle(
-            color: color,
-            fontSize: fontSize,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        text: TextSpan(text: glyphs[i], style: style),
         textDirection: TextDirection.ltr,
       )..layout();
-      if (axis == Axis.horizontal) {
-        painter.paint(
-          canvas,
-          Offset(
-            centers[i] - painter.width / 2,
-            (size.height - painter.height) / 2,
-          ),
-        );
-        continue;
-      }
-      paintVerticalTextCell(
+      painter.paint(
         canvas,
-        verticalGlyphCell(glyphs[i]),
-        painter: painter,
-        center: Offset(size.width / 2, centers[i]),
-        fontSize: fontSize,
-        maxCrossExtent: size.width,
+        Offset(
+          centers[i] - painter.width / 2,
+          (size.height - painter.height) / 2,
+        ),
       );
     }
   }

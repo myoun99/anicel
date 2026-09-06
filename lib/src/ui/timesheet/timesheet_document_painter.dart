@@ -9,7 +9,7 @@ import '../../models/cut_id.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
-import '../text/dialogue_fit_layout.dart';
+import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
 import '../canvas/viewport_canvas_transform.dart';
