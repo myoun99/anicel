@@ -51,6 +51,30 @@ TimelineExposureBlockVisualSegment calculateTimelineExposureBlockVisualSegment({
   );
 }
 
+/// The state of the cell before [frameIndex], or null at the first cell —
+/// the ONE place the "cell 0 has no previous" edge is written.
+///
+/// The painted rows (twice: the block segment and the empty-run start) and
+/// the instance-edit preview each spelled it (the audit's clone scan,
+/// 2026-09-06); the preview shows "exactly what the timeline will" only
+/// while both read the same edge.
+TimelineCellExposureState? timelineCellStateBefore({
+  required int frameIndex,
+  required TimelineCellExposureState Function(int frameIndex) stateAt,
+}) => frameIndex == 0 ? null : stateAt(frameIndex - 1);
+
+/// The block segment of the cell at [frameIndex], read from [stateAt] with
+/// its two neighbours — [calculateTimelineExposureBlockVisualSegment] over
+/// the neighbour window, the first cell having no previous.
+TimelineExposureBlockVisualSegment timelineExposureBlockSegmentAt({
+  required int frameIndex,
+  required TimelineCellExposureState Function(int frameIndex) stateAt,
+}) => calculateTimelineExposureBlockVisualSegment(
+  previous: timelineCellStateBefore(frameIndex: frameIndex, stateAt: stateAt),
+  current: stateAt(frameIndex),
+  next: stateAt(frameIndex + 1),
+);
+
 /// What one timeline cell announces to a screen reader — null when it
 /// announces nothing.
 ///

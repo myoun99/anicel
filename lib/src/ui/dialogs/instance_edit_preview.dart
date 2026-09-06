@@ -116,10 +116,9 @@ class InstanceEditPreview extends StatelessWidget {
               active: false,
               outsidePlaybackRange: false,
               exposureState: stateAt(frameIndex),
-              exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
-                previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
-                current: stateAt(frameIndex),
-                next: stateAt(frameIndex + 1),
+              exposureBlockSegment: timelineExposureBlockSegmentAt(
+                frameIndex: frameIndex,
+                stateAt: stateAt,
               ),
               frameName: null,
               onSelectLayer: (_) {},

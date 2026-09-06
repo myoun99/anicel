@@ -95,4 +95,62 @@ void main() {
 
     expect(result.continuesToNext, isFalse);
   });
+
+  // The neighbour-window lookup — "cell 0 has no previous" — was spelled by
+  // the painted rows and the instance-edit preview alike (the audit's clone
+  // scan, 2026-09-06). The preview's promise is to show exactly what the
+  // timeline will, which only holds while both read the same edge law.
+  group('segment at a frame index', () {
+    // A three-cell block on [0, 3); anything else is uncovered, and a
+    // negative index is a bug, so it throws rather than answering.
+    TimelineCellExposureState stateAt(int frameIndex) {
+      if (frameIndex < 0) {
+        throw StateError('asked for cell $frameIndex');
+      }
+      return switch (frameIndex) {
+        0 => TimelineCellExposureState.drawingStart,
+        1 || 2 => TimelineCellExposureState.held,
+        _ => TimelineCellExposureState.uncovered,
+      };
+    }
+
+    test('cell 0 has no previous, and the lookup never asks for one', () {
+      expect(timelineCellStateBefore(frameIndex: 0, stateAt: stateAt), isNull);
+      final first = timelineExposureBlockSegmentAt(
+        frameIndex: 0,
+        stateAt: stateAt,
+      );
+      expect(first.kind, TimelineExposureBlockKind.drawing);
+      expect(first.continuesFromPrevious, isFalse);
+      expect(first.continuesToNext, isTrue);
+    });
+
+    test('a later cell reads the cell before it', () {
+      expect(
+        timelineCellStateBefore(frameIndex: 3, stateAt: stateAt),
+        TimelineCellExposureState.held,
+      );
+    });
+
+    test('the middle and the end of the block read both neighbours', () {
+      final middle = timelineExposureBlockSegmentAt(
+        frameIndex: 1,
+        stateAt: stateAt,
+      );
+      expect(middle.continuesFromPrevious, isTrue);
+      expect(middle.continuesToNext, isTrue);
+
+      final last = timelineExposureBlockSegmentAt(
+        frameIndex: 2,
+        stateAt: stateAt,
+      );
+      expect(last.continuesFromPrevious, isTrue);
+      expect(last.continuesToNext, isFalse);
+
+      expect(
+        timelineExposureBlockSegmentAt(frameIndex: 3, stateAt: stateAt).isBlock,
+        isFalse,
+      );
+    });
+  });
 }

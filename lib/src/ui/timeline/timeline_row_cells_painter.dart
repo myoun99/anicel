@@ -326,10 +326,12 @@ class TimelineRowCellsPainter extends CustomPainter {
   TimelineRowCellModel _resolveCellModelAt(int frameIndex) {
     final exposureState = _stateAt(frameIndex);
     final ghost = timelineIndexIsGhost(layer, frameIndex);
-    final previous = frameIndex == 0 ? null : _stateAt(frameIndex - 1);
     final emptyRunStart = timelineEmptyRunStartsAt(
       current: exposureState,
-      previous: previous,
+      previous: timelineCellStateBefore(
+        frameIndex: frameIndex,
+        stateAt: _stateAt,
+      ),
     );
     final frameName = frameNameForLayer?.call(layer, frameIndex);
     // Hold ghosts keep their dash at ANY zoom (it paints as a line, not
@@ -364,10 +366,9 @@ class TimelineRowCellsPainter extends CustomPainter {
     return TimelineRowCellModel(
       frameIndex: frameIndex,
       exposureState: exposureState,
-      segment: calculateTimelineExposureBlockVisualSegment(
-        previous: frameIndex == 0 ? null : _chromeStateAt(frameIndex - 1),
-        current: _chromeStateAt(frameIndex),
-        next: _chromeStateAt(frameIndex + 1),
+      segment: timelineExposureBlockSegmentAt(
+        frameIndex: frameIndex,
+        stateAt: _chromeStateAt,
       ),
       ghost: ghost,
       // GHOSTS only. "Outside the cut" used to dim here too, and that is
