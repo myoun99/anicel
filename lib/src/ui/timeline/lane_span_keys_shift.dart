@@ -1,52 +1,42 @@
 import '../../models/property_track.dart';
 import 'property_lane_lens.dart';
 
-/// Shifts EVERY key of ONE lane inside [rangeStartIndex,
-/// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
-/// (UI-R23 #3 part 2): rigid group, one delta, all-or-nothing. Null when
-/// nothing moves, a landing dips below 0, or a landing collides with an
-/// UNSHIFTED key on the same lane (the block discipline: nothing merges
-/// silently). Other lanes are untouched — the lane selection owns exactly
-/// its own keys.
-///
-/// [lensOf] is the family's lane table (transform, SE name-tag, effect
-/// chain); the verb itself is written once. The loop itself is the shared
-/// law (transform/effect/name-tag families all shift through it):
-/// [PropertyTrack.withRangedKeysShifted].
-Track? trackWithLaneKeysShifted<Track>(
-  Track track, {
-  required LaneLens<Track>? Function(String laneId) lensOf,
-  required String laneId,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
+/// The lane-scoped range move, as a verb on the lane's address.
+extension LaneKeysShift<Track> on LaneLens<Track> {
+  /// Shifts EVERY key of this lane inside [rangeStartIndex,
+  /// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
+  /// (UI-R23 #3 part 2): rigid group, one delta, all-or-nothing. Null when
+  /// nothing moves, a landing dips below 0, or a landing collides with an
+  /// UNSHIFTED key on the same lane (the block discipline: nothing merges
+  /// silently). Other lanes are untouched — the lane selection owns exactly
+  /// its own keys.
+  ///
+  /// Written once over the lens; each family's table (transform, SE
+  /// name-tag, effect chain) resolves the lane id to the lens. The loop
+  /// itself is the shared law (transform/effect/name-tag families all
+  /// shift through it): [PropertyTrack.withRangedKeysShifted].
+  Track? keysShifted(
+    Track track, {
+    required int rangeStartIndex,
+    required int rangeEndIndexExclusive,
+    required int frameDelta,
+  }) {
+    if (frameDelta == 0) {
+      return null;
+    }
+    return update(
+      track,
+      <U>(PropertyTrack<U> lane) => lane.withRangedKeysShifted(
+        rangeStartIndex: rangeStartIndex,
+        rangeEndIndexExclusive: rangeEndIndexExclusive,
+        frameDelta: frameDelta,
+      ),
+    );
   }
-  return lensOf(laneId)?.update(
-    track,
-    _rangedShift(
-      rangeStartIndex: rangeStartIndex,
-      rangeEndIndexExclusive: rangeEndIndexExclusive,
-      frameDelta: frameDelta,
-    ),
-  );
 }
 
-PropertyLaneEdit _rangedShift({
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) =>
-    <U>(PropertyTrack<U> lane) => lane.withRangedKeysShifted(
-      rangeStartIndex: rangeStartIndex,
-      rangeEndIndexExclusive: rangeEndIndexExclusive,
-      frameDelta: frameDelta,
-    );
-
 /// A track with every lane in [laneIds] shifted through
-/// [trackWithLaneKeysShifted]'s law over the range, all-or-nothing ACROSS
+/// [LaneKeysShift.keysShifted] over the range, all-or-nothing ACROSS
 /// lanes: a lane with no key in the range rides along; a lane whose landing
 /// is blocked vetoes the WHOLE move. Null when blocked, when the delta is
 /// 0, or when no lane moves a key.
@@ -66,11 +56,6 @@ T? laneSpanKeysShifted<T>(
   if (frameDelta == 0) {
     return null;
   }
-  final shift = _rangedShift(
-    rangeStartIndex: rangeStartIndex,
-    rangeEndIndexExclusive: rangeEndIndexExclusive,
-    frameDelta: frameDelta,
-  );
   var current = track;
   var movedAny = false;
   for (final laneId in laneIds) {
@@ -86,7 +71,12 @@ T? laneSpanKeysShifted<T>(
     if (!hasRangedKey) {
       continue; // Nothing of this lane in the range — it rides along.
     }
-    final next = lens.update(current, shift);
+    final next = lens.keysShifted(
+      current,
+      rangeStartIndex: rangeStartIndex,
+      rangeEndIndexExclusive: rangeEndIndexExclusive,
+      frameDelta: frameDelta,
+    );
     if (next == null) {
       return null; // This lane HAD keys, so null here means blocked.
     }

@@ -209,7 +209,7 @@ List<LayerEffect>? effectsWithGroupReset(
 /// not an effect lane at all.
 ///
 /// The shared shift loop — transform/name-tag families ride the same one:
-/// `trackWithLaneKeysShifted` over this table.
+/// `LaneKeysShift.keysShifted` over this table.
 LaneLens<List<LayerEffect>>? effectLaneLens(String laneId) =>
     parseEffectLaneId(laneId) == null ? null : _EffectLaneLens(laneId);
 

@@ -173,10 +173,8 @@ void main() {
       final track = TransformTrack.empty().copyWith(
         rotation: PropertyTrack<double>().withKey(2, 30).withKey(9, 60),
       );
-      final shifted = trackWithLaneKeysShifted(
+      final shifted = transformLaneLens('rotation')!.keysShifted(
         track,
-        lensOf: transformLaneLens,
-        laneId: 'rotation',
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 5,
         frameDelta: 4,
@@ -189,10 +187,8 @@ void main() {
       final keys = SeNameTagTrack.empty().copyWith(
         bold: PropertyTrack<bool>().withKey(1, true),
       );
-      final shifted = trackWithLaneKeysShifted(
+      final shifted = seNameTagLaneLens(seNameTagBoldLaneId)!.keysShifted(
         keys,
-        lensOf: seNameTagLaneLens,
-        laneId: seNameTagBoldLaneId,
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 5,
         frameDelta: 2,
@@ -209,10 +205,8 @@ void main() {
           parameters: {'blurX': EffectParameter(track: keyed(4.0, at: 2))},
         ),
       ];
-      final shifted = trackWithLaneKeysShifted(
+      final shifted = effectLaneLens(x)!.keysShifted(
         effects,
-        lensOf: effectLaneLens,
-        laneId: x,
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 5,
         frameDelta: 3,
@@ -227,26 +221,20 @@ void main() {
         scale: PropertyTrack<double>().withKey(2, 1.5),
       );
       for (final call in [
-        () => trackWithLaneKeysShifted(
+        () => transformLaneLens('scale')!.keysShifted(
           keyedScale,
-          lensOf: transformLaneLens,
-          laneId: 'scale',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 5,
           frameDelta: 0,
         ),
-        () => trackWithLaneKeysShifted(
+        () => transformLaneLens('nope')?.keysShifted(
           TransformTrack.empty(),
-          lensOf: transformLaneLens,
-          laneId: 'nope',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 5,
           frameDelta: 1,
         ),
-        () => trackWithLaneKeysShifted(
+        () => seNameTagLaneLens('nope')?.keysShifted(
           SeNameTagTrack.empty(),
-          lensOf: seNameTagLaneLens,
-          laneId: 'nope',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 5,
           frameDelta: 1,

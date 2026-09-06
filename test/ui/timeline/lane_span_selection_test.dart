@@ -247,10 +247,8 @@ void main() {
         rangeEndIndexExclusive: 10,
         frameDelta: 3,
       );
-      final single = trackWithLaneKeysShifted(
+      final single = transformLaneLens('scale')!.keysShifted(
         track(),
-        lensOf: transformLaneLens,
-        laneId: 'scale',
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 10,
         frameDelta: 3,

@@ -307,7 +307,7 @@ bool? parseBoolInput(String input) => switch (input.trim().toLowerCase()) {
 /// `transformTrackWithLaneSpanKeysShifted`: rigid group, one delta,
 /// all-or-nothing ACROSS lanes. A lane with no key in the range rides
 /// along; a lane whose landing is blocked vetoes the WHOLE move. The
-/// single-lane arm is `trackWithLaneKeysShifted` over [seNameTagLaneLens].
+/// single-lane arm is `keysShifted` on [seNameTagLaneLens].
 SeNameTagTrack? seNameTagTrackWithLaneSpanKeysShifted(
   SeNameTagTrack track, {
   required List<String> laneIds,

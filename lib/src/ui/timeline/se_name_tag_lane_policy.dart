@@ -67,7 +67,7 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
 /// The name-tag family's lane table: where each member lane lives on the
 /// track — the name-tag twin of `transformLaneLens`, and the family's arm
 /// of the lane-scoped range move (UI-R23 #3 part 2) through
-/// `trackWithLaneKeysShifted`. Null for the header and for any id that is
+/// `LaneKeysShift.keysShifted`. Null for the header and for any id that is
 /// not a member lane.
 LaneLens<SeNameTagTrack>? seNameTagLaneLens(String laneId) =>
     switch (laneId) {

@@ -815,10 +815,8 @@ void main() {
         scale: PropertyTrack<double>().withKey(2, 1.5),
       );
 
-      final shifted = trackWithLaneKeysShifted(
+      final shifted = transformLaneLens('position')!.keysShifted(
         track,
-        lensOf: transformLaneLens,
-        laneId: 'position',
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 4,
         frameDelta: 3,
@@ -828,10 +826,8 @@ void main() {
 
       // Landing on the UNSHIFTED key at 8 voids (nothing merges silently).
       expect(
-        trackWithLaneKeysShifted(
+        transformLaneLens('position')!.keysShifted(
           track,
-          lensOf: transformLaneLens,
-          laneId: 'position',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
           frameDelta: 6,
@@ -840,10 +836,8 @@ void main() {
       );
       // Below frame 0 voids.
       expect(
-        trackWithLaneKeysShifted(
+        transformLaneLens('position')!.keysShifted(
           track,
-          lensOf: transformLaneLens,
-          laneId: 'position',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
           frameDelta: -3,
@@ -852,10 +846,8 @@ void main() {
       );
       // No keys in range = nothing to move.
       expect(
-        trackWithLaneKeysShifted(
+        transformLaneLens('rotation')!.keysShifted(
           track,
-          lensOf: transformLaneLens,
-          laneId: 'rotation',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
           frameDelta: 1,
