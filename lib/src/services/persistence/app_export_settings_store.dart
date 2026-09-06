@@ -14,16 +14,12 @@ class AppExportSettingsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    // Widget tests reach this through the PRODUCTION menu wiring — they
-    // must never read or write the user's real settings file.
-    if (environment['FLUTTER_TEST'] == 'true') {
-      return '${Directory.systemTemp.path.replaceAll('\\', '/')}/'
-          'qa_test_export_settings_$pid/export_settings.json';
-    }
-    return appSupportFilePath('export_settings.json');
-  }
+  // Widget tests reach this through the PRODUCTION menu wiring — they
+  // must never read or write the user's real settings file.
+  static String defaultFilePath() => testRedirectedAppSupportPath(
+    'export_settings.json',
+    sandbox: 'export_settings',
+  );
 
   static const int version = 1;
 
