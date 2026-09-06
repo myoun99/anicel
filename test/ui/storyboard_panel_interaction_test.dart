@@ -1816,6 +1816,61 @@ void main() {
       expect(band.width, moreOrLessEquals(8.0 * 24, epsilon: 0.01));
     });
   });
+
+  group('R27 #14 — the LANE selection draws the same band on the rail', () {
+    testWidgets('a lane span bands exactly the spanned lane row at the '
+        'selection\'s own frames, and nothing when there is none', (
+      tester,
+    ) async {
+      final track = Track(
+        id: const TrackId('track-a'),
+        name: 'Track A',
+        cuts: [_cut('cut-a', name: 'Cut A')],
+        seLayers: [
+          createTrackSeLayer(trackId: const TrackId('track-a'), slot: 1),
+        ],
+      );
+      final laneSelection = ValueNotifier<TimelineLaneSelection?>(null);
+      addTearDown(laneSelection.dispose);
+      await _pumpStoryboardPanel(
+        tester,
+        _project([track]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        expandedSeAudioRows: {StoryboardPanel.seRowKey(track, 0)},
+        expandedTransformGroups: {StoryboardPanel.seRowKey(track, 0)},
+        laneRange: TimelineLaneRangeHooks(
+          selection: laneSelection,
+          onSelectUpdate: (_, _, _, _, _, _) {},
+          onTapAt: (_, _, _) {},
+          onTapClear: () {},
+          onMoveBegin: () => false,
+          onMoveUpdate: (_) {},
+          onMoveEnd: () {},
+          onMoveCancel: () {},
+        ),
+      );
+      const bandKey = ValueKey<String>('storyboard-lane-range-selection');
+      expect(find.byKey(bandKey), findsNothing);
+
+      laneSelection.value = TimelineLaneSelection(
+        layerId: track.seLayers.single.id,
+        laneId: 'position',
+        startIndex: 2,
+        endIndexExclusive: 6,
+      );
+      await tester.pump();
+
+      final band = tester.getRect(find.byKey(bandKey));
+      final laneRow = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-position')),
+      );
+      expect(band.top, moreOrLessEquals(laneRow.top, epsilon: 0.01));
+      expect(band.bottom, moreOrLessEquals(laneRow.bottom, epsilon: 0.01));
+      expect(band.left, moreOrLessEquals(laneRow.left + 8.0 * 2, epsilon: 0.01));
+      expect(band.width, moreOrLessEquals(8.0 * 4, epsilon: 0.01));
+    });
+  });
 }
 
 Future<void> _pumpStoryboardPanel(

@@ -976,6 +976,50 @@ class _StoryboardRailRows {
     );
   }
 
+  /// The subscribe-guard-draw scaffold both rail sweeps share: nothing
+  /// without a selection listenable, nothing while it holds no selection
+  /// or the scale is degenerate, otherwise [_rangeBand] with the plan
+  /// [plan] reads off the selection — or nothing when [plan] says the
+  /// selection is not this track's.
+  ///
+  /// The band is drawn straight from the selection's own numbers: both
+  /// kinds of row here are on the track's global axis, which is the axis
+  /// this rail measures in.
+  Widget _selectionBand<T>(
+    Track track,
+    TimelineScale scale,
+    ValueListenable<T?>? selection,
+    ({
+      bool Function(_StoryboardRailSlot slot) covers,
+      ({double left, double width}) span,
+      ({String key, String label}) label,
+    })?
+    Function(T selection)
+    plan,
+  ) {
+    if (selection == null) {
+      return const SizedBox.shrink();
+    }
+    return ValueListenableBuilder<T?>(
+      valueListenable: selection,
+      builder: (context, current, _) {
+        if (current == null || scale.pixelsPerFrame <= 0) {
+          return const SizedBox.shrink();
+        }
+        final planned = plan(current);
+        if (planned == null) {
+          return const SizedBox.shrink();
+        }
+        return _rangeBand(
+          track,
+          covers: planned.covers,
+          span: planned.span,
+          label: planned.label,
+        );
+      },
+    );
+  }
+
   /// The LANE selection's band over this group's property-lane rows —
   /// the V track's own (R4b) and its S rows' alike (R5 ③b). The
   /// timeline's R27 #14 overlay language: ONE band with the cell
@@ -983,90 +1027,72 @@ class _StoryboardRailRows {
   /// strips. Covered rows come from the SAME predicate the gesture and
   /// markers use ([laneSelectionCoversBandRow]), so the header row bands
   /// on a whole-group span, collapsed state included.
-  ///
-  /// The band is drawn straight from the selection's own numbers: both
-  /// kinds of row here are on the track's global axis, which is the axis
-  /// this rail measures in.
-  Widget _trackLaneRangeBand(Track track, TimelineScale scale) {
-    final selectionListenable = _state.widget.laneRange?.selection;
-    if (selectionListenable == null) {
-      return const SizedBox.shrink();
-    }
-    return ValueListenableBuilder<TimelineLaneSelection?>(
-      valueListenable: selectionListenable,
-      builder: (context, selection, _) {
-        if (selection == null || scale.pixelsPerFrame <= 0) {
-          return const SizedBox.shrink();
-        }
-        final subjectId = selection.layerId;
-        return _rangeBand(
-          track,
-          covers: (slot) {
-            final laneRow = slot.laneRow;
-            return slot.bandRow &&
-                laneRow != null &&
-                laneRow.layerId == subjectId &&
-                laneSelectionCoversBandRow(
-                  selection,
-                  subjectId,
-                  laneRow.laneId,
-                );
-          },
-          span: (
-            left: scale.leftForFrame(selection.startIndex),
-            width:
-                (selection.endIndexExclusive - selection.startIndex) *
-                scale.pixelsPerFrame,
-          ),
-          label: (
-            key: 'storyboard-lane-range-selection',
-            label: AppText.strings.tlSelectedLaneRange,
-          ),
-        );
-      },
-    );
-  }
+  Widget _trackLaneRangeBand(Track track, TimelineScale scale) =>
+      _selectionBand<TimelineLaneSelection>(
+        track,
+        scale,
+        _state.widget.laneRange?.selection,
+        (selection) {
+          final subjectId = selection.layerId;
+          return (
+            covers: (slot) {
+              final laneRow = slot.laneRow;
+              return slot.bandRow &&
+                  laneRow != null &&
+                  laneRow.layerId == subjectId &&
+                  laneSelectionCoversBandRow(
+                    selection,
+                    subjectId,
+                    laneRow.laneId,
+                  );
+            },
+            span: (
+              left: scale.leftForFrame(selection.startIndex),
+              width:
+                  (selection.endIndexExclusive - selection.startIndex) *
+                  scale.pixelsPerFrame,
+            ),
+            label: (
+              key: 'storyboard-lane-range-selection',
+              label: AppText.strings.tlSelectedLaneRange,
+            ),
+          );
+        },
+      );
 
   /// The band itself: [selection.spanRows] top to bottom — intervening
   /// twirled-open lanes ride under it, exactly as the timeline's band
   /// covers lanes between two covered layer rows.
-  Widget _trackRangeBand(Track track, TimelineScale scale) {
-    final selectedRange =
+  Widget _trackRangeBand(Track track, TimelineScale scale) =>
+      _selectionBand<TrackFrameRangeSelection>(
+        track,
+        scale,
         _state.widget.cutSelect?.selectedRange ??
-        _state.widget.seSelect?.selectedRange;
-    if (selectedRange == null) {
-      return const SizedBox.shrink();
-    }
-    return ValueListenableBuilder<TrackFrameRangeSelection?>(
-      valueListenable: selectedRange,
-      builder: (context, selection, _) {
-        if (selection == null ||
-            selection.trackId != track.id ||
-            scale.pixelsPerFrame <= 0) {
-          return const SizedBox.shrink();
-        }
-        final spanned = selection.spanRows.toSet();
-        return _rangeBand(
-          track,
-          // C②: an escalated lane drag's span carries LANE rows too — the
-          // band covers them exactly as the timeline's covers the lanes it
-          // swept.
-          covers: (slot) {
-            final address = slot.row ?? slot.laneRow;
-            return address != null && spanned.contains(address);
-          },
-          span: (
-            left: scale.leftForFrame(selection.startFrame),
-            width: selection.lengthFrames * scale.pixelsPerFrame,
-          ),
-          label: (
-            key: 'storyboard-frame-range-selection',
-            label: AppText.strings.tlSelectedFrameRange,
-          ),
-        );
-      },
-    );
-  }
+            _state.widget.seSelect?.selectedRange,
+        (selection) {
+          if (selection.trackId != track.id) {
+            return null;
+          }
+          final spanned = selection.spanRows.toSet();
+          return (
+            // C②: an escalated lane drag's span carries LANE rows too — the
+            // band covers them exactly as the timeline's covers the lanes it
+            // swept.
+            covers: (slot) {
+              final address = slot.row ?? slot.laneRow;
+              return address != null && spanned.contains(address);
+            },
+            span: (
+              left: scale.leftForFrame(selection.startFrame),
+              width: selection.lengthFrames * scale.pixelsPerFrame,
+            ),
+            label: (
+              key: 'storyboard-frame-range-selection',
+              label: AppText.strings.tlSelectedFrameRange,
+            ),
+          );
+        },
+      );
 
   /// The group's rows in VISUAL order with their heights — mirrored from
   /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
