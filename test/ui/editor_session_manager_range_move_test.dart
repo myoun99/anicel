@@ -1369,4 +1369,41 @@ void main() {
     expect(s.activeCutOrNull!.camera.keyframeAt(0), isNotNull);
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNull);
   });
+
+  test('a multi-source drag that never moved commits NOTHING and leaves '
+      'the selection where it started — an empty command list is not an '
+      'undo step', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A at frame 0
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on B at frame 0
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.endFrameRangeMoveDrag();
+
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+    expect(
+      s.frameRangeSelection.value!.spanLayerIds,
+      containsAll(<LayerId>[aId, bId]),
+    );
+    // The NEXT undo is the drawing that was made before the drag — the
+    // drag itself put no step on the stack.
+    s.undo();
+    expect(
+      s.layers.firstWhere((l) => l.id == bId).timeline,
+      isEmpty,
+      reason: 'an empty command list must not become an undo step',
+    );
+  });
 }
