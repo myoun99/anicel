@@ -138,6 +138,20 @@ void main() {
     );
     // (0x80 * 0.5).round() = 64; black at 64/255 over white leaves 191.
     expect(darknessAtCentre(pixels), 64);
+
+    // The half case is where a floor would drift: 255 * 0.5 = 127.5 rounds
+    // UP to 128.
+    final half = await paint(
+      StrokePainter(
+        paintableLayers: [
+          PaintableLayer(
+            layer: layer('a', opacity: 0.5),
+            frame: frameWith([strokeAt(line, color: 0xFF000000)]),
+          ),
+        ],
+      ),
+    );
+    expect(darknessAtCentre(half), 128);
   });
 
   test('🚨LAYERS win over the loose stroke list — a painter given both '
