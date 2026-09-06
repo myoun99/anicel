@@ -1420,10 +1420,7 @@ class AnicelFileService {
     });
 
     final document = decodeAnicelProjectDocument(projectJsonBytes);
-    final project = document.project;
-    final decoded = document.json;
-    final mediaRelativePaths = anicelStringMapField(decoded['mediaPaths']);
-    final mediaEntryNames = anicelStringMapField(decoded['mediaEntries']);
+    final mediaEntryNames = document.mediaEntryNames;
 
     // Media resolution, INSIDE FIRST. A copy the project carries cannot be
     // moved away or renamed out from under it, so it answers before any
@@ -1436,7 +1433,7 @@ class AnicelFileService {
     // over.
     final directory = _parentDirectory(filePath);
     final remap = <String, String>{};
-    for (final entry in mediaRelativePaths.entries) {
+    for (final entry in document.mediaRelativePaths.entries) {
       if (mediaEntryNames.containsKey(entry.key)) {
         continue;
       }
@@ -1446,8 +1443,7 @@ class AnicelFileService {
       }
     }
 
-    final grantsJson = decoded['grants'];
-    final remapped = remapProjectMediaPaths(project, remap);
+    final remapped = remapProjectMediaPaths(document.project, remap);
     return AnicelOpenResult(
       project: remapped,
       cels: cels,
@@ -1457,20 +1453,11 @@ class AnicelFileService {
       // path the project no longer uses describes nothing, and the one
       // moment that happens is this one — a project opened from a folder
       // that traveled has every reference rewritten to where it landed.
-      mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs'])
-          .narrowedTo({
-            for (final path in projectMediaPaths(remapped))
-              normalizeFingerprintPath(path),
-          }, moved: remap),
-      grants: [
-        if (grantsJson is List)
-          for (final entry in grantsJson)
-            if (entry is Map)
-              {
-                for (final field in entry.entries)
-                  if (field.key is String) field.key as String: field.value,
-              },
-      ],
+      mediaFingerprints: document.mediaFingerprints.narrowedTo({
+        for (final path in projectMediaPaths(remapped))
+          normalizeFingerprintPath(path),
+      }, moved: remap),
+      grants: document.grants,
     );
   }
 
