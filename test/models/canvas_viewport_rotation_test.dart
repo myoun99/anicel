@@ -106,6 +106,23 @@ void main() {
     }
   });
 
+  test('canvasDeltaToViewportDelta matches the point mapping difference', () {
+    // The forward mirror of the test above: a canvas-space vector measures
+    // on screen exactly what moving a point by it moves — the point map is
+    // the delta map plus pan, for every rotation and flip.
+    for (final viewport in assortedViewports) {
+      const dx = 13.0;
+      const dy = -7.5;
+      final base = viewport.canvasToViewport(CanvasPoint(x: 5, y: 6));
+      final moved = viewport.canvasToViewport(
+        CanvasPoint(x: 5 + dx, y: 6 + dy),
+      );
+      final delta = viewport.canvasDeltaToViewportDelta(dx: dx, dy: dy);
+      expect(delta.x, closeTo(moved.x - base.x, 1e-6), reason: '$viewport');
+      expect(delta.y, closeTo(moved.y - base.y, 1e-6), reason: '$viewport');
+    }
+  });
+
   test('json omits defaults and round-trips rotation/flip', () {
     expect(CanvasViewport().toJson().containsKey('rotation'), isFalse);
     expect(CanvasViewport().toJson().containsKey('flipH'), isFalse);

@@ -236,15 +236,8 @@ class CanvasViewport {
     if (!hasRotationOrFlip) {
       return ViewportPoint(x: point.x * zoom + panX, y: point.y * zoom + panY);
     }
-    final x = flipHorizontal ? -point.x : point.x;
-    final y = flipVertical ? -point.y : point.y;
-    final radians = rotationRadians;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-    return ViewportPoint(
-      x: (x * cos - y * sin) * zoom + panX,
-      y: (x * sin + y * cos) * zoom + panY,
-    );
+    final d = _rotatedFlippedScaled(point.x, point.y);
+    return ViewportPoint(x: d.x + panX, y: d.y + panY);
   }
 
   /// Maps a canvas-space DELTA into viewport space (the linear forward
@@ -258,8 +251,21 @@ class CanvasViewport {
     if (!hasRotationOrFlip) {
       return ViewportPoint(x: dx * zoom, y: dy * zoom);
     }
-    final x = flipHorizontal ? -dx : dx;
-    final y = flipVertical ? -dy : dy;
+    return _rotatedFlippedScaled(dx, dy);
+  }
+
+  /// The flip, rotation and zoom half of both canvas→viewport conversions
+  /// — everything but the pan.
+  ///
+  /// ⛔TWO CONVERSIONS SHARE IT — the point (which adds pan last) and the
+  /// DELTA (which does not, because a delta has no origin) — and the six
+  /// lines of trigonometry were written twice. A sign flipped in one of
+  /// them and not the other is a drag that fights the pointer only while
+  /// the canvas is turned. The inverse pair shares [_rotatedFlipped] for
+  /// the same reason.
+  ViewportPoint _rotatedFlippedScaled(double cx, double cy) {
+    final x = flipHorizontal ? -cx : cx;
+    final y = flipVertical ? -cy : cy;
     final radians = rotationRadians;
     final cos = math.cos(radians);
     final sin = math.sin(radians);
