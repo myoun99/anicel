@@ -16,6 +16,7 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithEnabledToggled,
         effectsWithGroupReset,
         effectsWithRemoved;
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// The EFFECTS AND THE FX SWITCHES — the effect chains a layer or a track
@@ -36,13 +37,15 @@ class EffectsAndFx {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _activeCut = ActiveCutEdits(timeline: timeline, changes: changes);
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final ActiveCutEdits _activeCut;
 
   /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
   /// route that draws this cut filters its finished picture through. Empty
@@ -56,19 +59,14 @@ class EffectsAndFx {
     LayerId layerId,
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateLayerEffects(
+  }) => _activeCut.onActiveCutQuietly(
+    (cutId) => _project.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,
       effects: effects,
       description: description,
-    );
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// Whether the ACTIVE row can take an effect: a row that carries its own
   /// FX, and not a track-owned SE row (its display clone strips FX, so a
@@ -522,51 +520,59 @@ class EffectsAndFx {
     );
   }
 
-  void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
+  /// Runs one `effectsWith*` transform over [trackId]'s chain and banks the
+  /// result as one undo step; false when there is no such track or the
+  /// transform declines (it answers null when nothing would change).
+  ///
+  /// The transform half already lived in effect_lane_editing.dart; this is
+  /// the envelope around it, which the three track verbs had each written
+  /// out.
+  bool _editTrackEffects(
+    TrackId trackId, {
+    required String description,
+    required List<LayerEffect>? Function(List<LayerEffect> effects) edit,
+  }) {
     final track = _project.trackById(trackId);
     if (track == null) {
-      return;
+      return false;
     }
-    final next = effectsWithRemoved(track.effects, effectId);
+    final next = edit(track.effects);
     if (next == null) {
-      return;
+      return false;
     }
-    updateTrackEffects(trackId, next, description: 'Remove effect');
+    updateTrackEffects(trackId, next, description: description);
+    return true;
   }
+
+  void removeEffectFromTrack(TrackId trackId, EffectId effectId) =>
+      _editTrackEffects(
+        trackId,
+        description: 'Remove effect',
+        edit: (effects) => effectsWithRemoved(effects, effectId),
+      );
 
   /// A V-track effect group's RESET (R5) — the track twin of
   /// [_internals.resetLaneGroup]. Track effects have no lane-range selection of their
   /// own, so the scope is always the playhead.
-  bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) {
-    final track = _project.trackById(trackId);
-    if (track == null) {
-      return false;
-    }
-    final next = effectsWithGroupReset(
-      track.effects,
-      laneId: headerLaneId,
-      frameIndexes: [_timeline.timelineController.currentFrameIndex],
-    );
-    if (next == null) {
-      return false;
-    }
-    updateTrackEffects(trackId, next, description: 'Reset group');
-    return true;
-  }
+  bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) =>
+      _editTrackEffects(
+        trackId,
+        description: 'Reset group',
+        edit: (effects) => effectsWithGroupReset(
+          effects,
+          laneId: headerLaneId,
+          frameIndexes: [_timeline.timelineController.currentFrameIndex],
+        ),
+      );
 
   /// One effect's own bypass on the V row — the switch on its group header,
   /// the twin of a layer effect's.
-  void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) {
-    final track = _project.trackById(trackId);
-    if (track == null) {
-      return;
-    }
-    final next = effectsWithEnabledToggled(track.effects, effectId);
-    if (next == null) {
-      return;
-    }
-    updateTrackEffects(trackId, next, description: 'Toggle effect');
-  }
+  void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) =>
+      _editTrackEffects(
+        trackId,
+        description: 'Toggle effect',
+        edit: (effects) => effectsWithEnabledToggled(effects, effectId),
+      );
 
   /// A track effect parameter's resolved value at GLOBAL [frameIndex] — the
   /// lane value column and the key-freeze source, through the same resolver
