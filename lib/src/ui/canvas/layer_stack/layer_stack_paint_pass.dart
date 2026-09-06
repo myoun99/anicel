@@ -1226,13 +1226,13 @@ class _LayerStackPaintPass {
     if (s >= 1) {
       s = 1;
     }
-    final longSide = rect.width > rect.height ? rect.width : rect.height;
-    if (longSide * s > _LayerStackPainter._maxBufferSide) {
-      // A screen so large even zoom·dpr overflows the cap: shrink further.
-      // Still one uniform resample — softer, never seamed.
-      s = _LayerStackPainter._maxBufferSide / longSide;
-    }
-    return s;
+    // A screen so large even zoom·dpr overflows the cap: shrink further.
+    // Still one uniform resample — softer, never seamed.
+    return scaleFittingSide(
+      scale: s,
+      bounds: rect.size,
+      maxSide: _LayerStackPainter._maxBufferSide.toDouble(),
+    );
   }
 
   /// [rect] recorded at scale [s] into a [size] image — the PICTURE route

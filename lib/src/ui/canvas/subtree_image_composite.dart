@@ -20,6 +20,23 @@ import '../../services/composite_effect_paint.dart';
 /// disagree about how big a folder may get.
 const int maxSubtreeRasterSide = 8192;
 
+/// [scale], shrunk just enough that [bounds]' long side lands within
+/// [maxSide] device pixels — the UNIFORM shrink both cap sites apply.
+///
+/// One shrink of the whole thing, never a split into tiles: softer at the
+/// worst magnifications, never seamed, and never a second code path an
+/// effect could miss. The two callers differ only in which cap they hand
+/// in (the display buffer's, or a group's minus its snap headroom), which
+/// is a number, not a mode.
+double scaleFittingSide({
+  required double scale,
+  required Size bounds,
+  required double maxSide,
+}) {
+  final side = bounds.width > bounds.height ? bounds.width : bounds.height;
+  return side * scale > maxSide ? maxSide / side : scale;
+}
+
 /// The grid a sub-tree rasterises on, decided once and then obeyed.
 ///
 /// ⛔The arithmetic lives HERE and only here. Three walks composite a group —
@@ -94,21 +111,20 @@ SubtreeRasterPlan? _planSubtreeRaster({
   required double rasterScale,
   int maxPixelSide = maxSubtreeRasterSide,
 }) {
-  var scale = rasterScale;
-  final side = bounds.width > bounds.height ? bounds.width : bounds.height;
   // 🚨THE SNAP IS PART OF THE CAP. Clamping the scale alone left the cap off
   // by one: `side * scale` landed exactly on the cap and then the OUTWARD
   // snap widened it, so the image came back one pixel over the limit it was
   // clamped to. The snap can add up to a whole device pixel at each edge, so
   // the room for both has to come out of the scale.
-  final headroom = maxPixelSide - 2;
-  if (side * scale > headroom) {
-    // A view so magnified the sub-tree alone overflows the cap: shrink, the
-    // way the display buffer does one level up. Still one uniform resample —
-    // softer, never seamed, and never a second code path an effect could
-    // miss.
-    scale = headroom / side;
-  }
+  //
+  // A view so magnified the sub-tree alone overflows the cap shrinks the
+  // way the display buffer does one level up — the same [scaleFittingSide],
+  // now literally.
+  final scale = scaleFittingSide(
+    scale: rasterScale,
+    bounds: bounds.size,
+    maxSide: (maxPixelSide - 2).toDouble(),
+  );
   final destination = Rect.fromLTRB(
     (bounds.left * scale).floorToDouble() / scale,
     (bounds.top * scale).floorToDouble() / scale,
