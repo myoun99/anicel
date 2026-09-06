@@ -179,7 +179,7 @@ void main() {
         ..writeAsBytesSync([0, 0, 0, 24]);
       final path = movie.path.replaceAll('\\', '/');
       s.importMediaFiles([movie.path], copyIntoProject: false);
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: path,
           bookmark: 'Ym9va21hcms=',
@@ -194,12 +194,12 @@ void main() {
       final reopened = session();
       await reopened.openProjectFromFile(projectPath);
       // What the FILE kept — the round trip this test is named for.
-      expect(reopened.debugStoredGrants, hasLength(1));
-      expect(reopened.debugStoredGrants.single.path, path);
-      expect(reopened.debugStoredGrants.single.kind, GrantKind.file);
+      expect(reopened.mediaGrants.debugStoredGrants, hasLength(1));
+      expect(reopened.mediaGrants.debugStoredGrants.single.path, path);
+      expect(reopened.mediaGrants.debugStoredGrants.single.kind, GrantKind.file);
       // And what this launch can USE, which is the resolver's answer.
-      expect(reopened.debugMediaGrants, hasLength(1));
-      expect(reopened.debugMediaGrants.single.bookmark, 'ZnJlc2g=');
+      expect(reopened.mediaGrants.debugMediaGrants, hasLength(1));
+      expect(reopened.mediaGrants.debugMediaGrants.single.bookmark, 'ZnJlc2g=');
       reopened.dispose();
     });
 
@@ -213,7 +213,7 @@ void main() {
       await s.saveProjectToFile(projectPath);
       expect(s.hasUnsavedChanges, isFalse);
 
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         const FolderGrant.granted(
           path: '/외장/참고영상.mp4',
           bookmark: 'Ym9va21hcms=',
@@ -231,7 +231,7 @@ void main() {
       // and a project that accumulates those is the shape that reads as an
       // app hoarding access.
       final s = session();
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         const FolderGrant.granted(
           path: '/외장/한때썼던것.mp4',
           bookmark: 'Ym9va21hcms=',
@@ -247,7 +247,7 @@ void main() {
       // The FILE list: nothing was written, so nothing comes back. (The
       // usable list would also be empty here, but for a reason that
       // varies by host OS — see the pinning note above.)
-      expect(reopened.debugStoredGrants, isEmpty);
+      expect(reopened.mediaGrants.debugStoredGrants, isEmpty);
       reopened.dispose();
     });
 
@@ -255,14 +255,14 @@ void main() {
       // Apple hands back a fresh bookmark every resolve; the one we came
       // in with is the stale copy.
       final s = session();
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         const FolderGrant.granted(
           path: '/외장/참고영상.mp4',
           bookmark: 'old',
           kind: GrantKind.file,
         ),
       ]);
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         const FolderGrant.granted(
           path: '/외장/참고영상.mp4',
           bookmark: 'new',
@@ -270,18 +270,18 @@ void main() {
         ),
       ]);
 
-      expect(s.debugMediaGrants, hasLength(1));
-      expect(s.debugMediaGrants.single.bookmark, 'new');
+      expect(s.mediaGrants.debugMediaGrants, hasLength(1));
+      expect(s.mediaGrants.debugMediaGrants.single.bookmark, 'new');
       s.dispose();
     });
 
     test('a grant with no token is not held at all', () {
       final s = session();
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         const FolderGrant.granted(path: '/work/참고영상.mp4'),
         const FolderGrant.cancelled(),
       ]);
-      expect(s.debugMediaGrants, isEmpty);
+      expect(s.mediaGrants.debugMediaGrants, isEmpty);
       s.dispose();
     });
 
@@ -309,7 +309,7 @@ void main() {
         ..writeAsBytesSync([0, 0, 0, 24]);
       final path = movie.path.replaceAll('\\', '/');
       s.importMediaFiles([movie.path], copyIntoProject: false);
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: path,
           bookmark: 'Ym9va21hcms=',
@@ -324,12 +324,12 @@ void main() {
       final refused = session();
       await refused.openProjectFromFile(projectPath);
       expect(
-        refused.debugMediaGrants,
+        refused.mediaGrants.debugMediaGrants,
         isEmpty,
         reason: 'unusable this launch — nothing can be read through it',
       );
       expect(
-        refused.debugStoredGrants,
+        refused.mediaGrants.debugStoredGrants,
         hasLength(1),
         reason: 'but not forgotten',
       );
@@ -341,11 +341,11 @@ void main() {
       final restored = session();
       await restored.openProjectFromFile(projectPath);
       expect(
-        restored.debugStoredGrants,
+        restored.mediaGrants.debugStoredGrants,
         hasLength(1),
         reason: 'the save in between must not have erased it',
       );
-      expect(restored.debugStoredGrants.single.bookmark, 'Ym9va21hcms=');
+      expect(restored.mediaGrants.debugStoredGrants.single.bookmark, 'Ym9va21hcms=');
       restored.dispose();
     });
 
@@ -364,7 +364,7 @@ void main() {
 
       final s = session();
       s.importMediaFiles([movie.path], copyIntoProject: false);
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: oldPath,
           bookmark: 'Ym9va21hcms=',
@@ -395,9 +395,9 @@ void main() {
         newPath,
         reason: 'the pool has to be told where the bookmark found it',
       );
-      expect(reopened.debugMediaGrants.single.path, newPath);
+      expect(reopened.mediaGrants.debugMediaGrants.single.path, newPath);
       expect(
-        reopened.debugMediaGrants.single.bookmark,
+        reopened.mediaGrants.debugMediaGrants.single.bookmark,
         'ZnJlc2g=',
         reason: 'the freshly issued token, never the one we arrived with',
       );
@@ -408,7 +408,7 @@ void main() {
 
       final again = session();
       await again.openProjectFromFile(projectPath);
-      expect(again.debugStoredGrants, hasLength(1));
+      expect(again.mediaGrants.debugStoredGrants, hasLength(1));
       again.dispose();
     });
 
@@ -426,7 +426,7 @@ void main() {
         ..writeAsBytesSync([0, 0, 0, 24]);
       final path = movie.path.replaceAll('\\', '/');
       s.importMediaFiles([movie.path], copyIntoProject: false);
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: path,
           bookmark: 'Ym9va21hcms=',
@@ -446,7 +446,7 @@ void main() {
         overlayPath: overlayPath,
       );
       expect(
-        recovered.debugStoredGrants,
+        recovered.mediaGrants.debugStoredGrants,
         hasLength(1),
         reason: 'the snapshot has to carry them, because it replaces the '
             'base file\'s project.json outright',
@@ -459,11 +459,11 @@ void main() {
       final after = session();
       await after.openProjectFromFile(projectPath);
       expect(
-        after.debugStoredGrants,
+        after.mediaGrants.debugStoredGrants,
         hasLength(1),
         reason: 'and that save must not have written the emptiness back',
       );
-      expect(after.debugStoredGrants.single.bookmark, 'Ym9va21hcms=');
+      expect(after.mediaGrants.debugStoredGrants.single.bookmark, 'Ym9va21hcms=');
       after.dispose();
     });
 
@@ -527,7 +527,7 @@ void main() {
       s.importMediaFiles([movie.path], copyIntoProject: true);
 
       expect(s.mediaAssets.single.kind, MediaAssetKind.video);
-      s.rememberMediaGrants([
+      s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: movie.path.replaceAll('\\', '/'),
           bookmark: 'Ym9va21hcms=',
@@ -544,7 +544,7 @@ void main() {
       // depends on the host OS (see the pinning note above) and this test
       // is about the kind rule, not about resolving.
       expect(
-        reopened.debugStoredGrants,
+        reopened.mediaGrants.debugStoredGrants,
         hasLength(1),
         reason: 'the one asset that stays outside is the one that needs a '
             'token to be read again',

@@ -403,7 +403,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // by the time a save writes them down, and this is the only moment
     // they exist outside the picker. Harmless when the list is empty,
     // which is every desktop import and every drop.
-    widget.session.rememberMediaGrants(_pickedGrants);
+    widget.session.mediaGrants.rememberMediaGrants(_pickedGrants);
     final tally = _ImportTally();
     if (!await _importAll(tally)) {
       return; // the dialog went away part-way through the batch

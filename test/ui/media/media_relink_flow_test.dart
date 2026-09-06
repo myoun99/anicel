@@ -84,7 +84,7 @@ void main() {
       reason: 'the reference healed',
     );
     expect(
-      session.debugStoredGrants.any((g) => g.bookmark == 'RELINK=='),
+      session.mediaGrants.debugStoredGrants.any((g) => g.bookmark == 'RELINK=='),
       isTrue,
       reason: 'and the grant that makes it readable after a relaunch was '
           'kept — dropping it healed the reference for one session only',

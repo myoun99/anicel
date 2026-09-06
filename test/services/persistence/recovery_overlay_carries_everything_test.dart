@@ -102,7 +102,7 @@ void main() {
     s.importMediaFiles([
       '${directory.path}/참고영상.mp4',
     ], copyIntoProject: false);
-    s.rememberMediaGrants([
+    s.mediaGrants.rememberMediaGrants([
       FolderGrant.granted(
         path: '${directory.path}/참고영상.mp4'.replaceAll('\\', '/'),
         bookmark: 'Ym9va21hcms=',

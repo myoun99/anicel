@@ -99,7 +99,7 @@ Future<void> runMediaRelinkFlow(
   // The token first, the move second — the same order the import commit
   // uses, so the undoable path rewrite never exists without the grant
   // that makes it readable after a relaunch.
-  session.rememberMediaGrants([regrant!]);
+  session.mediaGrants.rememberMediaGrants([regrant!]);
   session.relinkMediaAssets(plan.matched);
 }
 

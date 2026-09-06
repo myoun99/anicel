@@ -582,7 +582,7 @@ class _WorkspaceTabs {
                 // grant is not, so recording it before the path moves
                 // keeps the two from disagreeing about which file the
                 // session may read.
-                _state.widget.session.rememberMediaGrants(grants);
+                _state.widget.session.mediaGrants.rememberMediaGrants(grants);
                 unawaited(_state.widget.session.relinkMediaAsset(oldPath, newPath));
               },
               // RELINK-2: the loss banner reads the session's cached
