@@ -19,6 +19,8 @@ import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
 import 'brush_stroke_blend.dart';
+import 'commit_tile_scratch.dart';
+import 'native_tile_span_batch.dart';
 
 class BrushSurfaceMaterialization {
   const BrushSurfaceMaterialization({
@@ -51,58 +53,15 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   // clip itself lives in BrushDabPlan, so both raster routes take it.
   final canvasSize = surface.canvasSize;
   final tileSize = surface.tileSize;
-  final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
 
-  // Mutable scratch pixels per touched tile. `BitmapTile.pixels` already
-  // returns a defensive copy, so it can be mutated freely; blank tiles start
-  // as zeroed buffers without allocating a BitmapTile.
-  //
-  // With the native engine loaded (R18 A-1 / R19-Z) the scratch lives in
-  // pooled NATIVE memory: staging is a C memcpy from the tile's native
-  // buffer, Dart works through a typed-data view (the fallback and stamp
-  // loops run unchanged) while the kernel gets the raw pointer, and the
-  // commit tail ADOPTS the changed buffers as the finished tiles — the
-  // whole sequence materializes with zero pixel copies out.
+  // The scratch the dabs blend into — native pooled memory with the
+  // engine loaded, Dart byte lists otherwise (see CommitTileScratch).
   final native = QaNativeEngine.instance;
-  final nativeTiles = native == null ? null : <TileCoord, QaNativeTileBuffer>{};
-  final scratchBuffers = <TileCoord, Uint8List>{};
+  final nativeScratch = native == null
+      ? null
+      : NativeCommitScratch(native, surface);
+  final scratch = nativeScratch ?? DartCommitScratch(surface);
   final changedCoords = <TileCoord>{};
-
-  Uint8List scratchBufferFor(TileCoord coord) {
-    return scratchBuffers.putIfAbsent(coord, () {
-      final tile = surface.tileAt(coord);
-      if (nativeTiles != null) {
-        final buffer = native!.acquireTileBuffer(
-          tileByteLength,
-          zeroed: tile == null,
-        );
-        nativeTiles[coord] = buffer;
-        if (tile != null) {
-          // readPixels keeps the tile alive across the copy — a bare
-          // pointer would let its finalizer recycle the block mid-memcpy
-          // (see BitmapTile.readPixels).
-          tile.readPixels(
-            (pointer, _) =>
-                native.copyBytes(buffer.pointer, pointer, tileByteLength),
-          );
-        }
-        return buffer.view;
-      }
-      if (tile == null) {
-        return Uint8List(tileByteLength);
-      }
-      return tile.pixels;
-    });
-  }
-
-  void releaseNativeTiles() {
-    if (nativeTiles != null) {
-      for (final buffer in nativeTiles.values) {
-        native!.releaseTileBuffer(buffer);
-      }
-      nativeTiles.clear();
-    }
-  }
 
   for (final dab in sequence.dabs) {
     // RGBA stamp dabs (R14-④ bitmap lift) take a dedicated 1:1 blend path
@@ -116,13 +75,8 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
         stamp: stamp,
         canvasSize: canvasSize,
         tileSize: tileSize,
-        scratchBufferFor: scratchBufferFor,
-        nativeTileFor: nativeTiles == null
-            ? null
-            : (coord) {
-                scratchBufferFor(coord);
-                return nativeTiles[coord]!;
-              },
+        scratch: scratch,
+        nativeScratch: nativeScratch,
         changedCoords: changedCoords,
       );
       continue;
@@ -144,28 +98,14 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // Native kernel (R18 A-1): identical pixel visits and float math, one
     // pooled batch per dab straight into the native-backed scratch. The
     // Dart loop below stays byte-for-byte as the reference fallback.
-    if (native != null) {
-      // pointerFor runs once per span, in span order, so recording the
-      // coordinate here keeps batchCoords aligned with the changed flags.
-      final batchCoords = <TileCoord>[];
-      final changed = blendDabTilesNative(
+    if (nativeScratch != null) {
+      final blended = blendDabTilesNative(
         plan,
-        native,
+        nativeScratch.native,
         tileSize: tileSize,
-        pointerFor: (tileX, tileY) {
-          final coord = TileCoord(x: tileX, y: tileY);
-          scratchBufferFor(coord);
-          batchCoords.add(coord);
-          return nativeTiles![coord]!.pointer;
-        },
+        pointerFor: nativeScratch.pointerFor,
       );
-      if (changed != null) {
-        for (var i = 0; i < batchCoords.length; i += 1) {
-          if (changed[i] != 0) {
-            changedCoords.add(batchCoords[i]);
-          }
-        }
-      }
+      changedCoords.addAll(changedTileCoords(blended.changed, blended.coords));
       continue;
     }
 
@@ -173,96 +113,86 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       plan,
       tileSize: tileSize,
       bufferFor: (tileX, tileY) =>
-          scratchBufferFor(TileCoord(x: tileX, y: tileY)),
+          scratch.bufferFor(TileCoord(x: tileX, y: tileY)),
       onTileChanged: (tileX, tileY) =>
           changedCoords.add(TileCoord(x: tileX, y: tileY)),
     );
   }
 
-  if (changedCoords.isEmpty) {
-    releaseNativeTiles();
+  return _finishMaterialization(
+    surface: surface,
+    scratch: scratch,
+    changedCoords: changedCoords,
+    probeName: 'commit.putTiles',
+  );
+}
+
+/// The commit tail both landings share: the CHANGED scratch tiles become
+/// the surface's tiles, row-major, and whatever was staged but never
+/// changed goes back.
+///
+/// R19-Z: the CHANGED scratch buffers become the finished tiles — the
+/// tile ADOPTS the native buffer (ownership leaves the pool; the
+/// tile's finalizer frees it), so a full-canvas commit writes zero
+/// pixel copies out. Untouched staged buffers still return to the
+/// pool below; the Dart fallback keeps the constructor copy.
+BrushSurfaceMaterialization _finishMaterialization({
+  required BitmapSurface surface,
+  required CommitTileScratch scratch,
+  required Iterable<TileCoord> changedCoords,
+  required String probeName,
+}) {
+  final sortedCoords = changedCoords.toList()..sort(TileCoord.compareRowMajor);
+  if (sortedCoords.isEmpty) {
+    scratch.releaseUnfinished();
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
     );
   }
-
-  final sortedCoords = changedCoords.toList()
-    ..sort((a, b) {
-      final yComparison = a.y.compareTo(b.y);
-      if (yComparison != 0) return yComparison;
-      return a.x.compareTo(b.x);
-    });
-
   var updatedSurface = surface;
-  var dirtyTiles = DirtyTileSet.empty();
-  labProbe('commit.putTiles', () {
-    // R19-Z: the CHANGED scratch buffers become the finished tiles — the
-    // tile ADOPTS the native buffer (ownership leaves the pool; the
-    // tile's finalizer frees it), so a full-canvas commit writes zero
-    // pixel copies out. Untouched staged buffers still return to the
-    // pool below; the Dart fallback keeps the constructor copy.
-    updatedSurface = updatedSurface.putTiles([
-      for (final coord in sortedCoords)
-        if (nativeTiles != null)
-          BitmapTile.adoptNative(
-            coord: coord,
-            size: tileSize,
-            pixels: nativeTiles.remove(coord)!.pointer,
-          )
-        else
-          BitmapTile(
-            coord: coord,
-            size: tileSize,
-            pixels: scratchBuffers[coord]!,
-          ),
+  labProbe(probeName, () {
+    updatedSurface = surface.putTiles([
+      for (final coord in sortedCoords) scratch.finish(coord),
     ]);
-    for (final coord in sortedCoords) {
-      dirtyTiles = dirtyTiles.add(coord);
-    }
   });
-  releaseNativeTiles();
-
+  scratch.releaseUnfinished();
   return BrushSurfaceMaterialization(
     surface: updatedSurface,
-    dirtyTiles: dirtyTiles,
+    dirtyTiles: DirtyTileSet(sortedCoords),
   );
 }
 
 /// The RGBA stamp blend (R14-④): the stamp's straight-alpha pixels land
-/// 1:1 source-over centered on the dab (integer top-left from the center,
-/// so a lift-then-drop round trip is byte-exact at full opacity). The
-/// source-over float grouping matches the generic path's exactly.
+/// 1:1 source-over centered on the dab ([BrushStampImage.landingRect]).
+/// The source-over float grouping matches the generic path's exactly.
 void _blendStampDab({
   required BrushDab dab,
   required BrushStampImage stamp,
   required CanvasSize canvasSize,
   required int tileSize,
-  required Uint8List Function(TileCoord) scratchBufferFor,
-  required QaNativeTileBuffer Function(TileCoord)? nativeTileFor,
+  required CommitTileScratch scratch,
+  required NativeCommitScratch? nativeScratch,
   required Set<TileCoord> changedCoords,
 }) {
   final dabOpacity = dab.opacity;
   if (dabOpacity == 0.0) {
     return;
   }
-  final stampLeft = (dab.center.x - stamp.width / 2).round();
-  final stampTop = (dab.center.y - stamp.height / 2).round();
+  final landing = stamp.landingRect(dab.center);
   // Pasteboard clip, NOT canvas: a selection dropped past the stage edge
   // keeps its pixels (they land on the pasteboard instead of vanishing).
-  final left = math.max(canvasSize.pasteboardLeft, stampLeft);
-  final top = math.max(canvasSize.pasteboardTop, stampTop);
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    stampLeft + stamp.width,
-  );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    stampTop + stamp.height,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  final clip = landing.intersection(canvasSize.pasteboardRegion);
+  if (clip == null) {
     return;
   }
+  // Locals, not field reads: the Dart loop below is per pixel.
+  final stampLeft = landing.left;
+  final stampTop = landing.top;
+  final left = clip.left;
+  final top = clip.top;
+  final rightExclusive = clip.rightExclusive;
+  final bottomExclusive = clip.bottomExclusive;
   final rgba = stamp.rgba;
 
   // R18 A-0/A-1.5/F-1: the native core blends whole (dab, tile) spans in
@@ -272,46 +202,28 @@ void _blendStampDab({
   // move session re-commits the SAME stamp per drag move, so repeats are
   // pure pointer math). Byte-identical to the Dart loop below
   // (parity-pinned); Dart remains the reference and the fallback.
-  final native = QaNativeEngine.instance;
-  final stampUpload = (native != null && nativeTileFor != null)
-      ? labProbe('stamp.upload', () => native.stampUploads.upload(rgba))
-      : null;
-  if (stampUpload != null) {
+  if (nativeScratch != null) {
+    final native = nativeScratch.native;
+    final stampUpload = labProbe(
+      'stamp.upload',
+      () => native.stampUploads.upload(rgba),
+    );
     // One BATCH call for the whole stamp (R18 A-3a): spans fan out
     // across the C worker pool; disjoint tiles keep it byte-identical
     // to the sequential loop.
-    final tileXStart = floorDiv(left, tileSize);
-    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
-    final tileYStart = floorDiv(top, tileSize);
-    final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
-    final batchCoords = <TileCoord>[];
-    labProbe('stamp.stage', () {
-      native!.ensureTileSpanBatch(
-        (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
-      );
-      for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
-        final tileTop = tileY * tileSize;
-        for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
-          final coord = TileCoord(x: tileX, y: tileY);
-          final tileLeft = tileX * tileSize;
-          native.setTileSpan(
-            batchCoords.length,
-            tilePixels: nativeTileFor!(coord).pointer,
-            tileLeft: tileLeft,
-            tileTop: tileTop,
-            spanLeft: math.max(left, tileLeft),
-            spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
-            spanTop: math.max(top, tileTop),
-            spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
-          );
-          batchCoords.add(coord);
-        }
-      }
-    });
+    final coords = labProbe(
+      'stamp.stage',
+      () => stageTileSpans(
+        native,
+        clip: clip,
+        tileSize: tileSize,
+        pointerFor: nativeScratch.pointerFor,
+      ),
+    );
     final changed = labProbe(
       'stamp.blend',
-      () => native!.stampBlendTiles(
-        count: batchCoords.length,
+      () => native.stampBlendTiles(
+        count: coords.length,
         tileSize: tileSize,
         stampBytes: stampUpload,
         stampWidth: stamp.width,
@@ -321,20 +233,16 @@ void _blendStampDab({
         erase: dab.erase,
       ),
     );
-    for (var i = 0; i < batchCoords.length; i += 1) {
-      if (changed[i] != 0) {
-        changedCoords.add(batchCoords[i]);
-      }
-    }
+    changedCoords.addAll(changedTileCoords(changed, coords));
     return;
   }
 
+  final (firstX: tileXStart, lastX: tileXEnd, firstY: _, lastY: _) = clip
+      .tileRange(tileSize: tileSize);
   for (var y = top; y < bottomExclusive; y += 1) {
     final tileY = floorDiv(y, tileSize);
     final localRowOffset = (y - tileY * tileSize) * tileSize;
     final stampRowOffset = (y - stampTop) * stamp.width;
-    final tileXStart = floorDiv(left, tileSize);
-    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
       final coord = TileCoord(x: tileX, y: tileY);
@@ -342,7 +250,7 @@ void _blendStampDab({
       final spanLeft = math.max(left, tileLeft);
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
 
-      final buffer = scratchBufferFor(coord);
+      final buffer = scratch.bufferFor(coord);
       for (var x = spanLeft; x < spanRightExclusive; x += 1) {
         final sourceOffset = (stampRowOffset + (x - stampLeft)) * 4;
         final stampA = rgba[sourceOffset + 3];
@@ -597,21 +505,11 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
 }) {
   final canvasSize = surface.canvasSize;
   final tileSize = surface.tileSize;
-  final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
   // The stroke buffer is BOUNDS-LOCAL (stride = bounds width, origin =
   // bounds top-left, like a stamp's raw placement); the blend clips at
   // the pasteboard exactly like the stamp path.
-  final left = math.max(canvasSize.pasteboardLeft, bounds.left);
-  final top = math.max(canvasSize.pasteboardTop, bounds.top);
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    bounds.rightExclusive,
-  );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    bounds.bottomExclusive,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  final clip = bounds.intersection(canvasSize.pasteboardRegion);
+  if (clip == null) {
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
@@ -621,54 +519,20 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
     'strokeBlend.upload',
     () => native.stampUploads.upload(strokePixels),
   );
-  final tileXStart = floorDiv(left, tileSize);
-  final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
-  final tileYStart = floorDiv(top, tileSize);
-  final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
-  final nativeTiles = <TileCoord, QaNativeTileBuffer>{};
-  final batchCoords = <TileCoord>[];
-  labProbe('strokeBlend.stage', () {
-    native.ensureTileSpanBatch(
-      (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
-    );
-    for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
-      final tileTop = tileY * tileSize;
-      for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
-        final coord = TileCoord(x: tileX, y: tileY);
-        final tile = surface.tileAt(coord);
-        final buffer = native.acquireTileBuffer(
-          tileByteLength,
-          zeroed: tile == null,
-        );
-        if (tile != null) {
-          // readPixels keeps the tile alive across the copy — a bare
-          // pointer would let its finalizer recycle the block mid-memcpy
-          // (see BitmapTile.readPixels).
-          tile.readPixels(
-            (pointer, _) =>
-                native.copyBytes(buffer.pointer, pointer, tileByteLength),
-          );
-        }
-        nativeTiles[coord] = buffer;
-        final tileLeft = tileX * tileSize;
-        native.setTileSpan(
-          batchCoords.length,
-          tilePixels: buffer.pointer,
-          tileLeft: tileLeft,
-          tileTop: tileTop,
-          spanLeft: math.max(left, tileLeft),
-          spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
-          spanTop: math.max(top, tileTop),
-          spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
-        );
-        batchCoords.add(coord);
-      }
-    }
-  });
+  final staging = NativeCommitScratch(native, surface);
+  final coords = labProbe(
+    'strokeBlend.stage',
+    () => stageTileSpans(
+      native,
+      clip: clip,
+      tileSize: tileSize,
+      pointerFor: staging.pointerFor,
+    ),
+  );
   final changed = labProbe(
     'strokeBlend.blend',
     () => native.strokeBlendTiles(
-      count: batchCoords.length,
+      count: coords.length,
       tileSize: tileSize,
       strokeBytes: strokeUpload,
       strokeWidth: bounds.rightExclusive - bounds.left,
@@ -677,49 +541,10 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
       mode: strokeBlendModeNativeId(mode),
     ),
   );
-  final changedCoords = <TileCoord>[
-    for (var i = 0; i < batchCoords.length; i += 1)
-      if (changed[i] != 0) batchCoords[i],
-  ];
-  void releaseStagedTiles() {
-    for (final buffer in nativeTiles.values) {
-      native.releaseTileBuffer(buffer);
-    }
-    nativeTiles.clear();
-  }
-
-  if (changedCoords.isEmpty) {
-    releaseStagedTiles();
-    return BrushSurfaceMaterialization(
-      surface: surface,
-      dirtyTiles: DirtyTileSet.empty(),
-    );
-  }
-  changedCoords.sort((a, b) {
-    final yComparison = a.y.compareTo(b.y);
-    if (yComparison != 0) return yComparison;
-    return a.x.compareTo(b.x);
-  });
-  var updatedSurface = surface;
-  var dirtyTiles = DirtyTileSet.empty();
-  labProbe('strokeBlend.putTiles', () {
-    // Changed buffers become the finished tiles (adopted, R19-Z);
-    // unchanged staged buffers return to the pool below.
-    updatedSurface = updatedSurface.putTiles([
-      for (final coord in changedCoords)
-        BitmapTile.adoptNative(
-          coord: coord,
-          size: tileSize,
-          pixels: nativeTiles.remove(coord)!.pointer,
-        ),
-    ]);
-    for (final coord in changedCoords) {
-      dirtyTiles = dirtyTiles.add(coord);
-    }
-  });
-  releaseStagedTiles();
-  return BrushSurfaceMaterialization(
-    surface: updatedSurface,
-    dirtyTiles: dirtyTiles,
+  return _finishMaterialization(
+    surface: surface,
+    scratch: staging,
+    changedCoords: changedTileCoords(changed, coords),
+    probeName: 'strokeBlend.putTiles',
   );
 }

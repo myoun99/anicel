@@ -78,12 +78,7 @@ class _CanvasPanelSelection {
   /// last tile arrived — double-compositing every partial-alpha pixel
   /// under it, and, when the float could not paint, showing the user the
   /// convergence itself, tile by tile.
-  Set<TileCoord> committedRegionPendingTiles(
-    int left,
-    int top,
-    int right,
-    int bottom,
-  ) {
+  Set<TileCoord> committedRegionPendingTiles(DirtyRegion landing) {
     final coordinator = _state.widget._editableCoordinator;
     if (coordinator == null) {
       return const <TileCoord>{};
@@ -99,30 +94,21 @@ class _CanvasPanelSelection {
     // allows (1024 tiles): 82.7 ms per walk against 28 µs, and the walk
     // that finds everything ready is by definition the complete one, so
     // that stall landed on the release frame of every confirm.
-    //
-    // floorDiv, not ~/: a stamp can land in the pasteboard, where the
-    // coordinates are negative and truncation picks the wrong tile.
-    final firstTx = floorDiv(left, size);
-    final lastTx = floorDiv(right - 1, size);
-    final lastTy = floorDiv(bottom - 1, size);
     var pending = const <TileCoord>{};
-    for (var ty = floorDiv(top, size); ty <= lastTy; ty++) {
-      for (var tx = firstTx; tx <= lastTx; tx++) {
-        final coord = TileCoord(x: tx, y: ty);
-        final tile = surface.tileAt(coord);
-        // `displayImageFor`, not `imageFor`: the question this predicate
-        // asks is "can the base paint here", and a stand-in composed from
-        // the very picture the hold would show is an answer to it. Reading
-        // truth only would keep the float clipped over coordinates the
-        // canvas is already drawing correctly — the same coordinate
-        // source-over'd twice, which is how partial-alpha edges came out
-        // darker on a wide landing.
-        if (tile != null && cache.displayImageFor(tile) == null) {
-          if (identical(pending, const <TileCoord>{})) {
-            pending = <TileCoord>{};
-          }
-          pending.add(coord);
+    for (final coord in tileCoordsIn(landing.tileRange(tileSize: size))) {
+      final tile = surface.tileAt(coord);
+      // `displayImageFor`, not `imageFor`: the question this predicate
+      // asks is "can the base paint here", and a stand-in composed from
+      // the very picture the hold would show is an answer to it. Reading
+      // truth only would keep the float clipped over coordinates the
+      // canvas is already drawing correctly — the same coordinate
+      // source-over'd twice, which is how partial-alpha edges came out
+      // darker on a wide landing.
+      if (tile != null && cache.displayImageFor(tile) == null) {
+        if (identical(pending, const <TileCoord>{})) {
+          pending = <TileCoord>{};
         }
+        pending.add(coord);
       }
     }
     return pending;
@@ -183,30 +169,31 @@ class _CanvasPanelSelection {
     // Coverage, not the tight fold: the sweep has to reach every tile the
     // erase could have touched, and only an ADDING step can widen that.
     final bounds = region.coverageBounds;
-    final lastTx = floorDiv(bounds.right.ceil() - 1, size);
-    final lastTy = floorDiv(bounds.bottom.ceil() - 1, size);
-    final firstTx = floorDiv(bounds.left.floor(), size);
-    for (var ty = floorDiv(bounds.top.floor(), size); ty <= lastTy; ty += 1) {
-      for (var tx = firstTx; tx <= lastTx; tx += 1) {
-        final coord = TileCoord(x: tx, y: ty);
-        final before = preLift.tileAt(coord);
-        if (before == null) {
-          continue;
-        }
-        // Untouched by the erase => structural sharing hands back the SAME
-        // object, and a coordinate the lift did not take cannot be one it
-        // took whole. Free, and it skips the byte scan entirely.
-        final left = after.tileAt(coord);
-        if (identical(left, before)) {
-          continue;
-        }
-        // Emptied by the erase => the lift took this coordinate whole. The
-        // erase does not drop emptied tiles, so the test is the alpha, not
-        // the tile's absence. `isFullyTransparent` walks the tile's own
-        // view; `tile.pixels` would be a 256 KB defensive COPY per call.
-        if (left == null || left.isFullyTransparent) {
-          whole[coord] = before;
-        }
+    final range = tileRangeCovering(
+      left: bounds.left,
+      top: bounds.top,
+      right: bounds.right,
+      bottom: bounds.bottom,
+      tileSize: size,
+    );
+    for (final coord in tileCoordsIn(range)) {
+      final before = preLift.tileAt(coord);
+      if (before == null) {
+        continue;
+      }
+      // Untouched by the erase => structural sharing hands back the SAME
+      // object, and a coordinate the lift did not take cannot be one it
+      // took whole. Free, and it skips the byte scan entirely.
+      final left = after.tileAt(coord);
+      if (identical(left, before)) {
+        continue;
+      }
+      // Emptied by the erase => the lift took this coordinate whole. The
+      // erase does not drop emptied tiles, so the test is the alpha, not
+      // the tile's absence. `isFullyTransparent` walks the tile's own
+      // view; `tile.pixels` would be a 256 KB defensive COPY per call.
+      if (left == null || left.isFullyTransparent) {
+        whole[coord] = before;
       }
     }
     // The base must stop answering for what the lift took. Its bucket

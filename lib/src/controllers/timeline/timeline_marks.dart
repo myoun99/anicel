@@ -31,32 +31,20 @@ class _TimelineMarks {
     return block != null && !block.entry.ghost && frameIndex > block.startIndex;
   }
 
-  void toggleMarkForLayer({required LayerId layerId}) {
-    final before = _controller._requireLayer(layerId);
-    final frameIndex = _controller._editFrameIndexFor(layerId);
-    if (!canToggleMarkAt(layer: before, frameIndex: frameIndex)) {
-      return;
-    }
-
-    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
-    final offset = frameIndex - block.startIndex;
-    final entry = block.entry;
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    );
-    nextTimeline[block.startIndex] = entry.copyWith(
-      breakdownOffsets: entry.hasBreakdownAt(offset)
-          ? [
-              for (final existing in entry.breakdownOffsets)
-                if (existing != offset) existing,
-            ]
-          : [...entry.breakdownOffsets, offset],
-    );
-    _controller._applyLayerEdit(
-      before: before,
-      after: before.copyWith(timeline: nextTimeline),
-    );
-  }
+  void toggleMarkForLayer({required LayerId layerId}) =>
+      _controller._editCoveringBlockAtEditFrame(
+        layerId,
+        canEdit: (layer, frameIndex) =>
+            canToggleMarkAt(layer: layer, frameIndex: frameIndex),
+        edit: (entry, offset) => entry.copyWith(
+          breakdownOffsets: entry.hasBreakdownAt(offset)
+              ? [
+                  for (final existing in entry.breakdownOffsets)
+                    if (existing != offset) existing,
+                ]
+              : [...entry.breakdownOffsets, offset],
+        ),
+      );
 
   /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE BAND'S FRAMES, NOT THE
   /// PLAYHEAD'S.**
@@ -119,19 +107,12 @@ class _TimelineMarks {
   void setMarksForFrames(
     Map<LayerId, List<int>> framesByLayer, {
     required bool marked,
-  }) {
-    final commands = <Command>[];
-    for (final entry in framesByLayer.entries) {
-      final before = _controller._requireLayer(entry.key);
-      final after = _markedFramesLayer(before, entry.value, marked: marked);
-      if (after != null) {
-        commands.add(
-          _controller._layerEditCommand(before: before, after: after),
-        );
-      }
-    }
-    _controller._executeCommands(commands, description: 'Mark selected cells');
-  }
+  }) => _controller._editLayersAsOneStep(
+    framesByLayer,
+    edit: (before, frames) =>
+        _markedFramesLayer(before, frames, marked: marked),
+    description: 'Mark selected cells',
+  );
 
   Layer? _markedFramesLayer(
     Layer before,

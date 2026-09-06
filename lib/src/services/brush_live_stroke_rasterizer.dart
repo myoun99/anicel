@@ -872,10 +872,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final baseTileSize = base.tileSize;
     final right = left + tileSize;
     final bottom = top + tileSize;
-    final tileX0 = floorDiv(left, baseTileSize);
-    final tileY0 = floorDiv(top, baseTileSize);
-    final tileX1 = floorDiv(right - 1, baseTileSize);
-    final tileY1 = floorDiv(bottom - 1, baseTileSize);
+    final (
+      firstX: tileX0,
+      lastX: tileX1,
+      firstY: tileY0,
+      lastY: tileY1,
+    ) = DirtyRegion(
+      left: left,
+      top: top,
+      rightExclusive: right,
+      bottomExclusive: bottom,
+    ).tileRange(tileSize: baseTileSize);
     for (var tileY = tileY0; tileY <= tileY1; tileY += 1) {
       for (var tileX = tileX0; tileX <= tileX1; tileX += 1) {
         final tile = base.tileAt(TileCoord(x: tileX, y: tileY));
@@ -1041,11 +1048,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         plan,
         native,
         tileSize: tileSize,
-        pointerFor: (tileX, tileY) {
+        pointerFor: (coord) {
           // _tileBuffer also bumps the tile revision, which is what marks
           // a resident pre-blend result stale.
-          _tileBuffer(tileX, tileY);
-          return _nativeBuffers[_tileKey(tileX, tileY)]!.pointer;
+          _tileBuffer(coord.x, coord.y);
+          return _nativeBuffers[_tileKey(coord.x, coord.y)]!.pointer;
         },
       );
       return DirtyRegion(

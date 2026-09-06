@@ -73,22 +73,15 @@ class _TimelineRetime {
 
   /// The cross-layer form (UI-R17 #8): every layer's retime composes into
   /// ONE undo step.
-  void retimeBlocksForLayers(Map<LayerId, Map<int, int>> newLengthsByLayer) {
-    final commands = <Command>[];
-    for (final entry in newLengthsByLayer.entries) {
-      final before = _controller._requireLayer(entry.key);
-      final after = retimedLayerForBlocks(
-        layer: before,
-        newLengthByStart: entry.value,
+  void retimeBlocksForLayers(Map<LayerId, Map<int, int>> newLengthsByLayer) =>
+      _controller._editLayersAsOneStep(
+        newLengthsByLayer,
+        edit: (before, newLengthByStart) => retimedLayerForBlocks(
+          layer: before,
+          newLengthByStart: newLengthByStart,
+        ),
+        description: 'Set comma exposure',
       );
-      if (after != null) {
-        commands.add(
-          _controller._layerEditCommand(before: before, after: after),
-        );
-      }
-    }
-    _controller._executeCommands(commands, description: 'Set comma exposure');
-  }
 
   /// Commits already-previewed layer drags TOGETHER with the cut duration
   /// and gap changes they imply, as ONE undo step.

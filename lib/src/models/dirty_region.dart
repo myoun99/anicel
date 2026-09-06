@@ -81,6 +81,30 @@ class DirtyRegion {
         bottomExclusive > other.top;
   }
 
+  /// The overlap with [other], or null when there is none — a DirtyRegion
+  /// cannot be empty, so "nothing survives the clip" is the null.
+  ///
+  /// 🚨ONE clip for every landing that meets a wall: the commit's stamp
+  /// blend and stroke-blend landing and BrushDabPlan against the
+  /// pasteboard, the fill's settling bounds against the canvas (round 8
+  /// of the audit, 2026-09-06). Each of them used to write the four
+  /// max/min lines and the emptiness test by hand.
+  DirtyRegion? intersection(DirtyRegion other) {
+    final clipLeft = _max(left, other.left);
+    final clipTop = _max(top, other.top);
+    final clipRight = _min(rightExclusive, other.rightExclusive);
+    final clipBottom = _min(bottomExclusive, other.bottomExclusive);
+    if (clipRight <= clipLeft || clipBottom <= clipTop) {
+      return null;
+    }
+    return DirtyRegion(
+      left: clipLeft,
+      top: clipTop,
+      rightExclusive: clipRight,
+      bottomExclusive: clipBottom,
+    );
+  }
+
   DirtyRegion union(DirtyRegion other) {
     return DirtyRegion(
       left: _min(left, other.left),
@@ -92,19 +116,24 @@ class DirtyRegion {
 
   Set<TileCoord> toTileCoords({required int tileSize}) {
     _validatePositive(tileSize, 'tileSize');
+    return tileCoordsIn(tileRange(tileSize: tileSize)).toSet();
+  }
 
-    final range = tileRangeCoveringPixels(
-      left: left,
-      top: top,
-      rightExclusive: rightExclusive,
-      bottomExclusive: bottomExclusive,
+  /// The inclusive tile box this region touches — [tileAxisSpan] on both
+  /// axes; the floorDiv law for negative pasteboard coordinates lives
+  /// there, once.
+  TileRange tileRange({required int tileSize}) {
+    final x = tileAxisSpan(
+      start: left,
+      endExclusive: rightExclusive,
       tileSize: tileSize,
     );
-
-    return {
-      for (var y = range.firstY; y <= range.lastY; y++)
-        for (var x = range.firstX; x <= range.lastX; x++) TileCoord(x: x, y: y),
-    };
+    final y = tileAxisSpan(
+      start: top,
+      endExclusive: bottomExclusive,
+      tileSize: tileSize,
+    );
+    return (firstX: x.first, lastX: x.last, firstY: y.first, lastY: y.last);
   }
 
   Map<String, dynamic> toJson() => {

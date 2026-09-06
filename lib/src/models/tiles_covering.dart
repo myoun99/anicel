@@ -18,33 +18,23 @@ typedef CoveredTile = ({
 
 /// Every EXISTING tile [region] touches, row by row.
 ///
-/// The range is [tileRangeCoveringPixels] — the one place that says why it
-/// floors rather than truncates.
+/// The tile box comes from [DirtyRegion.tileRange] — the floorDiv-not-`~/`
+/// law for negative pasteboard coordinates lives in [tileAxisSpan], once.
 ///
 /// ⛔MISSING TILES ARE SKIPPED, not treated as transparent: the surface is
 /// sparse, an absent tile has no bytes, and every caller has to skip it
 /// the same way or read past the end of a buffer that was never made.
-///
-/// ⚠️ `tileAt`, NOT `surface.tiles[...]`. The `tiles` getter is
-/// `Map.unmodifiable(_tiles)` — it copies the WHOLE map, and this is the
-/// inner line of a nested loop over every tile the fill touches. Measured
-/// at 82.7 ms for a 1024-tile canvas, which is a tap that feels broken
-/// rather than a frame that is slightly late.
 Iterable<CoveredTile> tilesCovering(
   BitmapSurface surface,
   DirtyRegion region,
 ) sync* {
   final tileSize = surface.tileSize;
-  final range = tileRangeCoveringPixels(
-    left: region.left,
-    top: region.top,
-    rightExclusive: region.rightExclusive,
-    bottomExclusive: region.bottomExclusive,
+  final (:firstX, :lastX, :firstY, :lastY) = region.tileRange(
     tileSize: tileSize,
   );
-  for (var ty = range.firstY; ty <= range.lastY; ty += 1) {
+  for (var ty = firstY; ty <= lastY; ty += 1) {
     final worldTop = ty * tileSize;
-    for (var tx = range.firstX; tx <= range.lastX; tx += 1) {
+    for (var tx = firstX; tx <= lastX; tx += 1) {
       final tile = surface.tileAt(TileCoord(x: tx, y: ty));
       if (tile == null) {
         continue;

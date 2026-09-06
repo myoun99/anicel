@@ -1,3 +1,4 @@
+import '../core/mapped_or_same.dart';
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_kind.dart';
@@ -30,66 +31,68 @@ import 'timeline_repeat.dart';
 /// Identity-preserving on no-ops so unchanged cuts pass through
 /// untouched.
 Cut cutWithCoveringImageRows(Cut cut) {
-  List<Layer>? nextLayers;
   final duration = cut.duration < 1 ? 1 : cut.duration;
-  for (var i = 0; i < cut.layers.length; i += 1) {
-    final layer = cut.layers[i];
-    if (!layerKindHoldsSingleCel(layer.kind) || layer.frames.isEmpty) {
-      continue;
-    }
-    // The cel the row holds: the first NON-GHOST drawing the timeline
-    // names, else the first cel object (a fresh row whose timeline was
-    // never written).
-    TimelineExposure? firstReal;
-    for (final entry in layer.timeline.entries) {
-      if (!entry.value.ghost) {
-        firstReal = entry.value;
-        break;
-      }
-    }
-    final celId =
-        (firstReal != null && firstReal.isDrawing ? firstReal.frameId : null) ??
-        layer.frames.first.id;
-    final holdSpec = TimelineRunBehavior(
-      anchorFrameId: celId,
-      side: TimelineRunEdgeSide.end,
-      mode: TimelineRunEdgeMode.hold,
-    );
-    var realCount = 0;
-    for (final entry in layer.timeline.values) {
-      if (!entry.ghost) {
-        realCount += 1;
-      }
-    }
-    final zeroEntry = layer.timeline[0];
-    final shaped =
-        realCount == 1 &&
-        zeroEntry != null &&
-        !zeroEntry.ghost &&
-        zeroEntry.isDrawing &&
-        zeroEntry.frameId == celId &&
-        zeroEntry.length == 1;
-    final specced =
-        layer.runBehaviors.length == 1 && layer.runBehaviors.first == holdSpec;
+  final layers = mappedOrSame(
+    cut.layers,
+    (layer) => _coveringImageRow(layer, duration),
+  );
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+}
 
-    var next = layer;
-    if (!shaped || !specced) {
-      // Rebuild THROUGH the first real entry when one exists, so its
-      // entry-carried metadata (the block memo) survives a reshape.
-      // Inbetween dots do NOT survive and cannot: they are offsets INSIDE
-      // the block, and a 1-frame block has no inside — a picture row has
-      // no inbetweens to lose. Ghosts are dropped here; the derive below
-      // re-synthesizes them from the fixed spec.
-      final entry = firstReal != null && firstReal.isDrawing && !firstReal.ghost
-          ? firstReal.copyWith(frameId: celId, length: 1)
-          : TimelineExposure.drawing(celId, length: 1);
-      next = layer.copyWith(timeline: {0: entry}, runBehaviors: [holdSpec]);
-    }
-    final derived = rederiveRunBehaviors(next, cutFrameCount: duration);
-    if (identical(derived, layer)) {
-      continue;
-    }
-    (nextLayers ??= [...cut.layers])[i] = derived;
+/// [layer] in the D22 form when it is an image row with a cel — else
+/// [layer] itself. Identity-preserving through [rederiveRunBehaviors],
+/// which answers the same instance when the row already has its shape.
+Layer _coveringImageRow(Layer layer, int duration) {
+  if (!layerKindHoldsSingleCel(layer.kind) || layer.frames.isEmpty) {
+    return layer;
   }
-  return nextLayers == null ? cut : cut.copyWith(layers: nextLayers);
+  // The cel the row holds: the first NON-GHOST drawing the timeline
+  // names, else the first cel object (a fresh row whose timeline was
+  // never written).
+  TimelineExposure? firstReal;
+  for (final entry in layer.timeline.entries) {
+    if (!entry.value.ghost) {
+      firstReal = entry.value;
+      break;
+    }
+  }
+  final celId =
+      (firstReal != null && firstReal.isDrawing ? firstReal.frameId : null) ??
+      layer.frames.first.id;
+  final holdSpec = TimelineRunBehavior(
+    anchorFrameId: celId,
+    side: TimelineRunEdgeSide.end,
+    mode: TimelineRunEdgeMode.hold,
+  );
+  var realCount = 0;
+  for (final entry in layer.timeline.values) {
+    if (!entry.ghost) {
+      realCount += 1;
+    }
+  }
+  final zeroEntry = layer.timeline[0];
+  final shaped =
+      realCount == 1 &&
+      zeroEntry != null &&
+      !zeroEntry.ghost &&
+      zeroEntry.isDrawing &&
+      zeroEntry.frameId == celId &&
+      zeroEntry.length == 1;
+  final specced =
+      layer.runBehaviors.length == 1 && layer.runBehaviors.first == holdSpec;
+
+  var next = layer;
+  if (!shaped || !specced) {
+    // Rebuild THROUGH the first real entry when one exists, so its
+    // entry-carried metadata (the block memo) survives a reshape.
+    // Inbetween dots do NOT survive and cannot: they are offsets INSIDE
+    // the block, and a 1-frame block has no inside — a picture row has
+    // no inbetweens to lose. Ghosts are dropped here; the derive below
+    // re-synthesizes them from the fixed spec.
+    final entry = firstReal != null && firstReal.isDrawing && !firstReal.ghost
+        ? firstReal.copyWith(frameId: celId, length: 1)
+        : TimelineExposure.drawing(celId, length: 1);
+    next = layer.copyWith(timeline: {0: entry}, runBehaviors: [holdSpec]);
+  }
+  return rederiveRunBehaviors(next, cutFrameCount: duration);
 }

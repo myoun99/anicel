@@ -3,6 +3,7 @@ import 'package:anicel/src/controllers/timeline_controller.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_warm_extent.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -46,20 +47,6 @@ void main() {
     );
 
     test(
-      'authored extent is calculated from authored data, not Cut.duration',
-      () {
-        final fixture = _createResponsibilityFixture(cutDuration: 24);
-
-        expect(fixture.cut.duration, 24);
-        expect(fixture.controller.authoredTimelineExtentFrameCount, 13);
-        expect(
-          fixture.controller.authoredTimelineExtentFrameCount,
-          isNot(fixture.cut.duration),
-        );
-      },
-    );
-
-    test(
       'Cut.duration remains playback/export duration during timeline edits',
       () {
         final fixture = _createResponsibilityFixture(cutDuration: 3);
@@ -79,7 +66,7 @@ void main() {
           editedLayer.timeline[10]?.frameId,
           const FrameId('outside-playback'),
         );
-        expect(fixture.controller.authoredTimelineExtentFrameCount, 14);
+        expect(cutAuthoredExtent(cut), 14);
       },
     );
 
@@ -98,7 +85,7 @@ void main() {
       },
     );
 
-    test('empty repository state is safe for cursor and authored extent', () {
+    test('empty repository state is safe for the cursor', () {
       final repository = ProjectRepository();
       final controller = TimelineController(
         repository: repository,
@@ -108,13 +95,9 @@ void main() {
       controller.selectFrameIndex(5);
 
       expect(controller.currentFrameIndex, 5);
-      expect(controller.authoredTimelineExtentFrameCount, 0);
     });
 
-    test('empty cut and empty layer authored extents are zero', () {
-      final emptyCutFixture = _createResponsibilityFixture(layers: const []);
-      expect(emptyCutFixture.controller.authoredTimelineExtentFrameCount, 0);
-
+    test('an empty layer resolves nothing', () {
       final emptyLayerFixture = _createResponsibilityFixture(
         layers: [
           Layer(
@@ -128,7 +111,6 @@ void main() {
         const LayerId('only-empty-layer'),
       );
 
-      expect(emptyLayerFixture.controller.authoredTimelineExtentFrameCount, 0);
       expect(
         emptyLayerFixture.controller.resolveFrameForLayer(
           layer: emptyLayer,

@@ -84,12 +84,6 @@ void main() {
       );
     });
 
-    test('authored extent is the max block end across layers', () {
-      final fixture = _fixture();
-
-      expect(fixture.controller.authoredTimelineExtentFrameCount, 8);
-    });
-
     test('negative indexes and empty timelines answer safely', () {
       final fixture = _fixture(timeline: const {});
 
@@ -107,7 +101,6 @@ void main() {
         ),
         isFalse,
       );
-      expect(fixture.controller.authoredTimelineExtentFrameCount, 0);
     });
   });
 

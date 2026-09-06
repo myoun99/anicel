@@ -16,6 +16,7 @@ import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
@@ -106,13 +107,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   ///
   /// [paintInk] draws in CANVAS coordinates and reports whether it drew
   /// everything that belongs in the rect it was given.
-  final void Function(
-    int left,
-    int top,
-    int right,
-    int bottom,
-    ProvisionalInkPainter paintInk,
-  )?
+  final void Function(DirtyRegion landing, ProvisionalInkPainter paintInk)?
   composeCommittedRegionPictures;
 
   /// WHICH tiles of the canvas rect a session just landed into the host's
@@ -141,7 +136,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   ///
   /// A host that does not supply this clears the float immediately, which
   /// is the old behaviour; the focused tests rely on it.
-  final Set<TileCoord> Function(int left, int top, int right, int bottom)?
+  final Set<TileCoord> Function(DirtyRegion landing)?
   committedRegionPendingTiles;
 
   /// The transform tool's knobs: which of 일반/퍼스/메쉬 the box is in,
@@ -1063,21 +1058,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (recall == null || recall.isIdentity) {
       return;
     }
-    if (_transform == null) {
-      _beginTransform();
-    }
-    final affine = _transform;
-    if (affine == null) {
-      return;
-    }
-    setState(() {
-      _transform = affine.copyWith(
-        sx: recall.scale,
-        sy: recall.scale,
-        rotationDegrees: recall.rotationDegrees,
-        tx: recall.tx,
-        ty: recall.ty,
-      );
+    // The replay is an EDIT of the box like any other, so it enters and
+    // leaves through _editTransform (open a box when none is up; resample
+    // and re-run the ants on the way out). The closure runs inside its
+    // setState, so the offsets land in the same frame as the affine.
+    _editTransform((affine) {
       // Only the part the armed mode can hold. A recall carrying a mesh
       // recorded on another grid has nowhere to put its interior points,
       // so it lands as the affine alone rather than as a guess.
@@ -1091,9 +1076,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           )) {
         _meshOffsets = List.of(recall.meshOffsets);
       }
+      return affine.copyWith(
+        sx: recall.scale,
+        sy: recall.scale,
+        rotationDegrees: recall.rotationDegrees,
+        tx: recall.tx,
+        ty: recall.ty,
+      );
     });
-    _scheduleFloatResample();
-    _syncAnts();
   }
 
   /// Whether the open box would change any pixel.
@@ -2352,10 +2342,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     // The landing rect, by the same arithmetic the stamp blend uses.
-    final left = (landed.center.x - stamp.width / 2).round();
-    final top = (landed.center.y - stamp.height / 2).round();
-    final right = left + stamp.width;
-    final bottom = top + stamp.height;
+    final landing = stamp.landingRect(landed.center);
     // FIRST, and before the pending set is read: every coordinate this
     // answers for is one the base can now paint, so it drops out of the
     // hold instead of being covered — which is also what keeps the two
@@ -2364,9 +2351,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // a picture is worth doing whether or not anything is covering for it.
     final compose = widget.composeCommittedRegionPictures;
     if (compose != null) {
-      final ink = _landedInkPainter(landed, left, top);
+      final ink = _landedInkPainter(landed, landing);
       if (ink != null) {
-        compose(left, top, right, bottom, ink);
+        compose(landing, ink);
       }
     }
     final pendingTiles = widget.committedRegionPendingTiles;
@@ -2374,7 +2361,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setState(_releaseFloatHold);
       return;
     }
-    final initial = pendingTiles(left, top, right, bottom);
+    final initial = pendingTiles(landing);
     if (initial.isEmpty) {
       setState(_releaseFloatHold);
       return;
@@ -2384,7 +2371,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _cancelFloatHold();
         return;
       }
-      final still = pendingTiles(left, top, right, bottom);
+      final still = pendingTiles(landing);
       if (still.isEmpty) {
         _cancelFloatHold();
         setState(_releaseFloatHold);
@@ -2421,7 +2408,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// A live drag is not a landing: `_moveScreenDelta` is zeroed when the
   /// gesture ends, so a non-zero one here means the float is somewhere
   /// this arithmetic does not describe.
-  ProvisionalInkPainter? _landedInkPainter(BrushDab landed, int left, int top) {
+  ProvisionalInkPainter? _landedInkPainter(
+    BrushDab landed,
+    DirtyRegion landing,
+  ) {
+    final left = landing.left;
+    final top = landing.top;
     final resampled = _resampledFloatImage;
     // The identity test stays exact here, and must: this hands the BASE a
     // picture covering the landed rect, so a viewport WINDOW would be both
@@ -2450,15 +2442,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     // ⚠️ The delta between the two ROUNDED placements, not the difference
     // of the centres. Both materializations put the stamp at
-    // `(centre - size/2).round()`, so the pixels moved by a whole number
-    // of pixels even when the centres differ by a fraction — and half a
-    // pixel of drift would resample the float against the grid it is
-    // supposed to line up with exactly.
-    final floatLeft = (from.x - stamp.width / 2).round();
-    final floatTop = (from.y - stamp.height / 2).round();
+    // `(centre - size/2).round()` ([BrushStampImage.landingRect]), so the
+    // pixels moved by a whole number of pixels even when the centres
+    // differ by a fraction — and half a pixel of drift would resample the
+    // float against the grid it is supposed to line up with exactly.
+    final floatAt = stamp.landingRect(from);
     return inkFromSurface(
       float,
-      Offset((left - floatLeft).toDouble(), (top - floatTop).toDouble()),
+      Offset((left - floatAt.left).toDouble(), (top - floatAt.top).toDouble()),
     );
   }
 

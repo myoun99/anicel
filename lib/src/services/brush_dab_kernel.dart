@@ -6,11 +6,14 @@ import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/canvas_size.dart';
+import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
+import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_tip_geometry.dart';
 import 'brush_tip_mask_sampling.dart';
+import 'native_tile_span_batch.dart';
 
 /// THE geometric dab kernel — the one both raster routes run.
 ///
@@ -55,6 +58,7 @@ import 'brush_tip_mask_sampling.dart';
 /// routes already gave.
 class BrushDabPlan {
   BrushDabPlan._({
+    required this.clip,
     required this.left,
     required this.top,
     required this.rightExclusive,
@@ -98,7 +102,9 @@ class BrushDabPlan {
   });
 
   /// The dab's region after the PASTEBOARD clip (canvas + one canvas size
-  /// in every direction — drawing off the stage is the point).
+  /// in every direction — drawing off the stage is the point), and the
+  /// same four edges as ints for the per-span and per-row reads.
+  final DirtyRegion clip;
   final int left;
   final int top;
   final int rightExclusive;
@@ -196,19 +202,16 @@ class BrushDabPlan {
     final centerX = dab.center.x;
     final centerY = dab.center.y;
 
-    final top = math.max(region.top, canvasSize.pasteboardTop);
-    final bottomExclusive = math.min(
-      region.bottomExclusive,
-      canvasSize.pasteboardBottomExclusive,
-    );
-    final left = math.max(region.left, canvasSize.pasteboardLeft);
-    final rightExclusive = math.min(
-      region.rightExclusive,
-      canvasSize.pasteboardRightExclusive,
-    );
-    if (rightExclusive <= left || bottomExclusive <= top) {
+    final clip = region.intersection(canvasSize.pasteboardRegion);
+    if (clip == null) {
       return null;
     }
+    // The four edges as ints beside the region: the kernels read them per
+    // span and per row, and a field read is cheaper than a getter chain.
+    final left = clip.left;
+    final top = clip.top;
+    final rightExclusive = clip.rightExclusive;
+    final bottomExclusive = clip.bottomExclusive;
     final columnCount = rightExclusive - left;
     final rowCount = bottomExclusive - top;
 
@@ -220,16 +223,18 @@ class BrushDabPlan {
     final textureMask = dab.textureMask;
     final textureDensity = dab.textureDensity;
     final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
+    final tiles = clip.tileRange(tileSize: tileSize);
 
     return BrushDabPlan._(
+      clip: clip,
       left: left,
       top: top,
       rightExclusive: rightExclusive,
       bottomExclusive: bottomExclusive,
-      tileXStart: floorDiv(left, tileSize),
-      tileXEnd: floorDiv(rightExclusive - 1, tileSize),
-      tileYStart: floorDiv(top, tileSize),
-      tileYEnd: floorDiv(bottomExclusive - 1, tileSize),
+      tileXStart: tiles.firstX,
+      tileXEnd: tiles.lastX,
+      tileYStart: tiles.firstY,
+      tileYEnd: tiles.lastY,
       sourceR: (sourceArgb >> 16) & 0xFF,
       sourceG: (sourceArgb >> 8) & 0xFF,
       sourceB: sourceArgb & 0xFF,
@@ -320,21 +325,18 @@ class BrushDabPlan {
 }
 
 /// Hands the plan to the C kernel: one `prepareDab`, one staged span per
-/// covered tile, one pooled batch call.
+/// covered tile ([stageTileSpans]), one pooled batch call.
 ///
 /// [pointerFor] returns the tile's native scratch pointer, CREATING the
-/// buffer if this dab is the first to touch the tile. It is called exactly
-/// once per span, in span order (tile row outer, column inner), so a
-/// caller that needs the coordinate list can record it from inside this
-/// callback and stay aligned with the returned changed flags.
+/// buffer if this dab is the first to touch the tile.
 ///
 /// Returns the per-tile changed flags the kernel wrote (valid until the
-/// next batch), or null when the dab covered no tile.
-Uint8List? blendDabTilesNative(
+/// next batch) beside the coordinates they index, in span order.
+({Uint8List changed, List<TileCoord> coords}) blendDabTilesNative(
   BrushDabPlan plan,
   QaNativeEngine native, {
   required int tileSize,
-  required Pointer<Uint8> Function(int tileX, int tileY) pointerFor,
+  required Pointer<Uint8> Function(TileCoord coord) pointerFor,
 }) {
   native.prepareDab(
     centerX: plan.centerX,
@@ -395,40 +397,18 @@ Uint8List? blendDabTilesNative(
     texVOneMinus: plan.textureVLattice?.oneMinusFraction,
   );
 
-  // One BATCH call per dab (R18 A-3a): the spans fan out across the C
-  // worker pool — tiles are disjoint, so the result is byte-identical to
-  // the sequential per-tile loop.
-  var spanCount = 0;
-  native.ensureTileSpanBatch(
-    (plan.tileYEnd - plan.tileYStart + 1) *
-        (plan.tileXEnd - plan.tileXStart + 1),
+  // The plan's clip is never empty (BrushDabPlan.of returns null for
+  // that), so there is always at least one span.
+  final coords = stageTileSpans(
+    native,
+    clip: plan.clip,
+    tileSize: tileSize,
+    pointerFor: pointerFor,
   );
-  for (var tileY = plan.tileYStart; tileY <= plan.tileYEnd; tileY += 1) {
-    final tileTop = tileY * tileSize;
-    final spanTop = math.max(plan.top, tileTop);
-    final spanBottomExclusive = math.min(
-      plan.bottomExclusive,
-      tileTop + tileSize,
-    );
-    for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
-      final tileLeft = tileX * tileSize;
-      native.setTileSpan(
-        spanCount,
-        tilePixels: pointerFor(tileX, tileY),
-        tileLeft: tileLeft,
-        tileTop: tileTop,
-        spanLeft: math.max(plan.left, tileLeft),
-        spanRightExclusive: math.min(plan.rightExclusive, tileLeft + tileSize),
-        spanTop: spanTop,
-        spanBottomExclusive: spanBottomExclusive,
-      );
-      spanCount += 1;
-    }
-  }
-  if (spanCount == 0) {
-    return null;
-  }
-  return native.dabBlendTiles(count: spanCount, tileSize: tileSize);
+  return (
+    changed: native.dabBlendTiles(count: coords.length, tileSize: tileSize),
+    coords: coords,
+  );
 }
 
 /// The Dart reference blend: the same pixel visits and the same float

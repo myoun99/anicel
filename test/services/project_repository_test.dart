@@ -939,6 +939,74 @@ void main() {
       expect(repository.requireProject().toJson(), beforeJson);
     });
 
+    // The memo is addressed to a BLOCK, so the repository names the two
+    // ways an index can fail to be one — no block starts there, or the
+    // cell is a ghost the run pass will rederive — in its own words. The
+    // coordinator says the same two sentences before it opens history;
+    // both are pinned so neither can drift from the other.
+    test('updateExposureMemo says WHY it refused: no block, or a ghost', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = Layer(
+        id: const LayerId('layer-1'),
+        name: 'Anim',
+        kind: LayerKind.animation,
+        frames: [frame],
+        timeline: {
+          0: TimelineExposure.drawing(frame.id, length: 1),
+          1: TimelineExposure.drawing(
+            frame.id,
+            length: 1,
+            ghost: true,
+            ghostOwnerId: 'hold',
+          ),
+        },
+      );
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
+        ),
+      );
+      final before = repository.requireProject();
+
+      expect(
+        () => repository.updateExposureMemo(
+          cutId: cut.id,
+          layerId: layer.id,
+          blockStartIndex: 99,
+          memo: const ExposureMemo(note: 'New'),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'No exposure block starts at 99 on layer-1.',
+          ),
+        ),
+      );
+      expect(
+        () => repository.updateExposureMemo(
+          cutId: cut.id,
+          layerId: layer.id,
+          blockStartIndex: 1,
+          memo: const ExposureMemo(note: 'New'),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'A ghost exposure is rederived, so it cannot hold a memo '
+                '(layer-1 at 1).',
+          ),
+        ),
+      );
+      expect(identical(repository.requireProject(), before), isTrue);
+    });
+
     test('updateLayerKind replaces only kind and preserves layer data', () {
       final frame = _frame(
         id: 'frame-1',
@@ -1116,6 +1184,194 @@ void main() {
 
       expect(repository.currentProject, isNull);
       expect(repository.hasProject, isFalse);
+    });
+
+    // Every write runs the normalizations over every cut, so a project
+    // that is already normal MUST come back as the same instance — else
+    // dirty tracking sees an edit in every no-op and every row repaints
+    // on every write. The walk is one shared law now; this pins what the
+    // repository owes on top of it: the untouched tracks and cuts keep
+    // their instances even when a neighbour is reshaped.
+    group('the write-time normalization is identity-preserving', () {
+      Project plain() => _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [
+          _track(
+            id: 'track-1',
+            name: 'Video',
+            cuts: [
+              _cut(
+                id: 'cut-1',
+                name: 'Cut 1',
+                layers: [
+                  _layer(id: 'layer-1', name: 'A', frames: [_frame(id: 'f1')]),
+                ],
+              ),
+            ],
+          ),
+          _track(
+            id: 'track-2',
+            name: 'Video 2',
+            cuts: [
+              _cut(id: 'cut-2', name: 'Cut 2'),
+            ],
+          ),
+        ],
+      );
+
+      test('an already-normal project passes through the constructor, '
+          'replaceProject and updateProject as ITSELF', () {
+        final project = plain();
+        final repository = ProjectRepository(initialProject: project);
+        expect(identical(repository.currentProject, project), isTrue);
+
+        final replacement = plain();
+        repository.replaceProject(replacement);
+        expect(identical(repository.currentProject, replacement), isTrue);
+
+        repository.updateProject((current) => current);
+        expect(identical(repository.currentProject, replacement), isTrue);
+      });
+
+      test('a cut that needs reshaping leaves its NEIGHBOURS alone — the '
+          'other track and the other cuts keep their instances', () {
+        // An image row with a cel but no hold spec is off its D22 form,
+        // so the covering-image normalization must rewrite that cut.
+        final imageCut = _cut(
+          id: 'cut-img',
+          name: 'Image',
+          layers: [
+            _layer(
+              id: 'image',
+              name: 'Image',
+              kind: LayerKind.image,
+              frames: [_frame(id: 'pic')],
+            ),
+          ],
+        );
+        final normalCut = _cut(id: 'cut-1', name: 'Cut 1');
+        final otherTrack = _track(
+          id: 'track-2',
+          name: 'Video 2',
+          cuts: [_cut(id: 'cut-2', name: 'Cut 2')],
+        );
+        final project = _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [normalCut, imageCut]),
+            otherTrack,
+          ],
+        );
+
+        final stored = ProjectRepository(initialProject: project)
+            .requireProject();
+
+        expect(identical(stored, project), isFalse);
+        expect(identical(stored.tracks[1], otherTrack), isTrue);
+        expect(identical(stored.tracks[0].cuts[0], normalCut), isTrue);
+        expect(identical(stored.tracks[0].cuts[1], imageCut), isFalse);
+        expect(
+          stored.tracks[0].cuts[1].layers.single.runBehaviors,
+          hasLength(1),
+        );
+      });
+    });
+
+    // ⛔ONE law names the missing entity: `<Kind> not found: <id>`. The
+    // spellings used to differ per method (and one said `${track.id}`
+    // where its neighbours said `$trackId`); each kind's sentence is
+    // pinned through a public verb so the shared helper cannot drift a
+    // word, and the cut-SCOPED layer question keeps its own sentence.
+    group('a mutation of a missing entity says which kind and which id', () {
+      late ProjectRepository repository;
+      late Project before;
+
+      setUp(() {
+        final cut = _cut(
+          id: 'cut-1',
+          name: 'Cut 1',
+          layers: [
+            _layer(id: 'layer-1', name: 'A', frames: [_frame(id: 'f1')]),
+          ],
+        );
+        repository = ProjectRepository(
+          initialProject: _project(
+            id: 'project-1',
+            name: 'Project',
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [cut]),
+            ],
+          ),
+        );
+        before = repository.requireProject();
+      });
+
+      Matcher refusesWith(String message) => throwsA(
+        isA<StateError>().having((error) => error.message, 'message', message),
+      );
+
+      test('a track', () {
+        expect(
+          () => repository.updateTrackEffects(
+            trackId: const TrackId('track-x'),
+            effects: const [],
+          ),
+          refusesWith('Track not found: track-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a cut', () {
+        expect(
+          () => repository.renameCut(cutId: const CutId('cut-x'), name: 'X'),
+          refusesWith('Cut not found: cut-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a layer, anywhere', () {
+        expect(
+          () => repository.updateLayer(
+            layerId: const LayerId('layer-x'),
+            update: (layer) => layer,
+          ),
+          refusesWith('Layer not found: layer-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a frame', () {
+        expect(
+          () => repository.updateFrame(
+            frameId: const FrameId('frame-x'),
+            update: (frame) => frame,
+          ),
+          refusesWith('Frame not found: frame-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
+
+      test('a layer IN a cut is the scoped question, in its own words', () {
+        expect(
+          () => repository.updateLayerInstructions(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('layer-x'),
+            instructions: const {},
+          ),
+          refusesWith('Layer not found in cut cut-1: layer-x'),
+        );
+        expect(
+          () => repository.updateLayerInstructions(
+            cutId: const CutId('cut-x'),
+            layerId: const LayerId('layer-1'),
+            instructions: const {},
+          ),
+          refusesWith('Cut not found: cut-x'),
+        );
+        expect(identical(repository.requireProject(), before), isTrue);
+      });
     });
   });
 }

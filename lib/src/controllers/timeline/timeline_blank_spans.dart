@@ -63,23 +63,12 @@ class _TimelineBlankSpans {
   /// Blanks each row's swept span — ONE undo step.
   void blankSpansForLayers(
     Map<LayerId, ({int start, int endExclusive})> spansByLayer,
-  ) {
-    final commands = <Command>[];
-    for (final entry in spansByLayer.entries) {
-      final before = _controller._requireLayer(entry.key);
-      final after = _blankedSpanLayer(
-        before,
-        entry.value.start,
-        entry.value.endExclusive,
-      );
-      if (after != null) {
-        commands.add(
-          _controller._layerEditCommand(before: before, after: after),
-        );
-      }
-    }
-    _controller._executeCommands(commands, description: 'Blank selected cells');
-  }
+  ) => _controller._editLayersAsOneStep(
+    spansByLayer,
+    edit: (before, span) =>
+        _blankedSpanLayer(before, span.start, span.endExclusive),
+    description: 'Blank selected cells',
+  );
 
   Layer? _blankedSpanLayer(Layer before, int start, int endExclusive) {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(

@@ -92,22 +92,6 @@ class TimelineController {
 
   // --- Queries -------------------------------------------------------------
 
-  int get authoredTimelineExtentFrameCount {
-    final cut = _findCutOrNull();
-    if (cut == null || cut.layers.isEmpty) {
-      return 0;
-    }
-
-    var maxExtent = 0;
-    for (final layer in cut.layers) {
-      final extent = authoredTimelineExtent(layer.timeline);
-      if (extent > maxExtent) {
-        maxExtent = extent;
-      }
-    }
-    return maxExtent;
-  }
-
   /// The drawing block covering [frameIndex] (or the current frame).
   TimelineDrawingBlock? blockForLayerAt({
     required Layer layer,
@@ -296,25 +280,13 @@ class TimelineController {
     return block != null && frameIndex > block.startIndex;
   }
 
-  void cutExposureForLayer({required LayerId layerId}) {
-    final before = _requireLayer(layerId);
-    final frameIndex = _editFrameIndexFor(layerId);
-    if (!canCutExposureAt(layer: before, frameIndex: frameIndex)) {
-      return;
-    }
-
-    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    );
-    nextTimeline[block.startIndex] = block.entry.copyWith(
-      length: frameIndex - block.startIndex,
-    );
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(timeline: nextTimeline),
-    );
-  }
+  void cutExposureForLayer({required LayerId layerId}) =>
+      _editCoveringBlockAtEditFrame(
+        layerId,
+        canEdit: (layer, frameIndex) =>
+            canCutExposureAt(layer: layer, frameIndex: frameIndex),
+        edit: (entry, offset) => entry.copyWith(length: offset),
+      );
 
   // --- Marks (block-owned inbetween dots) --------------------------------------
 
@@ -440,6 +412,28 @@ class TimelineController {
     _executeCommands(commands, description: 'Adjust selected exposures');
   }
 
+  /// THE one-step cross-layer edit (UI-R17 #8): [edit] turns each layer
+  /// and its value in [byLayer] into the layer after the verb — or null
+  /// when the verb changes nothing on that row — and every changed row
+  /// composes into ONE undo step under [description]. Blank, delete,
+  /// mark and retime are this with their own [edit]; nothing changed
+  /// anywhere adds no step at all.
+  void _editLayersAsOneStep<V>(
+    Map<LayerId, V> byLayer, {
+    required Layer? Function(Layer before, V value) edit,
+    required String description,
+  }) {
+    final commands = <Command>[];
+    for (final entry in byLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final after = edit(before, entry.value);
+      if (after != null) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: description);
+  }
+
   void _executeCommands(List<Command> commands, {required String description}) {
     if (commands.isEmpty) {
       return;
@@ -447,6 +441,13 @@ class TimelineController {
     final command = commands.length == 1
         ? commands.single
         : CompositeCommand(description: description, commands: commands);
+    _runCommand(command);
+  }
+
+  /// THE dispatch: through the history when there is one (undoable), run
+  /// directly when there is none. Every mutation ends here, whether it is
+  /// one command, a folded batch, or a hand-composed step.
+  void _runCommand(Command command) {
     final historyManager = _historyManager;
     if (historyManager == null) {
       command.execute();
@@ -592,12 +593,7 @@ class TimelineController {
         ),
       ],
     );
-    final historyManager = _historyManager;
-    if (historyManager == null) {
-      command.execute();
-    } else {
-      historyManager.execute(command);
-    }
+    _runCommand(command);
   }
 
   void linkFrameForLayer({
@@ -783,14 +779,39 @@ class TimelineController {
     );
   }
 
-  void _applyLayerEdit({required Layer before, required Layer after}) {
-    final command = _layerEditCommand(before: before, after: after);
-    final historyManager = _historyManager;
-    if (historyManager == null) {
-      command.execute();
-    } else {
-      historyManager.execute(command);
+  void _applyLayerEdit({required Layer before, required Layer after}) =>
+      _runCommand(_layerEditCommand(before: before, after: after));
+
+  /// THE covering-block edit at the playhead: [canEdit] gates on the layer
+  /// and its edit frame (the playhead shifted for a track-owned row), then
+  /// the block covering that frame has its HEAD entry replaced by
+  /// [edit] (the entry, and the frame's offset inside the block) — one
+  /// undo step. The X (cut exposure) and the mark toggle are this with
+  /// their own gate and entry edit.
+  void _editCoveringBlockAtEditFrame(
+    LayerId layerId, {
+    required bool Function(Layer layer, int frameIndex) canEdit,
+    required TimelineExposure Function(TimelineExposure entry, int offset)
+    edit,
+  }) {
+    final before = _requireLayer(layerId);
+    final frameIndex = _editFrameIndexFor(layerId);
+    if (!canEdit(before, frameIndex)) {
+      return;
     }
+
+    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
+    nextTimeline[block.startIndex] = edit(
+      block.entry,
+      frameIndex - block.startIndex,
+    );
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(timeline: nextTimeline),
+    );
   }
 
   Layer _requireLayer(LayerId layerId) {

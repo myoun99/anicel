@@ -37,6 +37,24 @@ void main() {
       expect(TileCoord.fromJson(coord.toJson()), coord);
     });
 
+    test('compareRowMajor orders by row, then by column — the order the '
+        'commit tail puts tiles in', () {
+      final shuffled = [
+        TileCoord(x: 1, y: 1),
+        TileCoord(x: 2, y: 0),
+        TileCoord(x: -1, y: 1),
+        TileCoord(x: 0, y: -1),
+        TileCoord(x: 0, y: 0),
+      ]..sort(TileCoord.compareRowMajor);
+      expect(shuffled, [
+        TileCoord(x: 0, y: -1),
+        TileCoord(x: 0, y: 0),
+        TileCoord(x: 2, y: 0),
+        TileCoord(x: -1, y: 1),
+        TileCoord(x: 1, y: 1),
+      ]);
+    });
+
     test('fromPixel maps pixel coordinate to tile coordinate', () {
       expect(
         TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: 256),
@@ -83,5 +101,88 @@ void main() {
         throwsArgumentError,
       ),
     );
+  });
+
+  // The ONE tile-range law (round 8 of the audit): every walk over "the
+  // tiles a rect touches" reads its box from here, so the floorDiv that
+  // keeps pasteboard tiles right cannot be lost by one of them.
+  group('tileAxisSpan', () {
+    test('floor-divides a NEGATIVE (pasteboard) start, never truncates', () {
+      // A span straddling the canvas origin: pixel -1 is tile -1, not 0.
+      expect(
+        tileAxisSpan(start: -1, endExclusive: 1, tileSize: 256),
+        (first: -1, last: 0),
+      );
+    });
+
+    test('the exclusive end on a tile boundary does NOT reach the next '
+        'tile', () {
+      expect(
+        tileAxisSpan(start: 0, endExclusive: 256, tileSize: 256),
+        (first: 0, last: 0),
+      );
+      expect(
+        tileAxisSpan(start: 0, endExclusive: 257, tileSize: 256),
+        (first: 0, last: 1),
+      );
+    });
+
+    test('a one-pixel span deep in a tile is that tile alone', () {
+      expect(
+        tileAxisSpan(start: 700, endExclusive: 701, tileSize: 256),
+        (first: 2, last: 2),
+      );
+    });
+  });
+
+  group('tileRangeCovering', () {
+    test('is tileAxisSpan over the floor/ceil lattice of the double rect', () {
+      // A right/bottom edge of 256.2 covers pixel 256 and spills into the
+      // next tile (ceil); a floored edge would stop at tile 0. -0.5 floors
+      // to pixel -1, the tile at -1.
+      expect(
+        tileRangeCovering(
+          left: 0.5,
+          top: -0.5,
+          right: 256.2,
+          bottom: 256.2,
+          tileSize: 256,
+        ),
+        (firstX: 0, lastX: 1, firstY: -1, lastY: 1),
+      );
+      // An edge exactly ON the boundary reaches no further: 256.0 is
+      // pixels 0..255, one tile.
+      expect(
+        tileRangeCovering(
+          left: 0,
+          top: 0,
+          right: 256.0,
+          bottom: 256.0,
+          tileSize: 256,
+        ),
+        (firstX: 0, lastX: 0, firstY: 0, lastY: 0),
+      );
+    });
+  });
+
+  group('tileCoordsIn', () {
+    test('walks the box ROW-MAJOR: tile row outer, column inner', () {
+      expect(
+        tileCoordsIn((firstX: -1, lastX: 0, firstY: 2, lastY: 3)),
+        [
+          TileCoord(x: -1, y: 2),
+          TileCoord(x: 0, y: 2),
+          TileCoord(x: -1, y: 3),
+          TileCoord(x: 0, y: 3),
+        ],
+      );
+    });
+
+    test('a single-tile box is one coordinate', () {
+      expect(
+        tileCoordsIn((firstX: 4, lastX: 4, firstY: 4, lastY: 4)),
+        [TileCoord(x: 4, y: 4)],
+      );
+    });
   });
 }

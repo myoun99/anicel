@@ -3,6 +3,7 @@ import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
@@ -156,6 +158,60 @@ void main() {
         () => requireLayerAnywhere(project, const LayerId('missing')),
         throwsStateError,
       );
+    });
+
+    group('requireMemoBlockAt — the block a memo is addressed to', () {
+      const cel = FrameId('cel');
+      final layer = Layer(
+        id: const LayerId('row'),
+        name: 'row',
+        kind: LayerKind.animation,
+        frames: [Frame(id: cel, duration: 1, strokes: const [])],
+        timeline: const {
+          0: TimelineExposure.drawing(cel, length: 1),
+          1: TimelineExposure.drawing(
+            cel,
+            length: 1,
+            ghost: true,
+            ghostOwnerId: 'hold',
+          ),
+        },
+      );
+
+      test('a real block start answers the entry itself', () {
+        expect(
+          identical(requireMemoBlockAt(layer, 0), layer.timeline[0]),
+          isTrue,
+        );
+      });
+
+      test('an index that starts no block is refused by name', () {
+        expect(
+          () => requireMemoBlockAt(layer, 5),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'No exposure block starts at 5 on row.',
+            ),
+          ),
+        );
+      });
+
+      test('a GHOST cell is refused — it is rederived, so a memo on it '
+          'would be lost on the next run pass', () {
+        expect(
+          () => requireMemoBlockAt(layer, 1),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'A ghost exposure is rederived, so it cannot hold a memo '
+                  '(row at 1).',
+            ),
+          ),
+        );
+      });
     });
   });
 

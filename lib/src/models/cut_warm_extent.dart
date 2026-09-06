@@ -19,7 +19,13 @@ import 'timeline_coverage.dart';
 /// covers), and not the sheet's drawn width (duration plus のりしろ
 /// margins, which need nothing here until someone draws on them — an
 /// undrawn frame composes to nothing and is ready by definition).
-int cutWarmFrameCount(Cut cut) {
+int cutWarmFrameCount(Cut cut) =>
+    math.max(1, math.max(cut.duration, cutAuthoredExtent(cut)));
+
+/// How far the cut's AUTHORED data reaches: the furthest block end over
+/// every layer (0 with no layers, or none drawn). Authored, not played —
+/// `Cut.duration` is the playback length and this ignores it.
+int cutAuthoredExtent(Cut cut) {
   var extent = 0;
   for (final layer in cut.layers) {
     final layerExtent = authoredTimelineExtent(layer.timeline);
@@ -27,5 +33,5 @@ int cutWarmFrameCount(Cut cut) {
       extent = layerExtent;
     }
   }
-  return math.max(1, math.max(cut.duration, extent));
+  return extent;
 }
