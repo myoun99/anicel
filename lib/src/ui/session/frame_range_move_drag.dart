@@ -2020,18 +2020,45 @@ class FrameRangeMoveDrag {
     TimelineRunEdgeSide side,
     Layer before,
   ) {
-    var edgeAnchor = run.anchorFrameId;
-    if (side == TimelineRunEdgeSide.end) {
-      for (final entry in before.timeline.entries) {
-        if (entry.value.ghost ||
-            entry.key < run.startIndex ||
-            entry.key >= run.endIndexExclusive) {
-          continue;
-        }
-        edgeAnchor = entry.value.frameId!;
+    if (side != TimelineRunEdgeSide.end) {
+      return run.anchorFrameId;
+    }
+    return _lastFrameIdIn(before, run.startIndex, run.endIndexExclusive) ??
+        run.anchorFrameId;
+  }
+
+  /// The LAST real (non-ghost) block's frame in `[startIndex,
+  /// endExclusive)` on [before], or null when the window holds none.
+  ///
+  /// The window's end is the whole difference between the three walks
+  /// that ask this — a run's end or a selection's end.
+  FrameId? _lastFrameIdIn(Layer before, int startIndex, int endExclusive) {
+    FrameId? found;
+    for (final entry in before.timeline.entries) {
+      if (entry.value.ghost ||
+          entry.key < startIndex ||
+          entry.key >= endExclusive) {
+        continue;
+      }
+      found = entry.value.frameId ?? found;
+    }
+    return found;
+  }
+
+  /// The FIRST real (non-ghost) block's frame in `[startIndex,
+  /// endExclusive)` on [before], or null when the window holds none.
+  FrameId? _firstFrameIdIn(Layer before, int startIndex, int endExclusive) {
+    for (final entry in before.timeline.entries) {
+      if (entry.value.ghost ||
+          entry.key < startIndex ||
+          entry.key >= endExclusive) {
+        continue;
+      }
+      if (entry.value.frameId case final frameId?) {
+        return frameId;
       }
     }
-    return edgeAnchor;
+    return null;
   }
 
   /// The pattern anchor a Repeat edge takes from the frame-range selection
@@ -2079,14 +2106,7 @@ class FrameRangeMoveDrag {
         selection.startIndex <= run.startIndex) {
       return null;
     }
-    for (final entry in before.timeline.entries) {
-      if (!entry.value.ghost &&
-          entry.key >= selection.startIndex &&
-          entry.key < run.endIndexExclusive) {
-        return entry.value.frameId;
-      }
-    }
-    return null;
+    return _firstFrameIdIn(before, selection.startIndex, run.endIndexExclusive);
   }
 
   /// Start side: the pattern runs from the run's start to the last block
@@ -2101,16 +2121,7 @@ class FrameRangeMoveDrag {
         selection.endIndexExclusive >= run.endIndexExclusive) {
       return null;
     }
-    FrameId? patternAnchor;
-    for (final entry in before.timeline.entries) {
-      if (entry.value.ghost ||
-          entry.key < run.startIndex ||
-          entry.key >= selection.endIndexExclusive) {
-        continue;
-      }
-      patternAnchor = entry.value.frameId;
-    }
-    return patternAnchor;
+    return _lastFrameIdIn(before, run.startIndex, selection.endIndexExclusive);
   }
 
   /// What [displayDelta] means INSIDE [lattice] for the row [layerId]:
