@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// The still-image encoder (EX4): baseline JPEG through the engine's
@@ -79,12 +80,13 @@ final class QaImageEncoder {
     if (rgb.length < width * height * 3 || width <= 0 || height <= 0) {
       return null;
     }
-    final input = calloc<Uint8>(rgb.length);
     final outData = calloc<Pointer<Uint8>>();
     final outSize = calloc<Int32>();
     try {
-      input.asTypedList(rgb.length).setAll(0, rgb);
-      final ok = _encodeJpg(input, width, height, quality, outData, outSize);
+      final ok = withNativeBytes(
+        rgb,
+        (input) => _encodeJpg(input, width, height, quality, outData, outSize),
+      );
       if (ok == 0 || outSize.value <= 0) {
         return null;
       }
@@ -96,7 +98,6 @@ final class QaImageEncoder {
     } on Object {
       return null;
     } finally {
-      calloc.free(input);
       calloc.free(outData);
       calloc.free(outSize);
     }

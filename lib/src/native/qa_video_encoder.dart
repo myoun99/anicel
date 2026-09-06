@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// The OS video encoder (AUDIO-PRO R7): frames + mixed PCM in, an
@@ -159,15 +160,8 @@ final class QaVideoEncoder {
   }
 
   /// Writes one top-down RGBA frame (exactly the renderer's rawRgba).
-  bool writeFrame(Uint8List rgba) {
-    final buffer = calloc<Uint8>(rgba.length);
-    try {
-      buffer.asTypedList(rgba.length).setAll(0, rgba);
-      return _writeFrame(buffer) != 0;
-    } finally {
-      calloc.free(buffer);
-    }
-  }
+  bool writeFrame(Uint8List rgba) =>
+      withNativeBytes(rgba, (buffer) => _writeFrame(buffer) != 0);
 
   /// Writes interleaved int16 PCM ([frames] per channel) — call in chunks
   /// alongside the frames so neither side buffers the whole track.

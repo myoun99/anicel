@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
@@ -74,5 +75,29 @@ class NativeScratch<T extends NativeType> {
       _pointer = nullptr;
       _length = 0;
     }
+  }
+}
+
+/// [bytes] copied into native memory for the length of ONE call: [body]
+/// gets the pointer, and the block is freed whatever [body] does. The
+/// copy-in scope every FFI door that takes a Dart byte list needs (a
+/// decode, a compress, a decompress, a video frame, a JPEG input) — it
+/// was written out at each of them, and two of them disagreed on the
+/// allocator with no reason on the disagreeing side.
+///
+/// malloc, not calloc: the copy below overwrites every byte — the
+/// calloc memset doubled an 8000² fill stamp's 256MB upload traffic.
+///
+/// ⛔Uint8 only. `malloc<T>()` needs the element type at compile time, so
+/// a version generic over it cannot be written in Dart (the same limit
+/// [NativeScratch.allocate] states); the Float, Int16 and Double copies
+/// stay where they are until one of those types has three sites.
+R withNativeBytes<R>(Uint8List bytes, R Function(Pointer<Uint8> data) body) {
+  final data = malloc<Uint8>(bytes.length);
+  try {
+    data.asTypedList(bytes.length).setAll(0, bytes);
+    return body(data);
+  } finally {
+    malloc.free(data);
   }
 }

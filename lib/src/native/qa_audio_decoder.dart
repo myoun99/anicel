@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// Which decoder read a file — reported so a log can say what happened
@@ -164,10 +165,9 @@ final class QaAudioDecoder {
     if (bytes.isEmpty) {
       return null;
     }
-    final data = calloc<Uint8>(bytes.length);
-    try {
-      data.asTypedList(bytes.length).setAll(0, bytes);
-      return _harvest(
+    return withNativeBytes(
+      bytes,
+      (data) => _harvest(
         (samplesOut, frameCountOut, channelsOut, sampleRateOut) => _decode(
           data,
           bytes.length,
@@ -176,10 +176,8 @@ final class QaAudioDecoder {
           channelsOut,
           sampleRateOut,
         ),
-      );
-    } finally {
-      calloc.free(data);
-    }
+      ),
+    );
   }
 
   /// Decodes [length] bytes of [path] starting at [offset]; null when no

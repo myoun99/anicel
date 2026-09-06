@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// zstd for cel blobs — the compressor whose DEcompression is on the frame
@@ -101,19 +102,18 @@ final class QaCelCompressor {
     if (capacity <= 0) {
       return null;
     }
-    final src = malloc<Uint8>(bytes.length);
     final dst = malloc<Uint8>(capacity);
     try {
-      src.asTypedList(bytes.length).setAll(0, bytes);
-      final written = _compress(dst, capacity, src, bytes.length, level);
+      final written = withNativeBytes(
+        bytes,
+        (src) => _compress(dst, capacity, src, bytes.length, level),
+      );
       if (written <= 0) {
         return null;
       }
       return Uint8List.fromList(dst.asTypedList(written));
     } finally {
-      malloc
-        ..free(src)
-        ..free(dst);
+      malloc.free(dst);
     }
   }
 
@@ -128,9 +128,7 @@ final class QaCelCompressor {
     if (frame.isEmpty) {
       return null;
     }
-    final src = malloc<Uint8>(frame.length);
-    try {
-      src.asTypedList(frame.length).setAll(0, frame);
+    return withNativeBytes(frame, (src) {
       final size = _sizeOf(src, frame.length);
       if (size <= 0) {
         return null;
@@ -145,8 +143,6 @@ final class QaCelCompressor {
       } finally {
         malloc.free(dst);
       }
-    } finally {
-      malloc.free(src);
-    }
+    });
   }
 }
