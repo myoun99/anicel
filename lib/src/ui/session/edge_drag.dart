@@ -477,29 +477,19 @@ class EdgeDrag {
     }
     final startsByLayer = <LayerId, List<int>>{};
     final beforeByLayer = <LayerId, Layer>{};
-    for (final id in selection.spanLayerIds) {
-      // Rows whose timing is not their own stand down — see
-      // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
-        continue;
-      }
-      final display = _project.rangeLayerById(id);
-      final commit = _project.commitLayerById(id);
-      if (display == null || commit == null) {
-        continue;
-      }
+    for (final row in _rangeSelections.retimableSpanRows(selection)) {
       final starts = _rangeSelections.selectionBlockStarts(
-        display,
+        row.display,
         selection.startIndex,
         selection.endIndexExclusive,
       );
       if (starts.isEmpty) {
         continue;
       }
-      startsByLayer[id] = [
-        for (final start in starts) _internals.commitBlockStart(id, start),
+      startsByLayer[row.id] = [
+        for (final start in starts) _internals.commitBlockStart(row.id, start),
       ];
-      beforeByLayer[id] = commit;
+      beforeByLayer[row.id] = row.commit;
     }
     final multiBlock =
         startsByLayer.length > 1 || (startsByLayer[layerId]?.length ?? 0) > 1;

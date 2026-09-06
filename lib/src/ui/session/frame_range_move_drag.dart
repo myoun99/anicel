@@ -509,18 +509,8 @@ class FrameRangeMoveDrag {
     KeySources keys,
   ) {
     final sources = <({Layer commit, int offset})>[];
-    for (final id in selection.spanLayerIds) {
-      // Rows whose timing is not their own stand down — see
-      // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
-        continue;
-      }
-      final display = _project.rangeLayerById(id);
-      final commit = _project.commitLayerById(id);
-      if (display == null || commit == null) {
-        continue;
-      }
-      final hasBlock = drawingBlocks(display.timeline).any(
+    for (final row in _rangeSelections.retimableSpanRows(selection)) {
+      final hasBlock = drawingBlocks(row.display.timeline).any(
         (block) => _wholeBlockIn(
           block,
           selection.startIndex,
@@ -529,8 +519,8 @@ class FrameRangeMoveDrag {
       );
       if (hasBlock) {
         sources.add((
-          commit: commit,
-          offset: _rangeMoveCommitOffset(id, selection.startIndex),
+          commit: row.commit,
+          offset: _rangeMoveCommitOffset(row.id, selection.startIndex),
         ));
       }
     }
