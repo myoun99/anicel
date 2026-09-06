@@ -74,7 +74,7 @@ void main() {
   ) async {
     final fixture = await mounted(tester);
     fixture.session.createCut();
-    expect(fixture.session.hasUnsavedChanges, isTrue);
+    expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
 
     final settled = fixture.ask();
     await tester.pumpAndSettle();
@@ -87,7 +87,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(await settled, isFalse);
     expect(
-      fixture.session.hasUnsavedChanges,
+      fixture.session.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'cancelling protects, it does not discard',
     );
@@ -97,14 +97,14 @@ void main() {
       '닫기 = 버리기 stays literal at this door too', (tester) async {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/gate.anicel';
-    await tester.runAsync(() => fixture.session.saveProjectToFile(path));
+    await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path));
     fixture.session.createCut();
     await tester.runAsync(
-      () => fixture.session.writeAutosaveSnapshot(
-        fixture.session.autosaveSidecarPath!,
+      () => fixture.session.projectDoor.writeAutosaveSnapshot(
+        fixture.session.projectFile.autosaveSidecarPath!,
       ),
     );
-    final sidecar = File(fixture.session.autosaveSidecarPath!);
+    final sidecar = File(fixture.session.projectFile.autosaveSidecarPath!);
     expect(sidecar.existsSync(), isTrue);
 
     final settled = fixture.ask();
@@ -158,10 +158,10 @@ void main() {
     // bytes landing would quit past an unsaved project.
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/gate-save.anicel';
-    await tester.runAsync(() => fixture.session.saveProjectToFile(path));
+    await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path));
     final savedLength = File(path).lengthSync();
     fixture.session.createCut();
-    expect(fixture.session.hasUnsavedChanges, isTrue);
+    expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
 
     final settled = await settleThroughRealSave(
       tester,
@@ -170,7 +170,7 @@ void main() {
     );
 
     expect(settled, isTrue);
-    expect(fixture.session.hasUnsavedChanges, isFalse);
+    expect(fixture.session.projectFile.hasUnsavedChanges, isFalse);
     expect(
       File(path).lengthSync(),
       greaterThan(savedLength),
@@ -188,7 +188,7 @@ void main() {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/gate-fail.anicel';
     await tester.runAsync(() async {
-      await fixture.session.saveProjectToFile(path);
+      await fixture.session.projectDoor.saveProjectToFile(path);
       // The project path turns into a DIRECTORY: every later write —
       // incremental append and the full rewrite's rename alike — refuses.
       File(path).deleteSync();
@@ -204,7 +204,7 @@ void main() {
 
     expect(settled, isFalse, reason: 'nothing landed, so nothing may close');
     expect(
-      fixture.session.hasUnsavedChanges,
+      fixture.session.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'the work is not in a file, so the close must be called off',
     );

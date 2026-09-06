@@ -69,20 +69,20 @@ void main() {
         .cuts
         .length;
     final path = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(path);
-    expect(s.projectFilePath, path);
-    expect(s.hasUnsavedChanges, isFalse);
+    await s.projectDoor.saveProjectToFile(path);
+    expect(s.projectFile.path, path);
+    expect(s.projectFile.hasUnsavedChanges, isFalse);
 
     // Mutate past the save, then load the file back.
     s.createCut();
-    expect(s.hasUnsavedChanges, isTrue);
-    await s.openProjectFromFile(path);
+    expect(s.projectFile.hasUnsavedChanges, isTrue);
+    await s.projectDoor.openProjectFromFile(path);
 
     expect(
       s.repository.requireProject().tracks.first.cuts.length,
       savedCutCount,
     );
-    expect(s.hasUnsavedChanges, isFalse);
+    expect(s.projectFile.hasUnsavedChanges, isFalse);
     // Loaded state has NO history.
     expect(s.canUndo, isFalse);
     expect(s.canRedo, isFalse);
@@ -110,7 +110,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final path = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     // A band naming a row of the project that is about to be replaced.
     s.updateFrameRangeSelectionDrag(
@@ -120,7 +120,7 @@ void main() {
     );
     expect(s.frameRangeSelection.value, isNotNull);
 
-    await s.openProjectFromFile(path);
+    await s.projectDoor.openProjectFromFile(path);
 
     expect(
       s.frameRangeSelection.value,
@@ -140,9 +140,9 @@ void main() {
       'file in place', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final path = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
     s.createCut();
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     final entries = directory.listSync().map((e) => e.uri.pathSegments.last);
     expect(entries, ['scene.anicel']);
@@ -152,18 +152,18 @@ void main() {
       'sidecar; a manual save retires it', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final path = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     final autosave = ProjectAutosaveService(
-      isDirty: () => s.hasUnsavedChanges,
-      writeSnapshot: s.writeAutosaveSnapshot,
-      autosavePath: () => s.autosaveSidecarPath!,
+      isDirty: () => s.projectFile.hasUnsavedChanges,
+      writeSnapshot: s.projectDoor.writeAutosaveSnapshot,
+      autosavePath: () => s.projectFile.autosaveSidecarPath!,
     );
     // Clean session: nothing written. The snapshot lives in app support
     // now, so its path comes from the session rather than from the
     // project's own name.
     await autosave.saveNow();
-    final sidecar = File(s.autosaveSidecarPath!);
+    final sidecar = File(s.projectFile.autosaveSidecarPath!);
     addTearDown(() {
       if (sidecar.parent.existsSync()) {
         sidecar.parent.deleteSync(recursive: true);
@@ -176,7 +176,7 @@ void main() {
     s.createCut();
     await autosave.saveNow();
     expect(sidecar.existsSync(), isTrue);
-    expect(s.hasUnsavedChanges, isTrue);
+    expect(s.projectFile.hasUnsavedChanges, isTrue);
     expect(
       ProjectAutosaveService.sidecarIsNewer(
         filePath: path,
@@ -186,7 +186,7 @@ void main() {
     );
 
     // Manual save deletes the sidecar (awaited inside the save).
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
     expect(sidecar.existsSync(), isFalse);
   });
 
@@ -232,12 +232,12 @@ void main() {
       ],
     );
     final path = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     // A newer snapshot with one extra cut.
     s.createCut();
     final overlay = '${directory.path}/scene.recovery';
-    await s.writeAutosaveSnapshot(overlay);
+    await s.projectDoor.writeAutosaveSnapshot(overlay);
     final recoveredCutCount = s.repository
         .requireProject()
         .tracks
@@ -246,13 +246,13 @@ void main() {
         .length;
 
     final fresh = EditorSessionManager(initialProject: createDefaultProject());
-    await fresh.openProjectFromFile(path, overlayPath: overlay);
+    await fresh.projectDoor.openProjectFromFile(path, overlayPath: overlay);
     expect(
       fresh.repository.requireProject().tracks.first.cuts.length,
       recoveredCutCount,
     );
-    expect(fresh.projectFilePath, path, reason: 'saves go to the real file');
-    expect(fresh.hasUnsavedChanges, isTrue);
+    expect(fresh.projectFile.path, path, reason: 'saves go to the real file');
+    expect(fresh.projectFile.hasUnsavedChanges, isTrue);
     expect(
       fresh.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
       isNotEmpty,

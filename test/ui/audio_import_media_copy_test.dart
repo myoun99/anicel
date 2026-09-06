@@ -47,7 +47,7 @@ void main() {
   test('carrying copies NOTHING — the project records the original where '
       'the user keeps it, and grows no sibling folder', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final root = directory.path.replaceAll('\\', '/');
 
     final external = Directory('${directory.path}/외부소재')
@@ -76,7 +76,7 @@ void main() {
     'a REFERENCE records the same path and asks the save for nothing',
     () async {
       final session = sessionWithFakeConforms();
-      await session.saveProjectToFile('${directory.path}/scene.anicel');
+      await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
       final source = File('${directory.path}/guide.wav')
         ..writeAsBytesSync([8, 9]);
 
@@ -111,7 +111,7 @@ void main() {
     // explaining the disagreement. The kind decides the DEFAULT now (a
     // movie starts as a reference) and the answer decides the bytes.
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final movie = File('${directory.path}/reference.mp4')
       ..writeAsBytesSync([0, 0, 0, 24]);
 
@@ -130,7 +130,7 @@ void main() {
 
   test('and a movie left alone stays outside', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final movie = File('${directory.path}/take02.mp4')
       ..writeAsBytesSync([0, 0, 0, 24]);
 
@@ -168,7 +168,7 @@ void main() {
   test('registering a reference marks it carried in ONE undo, and moves '
       'nothing on disk', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final root = directory.path.replaceAll('\\', '/');
     final outside = File('${directory.path}/guide.wav')
       ..writeAsBytesSync([4, 5, 6]);
@@ -200,7 +200,7 @@ void main() {
   test('promoting something already carried changes nothing and spends no '
       'undo step', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final source = File('${directory.path}/bgm.wav')..writeAsBytesSync([7, 7]);
     session.importMediaFiles([source.path], copyIntoProject: true);
     final path = session.mediaAssets.single.path;
@@ -217,7 +217,7 @@ void main() {
     // put inside the file, and a menu entry that flips and does nothing
     // was the alternative.
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final movie = File('${directory.path}/참고.mp4')
       ..writeAsBytesSync([0, 0, 0, 24]);
     session.importMediaFiles([movie.path], copyIntoProject: false);
@@ -247,7 +247,7 @@ void main() {
     // missing — so it is the one that must carry evidence of which file
     // it was.
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final referenced = File('${directory.path}/guide.wav')
       ..writeAsBytesSync(List<int>.filled(321, 4));
 
@@ -262,7 +262,7 @@ void main() {
   test('a CARRIED asset is stamped too — it has an original on disk until '
       'the first save', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final source = File('${directory.path}/bgm.wav')
       ..writeAsBytesSync(List<int>.filled(77, 9));
 
@@ -276,7 +276,7 @@ void main() {
     // No window was answered here — it registers a file that was already
     // on disk, so it registers it as what it is.
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final foot = File('${directory.path}/foot.wav')
       ..writeAsBytesSync(List<int>.filled(12, 1));
 
@@ -290,18 +290,18 @@ void main() {
   test('the carry answer survives a save and reopen', () async {
     final session = sessionWithFakeConforms();
     final path = '${directory.path}/scene.anicel';
-    await session.saveProjectToFile(path);
+    await session.projectDoor.saveProjectToFile(path);
     final carriedFile = File('${directory.path}/발소리.wav')
       ..writeAsBytesSync(List<int>.filled(555, 2));
     final referenced = File('${directory.path}/guide.wav')
       ..writeAsBytesSync(List<int>.filled(40, 3));
     session.importMediaFiles([carriedFile.path], copyIntoProject: true);
     session.importMediaFiles([referenced.path], copyIntoProject: false);
-    await session.saveProjectToFile(path);
+    await session.projectDoor.saveProjectToFile(path);
     session.dispose();
 
     final reopened = sessionWithFakeConforms();
-    await reopened.openProjectFromFile(path);
+    await reopened.projectDoor.openProjectFromFile(path);
     MediaAsset assetEndingIn(String suffix) => reopened.mediaAssets.singleWhere(
       (asset) => asset.path.endsWith(suffix),
     );

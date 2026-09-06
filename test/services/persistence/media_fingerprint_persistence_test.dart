@@ -69,13 +69,13 @@ void main() {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
     s.importMediaFiles([movie], copyIntoProject: false);
-    await s.saveProjectToFile(projectPath);
-    expect(s.hasUnsavedChanges, isFalse, reason: 'a save leaves it clean');
+    await s.projectDoor.saveProjectToFile(projectPath);
+    expect(s.projectFile.hasUnsavedChanges, isFalse, reason: 'a save leaves it clean');
 
     fingerprint(s, movie);
 
     expect(
-      s.hasUnsavedChanges,
+      s.projectFile.hasUnsavedChanges,
       isFalse,
       reason:
           'looking at a file is not editing the project — a save prompt '
@@ -89,11 +89,11 @@ void main() {
     final movie = makeFile('참고영상.mp4', 7);
     s.importMediaFiles([movie], copyIntoProject: false);
     fingerprint(s, movie);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.dispose();
 
     final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
+    await reopened.projectDoor.openProjectFromFile(projectPath);
 
     final identity = reopened.mediaFingerprints.recordedMediaIdentity(movie);
     expect(identity, isNotNull);
@@ -150,11 +150,11 @@ void main() {
 
     final now = makeFile('옮긴영상.mp4', 7);
     await s.relinkMediaAsset(was, now);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.dispose();
 
     final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
+    await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(
       reopened.mediaFingerprints.recordedMediaIdentity(now),
       recorded,
@@ -173,10 +173,10 @@ void main() {
       final movie = makeFile('참고영상.mp4', 7);
       s.importMediaFiles([movie], copyIntoProject: false);
       fingerprint(s, movie);
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
 
       s.removeMediaAsset(movie);
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       // 🚨THE FILE, not just the reopened session. The open side narrows
@@ -192,7 +192,7 @@ void main() {
       );
 
       final reopened = session();
-      await reopened.openProjectFromFile(projectPath);
+      await reopened.projectDoor.openProjectFromFile(projectPath);
       expect(reopened.mediaFingerprints.debugMediaFingerprints.isEmpty, isTrue);
       reopened.dispose();
     },
@@ -205,7 +205,7 @@ void main() {
       // ordinary state, not a missing field somebody has to handle.
       final s = session();
       s.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       expect(
@@ -215,7 +215,7 @@ void main() {
       );
 
       final reopened = session();
-      await reopened.openProjectFromFile(projectPath);
+      await reopened.projectDoor.openProjectFromFile(projectPath);
       expect(reopened.mediaFingerprints.debugMediaFingerprints.isEmpty, isTrue);
       reopened.dispose();
     },

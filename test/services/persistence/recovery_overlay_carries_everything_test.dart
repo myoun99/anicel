@@ -119,9 +119,9 @@ void main() {
       File('${directory.path}/참고영상.mp4').readAsBytesSync(),
     );
     final projectPath = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     final overlayPath = '${directory.path}/scene.overlay';
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     s.dispose();
     return (projectPath, overlayPath);
   }
@@ -245,7 +245,7 @@ void main() {
     );
     final s = EditorSessionManager(initialProject: project);
     final projectPath = '${directory.path.replaceAll('\\', '/')}/ink.anicel';
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
 
     // Drawn AFTER the save, so only the overlay can be holding it.
     final cutId = s.requireActiveCut.id;
@@ -256,12 +256,12 @@ void main() {
     s.conteInkPageStore.storeBakedSurface(pageKey, inkSurface(seed: 4));
     s.envelopeInkStore.storeBakedSurface(envelopeKey, inkSurface(seed: 5));
     final overlayPath = '${directory.path.replaceAll('\\', '/')}/ink.overlay';
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     s.dispose();
 
     final restored = session();
     addTearDown(restored.dispose);
-    await restored.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
     expect(
       restored.conteInkRowStore.celHasRenderableContent(rowKey),
       isTrue,

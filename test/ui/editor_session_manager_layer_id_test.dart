@@ -60,14 +60,14 @@ void main() {
       reason: 'fixture: the file must carry an id the fresh counter will '
           'reach, or reopening proves nothing',
     );
-    await first.saveProjectToFile(path);
+    await first.projectDoor.saveProjectToFile(path);
     first.dispose();
 
     // A NEW session: its counter starts at 1 again, knowing nothing about
     // the ids in the file it is about to open.
     final second = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(second.dispose);
-    await second.openProjectFromFile(path);
+    await second.projectDoor.openProjectFromFile(path);
     expectNoDuplicateIds(second, reason: 'precondition: the file is sound');
 
     second.addLayer();
@@ -80,12 +80,12 @@ void main() {
     final first = EditorSessionManager(initialProject: createDefaultProject());
     first.addLayer();
     first.addLayer();
-    await first.saveProjectToFile(path);
+    await first.projectDoor.saveProjectToFile(path);
     first.dispose();
 
     final second = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(second.dispose);
-    await second.openProjectFromFile(path);
+    await second.projectDoor.openProjectFromFile(path);
     // Several in a row: a fix that only skips the FIRST collision leaves the
     // second add colliding again.
     second.addLayer();

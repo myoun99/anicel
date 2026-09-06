@@ -122,7 +122,7 @@ void main() {
     drawOnCurrentFrame(s);
     final path = refusingLocation('drive.anicel');
 
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     expect(replaces, 1);
     final layout = parseAnicelZipLayoutFile(path);
@@ -132,8 +132,8 @@ void main() {
       isNotEmpty,
       reason: 'the drawing is in the replaced file',
     );
-    expect(s.hasUnsavedChanges, isFalse);
-    expect(s.projectFilePath, path);
+    expect(s.projectFile.hasUnsavedChanges, isFalse);
+    expect(s.projectFile.path, path);
 
     final refPaths = s.brushFrameStore
         .bakedSnapshotForSave()
@@ -152,7 +152,7 @@ void main() {
     // The location takes writes now (the fake replaced the directory
     // with a real file): the NEXT save is ordinary — no coordinator.
     drawOnCurrentFrame(s);
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
     expect(replaces, 1, reason: 'the fallback is per-refusal, not a mode');
   });
 
@@ -169,16 +169,16 @@ void main() {
     final path = refusingLocation('refused.anicel');
 
     await expectLater(
-      s.saveProjectToFile(path),
+      s.projectDoor.saveProjectToFile(path),
       throwsA(isA<FileSystemException>()),
     );
     expect(
-      s.hasUnsavedChanges,
+      s.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'nothing landed at the destination, so nothing may claim to',
     );
     expect(
-      s.projectFilePath,
+      s.projectFile.path,
       isNull,
       reason: 'a failed first save must not adopt the path either',
     );
@@ -201,7 +201,7 @@ void main() {
     final path = refusingLocation('desktop.anicel');
 
     await expectLater(
-      s.saveProjectToFile(path),
+      s.projectDoor.saveProjectToFile(path),
       throwsA(isA<FileSystemException>()),
     );
   });

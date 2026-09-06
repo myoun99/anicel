@@ -1138,7 +1138,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   bool _toldProjectFileVanished = false;
 
   Future<void> _warnIfProjectFileVanished() async {
-    if (!widget.session.projectFileHasVanished()) {
+    if (!widget.session.projectFile.hasVanished()) {
       // Back again — restored from a trash, or re-synced. The next
       // disappearance is worth saying out loud too.
       _toldProjectFileVanished = false;

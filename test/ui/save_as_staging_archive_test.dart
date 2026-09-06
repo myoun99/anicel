@@ -18,7 +18,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// writes turned the theory into an unopenable husk sitting exactly where
 /// the user meant to put their work.
 ///
-/// [EditorSessionManager.writeArchiveCopy] writes the whole session as a
+/// [ProjectFileDoor.writeArchiveCopy] writes the whole session as a
 /// standalone archive and must change NOTHING about the session: the file
 /// it produces is about to be MOVED by a document picker, so refs adopted
 /// into it would be every cel dying the moment the move lands.
@@ -84,7 +84,7 @@ void main() {
     );
     final copy = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
 
-    await s.writeArchiveCopy(copy);
+    await s.projectDoor.writeArchiveCopy(copy);
 
     // The placed file IS the project: parseable, project.json and the
     // drawn cel inside.
@@ -98,8 +98,8 @@ void main() {
     );
 
     // And the session learned NOTHING from writing it.
-    expect(s.projectFilePath, isNull, reason: 'staging is not a save');
-    expect(s.hasUnsavedChanges, isTrue, reason: 'staging is not a save');
+    expect(s.projectFile.path, isNull, reason: 'staging is not a save');
+    expect(s.projectFile.hasUnsavedChanges, isTrue, reason: 'staging is not a save');
     // ⚠️ The instrument is the REF PATH, not "does the cel still read" —
     // the hot tier keeps a freshly drawn surface in RAM either way, so a
     // read survives a wrong adoption and measures nothing (a mutation
@@ -130,14 +130,14 @@ void main() {
       selection.frameId,
     );
     final home = '${folder.path.replaceAll('\\', '/')}/home.anicel';
-    await s.saveProjectToFile(home);
+    await s.projectDoor.saveProjectToFile(home);
 
     final copy = '${folder.path.replaceAll('\\', '/')}/copy.anicel';
-    await s.writeArchiveCopy(copy);
+    await s.projectDoor.writeArchiveCopy(copy);
     expect(parseAnicelZipLayoutFile(copy).projectEntry(),
         isNotNull);
 
-    expect(s.projectFilePath, home);
+    expect(s.projectFile.path, home);
     // Same instrument as above: the refs' PATHS are what adoption moves.
     final refPaths = s.brushFrameStore
         .bakedSnapshotForSave()
@@ -166,21 +166,21 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     drawOnCurrentFrame(s);
-    expect(s.hasUnsavedChanges, isTrue);
+    expect(s.projectFile.hasUnsavedChanges, isTrue);
 
     final staged = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
-    final names = await s.writeArchiveCopy(staged);
+    final names = await s.projectDoor.writeArchiveCopy(staged);
 
     // What the export picker does, and all it does: MOVE.
     final placed = '${folder.path.replaceAll('\\', '/')}/placed.anicel';
     File(staged).renameSync(placed);
     final bytesAsPlaced = File(placed).readAsBytesSync();
 
-    s.adoptPlacedArchive(placed, mediaEntryNames: names);
+    s.projectDoor.adoptPlacedArchive(placed, mediaEntryNames: names);
 
-    expect(s.projectFilePath, placed);
+    expect(s.projectFile.path, placed);
     expect(
-      s.hasUnsavedChanges,
+      s.projectFile.hasUnsavedChanges,
       isFalse,
       reason: 'the placed archive IS the saved state',
     );

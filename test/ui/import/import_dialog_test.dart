@@ -330,7 +330,7 @@ void main() {
       addTearDown(s.dispose);
       final path = await tester.runAsync(() async {
         final png = await writePng('ref.png');
-        await s.saveProjectToFile(
+        await s.projectDoor.saveProjectToFile(
           '${tempDir.path}${Platform.pathSeparator}scene.anicel',
         );
         return png;

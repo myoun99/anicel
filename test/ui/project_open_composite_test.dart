@@ -78,8 +78,8 @@ void main() {
       ],
     );
     final path = '${directory.path}/scene.anicel';
-    await s.saveProjectToFile(path);
-    await s.openProjectFromFile(path);
+    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.openProjectFromFile(path);
     // Sanity: the open restored the baked raster truth.
     expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
     return (s, drawnKey);

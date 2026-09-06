@@ -81,11 +81,11 @@ void main() {
     s.conteInkRowStore.storeBakedSurface(liveKey, inkSurface(seed: 3));
     s.conteInkRowStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
     s.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     final loaded = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(loaded.dispose);
-    await loaded.openProjectFromFile(path);
+    await loaded.projectDoor.openProjectFromFile(path);
 
     expect(
       loaded.conteInkRowStore.celHasRenderableContent(liveKey),
@@ -114,12 +114,12 @@ void main() {
       conteInkPageKey(1),
       inkSurface(seed: 7),
     );
-    await loaded.saveProjectToFile(path);
+    await loaded.projectDoor.saveProjectToFile(path);
     final reloaded = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(reloaded.dispose);
-    await reloaded.openProjectFromFile(path);
+    await reloaded.projectDoor.openProjectFromFile(path);
     expect(reloaded.conteInkRowStore.celHasRenderableContent(liveKey), isTrue);
     expect(
       reloaded.conteInkPageStore.celHasRenderableContent(conteInkPageKey(1)),

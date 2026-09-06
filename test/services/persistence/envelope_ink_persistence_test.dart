@@ -61,13 +61,13 @@ void main() {
         inkSurface(seed: 4),
       );
       session.envelopeInkStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
-      await session.saveProjectToFile(path);
+      await session.projectDoor.saveProjectToFile(path);
 
       final loaded = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
       addTearDown(loaded.dispose);
-      await loaded.openProjectFromFile(path);
+      await loaded.projectDoor.openProjectFromFile(path);
 
       expect(
         loaded.envelopeInkStore.celHasRenderableContent(liveKey),

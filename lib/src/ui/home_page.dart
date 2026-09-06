@@ -390,15 +390,16 @@ class _HomePageState extends State<HomePage> {
       // saved and closed cleanly, and the next open then offers to recover
       // it — which is the exact signal this round exists to keep honest.
       isDirty: () =>
-          _session.hasUnsavedChanges && !_session.autosaveShouldStandDown,
-      writeSnapshot: _session.writeAutosaveSnapshot,
+          _session.projectFile.hasUnsavedChanges &&
+          !_session.projectFile.autosaveShouldStandDown,
+      writeSnapshot: _session.projectDoor.writeAutosaveSnapshot,
       // Only called once needsProjectFile says a real file exists.
-      autosavePath: () => _session.autosaveSidecarPath!,
+      autosavePath: () => _session.projectFile.autosaveSidecarPath!,
       // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of
       // piling files into hidden app-data dirs for a document with no
       // identity yet, the first dirty pass asks the user to pick a real
       // file (OpenToonz-style).
-      needsProjectFile: () => _session.projectFilePath == null,
+      needsProjectFile: () => _session.projectFile.path == null,
       onUnsavedProject: _promptUnsavedAutosave,
     );
   }

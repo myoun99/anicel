@@ -167,7 +167,7 @@ void main() {
       File(path).deleteSync();
 
       // What the conform pipeline and the missing-banner probe call.
-      final source = session.mediaByteSourceFor(path);
+      final source = session.projectFile.mediaByteSourceFor(path);
 
       expect(source.existsSync(), isTrue, reason: 'the project owns it now');
       expect(
@@ -269,7 +269,7 @@ void main() {
 
       File(path).deleteSync();
 
-      final source = session.mediaByteSourceFor(path);
+      final source = session.projectFile.mediaByteSourceFor(path);
       expect(source.existsSync(), isTrue);
       expect(source.readSync(), original);
     });
@@ -305,7 +305,7 @@ void main() {
     expect(session.mediaStagingStore.find(from), isNull);
 
     File(to).deleteSync();
-    expect(session.mediaByteSourceFor(to).readSync(), original);
+    expect(session.projectFile.mediaByteSourceFor(to).readSync(), original);
   });
 
   group('🚨relink: the two kinds know different things', () {

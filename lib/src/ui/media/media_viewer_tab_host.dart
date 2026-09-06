@@ -527,7 +527,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   ///
   /// 🚨★★★**CARRYING WAS ONLY HALF TRUE FOR MOVIES.** The project keeps the
   /// bytes, and every other medium reads them back through
-  /// [EditorSessionManager.mediaByteSourceFor]; a movie could not, because
+  /// [ProjectFile.mediaByteSourceFor]; a movie could not, because
   /// the OS decoders take a PATH and the bytes are a stretch of the
   /// `.anicel`. Deleting the import original — the exact act carrying exists
   /// to survive — left a video the project plainly contains unviewable
@@ -538,7 +538,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// for the case where there is no file to open.
   ///
   /// ⚠️A FRAMED entry answers null, and that is not a gap being papered
-  /// over: [EditorSessionManager.mediaByteSourceFor] wraps those in a
+  /// over: [ProjectFile.mediaByteSourceFor] wraps those in a
   /// decoder, so what comes back is not a plain range and no OS reader can
   /// be pointed at it. The archive side is what keeps a movie addressable.
   ///
@@ -551,7 +551,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     if (File(path).existsSync()) {
       return null;
     }
-    return widget.session.mediaByteSourceFor(path).range;
+    return widget.session.projectFile.mediaByteSourceFor(path).range;
   }
 
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
