@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart'
     show layerKindBandIsInstructionsOnly, layerKindCarriesInstructions;
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../text/vertical_writing_text.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -120,7 +121,12 @@ List<Widget> timelineRowInstructionOverlays({
   for (final entry in layer.instructions.entries) {
     final start = entry.key;
     final endExclusive = start + entry.value.length;
-    if (endExclusive <= frameStartIndex || start >= frameEndIndexExclusive) {
+    if (!frameRangesOverlap(
+      start,
+      endExclusive,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
       continue;
     }
     final def = defById(entry.value.instructionId);
@@ -144,7 +150,12 @@ List<Widget> timelineRowInstructionOverlays({
     for (final entry in layer.instructions.entries) {
       final start = entry.key;
       final endExclusive = start + entry.value.length;
-      if (endExclusive <= frameStartIndex || start >= frameEndIndexExclusive) {
+      if (!frameRangesOverlap(
+        start,
+        endExclusive,
+        frameStartIndex,
+        frameEndIndexExclusive,
+      )) {
         continue;
       }
       final tooltip = resolveWarning(start);

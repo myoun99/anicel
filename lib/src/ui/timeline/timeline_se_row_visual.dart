@@ -7,6 +7,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../media/media_asset_drag_data.dart';
@@ -40,8 +41,12 @@ List<Widget> timelineRowSeLabelOverlays({
   final overlays = <Widget>[];
   final blocks = drawingBlocks(layer.timeline);
   for (final block in blocks) {
-    if (block.endIndexExclusive <= frameStartIndex ||
-        block.startIndex >= frameEndIndexExclusive) {
+    if (!frameRangesOverlap(
+      block.startIndex,
+      block.endIndexExclusive,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
       continue;
     }
     final frame = layer.frameById(block.frameId);
@@ -148,8 +153,12 @@ List<Widget> timelineRowAudioOverlays({
     // Windowed like every sibling builder: the open-ended SE display
     // clone carries every downstream sound now, and an off-window
     // waveform strip is layout weight nobody can see.
-    if (span.startFrame + span.lengthFrames <= frameStartIndex ||
-        span.startFrame >= frameEndIndexExclusive) {
+    if (!frameRangesOverlap(
+      span.startFrame,
+      span.startFrame + span.lengthFrames,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
       continue;
     }
     final peaks = audioPeaksFor(span.clip.filePath);
@@ -217,8 +226,12 @@ List<Widget> timelineRowClipMarkerOverlays({
       continue;
     }
     final blockEnd = span.startFrame + span.lengthFrames;
-    if (blockEnd <= frameStartIndex ||
-        span.startFrame >= frameEndIndexExclusive) {
+    if (!frameRangesOverlap(
+      span.startFrame,
+      blockEnd,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
       continue;
     }
     overlays.add(
@@ -315,8 +328,12 @@ List<Widget> timelineRowSeAssetDropTargets({
 }) {
   final targets = <Widget>[];
   for (final block in drawingBlocks(layer.timeline)) {
-    if (block.endIndexExclusive <= frameStartIndex ||
-        block.startIndex >= frameEndIndexExclusive) {
+    if (!frameRangesOverlap(
+      block.startIndex,
+      block.endIndexExclusive,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
       continue;
     }
     targets.add(

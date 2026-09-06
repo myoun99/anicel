@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../../models/layer.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
@@ -125,8 +126,12 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       }
       final startIndex = key;
       final endIndexExclusive = key + (entry.length ?? 1);
-      if (endIndexExclusive <= frameStartIndex ||
-          startIndex >= frameEndIndexExclusive) {
+      if (!frameRangesOverlap(
+        startIndex,
+        endIndexExclusive,
+        frameStartIndex,
+        frameEndIndexExclusive,
+      )) {
         continue;
       }
       // D23: a 1-comma block prints nothing — paint and semantics fall

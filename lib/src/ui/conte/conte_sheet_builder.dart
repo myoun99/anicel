@@ -7,6 +7,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
 import '../storyboard_layer_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -165,8 +166,12 @@ List<ConteDialogueLine> _dialogueOf(Track track, int startFrame, int endFrame) {
       continue;
     }
     for (final block in drawingBlocks(layer.timeline)) {
-      if (block.endIndexExclusive <= startFrame ||
-          block.startIndex >= endFrame) {
+      if (!frameRangesOverlap(
+        block.startIndex,
+        block.endIndexExclusive,
+        startFrame,
+        endFrame,
+      )) {
         continue;
       }
       final frame = layer.frames

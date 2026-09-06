@@ -53,7 +53,7 @@ class TrackFrameRangeSelection {
 
   /// Whether the selection touches the half-open span [start, end).
   bool overlaps(int start, int endExclusive) =>
-      start < endFrameExclusive && endExclusive > startFrame;
+      frameRangesOverlap(startFrame, endFrameExclusive, start, endExclusive);
 
   @override
   bool operator ==(Object other) =>
@@ -79,3 +79,13 @@ class TrackFrameRangeSelection {
       'TrackFrameRangeSelection($trackId, $anchorRow, '
       '[$startFrame, $endFrameExclusive), rows: $spanRows)';
 }
+
+/// Whether the half-open frame spans [aStart, aEndExclusive) and
+/// [bStart, bEndExclusive) share at least one frame — the windowing test
+/// every row builder applies to a block against the visible window.
+bool frameRangesOverlap(
+  int aStart,
+  int aEndExclusive,
+  int bStart,
+  int bEndExclusive,
+) => aStart < bEndExclusive && bStart < aEndExclusive;

@@ -6,6 +6,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import 'property_lane_model.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -196,9 +197,12 @@ class TimelineCursorLayer extends StatelessWidget {
     int startIndex,
     int endIndexExclusive,
     ({int startIndex, int endIndexExclusive}) window,
-  ) =>
-      endIndexExclusive > window.startIndex &&
-      startIndex < window.endIndexExclusive;
+  ) => frameRangesOverlap(
+    startIndex,
+    endIndexExclusive,
+    window.startIndex,
+    window.endIndexExclusive,
+  );
 
   /// The rows a band covers: the first covered row and the count through the
   /// last covered one — contiguous in display order by construction.

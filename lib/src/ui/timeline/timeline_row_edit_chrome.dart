@@ -13,6 +13,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_repeat.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../widgets/panel_flyout.dart';
 import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 import 'timeline_exposure_comma_drag_handle.dart';
@@ -223,8 +224,12 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       : Rect.fromLTWH(0, start, crossAxisExtent, extent);
 
   for (final block in gripBlocks) {
-    if (block.endIndexExclusive <= frameStartIndex ||
-        block.startIndex >= frameEndIndexExclusive) {
+    if (!frameRangesOverlap(
+      block.startIndex,
+      block.endIndexExclusive,
+      frameStartIndex,
+      frameEndIndexExclusive,
+    )) {
       continue;
     }
     final blockStartOffset = geometry.edgeAt(block.startIndex);
