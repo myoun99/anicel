@@ -227,7 +227,7 @@ void main() {
       await writePng('$root${sep}A3.png', seed: 0xFF333333);
       await writePng('$root${sep}B1.png', seed: 0xFF444444);
       await writePng('$root${sep}_BG.png', seed: 0xFF555555);
-      return s.importCutFolder(
+      return s.cutFolderDoor.importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         copyIntoProject: false,
       );
@@ -289,7 +289,7 @@ void main() {
       await writePng('$root${sep}_TS_a.png', seed: 0xFF222222);
       final movie = File([tempDir.path, root, '참고.mp4'].join(sep));
       await movie.writeAsBytes(const [0, 0, 0, 24]);
-      return s.importCutFolder(
+      return s.cutFolderDoor.importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         copyIntoProject: true,
       );
@@ -462,7 +462,7 @@ void main() {
       final sep = Platform.pathSeparator;
       await writePng('$root${sep}A1.png');
       await writePng('$root${sep}LO${sep}A1.png', seed: 0xFF0000FF);
-      await s.importCutFolder(
+      await s.cutFolderDoor.importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         config: const CutFolderParseConfig(includeProcessSubfolders: true),
         copyIntoProject: false,

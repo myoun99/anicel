@@ -5,14 +5,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../services/editing/default_cut_helpers.dart'
-    show defaultCutCanvasSize;
 import '../services/editing/default_layer_helpers.dart';
-import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
-import '../services/commands/import_media_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/persistence/media_blob_codec.dart';
 import '../services/persistence/media_staging_store.dart';
@@ -199,6 +195,7 @@ import 'session/session_roles.dart';
 import 'session/media_fingerprint_ledger.dart';
 import 'session/import_landing.dart';
 import 'session/project_import_doors.dart';
+import 'session/cut_folder_import_door.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -1588,30 +1585,6 @@ class EditorSessionManager extends ChangeNotifier
   bool projectHoldsMediaBytes(String poolPath) =>
       _mediaEntryNames.containsKey(poolPath) ||
       mediaStagingStore.find(poolPath) != null;
-
-  /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED COMES THROUGH HERE.**
-  ///
-  /// Carrying means the project holds the bytes from the moment the choice
-  /// is made — 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
-  /// 이었으면좋겠어서」 — and there are FOUR ways to make that choice: the
-  /// import window, a folder import, promoting a reference afterwards, and
-  /// recording a voice take. Each one used to be free to forget, and three
-  /// of them did.
-  ///
-  /// ⛔Called BEFORE the pool records the asset. A staged copy with no
-  /// asset is an orphan the sweep takes; an asset the pool holds whose
-  /// bytes were never staged is the old behaviour back, silently — and
-  /// silently is how it survived two rounds of this work.
-  /// 🚨★★★**AWAIT IT. A DROPPED FUTURE HERE IS THE OLD BUG, SILENTLY.**
-  ///
-  /// The compression moved into an isolate so a carried movie stops
-  /// freezing the app, and that turned this into a `Future`. Nothing in the
-  /// analyzer stops a caller from ignoring it — `stageCarriedBytes(paths);`
-  /// still compiles inside a `void` method — and a caller that does has put
-  /// the registration back in front of the bytes, which is exactly the
-  /// state the ⛔ above forbids. That is why the entrances are async now.
-  Future<void> stageCarriedBytes(Iterable<String> poolPaths) =>
-      mediaStagingStore.stageAll(poolPaths);
 
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
@@ -3723,150 +3696,15 @@ class EditorSessionManager extends ChangeNotifier
     fingerprints: mediaFingerprints,
   );
 
-  /// Imports a CUT FOLDER (the field's delivery structure) parsed by
-  /// [parseCutFolder]: one fully-formed cut — symbol layers with named
-  /// cels one comma each, `_BG`/`_BOOK` picture layers, archived-process
-  /// attach folders when opted in — plus reference registrations, in one
-  /// undo. Multi-cut folders (rule H) follow up with linked-cut creation
-  /// per extra number (the field 겸용컷; separate undo steps).
-  /// Returns the parse-and-plan warnings, or null when nothing imported.
-  Future<List<String>?> importCutFolder({
-    required String folderPath,
-    required bool copyIntoProject,
-    CutFolderParseConfig config = const CutFolderParseConfig(),
-    MediaFitMode fit = MediaFitMode.contain,
-  }) async {
-    final directory = Directory(folderPath);
-    if (!directory.existsSync()) {
-      return null;
-    }
-    final entries = <CutFolderEntry>[];
-    final prefixLength = directory.path.length + 1;
-    try {
-      await for (final entity in directory.list(recursive: true)) {
-        final relative = entity.path.length > prefixLength
-            ? entity.path.substring(prefixLength)
-            : entity.path;
-        entries.add(
-          CutFolderEntry(
-            relative.replaceAll('\\', '/'),
-            isDirectory: entity is Directory,
-          ),
-        );
-      }
-    } on FileSystemException {
-      return null; // Unreadable folder (permissions, vanished share).
-    }
-    final folderName = mediaAssetDefaultName(folderPath);
-    final parentName = directory.parent.path.isEmpty
-        ? null
-        : mediaAssetDefaultName(directory.parent.path);
-    final parsed = parseCutFolder(
-      folderName: folderName,
-      entries: entries,
-      config: config,
-      parentFolderName: parentName,
-    );
-
-    final canvasSize = activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
-    final mint = importLanding.idMint();
-    final plan = planCutFolderImport(
-      parsed: parsed,
-      resolveFile: (relativePath) => '$folderPath/$relativePath',
-      canvasSize: canvasSize,
-      fit: fit,
-      mint: mint,
-    );
-    if (plan.bakes.isEmpty && plan.assets.isEmpty) {
-      return plan.warnings;
-    }
-
-    // A cut folder's reference registrations follow the import's
-    // carry-or-reference choice like any other file. The planner cannot
-    // know it — it is given a folder, not a window — so the answer is
-    // stamped on the way out.
-    //
-    // 🚨 It used to be stamped as a COPY into `.assets/Media` and nothing
-    // else, which meant the pool entry itself said `carried: false`: the
-    // one thing the save reads. The first save after a folder import left
-    // every 参考 scan OUTSIDE the archive, and only a reopen put it right
-    // (the old `sourcePath` spelling of the same answer).
-    //
-    // 🪦This paragraph used to end「the kind still sets the ceiling above
-    // this, so a delivery's 참고영상 stays a reference either way」. That
-    // ceiling died 2026-08-14 — the kind only picks the import window's
-    // DEFAULT now, and a movie carries if the person says so.
-    final registeredAssets = [
-      for (final asset in plan.assets) asset.copyWith(carried: copyIntoProject),
-    ];
-    if (copyIntoProject) {
-      // ⛔Awaited BEFORE the command that registers them. The isolate that
-      // secures these bytes is the reason this is a `Future` at all, and
-      // letting the registration overtake it is the one thing carrying
-      // must not do.
-      await stageCarriedBytes([for (final asset in plan.assets) asset.path]);
-    }
-
-    historyManager.execute(
-      ImportMediaCommand(
-        repository: repository,
-        editingSession: editingSession,
-        trackId: selectedTrackId,
-        newCuts: [plan.cut],
-        assetAdditions: registeredAssets,
-        description: 'Import folder $folderName',
-      ),
-    );
-
-    final bakedCut = cutById(plan.cut.id);
-    if (bakedCut != null) {
-      // Each file bakes exactly once — decode, bake, dispose, so the
-      // peak stays ONE image no matter how large the folder (the
-      // measured folders run past 100 scanned cels).
-      for (final bake in plan.bakes) {
-        final List<DecodedImageFrame> frames;
-        try {
-          frames = await decodeImageFrames(
-            await MediaFileBytes(bake.sourceFile).read(),
-          );
-        } on Object {
-          continue; // Unreadable file — the cel stays empty.
-        }
-        if (frames.isEmpty) {
-          continue;
-        }
-        try {
-          final surface = await rasterizeImageToSurface(
-            image: frames.first.image,
-            canvas: bakedCut.canvasSize,
-            fit: bake.fit,
-          );
-          bakeCelSurface(
-            brushFrameStore,
-            brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-            surface,
-          );
-        } finally {
-          for (final frame in frames) {
-            frame.image.dispose();
-          }
-        }
-      }
-    }
-
-    // Rule H: the folder's extra cut numbers become 겸용컷 copies of the
-    // imported cut, sharing its cel banks.
-    for (final extraNumber in plan.extraCutNumbers) {
-      cutCommandCoordinator.createLinkedCut(
-        sourceCutId: plan.cut.id,
-        name: extraNumber,
-      );
-    }
-
-    refreshAfterCutCommand();
-    notifyListeners();
-    return plan.warnings;
-  }
+  late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(
+    project: this,
+    selection: this,
+    changes: this,
+    internals: this,
+    timeline: this,
+    landing: importLanding,
+    staging: mediaStagingStore,
+  );
 
   /// The bytes of every slot in [wave], read by OFFSET one at a time.
   ///
@@ -4338,7 +4176,7 @@ class EditorSessionManager extends ChangeNotifier
     mintFrameId: mintFrameId,
     mediaAssets: () => mediaAssets,
     rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
-    stageCarriedBytes: stageCarriedBytes,
+    stageCarriedBytes: mediaStagingStore.stageCarriedBytes,
     frameRangeSelection: () => frameRangeSelection,
     projectFilePath: () => _projectFilePath,
     notify: notifyListeners,
@@ -4707,7 +4545,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     if (carried) {
-      await stageCarriedBytes([for (final asset in added) asset.path]);
+      await mediaStagingStore.stageCarriedBytes([for (final asset in added) asset.path]);
     }
     cutCommandCoordinator.updateMediaAssets([
       ...pool,
@@ -4753,7 +4591,7 @@ class EditorSessionManager extends ChangeNotifier
   /// files). Waveforms re-extract from the new file.
   ///
   /// ⚠️Async because the re-stage below runs in an isolate — see
-  /// [stageCarriedBytes].
+  /// [MediaStagingStore.stageCarriedBytes].
   Future<void> relinkMediaAsset(String oldPath, String newPath) async {
     audioConformStore.invalidate(newPath);
     cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
@@ -4779,7 +4617,7 @@ class EditorSessionManager extends ChangeNotifier
     if (projectArchivedMediaPaths(
       repository.requireProject(),
     ).contains(newPath)) {
-      await stageCarriedBytes([newPath]);
+      await mediaStagingStore.stageCarriedBytes([newPath]);
     }
     refreshMediaExistence();
     notifyListeners();
@@ -4921,7 +4759,7 @@ class EditorSessionManager extends ChangeNotifier
   /// and that is a separate decision.
   ///
   /// ⚠️Async because securing the bytes runs in an isolate — see
-  /// [stageCarriedBytes]. The answer still means「something changed」, and
+  /// [MediaStagingStore.stageCarriedBytes]. The answer still means「something changed」, and
   /// it is still decided before any waiting happens.
   /// Whether this project HAS a file on disk and that file is gone.
   ///
@@ -4967,7 +4805,7 @@ class EditorSessionManager extends ChangeNotifier
     if (!promotes) {
       return false;
     }
-    await stageCarriedBytes([path]);
+    await mediaStagingStore.stageCarriedBytes([path]);
     cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         asset.path == path ? asset.copyWith(carried: true) : asset,

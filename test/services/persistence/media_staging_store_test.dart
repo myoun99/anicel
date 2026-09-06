@@ -341,7 +341,7 @@ void main() {
         sourceFile('c.wav'),
       ];
 
-      final staged = await store.stageAll(paths);
+      final staged = await store.stageCarriedBytes(paths);
 
       expect(staged, hasLength(3));
       expect(store.list(), hasLength(3));

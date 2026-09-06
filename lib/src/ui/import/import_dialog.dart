@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
+import '../../services/import/cut_folder_listing.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
@@ -295,37 +296,26 @@ class _ImportDialogState extends State<ImportDialog> {
         _status = 'That folder is gone.';
         return;
       }
-      final prefixLength = directory.path.length + 1;
-      final entries = <CutFolderEntry>[];
       try {
-        for (final entity in directory.listSync(recursive: true)) {
-          final relative = entity.path.length > prefixLength
-              ? entity.path.substring(prefixLength)
-              : entity.path;
-          entries.add(
-            CutFolderEntry(
-              relative.replaceAll('\\', '/'),
-              isDirectory: entity is Directory,
-            ),
-          );
-        }
+        // SYNCHRONOUS where the import door's walk is asynchronous: this
+        // preview re-reads on every knob change and has to have its
+        // answer inside the frame that turned the knob. The walk is each
+        // caller's; what a listed entity MEANS is shared.
+        _folderEntries = cutFolderEntriesFrom(
+          folder,
+          directory.listSync(recursive: true),
+        );
       } on FileSystemException catch (error) {
         _parsed = null;
         _folderEntries = null;
         _status = 'Could not read the folder: ${error.message}';
         return;
       }
-      _folderEntries = entries;
     }
-    final directory = Directory(folder);
-    final parentPath = directory.parent.path;
-    _parsed = parseCutFolder(
-      folderName: mediaAssetDefaultName(folder),
+    _parsed = parseCutFolderAt(
+      folder,
       entries: _folderEntries!,
       config: _parseConfig,
-      parentFolderName: parentPath.isEmpty
-          ? null
-          : mediaAssetDefaultName(parentPath),
     );
   }
 
@@ -468,7 +458,7 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   Future<void> _importCutFolder(String folder, _ImportTally tally) async {
-    final folderWarnings = await widget.session.importCutFolder(
+    final folderWarnings = await widget.session.cutFolderDoor.importCutFolder(
       folderPath: folder,
       config: _parseConfig,
       fit: _fit,

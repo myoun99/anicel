@@ -66,7 +66,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // a file secures its bytes in an isolate so a big movie stops freezing
   // the app; a `testWidgets` clock is fake, so awaiting a real isolate is a
   // hang and every voice-take and import widget test stopped at「did not
-  // complete」. The same work runs either way and `stageAll` stays async
+  // complete」. The same work runs either way and `stageCarriedBytes` stays async
   // either way, so the ORDER the entrances depend on is unchanged.
   //
   // ⚠️The isolate road therefore needs one test that turns this back OFF —

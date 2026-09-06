@@ -56,7 +56,7 @@ class MediaStagingStore {
   /// fit: these tests pump between the await and the assertion.
   ///
   /// ⛔**Inline is not a second implementation.** The same [_stageBytes]
-  /// runs either way, and [stageAll] stays `async` either way — so the
+  /// runs either way, and [stageCarriedBytes] stays `async` either way — so the
   /// ORDER a caller sees is identical, which is what the entrances'
   /// invariant actually rests on.
   ///
@@ -130,8 +130,30 @@ class MediaStagingStore {
   /// call sites async. The same shape the .tvpp import already uses:
   /// `Isolate.run` per unit, awaited, nothing registered early.
   Future<StagedMedia?> stage(String poolPath) async =>
-      (await stageAll([poolPath])).firstOrNull;
+      (await stageCarriedBytes([poolPath])).firstOrNull;
 
+  /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED COMES THROUGH HERE.**
+  ///
+  /// Carrying means the project holds the bytes from the moment the choice
+  /// is made — 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
+  /// 이었으면좋겠어서」 — and there are FOUR ways to make that choice: the
+  /// import window, a folder import, promoting a reference afterwards, and
+  /// recording a voice take. Each one used to be free to forget, and three
+  /// of them did.
+  ///
+  /// ⛔Called BEFORE the pool records the asset. A staged copy with no
+  /// asset is an orphan the sweep takes; an asset the pool holds whose
+  /// bytes were never staged is the old behaviour back, silently — and
+  /// silently is how it survived two rounds of this work.
+  /// 🚨★★★**AWAIT IT. A DROPPED FUTURE HERE IS THE OLD BUG, SILENTLY.**
+  ///
+  /// The compression moved into an isolate so a carried movie stops
+  /// freezing the app, and that turned this into a `Future`. Nothing in the
+  /// analyzer stops a caller from ignoring it — `stageCarriedBytes(paths);`
+  /// still compiles inside a `void` method — and a caller that does has put
+  /// the registration back in front of the bytes, which is exactly the
+  /// state the ⛔ above forbids. That is why the entrances are async now.
+  ///
   /// Every path in [poolPaths], in ONE isolate.
   ///
   /// ⚡One, not one each. A folder import can hand this hundreds of files,
@@ -142,7 +164,15 @@ class MediaStagingStore {
   /// Answers only what actually landed: a path that was already staged
   /// comes back as it sits, and one whose file is gone is absent rather
   /// than null-in-place, because no caller asks "which index failed".
-  Future<List<StagedMedia>> stageAll(Iterable<String> poolPaths) async {
+  ///
+  /// ⚠️The name is the law's ([[every_carry_stages_its_bytes_test]] scans
+  /// the source for it). It used to be `stageAll`, with the law's name on
+  /// a one-line forwarder in the session — so the file that decided an
+  /// asset carried and the file that held the bytes were two hops apart,
+  /// and the scan could only see the hop.
+  Future<List<StagedMedia>> stageCarriedBytes(
+    Iterable<String> poolPaths,
+  ) async {
     final todo = <String>[];
     final done = <StagedMedia>[];
     for (final path in poolPaths) {
@@ -326,7 +356,7 @@ class StagedMedia {
   Uint8List readStoredSync() => File(path).readAsBytesSync();
 }
 
-/// [MediaStagingStore.stageAll]'s work, as a top-level function so the
+/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so the
 /// isolate closure captures a list of strings and nothing else.
 ///
 /// ONE handle per file: `MediaFileBytes.readIntoSync` opens and closes per
