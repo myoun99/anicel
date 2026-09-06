@@ -9,14 +9,9 @@ import '../../models/brush_tip_mask.dart';
 import '../../services/brush_tip_defaults.dart';
 import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
+import 'picked_file.dart';
 
-/// A picked image file: display name plus raw bytes.
-typedef TipImagePick = ({String name, Uint8List bytes});
-
-/// Opens an image picker; `null` when the user cancels.
-typedef BrushTipImagePicker = Future<TipImagePick?> Function();
-
-Future<TipImagePick?> _openTipImageDialog() async {
+Future<PickedFile?> _openTipImageDialog() async {
   final file = await openFile(
     // 🚨Every file (유저 2026-08-29); a non-image is refused by the decode
     // below, which already reports failure.
@@ -37,14 +32,12 @@ Future<TipImagePick?> _openTipImageDialog() async {
 /// lets a tip that arrived with an import outlive the brush it came with —
 /// deleting a preset never deletes a tip.
 class BrushTipLibrary extends ChangeNotifier {
-  BrushTipLibrary({
-    BrushTipLibraryService? service,
-    BrushTipImagePicker? picker,
-  }) : _service = service ?? BrushTipLibraryService(),
-       _picker = picker ?? _openTipImageDialog;
+  BrushTipLibrary({BrushTipLibraryService? service, FilePicker? picker})
+    : _service = service ?? BrushTipLibraryService(),
+      _picker = picker ?? _openTipImageDialog;
 
   final BrushTipLibraryService _service;
-  final BrushTipImagePicker _picker;
+  final FilePicker _picker;
 
   List<BrushTipEntry> _tips = List.of(defaultBrushTipEntries);
   var _userSequence = 0;
@@ -157,21 +150,11 @@ class BrushTipLibrary extends ChangeNotifier {
   /// Picks an image and registers it as a tip, naming it after the file.
   /// Returns a user-facing message on failure, `null` on success, and
   /// `null` when the picker was simply cancelled.
-  Future<String?> importFromFile() async {
-    final TipImagePick? pick;
-    try {
-      pick = await _picker();
-    } on Object catch (error) {
-      return 'Could not open the file: $error';
-    }
-    if (pick == null || _disposed) {
-      return null;
-    }
-    final baseName = pick.name.contains('.')
-        ? pick.name.substring(0, pick.name.lastIndexOf('.'))
-        : pick.name;
-    return registerImageBytes(pick.bytes, name: baseName);
-  }
+  Future<String?> importFromFile() => importPickedFile(
+    pick: _picker,
+    disposed: () => _disposed,
+    import: (pick) => registerImageBytes(pick.bytes, name: pick.stem),
+  );
 
   void rename(String id, String name) {
     _tips = [

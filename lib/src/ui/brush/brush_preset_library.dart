@@ -17,13 +17,8 @@ import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
+import 'picked_file.dart';
 import '../text/app_strings.dart';
-
-/// A picked brush file: display name plus raw bytes.
-typedef BrushFilePick = ({String name, Uint8List bytes});
-
-/// Opens a brush file picker; `null` when the user cancels.
-typedef BrushFilePicker = Future<BrushFilePick?> Function();
 
 /// Production picker: the platform open-file dialog, showing EVERY file.
 ///
@@ -31,7 +26,7 @@ typedef BrushFilePicker = Future<BrushFilePick?> Function();
 /// 있게하고, 대응만 지원안되는 확장자면 그 때 해당 파일 지원안된다고 안내창
 /// 띄우게」. [BrushPresetLibrary.importFromFile] is the "그 때" — it already
 /// returns a user-facing message, so the refusal has somewhere to go.
-Future<BrushFilePick?> _openBrushFileDialog() async {
+Future<PickedFile?> _openBrushFileDialog() async {
   final file = await openFile(acceptedTypeGroups: const []);
   if (file == null) {
     return null;
@@ -82,14 +77,14 @@ BrushPreset? openingPresetFor({
 class BrushPresetLibrary extends ChangeNotifier {
   BrushPresetLibrary({
     BrushPresetFileService? fileService,
-    BrushFilePicker? filePicker,
+    FilePicker? filePicker,
     BrushTipLibrary? tipLibrary,
   }) : _fileService = fileService ?? BrushPresetFileService(),
        _filePicker = filePicker ?? _openBrushFileDialog,
        _tipLibrary = tipLibrary;
 
   final BrushPresetFileService _fileService;
-  final BrushFilePicker _filePicker;
+  final FilePicker _filePicker;
 
   /// Where the sampled tips live. Presets reference them by id on disk, so
   /// loading resolves through here — and any tip that arrives INSIDE a
@@ -281,21 +276,16 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   /// Runs the pick→decode→merge import flow. Returns the user-facing result
   /// message, or `null` when the picker was cancelled.
-  Future<String?> importFromFile() async {
-    final BrushFilePick? pick;
-    try {
-      pick = await _filePicker();
-    } on Object catch (error) {
-      return 'Could not open the file: $error';
-    }
-    if (pick == null || _disposed) {
-      return null;
-    }
+  Future<String?> importFromFile() => importPickedFile(
+    pick: _filePicker,
+    disposed: () => _disposed,
+    import: _importBrushFile,
+  );
 
+  /// The decode→merge half of [importFromFile], on a file already picked.
+  Future<String?> _importBrushFile(PickedFile pick) async {
     final lowerName = pick.name.toLowerCase();
-    final baseName = pick.name.contains('.')
-        ? pick.name.substring(0, pick.name.lastIndexOf('.'))
-        : pick.name;
+    final baseName = pick.stem;
     // 🚨The picker shows every file (유저 2026-08-29), so THIS is where a
     // wrong one is refused — by name, before any decoder sees the bytes.
     // ⛔It used to fall through to the ABR decoder, which failed with

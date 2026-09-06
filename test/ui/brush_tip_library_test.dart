@@ -248,4 +248,48 @@ void main() {
       expect(library.maskFor('tip-1'), isNotNull);
     });
   });
+
+  // The pick phase is the one the preset library runs too
+  // (brush_preset_library_test pins the same three answers): a throwing
+  // picker becomes a message, a cancel is nothing, and the file's STEM
+  // names what arrived.
+  group('BrushTipLibrary.importFromFile', () {
+    test('a picker that throws answers with the error, not a crash', () async {
+      final library = BrushTipLibrary(
+        service: service,
+        picker: () async => throw StateError('no dialog'),
+      );
+      addTearDown(library.dispose);
+
+      expect(
+        await library.importFromFile(),
+        'Could not open the file: Bad state: no dialog',
+      );
+    });
+
+    test('a cancelled pick is nothing, not an error', () async {
+      final library = BrushTipLibrary(
+        service: service,
+        picker: () async => null,
+      );
+      addTearDown(library.dispose);
+      final before = library.tips.length;
+
+      expect(await library.importFromFile(), isNull);
+      expect(library.tips.length, before);
+    });
+
+    test('a picked image registers under the file stem', () async {
+      final png = await encodeBrushTipImage(_mask('source'));
+      final library = BrushTipLibrary(
+        service: service,
+        picker: () async => (name: 'stem.name.png', bytes: png),
+      );
+      addTearDown(library.dispose);
+
+      expect(await library.importFromFile(), isNull);
+      expect(library.tips.last.name, 'stem.name');
+      expect(library.tips.last.builtIn, isFalse);
+    });
+  });
 }

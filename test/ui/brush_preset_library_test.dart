@@ -82,6 +82,49 @@ void main() {
     return library;
   }
 
+  // The pick phase is the one the tip library runs too
+  // (brush_tip_library_test pins the same answers).
+  group('importFromFile', () {
+    test('a picker that throws answers with the error, not a crash', () async {
+      final library = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async => throw StateError('no dialog'),
+      );
+      addTearDown(library.dispose);
+
+      expect(
+        await library.importFromFile(),
+        'Could not open the file: Bad state: no dialog',
+      );
+    });
+
+    test('a cancelled pick is nothing, not an error', () async {
+      final library = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async => null,
+      );
+      addTearDown(library.dispose);
+
+      expect(await library.importFromFile(), isNull);
+    });
+
+    test('a file outside the brush kinds is refused BY NAME, before any '
+        'decoder sees the bytes (유저 2026-08-29)', () async {
+      final library = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async =>
+            (name: 'photo.jpg', bytes: Uint8List.fromList([0xFF, 0xD8])),
+      );
+      addTearDown(library.dispose);
+
+      final message = await library.importFromFile();
+      expect(message, isNotNull);
+      expect(message, contains('.abr'));
+      expect(message, isNot(contains('{kinds}')));
+      expect(library.presets, isEmpty);
+    });
+  });
+
   group('groups', () {
     test('load reads groups and presets', () async {
       final library = await seeded();
