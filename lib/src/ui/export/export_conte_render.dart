@@ -23,8 +23,12 @@ Future<ui.Image> renderContePageImage({
   CanvasSize? outputSize,
 }) {
   final metrics = page.metrics;
-  final width = outputSize?.width ?? (metrics.pageWidth * scale).round();
-  final height = outputSize?.height ?? (metrics.pageHeight * scale).round();
+  final (:width, :height) = offscreenRasterSize(
+    naturalWidth: metrics.pageWidth,
+    naturalHeight: metrics.pageHeight,
+    scale: scale,
+    outputSize: outputSize,
+  );
   return rasterizeOffscreen(
     width: width,
     height: height,

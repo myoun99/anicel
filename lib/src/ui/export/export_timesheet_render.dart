@@ -48,8 +48,12 @@ Future<ui.Image> renderTimesheetPageImage({
   CanvasSize? outputSize,
 }) {
   final page = layout.pageRect(pageIndex);
-  final width = outputSize?.width ?? (page.width * scale).round();
-  final height = outputSize?.height ?? (page.height * scale).round();
+  final (:width, :height) = offscreenRasterSize(
+    naturalWidth: page.width,
+    naturalHeight: page.height,
+    scale: scale,
+    outputSize: outputSize,
+  );
   return rasterizeOffscreen(
     width: width,
     height: height,

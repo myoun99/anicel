@@ -1,5 +1,23 @@
 import 'dart:ui' as ui;
 
+import '../../models/canvas_size.dart';
+
+/// The pixel size one page rasters at: the caller's [outputSize] when it
+/// names one, otherwise the page's natural size at [scale].
+///
+/// An explicit size WINS over the scale — the preview asks for a thumbnail
+/// at a size it chose and must get exactly that, whatever run scale the
+/// export settings carry.
+({int width, int height}) offscreenRasterSize({
+  required double naturalWidth,
+  required double naturalHeight,
+  required double scale,
+  CanvasSize? outputSize,
+}) => (
+  width: outputSize?.width ?? (naturalWidth * scale).round(),
+  height: outputSize?.height ?? (naturalHeight * scale).round(),
+);
+
 /// One offscreen raster: a recorder, a canvas handed to [paint], the
 /// picture rasterised at [width] × [height] and disposed once the image
 /// is in hand. The recorder lifetime the export renderers share (the
