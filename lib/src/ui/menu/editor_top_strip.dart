@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Directory, File, FileSystemException;
+import 'dart:io' show File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
@@ -1588,47 +1588,38 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   String name,
   Future<void> Function(String stagingPath) stageArchive,
 ) async {
-  // Its own directory so the cleanup below cannot reach anything else.
-  final Directory stagingDirectory;
-  final File staged;
-  try {
-    stagingDirectory = Directory.systemTemp.createTempSync('anicel_save_');
-    staged = File('${stagingDirectory.path}/$name');
-    // WRITTEN, whole, from the live session — never copied from the file
-    // being left behind. It used to be a 22-byte empty-zip placeholder,
-    // on the theory that the save landing after the move would fill it;
-    // a provider that refuses in-place writes (실측 iPhone+Drive, 08-26)
-    // turned that theory into an unopenable husk sitting exactly where
-    // the user meant to put their work.
-    //
-    // 🚨And copying the LIVE ARCHIVE — the shape in between — was only
-    // ever correct because that same second write followed it: the
-    // archive on disk is the last SAVED state, so a Save As from a dirty
-    // session staged a file that was already out of date. The second
-    // write is gone now (the caller adopts what the picker placed), so
-    // what is placed has to be the current state, and only a fresh write
-    // is that.
-    await stageArchive(staged.path);
-  } on Object catch (error) {
-    // A staging failure used to return null silently — the Save As button
-    // read as dead, and on the exit path it silently cancelled the close.
-    if (context.mounted) {
-      showFileError(context, error);
-    }
-    return null;
-  }
-  if (!context.mounted) {
-    _discardStaging(stagingDirectory);
-    return null;
-  }
-  final grant = await exportFileForUser(
+  final grant = await placeStagedFileForUser(
     context,
-    sourcePath: staged.path,
     suggestedName: name,
+    write: (stagingPath) async {
+      try {
+        // WRITTEN, whole, from the live session — never copied from the
+        // file being left behind. It used to be a 22-byte empty-zip
+        // placeholder, on the theory that the save landing after the move
+        // would fill it; a provider that refuses in-place writes (실측
+        // iPhone+Drive, 08-26) turned that theory into an unopenable husk
+        // sitting exactly where the user meant to put their work.
+        //
+        // 🚨And copying the LIVE ARCHIVE — the shape in between — was only
+        // ever correct because that same second write followed it: the
+        // archive on disk is the last SAVED state, so a Save As from a
+        // dirty session staged a file that was already out of date. The
+        // second write is gone now (the caller adopts what the picker
+        // placed), so what is placed has to be the current state, and only
+        // a fresh write is that.
+        await stageArchive(stagingPath);
+        return true;
+      } on Object catch (error) {
+        // A staging failure used to return null silently — the Save As
+        // button read as dead, and on the exit path it silently cancelled
+        // the close.
+        if (context.mounted) {
+          showFileError(context, error);
+        }
+        return false;
+      }
+    },
   );
-  // On success the staged file was MOVED out and only the empty directory
-  // is left; on cancel it is still in it. Same cleanup.
-  _discardStaging(stagingDirectory);
   final placed = grant?.path;
   if (placed == null) {
     return null;
@@ -1643,16 +1634,6 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   // `placed: true` — the archive the picker MOVED is the one this session
   // just serialized, so the caller adopts it instead of writing it again.
   return (path: placed, folderBookmark: grant!.bookmark, placed: true);
-}
-
-/// Removes the staging directory. A leak here must never fail a save — or a
-/// cancel, which is the path that reaches it most often.
-void _discardStaging(Directory directory) {
-  try {
-    directory.deleteSync(recursive: true);
-  } on Object {
-    // Temp is the OS's to reclaim if this ever loses the race.
-  }
 }
 
 /// What a dirty session's user chose at the gate.

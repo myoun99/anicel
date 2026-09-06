@@ -5,7 +5,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart';
-import '../../services/persistence/app_support_path.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -404,7 +403,9 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
 ///
 /// ⛔The container copy is deleted on the desktop road and MOVED on the
 /// scoped one, so neither leaves a second copy behind (유저 08-27: 「사본
-/// 남으면 진짜 용서안할게」).
+/// 남으면 진짜 용서안할게」) — the scoped half IS
+/// [placeStagedFileForUser] now, shared with Save As, which is what the
+/// heading above always claimed and this used to re-implement by hand.
 ///
 /// ⚠️No bookmark comes back on purpose. A caller that wanted to write there
 /// again would be a caller that should have used Save As.
@@ -439,15 +440,49 @@ Future<String?> handWrittenFileToUser(
     _discardQuietly(File(picked));
     return null;
   }
-  final staging = Directory(appSupportFilePath('Export'))
-    ..createSync(recursive: true);
-  final staged = File('${staging.path.replaceAll(r'\', '/')}/$suggestedName');
+  return (await placeStagedFileForUser(
+    context,
+    suggestedName: suggestedName,
+    write: write,
+  ))?.path;
+}
+
+/// THE SCOPED ROAD: writes a file called [suggestedName] into a staging
+/// directory of its own via [write], hands it to the OS picker, and
+/// answers the grant for wherever it landed — or null when [write] failed,
+/// the window went away, or the user cancelled.
+///
+/// ⛔The staged copy is deleted on the desktop road and MOVED on this one,
+/// so neither leaves a second copy behind (유저 08-27: 「사본 남으면 진짜
+/// 용서안할게」).
+///
+/// 🚨**[write] takes a PATH, not bytes.** Some exports are hundreds of
+/// megabytes — an hour of dialogue is 691MB of PCM — and a signature that
+/// took a `Uint8List` would have re-created, in a brand new place, exactly
+/// the whole-file allocation the carry and staging rounds spent themselves
+/// removing. It answers false when it could not produce a real file, and
+/// then nothing is handed over.
+///
+/// ⚠️The DESKTOP halves are deliberately NOT here. Save As desktop answers
+/// with a path for the later atomic temp+rename save and asks the F-14
+/// replace question; an export desktop writes immediately. Two laws, and a
+/// flag choosing between them would be the invented kind.
+Future<FolderGrant?> placeStagedFileForUser(
+  BuildContext context, {
+  required String suggestedName,
+  required Future<bool> Function(String stagingPath) write,
+}) async {
+  // Its own directory so the cleanup below cannot reach anything else.
+  final stagingDirectory = Directory.systemTemp.createTempSync(
+    'anicel_stage_',
+  );
+  final staged = File('${stagingDirectory.path}/$suggestedName');
   if (!await write(staged.path)) {
-    _discardQuietly(staged);
+    _discardStaging(stagingDirectory);
     return null;
   }
   if (!context.mounted) {
-    _discardQuietly(staged);
+    _discardStaging(stagingDirectory);
     return null;
   }
   final grant = await exportFileForUser(
@@ -455,13 +490,16 @@ Future<String?> handWrittenFileToUser(
     sourcePath: staged.path,
     suggestedName: suggestedName,
   );
-  // On success the picker MOVED it; on cancel it is still here.
-  _discardQuietly(staged);
-  return grant?.path;
+  // On success the staged file was MOVED out and only the empty directory
+  // is left; on cancel it is still in it. Same cleanup.
+  _discardStaging(stagingDirectory);
+  return grant;
 }
 
-/// A leaked staging file must never fail an export — or a cancel, which is
-/// the path that reaches it most often.
+/// A leaked file must never fail an export — or a cancel, which is the path
+/// that reaches it most often. The DESKTOP road's cleanup: it writes
+/// straight to the destination, so what it sweeps is one file it created
+/// there, never a directory.
 void _discardQuietly(File file) {
   try {
     if (file.existsSync()) {
@@ -469,5 +507,15 @@ void _discardQuietly(File file) {
     }
   } on Object {
     // The container is the app's to sweep if this ever loses the race.
+  }
+}
+
+/// Removes the staging directory. A leak here must never fail a save — or a
+/// cancel, which is the path that reaches it most often.
+void _discardStaging(Directory directory) {
+  try {
+    directory.deleteSync(recursive: true);
+  } on Object {
+    // Temp is the OS's to reclaim if this ever loses the race.
   }
 }
