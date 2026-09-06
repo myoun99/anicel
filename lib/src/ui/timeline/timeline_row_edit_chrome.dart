@@ -810,24 +810,37 @@ class _TimelineRowEditChromeLayerState
 
   // ---- run [+] add ---------------------------------------------------
 
-  void _startAdd() {
+  /// Opens the add handshake for the [+] under the press: the pressed
+  /// target, the run-edit callbacks and the row's layer must all be there,
+  /// and the host must accept `onAddBegin`. Null when any of that refuses —
+  /// the tap and the drag both start here and part only afterwards.
+  ({TimelineRowRunAddTarget target, TimelineRunEditCallbacks callbacks})?
+  _beginAddAtPressed() {
     final target = _pressed;
     final callbacks = widget.runEdit;
     final layerId = widget.layerId;
     if (target is! TimelineRowRunAddTarget ||
         callbacks == null ||
         layerId == null) {
-      return;
+      return null;
     }
     if (!callbacks.onAddBegin(
       layerId,
       target.blockStartIndex,
       atEnd: target.atEnd,
     )) {
+      return null;
+    }
+    return (target: target, callbacks: callbacks);
+  }
+
+  void _startAdd() {
+    final begun = _beginAddAtPressed();
+    if (begun == null) {
       return;
     }
     setState(() {
-      _addTarget = target;
+      _addTarget = begun.target;
       _addDragging = true;
       _addAccumulated = 0;
     });
@@ -873,24 +886,15 @@ class _TimelineRowEditChromeLayerState
   /// A plain tap adds exactly ONE cel beside the run (UI-R17 #4) — the drag
   /// flow with a fixed count of 1, committed immediately.
   void _tapAdd() {
-    final target = _pressed;
-    final callbacks = widget.runEdit;
-    final layerId = widget.layerId;
-    if (_addDragging ||
-        target is! TimelineRowRunAddTarget ||
-        callbacks == null ||
-        layerId == null) {
+    if (_addDragging) {
       return;
     }
-    if (!callbacks.onAddBegin(
-      layerId,
-      target.blockStartIndex,
-      atEnd: target.atEnd,
-    )) {
+    final begun = _beginAddAtPressed();
+    if (begun == null) {
       return;
     }
-    callbacks.onAddUpdate(1);
-    callbacks.onAddEnd();
+    begun.callbacks.onAddUpdate(1);
+    begun.callbacks.onAddEnd();
   }
 
   // ---- run property tag ----------------------------------------------

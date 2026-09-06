@@ -514,6 +514,42 @@ void main() {
     expect(addCounts.last, 1, reason: 'a tap adds exactly one cel');
   });
 
+  testWidgets('a REFUSED onAddBegin ends both flows before any count: '
+      'neither a tap nor a drag on [+] reports an add', (tester) async {
+    final addCounts = <int>[];
+    var begins = 0;
+    await tester.pumpWidget(
+      harness(
+        layers: [plainLayer()],
+        runEdit: TimelineRunEditCallbacks(
+          onAddBegin: (_, _, {required atEnd}) {
+            begins += 1;
+            return false;
+          },
+          onAddUpdate: addCounts.add,
+          onAddEnd: () => fail('a refused add must not end'),
+          onAddCancel: () {},
+          onEdgeModeSelected: (_, _, _, _, {scopeToSelection = false}) {},
+        ),
+      ),
+    );
+    final center = timelineRowChromeCenter(
+      tester,
+      'layer-a',
+      'run-add-end-layer-a-f1',
+    );
+    await tester.tapAt(center);
+    await tester.pumpAndSettle();
+    await tester.dragFrom(
+      center,
+      const Offset(96, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(begins, 2, reason: 'each flow asked once');
+    expect(addCounts, isEmpty);
+  });
+
   testWidgets('PEN-12 #3: a drag STARTING on the run property tag never '
       'scrolls the timeline', (tester) async {
     AppInput.settings.value = const AppInputSettings();
