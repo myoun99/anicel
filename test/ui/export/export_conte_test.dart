@@ -348,6 +348,67 @@ void main() {
     expect(files, contains('conte.png'));
   });
 
+  testWidgets('the page-image scale rasters the page at that multiple — '
+      'the run passes its scale, the preview its fitted size', (
+    tester,
+  ) async {
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-browse-button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    /// A PNG's width from its IHDR — the first chunk, big-endian at 16.
+    int pngWidth(String name) {
+      final bytes = File('${temp.path}${Platform.pathSeparator}$name')
+          .readAsBytesSync();
+      return ByteData.sublistView(bytes).getUint32(16);
+    }
+
+    // The spec's default is 2×, so the baseline is picked, not assumed.
+    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
+    await tester.pump();
+    expect(state.debugSpecs.conte.sheetScale, 1);
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final atOne = pngWidth('conte.png');
+
+    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-3')));
+    await tester.pump();
+    expect(state.debugSpecs.conte.sheetScale, 3);
+    await tester.runAsync(state.export);
+    await tester.pump();
+    expect(
+      pngWidth('conte.png'),
+      inInclusiveRange(atOne * 3 - 1, atOne * 3 + 1),
+      reason: 'the run rasters at sheetScale × the page\'s point size',
+    );
+  });
+
   test('the conte spec round-trips through the persisted tab specs', () {
     const specs = ExportTabSpecs(
       conte: ConteExportSpec(

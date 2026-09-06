@@ -7,6 +7,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -451,6 +452,23 @@ void main() {
 
       expect(filesIn(temp), ['Project.png']);
       expect(statusText(tester), 'Exported Project.png.');
+    });
+
+    testWidgets('the size accordion offers the cut\'s canvas (one cut, no '
+        'project scope) and the pick writes the spec', (tester) async {
+      final state = await pumpDialog(tester, exportSession());
+      await switchTab(tester, 'image');
+      final canvasChip = find.byKey(
+        const ValueKey<String>('export-size-canvas'),
+      );
+      await tester.ensureVisible(canvasChip);
+      expect(canvasChip, findsOneWidget);
+      // The one canvas size on the table is the active cut's own.
+      expect(find.textContaining('Canvas 8×8'), findsOneWidget);
+      expect(state.debugSpecs.image.sizeMode, ExportSizeMode.camera);
+      await tester.tap(canvasChip);
+      await tester.pump();
+      expect(state.debugSpecs.image.sizeMode, ExportSizeMode.canvas);
     });
   });
 
