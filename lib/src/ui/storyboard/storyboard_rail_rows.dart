@@ -239,7 +239,7 @@ class _StoryboardRailRows {
           layer,
           standing: _state.widget.selectedRow == LayerRowAddress(layer.id),
           fxEnabled:
-              _state.widget.layerFxStateOf?.call(layer.id) != LayerFxState.off,
+              fxEnabledFromState(_state.widget.layerFxStateOf?.call(layer.id)),
         );
   }
 
@@ -256,7 +256,7 @@ class _StoryboardRailRows {
       _state.widget.rowFilter.allowsRow(
         standing: _state.widget.selectedRow == TrackRowAddress(track.id),
         fxEnabled:
-            _state.widget.trackFxStateOf?.call(track) != LayerFxState.off,
+            fxEnabledFromState(_state.widget.trackFxStateOf?.call(track)),
       );
 
   /// C5 (2026-08-17): whether the [slot]th S row's twirl-down shows the
