@@ -111,6 +111,52 @@ void main() {
     });
   });
 
+  group('headerModelAt — the model the ruler and the rail both read', () {
+    test('the label follows the cadence, and the seconds line the second '
+        'boundaries', () {
+      // 8px cells put the ladder on its 6f rung (3 × 8 < 40 ≤ 6 × 8).
+      final wide = scale(
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 8),
+      );
+      expect(wide.metrics.frameLabelEveryFrames, 6, reason: 'fixture premise');
+      expect(wide.headerModelAt(0).label, '1');
+      expect(wide.headerModelAt(6).label, '7');
+      expect(wide.headerModelAt(7).label, '');
+      expect(wide.headerModelAt(24).secondsLabel, '1');
+      expect(wide.headerModelAt(25).secondsLabel, '');
+    });
+
+    test('the current frame is selected and takes the tint, wash or no '
+        'wash', () {
+      final ruler = scale(currentFrameIndex: 6);
+      expect(ruler.headerModelAt(6).selected, isTrue);
+      expect(ruler.headerModelAt(5).selected, isFalse);
+      expect(ruler.headerModelAt(6).background, isNot(light.surface));
+      // Selection outranks the wash: a selected frame past the playback
+      // range still reads as the one you are standing on.
+      expect(
+        scale(
+          currentFrameIndex: 40,
+          playbackFrameCount: 30,
+        ).headerModelAt(40, outsideWash: const Color(0xFF00FF00)).background,
+        isNot(const Color(0xFF00FF00)),
+      );
+    });
+
+    test('⛔the RULER takes no past-playback wash (UI-R18 #9) while the '
+        'RAIL does — that is the whole difference between them', () {
+      final past = scale(playbackFrameCount: 30);
+      expect(past.headerModelAt(31).outsidePlaybackRange, isTrue);
+      // No wash handed in: the strip stays plain, which is the ruler.
+      expect(past.headerModelAt(31).background, light.surface);
+      // A wash handed in: the row grays, which is the rail.
+      const wash = Color(0xFF00FF00);
+      expect(past.headerModelAt(31, outsideWash: wash).background, wash);
+      // And the wash reaches ONLY the frames past the range.
+      expect(past.headerModelAt(29, outsideWash: wash).background, light.surface);
+    });
+  });
+
   group('frameNumberLabel', () {
     test('counts absolute 1-based frames', () {
       expect(scale().frameNumberLabel(0), '1');
