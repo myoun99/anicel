@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/comparing_by_keys.dart';
 import 'frame_composite_cache_key.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
@@ -134,16 +135,38 @@ class CacheInvalidationPlan {
     );
   }
 
+  // The sort exists only so that toJson is deterministic — the plan's own
+  // equality is set equality, order-free. Each key order below is the one
+  // fact per type; the comparison itself is `comparingByKeys`.
   List<LayerTileCacheKey> get _sortedLayerTiles {
-    return _layerTiles.toList()..sort(_compareLayerTileKeys);
+    return _layerTiles.toList()..sort(
+      comparingByKeys(
+        (key) => [
+          key.layerId.value,
+          key.frameId.value,
+          key.tileCoord.y,
+          key.tileCoord.x,
+        ],
+      ),
+    );
   }
 
   List<FrameCompositeCacheKey> get _sortedFrameComposites {
-    return _frameComposites.toList()..sort(_compareFrameCompositeKeys);
+    return _frameComposites.toList()
+      ..sort(comparingByKeys((key) => [key.cutId.value, key.frameIndex]));
   }
 
   List<PlaybackPreviewCacheKey> get _sortedPlaybackPreviews {
-    return _playbackPreviews.toList()..sort(_comparePlaybackPreviewKeys);
+    return _playbackPreviews.toList()..sort(
+      comparingByKeys(
+        (key) => [
+          key.cutId.value,
+          key.frameIndex,
+          key.previewSize.width,
+          key.previewSize.height,
+        ],
+      ),
+    );
   }
 
   @override
@@ -166,36 +189,4 @@ class CacheInvalidationPlan {
       'CacheInvalidationPlan(layerTiles: $_layerTiles, '
       'frameComposites: $_frameComposites, '
       'playbackPreviews: $_playbackPreviews)';
-}
-
-int _compareLayerTileKeys(LayerTileCacheKey a, LayerTileCacheKey b) {
-  final layerComparison = a.layerId.value.compareTo(b.layerId.value);
-  if (layerComparison != 0) return layerComparison;
-  final frameComparison = a.frameId.value.compareTo(b.frameId.value);
-  if (frameComparison != 0) return frameComparison;
-  final yComparison = a.tileCoord.y.compareTo(b.tileCoord.y);
-  if (yComparison != 0) return yComparison;
-  return a.tileCoord.x.compareTo(b.tileCoord.x);
-}
-
-int _compareFrameCompositeKeys(
-  FrameCompositeCacheKey a,
-  FrameCompositeCacheKey b,
-) {
-  final cutComparison = a.cutId.value.compareTo(b.cutId.value);
-  if (cutComparison != 0) return cutComparison;
-  return a.frameIndex.compareTo(b.frameIndex);
-}
-
-int _comparePlaybackPreviewKeys(
-  PlaybackPreviewCacheKey a,
-  PlaybackPreviewCacheKey b,
-) {
-  final cutComparison = a.cutId.value.compareTo(b.cutId.value);
-  if (cutComparison != 0) return cutComparison;
-  final frameComparison = a.frameIndex.compareTo(b.frameIndex);
-  if (frameComparison != 0) return frameComparison;
-  final widthComparison = a.previewSize.width.compareTo(b.previewSize.width);
-  if (widthComparison != 0) return widthComparison;
-  return a.previewSize.height.compareTo(b.previewSize.height);
 }
