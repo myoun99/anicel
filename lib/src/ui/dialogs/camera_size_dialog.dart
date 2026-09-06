@@ -54,19 +54,9 @@ class _CameraSizeDialogState extends State<_CameraSizeDialog> {
     super.dispose();
   }
 
-  int? _parseDimension(TextEditingController controller) {
-    final value = int.tryParse(controller.text.trim());
-    if (value == null ||
-        value < CanvasSizeDialog.minDimension ||
-        value > CanvasSizeDialog.maxDimension) {
-      return null;
-    }
-    return value;
-  }
-
   CanvasSize? get _enteredSize {
-    final width = _parseDimension(_widthController);
-    final height = _parseDimension(_heightController);
+    final width = CanvasSizeDialog.parseDimension(_widthController.text);
+    final height = CanvasSizeDialog.parseDimension(_heightController.text);
     if (width == null || height == null) {
       return null;
     }

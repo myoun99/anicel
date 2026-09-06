@@ -51,6 +51,20 @@ class CanvasSizeDialog extends StatefulWidget {
   /// Do not "unify" the two constants: they answer different questions.
   static const int maxDimension = 16384;
 
+  /// The typed dimension in [text], or null when it is not a whole number
+  /// inside [minDimension]..[maxDimension].
+  ///
+  /// Lives here because the bounds do: the camera-size dialog reads the
+  /// same two constants, so one parser is the only way the two can answer
+  /// "how big may a document dimension be typed" with one voice.
+  static int? parseDimension(String text) {
+    final value = int.tryParse(text.trim());
+    if (value == null || value < minDimension || value > maxDimension) {
+      return null;
+    }
+    return value;
+  }
+
   final CanvasSize initialSize;
 
   @override
@@ -80,19 +94,9 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
     super.dispose();
   }
 
-  int? _parseDimension(TextEditingController controller) {
-    final value = int.tryParse(controller.text.trim());
-    if (value == null ||
-        value < CanvasSizeDialog.minDimension ||
-        value > CanvasSizeDialog.maxDimension) {
-      return null;
-    }
-    return value;
-  }
-
   CanvasResizeRequest? get _enteredRequest {
-    final width = _parseDimension(_widthController);
-    final height = _parseDimension(_heightController);
+    final width = CanvasSizeDialog.parseDimension(_widthController.text);
+    final height = CanvasSizeDialog.parseDimension(_heightController.text);
     if (width == null || height == null) {
       return null;
     }
