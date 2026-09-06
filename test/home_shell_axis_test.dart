@@ -88,7 +88,7 @@ void main() {
     // Painterized ruler (UI-R13 #1): headers past the base exist exactly
     // when the painter's window reaches past 48.
     bool beyondBaseHeaders() =>
-        timelineRulerPainter(tester).frameEndIndexExclusive > 48;
+        timelineRulerPainter(tester).scale.frameEndIndexExclusive > 48;
 
     // Scroll gestures wall at the built extent (base 48 cells): however
     // far the viewport is flung, nothing past the base materializes and
@@ -237,7 +237,7 @@ void main() {
     // Painterized rail (UI-R14 #1): rows past the base exist exactly
     // when the rail painter's window reaches past 48.
     bool beyondBaseRows() =>
-        xsheetRailPainter(tester).frameEndIndexExclusive > 48;
+        xsheetRailPainter(tester).scale.frameEndIndexExclusive > 48;
 
     // Scroll gestures wall at the built extent (base 48 rows).
     for (var i = 0; i < 3; i += 1) {

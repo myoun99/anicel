@@ -67,77 +67,34 @@ class TimelineRulerHeaderModel {
 /// already share [TimelineFrameHeaderRow]); scrubbing stays on the
 /// viewport-level listeners (G8) — the strip itself is passive.
 class TimelineFrameRulerPainter extends CustomPainter {
-  TimelineFrameRulerPainter({
-    required this.frameStartIndex,
-    required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
-    required this.playbackFrameCount,
-    required this.leadingFrameSpacerWidth,
-    required this.metrics,
-    required this.colorScheme,
-    this.framesPerSecond = 24,
-    this.showSeconds = false,
-    this.windowBucket,
-    this.viewportMainExtent = 0,
-  }) : super(repaint: windowBucket);
+  TimelineFrameRulerPainter({required this.scale})
+    : super(repaint: scale.windowBucket);
 
-  final int frameStartIndex;
-  final int frameEndIndexExclusive;
-  final int currentFrameIndex;
-  final int playbackFrameCount;
-  final double leadingFrameSpacerWidth;
-  final TimelineGridMetrics metrics;
-  final ColorScheme colorScheme;
-  final int framesPerSecond;
-  final bool showSeconds;
-
-  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
-  /// windows ITSELF off the quantized bucket (repaint once per span
-  /// crossing, pure translation between) — the header row builds once
-  /// for the full bounds. Null keeps the classic pre-windowed contract.
-  final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
-
-  /// The header window paint() actually draws (probe surface).
-  ({int startIndex, int endIndexExclusive}) visibleHeaderWindow() =>
-      visibleFrameWindowFor(
-        bucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: metrics.frameCellWidth,
-        frameStartIndex: frameStartIndex,
-        frameEndIndexExclusive: frameEndIndexExclusive,
-      );
+  /// The frame scale this strip draws — shared, field for field, with the
+  /// X-sheet's rail painter.
+  final TimelineRulerScale scale;
 
   /// The header cell's rect in the strip's local coordinates (the probe
   /// geometry tests and taps share).
   Rect headerRectFor(int frameIndex) => Rect.fromLTWH(
-    leadingFrameSpacerWidth +
-        (frameIndex - frameStartIndex) * metrics.frameCellWidth,
+    scale.leadingFrameSpacer +
+        (frameIndex - scale.frameStartIndex) * scale.metrics.frameCellWidth,
     0,
-    metrics.frameCellWidth,
-    metrics.layerRowHeight,
+    scale.metrics.frameCellWidth,
+    scale.metrics.layerRowHeight,
   );
-
-  String _frameNumberLabel(int frameIndex) {
-    if (!showSeconds) {
-      return '${frameIndex + 1}';
-    }
-    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
-    return '${frameIndex % safeFps + 1}';
-  }
 
   /// The resolved per-header model — the probe surface.
   TimelineRulerHeaderModel headerModelAt(int frameIndex) {
-    final selected = frameIndex == currentFrameIndex;
-    final outside = frameIndex >= playbackFrameCount;
-    final labeled = frameIndex % metrics.frameLabelEveryFrames == 0;
-    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    final selected = frameIndex == scale.currentFrameIndex;
+    final outside = frameIndex >= scale.playbackFrameCount;
+    final labeled = frameIndex % scale.metrics.frameLabelEveryFrames == 0;
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
-      label: labeled ? _frameNumberLabel(frameIndex) : '',
+      label: labeled ? scale.frameNumberLabel(frameIndex) : '',
       secondsLabel: timelineRulerSecondsLabel(
         frameIndex: frameIndex,
-        framesPerSecond: safeFps,
+        framesPerSecond: scale.framesPerSecond,
       ),
       selected: selected,
       outsidePlaybackRange: outside,
@@ -147,21 +104,23 @@ class TimelineFrameRulerPainter extends CustomPainter {
       background: selected
           ? Color.alphaBlend(
               timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-              colorScheme.surface,
+              scale.colorScheme.surface,
             )
-          : colorScheme.surface,
+          : scale.colorScheme.surface,
     );
   }
 
   @override
   void paint(Canvas canvas, Size size) {
+    final metrics = scale.metrics;
+    final colorScheme = scale.colorScheme;
     final labelEveryFrames = metrics.frameLabelEveryFrames;
     final fillPaint = Paint();
     final linePaint = Paint()..strokeWidth = 1;
 
     // Self-windowing (UI-R15): only the headers under the live viewport
     // record — a scroll is a repaint of this thin pass, never a rebuild.
-    final window = visibleHeaderWindow();
+    final window = scale.visibleWindow();
 
     // PASS 1 — paper. Painting every background BEFORE any label is what
     // keeps a narrow cell's label alive: the old single pass let the next
@@ -191,7 +150,7 @@ class TimelineFrameRulerPainter extends CustomPainter {
       final ink = timelineFrameBoundaryLineInk(
         frameIndex: frameIndex,
         frameCellExtent: metrics.frameCellWidth,
-        framesPerSecond: framesPerSecond,
+        framesPerSecond: scale.framesPerSecond,
         colorScheme: colorScheme,
       );
       if (ink == null) {
@@ -295,30 +254,124 @@ class TimelineFrameRulerPainter extends CustomPainter {
   // scroll-time repaint in debug.
   @override
   bool shouldRepaint(covariant TimelineFrameRulerPainter oldDelegate) =>
-      oldDelegate.frameStartIndex != frameStartIndex ||
-      oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
-      oldDelegate.currentFrameIndex != currentFrameIndex ||
-      oldDelegate.playbackFrameCount != playbackFrameCount ||
-      oldDelegate.leadingFrameSpacerWidth != leadingFrameSpacerWidth ||
-      oldDelegate.metrics != metrics ||
-      oldDelegate.framesPerSecond != framesPerSecond ||
-      oldDelegate.showSeconds != showSeconds ||
-      !identical(oldDelegate.windowBucket, windowBucket) ||
-      oldDelegate.viewportMainExtent != viewportMainExtent ||
-      // Value-compared, never `identical`: Theme.of(context).colorScheme
-      // hands back a fresh instance every build (AnimatedTheme), so an
-      // identity check re-recorded this whole strip on every rebuild.
-      oldDelegate.colorScheme != colorScheme;
+      oldDelegate.scale != scale;
 
   // One node per labeled header (the old per-cell widgets' surface),
   // windowed with the paint pass.
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) =>
       frameWindowSemantics(
-        window: visibleHeaderWindow(),
+        window: scale.visibleWindow(),
         rectFor: headerRectFor,
         labelFor: (frameIndex) => headerModelAt(frameIndex).label.isEmpty
             ? null
             : 'frame ${frameIndex + 1}',
       );
+}
+
+/// The frame SCALE a frame-axis strip draws: the bounds, the playhead and
+/// playback range, the leading spacer along the main axis, the metrics and
+/// colours, the fps and label mode, and the self-windowing inputs.
+///
+/// ONE value object for the ruler and the X-sheet's rail: the two painters
+/// each carried these eleven fields and each spelled the same eleven-term
+/// `shouldRepaint`, the same visible-window call and the same frame-number
+/// label (the audit's clone scan, 2026-09-06). The field list exists once,
+/// where the fields live, so a field cannot be compared on one strip and
+/// forgotten on the other. What stays on the painters is what genuinely
+/// differs — the rect (the transposed part), the per-frame model and the
+/// paint.
+final class TimelineRulerScale {
+  const TimelineRulerScale({
+    required this.frameStartIndex,
+    required this.frameEndIndexExclusive,
+    required this.currentFrameIndex,
+    required this.playbackFrameCount,
+    required this.leadingFrameSpacer,
+    required this.metrics,
+    required this.colorScheme,
+    this.framesPerSecond = 24,
+    this.showSeconds = false,
+    this.windowBucket,
+    this.viewportMainExtent = 0,
+  });
+
+  final int frameStartIndex;
+  final int frameEndIndexExclusive;
+  final int currentFrameIndex;
+  final int playbackFrameCount;
+
+  /// The spacer before frame [frameStartIndex] along the strip's MAIN axis
+  /// — a width on the ruler, a height on the rail.
+  final double leadingFrameSpacer;
+  final TimelineGridMetrics metrics;
+  final ColorScheme colorScheme;
+  final int framesPerSecond;
+
+  /// Seconds display mode: the bottom line repeats 1..fps per second
+  /// instead of counting absolute frames.
+  final bool showSeconds;
+
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
+  /// windows ITSELF off the quantized bucket (repaint once per span
+  /// crossing, pure translation between) — the header row builds once
+  /// for the full bounds. Null keeps the classic pre-windowed contract.
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
+
+  /// The frame window paint() actually draws (probe surface).
+  ({int startIndex, int endIndexExclusive}) visibleWindow() =>
+      visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: metrics.frameCellWidth,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive: frameEndIndexExclusive,
+      );
+
+  /// The bottom-line number at [frameIndex]: absolute and 1-based, or
+  /// 1..fps repeating per second in [showSeconds] mode.
+  String frameNumberLabel(int frameIndex) {
+    if (!showSeconds) {
+      return '${frameIndex + 1}';
+    }
+    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    return '${frameIndex % safeFps + 1}';
+  }
+
+  // Value-compared, never `identical`: Theme.of(context).colorScheme
+  // hands back a fresh instance every build (AnimatedTheme), so an
+  // identity check re-recorded this whole strip on every rebuild. The
+  // window bucket is the one field compared by identity — the painter is
+  // subscribed to that notifier, so a different instance IS a change.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TimelineRulerScale &&
+          other.frameStartIndex == frameStartIndex &&
+          other.frameEndIndexExclusive == frameEndIndexExclusive &&
+          other.currentFrameIndex == currentFrameIndex &&
+          other.playbackFrameCount == playbackFrameCount &&
+          other.leadingFrameSpacer == leadingFrameSpacer &&
+          other.metrics == metrics &&
+          other.framesPerSecond == framesPerSecond &&
+          other.showSeconds == showSeconds &&
+          identical(other.windowBucket, windowBucket) &&
+          other.viewportMainExtent == viewportMainExtent &&
+          other.colorScheme == colorScheme;
+
+  @override
+  int get hashCode => Object.hash(
+    frameStartIndex,
+    frameEndIndexExclusive,
+    currentFrameIndex,
+    playbackFrameCount,
+    leadingFrameSpacer,
+    metrics,
+    framesPerSecond,
+    showSeconds,
+    identityHashCode(windowBucket),
+    viewportMainExtent,
+    colorScheme,
+  );
 }

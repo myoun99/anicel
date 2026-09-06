@@ -35,7 +35,7 @@ bool timelineHeaderInWindow(
   final window = timelineRulerPainter(
     tester,
     index: index,
-  ).visibleHeaderWindow();
+  ).scale.visibleWindow();
   return frameIndex >= window.startIndex &&
       frameIndex < window.endIndexExclusive;
 }
@@ -75,7 +75,7 @@ XSheetFrameRailPainter xsheetRailPainter(WidgetTester tester) =>
 /// Whether the rail's PAINT window contains [frameIndex] (the
 /// offset-derived slice under UI-R15).
 bool xsheetFrameRowInWindow(WidgetTester tester, int frameIndex) {
-  final window = xsheetRailPainter(tester).visibleRowWindow();
+  final window = xsheetRailPainter(tester).scale.visibleWindow();
   return frameIndex >= window.startIndex &&
       frameIndex < window.endIndexExclusive;
 }

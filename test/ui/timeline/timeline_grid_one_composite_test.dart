@@ -159,13 +159,15 @@ void main() {
     _LineSpy paintRuler({int currentFrameIndex = -1}) {
       final spy = _LineSpy();
       TimelineFrameRulerPainter(
-        frameStartIndex: 0,
-        frameEndIndexExclusive: 30,
-        currentFrameIndex: currentFrameIndex,
-        playbackFrameCount: 30,
-        leadingFrameSpacerWidth: 0,
-        metrics: TimelineGridMetrics.defaults,
-        colorScheme: scheme,
+        scale: TimelineRulerScale(
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 30,
+          currentFrameIndex: currentFrameIndex,
+          playbackFrameCount: 30,
+          leadingFrameSpacer: 0,
+          metrics: TimelineGridMetrics.defaults,
+          colorScheme: scheme,
+        ),
       ).paint(spy, const Size(24 * 30, 28));
       return spy;
     }
@@ -186,13 +188,15 @@ void main() {
         'plain surface beside it', () {
       final spy = paintRuler(currentFrameIndex: 6);
       final selectedGround = TimelineFrameRulerPainter(
-        frameStartIndex: 0,
-        frameEndIndexExclusive: 30,
-        currentFrameIndex: 6,
-        playbackFrameCount: 30,
-        leadingFrameSpacerWidth: 0,
-        metrics: TimelineGridMetrics.defaults,
-        colorScheme: scheme,
+        scale: TimelineRulerScale(
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 30,
+          currentFrameIndex: 6,
+          playbackFrameCount: 30,
+          leadingFrameSpacer: 0,
+          metrics: TimelineGridMetrics.defaults,
+          colorScheme: scheme,
+        ),
       ).headerModelAt(6).background;
       expect(
         selectedGround,
@@ -225,13 +229,15 @@ void main() {
 
     final ruler = _LineSpy();
     TimelineFrameRulerPainter(
-      frameStartIndex: 0,
-      frameEndIndexExclusive: 30,
-      currentFrameIndex: -1,
-      playbackFrameCount: 30,
-      leadingFrameSpacerWidth: 0,
-      metrics: TimelineGridMetrics.defaults,
-      colorScheme: scheme,
+      scale: TimelineRulerScale(
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 30,
+        currentFrameIndex: -1,
+        playbackFrameCount: 30,
+        leadingFrameSpacer: 0,
+        metrics: TimelineGridMetrics.defaults,
+        colorScheme: scheme,
+      ),
     ).paint(ruler, const Size(24 * 30, 28));
 
     for (final frame in [5, 6, 24]) {

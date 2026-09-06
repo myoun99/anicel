@@ -969,7 +969,7 @@ void main() {
 
     // UI-R15: the PAINT windows (offset-derived) stay tiny however large
     // the document — the widget bounds are the full extent by design.
-    final headerWindow = timelineRulerPainter(tester).visibleHeaderWindow();
+    final headerWindow = timelineRulerPainter(tester).scale.visibleWindow();
     final cellWindow = timelineRowCellsPainterFor(
       tester,
       'layer-1',
