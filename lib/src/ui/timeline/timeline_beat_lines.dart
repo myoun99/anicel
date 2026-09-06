@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
+import '../repaint_props.dart';
 
 /// The frame grid's LINE system, one overlay per grid (UI-R10 #26 →
 /// UI-R13 #7 → UI-R18 #2/#8/#10/#12 — the storyboard recipe unified):
@@ -282,7 +283,7 @@ class TimelineGridLaw extends InheritedWidget {
 /// BORDERS differ slightly: they had their own dim ink, and one rect cannot
 /// tell a border from its cell — accepted by the user, and the wash reads
 /// as one region rather than as a run of separately shaded cells.
-class TimelineOutsideCutWashPainter extends CustomPainter {
+class TimelineOutsideCutWashPainter extends CustomPainter with RepaintOnProps {
   const TimelineOutsideCutWashPainter({
     required this.outsideStart,
     required this.colorScheme,
@@ -311,13 +312,10 @@ class TimelineOutsideCutWashPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimelineOutsideCutWashPainter oldDelegate) =>
-      oldDelegate.outsideStart != outsideStart ||
-      oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.axis != axis;
+  Object get props => (outsideStart, colorScheme, axis);
 }
 
-class TimelineBeatLinesPainter extends CustomPainter {
+class TimelineBeatLinesPainter extends CustomPainter with RepaintOnProps {
   TimelineBeatLinesPainter({
     required this.frameCellExtent,
     required this.framesPerSecond,
@@ -471,12 +469,13 @@ class TimelineBeatLinesPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimelineBeatLinesPainter oldDelegate) =>
-      oldDelegate.frameCellExtent != frameCellExtent ||
-      oldDelegate.framesPerSecond != framesPerSecond ||
-      oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.ground != ground ||
-      oldDelegate.axis != axis ||
-      oldDelegate.frameStartIndex != frameStartIndex ||
-      oldDelegate.crossCellExtent != crossCellExtent;
+  Object get props => (
+    frameCellExtent,
+    framesPerSecond,
+    colorScheme,
+    ground,
+    axis,
+    frameStartIndex,
+    crossCellExtent,
+  );
 }

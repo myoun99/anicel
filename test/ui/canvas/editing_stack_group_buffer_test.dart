@@ -4,7 +4,6 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_folder.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -121,7 +120,7 @@ void main() {
     // Hide every drawing inside the folder: the tree skips them, and the
     // folder then has nothing to buffer.
     for (final layer in cut.layers) {
-      if (layer.id != folderId && !layerKindGroupsLayers(layer.kind)) {
+      if (layer.id != folderId && !layer.kind.groupsLayers) {
         if (layer.isVisible) s.toggleLayerVisibility(layer.id);
       }
     }

@@ -36,9 +36,9 @@ void main() {
     return BitmapSurface(
       canvasSize: CanvasSize(width: size, height: size),
       tileSize: 4,
-    ).putTile(
+    ).putTiles([
       BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
-    );
+    ]);
   }
 
   group('link resolver (L1): linked members address ONE physical cel', () {

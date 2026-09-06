@@ -37,3 +37,27 @@ String appSupportFilePath(String fileName) {
   final normalizedBase = base.replaceAll('\\', '/');
   return '$normalizedBase/anicel/$fileName';
 }
+
+/// [appSupportFilePath] for [fileName], except under FLUTTER_TEST where it
+/// answers a per-run temp folder named after [sandbox] instead.
+///
+/// Widget tests reach these stores through the PRODUCTION menu wiring —
+/// they must never read or write the user's real settings file. A test
+/// that recorded an open would otherwise write into the real user's
+/// recent list.
+///
+/// ⚠️The other fourteen [appSupportFilePath] callers are NOT redirected;
+/// they rely on home_page.dart's null-store-under-FLUTTER_TEST instead.
+/// Whether the redirect belongs inside [appSupportFilePath] for the whole
+/// family is a decision nobody has made — it would change the
+/// `contains('qa_test_…')` assertions the two stores are pinned by.
+String testRedirectedAppSupportPath(
+  String fileName, {
+  required String sandbox,
+}) {
+  if (Platform.environment['FLUTTER_TEST'] == 'true') {
+    final temp = Directory.systemTemp.path.replaceAll('\\', '/');
+    return '$temp/qa_test_${sandbox}_$pid/$fileName';
+  }
+  return appSupportFilePath(fileName);
+}

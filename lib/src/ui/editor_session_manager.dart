@@ -2236,7 +2236,7 @@ class EditorSessionManager extends ChangeNotifier
   ) => [
     for (final layer in source)
       preview.layerIds.contains(layer.id) &&
-              layerKindHasPictureOpacity(layer.kind)
+              layer.kind.hasPictureOpacity
           ? layer.copyWith(opacity: preview.opacity)
           : layer,
   ];
@@ -2812,8 +2812,8 @@ class EditorSessionManager extends ChangeNotifier
   @override
   List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
     (layer) =>
-        layerKindIsClipboardCopyable(layer.kind) &&
-        !layerKindIsSingletonPerCut(layer.kind) &&
+        layer.kind.isClipboardCopyable &&
+        !layer.kind.isSingletonPerCut &&
         !isAttachedLayer(layer),
   );
 
@@ -2848,7 +2848,7 @@ class EditorSessionManager extends ChangeNotifier
   /// inside a cut is not this cut's to edit.
   @override
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layerKindIsReadOnlyInCut(layer.kind));
+      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
 
   /// Renames any row by id — folders included, because a folder is a row.
   @override
@@ -2878,7 +2878,7 @@ class EditorSessionManager extends ChangeNotifier
     if (cut == null) {
       return false;
     }
-    return !layerKindIsSingletonPerCut(kind) ||
+    return !kind.isSingletonPerCut ||
         !cut.layers.any((layer) => layer.kind == kind);
   }
 
@@ -2940,7 +2940,7 @@ class EditorSessionManager extends ChangeNotifier
         // The COVERING kinds (storyboard, image) are born covering their
         // cut — one cell, edge to edge. There is no "X" in their world,
         // so they never start empty and then have to be filled.
-        Layer newLayerFor(Cut cut) => layerKindCoversWithoutGaps(kind)
+        Layer newLayerFor(Cut cut) => kind.coversWithoutGaps
             ? createCoveringLayer(
                 layerId: layerId,
                 frameId: FrameId(nextFrameId(layerId)),
@@ -5011,7 +5011,7 @@ class EditorSessionManager extends ChangeNotifier
       return false;
     }
     final layer = activeLayer;
-    if (layer != null && layerKindHoldsSingleCel(layer.kind)) {
+    if (layer != null && layer.kind.holdsSingleCel) {
       return false;
     }
     return canCopyFrameAtCurrentFrame;
@@ -5334,7 +5334,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     final layer = layerById(layerId);
     return layer != null &&
-        layerKindHoldsDrawings(layer.kind) &&
+        layer.kind.holdsDrawings &&
         layer.kind != LayerKind.se;
   }
 
@@ -5748,7 +5748,7 @@ class EditorSessionManager extends ChangeNotifier
   /// every row that owns its own blocks.
   @override
   List<({int start, int endExclusive})> aggregateRunsForRow(Layer layer) {
-    if (!layerKindGroupsLayers(layer.kind)) {
+    if (!layer.kind.groupsLayers) {
       return const [];
     }
     // R10: the band cache's runs, so the snap and the painted band are one
@@ -6045,7 +6045,7 @@ class EditorSessionManager extends ChangeNotifier
   @override
   bool isSingleCelLayerId(LayerId layerId) {
     final layer = layerById(layerId);
-    return layer != null && layerKindHoldsSingleCel(layer.kind);
+    return layer != null && layer.kind.holdsSingleCel;
   }
 
   /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
@@ -6239,7 +6239,7 @@ class EditorSessionManager extends ChangeNotifier
     // single-cel rows are pinned by the covering normalization.
     if (layer == null ||
         isSyncedAttachedLayer(layer) ||
-        layerKindHoldsSingleCel(layer.kind)) {
+        layer.kind.holdsSingleCel) {
       return;
     }
     final block = coveringDrawingBlockAt(
@@ -7710,7 +7710,7 @@ class EditorSessionManager extends ChangeNotifier
   /// reads this. Non-drawing sections (SE / camera / instruction) and
   /// uncovered cells always answer true (no tint).
   bool celHasContentForLayer(Layer layer, int frameIndex) {
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       // R28 #11 carried onto the shared painter: a folder frame is grey
       // only when NO member drew there ("다른곳에서 해당위치에 그림그려진
       // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
@@ -7728,8 +7728,8 @@ class EditorSessionManager extends ChangeNotifier
     //
     // ⛔The two only looked like one question while every cel-holding row
     // happened to sit in the drawing section, which is the same trap R27
-    // #16 found in `layerKindCarriesInstructions`.
-    if (!layerKindIsDrawingCel(layer.kind)) {
+    // #16 found in `LayerKind.carriesInstructions`.
+    if (!layer.kind.isDrawingCel) {
       return true;
     }
     final cut = activeCutOrNull;
@@ -7750,7 +7750,7 @@ class EditorSessionManager extends ChangeNotifier
       // ⛔It asks the span ADAPTER rather than reading `layer.instructions`
       // again — 「is this frame under a span」 has one home, and the band
       // that draws the block reads the same one ([[no-copy-to-share]]).
-      if (!layerKindCarriesInstructions(layer.kind)) {
+      if (!layer.kind.carriesInstructions) {
         return true;
       }
       return instructionCellExposureState(layer, frameIndex) ==

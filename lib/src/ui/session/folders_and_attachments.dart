@@ -116,9 +116,7 @@ class FoldersAndAttachments {
         // the refusal down. Mirrors the referenced-image behavior, where
         // the refusal lives in a non-inherited field and the attach row
         // is born drawable.
-        kind: layerKindAcceptsBrushInput(base.kind)
-            ? base.kind
-            : LayerKind.animation,
+        kind: base.kind.acceptsBrushInput ? base.kind : LayerKind.animation,
         onTimesheet: false,
         attachedToLayerId: base.id,
         attachedPlacement: placement,

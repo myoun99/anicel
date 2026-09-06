@@ -142,7 +142,7 @@ class _InteractiveCanvasBuild {
         // covered above — until R6b's adjustment row, which twirls open
         // for its effect lanes while owning no transform at all, and whose
         // commit path throws by design.
-        layerKindHasLayerTransform(activeLayer.kind) &&
+        activeLayer.kind.hasLayerTransform &&
         layerKindShowsFxToggle(activeLayer.kind) &&
         // R8: the TRANSFORM group's switch, not the row master — a row
         // with a colour effect off still has a pose to drag.

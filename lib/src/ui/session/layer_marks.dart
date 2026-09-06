@@ -1,7 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/commands/update_layer_mark_command.dart';
 import 'active_cut_edits.dart';
@@ -103,7 +102,7 @@ class LayerMarks {
   /// SINGLE-CEL row IS markable: a mark is a flag on the cell, not a
   /// change to the covering block.
   static bool _markable(Layer layer) =>
-      layerKindHoldsDrawings(layer.kind) && !isSyncedAttachedLayer(layer);
+      layer.kind.holdsDrawings && !isSyncedAttachedLayer(layer);
 
   bool get canToggleMarkForSelection =>
       _markableFramesForSelection().isNotEmpty;
@@ -140,7 +139,7 @@ class LayerMarks {
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
-    if (!layerKindHoldsDrawings(layer.kind)) {
+    if (!layer.kind.holdsDrawings) {
       return false;
     }
     return _timeline.timelineController.hasMarkAt(

@@ -154,7 +154,7 @@ void main() {
 /// ⛔**두 레일이 같은 법을 쓴다** (소스 스캔 래칫).
 ///
 /// x시트는 가로 레일의 버그를 **모양째로 베껴서** 갖고 있었다 — 둘 다
-/// `if (!layerKindReordersInCut(...)) return child;` 였고, 그 한 줄이
+/// `if (!kind.reordersInCut) return child;` 였고, 그 한 줄이
 /// 「이동 불가」로 「선택 불가」까지 답했다. 행동 테스트는 지금 가로 레일만
 /// 몰고 있으므로, **x시트가 다시 갈라지는 것은 소스가 막는다.**
 void _bothRailsSelectOnly() {
@@ -165,7 +165,7 @@ void _bothRailsSelectOnly() {
     ).readAsStringSync();
     expect(
       owner,
-      contains('layerKindReordersInCut'),
+      contains('kind.reordersInCut'),
       reason: '⛔법이 여기 없으면 스캔이 빈 것을 쟀다',
     );
 
@@ -204,7 +204,7 @@ void _bothRailsSelectOnly() {
       );
       expect(
         source,
-        isNot(contains('layerKindReordersInCut')),
+        isNot(contains('reordersInCut')),
         reason:
             '$path — 레일이 kind 를 **직접 물으면 사본이다.** x시트가 가로 '
             '레일의 그 한 줄을 베껴서 같은 버그를 갖고 있었다',

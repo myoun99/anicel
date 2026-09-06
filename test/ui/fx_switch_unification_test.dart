@@ -218,8 +218,8 @@ void main() {
           .firstWhere((layer) => layer.kind == LayerKind.camera)
           .id;
 
-      expect(layerKindHasLayerEffects(LayerKind.camera), isFalse);
-      expect(layerKindHasTransformFxSwitch(LayerKind.camera), isTrue);
+      expect(LayerKind.camera.hasLayerEffects, isFalse);
+      expect(LayerKind.camera.hasTransformFxSwitch, isTrue);
 
       expect(session.layerFxState(cameraId), LayerFxState.on);
       session.toggleLayerFx(cameraId);
@@ -234,7 +234,7 @@ void main() {
     });
 
     test('an ADJUSTMENT row reads its effects ALONE — never phantom-mixed', () {
-      expect(layerKindHasTransformFxSwitch(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.hasTransformFxSwitch, isFalse);
 
       final session = makeSession();
       session.createDrawingAtCurrentFrame();

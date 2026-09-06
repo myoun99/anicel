@@ -3,7 +3,6 @@ import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
 import '../command.dart';
 import '../project_lookup.dart';
@@ -109,7 +108,7 @@ class LinkDuplicateLayerCommand implements Command {
         // groups: linking shares cel banks, and a folder has none —
         // joining the ORIGINAL organizer's group would make deleting the
         // copy dissolve the original's mirror in another cut.
-        if (layerKindGroupsLayers(member.kind)) {
+        if (member.kind.groupsLayers) {
           continue;
         }
         groups = linkGroupsJoined(

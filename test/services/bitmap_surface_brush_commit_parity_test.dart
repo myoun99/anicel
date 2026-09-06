@@ -86,7 +86,7 @@ BrushSurfaceMaterialization referenceMaterialize({
       operations: operationsByCoord[coord]!,
     );
     if (updatedTile == null) continue;
-    updatedSurface = updatedSurface.putTile(updatedTile);
+    updatedSurface = updatedSurface.putTiles([updatedTile]);
     dirtyTiles = dirtyTiles.add(coord);
   }
 

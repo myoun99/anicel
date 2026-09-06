@@ -151,11 +151,7 @@ List<LayerEffect>? effectsWithGroupReset(
   if (frames.isEmpty) {
     return null;
   }
-  for (var index = 0; index < effects.length; index += 1) {
-    final effect = effects[index];
-    if (effect.id != address.effectId) {
-      continue;
-    }
+  return _editEffect(effects, address.effectId, (effect) {
     var next = effect;
     var changed = false;
     for (final spec in effectParametersOf(effect.kind)) {
@@ -190,14 +186,8 @@ List<LayerEffect>? effectsWithGroupReset(
       next = next.withParameter(spec.id, parameter.copyWith(track: track));
       changed = true;
     }
-    if (!changed) {
-      return null;
-    }
-    final chain = List<LayerEffect>.of(effects);
-    chain[index] = next;
-    return chain;
-  }
-  return null;
+    return changed ? next : null;
+  });
 }
 
 /// The effect family's lane table. A parameter lane is addressed by its
@@ -296,19 +286,40 @@ List<LayerEffect>? effectsWithRemoved(
 List<LayerEffect>? effectsWithEnabledToggled(
   List<LayerEffect> effects,
   EffectId effectId,
+) => _editEffect(
+  effects,
+  effectId,
+  (effect) => effect.copyWith(enabled: !effect.enabled),
+);
+
+/// Rebuilds the ONE effect [effectId] names through [edit], returning the
+/// chain with that slot replaced — null when the effect is not in the
+/// chain, or [edit] declines the change by answering null.
+///
+/// The chain is a LIST, so every edit in this file is this walk: find by
+/// id, rebuild the one entry, copy the list with that slot replaced. What
+/// to DO with the found effect is the closure, which is why the group
+/// reset, the parameter edits and the enable toggle can share it without
+/// anything choosing between them.
+List<LayerEffect>? _editEffect(
+  List<LayerEffect> effects,
+  EffectId effectId,
+  LayerEffect? Function(LayerEffect effect) edit,
 ) {
-  var found = false;
-  final next = [
-    for (final effect in effects)
-      if (effect.id == effectId)
-        (() {
-          found = true;
-          return effect.copyWith(enabled: !effect.enabled);
-        })()
-      else
-        effect,
-  ];
-  return found ? next : null;
+  for (var index = 0; index < effects.length; index += 1) {
+    final effect = effects[index];
+    if (effect.id != effectId) {
+      continue;
+    }
+    final edited = edit(effect);
+    if (edited == null) {
+      return null;
+    }
+    final next = List<LayerEffect>.of(effects);
+    next[index] = edited;
+    return next;
+  }
+  return null;
 }
 
 /// Rebuilds the ONE effect a parameter lane addresses through [edit]; null
@@ -325,22 +336,14 @@ List<LayerEffect>? _editParameter(
   if (address == null || parameterId == null) {
     return null;
   }
-  for (var index = 0; index < effects.length; index += 1) {
-    final effect = effects[index];
-    if (effect.id != address.effectId) {
-      continue;
-    }
+  return _editEffect(effects, address.effectId, (effect) {
     final spec = effectParameterSpecOf(effect.kind, parameterId);
     if (spec == null) {
       return null;
     }
     final edited = edit(effect.parameterOf(parameterId), spec);
-    if (edited == null) {
-      return null;
-    }
-    final next = List<LayerEffect>.of(effects);
-    next[index] = effect.withParameter(parameterId, edited);
-    return next;
-  }
-  return null;
+    return edited == null
+        ? null
+        : effect.withParameter(parameterId, edited);
+  });
 }

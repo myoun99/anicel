@@ -6,6 +6,8 @@ import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/stroke.dart';
 import '../../models/stroke_point.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 class PaintableLayer {
   const PaintableLayer({required this.layer, required this.frame});
@@ -14,7 +16,7 @@ class PaintableLayer {
   final Frame frame;
 }
 
-class StrokePainter extends CustomPainter {
+class StrokePainter extends CustomPainter with RepaintOnProps {
   const StrokePainter({
     this.strokes = const <Stroke>[],
     this.paintableLayers = const <PaintableLayer>[],
@@ -64,11 +66,14 @@ class StrokePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant StrokePainter oldDelegate) {
-    return oldDelegate.strokes != strokes ||
-        oldDelegate.paintableLayers != paintableLayers ||
-        oldDelegate.activePoints != activePoints;
-  }
+  // All three are compared by IDENTITY, which is what a `List`'s own `==`
+  // already was here: a rebuilt list of the same strokes repaints. Said
+  // out loud so the choice is a choice and not a property of `List`.
+  Object get props => (
+    ByIdentity(strokes),
+    ByIdentity(paintableLayers),
+    ByIdentity(activePoints),
+  );
 
   void _paintPoints(
     Canvas canvas,

@@ -23,24 +23,14 @@ class _TimelineRetime {
     required Layer layer,
     required Map<int, int> newLengthByStart,
   }) {
-    final blocks = drawingBlocks(layer.timeline);
-    final newStarts = List<int>.generate(
-      blocks.length,
-      (i) => blocks[i].startIndex,
-      growable: false,
-    );
-    final newLengths = List<int>.generate(
-      blocks.length,
-      (i) => blocks[i].length,
-      growable: false,
-    );
+    final layout = _BlockLayout.of(layer.timeline);
     var firstRetimed = -1;
-    for (var i = 0; i < blocks.length; i += 1) {
-      final requested = newLengthByStart[blocks[i].startIndex];
-      if (requested == null || blocks[i].entry.ghost) {
+    for (var i = 0; i < layout.blocks.length; i += 1) {
+      final requested = newLengthByStart[layout.blocks[i].startIndex];
+      if (requested == null || layout.blocks[i].entry.ghost) {
         continue;
       }
-      newLengths[i] = math.max(1, requested);
+      layout.lengths[i] = math.max(1, requested);
       if (firstRetimed == -1) {
         firstRetimed = i;
       }
@@ -49,14 +39,10 @@ class _TimelineRetime {
       return null;
     }
 
-    _relayBlocksAfter(blocks, newStarts, newLengths, firstRetimed);
+    layout.relayAfter(firstRetimed);
 
-    final next = SplayTreeMap<int, TimelineExposure>();
-    for (var i = 0; i < blocks.length; i += 1) {
-      next[newStarts[i]] = blocks[i].entry.copyWith(length: newLengths[i]);
-    }
     final after = rederiveRunBehaviors(
-      layer.copyWith(timeline: next),
+      layer.copyWith(timeline: layout.toTimeline()),
       cutFrameCount: _controller._cutFrameCount(),
     );
     return after == layer ? null : after;
@@ -183,27 +169,65 @@ class _TimelineRetime {
   }
 }
 
-/// Re-lays the blocks after [from] once its start or length changed: a
-/// block glued to its predecessor's OLD end follows the NEW end, any other
-/// keeps its start unless the new end pushes it. The one law the comma
-/// edge and the retime move neighbours by — each used to spell it.
-void _relayBlocksAfter(
-  List<TimelineDrawingBlock> blocks,
-  List<int> newStarts,
-  List<int> newLengths,
-  int from,
-) {
-  var prevOldEnd = blocks[from].endIndexExclusive;
-  var prevNewEnd = newStarts[from] + newLengths[from];
-  for (var i = from + 1; i < blocks.length; i += 1) {
-    final block = blocks[i];
-    final glued = block.startIndex == prevOldEnd;
-    var start = glued ? prevNewEnd : block.startIndex;
-    if (start < prevNewEnd) {
-      start = prevNewEnd;
+/// A timeline's drawing blocks with the start and length each is being
+/// moved to — the representation the neighbour-move law runs on.
+///
+/// The comma edge and the retime both take one of these, write into
+/// [starts] / [lengths] in their own way, ripple, and rebuild. That
+/// seeding and that rebuild were spelled twice; the law between them
+/// ([relayAfter]) was already shared, and this is the type it was missing.
+class _BlockLayout {
+  _BlockLayout.of(SplayTreeMap<int, TimelineExposure> timeline)
+    : this._(drawingBlocks(timeline));
+
+  _BlockLayout._(this.blocks)
+    : starts = List<int>.generate(
+        blocks.length,
+        (i) => blocks[i].startIndex,
+        growable: false,
+      ),
+      lengths = List<int>.generate(
+        blocks.length,
+        (i) => blocks[i].length,
+        growable: false,
+      );
+
+  final List<TimelineDrawingBlock> blocks;
+
+  /// Where each block is going — seeded with where it is.
+  final List<int> starts;
+
+  /// How long each block will be — seeded with how long it is.
+  final List<int> lengths;
+
+  /// Re-lays the blocks after [from] once its start or length changed: a
+  /// block glued to its predecessor's OLD end follows the NEW end, any
+  /// other keeps its start unless the new end pushes it. The one law the
+  /// comma edge and the retime move neighbours by — each used to spell it.
+  void relayAfter(int from) {
+    var prevOldEnd = blocks[from].endIndexExclusive;
+    var prevNewEnd = starts[from] + lengths[from];
+    for (var i = from + 1; i < blocks.length; i += 1) {
+      final block = blocks[i];
+      final glued = block.startIndex == prevOldEnd;
+      var start = glued ? prevNewEnd : block.startIndex;
+      if (start < prevNewEnd) {
+        start = prevNewEnd;
+      }
+      starts[i] = start;
+      prevOldEnd = block.endIndexExclusive;
+      prevNewEnd = start + lengths[i];
     }
-    newStarts[i] = start;
-    prevOldEnd = block.endIndexExclusive;
-    prevNewEnd = start + newLengths[i];
+  }
+
+  /// The timeline this layout describes: drawings at their new starts.
+  /// Block-owned dots ride inside the entries for free; copyWith drops
+  /// offsets a shrink cut off.
+  SplayTreeMap<int, TimelineExposure> toTimeline() {
+    final next = SplayTreeMap<int, TimelineExposure>();
+    for (var i = 0; i < blocks.length; i += 1) {
+      next[starts[i]] = blocks[i].entry.copyWith(length: lengths[i]);
+    }
+    return next;
   }
 }

@@ -6,7 +6,6 @@ import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import '../media/media_asset_drop_target.dart';
@@ -267,8 +266,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// storyboard.
   bool get _wantsGrips =>
       commaDrag != null &&
-      layerKindHoldsDrawings(layer.kind) &&
-      !layerKindHoldsSingleCel(layer.kind) &&
+      layer.kind.holdsDrawings &&
+      !layer.kind.holdsSingleCel &&
       !isSyncedAttachedLayer(layer);
 
   /// The run clusters carry the N/H/R property tag, so the rows that refuse
@@ -276,7 +275,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// one whose menu is dead.
   bool get _wantsRunEdges =>
       runEdit != null &&
-      layerKindAcceptsRepeatRegions(layer.kind) &&
+      layer.kind.acceptsRepeatRegions &&
       !layerKindUsesSeSheetCells(layer.kind) &&
       !isSyncedAttachedLayer(layer);
 
@@ -304,7 +303,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // feedback #10 removed the one at zero): every boundary is the trailing
     // edge on its left, and the row's true front edge is the cut's start,
     // which lives on the storyboard strip.
-    suppressAllStartGrips: layerKindCoversWithoutGaps(layer.kind),
+    suppressAllStartGrips: layer.kind.coversWithoutGaps,
   );
 
   /// A positioned overlay layer placed by [TimelineFrameSpanLayout] at
@@ -403,7 +402,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     TimelineFrameGeometry frames,
   ) {
     final defById = instructionDefById;
-    if (!layerKindCarriesInstructions(layer.kind) || defById == null) {
+    if (!layer.kind.carriesInstructions || defById == null) {
       return const [];
     }
     return timelineRowInstructionOverlays(
@@ -438,14 +437,14 @@ class TimelineFrameCellsRow extends StatelessWidget {
   }
 
   /// 🚨Grips are the one instruction facility the transition row does NOT
-  /// get: its local placement is a projection ([layerKindIsReadOnlyInCut]),
+  /// get: its local placement is a projection ([LayerKind.isReadOnlyInCut]),
   /// so dragging an edge here would be editing a lie. Authoring lives on the
   /// global axis, in the storyboard.
   List<Widget> _spanGrips(TimelineFrameGeometry frames) {
     final drag = commaDrag;
     if (drag == null ||
-        !layerKindCarriesInstructions(layer.kind) ||
-        layerKindIsReadOnlyInCut(layer.kind)) {
+        !layer.kind.carriesInstructions ||
+        layer.kind.isReadOnlyInCut) {
       return const [];
     }
     return timelineRowInstructionEdgeGrips(
@@ -485,7 +484,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
     // value-compares this field, and a fresh closure per build would
     // re-record the row on every pass.
-    exposureStateForLayer: layerKindBandIsInstructionsOnly(layer.kind)
+    exposureStateForLayer: layer.kind.bandIsInstructionsOnly
         ? instructionCellExposureState
         : exposureStateForLayer,
     frameNameForLayer: frameNameForLayer,
@@ -510,9 +509,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// 붙어 있었다 — 그 술어는 **셀 글리프와 X 마크**를 억제하는 것이고 (SE 의
   /// 글자는 행 단위 오버레이가 그린다), **블록 길이와는 상관이 없다.** 한 술어가
   /// 두 질문에 답하고 있었다. ⇒ 이제 조건은 「블록을 가졌나」 하나다. 그게
-  /// `layerKindHoldsDrawings` 이고 se 는 거기서 true 다.
+  /// `LayerKind.holdsDrawings` 이고 se 는 거기서 true 다.
   CustomPainter? _runLabelsPainter() {
-    if (!layerKindHoldsDrawings(layer.kind)) return null;
+    if (!layer.kind.holdsDrawings) return null;
     return TimelineRowRunLabelsPainter(
       layer: layer,
       geometry: geometry,
@@ -612,7 +611,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final onDrop = onDropMediaAssetOnLayer;
     if (onDrop == null ||
         layerKindUsesSeSheetCells(layer.kind) ||
-        !layerKindHoldsDrawings(layer.kind)) {
+        !layer.kind.holdsDrawings) {
       return null;
     }
     return _spanLayer([

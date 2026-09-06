@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// Numeric bulk opacity (session bulk setter). The R2 lighttable dim was
@@ -22,7 +21,7 @@ void main() {
     final s = session();
     s.setAllLayersOpacity(0.4);
     for (final layer in s.layers) {
-      if (layerKindHasPictureOpacity(layer.kind)) {
+      if (layer.kind.hasPictureOpacity) {
         expect(layer.opacity, moreOrLessEquals(0.4, epsilon: 1e-9));
       } else {
         expect(layer.opacity, 1.0, reason: '${layer.kind} takes no bulk set');

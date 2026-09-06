@@ -104,8 +104,8 @@ void main() {
 
   group('#7 — one storyboard row per cut', () {
     test('the predicate names the family', () {
-      expect(layerKindIsSingletonPerCut(LayerKind.storyboard), isTrue);
-      expect(layerKindIsSingletonPerCut(LayerKind.camera), isTrue);
+      expect(LayerKind.storyboard.isSingletonPerCut, isTrue);
+      expect(LayerKind.camera.isSingletonPerCut, isTrue);
       for (final kind in [
         LayerKind.animation,
         LayerKind.image,
@@ -116,7 +116,7 @@ void main() {
         LayerKind.adjustment,
       ]) {
         expect(
-          layerKindIsSingletonPerCut(kind),
+          kind.isSingletonPerCut,
           isFalse,
           reason: '$kind may repeat in a cut',
         );

@@ -6,6 +6,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
 import '../text/app_strings.dart' show AppText;
+import '../repaint_props.dart';
 
 /// BB-3 (R26 #11): the shared pen-pressure curve editor — a CSP-style
 /// 筆圧設定 popup. One [PressureCurveButton] sits at the right of each
@@ -132,7 +133,7 @@ class PressureCurveButton extends StatelessWidget {
 /// same picture and means the opposite thing. An X is not a graph at all,
 /// which is exactly the point: OFF is a different KIND of state, not a
 /// shape the curve can take.
-class _MiniCurvePainter extends CustomPainter {
+class _MiniCurvePainter extends CustomPainter with RepaintOnProps {
   const _MiniCurvePainter({required this.curve, required this.color});
 
   final BrushPressureCurve? curve;
@@ -165,8 +166,7 @@ class _MiniCurvePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MiniCurvePainter oldDelegate) =>
-      oldDelegate.curve != curve || oldDelegate.color != color;
+  Object get props => (curve, color);
 }
 
 /// [curve] sampled in [steps] equal pressure steps across [size]: pressure

@@ -46,7 +46,6 @@ import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../services/layer_pose_matrix.dart' show LayerPoseSample;
-import '../models/layer_kind.dart' show layerKindHasLayerTransform;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
@@ -54,6 +53,7 @@ import 'timeline/transform_lane_editing.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
     show CanvasManipulator, canvasManipulatorsForLane;
+import 'repaint_props.dart';
 
 part 'canvas_area/interactive_canvas_build.dart';
 
@@ -881,7 +881,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 /// the canvas rect at (1 − fadeOpacity), under the panel viewport — the
 /// same overlay playback paints, so an fx-on faded frame reads identically
 /// while editing.
-class _CutFadeWashPainter extends CustomPainter {
+class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
     required this.canvasSize,
@@ -919,17 +919,13 @@ class _CutFadeWashPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CutFadeWashPainter oldDelegate) =>
-      oldDelegate.viewport != viewport ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.color != color ||
-      oldDelegate.devicePixelRatio != devicePixelRatio;
+  Object get props => (viewport, canvasSize, color, devicePixelRatio);
 }
 
 /// The editing canvas's SE name tags (R5b): the same canvas-space draw
 /// the frame painter makes during playback, so what you edit against is
 /// what plays and what exports.
-class _SeNameTagOverlayPainter extends CustomPainter {
+class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
   const _SeNameTagOverlayPainter({
     required this.viewport,
     required this.canvasSize,
@@ -959,11 +955,12 @@ class _SeNameTagOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SeNameTagOverlayPainter oldDelegate) =>
-      oldDelegate.viewport != viewport ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.devicePixelRatio != devicePixelRatio ||
-      seNameTagSignature(oldDelegate.tags) != seNameTagSignature(tags);
+  Object get props => (
+    viewport,
+    canvasSize,
+    devicePixelRatio,
+    seNameTagSignature(tags),
+  );
 }
 
 /// R13-3: committed seeks retarget the editing stack ONLY when the

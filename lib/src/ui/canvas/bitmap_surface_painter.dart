@@ -19,6 +19,8 @@ import 'bitmap_tile_image_cache.dart';
 import 'tile_origin.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 part 'surface_paint/surface_paint_pass.dart';
 
@@ -34,7 +36,7 @@ part 'surface_paint/surface_paint_pass.dart';
 /// `canvas.translate/scale` here means every frame rasterizes the canvas
 /// content directly at final resolution through one code path, so idle and
 /// drawing frames are pixel-identical at any zoom by construction.
-class BitmapSurfacePainter extends CustomPainter {
+class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   BitmapSurfacePainter({
     required this.surface,
     this.viewport,
@@ -417,17 +419,17 @@ class BitmapSurfacePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant BitmapSurfacePainter oldDelegate) {
+  Object get props => (
     // Identity comparison: BitmapSurface is immutable with structural tile
     // sharing, so a changed surface is always a new instance. The previous
     // deep `!=` compared every tile's pixel bytes on each rebuild (megabytes
     // per pointer move while drawing).
-    return !identical(oldDelegate.surface, surface) ||
-        oldDelegate.showTransparentBackground != showTransparentBackground ||
-        oldDelegate.viewport != viewport ||
-        // The pan-phase snap reads it — a monitor move must repaint, not
-        // keep the old phase.
-        oldDelegate.devicePixelRatio != devicePixelRatio ||
-        !identical(oldDelegate.overlayModel, overlayModel);
-  }
+    ByIdentity(surface),
+    showTransparentBackground,
+    viewport,
+    // The pan-phase snap reads it — a monitor move must repaint, not
+    // keep the old phase.
+    devicePixelRatio,
+    ByIdentity(overlayModel),
+  );
 }

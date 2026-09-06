@@ -9,6 +9,8 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
     show timelineCommaLabelVisibleFor, timelineDurationLabel;
 import 'timeline_glyph_cache.dart';
+import '../repaint_props.dart';
+import 'memo_token.dart';
 
 /// One block's printed length and where it sits — the probe surface tests
 /// read instead of hunting for a widget key.
@@ -61,7 +63,7 @@ class TimelineRunLabel {
 ///
 /// Ghost blocks stay unlabeled: their timing is derived, the same rule the
 /// run-edge clusters follow.
-class TimelineRowRunLabelsPainter extends CustomPainter {
+class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   TimelineRowRunLabelsPainter({
     required this.layer,
     required this.geometry,
@@ -202,13 +204,9 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimelineRowRunLabelsPainter oldDelegate) =>
-      // Geometry is absent on purpose — it arrives through `repaint`.
-      !identical(oldDelegate.layer, layer) ||
-      oldDelegate.crossAxisExtent != crossAxisExtent ||
-      oldDelegate.showSeconds != showSeconds ||
-      oldDelegate.countingBase != countingBase ||
-      oldDelegate.axis != axis;
+  // Geometry is absent on purpose — it arrives through `repaint`.
+  Object get props =>
+      (ByIdentity(layer), crossAxisExtent, showSeconds, countingBase, axis);
   // ⛔The cel-content comparison went with F-24. It was here because a
   // moved revision was a moved GROUND (the empty-cel blend) and the ink
   // read that ground; the ink is the block's own now, so what a block

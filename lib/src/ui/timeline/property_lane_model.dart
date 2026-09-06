@@ -3,7 +3,6 @@ import 'dart:ui' show Offset;
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_filter.dart';
@@ -321,7 +320,7 @@ class TimelineDisplayRow {
 
   bool get isLane => lane != null;
 
-  bool get isFolder => lane == null && layerKindGroupsLayers(layer.kind);
+  bool get isFolder => lane == null && layer.kind.groupsLayers;
 
   /// WHICH row this is, in the vocabulary every frame-axis gesture speaks.
   ///

@@ -105,6 +105,20 @@ void main() {
       expect(loaded.groups, isEmpty);
     });
 
+    test('save makes the folder it writes into, and stamps the version', () async {
+      final path = pathIn('made/up/deep/presets.json');
+      final service = BrushPresetFileService(filePath: path);
+
+      await service.save((groups: const [], presets: const []));
+
+      final written =
+          jsonDecode(await File(path).readAsString()) as Map<String, dynamic>;
+      expect(written.keys.first, 'version');
+      expect(written['version'], BrushPresetFileService.libraryVersion);
+      expect(written['groups'], isEmpty);
+      expect(written['presets'], isEmpty);
+    });
+
     test('corrupt file falls back to the built-in defaults', () async {
       final path = pathIn('corrupt.json');
       await File(path).writeAsString('{not json');

@@ -1,10 +1,9 @@
 import '../../models/conte/conte_ink_windows.dart';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
+import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_sheet_layout.dart';
@@ -13,6 +12,8 @@ import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../sheet_painting.dart';
 import 'conte_fonts.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
@@ -26,7 +27,7 @@ export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 ///
 /// The paper is WHITE and the ink is black whatever the app theme is: this
 /// is a printed page shown on a screen, not a panel.
-class ContePagePainter extends CustomPainter {
+class ContePagePainter extends CustomPainter with RepaintOnProps {
   ContePagePainter({
     required this.page,
     required this.source,
@@ -372,26 +373,11 @@ class ContePagePainter extends CustomPainter {
     if (slot.width <= 0 || slot.height <= 0) {
       return;
     }
-    final source = Rect.fromLTWH(
-      0,
-      0,
-      image.width.toDouble(),
-      image.height.toDouble(),
-    );
-    final scale = math.min(
-      slot.width / source.width,
-      slot.height / source.height,
-    );
-    final drawn = Size(source.width * scale, source.height * scale);
+    final source = Size(image.width.toDouble(), image.height.toDouble());
     canvas.drawImageRect(
       image,
-      source,
-      Rect.fromLTWH(
-        slot.left + (slot.width - drawn.width) / 2,
-        slot.top + (slot.height - drawn.height) / 2,
-        drawn.width,
-        drawn.height,
-      ),
+      Offset.zero & source,
+      containRect(source, slot),
       Paint()..filterQuality = FilterQuality.medium,
     );
   }
@@ -460,17 +446,18 @@ class ContePagePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant ContePagePainter oldDelegate) =>
-      // pictureFor/inkImageFor are deliberately absent: fresh closures
-      // every build, and comparing them made every rebuild a full-page
-      // repaint. Ink content changes repaint through `repaint` (the ink
-      // controller notifies per stroke/undo).
-      oldDelegate.page != page ||
-      oldDelegate.source != source ||
-      oldDelegate.selectedCell != selectedCell ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.effectiveRatio != effectiveRatio ||
-      !setEquals(oldDelegate.liveInkKeys, liveInkKeys);
+  // pictureFor/inkImageFor are deliberately absent: fresh closures
+  // every build, and comparing them made every rebuild a full-page
+  // repaint. Ink content changes repaint through `repaint` (the ink
+  // controller notifies per stroke/undo).
+  Object get props => (
+    page,
+    source,
+    selectedCell,
+    viewport,
+    effectiveRatio,
+    BySet(liveInkKeys),
+  );
 }
 
 /// The conte's text measurement, shared by the painter and the PDF writer.

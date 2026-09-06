@@ -68,7 +68,7 @@ import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
-    show AppConfirmDialog, confirmActions, showAppNotice;
+    show ConfirmChoice, ConfirmQuestion, askConfirm, showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -108,7 +108,7 @@ import 'timeline/timeline_layer_controls_row.dart'
 import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
-import '../models/layer_kind.dart' show LayerKind, layerKindHoldsDrawings;
+import '../models/layer_kind.dart' show LayerKind;
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -1251,20 +1251,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       return;
     }
     final strings = AppText.strings;
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('attach-drops-fx-dialog'),
+    final proceed = await askConfirm(
+      context,
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('attach-drops-fx-dialog'),
+          decline: const ValueKey<String>('attach-drops-fx-cancel'),
+          accept: const ValueKey<String>('attach-drops-fx-confirm'),
+        ),
         title: strings.tlAttachDropsFxTitle,
         message: strings.tlAttachDropsFxBody,
-        actions: confirmActions(
-          context,
-          declineLabel: strings.commonCancel,
-          declineKey: const ValueKey<String>('attach-drops-fx-cancel'),
-          acceptLabel: strings.commonApply,
-          acceptKey: const ValueKey<String>('attach-drops-fx-confirm'),
-        ),
       ),
+      accept: ConfirmChoice(strings.commonApply),
     );
     request.answer(proceed ?? false);
   }

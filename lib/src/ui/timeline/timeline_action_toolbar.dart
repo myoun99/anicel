@@ -378,7 +378,7 @@ class TimelineActionToolbar extends StatelessWidget {
   /// two copies of this line would eventually stop agreeing.
   bool get _canEditActiveLayer {
     final active = session.activeLayer;
-    return active != null && !layerKindIsReadOnlyInCut(active.kind);
+    return active != null && !active.kind.isReadOnlyInCut;
   }
 
   List<PanelFlyoutEntry> _layerEntries(BuildContext context) {

@@ -121,6 +121,18 @@ class LayerRailExtent extends ValueNotifier<double?> {
   /// a stored value: shrink the panel and the rail gives ground, grow it
   /// again and the size the user chose comes back.
   double windowExtent(double naturalExtent, {double? availableExtent}) {
+    final band = _band(naturalExtent, availableExtent);
+    return (value ?? band.natural).clamp(band.floor, band.ceiling).toDouble();
+  }
+
+  /// The band a window of this rail may sit in — its natural size and the
+  /// two ends of the clamp. Read by the size the rail reports and by the
+  /// splitter drag that changes it; a drift between them would let the
+  /// splitter grow the window past what the clip uses.
+  ({double natural, double floor, double ceiling}) _band(
+    double naturalExtent,
+    double? availableExtent,
+  ) {
     final natural = math.max(naturalExtent, layerRailMinimumWindowExtent);
     var floor = layerRailMinimumWindowExtent;
     var ceiling = natural;
@@ -132,7 +144,7 @@ class LayerRailExtent extends ValueNotifier<double?> {
       // overflow stripe helps nobody.
       floor = math.min(floor, ceiling);
     }
-    return (value ?? natural).clamp(floor, ceiling).toDouble();
+    return (natural: natural, floor: floor, ceiling: ceiling);
   }
 
   /// Applies one splitter drag frame; positive [delta] grows the rail.
@@ -151,15 +163,8 @@ class LayerRailExtent extends ValueNotifier<double?> {
       naturalExtent,
       availableExtent: availableExtent,
     );
-    var ceiling = math.max(naturalExtent, layerRailMinimumWindowExtent);
-    var floor = layerRailMinimumWindowExtent;
-    if (availableExtent != null &&
-        availableExtent.isFinite &&
-        availableExtent >= 0) {
-      ceiling = math.min(ceiling, availableExtent);
-      floor = math.min(floor, ceiling);
-    }
-    final next = (current + delta).clamp(floor, ceiling).toDouble();
+    final band = _band(naturalExtent, availableExtent);
+    final next = (current + delta).clamp(band.floor, band.ceiling).toDouble();
     final used = next - current;
     if (next != value) {
       value = next;

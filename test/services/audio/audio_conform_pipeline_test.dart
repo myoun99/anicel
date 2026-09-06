@@ -544,7 +544,7 @@ void main() {
       File(source).setLastModifiedSync(stampedAt);
       pipelineFor().ensureConform(sourcePath: source, conformPath: conformPath);
 
-      final statBefore = AudioConformPipeline.statOf(source);
+      final statBefore = MediaFileBytes(source).statSync();
 
       final other = writeSource('other2.wav', rate: 44100);
       File(source).writeAsBytesSync(File(other).readAsBytesSync());
@@ -555,7 +555,7 @@ void main() {
       // decision. Without it, "the hint missed" and "the fixture never
       // set up a hit" look identical from the failure message.
       expect(
-        AudioConformPipeline.statOf(source),
+        MediaFileBytes(source).statSync(),
         statBefore,
         reason: 'the edit had to leave the stat identical to mean anything',
       );

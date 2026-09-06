@@ -426,21 +426,18 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         .length;
     return confirmThenCommit(
       context,
-      dialog: (_) => AppConfirmDialog(
-        windowKey: keys.window,
-        title: AppText.strings.brDeleteGroup,
-        titleIcon: Icons.delete_outline,
-        message: memberCount == 0
-            ? 'Delete the empty group "${group.name}"?'
-            : 'Delete "${group.name}" and the $memberCount '
-                  '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.commonCancel,
-          declineKey: keys.decline,
-          acceptLabel: AppText.strings.commonDelete,
-          acceptKey: keys.accept,
+      dialog: (context) => confirmWindow(
+        context,
+        ConfirmQuestion(
+          keys: keys,
+          title: AppText.strings.brDeleteGroup,
+          titleIcon: Icons.delete_outline,
+          message: memberCount == 0
+              ? 'Delete the empty group "${group.name}"?'
+              : 'Delete "${group.name}" and the $memberCount '
+                    '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
         ),
+        accept: ConfirmChoice(AppText.strings.commonDelete),
       ),
       commit: () => onDeleted(group.id),
     );
@@ -451,21 +448,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     if (onReset == null) {
       return Future<void>.value();
     }
-    final keys = confirmDialogKeys('brush-preset-reset');
     return confirmThenCommit(
       context,
-      dialog: (_) => AppConfirmDialog(
-        windowKey: keys.window,
-        title: AppText.strings.brResetLibrary,
-        titleIcon: Icons.restart_alt,
-        message: AppText.strings.brResetLibraryBody,
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.commonCancel,
-          declineKey: keys.decline,
-          acceptLabel: AppText.strings.commonReset,
-          acceptKey: keys.accept,
+      dialog: (context) => confirmWindow(
+        context,
+        ConfirmQuestion(
+          keys: confirmDialogKeys('brush-preset-reset'),
+          title: AppText.strings.brResetLibrary,
+          titleIcon: Icons.restart_alt,
+          message: AppText.strings.brResetLibraryBody,
         ),
+        accept: ConfirmChoice(AppText.strings.commonReset),
       ),
       commit: onReset,
     );

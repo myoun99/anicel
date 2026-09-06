@@ -29,27 +29,16 @@ BrushTipMask cutPieceToTipMask(CutPiece piece, {required String id}) {
   final width = source.width;
   final height = source.height;
 
-  var coverage = Uint8List(width * height);
+  final coverage = Uint8List(width * height);
   for (var index = 0; index < coverage.length; index += 1) {
     coverage[index] = source.rgba[index * 4 + 3];
   }
 
-  final fit = brushTipMaskFitted(width, height);
-  if (fit.width != width || fit.height != height) {
-    coverage = areaAveragedGray(
-      coverage,
-      width: width,
-      height: height,
-      newWidth: fit.width,
-      newHeight: fit.height,
-    );
-  }
-
   // Square, content centred — the mask contract.
-  return BrushTipMask.square(
+  return brushTipMaskFromCoverage(
+    coverage,
+    size: (width: width, height: height),
     id: id,
-    pixels: coverage,
-    width: fit.width,
-    height: fit.height,
+    downscale: areaAveragedGray,
   );
 }

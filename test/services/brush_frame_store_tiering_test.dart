@@ -53,6 +53,25 @@ void main() {
   AnicelCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
       AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
 
+  test('a restore ACCOUNTS for the bytes it took on — a tier put that '
+      'forgot its increment would read as free RAM', () {
+    final store = BrushFrameStore();
+    final a = key(frame: 'a');
+    final b = key(frame: 'b');
+    final blobs = {a: blobOf(a, inkSurface()), b: blobOf(b, inkSurface(seed: 3))};
+    store.restoreBaked(blobs);
+
+    expect(
+      store.coldBakedBytes,
+      blobs.values.fold<int>(0, (sum, blob) => sum + blob.bytes.length),
+    );
+    expect(store.hotBakedBytes, 0);
+
+    // …and a swap to the FILE tier hands the whole cold account back.
+    store.restoreFromFile(const {});
+    expect(store.coldBakedBytes, 0);
+  });
+
   test('a restored (cold) cel counts as content, materializes byte-exactly '
       'on first access and promotes to hot', () {
     final store = BrushFrameStore();

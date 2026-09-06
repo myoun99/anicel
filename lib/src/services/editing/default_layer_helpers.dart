@@ -59,7 +59,7 @@ Layer createDefaultAnimationLayer({
   );
 }
 
-/// A COVERING layer ([layerKindCoversWithoutGaps]) is born covering its
+/// A COVERING layer ([LayerKind.coversWithoutGaps]) is born covering its
 /// cut — one cell, edge to edge (user's rule 2026-07-27 for storyboard;
 /// the image layer speaks the same grammar).
 ///
@@ -74,7 +74,7 @@ Layer createCoveringLayer({
   required Cut cut,
   LayerKind kind = LayerKind.storyboard,
 }) {
-  assert(layerKindCoversWithoutGaps(kind));
+  assert(kind.coversWithoutGaps);
   final duration = cut.duration < 1 ? 1 : cut.duration;
   return Layer(
     id: layerId,

@@ -15,15 +15,12 @@ import '../../models/timeline_row_address.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
-import 'effect_lane_policy.dart' show parseEffectLaneId;
-import 'layer_drop_policy.dart'
-    show effectChainAfterCrossing, effectHeaderRowsOf;
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_drag_preview.dart';
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_beat_lines.dart';
@@ -62,7 +59,6 @@ import 'timeline_swipe_columns.dart';
 
 part 'layer_grid/layer_grid_rail_rows.dart';
 part 'layer_grid/layer_grid_scroll.dart';
-part 'layer_grid/layer_grid_ruler_scrub.dart';
 part 'layer_grid/layer_grid_row_drags.dart';
 part 'layer_grid/layer_grid_lanes.dart';
 
@@ -264,7 +260,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     isMounted: () => mounted,
   );
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
-  final FrameScrubDedupe _rulerScrubbedFrame = FrameScrubDedupe();
 
   /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
   /// laid on this rail's own width.
@@ -393,11 +388,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _viewportFillFrameCells,
   );
 
-  // ── the ruler scrub: its own object, in its own file ────────────────
+  // ── the ruler scrub: the SHARED object ──────────────────────────────
   //
-  // A collaborator (timeline/layer_grid/layer_grid_ruler_scrub.dart, a part of this
-  // library). The State keeps the entry points its build tree calls.
-  late final _LayerGridRulerScrub _rulerScrub = _LayerGridRulerScrub(this);
+  // [TimelineFrameScrub], the one the X-sheet's rail holds too — the same
+  // six members, turned by the axis (the audit's clone scan, round 8).
+  late final TimelineFrameScrub _rulerScrub = TimelineFrameScrub(
+    axis: Axis.horizontal,
+    viewportKey: _rulerScrubViewportKey,
+    controller: _horizontalScrollController,
+    hooks: () => widget.hooks,
+    frameCellExtent: () => _metrics.frameCellWidth,
+    renderedFrameCount: () => _renderedFrameCount,
+    scrolledFrameOffset: () => _lastEffectiveHorizontalScrollOffset,
+  );
 
   /// Brings the SELECTION back into view on both axes (R5, user
   /// 2026-08-09): the frame under the cursor along the frame axis, the row
@@ -409,34 +412,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ///
   /// One row/cell of margin, so a walk keeps a neighbour in sight and reads
   /// as a walk rather than as a jump to the edge.
-  void _revealSelection() {
-    final cell = _metrics.frameCellWidth;
-    if (_horizontalScrollController.hasClients && cell > 0) {
-      jumpToReveal(
-        _horizontalScrollController,
-        (
-          start: widget.hooks.frameCursor.value * cell,
-          extent: cell,
-          margin: cell,
-        ),
-      );
-    }
-    final rowHeight = _metrics.layerRowHeight;
-    final rowIndex = _railRows.selectedRowIndex();
-    if (!_verticalScrollController.hasClients ||
-        rowIndex == null ||
-        rowHeight <= 0) {
-      return;
-    }
-    jumpToReveal(
-      _verticalScrollController,
-        (
-          start: rowIndex * rowHeight,
-          extent: rowHeight,
-          margin: rowHeight,
-        ),
-    );
-  }
+  void _revealSelection() => revealSelectionOnBothAxes(
+    (
+      controller: _horizontalScrollController,
+      extent: _metrics.frameCellWidth,
+      at: widget.hooks.frameCursor.value,
+    ),
+    (
+      controller: _verticalScrollController,
+      extent: _metrics.layerRowHeight,
+      at: indexOfDisplayRow(
+        _dragRows,
+        current: widget.hooks.currentRowHooks?.currentRow.value,
+        activeLayerId: widget.hooks.activeLayerId,
+      ),
+    ),
+  );
 
   // ── the lanes: their own object, in their own file ──────────────────
   //
@@ -461,7 +452,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// excluded) — the master opacity bar's target set (R4 #6).
   Set<LayerId> _displayedLayerIds(List<TimelineDisplayRow> rows) => {
     for (final row in rows)
-      if (!row.isLane && layerKindHasPictureOpacity(row.layer.kind))
+      if (!row.isLane && row.layer.kind.hasPictureOpacity)
         row.layer.id,
   };
 
@@ -1123,7 +1114,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             metrics:
                                                                 _metrics,
                                                             onSelectFrame:
-                                                                _rulerScrub.selectClampedFrameFromRuler,
+                                                                _rulerScrub.selectClampedFrame,
                                                             framesPerSecond:
                                                                 _countingFps,
                                                             showSeconds: widget
@@ -1179,38 +1170,38 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         HitTestBehavior
                                                             .translucent,
                                                     onPointerDown: (event) {
-                                                      _rulerScrub.resetRulerScrubTracking();
-                                                      _rulerScrub.selectFrameFromRulerGlobalPosition(
+                                                      _rulerScrub.resetTracking();
+                                                      _rulerScrub.pressAt(
                                                         event.position,
                                                       );
                                                     },
                                                     onPointerUp: (_) =>
-                                                        _rulerScrub.endRulerScrub(),
+                                                        _rulerScrub.endScrub(),
                                                     onPointerCancel: (_) =>
-                                                        _rulerScrub.endRulerScrub(),
+                                                        _rulerScrub.endScrub(),
                                                     child: GestureDetector(
                                                       behavior:
                                                           HitTestBehavior
                                                               .translucent,
                                                       onHorizontalDragStart:
                                                           (details) {
-                                                            _rulerScrub.selectFrameFromRulerGlobalPosition(
+                                                            _rulerScrub.pressAt(
                                                               details
                                                                   .globalPosition,
                                                             );
                                                           },
                                                       onHorizontalDragUpdate:
                                                           (details) {
-                                                            _rulerScrub.selectFrameFromRulerGlobalPosition(
+                                                            _rulerScrub.dragTo(
                                                               details
                                                                   .globalPosition,
                                                             );
                                                           },
                                                       onHorizontalDragEnd:
                                                           (_) =>
-                                                              _rulerScrub.resetRulerScrubTracking(),
+                                                              _rulerScrub.resetTracking(),
                                                       onHorizontalDragCancel:
-                                                          _rulerScrub.resetRulerScrubTracking,
+                                                          _rulerScrub.resetTracking,
                                                       child: SizedBox(
                                                         key:
                                                             _rulerScrubViewportKey,

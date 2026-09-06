@@ -76,7 +76,7 @@ class EffectsAndFx {
   bool get canAddEffectToActiveLayer {
     final layer = _selection.activeLayer;
     return layer != null &&
-        layerKindHasLayerEffects(layer.kind) &&
+        layer.kind.hasLayerEffects &&
         !_project.isTrackSeLayerId(layer.id) &&
         // Attach rows wear their BASE's FX (W5) and have no lanes of their
         // own — the effect belongs on the base.
@@ -335,7 +335,7 @@ class EffectsAndFx {
       return LayerFxState.on;
     }
     final switches = <bool>[
-      if (layerKindHasTransformFxSwitch(layer.kind)) layer.transformEnabled,
+      if (layer.kind.hasTransformFxSwitch) layer.transformEnabled,
       for (final effect in layer.effects) effect.enabled,
     ];
     if (switches.isEmpty) {
@@ -400,7 +400,7 @@ class EffectsAndFx {
     for (final layer in targets) {
       // The camera row is IN: it carries no effects, but its own switch —
       // the one that bypasses the cut camera's work — is this flag.
-      if (layerKindHasTransformFxSwitch(layer.kind) &&
+      if (layer.kind.hasTransformFxSwitch &&
           layer.transformEnabled != enabled) {
         commands.add(
           UpdateLayerTransformEnabledCommand(

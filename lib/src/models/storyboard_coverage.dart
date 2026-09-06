@@ -5,7 +5,7 @@
 /// nothing is drawn there. A conte panel is not like that: the cut is
 /// divided into panels, so what a block's start really states is a
 /// DIVISION, and the cell it opens runs until the next division or the end
-/// of the cut. Hence [layerKindCoversWithoutGaps] — and hence the
+/// of the cut. Hence [LayerKind.coversWithoutGaps] — and hence the
 /// consequences the design lists: growing the cut lengthens the last cell,
 /// deleting a block hands its frames to the one before it, and dragging a
 /// trailing edge is the ordinary comma resize with the cut's length riding

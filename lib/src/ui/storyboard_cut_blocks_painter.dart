@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show ValueListenable, mapEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
@@ -21,6 +21,8 @@ import 'timeline/timeline_frame_range_policy.dart'
     show timelineCommaLabelVisibleFor, timelineDurationLabel;
 import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_glyph_cache.dart';
+import 'repaint_props.dart';
+import 'timeline/memo_token.dart';
 
 /// The ground EVERY piece of CARRIED writing on a cut block receives — the
 /// cut's own number and length on the bands, and a panel's name and comma
@@ -219,7 +221,7 @@ final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 ///
 /// Only the drawing lives here. Selecting, sliding and reordering are the
 /// shared range gesture's, mounted above.
-class StoryboardCutBlocksPainter extends CustomPainter {
+class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   StoryboardCutBlocksPainter({
     required this.entries,
     required this.storyboardLayerNames,
@@ -1101,22 +1103,23 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant StoryboardCutBlocksPainter oldDelegate) =>
-      // Geometry, selection and hover are absent on purpose — they arrive
-      // through `repaint`.
-      !identical(oldDelegate.entries, entries) ||
-      !mapEquals(oldDelegate.storyboardLayerNames, storyboardLayerNames) ||
-      oldDelegate.crossAxisExtent != crossAxisExtent ||
-      oldDelegate.minBlockWidth != minBlockWidth ||
-      oldDelegate.activeCutId != activeCutId ||
-      oldDelegate.rowAddress != rowAddress ||
-      oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.brightness != brightness ||
-      oldDelegate.baseTextStyle != baseTextStyle ||
-      oldDelegate.showSeconds != showSeconds ||
-      oldDelegate.countingBase != countingBase ||
-      oldDelegate.showThumbnails != showThumbnails ||
-      oldDelegate.viewportMainExtent != viewportMainExtent;
+  // Geometry, selection and hover are absent on purpose — they arrive
+  // through `repaint`.
+  Object get props => (
+    ByIdentity(entries),
+    ByMap(storyboardLayerNames),
+    crossAxisExtent,
+    minBlockWidth,
+    activeCutId,
+    rowAddress,
+    colorScheme,
+    brightness,
+    baseTextStyle,
+    showSeconds,
+    countingBase,
+    showThumbnails,
+    viewportMainExtent,
+  );
 
   @override
   SemanticsBuilderCallback get semanticsBuilder =>

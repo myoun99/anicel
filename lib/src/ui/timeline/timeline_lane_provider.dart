@@ -75,7 +75,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
         // R8: the group's own switch — on every row that owns a transform.
         // The camera's lives on the cut's track, so its header shows none
         // and the row-level master covers it.
-        enabled: layerKindHasLayerTransform(layer.kind)
+        enabled: layer.kind.hasLayerTransform
             ? layer.transformEnabled
             : null,
       ),

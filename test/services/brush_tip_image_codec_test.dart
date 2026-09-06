@@ -64,6 +64,41 @@ void main() {
 
       expect(png.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
     });
+
+    test('an oversized image is reduced to the library limit, and the '
+        'whole picture comes down with it', () async {
+      // The decoder's half of the shared "fit, downscale, square" tail —
+      // only the cut-piece half had a pin. The source is split along the
+      // ROW axis on purpose: a tail that keeps the full-size buffer while
+      // claiming the fitted side reads only the first rows, so it would
+      // answer "all transparent" here rather than pass by accident.
+      const side = maxBrushTipMaskSide * 2;
+      const bottom = maxBrushTipMaskSide - 1;
+      final alpha = Uint8List(side * side);
+      for (var y = side ~/ 2; y < side; y += 1) {
+        alpha.fillRange(y * side, (y + 1) * side, 255);
+      }
+      final png = await encodeBrushTipImage(
+        BrushTipMask(id: 'big', size: side, alpha: alpha),
+      );
+
+      final decoded = await decodeBrushTipImage(png, id: 'big');
+
+      expect(decoded.size, maxBrushTipMaskSide);
+      // Rows away from the seam the resample blends: the bottom is still
+      // opaque and the top is still empty.
+      expect(
+        decoded.alpha.sublist(
+          bottom * maxBrushTipMaskSide,
+          (bottom + 1) * maxBrushTipMaskSide,
+        ),
+        everyElement(255),
+      );
+      expect(
+        decoded.alpha.sublist(0, maxBrushTipMaskSide),
+        everyElement(0),
+      );
+    });
   });
 
   group('brushTipThumbnailAlpha', () {

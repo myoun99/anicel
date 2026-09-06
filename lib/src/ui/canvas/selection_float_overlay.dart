@@ -7,6 +7,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import 'bitmap_surface_painter.dart';
 import 'viewport_canvas_transform.dart';
+import '../repaint_props.dart';
 
 /// What a selection MOVE or TRANSFORM is holding, described in CANVAS space
 /// so that whoever draws the active layer can draw it AT THAT LAYER'S DEPTH.
@@ -136,7 +137,7 @@ typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 /// the only difference from the merged route, where the stack painter has
 /// already applied it. Same bytes, same rects, one implementation of the
 /// drawing.
-class SelectionFloatPainter extends CustomPainter {
+class SelectionFloatPainter extends CustomPainter with RepaintOnProps {
   SelectionFloatPainter({
     required this.float,
     required this.viewport,
@@ -164,8 +165,5 @@ class SelectionFloatPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant SelectionFloatPainter oldDelegate) =>
-      oldDelegate.float != float ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.devicePixelRatio != devicePixelRatio;
+  Object get props => (float, viewport, devicePixelRatio);
 }

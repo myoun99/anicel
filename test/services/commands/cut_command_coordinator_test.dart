@@ -303,9 +303,9 @@ void main() {
         );
         final ink = BitmapSurface(
           canvasSize: const CanvasSize(width: 1280, height: 720),
-        ).putTile(
+        ).putTiles([
           BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
-        );
+        ]);
         // Draw through the COPY: lands under the canonical (base) key.
         store.storeBakedSurface(celKey(copyId), ink);
         expect(
@@ -333,9 +333,9 @@ void main() {
         // touches it.
         final repainted = BitmapSurface(
           canvasSize: const CanvasSize(width: 1280, height: 720),
-        ).putTile(
+        ).putTiles([
           BitmapTile.blank(coord: TileCoord(x: 1, y: 0), size: 256),
-        );
+        ]);
         store.storeBakedSurface(celKey(const LayerId('base')), repainted);
         expect(
           identical(store.bakedSurfaceOrNull(celKey(copyId)), ink),
@@ -1001,9 +1001,9 @@ void main() {
         // Ink lives under the CANONICAL (cut-1/base) key.
         final ink = BitmapSurface(
           canvasSize: const CanvasSize(width: 1280, height: 720),
-        ).putTile(
+        ).putTiles([
           BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
-        );
+        ]);
         BrushFrameKey survivorKey() => BrushFrameKey(
           projectId: const ProjectId('project-1'),
           trackId: const TrackId('track-1'),

@@ -66,9 +66,17 @@ Future<void> askAboutThenCommit<S extends Object, T extends Object>(
         commit: commit,
       );
 
+
 /// The yes/no shape. The decline action pops `false` (see
 /// `confirmActions`), so `false` is an answer that must not commit — a
 /// value the specialisation consumes, not a mode anyone selects.
+///
+/// ⛔THE THREE ANSWERS COLLAPSE HERE AND NOWHERE ELSE. A declined window
+/// pops `false`, a dismissed one pops null, and a caller torn down while
+/// the window was open answers null too ([showDialogVerb]) — none of the
+/// three commits. A site that must tell them apart asks the window
+/// directly and reads the raw answer, which is why `askConfirm` still
+/// hands the `bool?` back.
 Future<void> confirmThenCommit(
   BuildContext context, {
   required WidgetBuilder dialog,

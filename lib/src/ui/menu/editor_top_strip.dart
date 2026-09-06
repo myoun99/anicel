@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Directory, File, FileSystemException;
+import 'dart:io' show File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
@@ -144,16 +144,6 @@ class EditorTopStrip extends StatelessWidget {
 
   // --- File -----------------------------------------------------------------
 
-  void _showFileError(BuildContext context, Object error) {
-    unawaited(
-      showAppNotice(
-        context,
-        title: AppText.strings.commonNotice,
-        message: '$error',
-      ),
-    );
-  }
-
   Future<void> _openProject(BuildContext context) async {
     final pick = await pickProjectToOpen(context);
     if (pick == null || !context.mounted) {
@@ -269,7 +259,7 @@ class EditorTopStrip extends StatelessWidget {
       // Access, not format — the same file opens once it is readable (a
       // cloud placeholder mid-download, a provider signed out).
       if (context.mounted) {
-        _showFileError(
+        showFileError(
           context,
           const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
         );
@@ -282,7 +272,7 @@ class EditorTopStrip extends StatelessWidget {
       return;
     }
     if (warnings == null) {
-      _showFileError(
+      showFileError(
         context,
         const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'),
       );
@@ -317,23 +307,24 @@ class EditorTopStrip extends StatelessWidget {
         declinedSidecar: false,
       );
     }
-    final recover = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('recover-autosave-dialog'),
+    final recover = await askConfirm(
+      context,
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('recover-autosave-dialog'),
+          decline: const ValueKey<String>('recover-open-saved-button'),
+          accept: const ValueKey<String>('recover-autosave-button'),
+        ),
         title: AppText.strings.recoverAutosaveTitle,
         titleIcon: Icons.restore_outlined,
         message: AppText.strings.recoverAutosaveBody,
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.recoverOpenSaved,
-          declineKey: const ValueKey<String>('recover-open-saved-button'),
-          declineEmphasis: AppWindowActionEmphasis.danger,
-          declineTooltip: AppText.strings.recoverOpenSavedHint,
-          acceptLabel: AppText.strings.recoverAction,
-          acceptKey: const ValueKey<String>('recover-autosave-button'),
-        ),
       ),
+      decline: ConfirmChoice(
+        AppText.strings.recoverOpenSaved,
+        emphasis: AppWindowActionEmphasis.danger,
+        tooltip: AppText.strings.recoverOpenSavedHint,
+      ),
+      accept: ConfirmChoice(AppText.strings.recoverAction),
     );
     if (recover == null) {
       return null;
@@ -429,7 +420,7 @@ class EditorTopStrip extends StatelessWidget {
       return null;
     } on FileSystemException {
       if (context.mounted) {
-        _showFileError(
+        showFileError(
           context,
           const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
         );
@@ -487,7 +478,7 @@ class EditorTopStrip extends StatelessWidget {
       }
     } on Object catch (error) {
       if (context.mounted) {
-        _showFileError(context, error);
+        showFileError(context, error);
       }
     }
   }
@@ -570,13 +561,10 @@ class EditorTopStrip extends StatelessWidget {
             : '$resolved/${entry.name}';
         bookmark = grant.bookmark ?? bookmark;
       } else {
-        storeRecentProjects(
-          AppRecent.projects.value.withReconnectNeeded(entry.path),
-        );
         if (!context.mounted) {
           return;
         }
-        final relinked = await _relink(context, entry);
+        final relinked = await _reconnect(context, entry);
         if (relinked == null) {
           return;
         }
@@ -591,13 +579,10 @@ class EditorTopStrip extends StatelessWidget {
       // are no bookmarks at all — every row after a revoked storage grant
       // became permanently dead with a "not found" that blamed the wrong
       // thing.
-      storeRecentProjects(
-        AppRecent.projects.value.withReconnectNeeded(entry.path),
-      );
       if (!context.mounted) {
         return;
       }
-      final relinked = await _relink(context, entry);
+      final relinked = await _reconnect(context, entry);
       if (relinked == null) {
         return;
       }
@@ -605,7 +590,7 @@ class EditorTopStrip extends StatelessWidget {
       bookmark = relinked.folderBookmark;
       if (!File(path).existsSync()) {
         if (context.mounted) {
-          _showFileError(context, 'Not found: $path');
+          showFileError(context, 'Not found: $path');
         }
         return;
       }
@@ -625,8 +610,8 @@ class EditorTopStrip extends StatelessWidget {
     ));
   }
 
-  /// Asks for the project a remembered row has lost track of — with the
-  /// FILE picker, the same door Open uses.
+  /// Flags [entry] as needing a reconnect and asks for the project it has
+  /// lost track of — with the FILE picker, the same door Open uses.
   ///
   /// It used to raise the FOLDER picker and rejoin by file name, a shape
   /// left over from the folder-as-permission-unit world. That mode is the
@@ -635,20 +620,18 @@ class EditorTopStrip extends StatelessWidget {
   /// round un-blocked. Picking the file itself needs no name join, works
   /// everywhere file mode works, and hands back the file bookmark the
   /// recents row wants anyway.
-  Future<ProjectPick?> _relink(
-    BuildContext context,
-    RecentProject entry,
-  ) async {
-    final grants = await pickFileGrantsForUser(
+  ///
+  /// The two ways a recent row goes stale — no bookmark to resolve, and a
+  /// bookmark that resolved to a file that is gone — reach exactly this
+  /// step, so the row is flagged HERE rather than at each of them.
+  Future<ProjectPick?> _reconnect(BuildContext context, RecentProject entry) {
+    storeRecentProjects(
+      AppRecent.projects.value.withReconnectNeeded(entry.path),
+    );
+    return pickProjectFile(
       context,
       supportedExtensions: FileTypeGroups.anicelProject.extensions ?? const [],
     );
-    final grant = grants.isEmpty ? null : grants.first;
-    final path = grant?.path;
-    if (path == null) {
-      return null;
-    }
-    return (path: path, folderBookmark: grant!.bookmark, placed: false);
   }
 
   /// The PROJECT popover: the file itself, and the two doors it has to the
@@ -1464,31 +1447,49 @@ typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 /// It also unblocks Google Drive, which declines folder mode outright
 /// (measured on iOS 26.5.2) but serves file mode fine.
 @visibleForTesting
-Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
+Future<ProjectPick?> pickProjectToOpen(BuildContext context) => pickProjectFile(
+  context,
+  // TVPaint projects open through the same door (the user's call: ONE
+  // entry, the Open button — the import pickers retire later). A .tvpp
+  // converts into cuts rather than loading as a project.
+  //
+  // 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
+  // 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
+  // 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
+  // 선택할수 있게」.
+  supportedExtensions: const [anicelProjectExtension, 'tvpp'],
+  // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
+  // never completes under the widget-test clock, and this is the first
+  // line of the open flow.
+  //
+  // Withheld wherever grants are scoped — on macOS the sandbox makes
+  // `$HOME` the container, so this would point at
+  // `~/Library/Containers/…/Documents/Anicel` and the panel would open
+  // inside the sandbox on every Open. With no hint the Apple pickers
+  // restore wherever the user last was, which is what Files trains them
+  // to expect.
+  initialDirectory: FolderPicker.grantsAreScoped
+      ? null
+      : ensuredAppDocumentsDirectorySync(),
+);
+
+/// Points the FILE picker at a project and answers what it grants: the
+/// first file, its bookmark, and `placed: false` — nothing was written, so
+/// whoever asked still has to write it.
+///
+/// 🚨THE ONE PICK BEHIND EVERY PROJECT DOOR. Open and Reconnect are the
+/// same act with two bound constants — which extensions the door accepts,
+/// and whether a desktop starting folder is offered — so they are one
+/// function with two arguments rather than two functions that drift.
+Future<ProjectPick?> pickProjectFile(
+  BuildContext context, {
+  required List<String> supportedExtensions,
+  String? initialDirectory,
+}) async {
   final grants = await pickFileGrantsForUser(
     context,
-    // TVPaint projects open through the same door (the user's call: ONE
-    // entry, the Open button — the import pickers retire later). A .tvpp
-    // converts into cuts rather than loading as a project.
-    //
-    // 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
-    // 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
-    // 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
-    // 선택할수 있게」.
-    supportedExtensions: const [anicelProjectExtension, 'tvpp'],
-    // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
-    // never completes under the widget-test clock, and this is the first
-    // line of the open flow.
-    //
-    // Withheld wherever grants are scoped — on macOS the sandbox makes
-    // `$HOME` the container, so this would point at
-    // `~/Library/Containers/…/Documents/Anicel` and the panel would open
-    // inside the sandbox on every Open. With no hint the Apple pickers
-    // restore wherever the user last was, which is what Files trains them
-    // to expect.
-    initialDirectory: FolderPicker.grantsAreScoped
-        ? null
-        : ensuredAppDocumentsDirectorySync(),
+    supportedExtensions: supportedExtensions,
+    initialDirectory: initialDirectory,
   );
   final grant = grants.isEmpty ? null : grants.first;
   final path = grant?.path;
@@ -1563,24 +1564,24 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
   final suffixed = '$picked$anicelProjectSuffix';
   if (File(suffixed).existsSync()) {
     final strings = AppText.strings;
-    final replace = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: const ValueKey<String>('save-as-replace-dialog'),
+    final replace = await askConfirm(
+      context,
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('save-as-replace-dialog'),
+          decline: const ValueKey<String>('save-as-replace-cancel'),
+          accept: const ValueKey<String>('save-as-replace-confirm'),
+        ),
         title: strings.replaceFileTitle,
         titleIcon: Icons.save_as_outlined,
         message: strings.replaceFileMessageTemplate.replaceAll(
           '{name}',
           suffixed.split('/').last,
         ),
-        actions: confirmActions(
-          context,
-          declineLabel: strings.commonCancel,
-          declineKey: const ValueKey<String>('save-as-replace-cancel'),
-          acceptLabel: strings.commonReplace,
-          acceptKey: const ValueKey<String>('save-as-replace-confirm'),
-          acceptEmphasis: AppWindowActionEmphasis.danger,
-        ),
+      ),
+      accept: ConfirmChoice(
+        strings.commonReplace,
+        emphasis: AppWindowActionEmphasis.danger,
       ),
     );
     if (replace != true || !context.mounted) {
@@ -1595,53 +1596,38 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   String name,
   Future<void> Function(String stagingPath) stageArchive,
 ) async {
-  // Its own directory so the cleanup below cannot reach anything else.
-  final Directory stagingDirectory;
-  final File staged;
-  try {
-    stagingDirectory = Directory.systemTemp.createTempSync('anicel_save_');
-    staged = File('${stagingDirectory.path}/$name');
-    // WRITTEN, whole, from the live session — never copied from the file
-    // being left behind. It used to be a 22-byte empty-zip placeholder,
-    // on the theory that the save landing after the move would fill it;
-    // a provider that refuses in-place writes (실측 iPhone+Drive, 08-26)
-    // turned that theory into an unopenable husk sitting exactly where
-    // the user meant to put their work.
-    //
-    // 🚨And copying the LIVE ARCHIVE — the shape in between — was only
-    // ever correct because that same second write followed it: the
-    // archive on disk is the last SAVED state, so a Save As from a dirty
-    // session staged a file that was already out of date. The second
-    // write is gone now (the caller adopts what the picker placed), so
-    // what is placed has to be the current state, and only a fresh write
-    // is that.
-    await stageArchive(staged.path);
-  } on Object catch (error) {
-    // A staging failure used to return null silently — the Save As button
-    // read as dead, and on the exit path it silently cancelled the close.
-    if (context.mounted) {
-      unawaited(
-        showAppNotice(
-          context,
-          title: AppText.strings.commonNotice,
-          message: '$error',
-        ),
-      );
-    }
-    return null;
-  }
-  if (!context.mounted) {
-    _discardStaging(stagingDirectory);
-    return null;
-  }
-  final grant = await exportFileForUser(
+  final grant = await placeStagedFileForUser(
     context,
-    sourcePath: staged.path,
     suggestedName: name,
+    write: (stagingPath) async {
+      try {
+        // WRITTEN, whole, from the live session — never copied from the
+        // file being left behind. It used to be a 22-byte empty-zip
+        // placeholder, on the theory that the save landing after the move
+        // would fill it; a provider that refuses in-place writes (실측
+        // iPhone+Drive, 08-26) turned that theory into an unopenable husk
+        // sitting exactly where the user meant to put their work.
+        //
+        // 🚨And copying the LIVE ARCHIVE — the shape in between — was only
+        // ever correct because that same second write followed it: the
+        // archive on disk is the last SAVED state, so a Save As from a
+        // dirty session staged a file that was already out of date. The
+        // second write is gone now (the caller adopts what the picker
+        // placed), so what is placed has to be the current state, and only
+        // a fresh write is that.
+        await stageArchive(stagingPath);
+        return true;
+      } on Object catch (error) {
+        // A staging failure used to return null silently — the Save As
+        // button read as dead, and on the exit path it silently cancelled
+        // the close.
+        if (context.mounted) {
+          showFileError(context, error);
+        }
+        return false;
+      }
+    },
   );
-  // On success the staged file was MOVED out and only the empty directory
-  // is left; on cancel it is still in it. Same cleanup.
-  _discardStaging(stagingDirectory);
   final placed = grant?.path;
   if (placed == null) {
     return null;
@@ -1656,16 +1642,6 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   // `placed: true` — the archive the picker MOVED is the one this session
   // just serialized, so the caller adopts it instead of writing it again.
   return (path: placed, folderBookmark: grant!.bookmark, placed: true);
-}
-
-/// Removes the staging directory. A leak here must never fail a save — or a
-/// cancel, which is the path that reaches it most often.
-void _discardStaging(Directory directory) {
-  try {
-    directory.deleteSync(recursive: true);
-  } on Object {
-    // Temp is the OS's to reclaim if this ever loses the race.
-  }
 }
 
 /// What a dirty session's user chose at the gate.
@@ -1806,13 +1782,7 @@ Future<bool> saveProjectShowingProgress(
     return true;
   } on Object catch (error) {
     if (context.mounted) {
-      unawaited(
-        showAppNotice(
-          context,
-          title: AppText.strings.commonNotice,
-          message: '$error',
-        ),
-      );
+      showFileError(context, error);
     }
     return false;
   }

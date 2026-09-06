@@ -69,38 +69,27 @@ class _XSheetGridHeaders {
       child: child,
     );
 
-    if (!lane.isGroupHeader) {
-      return selectOnly();
-    }
-    final parsed = parseEffectLaneId(lane.laneId);
-    if (parsed == null || parsed.parameterId != null) {
-      return selectOnly();
-    }
-    final headers = effectHeaderRowsOf(_state._dragRows, entry.layer.id);
-    final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
-    if (slot < 0) {
-      return selectOnly();
-    }
-    return LayerRowDragTarget(
-      subject: EffectRowSubject(entry.layer.id, parsed.effectId),
-      slotBefore: slot,
-      rowExtent: _state._metrics.layerRowHeight,
-      axis: Axis.vertical,
-      hooks: hooks,
-      isLastRow: slot == headers.length - 1,
-      onCrossed: (steps, _, _) {
-        final landed = effectChainAfterCrossing(headers, slot, steps);
-        hooks.onEffectUpdate(entry.layer.id, landed.effectIds, landed.slot);
-      },
-      // B4-3: the SELECT half, the same one every other row already had.
-      onSelectCrossed: hooks.onSelectBegin == null
-          ? null
-          : (rowDelta) => _state.widget.hooks.onRowSelectionSpan?.call(
-              _state._dragRows,
-              rowDelta,
-            ),
-      child: child,
-    );
+    // The chain target is asked first; the select-only one answers whenever
+    // it declines. ⚠️No A5 grip pin here: this grid's LayerRailWindow is a
+    // paint clip, so nothing can unmount a held column mid-drag.
+    return effectChainRowDragTarget(
+          (row: entry, lane: lane),
+          hooks,
+          (
+            axis: Axis.vertical,
+            rowExtent: _state._metrics.layerRowHeight,
+            dragRows: () => _state._dragRows,
+            onSelectCrossed: (rowDelta) => _state
+                .widget
+                .hooks
+                .onRowSelectionSpan
+                ?.call(_state._dragRows, rowDelta),
+            onGripTaken: null,
+            onGripReleased: null,
+          ),
+          child: child,
+        ) ??
+        selectOnly();
   }
 
   Widget _laneHeader(TimelineDisplayRow entry) {

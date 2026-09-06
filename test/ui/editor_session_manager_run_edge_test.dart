@@ -351,4 +351,49 @@ void main() {
       hasLength(3),
     );
   });
+
+  test('the START side scopes its repeat pattern to the LAST block the '
+      'selection still covers (UI-R19 #2, the other half)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame(); // block at 3
+    final layerId = s.activeLayer!.id;
+    s.selectFrameIndex(4);
+    s.createDrawingAtCurrentFrame(); // block at 4
+    s.selectFrameIndex(5);
+    s.createDrawingAtCurrentFrame(); // block at 5 — run {3,4,5}
+    final blocks = layerOf(s, layerId).timeline;
+    final secondFrameId = blocks[4]!.frameId;
+
+    // Select [3,5): covers the run's FIRST block and ends inside the run.
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 3,
+      headIndex: 4,
+    );
+    expect(
+      s.canScopeRepeatToSelection(
+        layerId: layerId,
+        blockStartIndex: 3,
+        side: TimelineRunEdgeSide.start,
+      ),
+      isTrue,
+    );
+    s.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 3,
+      side: TimelineRunEdgeSide.start,
+      mode: TimelineRunEdgeMode.repeat,
+    );
+
+    final layer = layerOf(s, layerId);
+    expect(
+      layer.runBehaviors.single.patternAnchorFrameId,
+      secondFrameId,
+      reason: 'the pattern ends at the last block inside the selection',
+    );
+    // Ghosts back-fill by cycling the two selected frames, not all three.
+    expect(layer.timeline[2]!.frameId, blocks[4]!.frameId);
+    expect(layer.timeline[1]!.frameId, blocks[3]!.frameId);
+  });
 }

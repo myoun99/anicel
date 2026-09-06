@@ -92,34 +92,30 @@ void main() {
 
   group('the predicates', () {
     test('an adjustment composites but paints nothing of its own', () {
-      expect(layerKindComposites(LayerKind.adjustment), isTrue);
-      expect(layerKindFiltersBelow(LayerKind.adjustment), isTrue);
-      expect(layerKindPaintsArtwork(LayerKind.adjustment), isFalse);
-      expect(layerKindGroupsLayers(LayerKind.adjustment), isFalse);
-      expect(layerKindHoldsDrawings(LayerKind.adjustment), isFalse);
-      expect(layerKindAcceptsBrushInput(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.composites, isTrue);
+      expect(LayerKind.adjustment.filtersBelow, isTrue);
+      expect(LayerKind.adjustment.paintsArtwork, isFalse);
+      expect(LayerKind.adjustment.groupsLayers, isFalse);
+      expect(LayerKind.adjustment.holdsDrawings, isFalse);
+      expect(LayerKind.adjustment.acceptsBrushInput, isFalse);
     });
 
     test('it carries EFFECTS and no transform — the one kind that splits', () {
-      expect(layerKindHasLayerEffects(LayerKind.adjustment), isTrue);
-      expect(layerKindHasLayerTransform(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.hasLayerEffects, isTrue);
+      expect(LayerKind.adjustment.hasLayerTransform, isFalse);
       // …and every other kind still answers both the same way.
       for (final kind in LayerKind.values) {
         if (kind == LayerKind.adjustment) {
           continue;
         }
-        expect(
-          layerKindHasLayerEffects(kind),
-          layerKindHasLayerTransform(kind),
-          reason: kind.name,
-        );
+        expect(kind.hasLayerEffects, kind.hasLayerTransform, reason: kind.name);
       }
     });
 
     test('no cel export, and the kind is fixed', () {
-      expect(layerKindExportsCels(LayerKind.adjustment), isFalse);
-      expect(layerKindIsFixed(LayerKind.adjustment), isTrue);
-      expect(layerKindIsClipboardCopyable(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.exportsCels, isFalse);
+      expect(LayerKind.adjustment.isFixed, isTrue);
+      expect(LayerKind.adjustment.isClipboardCopyable, isFalse);
     });
   });
 
