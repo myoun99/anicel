@@ -11,6 +11,7 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
+import '../../services/project_tree_editor.dart';
 
 /// The scoped edit-drag preview channel.
 ///
@@ -358,21 +359,13 @@ Project projectWithTimelineDragPreview(
       }
       // The camera keys' preview reaches the project views too (the
       // storyboard/sheet substitution precedent).
-      return substituted.copyWith(
-        tracks: [
-          for (final track in substituted.tracks)
-            track.copyWith(
-              cuts: [
-                for (final cut in track.cuts)
-                  cut.id == cameraCutId
-                      ? cut.copyWith(
-                          camera: CutCamera(keyframes: cameraKeyframes),
-                        )
-                      : cut,
-              ],
-            ),
-        ],
-      );
+      return updateCutAnywhere(
+            substituted,
+            cameraCutId,
+            (cut) =>
+                cut.copyWith(camera: CutCamera(keyframes: cameraKeyframes)),
+          ) ??
+          substituted;
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
   }

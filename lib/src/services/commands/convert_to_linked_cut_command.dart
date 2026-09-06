@@ -6,15 +6,16 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
+import '../../models/project.dart';
 import '../../models/project_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/track_id.dart';
 import '../brush_frame_store.dart';
 import '../command.dart';
 import '../project_lookup.dart';
+import '../project_tree_editor.dart';
 import '../project_repository.dart';
 import 'convert_to_linked_cut_plan.dart';
-import 'project_with_cut_layers.dart';
 
 /// 겸용 변경 (L2b): links [targetCutId] to [originCutId] AFTER both were
 /// drawn — the "타이밍까지 통째 겸용 = 복제→변경" path and the standalone
@@ -210,10 +211,10 @@ class ConvertToLinkedCutCommand implements Command {
     brushFrameStore.rekeyFrames(_rekeys);
 
     repository.updateProject(
-      (current) => projectWithCutLayers(
-        projectWithCutLayers(current, originCutId, originLayers),
-        targetCutId,
-        targetLayers,
+      (current) => _withBothCutsLayers(
+        current,
+        origin: originLayers,
+        target: targetLayers,
       ).copyWith(linkRegistry: LayerLinkRegistry(groups: groups)),
     );
     _hasExecuted = true;
@@ -231,12 +232,34 @@ class ConvertToLinkedCutCommand implements Command {
     ]);
     // Restore both cuts' original layer lists and the registry.
     repository.updateProject(
-      (current) => projectWithCutLayers(
-        projectWithCutLayers(current, originCutId, _snapshotOrigin),
-        targetCutId,
-        _snapshotTarget,
+      (current) => _withBothCutsLayers(
+        current,
+        origin: _snapshotOrigin,
+        target: _snapshotTarget,
       ).copyWith(linkRegistry: registryBefore),
     );
+  }
+
+  /// [current] with the origin cut holding [origin] and the target cut
+  /// holding [target] — execute and undo swap the same two lists.
+  Project _withBothCutsLayers(
+    Project current, {
+    required List<Layer> origin,
+    required List<Layer> target,
+  }) {
+    final withOrigin =
+        updateCutAnywhere(
+          current,
+          originCutId,
+          (cut) => cut.copyWith(layers: origin),
+        ) ??
+        (throw StateError('Cut not found: $originCutId'));
+    return updateCutAnywhere(
+          withOrigin,
+          targetCutId,
+          (cut) => cut.copyWith(layers: target),
+        ) ??
+        (throw StateError('Cut not found: $targetCutId'));
   }
 
   // The exact pre-conversion layer lists, captured on the first execute.

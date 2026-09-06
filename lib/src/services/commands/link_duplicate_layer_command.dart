@@ -7,8 +7,8 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
 import '../command.dart';
 import '../project_lookup.dart';
+import '../project_tree_editor.dart';
 import '../project_repository.dart';
-import 'project_with_cut_layers.dart';
 
 /// 링크 복제 (L2): duplicates a layer's WHOLE attach group as a FREE
 /// group whose members share the originals' cel banks — the pictures
@@ -128,11 +128,14 @@ class LinkDuplicateLayerCommand implements Command {
         );
       }
 
-      return projectWithCutLayers(
-        project,
-        cutId,
-        nextLayers,
-      ).copyWith(linkRegistry: LayerLinkRegistry(groups: groups));
+      final next =
+          updateCutAnywhere(
+            project,
+            cutId,
+            (cut) => cut.copyWith(layers: nextLayers),
+          ) ??
+          (throw StateError('Cut not found: $cutId'));
+      return next.copyWith(linkRegistry: LayerLinkRegistry(groups: groups));
     });
     _hasExecuted = true;
   }
@@ -144,12 +147,20 @@ class LinkDuplicateLayerCommand implements Command {
       throw StateError('Command has not been executed.');
     }
     repository.updateProject((project) {
-      final cut = requireCut(project, cutId);
       final copyIds = layerIdMap.values.toSet();
-      return projectWithCutLayers(project, cutId, [
-        for (final layer in cut.layers)
-          if (!copyIds.contains(layer.id)) layer,
-      ]).copyWith(linkRegistry: registryBefore);
+      final next =
+          updateCutAnywhere(
+            project,
+            cutId,
+            (cut) => cut.copyWith(
+              layers: [
+                for (final layer in cut.layers)
+                  if (!copyIds.contains(layer.id)) layer,
+              ],
+            ),
+          ) ??
+          (throw StateError('Cut not found: $cutId'));
+      return next.copyWith(linkRegistry: registryBefore);
     });
   }
 

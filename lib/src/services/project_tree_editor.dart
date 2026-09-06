@@ -86,6 +86,12 @@ Project? updateTrackById(
 
 /// Replaces the first cut matching [cutId] (searching every track) via [update].
 /// Returns `null` if no cut matched.
+///
+/// ⛔THE WALK IS THE WHOLE PROJECT, ON PURPOSE. A cut is addressed by id,
+/// not by track — a caller that knew the track would have to keep knowing
+/// it through every undo, and a linked cut's counterpart lives in another
+/// one. Two link commands wrote this out identically, which is two places
+/// to forget that a cut can be anywhere.
 Project? updateCutAnywhere(
   Project project,
   CutId cutId,

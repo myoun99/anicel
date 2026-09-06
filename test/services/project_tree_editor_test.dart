@@ -15,6 +15,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_tree_editor.dart';
 
@@ -51,6 +52,57 @@ void main() {
       updateCutAnywhere(project, const CutId('nowhere'), (c) => c),
       isNull,
     );
+  });
+
+  test('🚨THE WALK IS THE WHOLE PROJECT — updateCutAnywhere finds a cut in '
+      'the SECOND track without the caller knowing which track it is in', () {
+    final first = project.tracks.first;
+    final second = Track(
+      id: const TrackId('t2'),
+      name: 'B',
+      cuts: [first.cuts.first.copyWith(id: const CutId('c2'))],
+    );
+    final twoTracks = project.copyWith(tracks: [first, second]);
+
+    final next = updateCutAnywhere(
+      twoTracks,
+      const CutId('c2'),
+      (c) => c.copyWith(layers: const []),
+    );
+
+    expect(next!.tracks.last.cuts.single.layers, isEmpty);
+    expect(
+      next.tracks.first.cuts.first.layers,
+      first.cuts.first.layers,
+      reason: 'the other cut is untouched',
+    );
+    expect(
+      [for (final track in next.tracks) track.id],
+      [first.id, second.id],
+      reason:
+          'every track is rebuilt, so each has to come back as '
+          'ITSELF — the rebuild must not hand one track another\'s name',
+    );
+  });
+
+  test('removeCutAnywhere takes the cut out of whichever track holds it '
+      'and hands it back; an unknown id removes nothing', () {
+    final first = project.tracks.first;
+    final second = Track(
+      id: const TrackId('t2'),
+      name: 'B',
+      cuts: [first.cuts.first.copyWith(id: const CutId('c2'))],
+    );
+    final twoTracks = project.copyWith(tracks: [first, second]);
+
+    final removed = removeCutAnywhere(twoTracks, const CutId('c2'));
+    expect(removed.removed?.id, const CutId('c2'));
+    expect(removed.project.tracks.last.cuts, isEmpty);
+    expect(removed.project.tracks.first.cuts, first.cuts);
+
+    final untouched = removeCutAnywhere(twoTracks, const CutId('nowhere'));
+    expect(untouched.removed, isNull);
+    expect(untouched.project.tracks.last.cuts, second.cuts);
   });
 
   test('updateLayerInCut edits the one layer and refuses an unknown id', () {

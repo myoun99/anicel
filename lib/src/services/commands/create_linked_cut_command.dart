@@ -8,6 +8,7 @@ import '../../models/layer_link_registry.dart';
 import '../../models/layer_section_defaults.dart';
 import '../command.dart';
 import '../project_lookup.dart';
+import '../project_tree_editor.dart';
 import '../project_repository.dart';
 
 /// 겸용컷 생성 (L2): a NEW cut whose drawing layers are linked copies of
@@ -139,21 +140,12 @@ class CreateLinkedCutCommand implements Command {
     if (!_hasExecuted || previousActiveCutId == null || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
-    repository.updateProject((project) {
-      return project
-          .copyWith(
-            tracks: [
-              for (final track in project.tracks)
-                track.copyWith(
-                  cuts: [
-                    for (final cut in track.cuts)
-                      if (cut.id != newCutId) cut,
-                  ],
-                ),
-            ],
-          )
-          .copyWith(linkRegistry: registryBefore);
-    });
+    repository.updateProject(
+      (project) => removeCutAnywhere(
+        project,
+        newCutId,
+      ).project.copyWith(linkRegistry: registryBefore),
+    );
     editingSession.setActiveCutId(previousActiveCutId);
   }
 
