@@ -10,6 +10,7 @@ import 'lane_span_keys_shift.dart';
 import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
 import 'effect_lane_policy.dart';
+import 'property_lane_lens.dart';
 
 /// Adds a key at [frameIndex] holding the parameter's RESOLVED value there
 /// (AE behaviour: keying a property freezes its current value), or removes
@@ -199,30 +200,34 @@ List<LayerEffect>? effectsWithGroupReset(
   return null;
 }
 
-/// Shifts EVERY key of ONE effect lane inside [rangeStartIndex,
-/// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
-/// (UI-R23 #3): rigid group, one delta, all-or-nothing. Null when nothing
-/// moves, a landing dips below 0, or a landing collides with an UNSHIFTED
-/// key on the same lane.
-List<LayerEffect>? effectsWithLaneKeysShifted(
-  List<LayerEffect> effects, {
-  required String laneId,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
-  }
-  return _editParameter(effects, laneId, (parameter, spec) {
-    // The shared shift loop — transform/name-tag families ride the same one.
-    final next = parameter.track.withRangedKeysShifted(
-      rangeStartIndex: rangeStartIndex,
-      rangeEndIndexExclusive: rangeEndIndexExclusive,
-      frameDelta: frameDelta,
-    );
-    return next == null ? null : parameter.copyWith(track: next);
-  });
+/// The effect family's lane table. A parameter lane is addressed by its
+/// parsed (effectId, parameterId) over the chain — a different key law
+/// from the fixed-field tracks, so the lens walks the list through
+/// [_editParameter] rather than reading a field. The group header is a
+/// lane too (its keyed frames are its members' union) but holds no track
+/// of its own, so an edit through it answers null. Null for an id that is
+/// not an effect lane at all.
+///
+/// The shared shift loop — transform/name-tag families ride the same one:
+/// `trackWithLaneKeysShifted` over this table.
+LaneLens<List<LayerEffect>>? effectLaneLens(String laneId) =>
+    parseEffectLaneId(laneId) == null ? null : _EffectLaneLens(laneId);
+
+class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
+  const _EffectLaneLens(this.laneId);
+
+  final String laneId;
+
+  @override
+  List<LayerEffect>? update(List<LayerEffect> effects, PropertyLaneEdit edit) =>
+      _editParameter(effects, laneId, (parameter, spec) {
+        final next = edit(parameter.track);
+        return next == null ? null : parameter.copyWith(track: next);
+      });
+
+  @override
+  Set<int> keyFrames(List<LayerEffect> effects) =>
+      effectLaneKeyFrames(effects, laneId);
 }
 
 /// Shifts every ranged key of EVERY [laneIds] lane by [frameDelta] — the
@@ -238,11 +243,10 @@ List<LayerEffect>? effectsWithLaneSpanKeysShifted(
 }) => laneSpanKeysShifted(
   effects,
   laneIds: laneIds,
+  lensOf: effectLaneLens,
   rangeStartIndex: rangeStartIndex,
   rangeEndIndexExclusive: rangeEndIndexExclusive,
   frameDelta: frameDelta,
-  laneKeyFrames: effectLaneKeyFrames,
-  laneKeysShifted: effectsWithLaneKeysShifted,
 );
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.

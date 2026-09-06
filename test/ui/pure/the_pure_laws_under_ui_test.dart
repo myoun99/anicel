@@ -5,7 +5,9 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/lane_span_in_order.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
+import 'package:anicel/src/ui/timeline/property_lane_lens.dart';
 
 /// The pure laws under `ui/` that no test named — each replaced two or
 /// three hand-written copies, and none of them needs a widget to check
@@ -132,58 +134,46 @@ void main() {
   });
 
   group('lane keys shift ACROSS lanes, all or nothing', () {
-    /// A toy track: lane id → the frames it has keys on.
-    Map<String, Set<int>> track(Map<String, Set<int>> lanes) => {
-      for (final entry in lanes.entries) entry.key: {...entry.value},
+    /// A toy track: lane id → the property track that lane is.
+    Map<String, PropertyTrack<int>> track(Map<String, Set<int>> lanes) => {
+      for (final entry in lanes.entries)
+        entry.key: entry.value.fold(
+          PropertyTrack<int>.empty(),
+          (lane, frame) => lane.withKey(frame, 0),
+        ),
     };
 
-    Set<int> keyFrames(Map<String, Set<int>> t, String laneId) =>
-        t[laneId] ?? const {};
+    /// The material: the toy's lane table, one lens per id.
+    LaneLens<Map<String, PropertyTrack<int>>> lensOf(String laneId) =>
+        PropertyLaneLens<Map<String, PropertyTrack<int>>, int>(
+          get: (t) => t[laneId] ?? PropertyTrack<int>.empty(),
+          set: (t, lane) => {...t, laneId: lane},
+        );
 
-    /// The material: one lane's own shift, blocked when [blocked] names it.
-    Map<String, Set<int>>? Function(
-      Map<String, Set<int>> track, {
-      required String laneId,
-      required int rangeStartIndex,
-      required int rangeEndIndexExclusive,
-      required int frameDelta,
-    })
-    shifterBlocking(Set<String> blocked) =>
-        (
-          t, {
-          required laneId,
-          required rangeStartIndex,
-          required rangeEndIndexExclusive,
-          required frameDelta,
-        }) {
-          if (blocked.contains(laneId)) {
-            return null;
-          }
-          return {
-            ...t,
-            laneId: {
-              for (final frame in t[laneId] ?? const <int>{})
-                if (frame >= rangeStartIndex && frame < rangeEndIndexExclusive)
-                  frame + frameDelta
-                else
-                  frame,
-            },
+    /// What the shifted track says: lane id → its keyed frames.
+    Map<String, Set<int>>? frames(Map<String, PropertyTrack<int>>? moved) =>
+        moved == null
+        ? null
+        : {
+            for (final entry in moved.entries)
+              entry.key: entry.value.keys.keys.toSet(),
           };
-        };
 
+    /// A lane is BLOCKED the way a real lane is: an unshifted key already
+    /// sits where a ranged key would land.
     Map<String, Set<int>>? shift({
-      required Map<String, Set<int>> from,
+      required Map<String, PropertyTrack<int>> from,
       required List<String> laneIds,
-      Set<String> blocked = const {},
       int delta = 2,
-    }) => laneSpanKeysShifted<Map<String, Set<int>>>(
-      from,
-      laneIds: laneIds,
-      rangeStartIndex: 0,
-      rangeEndIndexExclusive: 5,
-      frameDelta: delta,
-      laneKeyFrames: keyFrames,
-      laneKeysShifted: shifterBlocking(blocked),
+    }) => frames(
+      laneSpanKeysShifted<Map<String, PropertyTrack<int>>>(
+        from,
+        laneIds: laneIds,
+        lensOf: lensOf,
+        rangeStartIndex: 0,
+        rangeEndIndexExclusive: 5,
+        frameDelta: delta,
+      ),
     );
 
     test('every lane with a key in the range moves', () {
@@ -221,10 +211,11 @@ void main() {
         shift(
           from: track({
             'x': {1},
-            'y': {2},
+            // 2 lands on the unshifted key at 4.
+            'y': {2, 6},
           }),
           laneIds: const ['x', 'y'],
-          blocked: const {'y'},
+          delta: 4,
         ),
         isNull,
         reason:
@@ -233,18 +224,21 @@ void main() {
       );
     });
 
-    test('a lane that is blocked but has NOTHING in the range does not '
-        'veto — it was never asked', () {
+    test('a lane that would be blocked but has NOTHING in the range does '
+        'not veto — it was never asked', () {
       final moved = shift(
         from: track({
           'x': {1},
-          'y': {90},
+          // Out of range, so its keys never move — and never collide.
+          'y': {6, 8},
         }),
         laneIds: const ['x', 'y'],
-        blocked: const {'y'},
       );
 
-      expect(moved, isNotNull);
+      expect(moved, {
+        'x': {3},
+        'y': {6, 8},
+      });
     });
 
     test('a zero delta is null', () {

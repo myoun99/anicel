@@ -7,6 +7,7 @@ import '../../models/canvas_point.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'lane_span_keys_shift.dart';
+import 'property_lane_lens.dart';
 
 /// Adds a key at [frameIndex] with the property's RESOLVED value there
 /// (AE behavior: keying a property freezes its current value), or removes
@@ -79,28 +80,11 @@ TransformTrack? transformTrackWithLaneKeyRemoved(
   TransformTrack track, {
   required String laneId,
   required int frameIndex,
-}) {
-  switch (laneId) {
-    case 'anchor-point':
-      if (track.anchorPoint.keyAt(frameIndex) == null) return null;
-      return track.copyWith(
-        anchorPoint: track.anchorPoint.withoutKey(frameIndex),
-      );
-    case 'position':
-      if (track.position.keyAt(frameIndex) == null) return null;
-      return track.copyWith(position: track.position.withoutKey(frameIndex));
-    case 'scale':
-      if (track.scale.keyAt(frameIndex) == null) return null;
-      return track.copyWith(scale: track.scale.withoutKey(frameIndex));
-    case 'rotation':
-      if (track.rotation.keyAt(frameIndex) == null) return null;
-      return track.copyWith(rotation: track.rotation.withoutKey(frameIndex));
-    case 'opacity':
-      if (track.opacity.keyAt(frameIndex) == null) return null;
-      return track.copyWith(opacity: track.opacity.withoutKey(frameIndex));
-  }
-  return null;
-}
+}) => transformLaneLens(laneId)?.update(
+  track,
+  <U>(PropertyTrack<U> lane) =>
+      lane.keyAt(frameIndex) == null ? null : lane.withoutKey(frameIndex),
+);
 
 /// [track] with lane [laneId]'s keys inside [frames] named [name] (null
 /// un-names them), all collapsed onto ONE value. Null when nothing changed.
@@ -175,26 +159,10 @@ TransformTrack? transformTrackWithLaneHoldToggled(
   TransformTrack track, {
   required String laneId,
   required int frameIndex,
-}) {
-  switch (laneId) {
-    case 'anchor-point':
-      final next = _holdToggled(track.anchorPoint, frameIndex);
-      return next == null ? null : track.copyWith(anchorPoint: next);
-    case 'position':
-      final next = _holdToggled(track.position, frameIndex);
-      return next == null ? null : track.copyWith(position: next);
-    case 'scale':
-      final next = _holdToggled(track.scale, frameIndex);
-      return next == null ? null : track.copyWith(scale: next);
-    case 'rotation':
-      final next = _holdToggled(track.rotation, frameIndex);
-      return next == null ? null : track.copyWith(rotation: next);
-    case 'opacity':
-      final next = _holdToggled(track.opacity, frameIndex);
-      return next == null ? null : track.copyWith(opacity: next);
-  }
-  return null;
-}
+}) => transformLaneLens(laneId)?.update(
+  track,
+  <U>(PropertyTrack<U> lane) => _holdToggled(lane, frameIndex),
+);
 
 /// Applies a value typed into a lane's value editor: sets/updates the key
 /// at [frameIndex] (AE: changing an animated value keys it at the
@@ -433,51 +401,33 @@ TransformTrack? transformTrackWithGroupReset(
   );
 }
 
-/// Shifts EVERY key of ONE lane inside [rangeStartIndex,
-/// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
-/// (UI-R23 #3 part 2): rigid group, one delta, all-or-nothing. Null when
-/// nothing moves, a landing dips below 0, or a landing collides with an
-/// UNSHIFTED key on the same lane (the block discipline: nothing merges
-/// silently). Other lanes are untouched — the lane selection owns exactly
-/// its own keys.
-TransformTrack? transformTrackWithLaneKeysShifted(
-  TransformTrack track, {
-  required String laneId,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
-  }
-  // The loop itself is the shared law (transform/effect/name-tag families
-  // all shift through it).
-  PropertyTrack<T>? shifted<T>(PropertyTrack<T> lane) =>
-      lane.withRangedKeysShifted(
-        rangeStartIndex: rangeStartIndex,
-        rangeEndIndexExclusive: rangeEndIndexExclusive,
-        frameDelta: frameDelta,
-      );
-
-  switch (laneId) {
-    case 'anchor-point':
-      final next = shifted(track.anchorPoint);
-      return next == null ? null : track.copyWith(anchorPoint: next);
-    case 'position':
-      final next = shifted(track.position);
-      return next == null ? null : track.copyWith(position: next);
-    case 'scale':
-      final next = shifted(track.scale);
-      return next == null ? null : track.copyWith(scale: next);
-    case 'rotation':
-      final next = shifted(track.rotation);
-      return next == null ? null : track.copyWith(rotation: next);
-    case 'opacity':
-      final next = shifted(track.opacity);
-      return next == null ? null : track.copyWith(opacity: next);
-  }
-  return null;
-}
+/// The transform family's lane table: where each lane id lives on the
+/// track. The single-lane range move is [trackWithLaneKeysShifted] over
+/// this table; null for an id that is not a transform lane.
+LaneLens<TransformTrack>? transformLaneLens(String laneId) =>
+    switch (laneId) {
+      'anchor-point' => PropertyLaneLens<TransformTrack, CanvasPoint>(
+        get: (track) => track.anchorPoint,
+        set: (track, lane) => track.copyWith(anchorPoint: lane),
+      ),
+      'position' => PropertyLaneLens<TransformTrack, CanvasPoint>(
+        get: (track) => track.position,
+        set: (track, lane) => track.copyWith(position: lane),
+      ),
+      'scale' => PropertyLaneLens<TransformTrack, double>(
+        get: (track) => track.scale,
+        set: (track, lane) => track.copyWith(scale: lane),
+      ),
+      'rotation' => PropertyLaneLens<TransformTrack, double>(
+        get: (track) => track.rotation,
+        set: (track, lane) => track.copyWith(rotation: lane),
+      ),
+      'opacity' => PropertyLaneLens<TransformTrack, double>(
+        get: (track) => track.opacity,
+        set: (track, lane) => track.copyWith(opacity: lane),
+      ),
+      _ => null,
+    };
 
 /// Shifts every ranged key of EVERY [laneIds] lane by [frameDelta] —
 /// the MULTI-LANE range move (R26 #3): rigid group, one delta,
@@ -494,24 +444,15 @@ TransformTrack? transformTrackWithLaneSpanKeysShifted(
 }) => laneSpanKeysShifted(
   track,
   laneIds: laneIds,
+  lensOf: transformLaneLens,
   rangeStartIndex: rangeStartIndex,
   rangeEndIndexExclusive: rangeEndIndexExclusive,
   frameDelta: frameDelta,
-  laneKeyFrames: transformLaneKeyFrames,
-  laneKeysShifted: transformTrackWithLaneKeysShifted,
 );
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
-Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) {
-  return switch (laneId) {
-    'anchor-point' => track.anchorPoint.keys.keys.toSet(),
-    'position' => track.position.keys.keys.toSet(),
-    'scale' => track.scale.keys.keys.toSet(),
-    'rotation' => track.rotation.keys.keys.toSet(),
-    'opacity' => track.opacity.keys.keys.toSet(),
-    _ => const {},
-  };
-}
+Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) =>
+    transformLaneLens(laneId)?.keyFrames(track) ?? const {};
 
 PropertyTrack<T>? _holdToggled<T>(PropertyTrack<T> lane, int frameIndex) {
   final key = lane.keyAt(frameIndex);

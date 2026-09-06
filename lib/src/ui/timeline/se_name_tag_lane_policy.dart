@@ -1,5 +1,6 @@
 import '../../models/se_name_tag.dart';
 import '../text/app_strings.dart' show AppText;
+import 'property_lane_lens.dart';
 import 'property_lane_model.dart';
 
 /// The SE row's NAME TAG group (R5 #7) — a fixed group, sibling of
@@ -63,20 +64,49 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
   };
 }
 
+/// The name-tag family's lane table: where each member lane lives on the
+/// track — the name-tag twin of `transformLaneLens`, and the family's arm
+/// of the lane-scoped range move (UI-R23 #3 part 2) through
+/// `trackWithLaneKeysShifted`. Null for the header and for any id that is
+/// not a member lane.
+LaneLens<SeNameTagTrack>? seNameTagLaneLens(String laneId) =>
+    switch (laneId) {
+      seNameTagSizeLaneId => PropertyLaneLens<SeNameTagTrack, double>(
+        get: (keys) => keys.fontSize,
+        set: (keys, lane) => keys.copyWith(fontSize: lane),
+      ),
+      seNameTagTrackingLaneId => PropertyLaneLens<SeNameTagTrack, double>(
+        get: (keys) => keys.letterSpacing,
+        set: (keys, lane) => keys.copyWith(letterSpacing: lane),
+      ),
+      seNameTagBoldLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.bold,
+        set: (keys, lane) => keys.copyWith(bold: lane),
+      ),
+      seNameTagNameInkLaneId => PropertyLaneLens<SeNameTagTrack, int>(
+        get: (keys) => keys.nameInk,
+        set: (keys, lane) => keys.copyWith(nameInk: lane),
+      ),
+      seNameTagBoxColorLaneId => PropertyLaneLens<SeNameTagTrack, int>(
+        get: (keys) => keys.boxColor,
+        set: (keys, lane) => keys.copyWith(boxColor: lane),
+      ),
+      seNameTagLineInkLaneId => PropertyLaneLens<SeNameTagTrack, int>(
+        get: (keys) => keys.lineInk,
+        set: (keys, lane) => keys.copyWith(lineInk: lane),
+      ),
+      seNameTagShowLineLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.showLine,
+        set: (keys, lane) => keys.copyWith(showLine: lane),
+      ),
+      _ => null,
+    };
+
 /// The member lane's keyed frames — the ONE per-lane key reader (the lane
 /// builder, the move machine's keyed gate and the keyframe navigator all
 /// read this; the name-tag twin of `transformLaneKeyFrames`).
 Set<int> seNameTagLaneKeyFrames(SeNameTagTrack keys, String laneId) =>
-    switch (laneId) {
-      seNameTagSizeLaneId => keys.fontSize.keys.keys.toSet(),
-      seNameTagTrackingLaneId => keys.letterSpacing.keys.keys.toSet(),
-      seNameTagBoldLaneId => keys.bold.keys.keys.toSet(),
-      seNameTagNameInkLaneId => keys.nameInk.keys.keys.toSet(),
-      seNameTagBoxColorLaneId => keys.boxColor.keys.keys.toSet(),
-      seNameTagLineInkLaneId => keys.lineInk.keys.keys.toSet(),
-      seNameTagShowLineLaneId => keys.showLine.keys.keys.toSet(),
-      _ => const {},
-    };
+    seNameTagLaneLens(laneId)?.keyFrames(keys) ?? const {};
 
 /// The lane rows for one SE row's name tag: the header, and its members
 /// while the group is twirled open.

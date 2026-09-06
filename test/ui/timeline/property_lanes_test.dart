@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show TimelineGridMetrics;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
+import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -814,8 +815,9 @@ void main() {
         scale: PropertyTrack<double>().withKey(2, 1.5),
       );
 
-      final shifted = transformTrackWithLaneKeysShifted(
+      final shifted = trackWithLaneKeysShifted(
         track,
+        lensOf: transformLaneLens,
         laneId: 'position',
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 4,
@@ -826,8 +828,9 @@ void main() {
 
       // Landing on the UNSHIFTED key at 8 voids (nothing merges silently).
       expect(
-        transformTrackWithLaneKeysShifted(
+        trackWithLaneKeysShifted(
           track,
+          lensOf: transformLaneLens,
           laneId: 'position',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
@@ -837,8 +840,9 @@ void main() {
       );
       // Below frame 0 voids.
       expect(
-        transformTrackWithLaneKeysShifted(
+        trackWithLaneKeysShifted(
           track,
+          lensOf: transformLaneLens,
           laneId: 'position',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
@@ -848,8 +852,9 @@ void main() {
       );
       // No keys in range = nothing to move.
       expect(
-        transformTrackWithLaneKeysShifted(
+        trackWithLaneKeysShifted(
           track,
+          lensOf: transformLaneLens,
           laneId: 'rotation',
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,

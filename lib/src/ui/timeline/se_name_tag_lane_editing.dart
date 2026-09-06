@@ -302,59 +302,12 @@ bool? parseBoolInput(String input) => switch (input.trim().toLowerCase()) {
   _ => null,
 };
 
-/// Shifts EVERY key of ONE name-tag lane inside [rangeStartIndex,
-/// [rangeEndIndexExclusive]) by [frameDelta] — the family's arm of the
-/// lane-scoped range move (UI-R23 #3 part 2), through the shared
-/// [PropertyTrack.withRangedKeysShifted] loop. Null when nothing moves or
-/// the landing is blocked.
-SeNameTagTrack? seNameTagTrackWithLaneKeysShifted(
-  SeNameTagTrack track, {
-  required String laneId,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) {
-  if (frameDelta == 0) {
-    return null;
-  }
-  PropertyTrack<T>? shifted<T>(PropertyTrack<T> lane) =>
-      lane.withRangedKeysShifted(
-        rangeStartIndex: rangeStartIndex,
-        rangeEndIndexExclusive: rangeEndIndexExclusive,
-        frameDelta: frameDelta,
-      );
-
-  switch (laneId) {
-    case seNameTagSizeLaneId:
-      final next = shifted(track.fontSize);
-      return next == null ? null : track.copyWith(fontSize: next);
-    case seNameTagTrackingLaneId:
-      final next = shifted(track.letterSpacing);
-      return next == null ? null : track.copyWith(letterSpacing: next);
-    case seNameTagBoldLaneId:
-      final next = shifted(track.bold);
-      return next == null ? null : track.copyWith(bold: next);
-    case seNameTagNameInkLaneId:
-      final next = shifted(track.nameInk);
-      return next == null ? null : track.copyWith(nameInk: next);
-    case seNameTagBoxColorLaneId:
-      final next = shifted(track.boxColor);
-      return next == null ? null : track.copyWith(boxColor: next);
-    case seNameTagLineInkLaneId:
-      final next = shifted(track.lineInk);
-      return next == null ? null : track.copyWith(lineInk: next);
-    case seNameTagShowLineLaneId:
-      final next = shifted(track.showLine);
-      return next == null ? null : track.copyWith(showLine: next);
-  }
-  return null;
-}
-
 /// Shifts every ranged key of EVERY [laneIds] lane by [frameDelta] — the
 /// MULTI-LANE range move (R26 #3), the name-tag twin of
 /// `transformTrackWithLaneSpanKeysShifted`: rigid group, one delta,
 /// all-or-nothing ACROSS lanes. A lane with no key in the range rides
-/// along; a lane whose landing is blocked vetoes the WHOLE move.
+/// along; a lane whose landing is blocked vetoes the WHOLE move. The
+/// single-lane arm is `trackWithLaneKeysShifted` over [seNameTagLaneLens].
 SeNameTagTrack? seNameTagTrackWithLaneSpanKeysShifted(
   SeNameTagTrack track, {
   required List<String> laneIds,
@@ -364,9 +317,8 @@ SeNameTagTrack? seNameTagTrackWithLaneSpanKeysShifted(
 }) => laneSpanKeysShifted(
   track,
   laneIds: laneIds,
+  lensOf: seNameTagLaneLens,
   rangeStartIndex: rangeStartIndex,
   rangeEndIndexExclusive: rangeEndIndexExclusive,
   frameDelta: frameDelta,
-  laneKeyFrames: seNameTagLaneKeyFrames,
-  laneKeysShifted: seNameTagTrackWithLaneKeysShifted,
 );

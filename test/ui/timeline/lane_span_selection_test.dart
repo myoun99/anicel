@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
@@ -246,8 +247,9 @@ void main() {
         rangeEndIndexExclusive: 10,
         frameDelta: 3,
       );
-      final single = transformTrackWithLaneKeysShifted(
+      final single = trackWithLaneKeysShifted(
         track(),
+        lensOf: transformLaneLens,
         laneId: 'scale',
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 10,
