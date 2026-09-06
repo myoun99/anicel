@@ -44,27 +44,13 @@ class BitmapSurface {
 
   BitmapTile? tileAt(TileCoord coord) => _tiles[coord];
 
-  BitmapSurface putTile(BitmapTile tile) {
-    if (!containsTileCoord(tile.coord)) {
-      throw ArgumentError.value(
-        tile.coord,
-        'tile.coord',
-        'BitmapSurface tile coord must be inside surface tile bounds.',
-      );
-    }
-    if (tile.size != tileSize) {
-      throw ArgumentError.value(
-        tile.size,
-        'tile.size',
-        'BitmapSurface tile size must match surface tileSize.',
-      );
-    }
-    return copyWith(tiles: {..._tiles, tile.coord: tile});
-  }
-
-  /// Puts MANY tiles in one map rebuild — [putTile] copies the whole
-  /// tile map per call, which is O(n²) across a full-canvas commit's n
-  /// tiles (417ms of an 8000² fill was exactly this).
+  /// Puts tiles — however few — in ONE map rebuild.
+  ///
+  /// ⛔THE BATCH IS THE ONLY PUT. A per-tile put copied the whole tile map
+  /// per call, which is O(n²) across a full-canvas commit's n tiles (417ms
+  /// of an 8000² fill was exactly this), so there is deliberately no
+  /// one-tile form to reach for: `putTiles([tile])` is the n = 1 case and
+  /// costs the same as the old single put did.
   BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     for (final tile in tilesToPut) {

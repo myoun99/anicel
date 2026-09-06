@@ -591,7 +591,7 @@ void main() {
     // EDITED to red, and its picture is already decoded — the partial-
     // decode state the stand-in must stand aside for.
     final redTile = filledTile(0, r: 0xFF, g: 0, b: 0);
-    final edited = drawnSurface(tileCount).putTile(redTile);
+    final edited = drawnSurface(tileCount).putTiles([redTile]);
     final tileCache = BitmapTileImageCache();
     await tester.runAsync(() async {
       tileCache.ensureDecoded(redTile);

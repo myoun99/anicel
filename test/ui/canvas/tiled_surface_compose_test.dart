@@ -32,13 +32,13 @@ void main() {
           pixels[index + 2] = (pixel * 29) & 0xFF;
           pixels[index + 3] = (pixel * 5) % 256; // 0 / mid / 255 regimes
         }
-        surface = surface.putTile(
+        surface = surface.putTiles([
           BitmapTile(
             coord: TileCoord(x: tileX, y: tileY),
             size: 256,
             pixels: pixels,
           ),
-        );
+        ]);
       }
     }
     return surface;
@@ -96,9 +96,9 @@ void main() {
         const ui.Rect.fromLTRB(0, 0, 512, 256),
       );
 
-      final withPasteboard = plain.putTile(
+      final withPasteboard = plain.putTiles([
         BitmapTile.blank(coord: TileCoord(x: -1, y: -1), size: 256),
-      );
+      ]);
       expect(
         surfaceContentWorldRect(withPasteboard),
         const ui.Rect.fromLTRB(-256, -256, 512, 256),

@@ -121,9 +121,9 @@ void main() {
       expect(surface().containsTileCoord(TileCoord(x: 0, y: 4)), isFalse);
     });
 
-    test('putTile stores a pasteboard tile', () {
+    test('putTiles stores a pasteboard tile', () {
       final tile = BitmapTile.blank(coord: TileCoord(x: -1, y: -1), size: 256);
-      final updated = surface().putTile(tile);
+      final updated = surface().putTiles([tile]);
       expect(updated.tileAt(TileCoord(x: -1, y: -1)), tile);
     });
   });

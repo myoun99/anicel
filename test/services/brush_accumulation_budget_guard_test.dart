@@ -153,7 +153,7 @@ void main() {
 
     BitmapSurface surfaceWithTile() => BitmapSurface(
       canvasSize: canvasSize,
-    ).putTile(BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256));
+    ).putTiles([BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256)]);
 
     for (var cel = 0; cel < 3; cel += 1) {
       final surface = surfaceWithTile();

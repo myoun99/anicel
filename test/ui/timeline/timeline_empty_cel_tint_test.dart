@@ -204,9 +204,9 @@ void main() {
       return BitmapSurface(
         canvasSize: const CanvasSize(width: 4, height: 4),
         tileSize: 4,
-      ).putTile(
+      ).putTiles([
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
-      );
+      ]);
     }
 
     test('an undrawn cel answers false; storing ink flips it; non-drawing '
