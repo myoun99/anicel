@@ -164,6 +164,57 @@ void main() {
     });
   });
 
+  group('angle conventions', () {
+    // The tip angle is measured the other way round from an axis angle
+    // (visual counter-clockwise in y-down space), so the two maps are one
+    // function conjugated by negation — pinned on the values, not on the
+    // relation, so a slip in either sign shows up as a wrong number.
+    final reflection = GuideTransform.reflection(_point(100, 50), 90);
+    final rotation = GuideTransform.rotation(_point(0, 0), 90);
+
+    test('a vertical mirror sends an axis at 30° to 150°', () {
+      expect(reflection.mapAxisAngleDegrees(30), closeTo(150, 1e-9));
+    });
+
+    test('a vertical mirror sends a tip at 30° to 150° too', () {
+      // Up-and-right leans become up-and-left leans; -30° would be the
+      // mirror across a HORIZONTAL axis and a bitmap tip would come out
+      // upside down.
+      expect(reflection.mapTipAngleDegrees(30), closeTo(150, 1e-9));
+    });
+
+    test('a quarter turn clockwise turns an axis by +90 and a tip by -90', () {
+      expect(rotation.mapAxisAngleDegrees(0), closeTo(90, 1e-9));
+      expect(rotation.mapTipAngleDegrees(0), closeTo(-90, 1e-9));
+      expect(rotation.mapTipAngleDegrees(30), closeTo(-60, 1e-9));
+    });
+
+    test('a collapsing map keeps the angle it was given, in both '
+        'conventions', () {
+      const collapse = GuideTransform(0, 0, 0, 0, 5, 5);
+      expect(collapse.mapAxisAngleDegrees(37), 37);
+      expect(collapse.mapTipAngleDegrees(37), 37);
+      expect(collapse.mapTipAngleDegrees(-140), -140);
+    });
+
+    test('the tip map is the axis map conjugated by negation', () {
+      for (final transform in [
+        reflection,
+        rotation,
+        GuideTransform.rotation(_point(3, 4), -37),
+        GuideTransform.reflection(_point(0, 0), 20),
+      ]) {
+        for (final angle in [0.0, 30.0, 95.0, -140.0, 179.5]) {
+          expect(
+            transform.mapTipAngleDegrees(angle),
+            closeTo(-transform.mapAxisAngleDegrees(-angle), 1e-9),
+            reason: '$transform at $angle',
+          );
+        }
+      }
+    });
+  });
+
   group('snap candidates', () {
     test('every vanishing point of every snapping guide is a candidate', () {
       // A two-point perspective with only one live vanishing point could

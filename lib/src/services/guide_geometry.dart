@@ -65,15 +65,14 @@ class GuideTransform {
   /// back covers rotations and reflections with one rule — the alternative
   /// is a sign case per transform kind, which is where this sort of thing
   /// usually goes wrong.
-  double mapTipAngleDegrees(double angleDegrees) {
-    final radians = angleDegrees * math.pi / 180;
-    final axisX = math.cos(radians);
-    final axisY = -math.sin(radians);
-    final mappedX = a * axisX + c * axisY;
-    final mappedY = b * axisX + d * axisY;
-    if (mappedX == 0 && mappedY == 0) return angleDegrees;
-    return -math.atan2(mappedY, mappedX) * 180 / math.pi;
-  }
+  ///
+  /// The tip axis is the axis direction at −α, so this is the axis map
+  /// conjugated by negation — cos is even and sin is odd, so `(cos α,
+  /// −sin α)` IS the axis direction at `−α`, and the tip's `−atan2` is the
+  /// negation of the axis result. The collapse branch returns `−(−α) = α`
+  /// on both.
+  double mapTipAngleDegrees(double angleDegrees) =>
+      -mapAxisAngleDegrees(-angleDegrees);
 
   /// `this ∘ other` — apply [other] first.
   GuideTransform compose(GuideTransform other) => GuideTransform(
