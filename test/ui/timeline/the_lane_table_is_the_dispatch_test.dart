@@ -7,6 +7,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
+import 'package:anicel/src/ui/timeline/property_lane_lens.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
@@ -15,40 +16,51 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 /// every id reaches its own field and no other — and run the one shared
 /// keys-shift verb through all three families.
 void main() {
+  /// A lane edit that needs no value of the lane's type: it drops the key
+  /// at [frame]. Every field below is keyed on a DIFFERENT frame, so a lens
+  /// that read one field and wrote another would carry a foreign key
+  /// across — and the table check would see it.
+  PropertyLaneEdit without(int frame) =>
+      <U>(PropertyTrack<U> lane) => lane.withoutKey(frame);
+
   /// A lane edit that needs no value of the lane's type: it EMPTIES the
   /// lane, so a write through one lens is visible on exactly one field.
   PropertyTrack<U>? clear<U>(PropertyTrack<U> lane) => PropertyTrack<U>.empty();
 
-  PropertyTrack<T> keyed<T>(T value, {int at = 7}) =>
+  PropertyTrack<T> keyed<T>(T value, {required int at}) =>
       PropertyTrack<T>(keys: {at: PropertyKey<T>(value)});
 
   group('the transform table', () {
-    final fields = <String, PropertyTrack<Object?> Function(TransformTrack)>{
-      'anchor-point': (t) => t.anchorPoint,
-      'position': (t) => t.position,
-      'scale': (t) => t.scale,
-      'rotation': (t) => t.rotation,
-      'opacity': (t) => t.opacity,
-    };
+    // (field reader, the frame that field alone is keyed on)
+    final fields =
+        <String, (PropertyTrack<Object?> Function(TransformTrack), int)>{
+          'anchor-point': ((t) => t.anchorPoint, 1),
+          'position': ((t) => t.position, 2),
+          'scale': ((t) => t.scale, 3),
+          'rotation': ((t) => t.rotation, 4),
+          'opacity': ((t) => t.opacity, 5),
+        };
     TransformTrack allKeyed() => TransformTrack.properties(
-      anchorPoint: keyed(CanvasPoint(x: 1, y: 1)),
-      position: keyed(CanvasPoint(x: 2, y: 2)),
-      scale: keyed(1.5),
-      rotation: keyed(30.0),
-      opacity: keyed(0.5),
+      anchorPoint: keyed(CanvasPoint(x: 1, y: 1), at: 1),
+      position: keyed(CanvasPoint(x: 2, y: 2), at: 2),
+      scale: keyed(1.5, at: 3),
+      rotation: keyed(30.0, at: 4),
+      opacity: keyed(0.5, at: 5),
     );
 
     test('every lane id reads and writes its own field and no other', () {
       for (final entry in fields.entries) {
+        final (_, frame) = entry.value;
         final lens = transformLaneLens(entry.key)!;
-        expect(lens.keyFrames(allKeyed()), {7});
-        expect(transformLaneKeyFrames(allKeyed(), entry.key), {7});
-        final cleared = lens.update(allKeyed(), clear)!;
+        expect(lens.keyFrames(allKeyed()), {frame});
+        expect(transformLaneKeyFrames(allKeyed(), entry.key), {frame});
+        final cleared = lens.update(allKeyed(), without(frame))!;
         for (final other in fields.entries) {
+          final (read, otherFrame) = other.value;
           expect(
-            other.value(cleared).keys.keys,
-            other.key == entry.key ? isEmpty : [7],
-            reason: '${entry.key} must write ${entry.key} only',
+            read(cleared).keys.keys,
+            other.key == entry.key ? isEmpty : [otherFrame],
+            reason: '${entry.key} must read and write ${entry.key} only',
           );
         }
       }
@@ -71,38 +83,41 @@ void main() {
   });
 
   group('the name-tag table', () {
-    final fields = <String, PropertyTrack<Object?> Function(SeNameTagTrack)>{
-      seNameTagSizeLaneId: (t) => t.fontSize,
-      seNameTagTrackingLaneId: (t) => t.letterSpacing,
-      seNameTagBoldLaneId: (t) => t.bold,
-      seNameTagNameInkLaneId: (t) => t.nameInk,
-      seNameTagBoxColorLaneId: (t) => t.boxColor,
-      seNameTagLineInkLaneId: (t) => t.lineInk,
-      seNameTagShowLineLaneId: (t) => t.showLine,
-    };
+    final fields =
+        <String, (PropertyTrack<Object?> Function(SeNameTagTrack), int)>{
+          seNameTagSizeLaneId: ((t) => t.fontSize, 1),
+          seNameTagTrackingLaneId: ((t) => t.letterSpacing, 2),
+          seNameTagBoldLaneId: ((t) => t.bold, 3),
+          seNameTagNameInkLaneId: ((t) => t.nameInk, 4),
+          seNameTagBoxColorLaneId: ((t) => t.boxColor, 5),
+          seNameTagLineInkLaneId: ((t) => t.lineInk, 6),
+          seNameTagShowLineLaneId: ((t) => t.showLine, 7),
+        };
     SeNameTagTrack allKeyed() => SeNameTagTrack(
-      fontSize: keyed(12.0),
-      letterSpacing: keyed(1.0),
-      bold: keyed(true),
-      nameInk: keyed(0xFF000000),
-      boxColor: keyed(0xFFFF0000),
-      lineInk: keyed(0xFF0000FF),
-      showLine: keyed(false),
+      fontSize: keyed(12.0, at: 1),
+      letterSpacing: keyed(1.0, at: 2),
+      bold: keyed(true, at: 3),
+      nameInk: keyed(0xFF000000, at: 4),
+      boxColor: keyed(0xFFFF0000, at: 5),
+      lineInk: keyed(0xFF0000FF, at: 6),
+      showLine: keyed(false, at: 7),
     );
 
     test('every member lane id reads and writes its own field and no '
         'other', () {
       expect(fields.keys, seNameTagLaneDisplayOrder);
       for (final entry in fields.entries) {
+        final (_, frame) = entry.value;
         final lens = seNameTagLaneLens(entry.key)!;
-        expect(lens.keyFrames(allKeyed()), {7});
-        expect(seNameTagLaneKeyFrames(allKeyed(), entry.key), {7});
-        final cleared = lens.update(allKeyed(), clear)!;
+        expect(lens.keyFrames(allKeyed()), {frame});
+        expect(seNameTagLaneKeyFrames(allKeyed(), entry.key), {frame});
+        final cleared = lens.update(allKeyed(), without(frame))!;
         for (final other in fields.entries) {
+          final (read, otherFrame) = other.value;
           expect(
-            other.value(cleared).keys.keys,
-            other.key == entry.key ? isEmpty : [7],
-            reason: '${entry.key} must write ${entry.key} only',
+            read(cleared).keys.keys,
+            other.key == entry.key ? isEmpty : [otherFrame],
+            reason: '${entry.key} must read and write ${entry.key} only',
           );
         }
       }
@@ -206,9 +221,14 @@ void main() {
     });
 
     test('a zero delta and an unknown lane are null on every table', () {
+      // Keyed IN the range: a zero delta must answer null rather than the
+      // unchanged track, and only the guard says so once keys are there.
+      final keyedScale = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<double>().withKey(2, 1.5),
+      );
       for (final call in [
         () => trackWithLaneKeysShifted(
-          TransformTrack.empty(),
+          keyedScale,
           lensOf: transformLaneLens,
           laneId: 'scale',
           rangeStartIndex: 0,
