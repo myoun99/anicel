@@ -206,6 +206,28 @@ void main() {
       expect(poses[49].x, closeTo(300, 1e-6));
     });
 
+    test('a scalar channel holds its FIRST keyed value before its first key '
+        'and its LAST past the last — the same edge hold position takes', () {
+      final poses = bakeTvppCamera(
+        [
+          _point(x: 10, instant: 0, flags: 1),
+          _point(x: 10, rotation: -4, instant: 5),
+          _point(x: 20, rotation: -9, instant: 8),
+          _point(x: 20, instant: 11, flags: 1),
+        ],
+        TvppCameraChannels.none,
+        frameCount: 12,
+      );
+      expect(poses[0].angleDegrees, closeTo(-4, 1e-6),
+          reason: 'before the first rotation key the first keyed value holds');
+      expect(poses[4].angleDegrees, closeTo(-4, 1e-6));
+      expect(poses[10].angleDegrees, closeTo(-9, 1e-6),
+          reason: 'past the last rotation key the last keyed value holds');
+      expect(poses[11].angleDegrees, closeTo(-9, 1e-6));
+      expect(poses[0].x, 10);
+      expect(poses[11].x, 20);
+    });
+
     test('zoom and rotation interpolate along the same easing when '
         'keyed together', () {
       final poses = bakeTvppCamera(

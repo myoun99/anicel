@@ -329,14 +329,22 @@ List<int> _keyedIndices(List<TvppCameraPoint> points, int bit) {
   final keyed = _keyedIndices(points, _positionBit);
   final segment = _segmentAt(points, keyed, channels.position, p);
   if (segment == null) {
-    final at = p <= points[keyed.first].instant - points.first.instant
-        ? points[keyed.first]
-        : points[keyed.last];
+    final at = _edgeHoldAt(points, keyed, p);
     return (at.x, at.y);
   }
   final (ai, bi, eased) = segment;
   return _alongPath(points[ai], points[bi], eased);
 }
+
+/// The keyed point that holds outside the keyed span: before the first key
+/// the first keyed point holds, past the last the last holds.
+TvppCameraPoint _edgeHoldAt(
+  List<TvppCameraPoint> points,
+  List<int> keyed,
+  double p,
+) => p <= points[keyed.first].instant - points.first.instant
+    ? points[keyed.first]
+    : points[keyed.last];
 
 double _scalarAt(
   List<TvppCameraPoint> points,
@@ -349,10 +357,7 @@ double _scalarAt(
   final keyed = _keyedIndices(points, bit);
   final segment = _segmentAt(points, keyed, profiles, p);
   if (segment == null) {
-    final at = p <= points[keyed.first].instant - points.first.instant
-        ? points[keyed.first]
-        : points[keyed.last];
-    return read(at);
+    return read(_edgeHoldAt(points, keyed, p));
   }
   final (ai, bi, eased) = segment;
   final a = read(points[ai]);
