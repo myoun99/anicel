@@ -1689,19 +1689,48 @@ class FrameRangeMoveDrag {
               cutFrameCount: _project.activeCutFrameCount,
             ),
           ),
-      if (instructionShifted != null)
-        ..._instructionShiftCommands(instructionShifted, cut),
-      if (cameraShifted != null && cut != null)
-        UpdateCutCameraCommand(
-          repository: _project.repository,
-          cutId: cut.id,
-          camera: CutCamera(keyframes: cameraShifted),
-          description: 'Move camera keys',
-        ),
+      ..._riderCommands(instructionShifted, cameraShifted, cut),
     ];
+    if (!_commitRangeMoveCommands(commands, selection, landedSelection)) {
+      return;
+    }
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
+  }
+
+  /// R27 #8: the frame-axis riders (camera keys, instruction spans)
+  /// land in the SAME undo step as the rigid row move — through the
+  /// ONE two-armed projection the plain slide commits with, so a
+  /// riding TRANSITION lands too (C④: this branch used to carry a
+  /// cut-gated copy with the transition arm missing).
+  List<Command> _riderCommands(
+    Map<LayerId, Map<int, InstructionEvent>>? instructionShifted,
+    Map<int, CameraPose>? cameraShifted,
+    Cut? cut,
+  ) => [
+    if (instructionShifted != null)
+      ..._instructionShiftCommands(instructionShifted, cut),
+    if (cameraShifted != null && cut != null)
+      UpdateCutCameraCommand(
+        repository: _project.repository,
+        cutId: cut.id,
+        camera: CutCamera(keyframes: cameraShifted),
+        description: 'Move camera keys',
+      ),
+  ];
+
+  /// Executes a range move's [commands] as ONE undo step and leaves the
+  /// selection on the frames where they landed. False when there was
+  /// nothing to commit — the selection goes back to where the drag
+  /// started and the caller stops.
+  bool _commitRangeMoveCommands(
+    List<Command> commands,
+    TimelineFrameRangeSelection selection,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
     if (commands.isEmpty) {
       _rangeMoveSelection = selection;
-      return;
+      return false;
     }
     _project.historyManager.execute(
       commands.length == 1
@@ -1712,9 +1741,7 @@ class FrameRangeMoveDrag {
             ),
     );
     _rangeMoveSelection = landedSelection;
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
-    return;
+    return true;
   }
 
   void _commitMultiRowMove(
@@ -1729,24 +1756,7 @@ class FrameRangeMoveDrag {
     final commands = <Command>[];
     commands.addAll(_seRowMoveCommands(multiSeRowChanges));
     commands.addAll(_multiRowLayerCommands(multiRowPlan));
-    // R27 #8: the frame-axis riders (camera keys, instruction spans)
-    // land in the SAME undo step as the rigid row move — through the
-    // ONE two-armed projection the plain slide commits with, so a
-    // riding TRANSITION lands too (C④: this branch used to carry a
-    // cut-gated copy with the transition arm missing).
-    if (instructionShifted != null) {
-      commands.addAll(_instructionShiftCommands(instructionShifted, cut));
-    }
-    if (cut != null && cameraShifted != null) {
-      commands.add(
-        UpdateCutCameraCommand(
-          repository: _project.repository,
-          cutId: cut.id,
-          camera: CutCamera(keyframes: cameraShifted),
-          description: 'Move camera keys',
-        ),
-      );
-    }
+    commands.addAll(_riderCommands(instructionShifted, cameraShifted, cut));
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
       commands.add(
         RekeyBrushFramesCommand(
@@ -1761,25 +1771,14 @@ class FrameRangeMoveDrag {
         ),
       );
     }
-    if (commands.isEmpty) {
-      _rangeMoveSelection = selection;
+    if (!_commitRangeMoveCommands(commands, selection, landedSelection)) {
       return;
     }
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Move frame range',
-              commands: commands,
-            ),
-    );
-    _rangeMoveSelection = landedSelection;
     if (landedSelection != null) {
       _timeline.layerController.selectLayer(landedSelection.layerId);
     }
     _changes.warmActiveCut();
     _changes.notifyChanged();
-    return;
   }
 
   /// The timeline commands of the SE row pairs a multi-row move changed:
