@@ -9,12 +9,12 @@ import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
-import '../brush/brush_canvas_panel.dart';
+import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import '../brush/sheet_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
-import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../widgets/static_raster.dart';
 import 'cut_envelope_builder.dart';
@@ -142,16 +142,12 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     final inking =
         inkController != null && brushToolState != null && widget.inkEnabled;
 
-    return BrushCanvasPanel(
-      coordinator: null,
-      availableFrameKeys: const [],
+    return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: paper,
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
-      // The paper never rotates (the timesheet's rule).
-      allowViewRotation: false,
       bottomBarLeading: _panelActions(),
       fitFocusRect: Rect.fromLTWH(
         0,
@@ -160,22 +156,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         paper.height.toDouble(),
       ),
       contentStrokeActive: inking ? _strokeActive : null,
-      contentOverride: (context, rawViewport) => LayoutBuilder(
+      content: (context, viewport) => LayoutBuilder(
         builder: (context, constraints) {
-          // 🚨★★★SNAPPED ONCE, HERE (P8, 유저 답 `host` 2026-08-28).
-          //
-          // The paper below and the ink windows above BOTH derive from
-          // this. A painter that snapped for itself and an ink window
-          // that snapped for itself would land on the same device grid
-          // from different starting values — `round(pan) + zoom*left`
-          // versus `round(pan + zoom*left)` — and part company by up to a
-          // whole device pixel at fractional pans, which reads as the ink
-          // jumping off the box the moment the pen lifts. One value
-          // cannot drift from itself.
-          final viewport = renderSnappedViewport(
-            rawViewport,
-            EffectiveDevicePixelRatio.of(context),
-          );
           // ONE gate, read by both the input layer and the painter: a box
           // whose window is mounted draws itself, and every other box's
           // saved ink is baked by the painter.

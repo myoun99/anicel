@@ -5,7 +5,9 @@ import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/timesheet_document.dart';
 import '../models/timesheet_info.dart';
-import 'brush/brush_canvas_panel.dart';
+import 'brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasAutoFrameRequest;
+import 'brush/sheet_canvas_panel.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
@@ -15,7 +17,6 @@ import 'widgets/app_icon_button.dart';
 import 'widgets/page_turn_strip.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
-import 'canvas/viewport_canvas_transform.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'widgets/static_raster.dart';
 import 'timesheet/timesheet_notation.dart';
@@ -396,15 +397,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           // The GAP state (UI-R9 #3 + UI-R10 #17): no cut selected, but
           // the PANEL FRAME stays up like the canvas — only the content
           // empties out.
-          return BrushCanvasPanel(
-            coordinator: null,
-            availableFrameKeys: const [],
+          return SheetCanvasPanel(
             cacheInvalidationSink: _cacheInvalidationSink,
             canvasSize: const CanvasSize(width: 780, height: 1080),
             viewport: widget.viewport,
             viewportController: widget.viewportController,
             onViewportChanged: widget.onViewportChanged,
-            allowViewRotation: false,
             bottomBarLeading: [..._panelActions(), ..._bottomBarLeading(null)],
             pageStrip: _pageStrip(null),
             bottomBarHostToken: (
@@ -414,7 +412,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
               0,
               0,
             ),
-            contentOverride: (context, viewport) => Container(
+            content: (context, viewport) => Container(
               key: const ValueKey<String>('timesheet-empty-no-cut'),
               color: colorScheme.surfaceContainerHighest,
               alignment: Alignment.center,
@@ -480,9 +478,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           ),
                           panOnly: true,
                         );
-                  return BrushCanvasPanel(
-                    coordinator: null,
-                    availableFrameKeys: const [],
+                  return SheetCanvasPanel(
                     cacheInvalidationSink: _cacheInvalidationSink,
                     canvasSize: CanvasSize(
                       width: documentSize.width.ceil(),
@@ -506,24 +502,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     // Fit frames the page on screen.
                     fitFocusRect: layout.pageRect(visiblePage),
                     autoFrame: autoFrame,
-                    // The sheet's ink/header overlays speak zoom/pan only —
-                    // the paper never rotates (P8 is the drawing canvas's).
-                    allowViewRotation: false,
                     contentStrokeActive:
                         inkController == null || !widget.inkEnabled
                         ? null
                         : _inkStrokeActive,
-                    contentOverride: (context, rawViewport) {
-                      // 🚨★★★SNAPPED ONCE, HERE (P8, 유저 답 `host`
-                      // 2026-08-28). The document, the playhead overlay and
-                      // the ink windows ALL derive from this one value, so
-                      // they cannot land on different device pixels — which
-                      // is exactly what each of them snapping for itself
-                      // would do.
-                      final viewport = renderSnappedViewport(
-                        rawViewport,
-                        EffectiveDevicePixelRatio.of(context),
-                      );
+                    content: (context, viewport) {
                       return Stack(
                         children: [
                           // The sheet paints in TWO strata (UI-R10 #9, the

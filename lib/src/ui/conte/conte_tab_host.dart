@@ -14,8 +14,8 @@ import '../../models/cut_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/viewport_point.dart';
-import '../brush/brush_canvas_panel.dart';
-import '../canvas/viewport_canvas_transform.dart';
+import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
@@ -309,9 +309,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       });
     }
 
-    final panel = BrushCanvasPanel(
-      coordinator: null,
-      availableFrameKeys: const [],
+    final panel = SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: metrics == null
           // The empty-project stand-in matches the real page's PORTRAIT
@@ -324,8 +322,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
-      // The paper never rotates (the timesheet's rule).
-      allowViewRotation: false,
       bottomBarLeading: _panelActions(),
       // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
       pageStrip: pageTurnStrip(
@@ -342,15 +338,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       contentStrokeActive: inkController == null || !widget.inkEnabled
           ? null
           : _inkStrokeActive,
-      contentOverride: (context, rawViewport) {
-        // 🚨★★★SNAPPED ONCE, HERE (P8, 유저 답 `host` 2026-08-28). The page
-        // below and the ink windows above BOTH derive from this value, so
-        // they cannot land on different device pixels — which is what a
-        // painter and an ink window snapping separately would do.
-        final viewport = renderSnappedViewport(
-          rawViewport,
-          EffectiveDevicePixelRatio.of(context),
-        );
+      content: (context, viewport) {
         return Stack(
           children: [
             Positioned.fill(
