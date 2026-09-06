@@ -74,6 +74,8 @@ void main() {
             currentFrameIndex: currentFrameIndex,
             playbackFrameCount: 30,
             leadingFrameSpacer: 0,
+            axis: Axis.horizontal,
+            crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
             metrics: TimelineGridMetrics.defaults,
             colorScheme: const ColorScheme.light(),
           ),
