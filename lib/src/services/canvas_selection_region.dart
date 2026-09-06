@@ -629,8 +629,8 @@ class CanvasSelectionRegion {
     for (var i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
       final a = points[i];
       final b = points[j];
-      if ((a.y > scanY) != (b.y > scanY)) {
-        out.add((b.x - a.x) * (scanY - a.y) / (b.y - a.y) + a.x);
+      if (CanvasSelectionShape.edgeStraddles(a, b, scanY)) {
+        out.add(CanvasSelectionShape.edgeCrossingX(a, b, scanY));
       }
     }
     out.sort();

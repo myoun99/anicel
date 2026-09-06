@@ -85,16 +85,30 @@ class CanvasSelectionShape {
 
   final List<CanvasPoint> points;
 
+  /// Whether the edge a–b crosses the horizontal line at [y].
+  ///
+  /// Strict `>` on both ends, so the convention is half-open: a vertex ON
+  /// the line belongs to exactly one of the two edges that meet there and
+  /// toggles the parity once. The ONE rule behind membership (the even-odd
+  /// cast in [containsPoint]) and the lift mask's scanline fill — both
+  /// walkers spelled it (the audit's clone scan, 2026-09-06). A static leaf
+  /// so the per-edge loops keep no callback.
+  static bool edgeStraddles(CanvasPoint a, CanvasPoint b, double y) =>
+      (a.y > y) != (b.y > y);
+
+  /// The x where the edge a–b meets the horizontal line at [y]. Only
+  /// meaningful when [edgeStraddles] — the division is by the edge's rise.
+  static double edgeCrossingX(CanvasPoint a, CanvasPoint b, double y) =>
+      (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x;
+
   /// Even-odd ray cast (the polygon closes implicitly).
   bool containsPoint(CanvasPoint point) {
     var inside = false;
     for (var i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
       final a = points[i];
       final b = points[j];
-      final crosses =
-          (a.y > point.y) != (b.y > point.y) &&
-          point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x;
-      if (crosses) {
+      if (edgeStraddles(a, b, point.y) &&
+          point.x < edgeCrossingX(a, b, point.y)) {
         inside = !inside;
       }
     }
