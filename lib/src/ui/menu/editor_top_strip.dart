@@ -144,16 +144,6 @@ class EditorTopStrip extends StatelessWidget {
 
   // --- File -----------------------------------------------------------------
 
-  void _showFileError(BuildContext context, Object error) {
-    unawaited(
-      showAppNotice(
-        context,
-        title: AppText.strings.commonNotice,
-        message: '$error',
-      ),
-    );
-  }
-
   Future<void> _openProject(BuildContext context) async {
     final pick = await pickProjectToOpen(context);
     if (pick == null || !context.mounted) {
@@ -269,7 +259,7 @@ class EditorTopStrip extends StatelessWidget {
       // Access, not format — the same file opens once it is readable (a
       // cloud placeholder mid-download, a provider signed out).
       if (context.mounted) {
-        _showFileError(
+        showFileError(
           context,
           const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
         );
@@ -282,7 +272,7 @@ class EditorTopStrip extends StatelessWidget {
       return;
     }
     if (warnings == null) {
-      _showFileError(
+      showFileError(
         context,
         const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'),
       );
@@ -429,7 +419,7 @@ class EditorTopStrip extends StatelessWidget {
       return null;
     } on FileSystemException {
       if (context.mounted) {
-        _showFileError(
+        showFileError(
           context,
           const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
         );
@@ -487,7 +477,7 @@ class EditorTopStrip extends StatelessWidget {
       }
     } on Object catch (error) {
       if (context.mounted) {
-        _showFileError(context, error);
+        showFileError(context, error);
       }
     }
   }
@@ -605,7 +595,7 @@ class EditorTopStrip extends StatelessWidget {
       bookmark = relinked.folderBookmark;
       if (!File(path).existsSync()) {
         if (context.mounted) {
-          _showFileError(context, 'Not found: $path');
+          showFileError(context, 'Not found: $path');
         }
         return;
       }
@@ -1620,13 +1610,7 @@ Future<ProjectPick?> _pickScopedSaveTarget(
     // A staging failure used to return null silently — the Save As button
     // read as dead, and on the exit path it silently cancelled the close.
     if (context.mounted) {
-      unawaited(
-        showAppNotice(
-          context,
-          title: AppText.strings.commonNotice,
-          message: '$error',
-        ),
-      );
+      showFileError(context, error);
     }
     return null;
   }
@@ -1806,13 +1790,7 @@ Future<bool> saveProjectShowingProgress(
     return true;
   } on Object catch (error) {
     if (context.mounted) {
-      unawaited(
-        showAppNotice(
-          context,
-          title: AppText.strings.commonNotice,
-          message: '$error',
-        ),
-      );
+      showFileError(context, error);
     }
     return false;
   }

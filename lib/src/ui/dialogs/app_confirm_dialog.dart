@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
@@ -184,6 +186,30 @@ Future<void> showAppNotice(
     ),
   );
 }
+
+/// A caught file error, reported the way every file error in this app is:
+/// a [showAppNotice] under the common notice title, carrying the error's
+/// own text.
+///
+/// 🚨ONE law for reporting a caught file error. It was written out three
+/// times in the top strip alone — a private method on the strip's State,
+/// which the two module-level save/export functions in the same file could
+/// not call, so they re-typed its body.
+///
+/// ⚠️The `context.mounted` check stays at the CALLER, not in here: a
+/// caught error always arrives after an await, and `use_build_context_
+/// synchronously` proves that gap at the call site or nowhere. A guard in
+/// here would be a second, invisible one that the analyzer cannot read.
+///
+/// Fire-and-forget on purpose: the caller is on its way out of a failed
+/// operation and does not wait for the notice to be dismissed.
+void showFileError(BuildContext context, Object error) => unawaited(
+  showAppNotice(
+    context,
+    title: AppText.strings.commonNotice,
+    message: '$error',
+  ),
+);
 
 /// The two ways out of a yes/no window: the decline action pops `false`,
 /// the accept action pops `true`.
