@@ -25,9 +25,7 @@ import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
-import 'effect_lane_policy.dart' show parseEffectLaneId;
-import 'layer_drop_policy.dart'
-    show effectChainAfterCrossing, effectHeaderRowsOf;
+import 'layer_drop_policy.dart' show effectHeaderRowsOf;
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
