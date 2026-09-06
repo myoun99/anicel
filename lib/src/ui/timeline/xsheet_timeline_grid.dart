@@ -15,7 +15,7 @@ import 'rail_column_swipe.dart';
 import 'layer_rail_window.dart';
 import 'frame_window_semantics.dart';
 
-import 'timeline_grid_range_callbacks.dart';
+import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
@@ -69,7 +69,6 @@ part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
 part 'xsheet_grid/xsheet_grid_columns.dart';
-part 'xsheet_grid/xsheet_grid_range_gestures.dart';
 part 'xsheet_grid/xsheet_grid_reveal.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
@@ -283,7 +282,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     frameAxisOffset: _frameAxisOffset,
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
-    baseFrameCount: () => _rangeGestures._frameRangePolicy.visibleFrameCount,
+    baseFrameCount: () => _rangeGestures.frameRangePolicy.visibleFrameCount,
     rebuild: _rebuild,
     isMounted: () => mounted,
   );
@@ -357,11 +356,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   // ── the range gestures: their own object ────────────────────────────
   //
-  // A collaborator (timeline/xsheet_grid/xsheet_grid_range_gestures.dart, a part of this
-  // library). The State keeps the entry points its build tree calls.
-  late final _XSheetGridRangeGestures _rangeGestures = _XSheetGridRangeGestures(
-    this,
-  );
+  // The ONE collaborator both grids hold (timeline_grid_range_gestures.dart).
+  // The State keeps the entry points its build tree calls.
+  //
+  // No pin: this grid's LayerRailWindow is a paint clip, every column stays
+  // built, so nothing can unmount a held row mid-gesture.
+  late final TimelineGridRangeGestures _rangeGestures =
+      TimelineGridRangeGestures(
+        hooks: () => widget.hooks,
+        metrics: () => _metrics,
+        dragRows: () => _dragRows,
+        rangeMove: _rangeMoveResolver,
+      );
 
   /// Frame cells the current viewport needs to be fully papered (UI-R12
   /// #16) — recorded by build's outer LayoutBuilder. Zero until layout.

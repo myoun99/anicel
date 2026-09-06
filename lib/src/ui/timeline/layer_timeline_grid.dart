@@ -12,7 +12,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
-import 'timeline_grid_range_callbacks.dart';
+import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
@@ -63,7 +63,6 @@ import 'timeline_swipe_columns.dart';
 part 'layer_grid/layer_grid_rail_rows.dart';
 part 'layer_grid/layer_grid_scroll.dart';
 part 'layer_grid/layer_grid_ruler_scrub.dart';
-part 'layer_grid/layer_grid_range_gestures.dart';
 part 'layer_grid/layer_grid_row_drags.dart';
 part 'layer_grid/layer_grid_lanes.dart';
 
@@ -357,11 +356,25 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   // ── the range gestures: their own object ────────────────────────────
   //
-  // A collaborator (timeline/layer_grid/layer_grid_range_gestures.dart, a part of this
-  // library). The State keeps the entry points its build tree calls.
-  late final _LayerGridRangeGestures _rangeGestures = _LayerGridRangeGestures(
-    this,
-  );
+  // The ONE collaborator both grids hold (timeline_grid_range_gestures.dart).
+  // The State keeps the entry points its build tree calls.
+  late final TimelineGridRangeGestures _rangeGestures =
+      TimelineGridRangeGestures(
+        hooks: () => widget.hooks,
+        metrics: () => _metrics,
+        dragRows: () => _dragRows,
+        rangeMove: _rangeMoveResolver,
+        // D42: EVERY range drag (select or move) takes the A5 grip, and the
+        // held row is PINNED in the row window while it does.
+        pin: HeldRowPin(
+          take: (row) => _heldDragRow = row,
+          release: (row) {
+            if (_heldDragRow == row) {
+              _heldDragRow = null;
+            }
+          },
+        ),
+      );
 
   int get _visibleFrameCount => _rangeGestures.frameRangePolicy.visibleFrameCount;
 

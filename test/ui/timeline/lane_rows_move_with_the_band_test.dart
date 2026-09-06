@@ -235,15 +235,25 @@ void main() {
       );
     });
 
+    // Both grids reach the builder through the ONE range-gesture collaborator
+    // (round 8, 2026-09-06: the rail's and the sheet's private copies were
+    // the same object) — so the collaborator is asked to call the builder,
+    // and each grid is asked to hold the collaborator.
+    const gestures = 'lib/src/ui/timeline/timeline_grid_range_gestures.dart';
+
+    test('$gestures calls the builder', () {
+      expect(source(gestures), contains('timelineGridRangeCallbacks('));
+    });
+
     for (final path in [
       'lib/src/ui/timeline/layer_timeline_grid.dart',
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ]) {
-      test('$path calls the builder and keeps no type test of its own', () {
+      test('$path holds the collaborator and keeps no type test of its own', () {
         final text = source(path);
         expect(
           text,
-          contains('timelineGridRangeCallbacks('),
+          contains('TimelineGridRangeGestures('),
           reason: '$path must reach the shared builder, not keep its own',
         );
         expect(

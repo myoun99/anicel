@@ -51,7 +51,7 @@ class _XSheetGridFrameScroll {
   }
 
   int get _visibleFrameCount =>
-      _state._rangeGestures._frameRangePolicy.visibleFrameCount;
+      _state._rangeGestures.frameRangePolicy.visibleFrameCount;
 
   /// Render extent (UI-R12 #16 contract): the cells scrolled into
   /// existence PLUS the viewport fill — no runway beyond. Scroll physics
