@@ -10,6 +10,27 @@ import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 /// themselves out with no widget rebuilding; swapping the handle moves the
 /// subscription with it, so the old handle can no longer move them and the
 /// new one does.
+/// A handle that counts its listeners, so a swap can be seen to let the
+/// old handle go — a stale subscription changes nothing on screen (layout
+/// reads the current handle), it only leaks a listener per swap.
+class _CountingHandle extends ValueNotifier<TimelineFrameGeometry> {
+  _CountingHandle(super.value);
+
+  int listeners = 0;
+
+  @override
+  void addListener(VoidCallback listener) {
+    listeners += 1;
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    listeners -= 1;
+    super.removeListener(listener);
+  }
+}
+
 void main() {
   TimelineFrameGeometry geometryOf(double cellExtent) => TimelineFrameGeometry(
     frameCellExtent: cellExtent,
@@ -68,14 +89,15 @@ void main() {
   testWidgets('the axis box follows its handle, and only its CURRENT one', (
     tester,
   ) async {
-    final first = TimelineFrameGeometryHandle(geometryOf(10));
-    final second = TimelineFrameGeometryHandle(geometryOf(10));
+    final first = _CountingHandle(geometryOf(10));
+    final second = _CountingHandle(geometryOf(10));
     addTearDown(first.dispose);
     addTearDown(second.dispose);
     final child = find.byKey(const ValueKey('child'));
 
     await pumpAxisBox(tester, first);
     expect(tester.getSize(child).width, 100);
+    expect(first.listeners, 1);
 
     // A zoom step through the live handle — no rebuild, a new layout.
     first.value = geometryOf(20);
@@ -85,6 +107,8 @@ void main() {
     // The handle swaps: the old one is let go of, the new one is listened to.
     await pumpAxisBox(tester, second);
     expect(tester.getSize(child).width, 100);
+    expect(first.listeners, 0, reason: 'the old handle is let go of');
+    expect(second.listeners, 1);
     first.value = geometryOf(30);
     await tester.pump();
     expect(tester.getSize(child).width, 100, reason: 'the old handle is mute');
@@ -96,8 +120,8 @@ void main() {
   testWidgets('the span layout follows its handle, and only its CURRENT one', (
     tester,
   ) async {
-    final first = TimelineFrameGeometryHandle(geometryOf(10));
-    final second = TimelineFrameGeometryHandle(geometryOf(10));
+    final first = _CountingHandle(geometryOf(10));
+    final second = _CountingHandle(geometryOf(10));
     addTearDown(first.dispose);
     addTearDown(second.dispose);
     final span = find.byKey(const ValueKey('span'));
@@ -105,6 +129,7 @@ void main() {
     await pumpSpanLayout(tester, first);
     expect(tester.getTopLeft(span).dx, 20);
     expect(tester.getSize(span).width, 20);
+    expect(first.listeners, 1);
 
     first.value = geometryOf(20);
     await tester.pump();
@@ -113,6 +138,8 @@ void main() {
 
     await pumpSpanLayout(tester, second);
     expect(tester.getTopLeft(span).dx, 20);
+    expect(first.listeners, 0, reason: 'the old handle is let go of');
+    expect(second.listeners, 1);
     first.value = geometryOf(30);
     await tester.pump();
     expect(tester.getTopLeft(span).dx, 20, reason: 'the old handle is mute');
