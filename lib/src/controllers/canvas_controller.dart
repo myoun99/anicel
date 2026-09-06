@@ -14,6 +14,13 @@ import 'timeline_controller.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 
+/// Stroke input on the canvas, and the stroke-aware undo/redo over it.
+///
+/// A stroke's history entry remembers the FRAME it was drawn on, so an undo
+/// from elsewhere first jumps the timeline there (origin: 833e74fc,
+/// "Implement Phase 9 timeline layer integration"). Redo does not jump —
+/// whether it should is a user question, so the two verbs stay two bodies
+/// over one stack type rather than one body under a direction flag.
 class CanvasController {
   CanvasController({
     required ProjectRepository repository,
@@ -36,8 +43,8 @@ class CanvasController {
   final TimelineController? _timelineController;
   final BrushSettings _brushSettings;
   final List<StrokePoint> _activePoints = <StrokePoint>[];
-  final List<_StrokeUndoEntry> _strokeUndoEntries = <_StrokeUndoEntry>[];
-  final List<_StrokeRedoEntry> _strokeRedoEntries = <_StrokeRedoEntry>[];
+  final _strokeUndo = _StrokeEntryStack();
+  final _strokeRedo = _StrokeEntryStack();
 
   int _strokeSequence = 0;
 
@@ -99,13 +106,11 @@ class CanvasController {
     );
     final timelineController = _timelineController;
     if (timelineController != null) {
-      _strokeUndoEntries.add(
-        _StrokeUndoEntry(
-          frameIndex: timelineController.currentFrameIndex,
-          undoCount: _historyManager.undoCount,
-        ),
+      _strokeUndo.push(
+        timelineController.currentFrameIndex,
+        _historyManager.undoCount,
       );
-      _strokeRedoEntries.clear();
+      _strokeRedo.clear();
     }
     _activePoints.clear();
   }
@@ -119,7 +124,7 @@ class CanvasController {
       return;
     }
 
-    final topStrokeEntry = _nextUndoableStrokeEntry();
+    final topStrokeEntry = _strokeUndo.peekAt(_historyManager.undoCount);
     final timelineController = _timelineController;
     if (topStrokeEntry != null &&
         timelineController != null &&
@@ -128,15 +133,10 @@ class CanvasController {
       return;
     }
 
-    final undoneStrokeEntry = _popUndoableStrokeEntry();
+    final undoneStrokeEntry = _strokeUndo.popAt(_historyManager.undoCount);
     _historyManager.undo();
     if (undoneStrokeEntry != null) {
-      _strokeRedoEntries.add(
-        _StrokeRedoEntry(
-          frameIndex: undoneStrokeEntry.frameIndex,
-          redoCount: _historyManager.redoCount,
-        ),
-      );
+      _strokeRedo.push(undoneStrokeEntry.frameIndex, _historyManager.redoCount);
     }
   }
 
@@ -145,51 +145,11 @@ class CanvasController {
       return;
     }
 
-    final redoneStrokeEntry = _popRedoableStrokeEntry();
+    final redoneStrokeEntry = _strokeRedo.popAt(_historyManager.redoCount);
     _historyManager.redo();
     if (redoneStrokeEntry != null) {
-      _strokeUndoEntries.add(
-        _StrokeUndoEntry(
-          frameIndex: redoneStrokeEntry.frameIndex,
-          undoCount: _historyManager.undoCount,
-        ),
-      );
+      _strokeUndo.push(redoneStrokeEntry.frameIndex, _historyManager.undoCount);
     }
-  }
-
-  _StrokeUndoEntry? _nextUndoableStrokeEntry() {
-    if (_strokeUndoEntries.isEmpty) {
-      return null;
-    }
-
-    final entry = _strokeUndoEntries.last;
-    if (entry.undoCount != _historyManager.undoCount) {
-      return null;
-    }
-
-    return entry;
-  }
-
-  _StrokeUndoEntry? _popUndoableStrokeEntry() {
-    final entry = _nextUndoableStrokeEntry();
-    if (entry == null) {
-      return null;
-    }
-
-    return _strokeUndoEntries.removeLast();
-  }
-
-  _StrokeRedoEntry? _popRedoableStrokeEntry() {
-    if (_strokeRedoEntries.isEmpty) {
-      return null;
-    }
-
-    final entry = _strokeRedoEntries.last;
-    if (entry.redoCount != _historyManager.redoCount) {
-      return null;
-    }
-
-    return _strokeRedoEntries.removeLast();
   }
 
   StrokePoint _pointFromOffset(Offset position) {
@@ -284,16 +244,49 @@ class LayerFrame {
   final Frame frame;
 }
 
-class _StrokeUndoEntry {
-  const _StrokeUndoEntry({required this.frameIndex, required this.undoCount});
+/// One stroke on the history: the frame it was drawn on, and the history
+/// DEPTH (the manager's undo count on the undo side, its redo count on the
+/// redo side) at which it sat when it was pushed.
+class _StrokeHistoryEntry {
+  const _StrokeHistoryEntry({required this.frameIndex, required this.depth});
 
   final int frameIndex;
-  final int undoCount;
+  final int depth;
 }
 
-class _StrokeRedoEntry {
-  const _StrokeRedoEntry({required this.frameIndex, required this.redoCount});
+/// The stroke side of one history stack — undo's or redo's, the same type
+/// for both (the mirrored two-stack that KUndo2Stack and Flutter's
+/// UndoHistory keep).
+///
+/// The top entry counts only while its depth still equals the manager's
+/// current depth: a non-stroke command pushed above it makes the top stale,
+/// and a stale top is nothing (the 2026-09-03 mutation campaign's survivor
+/// was this comparison, flipped on the redo side).
+class _StrokeEntryStack {
+  final _entries = <_StrokeHistoryEntry>[];
 
-  final int frameIndex;
-  final int redoCount;
+  void push(int frameIndex, int depth) {
+    _entries.add(_StrokeHistoryEntry(frameIndex: frameIndex, depth: depth));
+  }
+
+  /// The top entry when it sits at [depth]; null when the stack is empty or
+  /// the top is stale.
+  _StrokeHistoryEntry? peekAt(int depth) {
+    if (_entries.isEmpty) {
+      return null;
+    }
+    final entry = _entries.last;
+    return entry.depth == depth ? entry : null;
+  }
+
+  /// Pops and returns the top entry when it sits at [depth]; a stale top
+  /// stays where it is and null comes back.
+  _StrokeHistoryEntry? popAt(int depth) {
+    if (peekAt(depth) == null) {
+      return null;
+    }
+    return _entries.removeLast();
+  }
+
+  void clear() => _entries.clear();
 }
