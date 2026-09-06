@@ -605,14 +605,11 @@ class FrameRangeMoveDrag {
       _rangeMoveCameraShifted = null;
       _rangeMoveInstructionShifted = null;
       _camera.showCameraKeysDragPreview(null);
-      final newStart = selection.startIndex + frameDelta;
-      if (newStart >= 0) {
-        _rangeMoveSelection = TimelineFrameRangeSelection(
-          layerId: targetLayerId,
-          startIndex: newStart,
-          endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        );
-      }
+      _slideSelectionOutline(
+        selection,
+        landedLayerId: targetLayerId,
+        shift: frameDelta,
+      );
     }
 
     final sourceIsSe = _project.isTrackSeLayerId(selection.layerId);
@@ -866,15 +863,35 @@ class FrameRangeMoveDrag {
       selection,
       rowDelta,
     );
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: targetLayerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        layerIds: landedLayerIds,
-      );
+    _slideSelectionOutline(
+      selection,
+      landedLayerId: targetLayerId,
+      shift: frameDelta,
+      layerIds: landedLayerIds,
+    );
+  }
+
+  /// The selection outline follows the previewed landing live.
+  ///
+  /// The `newStart >= 0` clamp is the whole reason this is one function:
+  /// four copies spelled it, and it is precisely the rung that goes
+  /// missing from one of them later.
+  void _slideSelectionOutline(
+    TimelineFrameRangeSelection selection, {
+    required LayerId landedLayerId,
+    required int shift,
+    List<LayerId> layerIds = const [],
+  }) {
+    final newStart = selection.startIndex + shift;
+    if (newStart < 0) {
+      return;
     }
+    _rangeMoveSelection = TimelineFrameRangeSelection(
+      layerId: landedLayerId,
+      startIndex: newStart,
+      endIndexExclusive: selection.endIndexExclusive + shift,
+      layerIds: layerIds,
+    );
   }
 
   /// The span sorted by what each row can DO with the hop, or null when a
@@ -1392,17 +1409,11 @@ class FrameRangeMoveDrag {
           ),
       },
     );
-    // The selection outline follows the previewed landing live.
-    final landedLayerId = plan.isCrossLayer ? plan.targetAfter!.id : source.id;
-    final startShift = plan.destinationStartIndex - groupStart;
-    final newStart = selection.startIndex + startShift;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: landedLayerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + startShift,
-      );
-    }
+    _slideSelectionOutline(
+      selection,
+      landedLayerId: plan.isCrossLayer ? plan.targetAfter!.id : source.id,
+      shift: plan.destinationStartIndex - groupStart,
+    );
   }
 
   void _updateMultiSourceRangeMove(
@@ -1454,16 +1465,12 @@ class FrameRangeMoveDrag {
         ? null
         : instructionShifted;
     _publishSlidePreview(plans, riders);
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: selection.layerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        layerIds: selection.layerIds,
-      );
-    }
-    return;
+    _slideSelectionOutline(
+      selection,
+      landedLayerId: selection.layerId,
+      shift: frameDelta,
+      layerIds: selection.layerIds,
+    );
   }
 
   /// Forgets the drag — every stored source, plan and rider shift — and
