@@ -18,7 +18,6 @@ import 'layer_folder.dart';
 
 export 'layer_folder.dart' show attachOrganizerBaseOf;
 import 'layer_id.dart';
-import 'layer_kind.dart';
 import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
