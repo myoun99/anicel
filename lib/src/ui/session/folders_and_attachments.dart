@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// FOLDERS AND ATTACHMENTS — grouping the active layer or attach into a
@@ -35,6 +36,14 @@ class FoldersAndAttachments {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+
+  /// The active-row cut-command envelope, shared with the other
+  /// collaborator that writes it (see [ActiveCutEdits]).
+  late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    project: _project,
+    selection: _selection,
+    changes: _changes,
+  );
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
@@ -131,18 +140,11 @@ class FoldersAndAttachments {
 
   /// 폴더 생성: folds the active layer's whole attach group into a new
   /// folder row (mirrors into 겸용 cuts through the coordinator).
-  void groupActiveLayerIntoFolder() {
-    if (!canGroupActiveLayerIntoFolder) {
-      return;
-    }
-    final activeLayerId = _selection.activeLayer!.id;
-    _project.cutCommandCoordinator.createFolderFromLayer(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayerId,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _changes.notifyChanged();
-  }
+  void groupActiveLayerIntoFolder() => _activeCutEdits.onActiveLayer(
+    when: canGroupActiveLayerIntoFolder,
+    command: (cutId, layerId) => _project.cutCommandCoordinator
+        .createFolderFromLayer(cutId: cutId, layerId: layerId),
+  );
 
   /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
   /// folder ([연출]/[작감]… — 공정별 묶음): an attach row, and that is all.
@@ -165,18 +167,11 @@ class FoldersAndAttachments {
   /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
   /// inside its group. Siblings join via [addAttachedLayer]'s sibling
   /// rule; renaming is plain [_internals.renameLayer].
-  void groupActiveAttachIntoFolder() {
-    if (!canGroupActiveAttachIntoFolder) {
-      return;
-    }
-    final activeLayerId = _selection.activeLayer!.id;
-    _project.cutCommandCoordinator.createAttachOrganizerFolder(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayerId,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _changes.notifyChanged();
-  }
+  void groupActiveAttachIntoFolder() => _activeCutEdits.onActiveLayer(
+    when: canGroupActiveAttachIntoFolder,
+    command: (cutId, layerId) => _project.cutCommandCoordinator
+        .createAttachOrganizerFolder(cutId: cutId, layerId: layerId),
+  );
 
   void dissolveFolder(LayerId folderId) {
     final cutId = _timeline.editingSession.activeCutId;
