@@ -615,7 +615,7 @@ class _ImportDialogState extends State<ImportDialog> {
       if (batch.isEmpty) {
         continue;
       }
-      session.importMediaFiles(batch, copyIntoProject: carry);
+      session.mediaPool.importMediaFiles(batch, copyIntoProject: carry);
       count += batch.length;
     }
     return count;

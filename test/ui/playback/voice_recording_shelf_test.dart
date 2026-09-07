@@ -77,7 +77,7 @@ void main() {
     final clip = first.activeTrack.seLayers.first.audioClips.single;
     expect(clip.filePath, '$shelf/${lane.name}_T01.wav');
     expect(File(clip.filePath).existsSync(), isTrue);
-    expect(first.mediaAssets.single.path, clip.filePath);
+    expect(first.mediaPool.mediaAssets.single.path, clip.filePath);
     first.dispose();
 
     // A NEW session sees T01 on the shared shelf and takes T02 — the
@@ -128,9 +128,9 @@ void main() {
       reason: 'the clip still points at the take where it was recorded',
     );
     expect(File(shelfPath).existsSync(), isTrue, reason: 'nothing moved');
-    expect(manager.mediaAssets.single.path, shelfPath);
+    expect(manager.mediaPool.mediaAssets.single.path, shelfPath);
     expect(
-      manager.mediaAssets.single.carried,
+      manager.mediaPool.mediaAssets.single.carried,
       isTrue,
       reason: 'and the project packs it — a take is its own recording',
     );
@@ -149,7 +149,7 @@ void main() {
     // touched the edit history).
     manager.undo();
     expect(manager.activeTrack.seLayers.first.audioClips, isEmpty);
-    expect(manager.mediaAssets, isEmpty);
+    expect(manager.mediaPool.mediaAssets, isEmpty);
 
     // And the take numbering keeps walking on the shelf.
     await manager.placeVoiceRecording(

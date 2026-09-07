@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -71,25 +72,26 @@ void main() {
     addTearDown(session.dispose);
 
     expect(
-      session.mediaModifiedTimes,
+      session.mediaPool.mediaModifiedTimes,
       isEmpty,
       reason: 'nothing polls — the map is empty until a sweep runs',
     );
 
-    session.refreshMediaExistence();
+    session.mediaPool.refreshMediaExistence();
 
     expect(
-      session.mediaModifiedTimes[here],
+      session.mediaPool.mediaModifiedTimes[here],
       File(here).lastModifiedSync(),
-      reason: 'the sweep is already touching the file, so it takes the '
+      reason:
+          'the sweep is already touching the file, so it takes the '
           'date at the same time rather than making the row stat per repaint',
     );
     expect(
-      session.mediaModifiedTimes.containsKey(gone),
+      session.mediaPool.mediaModifiedTimes.containsKey(gone),
       isFalse,
       reason: 'a file that is not there has no date to show',
     );
-    expect(session.missingMediaPaths, {gone});
+    expect(session.mediaPool.missingMediaPaths, {gone});
   });
 
   test('a re-sweep that finds the same answers does not notify', () {
@@ -100,28 +102,29 @@ void main() {
       ),
     );
     addTearDown(session.dispose);
-    session.refreshMediaExistence();
+    session.mediaPool.refreshMediaExistence();
 
     var notices = 0;
     session.addListener(() => notices += 1);
-    session.refreshMediaExistence();
+    session.mediaPool.refreshMediaExistence();
 
     expect(
       notices,
       0,
-      reason: 'calling it after an import that touched nothing missing is '
+      reason:
+          'calling it after an import that touched nothing missing is '
           'free — the guard compares both maps before it speaks',
     );
   });
 
   test('the export asks the conform store for THIS path and answers with '
-      'the file it built', () async {
+      'the bytes it built', () async {
     final source = plant('내보내기.wav', 128);
     final conform = plant('내보내기.conform.wav', 256);
     final store = _PlannedConformStore({
       source: ConformResult(
         outcome: ConformOutcome.built,
-        conformPath: conform,
+        conformBytes: MediaFileBytes(conform),
       ),
     });
     final session = EditorSessionManager(
@@ -130,32 +133,43 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    expect(await session.conformPathForExport(source), conform);
+    // 🚨BYTES, not a path (2026-09-07): a conform the project carries is a
+    // range inside the `.anicel`, and asking for a file forced a second
+    // copy of the same PCM into the container. The export reads the source
+    // wherever it lies — here that happens to be a file, so its length is
+    // what says the right one came back.
+    final bytes = await session.mediaPool.conformBytesForExport(source);
+    expect(bytes, isNotNull);
+    expect(bytes!.lengthSync(), File(conform).lengthSync());
     expect(store.asked, [source]);
   });
 
-  test('an unusable conform exports nothing rather than a stale path',
-      () async {
-    final source = plant('실패.wav', 128);
-    final store = _PlannedConformStore({
-      source: const ConformResult(
-        outcome: ConformOutcome.sourceMissing,
-        conformPath: '/somewhere/stale.wav',
-      ),
-      '없는것.wav': null,
-    });
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-      audioConformStore: store,
-    );
-    addTearDown(session.dispose);
+  test(
+    'an unusable conform exports nothing rather than stale bytes',
+    () async {
+      final source = plant('실패.wav', 128);
+      final stale = plant('stale.wav', 64);
+      final store = _PlannedConformStore({
+        source: ConformResult(
+          outcome: ConformOutcome.sourceMissing,
+          conformBytes: MediaFileBytes(stale),
+        ),
+        '없는것.wav': null,
+      });
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+        audioConformStore: store,
+      );
+      addTearDown(session.dispose);
 
-    expect(
-      await session.conformPathForExport(source),
-      isNull,
-      reason: 'a failed conform carries a path for the error message, not a '
-          'file anyone may write out',
-    );
-    expect(await session.conformPathForExport('없는것.wav'), isNull);
-  });
+      expect(
+        await session.mediaPool.conformBytesForExport(source),
+        isNull,
+        reason:
+            'a failed conform carries bytes for the error message, not a '
+            'source anyone may write out',
+      );
+      expect(await session.mediaPool.conformBytesForExport('없는것.wav'), isNull);
+    },
+  );
 }

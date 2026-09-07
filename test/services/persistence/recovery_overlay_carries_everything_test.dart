@@ -96,10 +96,10 @@ void main() {
     File('${directory.path}/참고영상.mp4')
       ..createSync()
       ..writeAsBytesSync([0, 0, 0, 24]);
-    s.importMediaFiles([
+    s.mediaPool.importMediaFiles([
       '${directory.path}/대사.wav',
     ], copyIntoProject: true);
-    s.importMediaFiles([
+    s.mediaPool.importMediaFiles([
       '${directory.path}/참고영상.mp4',
     ], copyIntoProject: false);
     s.mediaGrants.rememberMediaGrants([

@@ -58,7 +58,7 @@ void main() {
 
     final source = writeMedia('bgm.wav', 40 * 1024);
     final expected = File(source).readAsBytesSync();
-    editor.importMediaFiles([source], copyIntoProject: true);
+    editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
     await editor.projectDoor.saveProjectToFile(projectPath);
     editor.dispose();
 
@@ -67,7 +67,7 @@ void main() {
 
     final reopened = session();
     await reopened.projectDoor.openProjectFromFile(projectPath);
-    final asset = reopened.mediaAssets.single;
+    final asset = reopened.mediaPool.mediaAssets.single;
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: projectPath,
@@ -89,13 +89,13 @@ void main() {
     await editor.projectDoor.saveProjectToFile(projectPath);
 
     final movie = writeMedia('reference.mp4', 2048);
-    editor.importMediaFiles([movie], copyIntoProject: false);
+    editor.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     await editor.projectDoor.saveProjectToFile(projectPath);
     editor.dispose();
 
     final reopened = session();
     await reopened.projectDoor.openProjectFromFile(projectPath);
-    expect(reopened.mediaAssets.single.kind, MediaAssetKind.video);
+    expect(reopened.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
     expect(
       reopened.projectFile.mediaEntryNames,
       isEmpty,
@@ -114,7 +114,7 @@ void main() {
 
     final source = writeMedia('voice.wav', 12 * 1024);
     final expected = File(source).readAsBytesSync();
-    editor.importMediaFiles([source], copyIntoProject: true);
+    editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
     await editor.projectDoor.saveProjectToFile(first);
 
     // Deleted BEFORE the save-as, deliberately. With the original still
@@ -134,7 +134,7 @@ void main() {
 
     final reopened = session();
     await reopened.projectDoor.openProjectFromFile(second);
-    final asset = reopened.mediaAssets.single;
+    final asset = reopened.mediaPool.mediaAssets.single;
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: second,
@@ -152,7 +152,7 @@ void main() {
     final projectPath = '${directory.path}/scene.anicel';
     await editor.projectDoor.saveProjectToFile(projectPath);
     final source = writeMedia('bgm.wav', 64 * 1024);
-    editor.importMediaFiles([source], copyIntoProject: true);
+    editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
     await editor.projectDoor.saveProjectToFile(projectPath);
 
     final afterFirst = File(projectPath).lengthSync();
@@ -175,7 +175,7 @@ void main() {
     final projectPath = '${directory.path}/scene.anicel';
     await editor.projectDoor.saveProjectToFile(projectPath);
     final source = writeMedia('shared.wav', 8 * 1024);
-    editor.importMediaFiles([source], copyIntoProject: false);
+    editor.mediaPool.importMediaFiles([source], copyIntoProject: false);
     await editor.projectDoor.saveProjectToFile(projectPath);
     editor.dispose();
 
@@ -183,7 +183,7 @@ void main() {
     await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(reopened.projectFile.mediaEntryNames, isEmpty);
     // And it still resolves, by path, exactly as it always did.
-    expect(reopened.mediaAssets.single.path, source.replaceAll('\\', '/'));
+    expect(reopened.mediaPool.mediaAssets.single.path, source.replaceAll('\\', '/'));
     reopened.dispose();
   });
 

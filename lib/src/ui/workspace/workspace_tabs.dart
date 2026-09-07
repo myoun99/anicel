@@ -85,7 +85,7 @@ class _WorkspaceTabs {
           // carries what it can. This button exists to promote a loose
           // path into something that travels with the project, so a
           // reference here would be the one answer it cannot mean.
-          onRegisterAsset: (path) => _state.widget.session.importMediaFiles([
+          onRegisterAsset: (path) => _state.widget.session.mediaPool.importMediaFiles([
             path,
           ], copyIntoProject: true),
           isPathRegistered: (path) =>
@@ -591,10 +591,10 @@ class _WorkspaceTabs {
           builder: (context) => ListenableBuilder(
             listenable: _state.widget.session,
             builder: (context, _) => MediaPoolPanel(
-              assets: _state.widget.session.mediaAssets,
-              isAssetReferenced: _state.widget.session.isMediaAssetReferenced,
+              assets: _state.widget.session.mediaPool.mediaAssets,
+              isAssetReferenced: _state.widget.session.mediaPool.isMediaAssetReferenced,
               onImportRequested: () => _state._openImportWindow(poolOnly: true),
-              onRenameAsset: _state.widget.session.renameMediaAsset,
+              onRenameAsset: _state.widget.session.mediaPool.renameMediaAsset,
               onRelinkAsset: (oldPath, newPath, grants) {
                 // The token first: the relink itself is undoable and the
                 // grant is not, so recording it before the path moves
@@ -602,13 +602,13 @@ class _WorkspaceTabs {
                 // session may read.
                 _state.widget.session.mediaGrants.rememberMediaGrants(grants);
                 unawaited(
-                  _state.widget.session.relinkMediaAsset(oldPath, newPath),
+                  _state.widget.session.mediaPool.relinkMediaAsset(oldPath, newPath),
                 );
               },
               // RELINK-2: the loss banner reads the session's cached
               // answer rather than probing the disk per row.
-              missingPaths: _state.widget.session.missingMediaPaths,
-              modifiedTimes: _state.widget.session.mediaModifiedTimes,
+              missingPaths: _state.widget.session.mediaPool.missingMediaPaths,
+              modifiedTimes: _state.widget.session.mediaPool.mediaModifiedTimes,
               // 유저 2026-08-30: 「아무튼 실제크기」 — what a carried asset
               // occupies compressed, rather than the length its file had
               // when it was registered.
@@ -617,9 +617,9 @@ class _WorkspaceTabs {
                   _state.widget.session.projectFile.conformStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, _state.widget.session),
-              onRemoveAsset: _state.widget.session.removeMediaAsset,
+              onRemoveAsset: _state.widget.session.mediaPool.removeMediaAsset,
               onPromoteAsset:
-                  _state.widget.session.promoteMediaAssetIntoProject,
+                  _state.widget.session.mediaPool.promoteMediaAssetIntoProject,
               onExportAssetWav: (asset) =>
                   _state._exportAssetWav(context, asset),
               onOpenAsset: (asset) => _state._openAssetInViewer(

@@ -86,7 +86,7 @@ void main() {
     );
     expect(File(clip.filePath).existsSync(), isTrue);
     expect(
-      manager.mediaAssets.map((asset) => asset.path),
+      manager.mediaPool.mediaAssets.map((asset) => asset.path),
       contains(clip.filePath),
     );
     // 1 s @ 24 fps = a 24-frame block at the anchor carrying the clip.
@@ -104,7 +104,7 @@ void main() {
     final reverted = manager.activeTrack.seLayers.first;
     expect(reverted.audioClips, isEmpty);
     expect(drawingBlocks(reverted.timeline), isEmpty);
-    expect(manager.mediaAssets, isEmpty);
+    expect(manager.mediaPool.mediaAssets, isEmpty);
     manager.dispose();
   });
 
@@ -191,7 +191,7 @@ void main() {
     // By SHAPE rather than by ordinal: takes land on the shelf now, and
     // the shelf outlives one project, so the walk continues past whatever
     // is already there instead of restarting per project folder.
-    final takes = manager.mediaAssets.map((asset) => asset.path).toList();
+    final takes = manager.mediaPool.mediaAssets.map((asset) => asset.path).toList();
     expect(takes, hasLength(2));
     expect(takes.toSet(), hasLength(2), reason: 'the first was not replaced');
     for (final take in takes) {

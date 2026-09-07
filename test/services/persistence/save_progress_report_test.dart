@@ -166,7 +166,7 @@ void main() {
       File('${directory.path}/대사.wav')
         ..createSync()
         ..writeAsBytesSync(List<int>.filled(1200 * 1024, 9));
-      s.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+      s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
       s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
 
@@ -233,7 +233,7 @@ void main() {
         File(path)
           ..createSync()
           ..writeAsBytesSync(List<int>.filled(bytes, 5));
-        s.importMediaFiles([path], copyIntoProject: true);
+        s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         final reports = <double>[];
         await s.projectDoor.saveProjectToFile(
           '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
@@ -277,7 +277,7 @@ void main() {
           File(path)
             ..createSync()
             ..writeAsBytesSync(List<int>.filled(900 * 1024, 7));
-          s.importMediaFiles([path], copyIntoProject: true);
+          s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         }
         final reports = <double>[];
         await s.projectDoor.saveProjectToFile(
@@ -321,7 +321,7 @@ void main() {
     final s = session();
     drawOnCurrentFrame(s);
     File('${directory.path}/빈소리.wav').createSync();
-    s.importMediaFiles(['${directory.path}/빈소리.wav'], copyIntoProject: true);
+    s.mediaPool.importMediaFiles(['${directory.path}/빈소리.wav'], copyIntoProject: true);
 
     final reports = <double>[];
     await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
@@ -343,7 +343,7 @@ void main() {
       ]);
     final s = session();
     drawOnCurrentFrame(s);
-    s.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+    s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
     await s.projectDoor.saveProjectToFile(projectPath, onProgress: (_) {});
 
     final archive = ZipDecoder().decodeBytes(

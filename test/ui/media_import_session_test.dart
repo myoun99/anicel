@@ -90,7 +90,7 @@ void main() {
     // for it; if this stops holding, relink quietly goes back to giving up
     // on every tie.
     final fingerprinted = s.mediaFingerprints.recordedMediaIdentity(
-      s.mediaAssets.single.path,
+      s.mediaPool.mediaAssets.single.path,
     );
     expect(
       fingerprinted?.crc32,
@@ -119,7 +119,7 @@ void main() {
       reason: 'the baked cel reads as drawn (store content signal)',
     );
     expect(
-      s.mediaAssets.any((asset) => asset.kind == MediaAssetKind.image),
+      s.mediaPool.mediaAssets.any((asset) => asset.kind == MediaAssetKind.image),
       isTrue,
       reason: 'reference mode registers the asset',
     );
@@ -165,7 +165,7 @@ void main() {
       cut.duration,
       reason: 'the covering normalization holds it to the cut length',
     );
-    expect(s.mediaAssets, isEmpty);
+    expect(s.mediaPool.mediaAssets, isEmpty);
     expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });
@@ -189,7 +189,7 @@ void main() {
     );
     s.selectLayer(layer.id);
     expect(s.canRasterizeActiveLayer, isTrue);
-    expect(s.mediaAssets, hasLength(1));
+    expect(s.mediaPool.mediaAssets, hasLength(1));
 
     s.rasterizeActiveLayer();
     final after = s.requireActiveCut.layers.firstWhere(
@@ -197,7 +197,7 @@ void main() {
     );
     expect(after.mediaReference, isNull);
     expect(after.kind, LayerKind.image, reason: 'kind never changes');
-    expect(s.mediaAssets, isEmpty, reason: 'orphaned asset unregisters');
+    expect(s.mediaPool.mediaAssets, isEmpty, reason: 'orphaned asset unregisters');
     expect(
       s.layerStack.celHasContentForLayer(after, 0),
       isTrue,
@@ -209,7 +209,7 @@ void main() {
       (l) => l.id == layer.id,
     );
     expect(restored.mediaReference, isNotNull);
-    expect(s.mediaAssets, hasLength(1));
+    expect(s.mediaPool.mediaAssets, hasLength(1));
     await tester.pumpAndSettle();
   });
 
@@ -297,7 +297,7 @@ void main() {
     expect(warnings, isNotNull);
 
     final assets = {
-      for (final asset in s.mediaAssets) asset.kind: asset,
+      for (final asset in s.mediaPool.mediaAssets) asset.kind: asset,
     };
     expect(
       assets[MediaAssetKind.image]?.carried,
@@ -373,7 +373,7 @@ void main() {
         reason: 'page ${frame + 1} baked into the store',
       );
     }
-    final asset = s.mediaAssets.single;
+    final asset = s.mediaPool.mediaAssets.single;
     expect(asset.kind, MediaAssetKind.pdf);
     expect(asset.pageCount, 3);
     expect(asset.frameCount, isNull, reason: 'pageCount is the pdf slot');
@@ -420,7 +420,7 @@ void main() {
       (layer) => layer.kind == LayerKind.image,
     );
     expect(layer.mediaReference, isNull, reason: 'rasterize = no reference');
-    expect(s.mediaAssets, isEmpty, reason: 'absorbed pixels register nothing');
+    expect(s.mediaPool.mediaAssets, isEmpty, reason: 'absorbed pixels register nothing');
     expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });
@@ -446,7 +446,7 @@ void main() {
     expect(imported, isFalse);
     expect(PdfRenderService.availability, isFalse);
     expect(s.repository.requireProject().tracks.first.cuts.length, cutsBefore);
-    expect(s.mediaAssets, isEmpty);
+    expect(s.mediaPool.mediaAssets, isEmpty);
     expect(s.canUndo, canUndoBefore);
     await tester.pumpAndSettle();
   });

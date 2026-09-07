@@ -71,7 +71,7 @@ void main() {
 
   test('a carried asset reports what its STAGED copy takes, which is the '
       'size the disk actually lost', () async {
-    await session.addMediaAssets([sourcePath], carried: true);
+    await session.mediaPool.addMediaAssets([sourcePath], carried: true);
     final staged = session.mediaStagingStore.find(sourcePath)!;
     expect(
       session.projectFile.mediaStoredBytesFor(sourcePath),
@@ -87,7 +87,7 @@ void main() {
 
   test('the map the panel draws is memoised, and only an invalidation '
       'lets a freshly built conform into it', () async {
-    await session.addMediaAssets([sourcePath]);
+    await session.mediaPool.addMediaAssets([sourcePath]);
     expect(session.projectFile.conformStoredBytes, isEmpty);
     plantConform(4096);
     expect(

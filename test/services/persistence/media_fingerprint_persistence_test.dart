@@ -68,7 +68,7 @@ void main() {
   test('🚨 remembering a fingerprint does NOT dirty the project', () async {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
-    s.importMediaFiles([movie], copyIntoProject: false);
+    s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     await s.projectDoor.saveProjectToFile(projectPath);
     expect(s.projectFile.hasUnsavedChanges, isFalse, reason: 'a save leaves it clean');
 
@@ -87,7 +87,7 @@ void main() {
   test('it survives a save and an open, still pointing at its asset', () async {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
-    s.importMediaFiles([movie], copyIntoProject: false);
+    s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     fingerprint(s, movie);
     await s.projectDoor.saveProjectToFile(projectPath);
     s.dispose();
@@ -117,7 +117,7 @@ void main() {
     // and `compare` treats a length mismatch as decisive.
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
-    s.importMediaFiles([movie], copyIntoProject: false);
+    s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     expect(s.mediaFingerprints.recordedMediaIdentity(movie)!.lengthBytes, 512);
 
     // The file is edited in place: different size, different content.
@@ -144,12 +144,12 @@ void main() {
     // DELETES it. The feature would work exactly once per asset.
     final s = session();
     final was = makeFile('참고영상.mp4', 7);
-    s.importMediaFiles([was], copyIntoProject: false);
+    s.mediaPool.importMediaFiles([was], copyIntoProject: false);
     fingerprint(s, was);
     final recorded = s.mediaFingerprints.recordedMediaIdentity(was)!;
 
     final now = makeFile('옮긴영상.mp4', 7);
-    await s.relinkMediaAsset(was, now);
+    await s.mediaPool.relinkMediaAsset(was, now);
     await s.projectDoor.saveProjectToFile(projectPath);
     s.dispose();
 
@@ -163,6 +163,35 @@ void main() {
     reopened.dispose();
   });
 
+  test('🚨 and so does a BATCH relink — the hunt is the caller that '
+      'DECIDED by these facts', () async {
+    // The batch form is the relink hunt's own pass, and it proposes a
+    // candidate only because its identity matched the fingerprint recorded
+    // for the missing asset. So this is the caller that would erase the
+    // very facts it acted on: same store, same path key, same save that
+    // keeps only keys the pool still holds.
+    final s = session();
+    final was = makeFile('참고영상.mp4', 7);
+    s.mediaPool.importMediaFiles([was], copyIntoProject: false);
+    fingerprint(s, was);
+    final recorded = s.mediaFingerprints.recordedMediaIdentity(was)!;
+
+    final now = makeFile('옮긴영상.mp4', 7);
+    s.mediaPool.relinkMediaAssets({was: now});
+    await s.projectDoor.saveProjectToFile(projectPath);
+    s.dispose();
+
+    final reopened = session();
+    await reopened.projectDoor.openProjectFromFile(projectPath);
+    expect(
+      reopened.mediaFingerprints.recordedMediaIdentity(now),
+      recorded,
+      reason: 'the batch relink moves the key too, or the next save deletes '
+          'the fact the hunt matched on',
+    );
+    reopened.dispose();
+  });
+
   test(
     'an asset REMOVED from the pool takes its fingerprint with it',
     () async {
@@ -171,11 +200,11 @@ void main() {
       // nothing asks about.
       final s = session();
       final movie = makeFile('참고영상.mp4', 7);
-      s.importMediaFiles([movie], copyIntoProject: false);
+      s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
       fingerprint(s, movie);
       await s.projectDoor.saveProjectToFile(projectPath);
 
-      s.removeMediaAsset(movie);
+      s.mediaPool.removeMediaAsset(movie);
       await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
@@ -204,7 +233,7 @@ void main() {
       // Every project written before this existed. The absence has to be an
       // ordinary state, not a missing field somebody has to handle.
       final s = session();
-      s.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
+      s.mediaPool.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
       await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 

@@ -63,10 +63,10 @@ void main() {
     expect(session.projectFile.mediaEntryNames.containsKey(audioPath), isTrue);
 
     File(audioPath).deleteSync();
-    session.refreshMediaExistence();
+    session.mediaPool.refreshMediaExistence();
 
     expect(
-      session.missingMediaPaths.contains(audioPath),
+      session.mediaPool.missingMediaPaths.contains(audioPath),
       isFalse,
       reason: 'deleting the original is what carrying exists to survive — '
           'the banner and the relink hunt are for bytes that exist NOWHERE',
@@ -85,8 +85,8 @@ void main() {
         mediaAssets: [MediaAsset(path: audioPath, name: 'ref.wav')],
       ),
     );
-    session.refreshMediaExistence();
-    expect(session.missingMediaPaths.contains(audioPath), isTrue);
+    session.mediaPool.refreshMediaExistence();
+    expect(session.mediaPool.missingMediaPaths.contains(audioPath), isTrue);
   });
 
   test('a reference that comes BACK re-kicks its conform budget', () {
@@ -99,18 +99,18 @@ void main() {
       audioConformStore: store,
     );
     var present = false;
-    session.debugMediaFileExists = (_) => present;
+    session.mediaPool.debugMediaFileExists = (_) => present;
 
-    session.refreshMediaExistence();
-    expect(session.missingMediaPaths.contains(audioPath), isTrue);
+    session.mediaPool.refreshMediaExistence();
+    expect(session.mediaPool.missingMediaPaths.contains(audioPath), isTrue);
 
     // The share mounts (a NAS at login, a drive replugged). The conform
     // budget it burned while gone must not keep the clip silent for the
     // rest of the session.
     present = true;
-    session.refreshMediaExistence();
+    session.mediaPool.refreshMediaExistence();
 
     expect(store.invalidated, [audioPath]);
-    expect(session.missingMediaPaths.contains(audioPath), isFalse);
+    expect(session.mediaPool.missingMediaPaths.contains(audioPath), isFalse);
   });
 }

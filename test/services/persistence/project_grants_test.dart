@@ -178,7 +178,7 @@ void main() {
       final movie = File('${directory.path}/참고영상.mp4')
         ..writeAsBytesSync([0, 0, 0, 24]);
       final path = movie.path.replaceAll('\\', '/');
-      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
       s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: path,
@@ -308,7 +308,7 @@ void main() {
       final movie = File('${directory.path}/참고영상.mp4')
         ..writeAsBytesSync([0, 0, 0, 24]);
       final path = movie.path.replaceAll('\\', '/');
-      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
       s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: path,
@@ -363,7 +363,7 @@ void main() {
       final newPath = '${directory.path.replaceAll('\\', '/')}/참고영상_v2.mp4';
 
       final s = session();
-      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
       s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: oldPath,
@@ -391,7 +391,7 @@ void main() {
       await reopened.projectDoor.openProjectFromFile(projectPath);
 
       expect(
-        reopened.mediaAssets.single.path,
+        reopened.mediaPool.mediaAssets.single.path,
         newPath,
         reason: 'the pool has to be told where the bookmark found it',
       );
@@ -425,7 +425,7 @@ void main() {
       final movie = File('${directory.path}/참고영상.mp4')
         ..writeAsBytesSync([0, 0, 0, 24]);
       final path = movie.path.replaceAll('\\', '/');
-      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
       s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: path,
@@ -481,7 +481,7 @@ void main() {
       final s = session();
       final wav = File('${directory.path}/대사.wav')
         ..writeAsBytesSync(List<int>.filled(512, 7));
-      s.importMediaFiles([wav.path], copyIntoProject: true);
+      s.mediaPool.importMediaFiles([wav.path], copyIntoProject: true);
       final projectPath = '${directory.path}/scene.anicel';
       await s.projectDoor.saveProjectToFile(projectPath);
       expect(s.projectFile.mediaEntryNames, isNotEmpty, reason: 'it went inside');
@@ -524,9 +524,9 @@ void main() {
       final s = session();
       final movie = File('${directory.path}/참고영상.mp4')
         ..writeAsBytesSync([0, 0, 0, 24]);
-      s.importMediaFiles([movie.path], copyIntoProject: true);
+      s.mediaPool.importMediaFiles([movie.path], copyIntoProject: true);
 
-      expect(s.mediaAssets.single.kind, MediaAssetKind.video);
+      expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
       s.mediaGrants.rememberMediaGrants([
         FolderGrant.granted(
           path: movie.path.replaceAll('\\', '/'),

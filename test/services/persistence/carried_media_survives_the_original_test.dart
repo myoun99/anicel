@@ -57,7 +57,7 @@ void main() {
   test('품기 stages the bytes at IMPORT, not at save', () async {
     final path = compressibleFile('take.wav');
 
-    await session.addMediaAssets([path], carried: true);
+    await session.mediaPool.addMediaAssets([path], carried: true);
 
     expect(
       session.mediaStagingStore.find(path),
@@ -71,7 +71,7 @@ void main() {
   test('⛔a REFERENCED import stages nothing', () async {
     final path = compressibleFile('linked.wav');
 
-    await session.addMediaAssets([path]);
+    await session.mediaPool.addMediaAssets([path]);
 
     expect(
       session.mediaStagingStore.find(path),
@@ -89,7 +89,7 @@ void main() {
       return;
     }
     final path = compressibleFile('take.wav');
-    await session.addMediaAssets([path], carried: true);
+    await session.mediaPool.addMediaAssets([path], carried: true);
     final staged = session.mediaStagingStore.find(path)!;
     expect(staged.framed, isTrue, reason: 'fixture: this content compresses');
 
@@ -108,7 +108,7 @@ void main() {
       'are still there', () async {
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
-    await session.addMediaAssets([path], carried: true);
+    await session.mediaPool.addMediaAssets([path], carried: true);
 
     // The whole reason carrying exists.
     File(path).deleteSync();
@@ -125,7 +125,7 @@ void main() {
       'project holds', () async {
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
-    await session.addMediaAssets([path], carried: true);
+    await session.mediaPool.addMediaAssets([path], carried: true);
 
     File(path).writeAsBytesSync(Uint8List(64));
 
@@ -147,7 +147,7 @@ void main() {
     }
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
-    await session.addMediaAssets([path], carried: true);
+    await session.mediaPool.addMediaAssets([path], carried: true);
     final staged = session.mediaStagingStore.find(path)!;
 
     final framed = MediaFramedBytes(
@@ -163,7 +163,7 @@ void main() {
     () async {
       final path = compressibleFile('take.wav');
       final original = File(path).readAsBytesSync();
-      await session.addMediaAssets([path], carried: true);
+      await session.mediaPool.addMediaAssets([path], carried: true);
       File(path).deleteSync();
 
       // What the conform pipeline and the missing-banner probe call.
@@ -204,10 +204,10 @@ void main() {
       '🚨an import that carries registers NOTHING before the bytes land',
       () async {
         final path = compressibleFile('slow.wav');
-        final pending = session.addMediaAssets([path], carried: true);
+        final pending = session.mediaPool.addMediaAssets([path], carried: true);
 
         expect(
-          session.mediaAssets,
+          session.mediaPool.mediaAssets,
           isEmpty,
           reason:
               'the asset was registered before its bytes were secured — the '
@@ -215,25 +215,25 @@ void main() {
         );
 
         await pending;
-        expect(session.mediaAssets, hasLength(1));
+        expect(session.mediaPool.mediaAssets, hasLength(1));
         expect(session.mediaStagingStore.find(path), isNotNull);
       },
     );
 
     test('🚨and neither does a promotion', () async {
       final path = compressibleFile('later.wav');
-      await session.addMediaAssets([path]);
-      expect(session.mediaAssets.single.carried, isFalse);
+      await session.mediaPool.addMediaAssets([path]);
+      expect(session.mediaPool.mediaAssets.single.carried, isFalse);
 
-      final pending = session.promoteMediaAssetIntoProject(path);
+      final pending = session.mediaPool.promoteMediaAssetIntoProject(path);
       expect(
-        session.mediaAssets.single.carried,
+        session.mediaPool.mediaAssets.single.carried,
         isFalse,
         reason: 'promoted in the pool while its bytes were still being written',
       );
 
       expect(await pending, isTrue);
-      expect(session.mediaAssets.single.carried, isTrue);
+      expect(session.mediaPool.mediaAssets.single.carried, isTrue);
     });
   });
 
@@ -241,14 +241,17 @@ void main() {
     test('🚨promote stages the bytes, exactly as an import that carried '
         'from the start would have', () async {
       final path = compressibleFile('linked.wav');
-      await session.addMediaAssets([path]);
+      await session.mediaPool.addMediaAssets([path]);
       expect(
         session.mediaStagingStore.find(path),
         isNull,
         reason: 'fixture: a reference stages nothing',
       );
 
-      expect(await session.promoteMediaAssetIntoProject(path), isTrue);
+      expect(
+        await session.mediaPool.promoteMediaAssetIntoProject(path),
+        isTrue,
+      );
 
       expect(
         session.mediaStagingStore.find(path),
@@ -264,8 +267,8 @@ void main() {
     test('and the bytes survive the original after promoting', () async {
       final path = compressibleFile('linked.wav');
       final original = File(path).readAsBytesSync();
-      await session.addMediaAssets([path]);
-      await session.promoteMediaAssetIntoProject(path);
+      await session.mediaPool.addMediaAssets([path]);
+      await session.mediaPool.promoteMediaAssetIntoProject(path);
 
       File(path).deleteSync();
 
@@ -276,10 +279,13 @@ void main() {
 
     test('promoting something already carried changes nothing', () async {
       final path = compressibleFile('take.wav');
-      await session.addMediaAssets([path], carried: true);
+      await session.mediaPool.addMediaAssets([path], carried: true);
       final staged = session.mediaStagingStore.find(path)!;
 
-      expect(await session.promoteMediaAssetIntoProject(path), isFalse);
+      expect(
+        await session.mediaPool.promoteMediaAssetIntoProject(path),
+        isFalse,
+      );
       expect(session.mediaStagingStore.find(path)!.path, staged.path);
     });
   });
@@ -287,12 +293,12 @@ void main() {
   test('🚨a relink carries the staged bytes to the new path', () async {
     final from = compressibleFile('take.wav');
     final original = File(from).readAsBytesSync();
-    await session.addMediaAssets([from], carried: true);
+    await session.mediaPool.addMediaAssets([from], carried: true);
     expect(session.mediaStagingStore.find(from), isNotNull);
 
     final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
     File(to).writeAsBytesSync(original);
-    await session.relinkMediaAsset(from, to);
+    await session.mediaPool.relinkMediaAsset(from, to);
 
     expect(
       session.mediaStagingStore.find(to),
@@ -311,7 +317,7 @@ void main() {
   group('🚨relink: the two kinds know different things', () {
     test('a BY-HAND relink re-stages from the file the user picked', () async {
       final from = compressibleFile('take.wav');
-      await session.addMediaAssets([from], carried: true);
+      await session.mediaPool.addMediaAssets([from], carried: true);
       expect(session.mediaStagingStore.find(from), isNotNull);
 
       // A DIFFERENT file — nothing checked that it matches.
@@ -322,7 +328,7 @@ void main() {
       }
       File(to).writeAsBytesSync(otherBytes);
 
-      await session.relinkMediaAsset(from, to);
+      await session.mediaPool.relinkMediaAsset(from, to);
 
       expect(session.mediaStagingStore.find(from), isNull);
       final staged = session.mediaStagingStore.find(to);
@@ -343,14 +349,14 @@ void main() {
         'identity first', () async {
       final from = compressibleFile('take.wav');
       final original = File(from).readAsBytesSync();
-      await session.addMediaAssets([from], carried: true);
+      await session.mediaPool.addMediaAssets([from], carried: true);
 
       // What the matcher proposes: the SAME content at a new location.
       final to = '${root.path}/moved/take.wav'.replaceAll(r'\', '/');
       Directory('${root.path}/moved').createSync();
       File(to).writeAsBytesSync(original);
 
-      session.relinkMediaAssets({from: to});
+      session.mediaPool.relinkMediaAssets({from: to});
 
       final staged = session.mediaStagingStore.find(to);
       expect(staged, isNotNull);
@@ -361,11 +367,11 @@ void main() {
 
     test('a by-hand relink of a REFERENCED asset stages nothing', () async {
       final from = compressibleFile('linked.wav');
-      await session.addMediaAssets([from]);
+      await session.mediaPool.addMediaAssets([from]);
       final to = '${root.path}/elsewhere.wav'.replaceAll(r'\', '/');
       File(to).writeAsBytesSync(File(from).readAsBytesSync());
 
-      await session.relinkMediaAsset(from, to);
+      await session.mediaPool.relinkMediaAsset(from, to);
 
       expect(
         session.mediaStagingStore.find(to),
@@ -377,13 +383,13 @@ void main() {
 
   test('🚨a carried asset whose original is gone is NOT missing', () async {
     final path = compressibleFile('take.wav');
-    await session.addMediaAssets([path], carried: true);
+    await session.mediaPool.addMediaAssets([path], carried: true);
     File(path).deleteSync();
 
-    session.refreshMediaExistence();
+    session.mediaPool.refreshMediaExistence();
 
     expect(
-      session.missingMediaPaths,
+      session.mediaPool.missingMediaPaths,
       isNot(contains(path)),
       reason:
           '⛔the project holds these bytes — deleting the original is the '

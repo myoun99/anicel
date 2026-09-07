@@ -43,9 +43,9 @@ void main() {
         mediaAssets: [MediaAsset(path: missingPath, name: '대사.wav')],
       ),
     );
-    session.debugMediaFileExists = (path) => path != missingPath;
-    session.refreshMediaExistence();
-    expect(session.missingMediaPaths, {missingPath});
+    session.mediaPool.debugMediaFileExists = (path) => path != missingPath;
+    session.mediaPool.refreshMediaExistence();
+    expect(session.mediaPool.missingMediaPaths, {missingPath});
 
     FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
         FolderGrant.granted(path: candidatesDir, bookmark: 'RELINK==');
@@ -79,7 +79,7 @@ void main() {
     });
 
     expect(
-      session.mediaAssets.single.path,
+      session.mediaPool.mediaAssets.single.path,
       '$candidatesDir/대사.wav',
       reason: 'the reference healed',
     );

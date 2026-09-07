@@ -39,6 +39,7 @@ import 'frame_clipboard.dart';
 import 'layer_clipboard.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
+import 'media_pool.dart';
 import 'project_file.dart';
 import 'playback_rig.dart';
 import 'render_caches.dart';
@@ -67,7 +68,7 @@ class ProjectFileDoor {
     required LayerClipboard layerClipboard,
     required AudioConformStore audioConformStore,
     required ValueNotifier<int> frameSeekCommitted,
-    required void Function() refreshMediaExistence,
+    required MediaPool mediaPool,
   }) : _file = file,
        _project = project,
        _selection = selection,
@@ -85,7 +86,7 @@ class ProjectFileDoor {
        _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
        _frameSeekCommitted = frameSeekCommitted,
-       _refreshMediaExistence = refreshMediaExistence;
+       _mediaPool = mediaPool;
 
   final ProjectFile _file;
   final ProjectAccess _project;
@@ -104,7 +105,7 @@ class ProjectFileDoor {
   final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
   final ValueNotifier<int> _frameSeekCommitted;
-  final void Function() _refreshMediaExistence;
+  final MediaPool _mediaPool;
 
   static const AnicelFileService _anicelFileService = AnicelFileService();
 
@@ -589,7 +590,7 @@ class ProjectFileDoor {
     // on a machine that does not have its referenced media has to SAY so —
     // that is the whole point of the banner, and it is the one moment the
     // user has not done anything to prompt it.
-    _refreshMediaExistence();
+    _mediaPool.refreshMediaExistence();
     _changes.warmActiveCut();
     _frameSeekCommitted.value += 1;
     _changes.notifyChanged();

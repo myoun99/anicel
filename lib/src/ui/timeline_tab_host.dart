@@ -777,7 +777,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             audioLane: TimelineAudioLaneCallbacks(
               // Media-browser drops: link the dragged sound to the block.
               onDropMediaAsset: (layerId, blockStartFrame, path) =>
-                  _session.linkMediaAssetToSeBlock(
+                  _session.mediaPool.linkMediaAssetToSeBlock(
                     layerId: layerId,
                     blockStartFrame: blockStartFrame,
                     path: path,

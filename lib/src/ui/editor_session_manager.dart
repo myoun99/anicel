@@ -8,17 +8,14 @@ import 'package:flutter/foundation.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
-import '../services/import/media_identity_reader.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
-import '../services/media/media_byte_source.dart';
 import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/project_lookup.dart'
     show
         cutPositionOf,
-        projectArchivedMediaPaths,
         requireLayerAnywhere;
 import '../models/app_language.dart';
 // The six settings stores are injected THROUGH this class into
@@ -73,7 +70,6 @@ import '../services/cel_pixel_overwrite.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
-import '../models/media_asset.dart';
 import '../models/onion_skin_settings.dart';
 import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
@@ -137,6 +133,7 @@ import 'timeline/timeline_drag_preview.dart';
 import 'session/session_roles.dart';
 import 'session/media_fingerprint_ledger.dart';
 import 'session/media_grant_ledger.dart';
+import 'session/media_pool.dart';
 import 'session/import_landing.dart';
 import 'session/project_import_doors.dart';
 import 'session/cut_folder_import_door.dart';
@@ -2439,7 +2436,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     // Conform from scratch — the file may have changed on disk since a
     // previous import.
-    final effectivePath = importAudioFile(filePath);
+    final effectivePath = mediaPool.importAudioFile(filePath);
     final frameIndex =
         activeCutControllers.timelineController.currentFrameIndex < 0
         ? 0
@@ -2462,7 +2459,9 @@ class EditorSessionManager extends ChangeNotifier
     // decide whose bytes go inside the archive, so an import that dropped
     // it here would leave a carried sound outside the file it was carried
     // into.
-    unawaited(addMediaAssets([effectivePath], carried: copyIntoProject));
+    unawaited(
+      mediaPool.addMediaAssets([effectivePath], carried: copyIntoProject),
+    );
     cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: carrier.id,
@@ -2472,71 +2471,6 @@ class EditorSessionManager extends ChangeNotifier
       ],
       description: 'Import audio',
     );
-    notifyListeners();
-  }
-
-  // --- Audio import: conform and waveform for a freshly picked file -------
-
-  /// Kicks [sourcePath]'s conform and returns the path the project records
-  /// for it — the file where the user keeps it, whichever way the import
-  /// window's carry-or-reference switch is set.
-  ///
-  /// CARRYING used to mean a second copy on disk under
-  /// `<project>.assets/Media/`, and that copy was the last thing making a
-  /// `.anicel` grow a sibling folder. It now means the save writes the
-  /// bytes INSIDE the archive, so the choice is recorded as
-  /// [MediaAsset.carried] — where a choice belongs — instead of being
-  /// smuggled into the path and read back off it later.
-  String importAudioFile(String sourcePath) {
-    final effectivePath = normalizedMediaPath(sourcePath);
-    // Fresh conform + waveform budget: on a re-import the file may have
-    // changed on disk. (A byte-identical reused copy re-fingerprints
-    // against the existing conform and lands as `reused` without a
-    // decode.)
-    audioConformStore.invalidate(effectivePath);
-    audioConformStore.warmPaths([effectivePath]);
-    return effectivePath;
-  }
-
-  /// The media pool's import: same carry-or-reference choice as a
-  /// timeline import, pool only (no clip link). Non-audio kinds register
-  /// with their detected kind (R3b) — the batch stays one undo through
-  /// [addMediaAssets].
-  void importMediaFiles(List<String> paths, {required bool copyIntoProject}) {
-    final pool = mediaAssets;
-    final known = {for (final asset in pool) asset.path};
-    final added = <MediaAsset>[];
-    for (final path in paths) {
-      final source = normalizedMediaPath(path);
-      final kind = mediaAssetKindForPath(source) ?? MediaAssetKind.image;
-      if (kind == MediaAssetKind.audio) {
-        importAudioFile(source);
-      }
-      if (!known.add(source)) {
-        continue;
-      }
-      added.add(
-        MediaAsset(
-          path: source,
-          name: mediaAssetDefaultName(source),
-          kind: kind,
-          // What the user asked for. The kind still decides whether it CAN
-          // be carried, and NEITHER is a path any more: every import
-          // records the file where the user keeps it, and the save reads
-          // this to decide whose bytes travel inside the archive.
-          carried: copyIntoProject,
-          // Answers "which file is this?", so it is stamped for a carried
-          // asset and a reference alike — a reference is exactly the one
-          // that can go missing and have to be found again, and a carried
-          // asset still has an original on disk until the first save.
-          identity: readMediaIdentity(source),
-        ),
-      );
-    }
-    if (added.isEmpty) {
-      return;
-    }
-    cutCommandCoordinator.updateMediaAssets([...pool, ...added]);
     notifyListeners();
   }
 
@@ -2924,7 +2858,7 @@ class EditorSessionManager extends ChangeNotifier
         for (final track in clip.audioTracks) track.filePath,
     };
     if (audioPaths.isNotEmpty) {
-      unawaited(addMediaAssets(audioPaths.toList()));
+      unawaited(mediaPool.addMediaAssets(audioPaths.toList()));
       historyManager.clear();
       for (final path in audioPaths) {
         if (!File(path).existsSync()) {
@@ -2935,7 +2869,7 @@ class EditorSessionManager extends ChangeNotifier
 
     projectDoor.settleConformCache();
     projectDoor.warmAudioConforms();
-    refreshMediaExistence();
+    mediaPool.refreshMediaExistence();
     // A conversion is unsaved by definition — nothing on disk holds it.
     projectFile.markDirty();
     warmActiveCut();
@@ -3051,7 +2985,7 @@ class EditorSessionManager extends ChangeNotifier
     activeLayerId: () => activeLayerId,
     trackSeGlobalLayerById: trackSeGlobalLayerById,
     mintFrameId: mintFrameId,
-    mediaAssets: () => mediaAssets,
+    mediaAssets: () => mediaPool.mediaAssets,
     rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
     stageCarriedBytes: mediaStagingStore.stageCarriedBytes,
     frameRangeSelection: () => frameRangeSelection,
@@ -3337,392 +3271,6 @@ class EditorSessionManager extends ChangeNotifier
     'Sound envelope',
     (clip) => clip.copyWith(volumeKeys: keys),
   );
-
-  /// The project's media pool, in pool order (the browser panel's list).
-  List<MediaAsset> get mediaAssets => repository.requireProject().mediaAssets;
-
-  /// Whether any clip anywhere still references [path] (remove-guard and
-  /// the browser's usage badge).
-  bool isMediaAssetReferenced(String path) {
-    // Only clips that resolve to a live frame count (REC1-A): a dangling
-    // link is inaudible everywhere, so it must not hold the pool hostage.
-    // A layer's MEDIA REFERENCE (§6-z23) counts too — a referenced still
-    // or sequence keeps its asset in the pool.
-    bool layerReferences(Layer layer) {
-      if (layer.mediaReference?.assetPath == path) {
-        return true;
-      }
-      Set<FrameId>? liveIds;
-      for (final clip in layer.audioClips) {
-        if (clip.filePath != path) {
-          continue;
-        }
-        liveIds ??= {for (final frame in layer.frames) frame.id};
-        if (liveIds.contains(clip.frameId)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    for (final track in repository.requireProject().tracks) {
-      for (final layer in track.seLayers) {
-        if (layerReferences(layer)) {
-          return true;
-        }
-      }
-      for (final cut in track.cuts) {
-        for (final layer in cut.layers) {
-          if (layerReferences(layer)) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  /// Adds [paths] to the pool (skipping known ones) without linking them
-  /// anywhere — import-to-browse, one undo step.
-  ///
-  /// [carried] defaults to referencing, for the callers that are not an
-  /// import and so have no answer to give: linking a file that was already
-  /// on disk registers it as what it is, and only a picker the user
-  /// answered can say the project should own the bytes.
-  /// Registers [paths] in the pool. When [carried], the bytes are COPIED
-  /// into the app container on the spot.
-  ///
-  /// 🚨★★★**That copy is what「품기」means now.** It used to be a promise
-  /// kept only at SAVE time — the flag said the file travels with the
-  /// project while the bytes were still the ones on disk, so editing or
-  /// deleting the original before the first save changed or emptied what
-  /// got saved. 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
-  /// 이었으면좋겠어서」.
-  ///
-  /// ⚠️Async because that copy runs in an isolate now, and the pool must
-  /// not record an asset before its bytes are secured. A caller that
-  /// forgets to await gets the pre-carry behaviour back without a word.
-  Future<void> addMediaAssets(
-    List<String> paths, {
-    bool carried = false,
-  }) async {
-    final pool = mediaAssets;
-    final known = {for (final asset in pool) asset.path};
-    final added = [
-      for (final path in paths)
-        if (known.add(path))
-          MediaAsset(
-            path: path,
-            name: mediaAssetDefaultName(path),
-            identity: readMediaIdentity(path),
-            carried: carried,
-          ),
-    ];
-    if (added.isEmpty) {
-      return;
-    }
-    if (carried) {
-      await mediaStagingStore.stageCarriedBytes([
-        for (final asset in added) asset.path,
-      ]);
-    }
-    cutCommandCoordinator.updateMediaAssets([
-      ...pool,
-      ...added,
-    ], description: 'Import media');
-    notifyListeners();
-  }
-
-  /// Renames the [path] asset's display name; one undo step.
-  void renameMediaAsset(String path, String name) {
-    cutCommandCoordinator.updateMediaAssets([
-      for (final asset in mediaAssets)
-        asset.path == path ? asset.copyWith(name: name) : asset,
-    ], description: 'Rename media');
-    notifyListeners();
-  }
-
-  /// Removes the [path] asset from the pool; refuses while any clip still
-  /// references it (returns false). One undo step.
-  ///
-  /// ⛔**It does NOT retire the staged copy, and that is deliberate.** This
-  /// is UNDOABLE — the description above makes an undo entry — so throwing
-  /// the bytes away here would mean an undo brings the asset back empty
-  /// whenever the original file is also gone, which is precisely the case
-  /// 품기 exists for. The RUN'S ROOM owns them instead
-  /// ([SessionScratch]): they go when this run ends normally, which is
-  /// after every undo that could have wanted them. Waiting costs a file in
-  /// the container until then, and not waiting costs the picture.
-  bool removeMediaAsset(String path) {
-    if (isMediaAssetReferenced(path)) {
-      return false;
-    }
-    final next = mediaAssets.where((asset) => asset.path != path).toList();
-    if (next.length == mediaAssets.length) {
-      return false;
-    }
-    cutCommandCoordinator.updateMediaAssets(next, description: 'Remove media');
-    notifyListeners();
-    return true;
-  }
-
-  /// Points the [oldPath] asset at [newPath] — the pool entry AND every
-  /// referencing clip, one undo step (Resolve-style relink for moved
-  /// files). Waveforms re-extract from the new file.
-  ///
-  /// ⚠️Async because the re-stage below runs in an isolate — see
-  /// [MediaStagingStore.stageCarriedBytes].
-  Future<void> relinkMediaAsset(String oldPath, String newPath) async {
-    audioConformStore.invalidate(newPath);
-    cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
-    mediaFingerprints.moveMediaFingerprints({oldPath: newPath});
-    // 🚨★★★**THIS RELINK RE-STAGES; THE BATCH ONE MOVES. THE DIFFERENCE
-    // IS WHAT EACH CALLER KNOWS.**
-    //
-    // Here the user picked a file by hand and said「this asset is THAT
-    // one」. Nothing checked that it holds the same content — so carrying
-    // the OLD staged bytes over to the new key would keep serving the old
-    // picture under the name of the new file, for ever, with the project
-    // insisting it was right.
-    //
-    // The batch relink below verified identity before proposing anything,
-    // so there the bytes ARE the same and moving them costs one rename
-    // instead of re-reading every matched file.
-    mediaStagingStore.retire(oldPath);
-    // ⛔Through [projectArchivedMediaPaths] rather than a hand-rolled
-    // `any(... && asset.carried)`. That function is the ONE answer to
-    // 「which media does this project carry」, and a second spelling of it
-    // here is how the kind ceiling came to be enforced in two places and
-    // disagree with itself.
-    if (projectArchivedMediaPaths(
-      repository.requireProject(),
-    ).contains(newPath)) {
-      await mediaStagingStore.stageCarriedBytes([newPath]);
-    }
-    refreshMediaExistence();
-    notifyListeners();
-  }
-
-  /// RELINK-2: the batch form — the media pool's "find them all under
-  /// this folder" pass, in one undo step.
-  ///
-  /// Conforms are invalidated for every destination for the same reason the
-  /// single form does it: the file behind the path changed, so a conform
-  /// fingerprinted against the old one is stale even though the pool entry
-  /// now looks correct.
-  void relinkMediaAssets(Map<String, String> moves) {
-    if (moves.isEmpty) {
-      return;
-    }
-    for (final newPath in moves.values) {
-      audioConformStore.invalidate(newPath);
-    }
-    cutCommandCoordinator.relinkMediaAssets(moves);
-    // 🚨 The fingerprints follow, or the next save erases the very facts
-    // this relink was decided by — the store is keyed by path and the save
-    // keeps only keys the pool still holds. Left out, the feature works
-    // exactly once per asset and only on the machine that imported it.
-    mediaFingerprints.moveMediaFingerprints(moves);
-    // And the staged bytes, keyed by the same path — see
-    // [MediaStagingStore.rename]. The sentence above about derived state
-    // is the whole reason both of these lines exist.
-    //
-    // ⚠️MOVED, not re-staged, and only because this caller EARNED it: the
-    // matcher accepts a candidate only when its identity matches the one
-    // recorded for the missing asset, so the bytes are the same bytes and
-    // re-reading every matched file would be work for nothing. The
-    // by-hand relink above cannot say that, and re-stages.
-    for (final move in moves.entries) {
-      mediaStagingStore.rename(move.key, move.value);
-    }
-    refreshMediaExistence();
-    notifyListeners();
-  }
-
-  /// RELINK-2: pool paths that were not on disk as of the last refresh.
-  ///
-  /// CACHED rather than probed per row. The media pool used to call
-  /// `File.existsSync()` while building every row, and the loss banner
-  /// would have multiplied that — a banner has to count the WHOLE pool, so
-  /// one repaint became one disk hit per asset.
-  ///
-  /// Nothing polls. This is refreshed when the project opens, after
-  /// anything that moves files, and when the user asks — the three moments
-  /// where the answer can actually have changed.
-  Set<String> get missingMediaPaths => _missingMediaPaths;
-  Set<String> _missingMediaPaths = const <String>{};
-
-  /// Test seam for the existence probe. Widget tests must not depend on
-  /// what happens to exist on the machine running them.
-  @visibleForTesting
-  bool Function(String path)? debugMediaFileExists;
-
-  /// When each pool file was last written, for the browser's rows.
-  ///
-  /// Filled by the same sweep that answers "is it still there", because
-  /// the sweep is already touching every file: a row that asked the disk
-  /// for its own date would turn one repaint into one stat per asset, and
-  /// a panel repaints for reasons that have nothing to do with the file
-  /// system (the same argument that moved the existence probe here).
-  Map<String, DateTime> get mediaModifiedTimes => _mediaModifiedTimes;
-  Map<String, DateTime> _mediaModifiedTimes = const <String, DateTime>{};
-
-  /// Re-probes the pool. Notifies only when the answer changed, so calling
-  /// it after an import that touched nothing missing is free.
-  void refreshMediaExistence() {
-    final probe =
-        debugMediaFileExists ?? (String path) => File(path).existsSync();
-    final missing = <String>{};
-    final modified = <String, DateTime>{};
-    for (final asset in mediaAssets) {
-      if (!probe(asset.path)) {
-        // The import original leaving is NOT "missing" for an asset whose
-        // bytes the project holds — deleting the original is the very act
-        // carrying exists to survive. Probing only the path put the "File
-        // missing — relink it" banner on assets the project already owns
-        // and fed them to the relink hunt, whose "success" would re-key
-        // the asset and orphan what held its bytes.
-        if (!projectFile.projectHoldsMediaBytes(asset.path)) {
-          missing.add(asset.path);
-        }
-        continue;
-      }
-      try {
-        modified[asset.path] = File(asset.path).lastModifiedSync();
-      } on Object {
-        // Present but unreadable — a network share mid-reconnect. The row
-        // shows no date rather than a wrong one.
-      }
-    }
-    if (setEquals(missing, _missingMediaPaths) &&
-        mapEquals(modified, _mediaModifiedTimes)) {
-      return;
-    }
-    // A path that came BACK (the share mounted, the drive returned) may
-    // have burned its conform attempt budget while it was gone — three
-    // "missing" answers and the clip stayed silent for the whole session
-    // even after the file reappeared. Reappearing is the retry signal.
-    for (final path in _missingMediaPaths) {
-      if (!missing.contains(path)) {
-        audioConformStore.invalidate(path);
-      }
-    }
-    _missingMediaPaths = missing;
-    _mediaModifiedTimes = modified;
-    notifyListeners();
-  }
-
-  /// Where [path]'s conformed audio is on disk, building it if this machine
-  /// has not yet — or null when the asset has no audio to conform.
-  ///
-  /// 🔑The pool panel's export asks for this and nothing else. Reading the
-  /// conform, swapping the header and placing the file are three different
-  /// jobs living in three different places already; what was missing was
-  /// only the session saying WHICH file.
-  Future<MediaByteSource?> conformBytesForExport(String path) async {
-    final result = await audioConformStore.ensureFor(path);
-    if (result == null || !result.isUsable) {
-      return null;
-    }
-    return result.conformBytes;
-  }
-
-  /// Marks the [path] asset as one the project CARRIES — the per-asset
-  /// promotion out of the media pool, and the answer to what a
-  /// REFERENCE does when the user decides they want the project to own it
-  /// after all.
-  ///
-  /// One undo step, and nothing on disk moves. Carrying used to mean a
-  /// copy under `<project>.assets/Media/`, so this verb relinked every
-  /// referencing clip onto the copy's path and invalidated its conform;
-  /// it now means the next save writes the bytes INSIDE the `.anicel`,
-  /// and the file stays exactly where it was. Same sound, same address —
-  /// nothing to relink, nothing to re-conform.
-  ///
-  /// Returns false when there is nothing to promote: no such asset, or one
-  /// already carried. A promotion that changed nothing must not spend an
-  /// undo step saying so.
-  ///
-  /// 🪦It used to add「or a kind that is never carried whatever anyone
-  /// picks」. That ceiling died 2026-08-14 — every kind carries now, and
-  /// the kind only chooses the import window's default.
-  ///
-  /// ⛔ONE DIRECTION on purpose. Carrying is always safe; UN-carrying
-  /// strands a project whose original has since been moved or deleted, so
-  /// the two are not a pair of switches to offer side by side. A reverse
-  /// verb needs a "the original is still there" guard of its own first,
-  /// and that is a separate decision.
-  ///
-  /// ⚠️Async because securing the bytes runs in an isolate — see
-  /// [MediaStagingStore.stageCarriedBytes]. The answer still means「something changed」, and
-  /// it is still decided before any waiting happens.
-  Future<bool> promoteMediaAssetIntoProject(String path) async {
-    final pool = mediaAssets;
-    var promotes = false;
-    for (final asset in pool) {
-      if (asset.path != path) {
-        continue;
-      }
-      // Any kind: the kind decides the DEFAULT at import, and this verb is
-      // the user changing their mind afterwards.
-      promotes = !asset.carried;
-      break;
-    }
-    if (!promotes) {
-      return false;
-    }
-    await mediaStagingStore.stageCarriedBytes([path]);
-    cutCommandCoordinator.updateMediaAssets([
-      for (final asset in pool)
-        asset.path == path ? asset.copyWith(carried: true) : asset,
-    ], description: 'Register media in project');
-    notifyListeners();
-    return true;
-  }
-
-  /// Links the pool asset at [path] to the SE block of [layerId] starting
-  /// at [blockStartFrame] (the browser's drag-drop target hook). The block
-  /// carries the sound exactly like an import at that spot; unknown pool
-  /// paths register first (their own undo step, same as import).
-  void linkMediaAssetToSeBlock({
-    required LayerId layerId,
-    required int blockStartFrame,
-    required String path,
-  }) {
-    final layer = layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.se) {
-      return;
-    }
-    FrameId? frameId;
-    for (final block in drawingBlocks(layer.timeline)) {
-      if (block.startIndex == blockStartFrame) {
-        frameId = block.frameId;
-        break;
-      }
-    }
-    if (frameId == null) {
-      return;
-    }
-    final resolvedFrameId = frameId;
-    // The same frame already carrying this sound is a no-op (a second link
-    // would double the playback).
-    if (layer.audioClips.any(
-      (clip) => clip.filePath == path && clip.frameId == resolvedFrameId,
-    )) {
-      return;
-    }
-    unawaited(addMediaAssets([path]));
-    cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: [
-        ...layer.audioClips,
-        AudioClip(filePath: path, frameId: resolvedFrameId),
-      ],
-      description: 'Link sound',
-    );
-    notifyListeners();
-  }
 
   @override
   Layer? get targetLayerForKindToggle => activeLayer;
@@ -5063,6 +4611,22 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
   );
 
+  // ── the media pool: its own object ───────────────────────────────────
+  //
+  // A collaborator (session/media_pool.dart). It owns the pool's derived
+  // facts — what is missing, when each file was last written — and every
+  // verb that rewrites the list. It is built after [projectFile] because
+  // the existence sweep asks the archive whether the project already
+  // holds an asset's bytes.
+  late final MediaPool mediaPool = MediaPool(
+    project: this,
+    changes: this,
+    file: projectFile,
+    staging: mediaStagingStore,
+    conforms: audioConformStore,
+    fingerprints: mediaFingerprints,
+  );
+
   late final ProjectFileDoor projectDoor = ProjectFileDoor(
     file: projectFile,
     project: this,
@@ -5081,7 +4645,7 @@ class EditorSessionManager extends ChangeNotifier
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,
-    refreshMediaExistence: refreshMediaExistence,
+    mediaPool: mediaPool,
   );
 
   // --- Frame flipping (P1 shortcuts) ----------------------------------------

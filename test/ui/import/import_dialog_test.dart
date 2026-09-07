@@ -251,8 +251,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await tester.pumpAndSettle();
 
-      expect(s.mediaAssets.single.path, path.replaceAll('\\', '/'));
-      expect(s.mediaAssets.single.kind, MediaAssetKind.video);
+      expect(s.mediaPool.mediaAssets.single.path, path.replaceAll('\\', '/'));
+      expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
     });
 
     testWidgets('the browser pins the pool — the other door is shown, not '
@@ -286,7 +286,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('placement is not available'), findsOneWidget);
-      expect(s.mediaAssets, isEmpty);
+      expect(s.mediaPool.mediaAssets, isEmpty);
     });
 
     testWidgets('every other entrance still starts on a placement', (
@@ -341,7 +341,7 @@ void main() {
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       for (var tries = 0; tries < 100; tries += 1) {
-        if (s.mediaAssets.isNotEmpty) {
+        if (s.mediaPool.mediaAssets.isNotEmpty) {
           break;
         }
         await tester.runAsync(
@@ -416,9 +416,9 @@ void main() {
 
       await runImport(tester, s);
 
-      expect(s.mediaAssets.single.path, path.replaceAll('\\', '/'));
+      expect(s.mediaPool.mediaAssets.single.path, path.replaceAll('\\', '/'));
       expect(
-        s.mediaAssets.single.carried,
+        s.mediaPool.mediaAssets.single.carried,
         isFalse,
         reason: 'and the project will not pack it at the next save',
       );
@@ -453,12 +453,12 @@ void main() {
       await runImport(tester, s);
 
       expect(
-        s.mediaAssets.single.path,
+        s.mediaPool.mediaAssets.single.path,
         path.replaceAll('\\', '/'),
         reason: 'the project records the file where the user keeps it',
       );
       expect(
-        s.mediaAssets.single.carried,
+        s.mediaPool.mediaAssets.single.carried,
         isTrue,
         reason: 'and the next save packs it into the .anicel',
       );
@@ -519,7 +519,7 @@ void main() {
     final track = s.repository.requireProject().tracks.first;
     expect(track.cuts.length, cutsBefore + 1);
     expect(track.cuts.last.duration, 2, reason: '1 page = 1 frame');
-    expect(s.mediaAssets.single.pageCount, 2);
+    expect(s.mediaPool.mediaAssets.single.pageCount, 2);
   });
 
   testWidgets('a PDF with NO renderer warns honestly instead of failing '
@@ -564,7 +564,7 @@ void main() {
       findsOneWidget,
       reason: 'the absence is a stated condition, not a decode failure',
     );
-    expect(s.mediaAssets, isEmpty);
+    expect(s.mediaPool.mediaAssets, isEmpty);
   });
 
   // --- The size warning (A-2) ---------------------------------------------
@@ -1116,8 +1116,8 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final path = await tester.runAsync(() => writePng('bg.png'));
-    s.importMediaFiles([path!], copyIntoProject: true);
-    expect(s.mediaAssets, hasLength(1));
+    s.mediaPool.importMediaFiles([path!], copyIntoProject: true);
+    expect(s.mediaPool.mediaAssets, hasLength(1));
     final layersBefore = s.requireActiveCut.layers.length;
 
     await tester.pumpWidget(
@@ -1142,7 +1142,7 @@ void main() {
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
     expect(
-      s.mediaAssets,
+      s.mediaPool.mediaAssets,
       hasLength(1),
       reason: 'the pool already knew this file',
     );

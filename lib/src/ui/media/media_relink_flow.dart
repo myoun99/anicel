@@ -33,8 +33,8 @@ Future<void> runMediaRelinkFlow(
   // until the next refresh, and hunting for a file nobody references any
   // more would pad the "of N" with ghosts.
   final missing = <String>[
-    for (final asset in session.mediaAssets)
-      if (session.missingMediaPaths.contains(asset.path)) asset.path,
+    for (final asset in session.mediaPool.mediaAssets)
+      if (session.mediaPool.missingMediaPaths.contains(asset.path)) asset.path,
   ];
   if (missing.isEmpty) {
     return;
@@ -100,7 +100,7 @@ Future<void> runMediaRelinkFlow(
   // uses, so the undoable path rewrite never exists without the grant
   // that makes it readable after a relaunch.
   session.mediaGrants.rememberMediaGrants([regrant!]);
-  session.relinkMediaAssets(plan.matched);
+  session.mediaPool.relinkMediaAssets(plan.matched);
 }
 
 /// How many candidates this ISOLATE has read.

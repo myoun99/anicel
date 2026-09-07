@@ -105,7 +105,7 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
     expect(imported, isFalse);
     expect(cutCount(s), cutsBefore);
-    expect(s.mediaAssets, isEmpty);
+    expect(s.mediaPool.mediaAssets, isEmpty);
     expect(s.canUndo, isFalse, reason: 'a refusal is not an edit');
   });
 
@@ -210,6 +210,6 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
     expect(imported, isTrue);
     expect(cutCount(s), cutsBefore + 1);
-    expect(s.mediaAssets, hasLength(1));
+    expect(s.mediaPool.mediaAssets, hasLength(1));
   });
 }
