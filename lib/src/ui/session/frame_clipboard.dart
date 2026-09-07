@@ -3,6 +3,7 @@ import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_splice.dart';
 import 'render_caches.dart';
@@ -206,7 +207,7 @@ class FrameClipboard {
       return;
     }
 
-    final run = _internals.spliceRunOnActiveRow();
+    final run = spliceRunOnActiveRow();
     // 🚨T3 — the clip brings its LENGTH: 「내가 하고싶은건 프레임만 복붙이
     // 아니라 코마까지 포함해서 블록 자체를 복붙한다는 느낌」. What travels is
     // the run of cells, gaps and all, not one cel id that the destination
@@ -400,7 +401,7 @@ class FrameClipboard {
           exposures: {0: TimelineExposure.drawing(copied.frameId, length: 1)},
           length: 1,
         );
-    final run = _internals.spliceRunOnActiveRow();
+    final run = spliceRunOnActiveRow();
     // ⛔A selection REPLACES what it covers; with none, nothing comes out.
     // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
     final selection = _selection.frameRangeSelection.value;
@@ -509,6 +510,42 @@ class FrameClipboard {
       _selection.clearFrameRangeSelection();
     }
     _changes.notifyChanged();
+  }
+
+  /// WHERE a copy, cut or paste acts on the active row, in COMMIT keys.
+  ///
+  /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get
+  /// their N: a live selection says its own range, and with none the verb
+  /// means the block under the playhead. Copy, cut and paste all ask this,
+  /// so they cannot disagree about what "the run" is.
+  ///
+  /// ⚠️The ROW is the active layer's alone. T3's multi-row anchoring
+  /// (「선택의 첫 행을 현재 행에 맞춘다」) needs a rail-display-order source
+  /// the session does not have — [TimelineController.spliceRunsForLayers]
+  /// already takes a list so the extension is additive, but nothing here
+  /// pretends to do it yet.
+
+  ({int index, int count})? spliceRunOnActiveRow() {
+    final layer = _selection.activeLayer;
+    if (layer == null) {
+      return null;
+    }
+    final selection = _selection.frameRangeSelection.value;
+    if (selection != null && selection.coversLayer(layer.id)) {
+      return (
+        index: _internals.commitBlockStart(layer.id, selection.startIndex),
+        count: selection.lengthFrames,
+      );
+    }
+    final index = _controllers.timelineController.currentFrameIndex;
+    final covering = coveringDrawingBlockAt(layer.timeline, index);
+    if (covering == null) {
+      return (index: index, count: 1);
+    }
+    return (
+      index: covering.startIndex,
+      count: covering.endIndexExclusive - covering.startIndex,
+    );
   }
 }
 

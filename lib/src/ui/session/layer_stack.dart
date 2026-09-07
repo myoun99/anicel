@@ -31,6 +31,7 @@ import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
+import 'layer_id_mint.dart';
 import 'session_roles.dart';
 import 'standing.dart';
 
@@ -43,6 +44,7 @@ class LayerStack {
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required LayerIdMint layerIds,
     required LayerVerbs layerVerbs,
     required Standing standing,
     required FolderBands folderBands,
@@ -54,6 +56,7 @@ class LayerStack {
        _frameIds = frameIds,
        _controllers = controllers,
        _internals = internals,
+       _layerIds = layerIds,
        _layerVerbs = layerVerbs,
        _standing = standing,
        _folderBands = folderBands,
@@ -66,6 +69,7 @@ class LayerStack {
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final LayerIdMint _layerIds;
   final LayerVerbs _layerVerbs;
   final Standing _standing;
   final FolderBands _folderBands;
@@ -103,7 +107,7 @@ class LayerStack {
     if (!canAddLayerOfKind(kind)) {
       return; // The cut already holds its one row of a singleton kind.
     }
-    final layerId = _internals.mintLayerId();
+    final layerId = _layerIds.mint();
     switch (kind) {
       case LayerKind.transition:
         // A track fixture, created with the track — "Add layer" never makes

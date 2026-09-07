@@ -14,6 +14,7 @@ import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'row_selection.dart';
+import 'layer_id_mint.dart';
 import 'session_roles.dart';
 
 /// FOLDERS AND ATTACHMENTS — grouping the active layer or attach into a
@@ -31,14 +32,14 @@ class FoldersAndAttachments {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required RowSelection rowSelectionVerbs,
-    required SessionInternals internals,
+    required LayerIdMint layerIds,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
        _rowSelectionVerbs = rowSelectionVerbs,
-       _internals = internals,
+       _layerIds = layerIds,
        _activeCut = activeCut;
 
   final ProjectAccess _project;
@@ -46,7 +47,7 @@ class FoldersAndAttachments {
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final RowSelection _rowSelectionVerbs;
-  final SessionInternals _internals;
+  final LayerIdMint _layerIds;
   final ActiveCutEdits _activeCut;
 
   /// Whether the active layer can carry (or already rides within) an
@@ -81,7 +82,7 @@ class FoldersAndAttachments {
     final base = isAttachedLayer(active)
         ? attachedBaseOf(active, cut.layers)!
         : active;
-    final layerId = _internals.mintLayerId();
+    final layerId = _layerIds.mint();
     final baseIndex = cut.layers.indexWhere((layer) => layer.id == base.id);
     if (baseIndex == -1) {
       return;

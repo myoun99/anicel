@@ -323,7 +323,7 @@ void main() {
     // Two passing rows above: the NEAREST above wins.
     final near = display[activeIndex - 1];
     final far = display[0];
-    s.moveSelectionToFilteredLayer(
+    s.standing.moveSelectionToFilteredLayer(
       (layer) => layer.id == near.id || layer.id == far.id,
     );
     expect(s.activeLayerId, near.id);
@@ -331,11 +331,11 @@ void main() {
     // Nothing above the top row: falls back to the first passing anywhere.
     s.selectLayer(far.id);
     final below = display[2];
-    s.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
+    s.standing.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
     expect(s.activeLayerId, below.id);
 
     // A passing active stays put.
-    s.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
+    s.standing.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
     expect(s.activeLayerId, below.id);
   });
 

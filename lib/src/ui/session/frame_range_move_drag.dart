@@ -24,6 +24,7 @@ import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/commands/track_transition_commands.dart';
 import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_section_policy.dart';
+import 'drawing_block_move_drag.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'row_spans.dart';
@@ -126,6 +127,7 @@ class FrameRangeMoveDrag {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RowSpans rowSpans,
+    required DrawingBlockMoveDragVerbs blockMove,
     required RenderCaches renderCaches,
     required Camera camera,
     required FoldersAndAttachments folders,
@@ -138,6 +140,7 @@ class FrameRangeMoveDrag {
        _controllers = controllers,
        _internals = internals,
        _rowSpans = rowSpans,
+       _blockMove = blockMove,
        _renderCaches = renderCaches,
        _camera = camera,
        _folders = folders,
@@ -153,6 +156,7 @@ class FrameRangeMoveDrag {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RowSpans _rowSpans;
+  final DrawingBlockMoveDragVerbs _blockMove;
   final RenderCaches _renderCaches;
   final Camera _camera;
   final FoldersAndAttachments _folders;
@@ -1670,7 +1674,7 @@ class FrameRangeMoveDrag {
       return;
     }
     _project.historyManager.execute(
-      _internals.singleRowMoveCommand(
+      _blockMove.singleRowMoveCommand(
         plan,
         source: source,
         description: 'Move frame range',

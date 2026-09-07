@@ -1,7 +1,10 @@
 import '../../services/editing/active_cut_helpers.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
+import '../timeline/layer_timeline_display_adapter.dart'
+    show horizontalLayerDisplayOrder;
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import 'playback_rig.dart';
 import 'active_cut_controllers.dart';
@@ -564,6 +567,37 @@ class Standing {
     publishCurrentRow();
     if (changed) {
       _changes.notifyChanged();
+    }
+  }
+
+  /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
+  /// selection moves to the nearest PASSING layer ABOVE it on screen
+  /// (horizontal display order), falling back to the first passing layer.
+  void moveSelectionToFilteredLayer(bool Function(Layer layer) passes) {
+    final active = _selection.activeLayer;
+    if (active == null || passes(active)) {
+      return;
+    }
+    final display = horizontalLayerDisplayOrder(_project.layers);
+    final activeIndex = display.indexWhere((layer) => layer.id == active.id);
+    Layer? target;
+    // Screen-up = earlier in horizontal display order.
+    for (var index = activeIndex - 1; index >= 0; index -= 1) {
+      if (passes(display[index])) {
+        target = display[index];
+        break;
+      }
+    }
+    if (target == null) {
+      for (final layer in display) {
+        if (passes(layer)) {
+          target = layer;
+          break;
+        }
+      }
+    }
+    if (target != null) {
+      selectLayer(target.id);
     }
   }
 }

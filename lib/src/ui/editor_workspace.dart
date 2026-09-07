@@ -826,7 +826,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // UI-R6 #3: a non-passing active layer moves to the nearest passing
     // layer above it (instead of lingering through the exemption).
     if (filter.isActive) {
-      widget.session.moveSelectionToFilteredLayer(
+      widget.session.standing.moveSelectionToFilteredLayer(
         (layer) => filter.allowsLayerRow(
           layer,
           standing: false,

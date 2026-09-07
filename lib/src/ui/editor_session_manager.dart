@@ -5,7 +5,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../services/editing/default_layer_helpers.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
@@ -19,7 +18,6 @@ import '../services/project_lookup.dart'
     show
         cutPositionOf,
         projectArchivedMediaPaths,
-        projectLayerIdValues,
         requireLayerAnywhere;
 import '../models/app_language.dart';
 // The six settings stores are injected THROUGH this class into
@@ -114,12 +112,9 @@ import 'playback/canvas_playback_controller.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
-import '../models/drawing_block_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
-import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -140,8 +135,6 @@ import 'timeline/layer_row_drag.dart'
     show LayerRowDragState;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
-import 'timeline/layer_timeline_display_adapter.dart'
-    show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'session/session_roles.dart';
@@ -187,6 +180,7 @@ import 'session/drawing_block_move_drag.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
 import 'session/active_cut_edits.dart';
+import 'session/layer_id_mint.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
@@ -543,47 +537,23 @@ class EditorSessionManager extends ChangeNotifier
     trackSeDisplayLayers: () => trackSeDisplayLayers,
     trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
     onRebuilt: () {
-      _standing.unseatStrandedVerbRow();
+      standing.unseatStrandedVerbRow();
       // A cut switch re-seats the active layer, which is what the drawn row
       // falls back to when nothing is engaged.
-      _standing.publishCurrentRow();
+      standing.publishCurrentRow();
       // The window moved, so the part of a track-global lane span this cut
       // can see moved with it. The selection itself is untouched.
       _publishCutLocalLaneRange();
     },
   );
 
-  int _layerSequence = 1;
   int _frameSequence = 0;
 
-  /// The next unused `default-layer-N`.
-  ///
-  /// The counter alone is not enough, and the reason is that it is SESSION
-  /// state while the project can arrive from DISK. Open a file that already
-  /// holds `default-layer-2` and the counter is still 1, so the next added
-  /// layer is minted straight on top of an existing row: two layers, one id.
-  /// It surfaced as a red screen from the rail (`multiple children with key
-  /// …default-layer-2-row`), which is why the fix is here and not there — a
-  /// duplicate key is what a duplicate id looks like downstream.
-  ///
-  /// So the project has the last word, exactly as it already does for
-  /// imported cut ids ([ImportLanding.idMint]). The counter still carries a BATCH,
-  /// where ids minted a moment ago are not in the project yet.
-  ///
-  /// [usedIds] lets a caller minting MANY ids hand the scan in once; see
-  /// [ImportLanding.idMint], which is the only such caller.
-  @override
-  LayerId mintLayerId({Set<String>? usedIds}) {
-    final used =
-        usedIds ?? projectLayerIdValues(repository.requireProject());
-    _layerSequence += 1;
-    var candidate = defaultLayerIdForSequence(_layerSequence);
-    while (used.contains(candidate.value)) {
-      _layerSequence += 1;
-      candidate = defaultLayerIdForSequence(_layerSequence);
-    }
-    return candidate;
-  }
+  // ── where a new row's id comes from: its own object ─────────────────
+  //
+  // A collaborator (session/layer_id_mint.dart): the `default-layer-N`
+  // counter, and the project scan that keeps it honest.
+  late final LayerIdMint layerIds = LayerIdMint(project: this);
 
   // ── the frame clipboard: its own object, in its own file ────────────
   //
@@ -613,8 +583,9 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     controllers: activeCutControllers,
     internals: this,
+    layerIds: layerIds,
     layerVerbs: layerVerbs,
-    standing: _standing,
+    standing: standing,
     folderBands: folderBands,
     renderCaches: renderCaches,
     brushInputActive: brushInputActive,
@@ -643,29 +614,29 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
-  void selectCut(CutId cutId) => _standing.selectCut(cutId);
+  void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
-  TimelineRowAddress get currentRow => _standing.currentRow;
+  TimelineRowAddress get currentRow => standing.currentRow;
   @override
   void standOnRow(
     TimelineRowAddress row, {
     int? frameIndex,
     int? globalFrameIndex,
     bool takesLayerActive = true,
-  }) => _standing.standOnRow(
+  }) => standing.standOnRow(
     row,
     frameIndex: frameIndex,
     globalFrameIndex: globalFrameIndex,
     takesLayerActive: takesLayerActive,
   );
   @override
-  void selectLayer(LayerId layerId) => _standing.selectLayer(layerId);
-  void selectRow(TimelineRowAddress row) => _standing.selectRow(row);
+  void selectLayer(LayerId layerId) => standing.selectLayer(layerId);
+  void selectRow(TimelineRowAddress row) => standing.selectRow(row);
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
-      _standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
-  void claimTimelineRow() => _standing.claimTimelineRow();
+      standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
+  void claimTimelineRow() => standing.claimTimelineRow();
 
   /// THE selected track — the storyboard's row selection, read by everything
   /// that used to hunt for "whichever track owns the active cut".
@@ -708,7 +679,7 @@ class EditorSessionManager extends ChangeNotifier
   // session keeps the public entry points as forwarders.
   late final StoryboardRows _storyboardRows = StoryboardRows(project: this, selection: this, timeline: this, projectSettings: _projectSettings);
 
-  void claimStoryboardRow() => _standing.claimStoryboardRow();
+  void claimStoryboardRow() => standing.claimStoryboardRow();
   List<CutId> get storyboardSelectedCutIds =>
       _storyboardRows.storyboardSelectedCutIds;
   void updateStoryboardCutSelectionByFrame({
@@ -974,7 +945,7 @@ class EditorSessionManager extends ChangeNotifier
   void runPixelVerb(CelPixelVerb verb) => _cells.runPixelVerb(verb);
 
   @override
-  TimelineRowAddress get selectedRow => _standing.selectedRow;
+  TimelineRowAddress get selectedRow => standing.selectedRow;
 
   /// Makes a V row THE selected row and nothing else — no cut promotion, no
   /// seek. The cells press wants this half on its own: the frame it presses
@@ -987,7 +958,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     final trackBefore = selectedTrackId;
     editingSession.setSelectedTrackId(trackId);
-    if (_standing.storeStoryboardRow(TrackRowAddress(trackId)) ||
+    if (standing.storeStoryboardRow(TrackRowAddress(trackId)) ||
         selectedTrackId != trackBefore) {
       notifyListeners();
     }
@@ -2341,7 +2312,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/folders_and_attachments.dart): the folder and
   // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
   // fold twirl — with the state each one reads.
-  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, internals: this, activeCut: _activeCutEdits);
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, layerIds: layerIds, activeCut: _activeCutEdits);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
@@ -2446,37 +2417,6 @@ class EditorSessionManager extends ChangeNotifier
   /// live average (UI-R6 #2).
   @override
   double lastMasterOpacity = 1.0;
-
-  /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
-  /// selection moves to the nearest PASSING layer ABOVE it on screen
-  /// (horizontal display order), falling back to the first passing layer.
-  void moveSelectionToFilteredLayer(bool Function(Layer layer) passes) {
-    final active = activeLayer;
-    if (active == null || passes(active)) {
-      return;
-    }
-    final display = horizontalLayerDisplayOrder(layers);
-    final activeIndex = display.indexWhere((layer) => layer.id == active.id);
-    Layer? target;
-    // Screen-up = earlier in horizontal display order.
-    for (var index = activeIndex - 1; index >= 0; index -= 1) {
-      if (passes(display[index])) {
-        target = display[index];
-        break;
-      }
-    }
-    if (target == null) {
-      for (final layer in display) {
-        if (passes(layer)) {
-          target = layer;
-          break;
-        }
-      }
-    }
-    if (target != null) {
-      selectLayer(target.id);
-    }
-  }
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
@@ -2736,7 +2676,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     frameIds: this,
     timeline: this,
-    internals: this,
+    layerIds: layerIds,
   );
 
   late final ProjectImportDoors importDoors = ProjectImportDoors(
@@ -4058,7 +3998,7 @@ class EditorSessionManager extends ChangeNotifier
     if (layer == null || !canCutRunAtCurrentFrame) {
       return;
     }
-    final run = spliceRunOnActiveRow();
+    final run = _clipboard.spliceRunOnActiveRow();
     if (run == null) {
       return;
     }
@@ -4100,41 +4040,6 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
-  /// WHERE a copy, cut or paste acts on the active row, in COMMIT keys.
-  ///
-  /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get
-  /// their N: a live selection says its own range, and with none the verb
-  /// means the block under the playhead. Copy, cut and paste all ask this,
-  /// so they cannot disagree about what "the run" is.
-  ///
-  /// ⚠️The ROW is the active layer's alone. T3's multi-row anchoring
-  /// (「선택의 첫 행을 현재 행에 맞춘다」) needs a rail-display-order source
-  /// the session does not have — [TimelineController.spliceRunsForLayers]
-  /// already takes a list so the extension is additive, but nothing here
-  /// pretends to do it yet.
-  @override
-  ({int index, int count})? spliceRunOnActiveRow() {
-    final layer = activeLayer;
-    if (layer == null) {
-      return null;
-    }
-    final selection = frameRangeSelection.value;
-    if (selection != null && selection.coversLayer(layer.id)) {
-      return (
-        index: commitBlockStart(layer.id, selection.startIndex),
-        count: selection.lengthFrames,
-      );
-    }
-    final index = activeCutControllers.timelineController.currentFrameIndex;
-    final covering = coveringDrawingBlockAt(layer.timeline, index);
-    if (covering == null) {
-      return (index: index, count: 1);
-    }
-    return (
-      index: covering.startIndex,
-      count: covering.endIndexExclusive - covering.startIndex,
-    );
-  }
 
   /// ⚠️Formats an id from the CURRENT sequence — it does not advance it.
   /// Call [mintFrameId] unless you have just incremented `_frameSequence`
@@ -4662,7 +4567,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, internals: this);
+  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this);
 
   bool beginDrawingBlockMoveDrag({
     required LayerId layerId,
@@ -4682,61 +4587,6 @@ class EditorSessionManager extends ChangeNotifier
   void cancelDrawingBlockMoveDrag() =>
       _drawingBlockMove.cancelDrawingBlockMoveDrag();
 
-  /// The single undo step a ONE-ROW move lands as: the source row's
-  /// rewrite, the target row's rewrite when the move crossed rows, and the
-  /// brush-frame rekey that carries the cels across with it.
-  ///
-  /// The drawing-block drag and the frame-range drag both land exactly
-  /// this way — same plan type, same three pieces, same collapse to a bare
-  /// command when there is only one. They differed in the undo LABEL and
-  /// nothing else, so that is all this takes. (The multi-row rigid move is
-  /// a different shape: SE row pairs, instruction and camera riders, and a
-  /// rekey list built from the plan instead of the moved frame ids.)
-  @override
-  Command singleRowMoveCommand(
-    DrawingBlockMovePlan plan, {
-    required Layer source,
-    required String description,
-  }) {
-    final commands = <Command>[
-      UpdateLayerTimelineCommand(
-        repository: repository,
-        before: source,
-        after: rederiveRunBehaviors(
-          plan.sourceAfter,
-          cutFrameCount: activeCutFrameCount,
-        ),
-      ),
-      if (plan.targetBefore != null)
-        UpdateLayerTimelineCommand(
-          repository: repository,
-          before: plan.targetBefore!,
-          after: rederiveRunBehaviors(
-            plan.targetAfter!,
-            cutFrameCount: activeCutFrameCount,
-          ),
-        ),
-    ];
-    if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
-      final cut = requireActiveCut;
-      commands.add(
-        RekeyBrushFramesCommand(
-          store: renderCaches.brushFrameStore,
-          pairs: [
-            for (final frameId in plan.movedFrameIds)
-              (
-                brushFrameKeyForCut(cut, source.id, frameId),
-                brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
-              ),
-          ],
-        ),
-      );
-    }
-    return commands.length == 1
-        ? commands.single
-        : CompositeCommand(description: description, commands: commands);
-  }
-
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
   // ── the frame-range move drag: its own object, in its own file ────────
@@ -4746,7 +4596,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -4914,7 +4764,7 @@ class EditorSessionManager extends ChangeNotifier
   /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and
   /// 잘라내기 — all resolve against the active layer. A band covering that
   /// row is served: 잘라내기 splices exactly the swept span
-  /// ([spliceRunOnActiveRow]), and the playhead verbs act on the row the
+  /// ([FrameClipboard.spliceRunOnActiveRow]), and the playhead verbs act on the row the
   /// user highlighted. A band naming only OTHER rows is a different
   /// statement, and acting on the active row then edits something the
   /// user never swept while the highlight sits elsewhere explaining
@@ -5293,7 +5143,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     // Parking in a gap LEAVES the cut, so the row it was on is recorded
     // here too — scrubbing out and back keeps the layer.
-    _standing.rememberActiveLayerForCut();
+    standing.rememberActiveLayerForCut();
     // The visibility solo is cut-scoped: restore the eyes before leaving
     // (the selectCut contract).
     if (_solo.layerVisibilitySoloEnabled) {

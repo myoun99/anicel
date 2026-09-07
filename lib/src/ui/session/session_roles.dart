@@ -34,8 +34,6 @@ import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_frame_axis.dart';
-import '../../models/drawing_block_move.dart';
-import '../../services/command.dart';
 import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import '../../services/history_manager.dart';
@@ -150,19 +148,12 @@ abstract interface class SessionInternals {
   ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
   frameShiftScope({TimelineRowAddress? currentRow});
   List<CutId> get liveSelectedCutIds;
-  LayerId mintLayerId({Set<String>? usedIds});
   int shiftAnchorFor(
     LayerId layerId,
     int anchorIndex, {
     required bool anchorIsGlobal,
   });
   Layer? shiftLayerFor(LayerId layerId);
-  Command singleRowMoveCommand(
-    DrawingBlockMovePlan plan, {
-    required Layer source,
-    required String description,
-  });
-  ({int index, int count})? spliceRunOnActiveRow();
   Layer? get targetLayerForKindToggle;
   AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);

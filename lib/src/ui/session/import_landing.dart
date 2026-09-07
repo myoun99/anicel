@@ -16,6 +16,7 @@ import '../../services/editing/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize, importedCut;
 import '../../services/import/media_import_planner.dart';
 import '../../services/project_lookup.dart' show projectLayerIdValues;
+import 'layer_id_mint.dart';
 import 'session_roles.dart';
 
 /// Where this import is landing, and the identity it lands under.
@@ -78,18 +79,18 @@ class ImportLanding {
     required SelectionAccess selection,
     required FrameIds frameIds,
     required TimelineAccess timeline,
-    required SessionInternals internals,
+    required LayerIdMint layerIds,
   }) : _project = project,
        _selection = selection,
        _frameIds = frameIds,
        _timeline = timeline,
-       _internals = internals;
+       _layerIds = layerIds;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
+  final LayerIdMint _layerIds;
 
   int _importCutSequence = 0;
 
@@ -135,7 +136,7 @@ class ImportLanding {
         for (final cut in track.cuts) cut.id.value,
     };
     return ImportIdMint(
-      nextLayerId: () => _internals.mintLayerId(usedIds: usedLayerIds),
+      nextLayerId: () => _layerIds.mint(usedIds: usedLayerIds),
       // Through the MINT, not the formatter. `nextFrameId` reads
       // `_frameSequence` and does not advance it, so calling it directly
       // leaves the wall clock as the only thing telling two cels apart —
