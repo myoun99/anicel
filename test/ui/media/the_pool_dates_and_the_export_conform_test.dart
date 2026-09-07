@@ -8,15 +8,17 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The two answers the media pool gives that nothing else could observe:
-/// the DATE column (filled by the same sweep that answers "is it still
-/// there") and the export button's "which file do I hand the writer".
+/// The three answers the media pool gives that nothing else could
+/// observe: the DATE column (filled by the same sweep that answers "is it
+/// still there"), the export button's "which file do I hand the writer",
+/// and what an audio import does to the conform cache on its way in.
 ///
-/// 🚨Both were reachable only through a running app before this file —
-/// the panel takes the date map as a widget argument, and the export path
-/// is read by one call in the workspace. Deleting either body left every
-/// suite green, which is exactly the shape
-/// [[adversarial-verify-is-not-optional]] calls evidence of nothing.
+/// 🚨All three were reachable only through a running app before this file
+/// — the panel takes the date map as a widget argument, the export path is
+/// read by one call in the workspace, and the import's cache work is
+/// invisible to a test that only looks at the pool afterwards. Deleting
+/// any of the three bodies left every suite green, which is exactly the
+/// shape [[adversarial-verify-is-not-optional]] calls evidence of nothing.
 class _PlannedConformStore extends AudioConformStore {
   _PlannedConformStore(this.answers)
     : super(
@@ -29,11 +31,25 @@ class _PlannedConformStore extends AudioConformStore {
   final Map<String, ConformResult?> answers;
 
   final asked = <String>[];
+  final invalidated = <String>[];
+  final warmed = <String>[];
 
   @override
   Future<ConformResult?> ensureFor(String sourcePath) async {
     asked.add(sourcePath);
     return answers[sourcePath];
+  }
+
+  @override
+  void invalidate(String sourcePath) {
+    invalidated.add(sourcePath);
+    super.invalidate(sourcePath);
+  }
+
+  @override
+  void warmPaths(Iterable<String> sourcePaths) {
+    warmed.addAll(sourcePaths);
+    super.warmPaths(sourcePaths);
   }
 }
 
@@ -172,4 +188,37 @@ void main() {
       expect(await session.mediaPool.conformBytesForExport('없는것.wav'), isNull);
     },
   );
+
+  test('an audio import THROWS AWAY the conform it had for that path, then '
+      'warms a new one', () async {
+    // 🚨The invalidate is the re-import case, and it is the one nothing
+    // watched: on a second import the file may have changed on disk, and a
+    // conform kept from the first one is a stale decode serving the old
+    // sound under the new file's name. (A byte-identical copy costs
+    // nothing — it re-fingerprints and lands as `reused` without a
+    // decode.) The warm is what puts the waveform on the row without the
+    // row asking for it.
+    final wav = plant('다시가져오기.wav', 64);
+    final store = _PlannedConformStore(const {});
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      audioConformStore: store,
+    );
+    addTearDown(session.dispose);
+
+    session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
+
+    expect(store.invalidated, [wav]);
+    expect(store.warmed, [wav]);
+
+    session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
+
+    expect(
+      store.invalidated,
+      [wav, wav],
+      reason:
+          'the SECOND import is the whole point — the pool already '
+          'knows the path, and the conform still has to be dropped',
+    );
+  });
 }
