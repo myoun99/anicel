@@ -198,42 +198,11 @@ void main() {
       findsNothing,
     );
 
-    // REC1-B2: the recordings folder row shows the live shelf — the
-    // default app folder, a custom choice, and the reset back.
-    final recordingsPath = find.byKey(
-      const ValueKey<String>('settings-recordings-directory'),
-    );
-    await tester.ensureVisible(recordingsPath);
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<Text>(recordingsPath).data,
-      AppSave.recordingsRootDirectory,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('settings-recordings-reset')),
-      findsNothing,
-      reason: 'the default shelf has nothing to reset',
-    );
-
-    session.setSaveSettings(
-      AppSave.settings.value.copyWith(
-        recordingsDirectory: const GrantedDirectory(path: '/tmp/takes'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.widget<Text>(recordingsPath).data, '/tmp/takes');
-    final reset = find.byKey(
-      const ValueKey<String>('settings-recordings-reset'),
-    );
-    await tester.ensureVisible(reset);
-    await tester.pumpAndSettle();
-    await tester.tap(reset);
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.recordingsDirectory, isNull);
-    expect(
-      tester.widget<Text>(recordingsPath).data,
-      AppSave.recordingsRootDirectory,
-    );
+    // 🪦**THE RECORDINGS FOLDER ROW WAS ASSERTED HERE** — the live shelf
+    // path, a custom choice, and the reset back to the default. The row is
+    // gone with the folder it configured (유저 2026-09-08: 앱이 쓰는 곳은
+    // 앱 컨테이너와 프로젝트 파일 둘뿐), so a take is staged like every
+    // other carried asset and there is nothing left to point anywhere.
   });
 
   testWidgets('the Audio section drives the live A/V offset: typed values '

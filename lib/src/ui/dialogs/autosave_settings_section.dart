@@ -1,4 +1,4 @@
-import 'dart:io' show Directory, File, FileStat, FileSystemEntityType, Platform;
+import 'dart:io' show Directory, File, FileStat, FileSystemEntityType;
 
 import 'package:flutter/material.dart';
 
@@ -11,8 +11,6 @@ import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
-import 'folder_pick_flow.dart';
-import '../input/control_press_claim.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
@@ -142,92 +140,13 @@ class AutosaveSettingsSection extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const _AppContainerBlock(),
-            const Divider(height: 16),
-            // REC1-B2: the take shelf. Mobile shows where takes land but
-            // cannot move it (the app documents home is the only sane
-            // place there); desktop may point it anywhere.
-            SettingsSectionHeading(
-              label: AppText.strings.recordingsFolderTitle,
-              help: AppText.strings.recordingsFolderHelp,
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    AppSave.recordingsRootDirectory,
-                    key: const ValueKey<String>(
-                      'settings-recordings-directory',
-                    ),
-                    style: const TextStyle(fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (!Platform.isAndroid && !Platform.isIOS) ...[
-                  if (settings.recordingsDirectory != null)
-                    ControlPressClaim(
-                      onPressed: () => session.setSaveSettings(
-                        settings.copyWith(recordingsDirectory: null),
-                      ),
-                      child: TextButton(
-                        key: const ValueKey<String>(
-                          'settings-recordings-reset',
-                        ),
-                        onPressed: silentPress(
-                          () => session.setSaveSettings(
-                            settings.copyWith(recordingsDirectory: null),
-                          ),
-                        ),
-                        child: Text(AppText.strings.autosaveDefault),
-                      ),
-                    ),
-                  ControlPressClaim(
-                    onPressed: () async {
-                      // The GRANT flavour: this path is read again at the
-                      // NEXT launch, and on macOS a stored path without
-                      // its token is refused there — the setting stayed
-                      // on screen while every write quietly failed
-                      // (Q-scoped-folder-settings, 유저 「알아서 맡김」).
-                      final grant = await pickFolderGrantForUser(context);
-                      final path = grant?.path;
-                      if (path != null) {
-                        session.setSaveSettings(
-                          AppSave.settings.value.copyWith(
-                            recordingsDirectory: GrantedDirectory(
-                              path: path,
-                              bookmark: grant!.bookmark,
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: TextButton(
-                      key: const ValueKey<String>('settings-recordings-browse'),
-                      onPressed: silentPress(() async {
-                        // The GRANT flavour: this path is read again at the
-                        // NEXT launch, and on macOS a stored path without
-                        // its token is refused there — the setting stayed
-                        // on screen while every write quietly failed
-                        // (Q-scoped-folder-settings, 유저 「알아서 맡김」).
-                        final grant = await pickFolderGrantForUser(context);
-                        final path = grant?.path;
-                        if (path != null) {
-                          session.setSaveSettings(
-                            AppSave.settings.value.copyWith(
-                              recordingsDirectory: GrantedDirectory(
-                                path: path,
-                                bookmark: grant!.bookmark,
-                              ),
-                            ),
-                          );
-                        }
-                      }),
-                      child: Text(AppText.strings.autosaveChoose),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            // 🪦**THE RECORDINGS FOLDER ROW IS GONE** — a heading, the path,
+            // and Default/Choose on desktop. It let a person point the take
+            // shelf anywhere, which made the app write to a THIRD location;
+            // 유저 2026-09-08 cut that to two (앱 컨테이너 · 프로젝트 파일).
+            // A take is staged like every other carried asset now, so the
+            // session row above already counts it and the room's own ending
+            // already clears it. Same shape as the conform block below.
             // 🪦**THE CONFORM CACHE BLOCK IS GONE** — a heading, a movable
             // root, a size and an「empty now」button. All four existed
             // because the cache was an unbounded pile that outlived every

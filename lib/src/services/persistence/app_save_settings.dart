@@ -1,8 +1,6 @@
 
 import 'package:flutter/foundation.dart';
 
-import 'app_documents.dart';
-import 'folder_grant.dart';
 import 'session_scratch.dart';
 
 /// A user-chosen folder plus the token that reopens it after a relaunch
@@ -72,13 +70,9 @@ class GrantedDirectory {
 ///   ⇒ 「저장 안 하고 닫기 = 버리기」 is now a property of
 ///   [periodicSnapshotMinutes]: null (OFF) and it is literal, a number and
 ///   the file follows the work every n minutes. The switch is the user's.
-/// - REC1-B2: never-saved projects record onto a visible take shelf
-///   (`<app documents>/Recordings` by default) instead of the hidden OS
-///   temp; a custom folder is a desktop-only choice.
 class AppSaveSettings {
   const AppSaveSettings({
     this.periodicSnapshotMinutes,
-    this.recordingsDirectory,
   });
 
   /// What the clock offers when it is first switched on.
@@ -117,9 +111,18 @@ class AppSaveSettings {
   /// guard's arithmetic is the ceiling's and stays that way.
   final int? periodicSnapshotMinutes;
 
-  /// Where a never-saved project's voice takes land; null = the app
-  /// documents `Recordings` folder.
-  final GrantedDirectory? recordingsDirectory;
+  // 🪦**`recordingsDirectory` IS GONE, AND SO IS THE FOLDER IT NAMED.** It
+  // pointed the take shelf somewhere the user chose — which made the app
+  // write to a THIRD location, and 유저 2026-09-08 cut that to two: 「위치를
+  // 앱컨테이너/실제파일 이렇게 두군데로만 정리하고싶은거고. 그 외 위치엔
+  // 두고싶지않아」. A take is staged like every other carried asset now, so
+  // there is no folder left to place. ⛔Exactly the `conformDirectory`
+  // reason below, one round later.
+  //
+  // 🚨And the default it fell back to was worse than a third location: on
+  // Windows `%USERPROFILE%/Documents/Anicel` resolves case-insensitively
+  // onto the source repository, so takes were landing IN THE REPO — which
+  // a `/Recordings/` line in `.gitignore` had been papering over.
 
   // 🪦**`conformDirectory` IS GONE.** It let the user place the conform
   // cache on a PARTICULAR DEVICE'S disk — out of a cloud folder, onto an
@@ -135,19 +138,14 @@ class AppSaveSettings {
 
   AppSaveSettings copyWith({
     Object? periodicSnapshotMinutes = _unset,
-    Object? recordingsDirectory = _unset,
   }) => AppSaveSettings(
     periodicSnapshotMinutes: identical(periodicSnapshotMinutes, _unset)
         ? this.periodicSnapshotMinutes
         : periodicSnapshotMinutes as int?,
-    recordingsDirectory: identical(recordingsDirectory, _unset)
-        ? this.recordingsDirectory
-        : recordingsDirectory as GrantedDirectory?,
   );
 
   Map<String, dynamic> toJson() => {
     'periodicSnapshotMinutes': periodicSnapshotMinutes,
-    'recordingsDirectory': recordingsDirectory?.toJson(),
   };
 
   /// `sidecarDirectory` left by an older build is READ AND DROPPED — the
@@ -179,25 +177,19 @@ class AppSaveSettings {
               maxPeriodicSnapshotMinutes,
             )
           : null,
-      // Both spellings: the bare path older builds wrote, or the
-      // path+bookmark map this build writes on scoped platforms.
-      recordingsDirectory: GrantedDirectory.fromJson(
-        json['recordingsDirectory'],
-      ),
+      // `recordingsDirectory` joins them: READ AND DROPPED. The take shelf
+      // it pointed at is gone, so a stored folder is a value with nothing
+      // left to configure.
     );
   }
 
   @override
   bool operator ==(Object other) =>
       other is AppSaveSettings &&
-      other.periodicSnapshotMinutes == periodicSnapshotMinutes &&
-      other.recordingsDirectory == recordingsDirectory;
+      other.periodicSnapshotMinutes == periodicSnapshotMinutes;
 
   @override
-  int get hashCode => Object.hash(
-    periodicSnapshotMinutes,
-    recordingsDirectory,
-  );
+  int get hashCode => periodicSnapshotMinutes.hashCode;
 }
 
 /// The LIVE save policy (the [AppInput] idiom): the session restores and
@@ -221,28 +213,6 @@ abstract final class AppSave {
       hash = (hash * 0x01000193) & 0xFFFFFFFF;
     }
     return hash;
-  }
-
-  /// REC1-B2: the take shelf — where a never-saved project's voice takes
-  /// land. A folder ordinary file managers show (`Recordings` under the
-  /// app documents home, the DAW convention), NOT the hidden OS temp: a
-  /// discarded session leaves its takes findable. Nothing ever moves off
-  /// the shelf — takes are carried, so the save absorbs their bytes into
-  /// the archive from wherever they sit. A custom shelf is a desktop-only
-  /// setting.
-  ///
-  /// It sits HERE, beside [conformRootDirectory], because it is the same
-  /// law: a configured folder wins, otherwise a default under a root this
-  /// class already knows. It used to live in `app_documents.dart`, which
-  /// made that file — the leaf everything else in this folder reaches for —
-  /// import these settings, and that was the whole of an import loop
-  /// (documents -> settings -> grant -> documents).
-  static String get recordingsRootDirectory {
-    final configured = settings.value.recordingsDirectory;
-    if (configured != null) {
-      return configured.path;
-    }
-    return '${appDocumentsDirectory()}/Recordings';
   }
 
   /// Where a conform waits until a save absorbs it — **the one place that
@@ -277,38 +247,15 @@ abstract final class AppSave {
   /// is derived from it through [ConformCacheLayout].
   static String get conformRootDirectory => SessionScratch.stagedFolder();
 
-  /// Re-establishes the settings folders' grants for THIS run, answering
-  /// the settings value the caller should store when a folder moved — or
-  /// null when nothing changed.
-  ///
-  /// Q-scoped-folder-settings (유저 08-26 「알아서 맡김」 → A): on macOS
-  /// the sandbox forgets a picked path at relaunch, so a setting that
-  /// stored only the path stayed on screen while every write quietly
-  /// failed. Resolving the bookmark reopens the scope (the same machinery
-  /// as the project grants) and follows a folder the user renamed.
-  ///
-  /// A bookmark that will not resolve leaves the stored value UNTOUCHED —
-  /// unavailable is not deleted (the provider may simply not be signed in
-  /// yet), and the path still names what the user meant.
-  static Future<AppSaveSettings?> resolveSettingsDirectories() async {
-    final current = settings.value;
-    Future<GrantedDirectory?> resolve(GrantedDirectory? directory) async {
-      final token = directory?.bookmark;
-      if (token == null) {
-        return directory;
-      }
-      final grant = await FolderPicker.resolveBookmark(token);
-      final path = grant.path;
-      if (!grant.isGranted || path == null) {
-        return directory;
-      }
-      return GrantedDirectory(path: path, bookmark: grant.bookmark ?? token);
-    }
-
-    final recordings = await resolve(current.recordingsDirectory);
-    if (recordings == current.recordingsDirectory) {
-      return null;
-    }
-    return current.copyWith(recordingsDirectory: recordings);
-  }
+  // 🪦**`resolveSettingsDirectories` STOOD HERE, AND IT HAD ONE FOLDER TO
+  // RESOLVE.** Q-scoped-folder-settings (유저 08-26 「알아서 맡김」): on
+  // macOS the sandbox forgets a picked path at relaunch, so a setting that
+  // stored only the path stayed on screen while every write quietly
+  // failed — it reopened the scope from the stored bookmark at launch.
+  // ⛔The LAW survives and applies to the next configurable folder anyone
+  // adds: **a stored folder needs its bookmark resolved before the first
+  // write, or the setting lies.** What is gone is the only folder that
+  // needed it. The export dialog remembers a `lastLocation` the same way,
+  // and does not need this because its picker asks again every time — the
+  // app never writes there unattended.
 }

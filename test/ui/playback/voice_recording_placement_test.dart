@@ -75,7 +75,12 @@ void main() {
     // project's `Media/` folder once it had one, which made that folder
     // the only copy of a performance; the project carries its own audio
     // now, so the recording stays somewhere a person can find it.
-    expect(clip.filePath, contains('/Recordings/'));
+    // 🚨The take lives in THIS RUN'S 이사대기 room now, not a shelf outside
+    // the container (유저 2026-09-08: 앱이 쓰는 곳은 앱 컨테이너와 프로젝트
+    // 파일 둘뿐). Its pool path is an ADDRESS — the bytes sit at the name the
+    // staging store derives — so every read below goes through the same door
+    // playback and the save use.
+    expect(clip.filePath, contains('/Staged/'));
     expect(clip.filePath, isNot(contains('.assets/Media/')));
     // The lane's name and a take ordinal, not a fixed one: the shelf
     // outlives a project, so the walk continues past earlier sessions.
@@ -84,7 +89,7 @@ void main() {
       isTrue,
       reason: clip.filePath,
     );
-    expect(File(clip.filePath).existsSync(), isTrue);
+    expect(manager.projectFile.projectHoldsMediaBytes(clip.filePath), isTrue);
     expect(
       manager.mediaPool.mediaAssets.map((asset) => asset.path),
       contains(clip.filePath),
@@ -95,7 +100,9 @@ void main() {
     expect(block.length, 24);
     expect(block.frameId, clip.frameId);
     // The WAV round-trips exactly as long as the recording.
-    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
     expect(decoded.sampleRate, 48000);
     expect(decoded.length, 48000);
 
@@ -123,7 +130,9 @@ void main() {
       );
       expect(placed, isTrue);
       final clip = manager.activeTrack.seLayers.first.audioClips.single;
-      final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+      final decoded = decodeConform(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
       expect(
         decoded.length,
         48000 - 12000,
@@ -196,7 +205,7 @@ void main() {
     expect(takes.toSet(), hasLength(2), reason: 'the first was not replaced');
     for (final take in takes) {
       expect(RegExp(r'_T\d+\.wav$').hasMatch(take), isTrue, reason: take);
-      expect(File(take).existsSync(), isTrue);
+      expect(manager.projectFile.projectHoldsMediaBytes(take), isTrue);
     }
     manager.dispose();
   });
@@ -218,7 +227,9 @@ void main() {
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.length, 6);
     final clip = lane.audioClips.single;
-    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
     // 6 frames @ 24 fps @ 48 kHz = 12000 samples: capture past the
     // punch-out was context, not take.
     expect(decoded.length, 12000);
@@ -235,7 +246,7 @@ void main() {
     );
     expect(placed, isTrue);
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
-    expect(File(clip.filePath).existsSync(), isTrue);
+    expect(manager.projectFile.projectHoldsMediaBytes(clip.filePath), isTrue);
     expect(clip.filePath, isNot(contains('.assets/Media/')));
     manager.dispose();
   });

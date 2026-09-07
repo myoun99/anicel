@@ -128,7 +128,9 @@ void main() {
     expect(seenRate, 48000);
     // ...and the file carries the suppressed samples (0.5, not 0.25).
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
-    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
     expect(decoded.samples.first, closeTo(0.5, 1e-3));
     manager.dispose();
   });
@@ -156,7 +158,9 @@ void main() {
     );
     expect(calls, 1);
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
-    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
     expect(decoded.samples.first, closeTo(0.25, 1e-3));
 
     expect(

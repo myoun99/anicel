@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
-import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
 
 /// SAVE-1: the save/recovery policy — defaults, persistence, and where a
@@ -21,13 +20,9 @@ void main() {
     // 「자동저장 on off만 남기고 … 심플하게 명시적저장 / n분주기 자동저장
     // 만 남김」).
     expect(settings.periodicSnapshotMinutes, isNull);
-    expect(settings.toJson().keys, unorderedEquals(<String>[
+    expect(settings.toJson().keys, unorderedEquals(const [
       'periodicSnapshotMinutes',
-      'recordingsDirectory',
     ]));
-    // Both folders default to the app's own, so a fresh install writes
-    // nothing beside a project.
-    expect(settings.recordingsDirectory, isNull);
   });
 
   test('the slider\'s range is the model\'s, and it is 3..60 minutes', () {
@@ -64,101 +59,35 @@ void main() {
   });
 
   test('json roundtrip', () {
-    const settings = AppSaveSettings(
-      periodicSnapshotMinutes: 20,
-      recordingsDirectory: GrantedDirectory(
-        path: '/tmp/takes',
-        bookmark: 'Ym9va21hcms=',
-      ),
-    );
+    const settings = AppSaveSettings(periodicSnapshotMinutes: 20);
     expect(AppSaveSettings.fromJson(settings.toJson()), settings);
     expect(
       AppSaveSettings.fromJson(const AppSaveSettings().toJson()),
       const AppSaveSettings(),
     );
-    // copyWith can EXPLICITLY clear the directory back to the default.
     expect(
-      settings.copyWith(recordingsDirectory: null).recordingsDirectory,
+      settings.copyWith().periodicSnapshotMinutes,
+      20,
+      reason: 'an empty copyWith keeps what it was not given',
+    );
+    expect(
+      settings.copyWith(periodicSnapshotMinutes: null).periodicSnapshotMinutes,
       isNull,
+      reason: 'and it can EXPLICITLY clear back to OFF',
     );
-    expect(
-      settings.copyWith().recordingsDirectory?.path,
-      '/tmp/takes',
-      reason: 'and an empty copyWith keeps what it was not given',
-    );
-    // 🪦A conform folder used to ride here too, and three of the lines
-    // above were about the two not being one field wearing two names.
-    // There is one folder setting now: a conform waits in the run's room
-    // and moves into the project at the next save, so there is no pile to
-    // place on a particular disk.
+    // 🪦A conform folder and a recordings folder used to ride here too.
+    // There are no folder settings left: a conform waits in the run's room
+    // and a take is staged beside it, both absorbed by the next save.
   });
 
-  test('a folder written by an older build (bare path) still reads — and '
-      'the path travels with its token, never apart', () {
-    // Q-scoped-folder-settings (유저 08-26 「알아서 맡김」 → A): the value
-    // is ONE thing on purpose. A bookmark stored as a second field could
-    // outlive the path it belongs to; travelling together makes a stale
-    // token unrepresentable.
-    final legacy = AppSaveSettings.fromJson(const {
-      'recordingsDirectory': r'D:\old\takes',
-    });
-    expect(
-      legacy.recordingsDirectory,
-      const GrantedDirectory(path: 'D:/old/takes'),
-      reason: 'the bare-string spelling reads as a token-less folder',
-    );
-    expect(GrantedDirectory.fromJson(''), isNull);
-    expect(GrantedDirectory.fromJson(const {'bookmark': 'T'}), isNull);
-  });
-
-  test('resolving reopens moved folders and leaves unresolvable ones '
-      'UNTOUCHED — unavailable is not deleted', () async {
-    FolderPicker.debugBookmarkResolver = (base64, kind) async =>
-        base64 == 'MOVED=='
-            ? const FolderGrant.granted(
-                path: '/mounted/takes',
-                bookmark: 'FRESH==',
-              )
-            : const FolderGrant.unavailable();
-    addTearDown(() => FolderPicker.debugBookmarkResolver = null);
-
-    AppSave.settings.value = const AppSaveSettings(
-      recordingsDirectory: GrantedDirectory(
-        path: '/old/takes',
-        bookmark: 'MOVED==',
-      ),
-    );
-    addTearDown(() => AppSave.settings.value = const AppSaveSettings());
-
-    final resolved = await AppSave.resolveSettingsDirectories();
-    expect(resolved, isNotNull, reason: 'the folder moved');
-    expect(
-      resolved!.recordingsDirectory,
-      const GrantedDirectory(path: '/mounted/takes', bookmark: 'FRESH=='),
-    );
-
-    // …and one that cannot be reopened is LEFT ALONE rather than cleared:
-    // the provider may simply not be signed in yet, and the setting still
-    // names what the user meant.
-    AppSave.settings.value = const AppSaveSettings(
-      recordingsDirectory: GrantedDirectory(
-        path: '/gone/takes',
-        bookmark: 'DEAD==',
-      ),
-    );
-    expect(await AppSave.resolveSettingsDirectories(), isNull);
-    expect(
-      AppSave.settings.value.recordingsDirectory,
-      const GrantedDirectory(path: '/gone/takes', bookmark: 'DEAD=='),
-    );
-
-    // Nothing to resolve, nothing to store: a grant that comes back
-    // naming the folder the setting already names is not a change.
-    AppSave.settings.value = resolved;
-    FolderPicker.debugBookmarkResolver = (base64, kind) async =>
-        FolderGrant.granted(path: '/mounted/takes', bookmark: base64);
-    expect(await AppSave.resolveSettingsDirectories(), isNull);
-  });
+  // 🪦**TWO CASES STOOD HERE AND BOTH BELONGED TO THE ONE CONFIGURABLE
+  // FOLDER.** Q-scoped-folder-settings pinned that a stored folder keeps
+  // its TOKEN, not just its path, and that resolving it at launch reopens
+  // a moved one while leaving an unresolvable one UNTOUCHED. The folder is
+  // gone (유저 2026-09-08: 앱이 쓰는 곳은 앱 컨테이너와 프로젝트 파일
+  // 둘뿐), so `resolveSettingsDirectories` had nothing left to resolve.
+  // ⛔The LAW is not gone and `GrantedDirectory` still carries it for the
+  // export dialog — see `app_export_settings_store_test`.
 
   test('a setting whose feature is gone is read and DROPPED', () {
     // The sidecar location is fixed now, and a setting that outlives its
@@ -220,9 +149,7 @@ void main() {
       filePath: '${directory.path}/save_settings.json',
     );
     expect(await store.load(), isNull);
-    const settings = AppSaveSettings(
-      recordingsDirectory: GrantedDirectory(path: '/takes'),
-    );
+    const settings = AppSaveSettings(periodicSnapshotMinutes: 20);
     await store.save(settings);
     expect(await store.load(), settings);
 

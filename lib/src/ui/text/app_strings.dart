@@ -885,15 +885,11 @@ enum AppStrings {
 
   // --- Autosave settings ---
   String get autosaveTitle => _s('autosaveTitle');
-  String get autosaveChoose => _s('autosaveChoose');
-  String get autosaveDefault => _s('autosaveDefault');
   String get autosaveEvery => _s('autosaveEvery');
   String get autosaveSectionHelp => _s('autosaveSectionHelp');
   String get autosaveSwitchHelp => _s('autosaveSwitchHelp');
   String get appContainerTitle => _s('appContainerTitle');
   String get appContainerHelp => _s('appContainerHelp');
-  String get recordingsFolderTitle => _s('recordingsFolderTitle');
-  String get recordingsFolderHelp => _s('recordingsFolderHelp');
   String get containerEmpty => _s('containerEmpty');
   String get commonMinutesShort => _s('commonMinutesShort');
 
@@ -1642,8 +1638,6 @@ enum AppStrings {
     'sheetNextPage': 'Next page',
     'sheetPageDrag': 'Page (drag / double-tap)',
     'autosaveTitle': 'Autosave',
-    'autosaveChoose': 'Choose…',
-    'autosaveDefault': 'Default',
     'autosaveEvery': 'Every',
     'autosaveSectionHelp':
         'Saves the project every so often, so a crash or a flat battery costs at most that much work.',
@@ -1652,9 +1646,6 @@ enum AppStrings {
     'appContainerTitle': 'App container',
     'appContainerHelp':
         'What the app keeps outside your project files: settings and brush tips, media and audio an import brought in that no save has absorbed yet, and a diagnostics log.',
-    'recordingsFolderTitle': 'Recordings folder',
-    'recordingsFolderHelp':
-        'Where voice takes land. Saving copies the ones a project uses into the project file; every take stays here either way, so a recording is never in one place only.',
     'containerEmpty': 'Empty',
     'commonMinutesShort': ' min',
     'exExport': 'Export',
@@ -2552,8 +2543,6 @@ enum AppStrings {
     'sheetNextPage': '次のページ',
     'sheetPageDrag': 'ページ（ドラッグ / ダブルタップ）',
     'autosaveTitle': '自動保存',
-    'autosaveChoose': '選択…',
-    'autosaveDefault': '既定',
     'autosaveEvery': '間隔',
     'autosaveSectionHelp':
         '一定間隔でプロジェクトを保存するので、クラッシュや電池切れで失う作業は最大でもその間隔ぶんです。',
@@ -2561,9 +2550,6 @@ enum AppStrings {
     'appContainerTitle': 'アプリコンテナ',
     'appContainerHelp':
         'プロジェクトファイルの外にアプリが持つもの — 設定とブラシ先端、読み込みが取り込んだまままだどの保存にも吸収されていないメディアと音声、そして診断ログです。',
-    'recordingsFolderTitle': '録音フォルダ',
-    'recordingsFolderHelp':
-        'ボイステイクが置かれる場所です。保存すると、プロジェクトが使っているテイクはプロジェクトファイルに複製されます。どちらにせよテイクはここにも残るので、録音が1か所にしかない状態にはなりません。',
     'containerEmpty': '空',
     'commonMinutesShort': ' 分',
     'exExport': '書き出し',
@@ -3483,8 +3469,6 @@ enum AppStrings {
     'sheetNextPage': '다음 페이지',
     'sheetPageDrag': '페이지 (드래그 / 더블탭)',
     'autosaveTitle': '자동 저장',
-    'autosaveChoose': '선택…',
-    'autosaveDefault': '기본',
     'autosaveEvery': '주기',
     'autosaveSectionHelp':
         '일정 주기로 프로젝트를 저장합니다. 크래시나 배터리 방전으로 잃는 작업이 최대 그 주기만큼으로 줄어듭니다.',
@@ -3492,9 +3476,6 @@ enum AppStrings {
     'appContainerTitle': '앱 컨테이너',
     'appContainerHelp':
         '프로젝트 파일 바깥에 앱이 두는 것 — 설정과 브러시 팁, 가져오기가 들여왔지만 아직 어떤 저장에도 흡수되지 않은 미디어와 오디오, 그리고 진단 로그입니다.',
-    'recordingsFolderTitle': '녹음 폴더',
-    'recordingsFolderHelp':
-        '보이스 테이크가 놓이는 곳입니다. 저장하면 프로젝트가 쓰는 테이크가 프로젝트 파일 안으로 복사됩니다. 어느 쪽이든 테이크는 여기에도 남으므로, 녹음이 한 곳에만 있는 일은 없습니다.',
     'containerEmpty': '비어 있음',
     'commonMinutesShort': '분',
     'exExport': '내보내기',
@@ -4446,8 +4427,6 @@ enum AppStrings {
     'sheetNextPage': 'Page suivante',
     'sheetPageDrag': 'Page (glisser / double-tap)',
     'autosaveTitle': 'Sauvegarde automatique',
-    'autosaveChoose': 'Choisir…',
-    'autosaveDefault': 'Par défaut',
     'autosaveEvery': 'Toutes les',
     'autosaveSectionHelp':
         'Enregistre le projet à intervalle régulier : un plantage ou une batterie vide ne coûte au plus que cet intervalle de travail.',
@@ -4456,9 +4435,6 @@ enum AppStrings {
     'appContainerTitle': 'Conteneur de l\'application',
     'appContainerHelp':
         'Ce que l\'application garde en dehors de vos fichiers de projet : réglages et pointes de brosse, les médias et l\'audio qu\'un import a apportés et qu\'aucun enregistrement n\'a encore absorbés, et un journal de diagnostic.',
-    'recordingsFolderTitle': 'Dossier des enregistrements',
-    'recordingsFolderHelp':
-        'Où atterrissent les prises voix. L\'enregistrement copie dans le fichier de projet celles que le projet utilise ; chaque prise reste ici de toute façon, si bien qu\'un enregistrement n\'est jamais à un seul endroit.',
     'containerEmpty': 'Vide',
     'commonMinutesShort': ' min',
     'exExport': 'Exporter',
@@ -5339,8 +5315,6 @@ enum AppStrings {
     'sheetNextPage': '下一页',
     'sheetPageDrag': '页面（拖动 / 双击）',
     'autosaveTitle': '自动保存',
-    'autosaveChoose': '选择…',
-    'autosaveDefault': '默认',
     'autosaveEvery': '间隔',
     'autosaveSectionHelp':
         '每隔一段时间保存项目，崩溃或电量耗尽最多只损失这段时间的工作。',
@@ -5348,9 +5322,6 @@ enum AppStrings {
     'appContainerTitle': '应用容器',
     'appContainerHelp':
         '应用保存在项目文件之外的内容：设置与笔尖、导入时带进来且尚未被任何一次保存吸收的媒体与音频，以及一份诊断日志。',
-    'recordingsFolderTitle': '录音文件夹',
-    'recordingsFolderHelp':
-        '配音素材落地的位置。保存时会把项目用到的素材复制进项目文件；无论如何每条素材都会留在这里，因此录音绝不会只存在于一处。',
     'containerEmpty': '空',
     'commonMinutesShort': ' 分钟',
     'exExport': '导出',

@@ -73,7 +73,9 @@ void main() {
     );
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
     expect(clip.clipped, isFalse);
-    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
     expect(
       decoded.samples[100],
       closeTo(0.4988, 0.002),

@@ -315,16 +315,6 @@ class _HomePageState extends State<HomePage> {
     SessionScratch.ensureThisRunsFolder();
     SessionScratch.deleteVolatileFilesOfRunsThatEnded();
     SessionScratch.deleteFoldersOfEndedRunsOlderThan();
-    // Q-scoped-folder-settings: reopen the folder settings' scopes for
-    // this run (macOS forgets them at relaunch); stored only when a
-    // folder actually moved, through the one settings write path.
-    unawaited(
-      AppSave.resolveSettingsDirectories().then((resolved) {
-        if (resolved != null && mounted) {
-          _session.setSaveSettings(resolved);
-        }
-      }),
-    );
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,

@@ -407,8 +407,8 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     renderCaches: renderCaches,
     settings: _projectSettings,
-    voiceRecording: voiceRecording,
     audioConformStore: audioConformStore,
+    voiceRecording: voiceRecording,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
@@ -2484,7 +2484,6 @@ class EditorSessionManager extends ChangeNotifier
     trackFrameRangeSelection.value = null;
     editingSession.setActiveCutId(firstCutId);
     activeCutControllers.rebuild();
-    voiceRecording.forgetShelfTakes();
     projectFile.unbind();
   }
 
@@ -2812,9 +2811,8 @@ class EditorSessionManager extends ChangeNotifier
     mintFrameId: mintFrameId,
     mediaAssets: () => mediaPool.mediaAssets,
     rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
-    stageCarriedBytes: mediaStagingStore.stageCarriedBytes,
+    staging: mediaStagingStore,
     frameRangeSelection: () => frameRangeSelection,
-    projectFilePath: () => projectFile.path,
     notify: notifyListeners,
   );
   @override
@@ -4133,7 +4131,6 @@ class EditorSessionManager extends ChangeNotifier
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
     textCelBakes: _textCelBakes,
-    voiceRecording: voiceRecording,
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,

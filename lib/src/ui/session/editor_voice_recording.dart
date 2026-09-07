@@ -5,7 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../../services/import/media_identity_reader.dart';
-import '../../services/persistence/app_save_settings.dart';
+import '../../core/path_names.dart';
+import '../../services/persistence/media_staging_store.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -78,16 +79,15 @@ class EditorVoiceRecording {
     required FrameId Function(LayerId) mintFrameId,
     required List<MediaAsset> Function() mediaAssets,
     required void Function(String, Uint8List) rememberMediaFingerprint,
-    required Future<void> Function(Iterable<String>) stageCarriedBytes,
+    required MediaStagingStore staging,
     required ValueNotifier<TimelineFrameRangeSelection?> Function()
     frameRangeSelection,
-    required String? Function() projectFilePath,
     required void Function() notify,
   }) : _playback = playback,
        _audioDeviceTransport = audioDeviceTransport,
        _audioConformStore = audioConformStore,
        _audioSyncSettings = audioSyncSettings,
-       _stageCarriedBytes = stageCarriedBytes,
+       _staging = staging,
        _repositoryRef = repository,
        _cutCommandCoordinatorRef = cutCommandCoordinator,
        _uiStrings = uiStrings,
@@ -101,7 +101,6 @@ class EditorVoiceRecording {
        _mediaAssets = mediaAssets,
        _rememberMediaFingerprint = rememberMediaFingerprint,
        _frameRangeSelection = frameRangeSelection,
-       _projectFilePathRef = projectFilePath,
        _notify = notify;
 
   // --- The session, seen from here -----------------------------------------
@@ -158,9 +157,15 @@ class EditorVoiceRecording {
   final List<MediaAsset> Function() _mediaAssets;
   List<MediaAsset> get mediaAssets => _mediaAssets();
 
-  /// Holds a take's bytes the moment it lands, the same way an import
-  /// that carries does — see [EditorSessionManager.stageCarriedBytes].
-  final Future<void> Function(Iterable<String>) _stageCarriedBytes;
+  /// Where a take's bytes go the moment it lands — the same store every
+  /// import that carries writes into.
+  ///
+  /// 🚨The STORE, not a `stageCarriedBytes` closure. A take is the one
+  /// carried asset with no file of its own, so this needs two things the
+  /// closure could not offer: `stageCarriedBytesInMemory` to write bytes
+  /// that were never on disk, and `find` to walk for a free take name at
+  /// an address that is not a file.
+  final MediaStagingStore _staging;
 
   final void Function(String, Uint8List) _rememberMediaFingerprint;
   void rememberMediaFingerprint(String poolPath, Uint8List bytes) =>
@@ -171,8 +176,12 @@ class EditorVoiceRecording {
   ValueNotifier<TimelineFrameRangeSelection?> get frameRangeSelection =>
       _frameRangeSelection();
 
-  final String? Function() _projectFilePathRef;
-  String? get _projectFilePath => _projectFilePathRef();
+  // 🪦**`_projectFilePath` STOOD HERE** and its one reader was
+  // `releaseShelfTakesToProject`, which asked「has this project got a file
+  // yet?」to decide whether its shelf takes were the first save's to hand
+  // over. A take is staged like every other carried asset now, so the save
+  // absorbs it by the same rule as an import and this section no longer
+  // needs to know whether the project has a home.
 
   /// The session's own `notifyListeners`, which is `@protected` there and so
   /// cannot be called across the file boundary without this.
@@ -198,15 +207,15 @@ class EditorVoiceRecording {
   int _voiceRecordHeadTrimSamples = 0;
   bool _voiceRecordStartedRoll = false;
 
-  /// REC1-B2: the take shelf for a never-saved project — pinned at the
-  /// first take so a mid-session settings change never scatters one
-  /// session's takes across folders.
-  String? _voiceRecordShelfDirectory;
-
-  /// Every WAV this session recorded onto the shelf. The FIRST save
-  /// adopts the still-referenced ones into `Media/`; undone takes stay
-  /// on the shelf, findable.
-  final Set<String> _voiceRecordShelfPaths = <String>{};
+  // 🪦**THE TAKE SHELF IS GONE, AND SO IS ITS BOOKKEEPING** (유저
+  // 2026-09-08). Two fields stood here — the folder this session pinned at
+  // its first take, and the set of WAVs it had written there — and both
+  // existed because the shelf was a CONFIGURABLE folder outside the app:
+  // a mid-session settings change could scatter one session's takes, and
+  // somebody had to remember which ones were this session's to hand over.
+  // A take is staged like every other carried asset now, so the staging
+  // store owns where it is and how long it lives, and there is nothing
+  // left here to remember.
 
   /// Capture-chain settings SNAPSHOT at arm time (REC1-D): a take records
   /// with the gain/fold it started under; mid-take settings edits apply
@@ -1066,7 +1075,7 @@ class EditorVoiceRecording {
       channels: channels,
       sampleRate: recording.sampleRate,
     );
-    final path = _writeRecordingWav(wav, laneName: lane.name);
+    final path = await _stageRecordingWav(wav, laneName: lane.name);
     if (path == null) {
       return false;
     }
@@ -1087,12 +1096,12 @@ class EditorVoiceRecording {
     // pool entry + the lane's whole swap.
     audioConformStore.invalidate(path);
     audioConformStore.warmPaths([path]);
-    // ⛔BEFORE the pool records it, like every other way an asset becomes
-    // carried. The take is on the user's disk in the recordings shelf, so
-    // until this ran, clearing that folder before saving took the
-    // performance with it — the very trade the comment below says nobody
-    // would make.
-    await _stageCarriedBytes([path]);
+    // 🪦A second `stageCarriedBytes(...)` stood here, and its comment said
+    // 「⛔BEFORE the pool records it, like every other way an asset becomes
+    // carried」. The law is unchanged and the call is gone because
+    // [_stageRecordingWav] above IS the staging now — it already ran, and
+    // it ran before this line, so the bytes are held before the pool ever
+    // hears the name.
     final pool = mediaAssets;
     _cutCommandCoordinator.historyManager.execute(
       CompositeCommand(
@@ -1134,41 +1143,54 @@ class EditorVoiceRecording {
     return true;
   }
 
-  /// Writes a take's WAV under the project's `Media/` folder (the visible
-  /// Recordings shelf when the project was never saved — REC1-B2, no
-  /// hidden OS temp) and returns its path, or null when even that failed.
+  /// Stages a take's bytes and answers the pool path it is known by, or
+  /// null when the write failed.
   ///
   /// Named `<lane>_T<n>.wav` (REC1-B): the recording-session convention —
-  /// the pool line alone says whose take it is and which pass. On the
-  /// shelf the walk continues past earlier sessions' takes.
-  String? _writeRecordingWav(Uint8List bytes, {required String laneName}) {
+  /// the pool line alone says whose take it is and which pass.
+  ///
+  /// 🚨★★★**THE POOL PATH NEVER EXISTS AS A FILE, AND THAT IS THE HONEST
+  /// SHAPE** (유저 2026-09-08: 앱이 쓰는 곳은 컨테이너와 프로젝트 파일
+  /// 둘뿐). Every other carried asset has an original the user made
+  /// somewhere else and a staged copy derived from its path. A take has no
+  /// original — this app made it — so the pool path is its ADDRESS and the
+  /// staged file is the ONLY file, written once, at the name the store
+  /// derives.
+  ///
+  /// 🪦It used to write a plain WAV onto a visible shelf outside the
+  /// container and then hand that file to the staging store, which read it
+  /// back and wrote a second copy. One performance, two files, and one of
+  /// them in a folder the app had no business writing to — on this machine
+  /// `%USERPROFILE%/Documents/Anicel` resolved case-insensitively onto the
+  /// source repository itself, which somebody had papered over with a
+  /// `.gitignore` line rather than fixed.
+  ///
+  /// ⚠️The free-name walk asks the STORE and the POOL, never the
+  /// filesystem: the pool path is not a file, and the room is per-run, so
+  /// a walk over disk alone would restart at `T01` every launch and put two
+  /// `S1_T01.wav` rows in one project — which is exactly the thing the
+  /// naming convention exists to prevent.
+  Future<String?> _stageRecordingWav(
+    Uint8List bytes, {
+    required String laneName,
+  }) async {
     final base = laneName.replaceAll(RegExp(r'[\\/:*?"<>|.\s]+'), '_');
     final safeBase = base.isEmpty ? 'REC' : base;
+    final taken = {
+      for (final asset in mediaAssets) fileNameOfPath(asset.path),
+    };
     try {
-      // ALWAYS the shelf, saved project or not. A take used to land in
-      // the project's `Media/` folder once it had one, which made that
-      // folder the only copy of a performance — and the project carries
-      // its own audio now, so writing it there buys nothing and costs the
-      // one place a recording could be found again.
-      //
-      // The shelf is also somewhere a person can look: on desktop it is a
-      // folder they chose, and losing a take to a `.assets` directory
-      // nobody opens is not a thing to keep.
-      final directory = _voiceRecordShelfDirectory ??=
-          AppSave.recordingsRootDirectory;
-      Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
-        final file = File(
-          '$directory/${safeBase}_T${take.toString().padLeft(2, '0')}.wav',
-        );
-        if (!file.existsSync()) {
-          file.writeAsBytesSync(bytes);
-          _voiceRecordShelfPaths.add(file.path);
-          // We just wrote these, so we know what they hash to without
-          // reading anything back.
-          rememberMediaFingerprint(file.path, bytes);
-          return file.path;
+        final name = '${safeBase}_T${take.toString().padLeft(2, '0')}.wav';
+        final poolPath = '${_staging.directoryPath}/$name';
+        if (taken.contains(name) || _staging.find(poolPath) != null) {
+          continue;
         }
+        await _staging.stageCarriedBytesInMemory(poolPath, bytes);
+        // We just wrote these, so we know what they hash to without
+        // reading anything back.
+        rememberMediaFingerprint(poolPath, bytes);
+        return poolPath;
       }
       return null;
     } on Object {
@@ -1176,36 +1198,18 @@ class EditorVoiceRecording {
     }
   }
 
-  /// The FIRST save hands this session's shelf takes over to the project:
-  /// the shelf list clears, and nothing on disk moves.
-  ///
-  /// 🔑 Nothing MOVING is the whole point, and it is why this is no longer
-  /// the "adopt" it used to be. A take was once renamed out of the shelf
-  /// into the project's `Media/` folder, which made that folder the only
-  /// copy of a performance — delete it and the recording is gone, with no
-  /// original anywhere to relink to. The project carries its own audio
-  /// now, so the save absorbs the take from wherever it sits and the shelf
-  /// copy simply stays a file. Closing without saving must not cost a
-  /// recording that cannot be made again.
-  ///
-  /// The list still clears because these takes belong to the project now;
-  /// the shelf is for the ones a session made before it had a home.
-  /// A REPLACED project's shelf takes are no longer this session's to hand
-  /// over — they stay on the shelf, findable. Unconditional where
-  /// [releaseShelfTakesToProject] is guarded, because the project underneath
-  /// just changed rather than acquired a file.
-  void forgetShelfTakes() {
-    _voiceRecordShelfPaths.clear();
-    _voiceRecordShelfDirectory = null;
-  }
-
-  void releaseShelfTakesToProject() {
-    if (_projectFilePath != null || _voiceRecordShelfPaths.isEmpty) {
-      return;
-    }
-    _voiceRecordShelfPaths.clear();
-    _voiceRecordShelfDirectory = null;
-  }
+  // 🪦**TWO SHELF VERBS STOOD HERE AND BOTH WERE BOOKKEEPING FOR A FOLDER
+  // THAT NO LONGER EXISTS.** `releaseShelfTakesToProject` ran at the first
+  // save and `forgetShelfTakes` at an open, and by the end each one only
+  // cleared the two fields above — the set of paths this session had
+  // written to the shelf and the folder it had pinned. ⛔The LAW they
+  // carried is not gone, it stopped needing a keeper: 「nothing moves」.
+  // A take was once renamed out of the shelf into the project's `Media/`
+  // folder, which made that folder the only copy of a performance — delete
+  // it and the recording was gone with no original to relink to. The
+  // project carries its own audio, so the save absorbs the take from where
+  // it already sits, and「where it sits」is now the staging store, which
+  // owns the lifetime for every carried asset alike.
 
   /// The nine lines the session's own `dispose` used to spend on this
   /// section, in the same order. The cue-beep directory goes with them: it is

@@ -219,6 +219,53 @@ class MediaStagingStore {
     return done;
   }
 
+  /// [stageCarriedBytes] for bytes that have no file yet — a voice take,
+  /// which this app MADE rather than copied from somewhere.
+  ///
+  /// 🚨★★★**IT IS THE SAME DOOR, AND THAT IS THE POINT.** A take used to be
+  /// written to a shelf folder outside the container and then read straight
+  /// back to be staged, so one recording was **two files on disk** — the
+  /// exact shape 유저 2026-08-27 refuses (「사본 남으면 진짜 용서안할게」).
+  /// Handing the bytes to the store instead writes them ONCE, at the
+  /// address the store already derives, through the same [writeMediaBlob]
+  /// every other carried asset goes through — so the framing rule stays
+  /// one rule and a take is stored exactly like an import.
+  ///
+  /// ⛔The name starts with `stageCarriedBytes` on purpose:
+  /// `every_carry_stages_its_bytes_test` scans for that, and a variant of
+  /// the funnel must read as one to the scanner as well as to a person.
+  ///
+  /// Idempotent for the same reason the funnel is: an asset already staged
+  /// keeps the bytes it has.
+  ///
+  /// ⚠️No isolate. A take is what a person just performed — seconds of PCM
+  /// the caller is already holding — where the funnel's isolate exists for
+  /// the multi-gigabyte file it must not read into this one.
+  Future<StagedMedia> stageCarriedBytesInMemory(
+    String poolPath,
+    Uint8List bytes,
+  ) async {
+    final already = find(poolPath);
+    if (already != null) {
+      return already;
+    }
+    Directory(directoryPath).createSync(recursive: true);
+    final written = writeMediaBlob(
+      basePath: _basePathFor(poolPath),
+      length: bytes.length,
+      readInto: (buffer, position, size) {
+        buffer.setRange(0, size, bytes, position);
+        return size;
+      },
+    );
+    return StagedMedia(
+      poolPath: poolPath,
+      path: written.path,
+      framed: written.framed,
+      storedLength: File(written.path).lengthSync(),
+    );
+  }
+
   /// Follows an asset whose pool path changed — a relink.
   ///
   /// 🚨★★★**THE NAME IS DERIVED, SO IT HAS TO MOVE WHEN THE PATH DOES.**

@@ -32,7 +32,6 @@ import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/project_lookup.dart' show projectAudioSourcePaths;
 import '../audio/audio_conform_store.dart';
-import 'editor_voice_recording.dart';
 import 'frame_clipboard.dart';
 import 'layer_clipboard.dart';
 import 'media_fingerprint_ledger.dart';
@@ -60,7 +59,6 @@ class ProjectFileDoor {
     required MediaGrantLedger grants,
     required MediaFingerprintLedger fingerprints,
     required TextCelBakes textCelBakes,
-    required EditorVoiceRecording voiceRecording,
     required FrameClipboard clipboard,
     required LayerClipboard layerClipboard,
     required AudioConformStore audioConformStore,
@@ -78,7 +76,6 @@ class ProjectFileDoor {
        _grants = grants,
        _fingerprints = fingerprints,
        _textCelBakes = textCelBakes,
-       _voiceRecording = voiceRecording,
        _clipboard = clipboard,
        _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
@@ -97,7 +94,6 @@ class ProjectFileDoor {
   final MediaGrantLedger _grants;
   final MediaFingerprintLedger _fingerprints;
   final TextCelBakes _textCelBakes;
-  final EditorVoiceRecording _voiceRecording;
   final FrameClipboard _clipboard;
   final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
@@ -319,12 +315,12 @@ class ProjectFileDoor {
     void Function(double)? onProgress,
   }) async {
     await _textCelBakes.flushTextCelBakes();
-    // Captured BEFORE the save moves the project path: a Save As has to
-    // retire the sidecars of the file it was saved FROM as well.
+    // Captured BEFORE the save moves the project path — it is what tells a
+    // Save As from an ordinary save, which decides `rewriteWhole` below.
+    // 🪦The comment here said 「a Save As has to retire the sidecars of the
+    // file it was saved FROM as well」; the retirement is gone and the
+    // capture stayed, for the reason further down.
     final previousPath = _file.path;
-    // Before serializing: the first save takes this session's recordings
-    // off the shelf. Nothing moves on disk — see the verb.
-    _voiceRecording.releaseShelfTakesToProject();
     // Resolved against the CURRENT project path, before it moves. On a
     // save-as that makes each source point into the file being left
     // behind, and the writer streams from there into the new one — which
@@ -496,9 +492,6 @@ class ProjectFileDoor {
       result.project.tracks.first.cuts.first.id,
     );
     _controllers.rebuild();
-    // The replaced project's shelf takes are no longer this session's to
-    // adopt — they stay on the shelf, findable.
-    _voiceRecording.forgetShelfTakes();
     _file.bindToOpenedFile(
       bindTo ?? filePath,
       // What this project carries, as the file on disk says. Anything the
