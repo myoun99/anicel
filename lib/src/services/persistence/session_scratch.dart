@@ -112,7 +112,15 @@ class SessionScratch {
     Directory('$room/Staged').createSync(recursive: true);
     Directory('$room/Volatile').createSync(recursive: true);
     final lock = File('$room/$_lockName');
-    final handle = lock.openSync(mode: FileMode.write);
+    // 🚨**IT HAS CONTENT ON PURPOSE.** The name is what a person reading
+    // the container needs, and — the reason it is not optional — an EMPTY
+    // lock file makes the truncation hazard in [_runHasEnded] invisible:
+    // opening a 0-byte file for writing truncates nothing, so nothing
+    // moves its mtime and a probe that got the mode wrong would look
+    // correct on every platform until the day it did not. With bytes in
+    // it, getting that mode wrong is measurable.
+    lock.writeAsStringSync(_runId);
+    final handle = lock.openSync(mode: FileMode.append);
     handle.lockSync(FileLock.exclusive);
     _held = handle;
   }

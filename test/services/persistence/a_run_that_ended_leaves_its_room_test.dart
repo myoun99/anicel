@@ -49,7 +49,20 @@ void main() {
     File('${folder.path}/Volatile/undo.bin').writeAsBytesSync([4, 5]);
     if (withLock) {
       // Written and CLOSED — the shape a crashed run leaves behind.
-      File('${folder.path}/run.lock').writeAsBytesSync(const []);
+      //
+      // 🚨CONTENT, not an empty file, and the mutation is why: opening a
+      // 0-byte file for writing truncates nothing, so a probe that used
+      // the truncating mode moved no mtime and the age test passed while
+      // measuring nothing. With bytes here, the wrong mode is visible.
+      final lock = File('${folder.path}/run.lock')..writeAsStringSync(name);
+      // ⚠️And STAMPED IN THE PAST, because the assertion that nothing
+      // moves this clock runs microseconds after the write: at the
+      // filesystem's timestamp resolution「a moment ago」and「now」are the
+      // same value, so a probe that DID move it looked innocent. An hour
+      // back is outside any resolution and still far inside the 30 days.
+      lock.setLastModifiedSync(
+        DateTime.now().subtract(const Duration(hours: 1)),
+      );
     }
     return folder;
   }
@@ -179,8 +192,17 @@ void main() {
           'for writing with truncation resets the clock, and then every '
           'room looks newborn at every launch',
     );
+    // 🚨A moment the two candidate clocks DISAGREE about, which is the
+    // only kind that measures anything here. The cutoff lands half an hour
+    // ago: the lock still says an hour ago (older — sweep it), the FOLDER
+    // says「just now」because deleting `Volatile/` touched it (younger —
+    // keep it). Pushing the clock a plain 40 days ahead does not
+    // discriminate: a folder stamped「now」is still well inside that.
+    final halfAnHourAgo = DateTime.now()
+        .add(const Duration(days: 30))
+        .subtract(const Duration(minutes: 30));
     expect(
-      SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: inDays(40)),
+      SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: halfAnHourAgo),
       1,
       reason: 'the age comes from the lock file, written once when the room '
           'was built and never touched again',
