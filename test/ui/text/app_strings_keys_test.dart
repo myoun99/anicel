@@ -300,7 +300,6 @@ void main() {
     'memoryItemPanelRasters': (s) => s.memoryItemPanelRasters,
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
     'containerAreaSettings': (s) => s.containerAreaSettings,
-    'containerAreaBrushTips': (s) => s.containerAreaBrushTips,
     'containerAreaRecovery': (s) => s.containerAreaRecovery,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,
     'containerTotal': (s) => s.containerTotal,

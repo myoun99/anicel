@@ -525,7 +525,6 @@ enum AppStrings {
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
   String get memoryItemViewerPages => _s('memoryItemViewerPages');
   String get containerAreaSettings => _s('containerAreaSettings');
-  String get containerAreaBrushTips => _s('containerAreaBrushTips');
   String get containerAreaRecovery => _s('containerAreaRecovery');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
   String get containerTotal => _s('containerTotal');
@@ -1507,7 +1506,6 @@ enum AppStrings {
     'memoryItemPanelRasters': 'Panel rasters',
     'memoryItemViewerPages': 'Viewer pages',
     'containerAreaSettings': 'Settings',
-    'containerAreaBrushTips': 'Brush tips',
     'containerAreaRecovery': 'Recovery snapshots',
     'containerAreaSessionScratch': 'Session scratch',
     'containerTotal': 'Total',
@@ -2401,7 +2399,6 @@ enum AppStrings {
     'memoryItemPanelRasters': 'パネルのラスター',
     'memoryItemViewerPages': 'ビューアのページ',
     'containerAreaSettings': '設定',
-    'containerAreaBrushTips': 'ブラシ先端',
     'containerAreaRecovery': '復旧スナップショット',
     'containerAreaSessionScratch': 'セッション作業領域',
     'containerTotal': '合計',
@@ -3348,7 +3345,6 @@ enum AppStrings {
     'memoryItemPanelRasters': '패널 래스터',
     'memoryItemViewerPages': '뷰어 페이지',
     'containerAreaSettings': '설정',
-    'containerAreaBrushTips': '브러시 팁',
     'containerAreaRecovery': '복구 스냅샷',
     'containerAreaSessionScratch': '세션 작업 공간',
     'containerTotal': '합계',
@@ -4312,7 +4308,6 @@ enum AppStrings {
     'memoryItemPanelRasters': 'Rasters de panneau',
     'memoryItemViewerPages': 'Pages de la visionneuse',
     'containerAreaSettings': 'Réglages',
-    'containerAreaBrushTips': 'Pointes de brosse',
     'containerAreaRecovery': 'Instantanés de récupération',
     'containerAreaSessionScratch': 'Espace de session',
     'containerTotal': 'Total',
@@ -5239,7 +5234,6 @@ enum AppStrings {
     'memoryItemPanelRasters': '面板栅格',
     'memoryItemViewerPages': '查看器页面',
     'containerAreaSettings': '设置',
-    'containerAreaBrushTips': '笔尖',
     'containerAreaRecovery': '恢复快照',
     'containerAreaSessionScratch': '会话暂存区',
     'containerTotal': '合计',

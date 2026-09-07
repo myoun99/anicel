@@ -46,8 +46,12 @@ void main() {
     // leaving a tenant out would make the total wrong), and two widgets
     // with the same words cannot be told apart by their words.
     for (final id in [
+      // 🪦`brush-tips` was a row of its own while it was a folder sitting
+      // beside the loose settings files at the container root. Both are
+      // under `Settings/` now, and the settings row measures that tree —
+      // two rows over one tree would double-count the total this block
+      // exists to be trusted for.
       'settings',
-      'brush-tips',
       'recovery',
       // 🪦`conformed` was here. Nothing writes that folder any more — a
       // conform waits in the run's room and moves into the project at the
