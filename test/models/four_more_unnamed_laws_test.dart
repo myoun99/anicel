@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_stroke_commit_outcome.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_tile_set.dart';
@@ -101,18 +102,43 @@ void main() {
     });
   });
 
-  group('a committed stroke bills only what it changed', () {
-    BitmapSurface surface({int tileSize = 8}) => BitmapSurface(
-      canvasSize: const CanvasSize(width: 32, height: 32),
-      tileSize: tileSize,
-      tiles: const {},
-    );
+  group('a committed stroke bills only what it still HOLDS', () {
+    // 🚨★★★THE LAW MOVED, AND THESE CASES ARE WHY IT HAD TO (2026-09-07).
+    // They used to hand empty surfaces and a DECLARED `dirtyTiles` set,
+    // and assert the product of that set — which measured a promise
+    // rather than memory. `BitmapSurface` is an immutable tile map with
+    // structural sharing, so what an undo entry costs is the tiles the
+    // live surface no longer holds; a declared set can say anything.
+    //
+    // Every fixture below therefore builds REAL tiles, and the last case
+    // is the one the old arithmetic got wrong.
+    BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles, {int size = 8}) =>
+        BitmapSurface(
+          canvasSize: const CanvasSize(width: 32, height: 32),
+          tileSize: size,
+          tiles: tiles,
+        );
 
-    test('the retained bytes are the DIRTY tiles, not the whole surface — '
+    BitmapTile tile(int x, {int size = 8}) =>
+        BitmapTile.blank(coord: TileCoord(x: x, y: 0), size: size);
+
+    test('the retained bytes are the tiles the LIVE surface replaced — '
         'the rest is shared with the neighbouring undo entry', () {
+      final shared = tile(2);
+      final pre = surfaceOf({
+        TileCoord(x: 0, y: 0): tile(0),
+        TileCoord(x: 1, y: 0): tile(1),
+        TileCoord(x: 2, y: 0): shared,
+      });
+      final post = surfaceOf({
+        // Two tiles the stroke rewrote, one it never touched.
+        TileCoord(x: 0, y: 0): tile(0),
+        TileCoord(x: 1, y: 0): tile(1),
+        TileCoord(x: 2, y: 0): shared,
+      });
       final outcome = BrushStrokeCommitOutcome(
-        preSurface: surface(),
-        postSurface: surface(),
+        preSurface: pre,
+        postSurface: post,
         dirtyTiles: DirtyTileSet([
           TileCoord(x: 0, y: 0),
           TileCoord(x: 1, y: 0),
@@ -123,9 +149,10 @@ void main() {
     });
 
     test('a stroke that changed nothing retains nothing', () {
+      final same = {TileCoord(x: 0, y: 0): tile(0)};
       final outcome = BrushStrokeCommitOutcome(
-        preSurface: surface(),
-        postSurface: surface(),
+        preSurface: surfaceOf(same),
+        postSurface: surfaceOf(same),
         dirtyTiles: DirtyTileSet(),
       );
 
@@ -135,12 +162,28 @@ void main() {
     test('the bill follows the PRE surface\'s tile size — those are the '
         'bytes actually being held', () {
       final outcome = BrushStrokeCommitOutcome(
-        preSurface: surface(tileSize: 16),
-        postSurface: surface(),
+        preSurface: surfaceOf({
+          TileCoord(x: 0, y: 0): tile(0, size: 16),
+        }, size: 16),
+        postSurface: surfaceOf({TileCoord(x: 0, y: 0): tile(0, size: 16)},
+            size: 16),
         dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
       );
 
       expect(outcome.estimatedRetainedBytes, 16 * 16 * 4);
+    });
+
+    test('🚨a stroke that CREATED its tiles bills nothing for them — the '
+        'pre-image never held them, and undo restores their absence', () {
+      final outcome = BrushStrokeCommitOutcome(
+        preSurface: surfaceOf(const {}),
+        postSurface: surfaceOf({TileCoord(x: 0, y: 0): tile(0)}),
+        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
+      );
+
+      // The old arithmetic billed 256 bytes here for a tile nothing on the
+      // undo stack was keeping alive.
+      expect(outcome.estimatedRetainedBytes, 0);
     });
   });
 }

@@ -57,9 +57,18 @@ void main() {
   test('commit returns the surface transition: pre is the pre-stroke '
       'surface BY IDENTITY, post is the live surface, pixels landed', () {
     final c = coordinator();
+    // ⚠️Seed the tile first. The FIRST stroke on an empty surface honestly
+    // retains nothing — it CREATED the tile, so the pre-image never held
+    // it and undo restores its absence. Measuring the bill needs a stroke
+    // that REPLACED something.
+    c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final before = c.currentSurfaceOf(c.activeFrameKey);
 
-    final outcome = c.commitSourceStroke(sourceDabs: [_dab(0)])!;
+    // A DIFFERENT colour on the same spot: repeating the identical dab
+    // changes no pixel, and a stroke that changed nothing commits null.
+    final outcome = c.commitSourceStroke(
+      sourceDabs: [_dab(1).copyWith(color: 0xFF445566)],
+    )!;
 
     expect(identical(outcome.preSurface, before), isTrue);
     expect(
