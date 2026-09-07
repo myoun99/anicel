@@ -31,8 +31,10 @@ import '../ui_scale.dart';
 /// session. What this object owns is the other half: the injectable STORES and
 /// the restore/persist path into them.
 ///
-/// [EditorSessionManager] delegates to it and keeps its own API unchanged —
-/// callers of `setLanguageSettings`, `audioSyncSettings` and the rest see no
+/// [EditorSessionManager] delegates to it. ⛔The A/V-offset pair stopped
+/// being forwarded (G3, 2026-09-07): callers say
+/// `session.appSettings.audioSyncSettings`. The rest still forward —
+/// callers of `setLanguageSettings` and the others see no
 /// difference.
 class EditorAppSettings {
   EditorAppSettings({

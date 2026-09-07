@@ -580,7 +580,7 @@ void main() {
       session.selectLayer(_seLayerId);
       session.selectFrameIndex(2);
       await tester.pumpAndSettle();
-      session.createSeEntryAtCurrentFrame(name: 'S', lengthFrames: 1);
+      session.seEntries.createSeEntryAtCurrentFrame(name: 'S', lengthFrames: 1);
       await tester.pumpAndSettle();
 
       await tapCommandButton(

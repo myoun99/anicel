@@ -102,7 +102,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
 
   Widget _buildSection(AppStrings strings) {
     return ValueListenableBuilder<AudioSyncSettings>(
-      valueListenable: widget.session.audioSyncSettings,
+      valueListenable: widget.session.appSettings.audioSyncSettings,
       builder: (context, settings, _) {
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -127,7 +127,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     key: const ValueKey<String>('settings-av-offset-value'),
                     offset: settings.offset,
                     unit: settings.unit,
-                    onCommitted: (value) => widget.session.setAudioSyncSettings(
+                    onCommitted: (value) => widget.session.appSettings.setAudioSyncSettings(
                       settings.copyWith(
                         offset: AudioSyncSettings.clampOffset(
                           value,
@@ -157,7 +157,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   // typed), re-clamped into the new unit's range.
                   onChanged: (unit) {
                     if (unit != null && unit != settings.unit) {
-                      widget.session.setAudioSyncSettings(
+                      widget.session.appSettings.setAudioSyncSettings(
                         AudioSyncSettings(
                           offset: AudioSyncSettings.clampOffset(
                             settings.offset,
@@ -183,7 +183,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               keyValue: 'settings-audio-output-device',
               capture: false,
               selected: settings.outputDeviceName,
-              onChanged: (name) => widget.session.setAudioSyncSettings(
+              onChanged: (name) => widget.session.appSettings.setAudioSyncSettings(
                 settings.copyWith(outputDeviceName: name),
               ),
             ),
@@ -195,7 +195,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               capture: true,
               selected: settings.inputDeviceName,
               onChanged: (name) {
-                widget.session.setAudioSyncSettings(
+                widget.session.appSettings.setAudioSyncSettings(
                   settings.copyWith(inputDeviceName: name),
                 );
                 // The live meter follows the new microphone immediately.
@@ -303,7 +303,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     divisions: AudioSyncSettings.maxMicGainDb * 2,
                     valueText: _signedDb(settings.micGainDb),
                     valueTextBuilder: _signedDb,
-                    onChanged: (value) => widget.session.setAudioSyncSettings(
+                    onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                       settings.copyWith(
                         micGainDb: AudioSyncSettings.clampMicGainDb(
                           value.round(),
@@ -347,7 +347,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   ],
                   onChanged: (mode) {
                     if (mode != null && mode != settings.inputChannelMode) {
-                      widget.session.setAudioSyncSettings(
+                      widget.session.appSettings.setAudioSyncSettings(
                         settings.copyWith(inputChannelMode: mode),
                       );
                     }
@@ -369,7 +369,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 Switch(
                   key: const ValueKey<String>('settings-denoise-voice'),
                   value: settings.denoiseVoice,
-                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                     settings.copyWith(denoiseVoice: value),
                   ),
                 ),
@@ -386,7 +386,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 Switch(
                   key: const ValueKey<String>('settings-clipping-notice'),
                   value: settings.clippingNotice,
-                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                     settings.copyWith(clippingNotice: value),
                   ),
                 ),
@@ -413,7 +413,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     divisions: AudioSyncSettings.maxCountInSeconds,
                     valueText: sliderValueText(settings.countInSeconds),
                     valueTextBuilder: sliderValueText,
-                    onChanged: (value) => widget.session.setAudioSyncSettings(
+                    onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                       settings.copyWith(
                         countInSeconds: AudioSyncSettings.clampCountInSeconds(
                           value.round(),
@@ -435,7 +435,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 Switch(
                   key: const ValueKey<String>('settings-cue-beeps'),
                   value: settings.cueBeeps,
-                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                     settings.copyWith(cueBeeps: value),
                   ),
                 ),
@@ -452,7 +452,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 Switch(
                   key: const ValueKey<String>('settings-streamer'),
                   value: settings.streamerEnabled,
-                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                     settings.copyWith(streamerEnabled: value),
                   ),
                 ),

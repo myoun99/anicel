@@ -72,7 +72,6 @@ import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
-import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
@@ -90,12 +89,10 @@ import '../models/transition_geometry.dart';
 import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../services/cut_frame_composite_plan.dart';
-import '../services/se_name_tag_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
-import '../models/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
 import 'session/cut_placement.dart';
@@ -300,14 +297,6 @@ class EditorSessionManager extends ChangeNotifier
 
   void setSaveSettings(AppSaveSettings settings) =>
       appSettings.setSaveSettings(settings);
-
-  /// The user's A/V offset — the residual correction for THIS machine's
-  /// output path (screen pipeline, Bluetooth, an AV receiver).
-  ValueNotifier<AudioSyncSettings> get audioSyncSettings =>
-      appSettings.audioSyncSettings;
-
-  void setAudioSyncSettings(AudioSyncSettings settings) =>
-      appSettings.setAudioSyncSettings(settings);
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
   //
@@ -533,7 +522,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     internals: this,
     playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
-    trackSeDisplayLayers: () => trackSeDisplayLayers,
+    trackSeDisplayLayers: () => trackSe.trackSeDisplayLayers,
     trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
     onRebuilt: () {
       standing.unseatStrandedVerbRow();
@@ -613,7 +602,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
@@ -728,7 +717,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/row_spans.dart): where a row's material starts
   // and ends, what a range drag over it snaps to, and where a cut's frame
   // sits on the GLOBAL axis.
-  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: _projectSettings, trackSe: _trackSe, transitions: _transitions);
+  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: _projectSettings, trackSe: trackSe, transitions: _transitions);
 
   late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
 
@@ -746,7 +735,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/range_selections.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final RangeSelections rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: storyboardRows, trackSe: _trackSe, rowSpans: rowSpans, internals: this, playbackRig: playbackRig);
+  late final RangeSelections rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: storyboardRows, trackSe: trackSe, rowSpans: rowSpans, internals: this, playbackRig: playbackRig);
 
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
@@ -1031,74 +1020,25 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the track SE display: its own object, in its own file ───────────
   //
-  // A collaborator (session/track_se_display.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final TrackSeDisplay _trackSe = TrackSeDisplay(
-    project: this,
-    selection: this,
-    changes: this,
-    frameIds: this,
-    controllers: activeCutControllers,
-    transitions: _transitions,
-    voiceRecording: voiceRecording,
-  );
+  // A collaborator (session/track_se_display.dart). ⛔The forwarders are
+  // gone (G3, 2026-09-07): callers say `session.trackSe.x`. What is left
+  // below is the session IMPLEMENTING a role — those three are members of
+  // `ProjectAccess`/`SessionInternals`, not a second name for a verb.
+  late final TrackSeDisplay trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: _transitions, voiceRecording: voiceRecording);
 
   @override
-  TrackSeWindow get trackSeWindow => _trackSe.trackSeWindow;
+  TrackSeWindow get trackSeWindow => trackSe.trackSeWindow;
   @override
-  bool isTrackSeLayerId(LayerId layerId) => _trackSe.isTrackSeLayerId(layerId);
-  bool isTrackOwnedRailLayerId(LayerId layerId) =>
-      _trackSe.isTrackOwnedRailLayerId(layerId);
+  bool isTrackSeLayerId(LayerId layerId) => trackSe.isTrackSeLayerId(layerId);
   @override
   Layer? trackSeGlobalLayerById(LayerId layerId) =>
-      _trackSe.trackSeGlobalLayerById(layerId);
-  List<Layer> get trackSeDisplayLayers => _trackSe.trackSeDisplayLayers;
-  Set<LayerId> get trackSeSpillInLayerIds => _trackSe.trackSeSpillInLayerIds;
+      trackSe.trackSeGlobalLayerById(layerId);
 
   // ── the SE entries and name tags: their own object ──────────────────
   //
-  // A collaborator (session/se_entries.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final SeEntries _seEntries = SeEntries(
-    project: this,
-    selection: this,
-    changes: this,
-    frameIds: this,
-    controllers: activeCutControllers,
-    camera: _camera,
-    trackSe: _trackSe,
-    frameVerbs: _frameVerbs,
-  );
-
-  void createSeEntryAtCurrentFrame({
-    required String name,
-    String? seName,
-    int? lengthFrames,
-  }) => _seEntries.createSeEntryAtCurrentFrame(
-    name: name,
-    seName: seName,
-    lengthFrames: lengthFrames,
-  );
-  void updateSelectedSeEntry({required String dialogue, String? seName}) =>
-      _seEntries.updateSelectedSeEntry(dialogue: dialogue, seName: seName);
-  void updateSeEntryForLayer(
-    LayerId layerId,
-    FrameId frameId, {
-    required String dialogue,
-    String? seName,
-  }) => _seEntries.updateSeEntryForLayer(
-    layerId,
-    frameId,
-    dialogue: dialogue,
-    seName: seName,
-  );
-  bool get canEditActiveSeNameTag => _seEntries.canEditActiveSeNameTag;
-  void setActiveSeNameTag(SeNameTag? tag) => _seEntries.setActiveSeNameTag(tag);
-  void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) =>
-      _seEntries.setSeNameTagForLayer(layerId, tag);
-  List<ResolvedSeNameTag> seNameTagsForCutFrame(Cut cut, int localFrameIndex) =>
-      _seEntries.seNameTagsForCutFrame(cut, localFrameIndex);
-  String? get selectedFrameSeName => _seEntries.selectedFrameSeName;
+  // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
+  // (G3, 2026-09-07): callers say `session.seEntries.x`.
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, trackSe: trackSe, frameVerbs: _frameVerbs);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -1110,7 +1050,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     controllers: activeCutControllers,
     pool: mediaPool,
-    seEntries: _seEntries,
+    seEntries: seEntries,
   );
 
   // `activeSeNameTagDefaultPosition` seeded the placement dialog's x/y
@@ -1291,7 +1231,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     appSettings: appSettings,
     camera: _camera,
-    trackSe: _trackSe,
+    trackSe: trackSe,
     transitions: _transitions,
   );
 
@@ -1534,8 +1474,8 @@ class EditorSessionManager extends ChangeNotifier
     required ({Set<LayerId> layerIds, double opacity})? preview,
   }) sync* {
     final rows = preview == null
-        ? trackSeDisplayLayers
-        : _withOpacityPreview(trackSeDisplayLayers, preview);
+        ? trackSe.trackSeDisplayLayers
+        : _withOpacityPreview(trackSe.trackSeDisplayLayers, preview);
     for (final layer in rows) {
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;
@@ -2185,7 +2125,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
-  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: _effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: _trackSe, internals: this);
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: _effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, internals: this);
 
   /// The channel the workspace listens on when a drop wants a yes/no.
   ///
@@ -2297,7 +2237,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
+  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: _storyboardCursor, trackSe: trackSe, transitions: _transitions, internals: this);
 
   bool beginExposureEdgeDrag({
     required LayerId layerId,
@@ -2859,7 +2799,7 @@ class EditorSessionManager extends ChangeNotifier
     playback: () => playbackRig.playback,
     audioDeviceTransport: () => playbackRig.audioDeviceTransport,
     audioConformStore: () => audioConformStore,
-    audioSyncSettings: () => audioSyncSettings,
+    audioSyncSettings: () => appSettings.audioSyncSettings,
     repository: () => repository,
     cutCommandCoordinator: () => cutCommandCoordinator,
     uiStrings: () => uiStrings,
@@ -2983,7 +2923,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: _trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
 
   bool createInstancesForSelection() =>
       _instances.createInstancesForSelection();
@@ -3500,7 +3440,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: _transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.

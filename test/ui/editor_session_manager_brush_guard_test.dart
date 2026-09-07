@@ -81,7 +81,7 @@ void main() {
     );
     session.selectLayer(seLayer.id);
     session.selectFrameIndex(0);
-    session.createSeEntryAtCurrentFrame(name: '쿵');
+    session.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
     expect(session.selectedFrame, isNotNull, reason: 'entry exists');
     expect(
       session.activeBrushEditorSelection,
@@ -97,7 +97,7 @@ void main() {
     );
     session.selectLayer(seLayer.id);
     session.selectFrameIndex(0);
-    session.createSeEntryAtCurrentFrame(name: '쿵');
+    session.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
 
     final stackLayerIds = [
       for (final node in session.editingCanvasStack.nodes)

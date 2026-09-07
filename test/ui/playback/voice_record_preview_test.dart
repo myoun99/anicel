@@ -65,7 +65,7 @@ void main() {
     expect(block.length, 4);
     // The display clones serve the preview instance for the armed lane.
     expect(
-      manager.trackSeDisplayLayers.first.audioClips.single.filePath,
+      manager.trackSe.trackSeDisplayLayers.first.audioClips.single.filePath,
       EditorVoiceRecording.voiceRecordPreviewPath,
     );
 
@@ -125,7 +125,7 @@ void main() {
       required double right,
     }) async {
       final manager = session();
-      manager.setAudioSyncSettings(
+      manager.appSettings.setAudioSyncSettings(
         AudioSyncSettings(inputChannelMode: mode),
       );
       manager.selectLayer(manager.activeTrack.seLayers.first.id);

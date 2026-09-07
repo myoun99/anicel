@@ -131,7 +131,7 @@ void main() {
     final se = s.activeTrack.seLayers.first;
     s.selectLayer(se.id);
     s.selectFrameIndex(2);
-    s.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    s.seEntries.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
 
     final span = s.rowSpans.trackRowAuthoredSpan(se.id);
     expect(span, isNotNull);
@@ -168,7 +168,7 @@ void main() {
     final se = s.activeTrack.seLayers.first;
     s.selectLayer(se.id);
     s.selectFrameIndex(2);
-    s.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    s.seEntries.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
 
     final lane = s.rowSpans.trackRowSnapLane(
       LayerRowAddress(se.id),

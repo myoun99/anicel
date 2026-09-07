@@ -266,7 +266,7 @@ Future<void> _editSeLabel(
   final creating = session.selectedFrame == null;
   if (creating) {
     if (session.canCreateDrawingAtCurrentFrame) {
-      session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
+      session.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     }
     return;
   }
@@ -277,7 +277,7 @@ Future<void> _editSeLabel(
   final linked = session.audioClips.selectedSeAudioClips;
   await _editSeEntryWithDialog(
     context,
-    initialSeName: session.selectedFrameSeName ?? '',
+    initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
     linkedAudio: [
       for (final entry in linked)
@@ -285,7 +285,7 @@ Future<void> _editSeLabel(
     ],
     previewAxis: previewAxis,
     commit: (dialogue, seName) =>
-        session.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
+        session.seEntries.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
     unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
   );
 }
@@ -349,7 +349,7 @@ Future<void> editSeEntryInstance(
           ),
     ],
     previewAxis: previewAxis,
-    commit: (dialogue, seName) => session.updateSeEntryForLayer(
+    commit: (dialogue, seName) => session.seEntries.updateSeEntryForLayer(
       layerId,
       entryId,
       dialogue: dialogue,

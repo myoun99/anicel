@@ -317,7 +317,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (next == null) {
       return;
     }
-    _session.setSeNameTagForLayer(layer.id, next);
+    _session.seEntries.setSeNameTagForLayer(layer.id, next);
   }
 
   /// Track-owned SE rows convert through the cut window for the same
@@ -761,7 +761,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
             // The tooltip string doubles as the marker switch (REC1-D):
             // null while the clipping notice is off.
-            seClipMarkerTooltip: _session.audioSyncSettings.value.clippingNotice
+            seClipMarkerTooltip: _session.appSettings.audioSyncSettings.value.clippingNotice
                 ? _session.uiStrings.recordClipMarkerTooltip
                 : null,
             // Everything the audio lane may ask of the session, bound once
@@ -1028,7 +1028,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Sounds carrying over from the previous cut (UI-R7 #6): the
             // cut start draws `~` and the spill block's start grip stands
             // down.
-            seSpillInLayerIds: _session.trackSeSpillInLayerIds,
+            seSpillInLayerIds: _session.trackSe.trackSeSpillInLayerIds,
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.

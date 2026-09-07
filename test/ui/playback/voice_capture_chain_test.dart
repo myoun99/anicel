@@ -96,8 +96,8 @@ void main() {
     var message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(message, isNull, reason: 'gain 0: nothing clipped');
 
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(micGainDb: 12),
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(micGainDb: 12),
     );
     manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
@@ -111,8 +111,8 @@ void main() {
     expect(lane.audioClips.last.clipped, isTrue);
 
     // Notice ON: the same clipping take reports through the toast.
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(clippingNotice: true),
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(clippingNotice: true),
     );
     manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
@@ -126,8 +126,8 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(micGainDb: 12),
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(micGainDb: 12),
     );
     manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);

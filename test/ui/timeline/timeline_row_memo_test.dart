@@ -46,7 +46,7 @@ void main() {
     final cameraLayer = manager.layers.firstWhere(
       (layer) => layer.kind == LayerKind.camera,
     );
-    final seLayer = manager.trackSeDisplayLayers.first;
+    final seLayer = manager.trackSe.trackSeDisplayLayers.first;
 
     // Sparse rows (camera/SE) render through the widget path — their
     // stable key is the frame-row area.

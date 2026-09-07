@@ -62,7 +62,7 @@ void main() {
     // could only be through the standing row.
     manager.selectLayer(se.id);
     manager.selectFrameIndex(2);
-    manager.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    manager.seEntries.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
     if (drawingTarget != null) {
       manager.selectLayer(drawingTarget);
     }
@@ -238,7 +238,7 @@ void main() {
 
     manager.selectLayer(se.id);
     manager.selectFrameIndex(2);
-    manager.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    manager.seEntries.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
     if (drawingTarget != null) {
       manager.selectLayer(drawingTarget);
     }
@@ -316,7 +316,7 @@ void main() {
 
     manager.selectLayer(se.id);
     manager.selectFrameIndex(2);
-    manager.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    manager.seEntries.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
     if (drawingTarget != null) {
       manager.selectLayer(drawingTarget);
     }

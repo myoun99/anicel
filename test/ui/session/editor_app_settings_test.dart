@@ -78,7 +78,7 @@ void main() {
     first.setSaveSettings(
       const AppSaveSettings(periodicSnapshotMinutes: 7),
     );
-    first.setAudioSyncSettings(
+    first.appSettings.setAudioSyncSettings(
       const AudioSyncSettings(offset: 42, micGainDb: 3),
     );
     // R11, and ⚠️only the WRITE half crosses the boundary: the UI scale is
@@ -117,7 +117,7 @@ void main() {
           AppWorkspaceColors.settings.value.pasteboardArgb == 0xFF204060 &&
           AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
-          second.audioSyncSettings.value.offset == 42,
+          second.appSettings.audioSyncSettings.value.offset == 42,
     );
 
     expect(second.languageSettings.value.programLanguage, AppLanguage.ko);
@@ -127,8 +127,8 @@ void main() {
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
-    expect(second.audioSyncSettings.value.offset, 42);
-    expect(second.audioSyncSettings.value.micGainDb, 3);
+    expect(second.appSettings.audioSyncSettings.value.offset, 42);
+    expect(second.appSettings.audioSyncSettings.value.micGainDb, 3);
   });
 
   test('a session with no stores keeps the in-memory defaults', () async {
@@ -141,7 +141,7 @@ void main() {
     expect(session.languageSettings.value, const AppLanguageSettings());
     expect(AppColors.accentSettings.value, const AppAccentSettings());
     expect(AppWorkspaceColors.settings.value, const AppWorkspaceColors());
-    expect(session.audioSyncSettings.value, AudioSyncSettings.defaults);
+    expect(session.appSettings.audioSyncSettings.value, AudioSyncSettings.defaults);
   });
 }
 

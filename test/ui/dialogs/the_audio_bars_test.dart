@@ -74,7 +74,7 @@ void main() {
     await tester.pump();
 
     expect(
-      manager.audioSyncSettings.value.micGainDb,
+      manager.appSettings.audioSyncSettings.value.micGainDb,
       AudioSyncSettings.maxMicGainDb,
     );
   });
@@ -90,7 +90,7 @@ void main() {
 
     countIn.onChanged!(3);
     await tester.pump();
-    expect(manager.audioSyncSettings.value.countInSeconds, 3);
+    expect(manager.appSettings.audioSyncSettings.value.countInSeconds, 3);
     expect(barAt(tester, 'settings-count-in-slider').valueText, '3');
   });
 

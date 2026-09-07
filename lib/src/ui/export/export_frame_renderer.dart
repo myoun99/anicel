@@ -170,7 +170,7 @@ class ExportFrameRenderer {
       overlayPass: !withNameTags
           ? null
           : (canvas) {
-              final tags = session.seNameTagsForCutFrame(cut, task.frameIndex);
+              final tags = session.seEntries.seNameTagsForCutFrame(cut, task.frameIndex);
               if (tags.isNotEmpty) {
                 paintSeNameTags(
                   canvas,
@@ -556,7 +556,7 @@ class ExportFrameRenderer {
           // The multitrack video path projects here, so the tags ride
           // this painter instead of the identity-camera composite above —
           // one draw, in the same canvas space as every other surface.
-          seNameTags: session.seNameTagsForCutFrame(
+          seNameTags: session.seEntries.seNameTagsForCutFrame(
             cut,
             position.localFrameIndex,
           ),

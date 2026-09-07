@@ -120,7 +120,7 @@ class _InteractiveCanvasBuild {
     _activeCutForTags = session.activeCutOrNull;
     _seNameTags = _isPlaybackActive || _activeCutForTags == null
         ? const <ResolvedSeNameTag>[]
-        : session.seNameTagsForCutFrame(
+        : session.seEntries.seNameTagsForCutFrame(
             _activeCutForTags,
             session.currentFrameIndex,
           );

@@ -168,7 +168,7 @@ void main() {
       'instruction create carries defaults directly', () {
     final s = session();
     s.layerStack.addLayerOfKind(LayerKind.se);
-    s.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
+    s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     expect(layerOf(s, s.activeLayer!.id).timeline[0], isNotNull);
 
     s.layerStack.addLayerOfKind(LayerKind.instruction);

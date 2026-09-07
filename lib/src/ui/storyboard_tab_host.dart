@@ -697,7 +697,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // (REC1-D), matching the timeline host: null while the
                     // clipping notice setting is off.
                     seClipMarkerTooltip:
-                        _session.audioSyncSettings.value.clippingNotice
+                        _session.appSettings.audioSyncSettings.value.clippingNotice
                         ? _session.uiStrings.recordClipMarkerTooltip
                         : null,
                     // Rail parity with the timeline rows: twirl-down audio

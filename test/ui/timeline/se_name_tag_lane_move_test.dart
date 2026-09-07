@@ -117,7 +117,7 @@ void main() {
       );
       addTearDown(session.dispose);
       final se = session.activeTrack.seLayers.first;
-      session.setSeNameTagForLayer(
+      session.seEntries.setSeNameTagForLayer(
         se.id,
         SeNameTag(
           track: SeNameTagTrack(
@@ -162,7 +162,7 @@ void main() {
       );
       addTearDown(session.dispose);
       final se = session.activeTrack.seLayers.first;
-      session.setSeNameTagForLayer(
+      session.seEntries.setSeNameTagForLayer(
         se.id,
         SeNameTag(
           track: SeNameTagTrack(
@@ -213,7 +213,7 @@ void main() {
       );
       addTearDown(session.dispose);
       final se = session.activeTrack.seLayers.first;
-      session.setSeNameTagForLayer(
+      session.seEntries.setSeNameTagForLayer(
         se.id,
         SeNameTag(
           track: SeNameTagTrack(
@@ -270,7 +270,7 @@ void main() {
       final se = session.activeTrack.seLayers.first;
       // The host verb converts cut-local input → global on the way IN:
       // input 2,3 becomes global first+2, first+3.
-      session.setSeNameTagForLayer(
+      session.seEntries.setSeNameTagForLayer(
         se.id,
         SeNameTag(
           track: SeNameTagTrack(

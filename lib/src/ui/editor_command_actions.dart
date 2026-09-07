@@ -43,7 +43,7 @@ void createActiveInstance(EditorSessionManager session) {
     case LayerKind.camera:
       session.setCameraKeyframeAtCurrentFrame(session.cameraPoseAtCurrentFrame);
     case LayerKind.se:
-      session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
+      session.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     case LayerKind.instruction:
       session.createDefaultInstructionEventAtCurrentFrame();
     case LayerKind.folder:

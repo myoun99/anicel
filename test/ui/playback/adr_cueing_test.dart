@@ -175,8 +175,8 @@ void main() {
   test('REC1-E: the toggles silence the beeps and hide the streamer', () async {
     final manager = session();
     manager.setProjectFps(4);
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(
         cueBeeps: false,
         streamerEnabled: false,
       ),
@@ -201,8 +201,8 @@ void main() {
       'and rides the head trim', (tester) async {
     final manager = session();
     addTearDown(manager.dispose);
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(countInSeconds: 2),
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(countInSeconds: 2),
     );
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);

@@ -17,7 +17,7 @@ void main() {
 
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
-    expect(s.canEditActiveSeNameTag, isTrue);
+    expect(s.seEntries.canEditActiveSeNameTag, isTrue);
 
     // R5 #7: a tag has no position of its own — nothing to seed, and
     // nothing written until a STYLE is set.
@@ -26,7 +26,7 @@ void main() {
     const configured = SeNameTag(
       style: TextCelStyle(fontSize: 48, color: 0xFFFFFFFF),
     );
-    s.setActiveSeNameTag(configured);
+    s.seEntries.setActiveSeNameTag(configured);
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
 
     s.undo();
@@ -40,7 +40,7 @@ void main() {
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
 
     // Reset: the null contract.
-    s.setActiveSeNameTag(null);
+    s.seEntries.setActiveSeNameTag(null);
     expect(s.activeTrack.seLayers.first.seNameTag, isNull);
     s.undo();
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
@@ -54,9 +54,9 @@ void main() {
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
     const tag = SeNameTag(style: TextCelStyle(fontSize: 11));
-    s.setActiveSeNameTag(tag);
+    s.seEntries.setActiveSeNameTag(tag);
     final undoDepthAfterFirst = s.canUndo;
-    s.setActiveSeNameTag(tag);
+    s.seEntries.setActiveSeNameTag(tag);
     s.undo();
     expect(undoDepthAfterFirst, isTrue);
     expect(
@@ -70,8 +70,8 @@ void main() {
       (layer) => layer.kind == LayerKind.animation,
     );
     s.selectLayer(drawing.id);
-    expect(s.canEditActiveSeNameTag, isFalse);
-    s.setActiveSeNameTag(const SeNameTag(style: TextCelStyle(fontSize: 9)));
+    expect(s.seEntries.canEditActiveSeNameTag, isFalse);
+    s.seEntries.setActiveSeNameTag(const SeNameTag(style: TextCelStyle(fontSize: 9)));
     expect(
       s.requireActiveCut.layers.firstWhere((l) => l.id == drawing.id).seNameTag,
       isNull,
@@ -86,23 +86,23 @@ void main() {
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
     s.selectFrameIndex(0);
-    s.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
-    s.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
+    s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
+    s.seEntries.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
 
     final cut = s.requireActiveCut;
     // R5 #7: two runs — the name in the box, the dialogue beside it.
-    final tag = s.seNameTagsForCutFrame(cut, 0).single;
+    final tag = s.seEntries.seNameTagsForCutFrame(cut, 0).single;
     expect(tag.content.text, 'タモツ');
     expect(tag.line?.text, 'おはよう');
     expect(
-      s.seNameTagsForCutFrame(cut, 10),
+      s.seEntries.seNameTagsForCutFrame(cut, 10),
       isEmpty,
       reason: 'past the block, nothing shows',
     );
 
     s.layerSwitches.toggleLayerVisibility(seRow.id);
     expect(
-      s.seNameTagsForCutFrame(cut, 0),
+      s.seEntries.seNameTagsForCutFrame(cut, 0),
       isEmpty,
       reason: 'the row eye is the display switch (§6-z15 ②)',
     );
@@ -117,12 +117,12 @@ void main() {
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
     s.selectFrameIndex(0);
-    s.createSeEntryAtCurrentFrame(name: '', lengthFrames: 2);
-    s.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
+    s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 2);
+    s.seEntries.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
 
     final cut = s.requireActiveCut;
-    final atEnd = s.seNameTagsForCutFrame(cut, cut.duration - 1);
-    final pastEnd = s.seNameTagsForCutFrame(cut, cut.duration + 50);
+    final atEnd = s.seEntries.seNameTagsForCutFrame(cut, cut.duration - 1);
+    final pastEnd = s.seEntries.seNameTagsForCutFrame(cut, cut.duration + 50);
     expect(
       pastEnd.map((tag) => tag.content.text),
       atEnd.map((tag) => tag.content.text),
@@ -140,8 +140,8 @@ void main() {
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
     s.selectFrameIndex(0);
-    s.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
-    s.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
+    s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
+    s.seEntries.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
 
     final cut = s.requireActiveCut;
     final shot = shotRectIn(
@@ -155,7 +155,7 @@ void main() {
       lessThan(cut.canvasSize.width),
       reason: 'the default project frames a smaller camera than its paper',
     );
-    final position = s.seNameTagsForCutFrame(cut, 0).single.content.position!;
+    final position = s.seEntries.seNameTagsForCutFrame(cut, 0).single.content.position!;
     expect(position.dx, inInclusiveRange(shot.left, shot.left + shot.width));
     expect(position.dy, inInclusiveRange(shot.top, shot.top + shot.height));
   });
@@ -167,7 +167,7 @@ void main() {
 
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
-    s.setActiveSeNameTag(
+    s.seEntries.setActiveSeNameTag(
       const SeNameTag(style: TextCelStyle(fontSize: 20, color: 0xFF202020)),
     );
     final stored = s.activeTrack.seLayers.first.seNameTag!;

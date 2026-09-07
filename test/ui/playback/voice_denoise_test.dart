@@ -78,8 +78,8 @@ void main() {
     expect(recorder.requestedSampleRate, 44100);
     await manager.voiceRecording.stopVoiceRecordingAndPlace();
 
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(denoiseVoice: true),
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(denoiseVoice: true),
     );
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(
@@ -174,8 +174,8 @@ void main() {
   test('a device that refuses 48 kHz records CLEAN — the armed snapshot '
       'drops suppression rather than run the model off-rate', () async {
     final manager = session();
-    manager.setAudioSyncSettings(
-      manager.audioSyncSettings.value.copyWith(denoiseVoice: true),
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(denoiseVoice: true),
     );
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);

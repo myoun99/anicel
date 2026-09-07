@@ -247,8 +247,8 @@ void main() {
     await tester.enterText(offset, '120');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(session.audioSyncSettings.value.offset, 120);
-    expect(session.audioSyncSettings.value.unit, AvOffsetUnit.milliseconds);
+    expect(session.appSettings.audioSyncSettings.value.offset, 120);
+    expect(session.appSettings.audioSyncSettings.value.unit, AvOffsetUnit.milliseconds);
 
     // A typo-sized value clamps instead of being accepted as a "setup"
     // (5000 ms of shift would just look like a sync bug).
@@ -256,7 +256,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(
-      session.audioSyncSettings.value.offset,
+      session.appSettings.audioSyncSettings.value.offset,
       AudioSyncSettings.maxMilliseconds,
     );
 
@@ -267,9 +267,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('frames').last);
     await tester.pumpAndSettle();
-    expect(session.audioSyncSettings.value.unit, AvOffsetUnit.frames);
+    expect(session.appSettings.audioSyncSettings.value.unit, AvOffsetUnit.frames);
     expect(
-      session.audioSyncSettings.value.offset,
+      session.appSettings.audioSyncSettings.value.offset,
       AudioSyncSettings.maxFrames,
     );
 
