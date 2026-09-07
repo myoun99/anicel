@@ -169,10 +169,10 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
       EditInstanceSubject.nothing;
 
   @override
-  bool get canCutRun => session.canCutRunAtCurrentFrame;
+  bool get canCutRun => session.clipboard.canCutRunAtCurrentFrame;
 
   @override
-  void cutRun() => session.cutRunAtCurrentFrame();
+  void cutRun() => session.clipboard.cutRunAtCurrentFrame();
 
   @override
   bool get canCopyFrame => session.canCopyFrameAtCurrentFrame;

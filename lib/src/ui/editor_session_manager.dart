@@ -85,7 +85,6 @@ import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
-import '../models/timeline_splice.dart';
 import '../models/delete_subject.dart';
 import '../models/edit_instance_subject.dart';
 import '../models/timeline_selection_kind.dart';
@@ -494,7 +493,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     editingSession.setActiveCutId(position.cutId);
-    _clipboard.dropCopiedFrame();
+    clipboard.dropCopiedFrame();
     activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
   }
 
@@ -569,7 +568,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
+  late final FrameClipboard clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
   late final LayerClipboard layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
 
   // ── the layer verbs: their own object, in their own file ────────────
@@ -601,18 +600,18 @@ class EditorSessionManager extends ChangeNotifier
     brushInputActive: brushInputActive,
   );
 
-  bool get canCopyFrameAtCurrentFrame => _clipboard.canCopyFrameAtCurrentFrame;
-  void copyFrameAtCurrentFrame() => _clipboard.copyFrameAtCurrentFrame();
+  bool get canCopyFrameAtCurrentFrame => clipboard.canCopyFrameAtCurrentFrame;
+  void copyFrameAtCurrentFrame() => clipboard.copyFrameAtCurrentFrame();
   bool get canPasteLinkedFrameAtCurrentFrame =>
-      _clipboard.canPasteLinkedFrameAtCurrentFrame;
+      clipboard.canPasteLinkedFrameAtCurrentFrame;
   bool get canPasteIndependentFrameAtCurrentFrame =>
-      _clipboard.canPasteIndependentFrameAtCurrentFrame;
+      clipboard.canPasteIndependentFrameAtCurrentFrame;
   void pasteIndependentFrameAtCurrentFrame() =>
-      _clipboard.pasteIndependentFrameAtCurrentFrame();
+      clipboard.pasteIndependentFrameAtCurrentFrame();
   void pasteLinkedFrameAtCurrentFrame() =>
-      _clipboard.pasteLinkedFrameAtCurrentFrame();
-  String get copiedFrameStatusText => _clipboard.copiedFrameStatusText;
-  String get linkedFrameUsesStatusText => _clipboard.linkedFrameUsesStatusText;
+      clipboard.pasteLinkedFrameAtCurrentFrame();
+  String get copiedFrameStatusText => clipboard.copiedFrameStatusText;
+  String get linkedFrameUsesStatusText => clipboard.linkedFrameUsesStatusText;
 
   /// NULL = the editing playhead stands in a GAP (UI-R9 #3): no cut is
   /// selected. Cut-scoped surfaces show their empty states; cut-scoped
@@ -624,7 +623,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
@@ -936,7 +935,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: rangeSelections, clipboard: _clipboard, internals: this, renderCaches: renderCaches);
+  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
 
   bool get canDeleteCellForSelection => _cells.canDeleteCellForSelection;
   bool get cellSelectionClaimsSubject => _cells.cellSelectionClaimsSubject;
@@ -1128,7 +1127,7 @@ class EditorSessionManager extends ChangeNotifier
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
   }) {
-    _clipboard.dropCopiedFrame();
+    clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
     activeCutControllers.rebuild(
       // The ACTIVE layer survives cut commands by default (UI-R20 #1:
@@ -2723,7 +2722,7 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches.conteInkPageStore.restoreFromFile(const {});
     renderCaches.envelopeInkStore.restoreFromFile(const {});
     historyManager.clear();
-    _clipboard.clear();
+    clipboard.clear();
     layerClipboard.clear();
     clearAllSelections();
     trackFrameRangeSelection.value = null;
@@ -3861,87 +3860,6 @@ class EditorSessionManager extends ChangeNotifier
     selection.endIndexExclusive,
   );
 
-  /// 🚨T3 신설 — 잘라내기: the same lift the paste does, with the clip going
-  /// to the clipboard instead of a row.
-  ///
-  /// 유저 확정 2026-08-13: 「잘라내기 버튼을 공용 알약에 신설 — 복사 버튼
-  /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
-  ///
-  /// ★It is literally copy followed by the lift half of [spliceTimeline],
-  /// which is why it needs no rules of its own — with ONE exception: the
-  /// lift has to survive the write. On a SINGLE-CEL (image) row it does
-  /// not. The covering normalization rebuilds the picture's block from
-  /// the same write, so the press changes nothing on screen and costs a
-  /// phantom undo entry — the next Ctrl+Z then eats the user's real
-  /// previous edit. Same standdown, same reason, as the delete gate
-  /// (D22). COPY stays lit: it takes the cel to the clipboard without
-  /// claiming to remove it, which is honest here.
-  bool get canCutRunAtCurrentFrame {
-    // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
-    // other rows it lifts a block the user never swept — and being the
-    // destructive half of the clipboard pair, it did so while Delete sat
-    // dark one button away on the same pill. No band rung to serve, so
-    // the band ends the ladder — and so does COPY, its documented twin:
-    // "it only reads" was wrong, since it writes the clipboard.
-    if (bandNamesRowsThisPressWouldMiss) {
-      return false;
-    }
-    final layer = activeLayer;
-    if (layer != null && layer.kind.holdsSingleCel) {
-      return false;
-    }
-    return canCopyFrameAtCurrentFrame;
-  }
-
-  @override
-  void cutRunAtCurrentFrame() {
-    final layer = activeLayer;
-    if (layer == null || !canCutRunAtCurrentFrame) {
-      return;
-    }
-    final run = _clipboard.spliceRunOnActiveRow();
-    if (run == null) {
-      return;
-    }
-    copyFrameAtCurrentFrame();
-    // 🚨결정 14 ②ⓐ — the lift takes every row the copy just banked, in ONE
-    // undo. ⛔It reads the CLIPBOARD's rows rather than re-resolving the
-    // band: the two must not be able to disagree about which rows were
-    // taken, because a row lifted but not banked is work that cannot come
-    // back — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가
-    // 아니다」.
-    final selection = frameRangeSelection.value;
-    final banked = _clipboard.bankedRowLayerIds;
-    activeCutControllers.timelineController.spliceRunsForLayers(
-      runs: [
-        for (final bankedLayerId in banked)
-          (
-            layerId: bankedLayerId,
-            index: bankedLayerId == layer.id
-                ? run.index
-                : commitBlockStart(bankedLayerId, selection!.startIndex),
-            liftCount: bankedLayerId == layer.id
-                ? run.count
-                : selection!.lengthFrames,
-            clip: null,
-            bornFrames: const <Frame>[],
-          ),
-        if (banked.isEmpty)
-          (
-            layerId: layer.id,
-            index: run.index,
-            liftCount: run.count,
-            clip: null,
-            bornFrames: const <Frame>[],
-          ),
-      ],
-      description: 'Cut frames',
-    );
-    clearFrameRangeSelection();
-    notifyListeners();
-  }
-
-
   /// ⚠️Formats an id from the CURRENT sequence — it does not advance it.
   /// Call [mintFrameId] unless you have just incremented `_frameSequence`
   /// yourself. The wall clock in here is decoration, not identity: its
@@ -4959,7 +4877,7 @@ class EditorSessionManager extends ChangeNotifier
       _solo.exitVisibilitySolo();
     }
     editingSession.setActiveCutId(null);
-    _clipboard.dropCopiedFrame();
+    clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
     activeCutControllers.rebuild();
     return true;
@@ -5159,7 +5077,7 @@ class EditorSessionManager extends ChangeNotifier
     fingerprints: mediaFingerprints,
     textCelBakes: _textCelBakes,
     voiceRecording: _voiceRecording,
-    clipboard: _clipboard,
+    clipboard: clipboard,
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,

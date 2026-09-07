@@ -111,7 +111,7 @@ void main() {
     final session = await _pump(tester, 'AABBBCC');
 
     _select(session, 2, 5);
-    session.cutRunAtCurrentFrame();
+    session.clipboard.cutRunAtCurrentFrame();
 
     expect(
       _row(session),
@@ -153,7 +153,7 @@ void main() {
     final session = await _pump(tester, 'AABBBCC');
 
     _select(session, 2, 5);
-    session.cutRunAtCurrentFrame();
+    session.clipboard.cutRunAtCurrentFrame();
     _stand(session, 0);
     session.pasteIndependentFrameAtCurrentFrame();
 
@@ -253,7 +253,7 @@ void main() {
     final session = await _pump(tester, 'AABBBCC');
 
     _select(session, 2, 5);
-    session.cutRunAtCurrentFrame();
+    session.clipboard.cutRunAtCurrentFrame();
     expect(_row(session), 'AA...CC');
 
     session.undo();

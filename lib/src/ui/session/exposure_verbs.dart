@@ -79,7 +79,7 @@ class ExposureVerbs {
   /// The timesheet "X here" — ⛔NOT the clipboard's cut.
   ///
   /// 🚨T3 rename: this was `cutExposureAtCurrentFrame` while 「잘라내기」 was
-  /// a word nothing in the app used. Now that [_internals.cutRunAtCurrentFrame] exists,
+  /// a word nothing in the app used. Now that [FrameClipboard.cutRunAtCurrentFrame] exists,
   /// two different verbs would answer to "cut". The UI never said 「cut」
   /// here — the button is `×` (`blank-exposure-button`, tooltip `tlBlankX`)
   /// — so the code name follows the button and the new verb takes the word

@@ -317,7 +317,7 @@ void main() {
     for (final frameIndex in [0, 5]) {
       s.selectFrameIndex(frameIndex);
       expect(
-        s.canCutRunAtCurrentFrame,
+        s.clipboard.canCutRunAtCurrentFrame,
         isFalse,
         reason:
             'at index $frameIndex: the lift is rebuilt by the same '
@@ -506,7 +506,7 @@ void main() {
 
     for (final (name, gate) in [
       ('mark', s.layerMarks.canToggleMarkAtCurrentFrame),
-      ('잘라내기', s.canCutRunAtCurrentFrame),
+      ('잘라내기', s.clipboard.canCutRunAtCurrentFrame),
       ('rename', s.canEditCellInstanceAtCurrentFrame),
       ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
       ('링크 붙여넣기', s.canPasteLinkedFrameAtCurrentFrame),
@@ -526,7 +526,7 @@ void main() {
 
     s.blankExposureAtCurrentFrame();
     s.layerMarks.toggleMarkAtCurrentFrame();
-    s.cutRunAtCurrentFrame();
+    s.clipboard.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();
     s.pasteLinkedFrameAtCurrentFrame();
     s.duplicateActiveBlock(linked: false);
@@ -556,7 +556,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    expect(s.canCutRunAtCurrentFrame, isTrue);
+    expect(s.clipboard.canCutRunAtCurrentFrame, isTrue);
     expect(s.canPasteIndependentFrameAtCurrentFrame, isTrue);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isTrue);
     expect(s.canDuplicateActiveBlock, isTrue);

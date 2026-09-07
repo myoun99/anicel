@@ -253,7 +253,7 @@ void main() {
     session.selectFrameIndex(0);
     await tester.pump();
 
-    expect(session.canCutRunAtCurrentFrame, isTrue, reason: 'sanity');
+    expect(session.clipboard.canCutRunAtCurrentFrame, isTrue, reason: 'sanity');
     final beforeBand = toolbar();
 
     session.updateFrameRangeSelectionDrag(
@@ -264,7 +264,7 @@ void main() {
     await tester.pump();
 
     expect(
-      session.canCutRunAtCurrentFrame,
+      session.clipboard.canCutRunAtCurrentFrame,
       isFalse,
       reason: 'sanity: the band names another row, so the verb stood down',
     );

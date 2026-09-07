@@ -105,7 +105,7 @@ void main() {
     session.selectFrameIndex(0);
     sweep(session, const [rowA, rowB], from: 0, toExclusive: 3);
 
-    session.cutRunAtCurrentFrame();
+    session.clipboard.cutRunAtCurrentFrame();
     expect(coveredFrames(session, rowA), isEmpty);
     expect(
       coveredFrames(session, rowB),
@@ -130,7 +130,7 @@ void main() {
     session.selectLayer(rowA);
     session.selectFrameIndex(0);
     sweep(session, const [rowA, rowB], from: 0, toExclusive: 3);
-    session.cutRunAtCurrentFrame();
+    session.clipboard.cutRunAtCurrentFrame();
     expect(coveredFrames(session, rowA), isEmpty);
     expect(coveredFrames(session, rowB), isEmpty);
 
@@ -209,7 +209,7 @@ void main() {
     session.selectFrameIndex(0);
     session.clearFrameRangeSelection();
 
-    session.cutRunAtCurrentFrame();
+    session.clipboard.cutRunAtCurrentFrame();
     expect(coveredFrames(session, rowA), isEmpty);
     expect(
       coveredFrames(session, rowB),

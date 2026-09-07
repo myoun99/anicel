@@ -200,6 +200,95 @@ class FrameClipboard {
   _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip) =>
       _CopiedRow(layerId: row.id, clip: clip, cels: _celsCarriedBy(row, clip));
 
+  /// 🚨T3 신설 — 잘라내기: the same lift the paste does, with the clip going
+  /// to the clipboard instead of a row.
+  ///
+  /// 유저 확정 2026-08-13: 「잘라내기 버튼을 공용 알약에 신설 — 복사 버튼
+  /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
+  ///
+  /// ★It is literally copy followed by the lift half of `spliceTimeline`,
+  /// which is why it needs no rules of its own — with ONE exception: the
+  /// lift has to survive the write. On a SINGLE-CEL (image) row it does
+  /// not. The covering normalization rebuilds the picture's block from
+  /// the same write, so the press changes nothing on screen and costs a
+  /// phantom undo entry — the next Ctrl+Z then eats the user's real
+  /// previous edit. Same standdown, same reason, as the delete gate
+  /// (D22). COPY stays lit: it takes the cel to the clipboard without
+  /// claiming to remove it, which is honest here.
+  bool get canCutRunAtCurrentFrame {
+    // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
+    // other rows it lifts a block the user never swept — and being the
+    // destructive half of the clipboard pair, it did so while Delete sat
+    // dark one button away on the same pill. No band rung to serve, so
+    // the band ends the ladder — and so does COPY, its documented twin:
+    // "it only reads" was wrong, since it writes the clipboard.
+    if (_selection.bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
+    final layer = _selection.activeLayer;
+    if (layer != null && layer.kind.holdsSingleCel) {
+      return false;
+    }
+    return canCopyFrameAtCurrentFrame;
+  }
+
+  void cutRunAtCurrentFrame() {
+    final layer = _selection.activeLayer;
+    if (layer == null || !canCutRunAtCurrentFrame) {
+      return;
+    }
+    final run = spliceRunOnActiveRow();
+    if (run == null) {
+      return;
+    }
+    copyFrameAtCurrentFrame();
+    // 🚨결정 14 ②ⓐ — the lift takes every row the copy just banked, in ONE
+    // undo. ⛔It reads the CLIPBOARD's rows rather than re-resolving the
+    // band: the two must not be able to disagree about which rows were
+    // taken, because a row lifted but not banked is work that cannot come
+    // back — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가
+    // 아니다」.
+    final selection = _selection.frameRangeSelection.value;
+    final banked = bankedRowLayerIds;
+    _controllers.timelineController.spliceRunsForLayers(
+      runs: [
+        for (final bankedLayerId in banked)
+          (
+            layerId: bankedLayerId,
+            index: bankedLayerId == layer.id
+                ? run.index
+                : _internals.commitBlockStart(
+                    bankedLayerId,
+                    selection!.startIndex,
+                  ),
+            liftCount: bankedLayerId == layer.id
+                ? run.count
+                : selection!.lengthFrames,
+            clip: null,
+            bornFrames: const <Frame>[],
+          ),
+        // ⛔MUTANT SURVIVES HERE (`if (false)`), and the classification is
+        // NEVER APPLIED (2026-09-07): the copy above resolves the SAME
+        // `spliceRunOnActiveRow` this verb already got a non-null answer
+        // from, so it always banks at least the anchor row. Kept as the
+        // arm that keeps the lift honest if the board ever came back
+        // empty — 결정 14 ②ⓐ says a row lifted but not banked is work
+        // that cannot come back, and this is the other side of it.
+        if (banked.isEmpty)
+          (
+            layerId: layer.id,
+            index: run.index,
+            liftCount: run.count,
+            clip: null,
+            bornFrames: const <Frame>[],
+          ),
+      ],
+      description: 'Cut frames',
+    );
+    _selection.clearFrameRangeSelection();
+    _changes.notifyChanged();
+  }
+
   void copyFrameAtCurrentFrame() {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;

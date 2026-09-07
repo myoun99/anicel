@@ -100,7 +100,7 @@ void main() {
     s.layerMarks.canToggleMarkAtCurrentFrame,
     s.canCopyFrameAtCurrentFrame,
     s.canPasteLinkedFrameAtCurrentFrame,
-    s.canCutRunAtCurrentFrame,
+    s.clipboard.canCutRunAtCurrentFrame,
     s.canPasteIndependentFrameAtCurrentFrame,
     s.canEditCellInstanceAtCurrentFrame,
     s.canDeleteCellAtCurrentFrame,

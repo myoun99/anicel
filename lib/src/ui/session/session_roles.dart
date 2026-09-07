@@ -159,7 +159,6 @@ abstract interface class SessionInternals {
   void Function()? get clearCanvasSelection;
   TimelineRowAddress get currentRow;
   ValueNotifier<TimelineRowAddress?> get currentRowListenable;
-  void cutRunAtCurrentFrame();
   DeleteSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
   ValueNotifier<int> get editingFrameCursor;

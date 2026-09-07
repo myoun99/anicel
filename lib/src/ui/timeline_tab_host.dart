@@ -1249,7 +1249,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // is dropped — so a change moving ONLY these left them stale. A
       // BAND does exactly that: it can flip cut / edit / independent
       // paste while every entry around them holds its value.
-      session.canCutRunAtCurrentFrame,
+      session.clipboard.canCutRunAtCurrentFrame,
       session.canPasteIndependentFrameAtCurrentFrame,
       session.canEditCellInstanceAtCurrentFrame,
       session.canDeleteCellAtCurrentFrame,
