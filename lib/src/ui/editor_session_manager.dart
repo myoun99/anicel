@@ -138,6 +138,7 @@ import '../services/persistence/folder_grant.dart'
 import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
+import '../native/qa_native_engine.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
@@ -248,7 +249,13 @@ class EditorSessionManager extends ChangeNotifier
        ),
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.restore();
-    historyManager = HistoryManager();
+    // 유저 확정 (2026-09-07): the undo byte budget scales to the MACHINE,
+    // exactly as the cel store's does one object over. Unknown RAM (no
+    // engine: tests, host runs) keeps the old fixed value, byte-for-byte.
+    historyManager = HistoryManager()
+      ..byteBudget = deviceScaledUndoByteBudget(
+        physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+      );
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,

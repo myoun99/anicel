@@ -5,6 +5,7 @@ import '../brush_frame_editing_coordinator.dart';
 import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
+import '../undo_retained_bytes.dart';
 
 /// Adopts a CONFIRMED move session (R16-①, TVP-style) into app history
 /// as ONE undoable step (R19 P3b surface-snapshot form).
@@ -28,9 +29,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
     this.restoreRegion,
     this.readRegion,
   }) : _preSurface = preLiftSurface,
-       _stampDab = stampDab,
-       _retainedBytes =
-           2 * 4 * (stampDab.stamp?.width ?? 0) * (stampDab.stamp?.height ?? 0);
+       _stampDab = stampDab;
 
   final BrushFrameEditingCoordinator coordinator;
   final BrushFrameKey frameKey;
@@ -71,7 +70,17 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
   BrushDab? _stampDab;
   late BitmapSurface _postSurface;
   bool _landed = false;
-  final int _retainedBytes;
+
+  /// Zero until the landing, because there is nothing to weigh yet: the
+  /// erase is already committed and [_preSurface] still shares every tile
+  /// with the live surface. Set once, at the landing, by the one law.
+  ///
+  /// ⛔It used to be the STAMP rectangle, which is not a thing this
+  /// command holds. Measured 2026-09-07: a 64×64 stamp reported 32 KB
+  /// against 64 MiB actually retained (2048×), and a null stamp reported
+  /// ZERO while holding a full-canvas surface — so the byte budget never
+  /// fired on the very entries that killed the app.
+  int _retainedBytes = 0;
 
   @override
   int get estimatedRetainedBytes => _retainedBytes;
@@ -97,6 +106,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
       cacheInvalidationSink: cacheInvalidationSink,
     );
     _postSurface = coordinator.currentSurfaceOf(frameKey);
+    _retainedBytes = uniquelyRetainedTileBytes(_preSurface, _postSurface);
     _stampDab = null;
     _landed = true;
     // Read AFTER the landing, so a redo restores the shape the confirm

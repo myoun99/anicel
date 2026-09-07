@@ -40,7 +40,7 @@ class BitmapTile implements Finalizable {
 
   factory BitmapTile.blank({required TileCoord coord, required int size}) {
     _validateSize(size);
-    final length = size * size * bytesPerPixel;
+    final length = bytesFor(size);
     final buffer = _allocate(length);
     buffer.asTypedList(length).fillRange(0, length, 0);
     return BitmapTile._adopt(coord, size, buffer);
@@ -66,13 +66,13 @@ class BitmapTile implements Finalizable {
 
   BitmapTile._adopt(this.coord, this.size, Pointer<Uint8> pixels)
     : _pixels = pixels,
-      _view = pixels.asTypedList(size * size * bytesPerPixel) {
+      _view = pixels.asTypedList(bytesFor(size)) {
     final engine = QaNativeEngine.instance;
     (engine == null ? _mallocFinalizer : engine.tileFinalizer).attach(
       this,
       pixels.cast(),
       detach: this,
-      externalSize: size * size * bytesPerPixel,
+      externalSize: bytesFor(size),
     );
   }
 
@@ -89,6 +89,11 @@ class BitmapTile implements Finalizable {
   );
 
   static const int bytesPerPixel = 4;
+
+  /// Bytes ONE tile of [size] occupies. The same product was written out
+  /// in eight places across four files; a stale copy of it is an undo
+  /// budget that lies about what it holds, so there is one place now.
+  static int bytesFor(int size) => size * size * bytesPerPixel;
 
   final TileCoord coord;
   final int size;

@@ -81,9 +81,14 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
       _frameKey = frameKey;
       _preSurface = outcome.preSurface;
       _postSurface = outcome.postSurface;
-      // Pre AND post images of the changed tiles are uniquely ours in
-      // the worst case (no neighbouring entries to share with).
-      _retainedBytes = outcome.estimatedRetainedBytes * 2;
+      // ONE image of the changed tiles is ours; the other end of every
+      // link is somebody else's. post(n) IS pre(n+1) — the same object,
+      // by structural sharing — and the newest post IS the live surface,
+      // so doubling counted a neighbour's bytes as ours. There is no
+      // "worst case" where both ends are unshared: an entry with nothing
+      // after it is the newest one, and its post is what the canvas is
+      // showing.
+      _retainedBytes = outcome.estimatedRetainedBytes;
     }
   }
 

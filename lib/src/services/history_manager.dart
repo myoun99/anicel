@@ -3,6 +3,32 @@ import 'package:flutter/foundation.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
 
+/// The undo byte budget for THIS machine — physical RAM/8, clamped.
+///
+/// 유저 확정 (2026-09-07, `undo-commands-audit-Q3` = `ram8`): the undo
+/// stack was the last budget in the app still assuming a desktop while
+/// the cel store beside it already scaled with the machine
+/// (`deviceScaledHotCelBudget`, RAM/4). Two fixed budgets on a 2GB tablet
+/// reserved 45% of it between them.
+///
+/// RAM/8 rather than the store's RAM/4 because the two must SUM to
+/// something a small machine survives, and of the pair the store is the
+/// one feeding the screen. It is also GIMP's number for the same job
+/// (`undo-size`, physical memory / 8).
+///
+/// ⚠️The ceiling is today's fixed value, so this can only ever LOWER a
+/// machine's budget, never raise one. The floor is two full-canvas 4000²
+/// transforms (64 MiB each, measured 2026-09-07) — below that the stack
+/// cannot hold one edit and its predecessor, which is not a budget but an
+/// off switch.
+int deviceScaledUndoByteBudget({required int? physicalMemoryBytes}) =>
+    deviceScaledBudget(
+      physicalMemoryBytes: physicalMemoryBytes,
+      divisor: 8,
+      floor: 128 * 1024 * 1024,
+      ceiling: HistoryManager.retainedByteBudget,
+    );
+
 /// The undo/redo stacks. A [ChangeNotifier] so stack-state consumers (the
 /// app bar's undo/redo buttons) can subscribe directly: brush strokes
 /// execute here from the canvas WITHOUT a session notify, so nothing else
@@ -23,6 +49,15 @@ class HistoryManager extends ChangeNotifier {
   /// entries retain (R19 P3b): undo pixels are bounded even when every
   /// entry is a full-canvas fill — the deepest entries fall off first,
   /// PS-style, and the newest entry always survives.
+  ///
+  /// ⚠️Now the CEILING rather than the number every machine gets: the
+  /// session sets [byteBudget] from RAM ([deviceScaledUndoByteBudget]),
+  /// and a machine that will not say how much it has keeps this.
+  ///
+  /// ⛔It bounded nothing until 2026-09-07. Three of the five commands
+  /// that hold pixels misreported their weight — one by 2048× — so the
+  /// sweep below never had a total worth sweeping, and the only real
+  /// bound on undo pixels was [defaultMaxEntries].
   static const int retainedByteBudget = 512 * 1024 * 1024;
 
   /// 🚨WHERE PRESSURE PUTS IT. [respondToMemoryPressure] drops the live
@@ -69,17 +104,23 @@ class HistoryManager extends ChangeNotifier {
 
   int get redoCount => _redoStack.length;
 
-  /// Bytes the undo stack's snapshot entries currently report
+  /// The cap in force, which the session sets from the machine's RAM
+  /// ([deviceScaledUndoByteBudget]). Assigning states a new normal;
+  /// pressure lowers it separately and is never raised by that act.
+  int get byteBudget => _budget.bytes;
+
+  set byteBudget(int value) => _budget.bytes = value;
+
+  /// Bytes the snapshot entries currently report — BOTH stacks
   /// (accumulation-guard oracle).
-  int get retainedBytes {
-    var total = 0;
-    for (final command in _undoStack) {
-      if (command is RetainedBytesCommand) {
-        total += (command as RetainedBytesCommand).estimatedRetainedBytes;
-      }
-    }
-    return total;
-  }
+  ///
+  /// 🚨REDO COUNTS. [_step] moves an entry between the stacks without
+  /// changing what it holds, so a version of this that only walked
+  /// [_undoStack] watched half a gigabyte leave the books by being
+  /// undone — and a memory warning arriving right then freed nothing,
+  /// because by the budget's own reckoning there was nothing to free.
+  int get retainedBytes =>
+      retainedBytesOf(_undoStack) + retainedBytesOf(_redoStack);
 
   /// Collects everything executed inside [body] into ONE undo entry.
   ///
@@ -161,17 +202,38 @@ class HistoryManager extends ChangeNotifier {
 
   void _trimRetainedBytes() {
     var total = retainedBytes;
+    if (total <= _budget.bytes) {
+      return;
+    }
+    // REDO SHEDS FIRST. A redo entry is work the user already stepped
+    // back from, and the next execute() throws the whole stack away in
+    // any case — spending the budget on it while a real undo falls off
+    // the deep end is the wrong trade.
+    total -= _shed(_redoStack, total - _budget.bytes, keep: 0);
+    if (total <= _budget.bytes) {
+      return;
+    }
+    // ⛔The newest entry always survives: pressure must not cost you the
+    // undo you are about to press.
+    _shed(_undoStack, total - _budget.bytes, keep: 1);
+  }
+
+  /// Drops entries from [stack]'s deep end until [excess] bytes are gone,
+  /// never leaving fewer than [keep]. Returns the bytes released.
+  static int _shed(List<Command> stack, int excess, {required int keep}) {
+    var released = 0;
     var dropCount = 0;
-    while (total > _budget.bytes && _undoStack.length - dropCount > 1) {
-      final command = _undoStack[dropCount];
+    while (released < excess && stack.length - dropCount > keep) {
+      final command = stack[dropCount];
       if (command is RetainedBytesCommand) {
-        total -= (command as RetainedBytesCommand).estimatedRetainedBytes;
+        released += (command as RetainedBytesCommand).estimatedRetainedBytes;
       }
       dropCount += 1;
     }
     if (dropCount > 0) {
-      _undoStack.removeRange(0, dropCount);
+      stack.removeRange(0, dropCount);
     }
+    return released;
   }
 
   /// Called before undo/redo touches the stacks (R16-①): the selection
@@ -223,6 +285,10 @@ class HistoryManager extends ChangeNotifier {
     final command = from.removeLast();
     apply(command);
     to.add(command);
+    // The bytes did not move anywhere, but the budget may have been
+    // lowered by pressure since the last push — and nothing else runs
+    // between one Ctrl+Z and the next.
+    _trimRetainedBytes();
     notifyListeners();
   }
 

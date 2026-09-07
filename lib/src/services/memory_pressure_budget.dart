@@ -76,3 +76,33 @@ class MemoryPressureBudget {
     return true;
   }
 }
+
+/// A cache's NORMAL size for the machine it is running on: a share of
+/// physical RAM, clamped.
+///
+/// ⚠️[ceiling] is also the answer when the platform will not say how much
+/// RAM there is (tests, host runs, an engine that did not load) — every
+/// one of these budgets was a fixed desktop number before it scaled, and
+/// that number is the ceiling, so an unknown machine keeps exactly what
+/// it used to get.
+///
+/// The two callers differ only in their three numbers: hot cels take
+/// RAM/4 because they are what the screen is drawn from, undo takes RAM/8
+/// because the pair has to sum to something a small tablet survives. The
+/// SHAPE is one thing and lives here — it was written twice, and the
+/// clone scan is what said so.
+int deviceScaledBudget({
+  required int? physicalMemoryBytes,
+  required int divisor,
+  required int floor,
+  required int ceiling,
+}) {
+  if (physicalMemoryBytes == null || physicalMemoryBytes <= 0) {
+    return ceiling;
+  }
+  final share = physicalMemoryBytes ~/ divisor;
+  if (share < floor) {
+    return floor;
+  }
+  return share > ceiling ? ceiling : share;
+}

@@ -390,6 +390,33 @@ class CanvasSelectionRegion {
 
   List<List<CanvasPoint>>? _pixelContoursCache;
 
+  /// What holding THIS region costs, for the history stack's byte budget.
+  ///
+  /// The steps are a handful of shapes; the weight is the memo above,
+  /// which a canvas-sized lasso fills with hundreds of thousands of
+  /// points. An undo entry keeps its region alive, so the memo lives as
+  /// long as the entry does — measured as RSS the budget could not see,
+  /// because the selection command reported nothing at all.
+  ///
+  /// ⚠️Zero until something asks for the contours: a region nobody drew
+  /// ants around holds only its steps.
+  int get estimatedRetainedBytes {
+    final contours = _pixelContoursCache;
+    if (contours == null) {
+      return 0;
+    }
+    var points = 0;
+    for (final contour in contours) {
+      points += contour.length;
+    }
+    return points * _bytesPerContourPoint;
+  }
+
+  /// Two doubles and the object header a [CanvasPoint] costs on the Dart
+  /// heap. An estimate by construction — the budget needs the ORDER of
+  /// the number, and zero was the wrong order.
+  static const int _bytesPerContourPoint = 32;
+
   /// The closed contours of [pixelOutlineIn], in CANVAS space.
   ///
   /// ⚠️Memoised, and that is not an optimisation but the condition of

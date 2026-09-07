@@ -23,6 +23,10 @@ class BitmapSurface {
 
   Map<TileCoord, BitmapTile> get tiles => Map.unmodifiable(_tiles);
 
+  /// Bytes one of THIS surface's tiles occupies — the multiplier every
+  /// undo-weight answer needs, taken from the tile rather than re-derived.
+  int get tileBytes => BitmapTile.bytesFor(tileSize);
+
   /// CANVAS-grid tile columns (tiles that cover the canvas rect from the
   /// origin). Pasteboard tiles live outside this grid — see
   /// [containsTileCoord] for the storable range.

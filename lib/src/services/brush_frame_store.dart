@@ -24,18 +24,13 @@ import 'persistence/brush_drawing_binary_codec.dart';
 /// 유저 확정 (2026-08-16): 「추천대로」 — RAM 비례 기본값 + 압박 반응.
 /// A 3GB tablet lands at ~768MB instead of being asked to hold a
 /// desktop's 1.5GB of hot cels; a 12GB iPad keeps today's number.
-int deviceScaledHotCelBudget({required int? physicalMemoryBytes}) {
-  const desktopDefault = 1536 * 1024 * 1024;
-  const floor = 384 * 1024 * 1024;
-  if (physicalMemoryBytes == null || physicalMemoryBytes <= 0) {
-    return desktopDefault;
-  }
-  final quarter = physicalMemoryBytes ~/ 4;
-  if (quarter < floor) {
-    return floor;
-  }
-  return quarter > desktopDefault ? desktopDefault : quarter;
-}
+int deviceScaledHotCelBudget({required int? physicalMemoryBytes}) =>
+    deviceScaledBudget(
+      physicalMemoryBytes: physicalMemoryBytes,
+      divisor: 4,
+      floor: 384 * 1024 * 1024,
+      ceiling: 1536 * 1024 * 1024,
+    );
 
 class BrushFrameStore {
   BrushFrameStore();
@@ -174,7 +169,10 @@ class BrushFrameStore {
   // pixel edit, which also marks the cel dirty. Hot/cold-RAM remain
   // mutually exclusive. Truth is never evicted — the tier is
   // representation, not existence. Undo snapshots hold their own
-  // surface references (HistoryManager.retainedByteBudget).
+  // surface references, budgeted separately (HistoryManager.byteBudget)
+  // — and they share THESE tile objects wherever an edit did not reach,
+  // which is why an undo entry's weight is only the tiles the live
+  // surface no longer holds (`uniquelyRetainedTileBytes`).
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
   final Map<BrushFrameKey, AnicelCelBlob> _coldCels = {};

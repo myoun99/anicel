@@ -7,7 +7,7 @@ import 'canvas_selection_commands.dart';
 /// other). R28-S: the region is APP state on the selection channel, so
 /// execute/undo restore it whether or not a selection layer is mounted —
 /// undoing a selection while the brush is armed puts the ants back.
-class SelectionShapeHistoryCommand implements Command {
+class SelectionShapeHistoryCommand implements Command, RetainedBytesCommand {
   SelectionShapeHistoryCommand({
     required this.channel,
     required this.before,
@@ -17,6 +17,13 @@ class SelectionShapeHistoryCommand implements Command {
   final CanvasSelectionCommands channel;
   final CanvasSelectionRegion? before;
   final CanvasSelectionRegion? after;
+
+  /// ONLY [before] — the same sharing law the surface commands follow.
+  /// `after(n)` IS `before(n+1)` and the newest `after` is the live
+  /// region the channel is holding, so counting both would bill this
+  /// stack for a neighbour's bytes twice over.
+  @override
+  int get estimatedRetainedBytes => before?.estimatedRetainedBytes ?? 0;
 
   @override
   String get description => after == null ? 'Deselect' : 'Select';
