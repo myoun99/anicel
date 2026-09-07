@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★ (v) 2단계의 계약 — **한 장으로 합치고 한 번만 리샘플한다.**
 ///
@@ -98,8 +99,8 @@ void main() {
     return LayerFrameImageCache(frameStore: store);
   }
 
-  CanvasLayerStackNode drawnRow(String id, {double opacity = 1}) =>
-      CanvasLayerImageNode(
+  CompositeNode<CanvasStackRow> drawnRow(String id, {double opacity = 1}) =>
+      CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(frameKey: key(id), opacity: opacity),
       );
 
@@ -123,7 +124,7 @@ void main() {
 
   Future<CustomPainter> pumpStack(
     WidgetTester tester, {
-    required List<CanvasLayerStackNode> nodes,
+    required List<CompositeNode<CanvasStackRow>> nodes,
     required BitmapSurfacePainter surfacePainter,
     required LayerFrameImageCache cache,
     required bool disableBuffer,
@@ -173,7 +174,7 @@ void main() {
 
   Future<Uint8List> render(
     WidgetTester tester, {
-    required List<CanvasLayerStackNode> nodes,
+    required List<CompositeNode<CanvasStackRow>> nodes,
     required List<String> drawn,
     required bool disableBuffer,
     CanvasViewport? viewport,
@@ -200,7 +201,7 @@ void main() {
     ) async {
       final nodes = [
         drawnRow('under'),
-        const CanvasActiveLayerNode(opacity: 1),
+        const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
         drawnRow('over'),
       ];
       final buffered = await render(
@@ -229,10 +230,10 @@ void main() {
       // multiply would resolve against the wrong backdrop.
       final nodes = [
         drawnRow('under'),
-        CanvasLayerGroupNode(
+        CompositeGroup<CanvasStackRow>(
           children: [
             drawnRow('inside'),
-            const CanvasActiveLayerNode(opacity: 1),
+            const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
           ],
           opacity: 0.5,
           blendMode: LayerBlendMode.multiply,
@@ -263,7 +264,7 @@ void main() {
     // so the pixels MUST differ.
     final nodes = [
       drawnRow('under'),
-      const CanvasActiveLayerNode(opacity: 1),
+      const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
       drawnRow('over'),
     ];
     final reduced = CanvasViewport(zoom: 0.5);

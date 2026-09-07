@@ -1,6 +1,7 @@
 import '../../models/se_name_tag.dart';
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_lens.dart';
+import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
 
 /// The SE row's NAME TAG group (R5 #7) — a fixed group, sibling of
@@ -53,8 +54,10 @@ bool laneIsSeNameTag(String? laneId) =>
 String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
   const hex = formatLaneColorValue;
   return switch (laneId) {
-    seNameTagSizeLaneId => _number(resolved.style.fontSize),
-    seNameTagTrackingLaneId => _number(resolved.style.letterSpacing),
+    seNameTagSizeLaneId => formatTrimmedDecimal(resolved.style.fontSize),
+    seNameTagTrackingLaneId => formatTrimmedDecimal(
+      resolved.style.letterSpacing,
+    ),
     seNameTagBoldLaneId => resolved.style.bold ? 'on' : 'off',
     seNameTagNameInkLaneId => hex(resolved.style.color),
     seNameTagBoxColorLaneId => hex(resolved.style.backgroundColor),
@@ -200,10 +203,3 @@ String seNameTagLaneLabel(String laneId) => switch (laneId) {
   seNameTagShowLineLaneId => 'Show Dialogue',
   _ => laneId,
 };
-
-String _number(double value) {
-  final rounded = double.parse(value.toStringAsFixed(1));
-  return rounded == rounded.roundToDouble()
-      ? rounded.round().toString()
-      : rounded.toStringAsFixed(1);
-}

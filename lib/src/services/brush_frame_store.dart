@@ -293,6 +293,11 @@ class BrushFrameStore {
     }
   }
 
+  void _storeCold(BrushFrameKey key, AnicelCelBlob blob) {
+    _coldCels[key] = blob;
+    _coldBytes += blob.bytes.length;
+  }
+
   void _storeHot(BrushFrameKey key, BitmapSurface surface) {
     final previous = _hotByteEstimates.remove(key);
     if (previous != null) {
@@ -397,31 +402,33 @@ class BrushFrameStore {
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
-  /// and non-file flows). Frames reseed at sourceRevision 1.
-  void restoreBaked(Map<BrushFrameKey, AnicelCelBlob> cels) {
-    _clearAllTiers();
-    for (final entry in cels.entries) {
-      _frames[entry.key] = BrushFrameDrawingState(
-        key: entry.key,
-        sourceRevision: 1,
-      );
-      _coldCels[entry.key] = entry.value;
-      _coldBytes += entry.value.bytes.length;
-      _noteCelContent(entry.key);
-    }
-  }
+  /// and non-file flows).
+  void restoreBaked(Map<BrushFrameKey, AnicelCelBlob> cels) =>
+      _restoreAll(cels, _storeCold);
 
   /// Replaces the WHOLE store with FILE-BACKED cels (project open,
   /// R22-C): near-zero RAM — every cel reads from the .anicel on first
   /// access. No temp files, ever.
-  void restoreFromFile(Map<BrushFrameKey, AnicelCelFileRef> cels) {
+  void restoreFromFile(Map<BrushFrameKey, AnicelCelFileRef> cels) =>
+      _restoreAll(cels, (key, ref) => _fileCels[key] = ref);
+
+  /// The whole-store swap both entry points are: every tier cleared, then
+  /// each cel seeded and [place]d in the tier its payload belongs to.
+  /// Frames reseed at sourceRevision 1.
+  ///
+  /// ⚠️[place] runs BEFORE [_noteCelContent], which asks
+  /// [celHasRenderableContent] — and that reads the tiers.
+  void _restoreAll<T>(
+    Map<BrushFrameKey, T> cels,
+    void Function(BrushFrameKey key, T cel) place,
+  ) {
     _clearAllTiers();
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
         sourceRevision: 1,
       );
-      _fileCels[entry.key] = entry.value;
+      place(entry.key, entry.value);
       _noteCelContent(entry.key);
     }
   }
@@ -598,8 +605,7 @@ class BrushFrameStore {
       if (identical(_bakedSurfaces[key], surface)) {
         _bakedSurfaces.remove(key);
         _hotBytes -= _hotByteEstimates.remove(key)!;
-        _coldCels[key] = blob;
-        _coldBytes += blob.bytes.length;
+        _storeCold(key, blob);
         // Drop the derived alias too, or the surface stays resident.
         _displayCaches.remove(key);
       }
@@ -799,8 +805,7 @@ class BrushFrameStore {
         ),
       );
       _fileCels.remove(key);
-      _coldCels[key] = resized;
-      _coldBytes += resized.bytes.length;
+      _storeCold(key, resized);
       _dirtySinceSave.add(key);
     }
   }

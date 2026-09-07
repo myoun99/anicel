@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/dirty_region.dart';
+import 'brush_stamp_span_kernel.dart';
 
 /// BB-1 (R26 #9): the stroke-level blend kernel.
 ///
@@ -49,7 +50,9 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
     final copyBottom = covered.bottomExclusive;
     final rowBytes = (copyRight - copyLeft) * 4;
     // Inside readPixels: the tile is the receiver, so its buffer cannot
-    // be finalized out from under these reads (see BitmapTile.readPixels).
+    // be finalized out from under these reads (see BitmapTile.readPixels —
+    // the live rasterizer's copy of this exact loop, `_copyBaseRectInto`,
+    // is where that bug was caught).
     covered.tile.readPixels((_, tilePixels) {
       for (var y = copyTop; y < copyBottom; y += 1) {
         final srcOffset =
@@ -244,16 +247,17 @@ int _clampByte(double value) {
 /// re-derived the blend in float; the user's rule is ZERO drift in every
 /// mode. So the overlay stops handing the GPU anything to blend: this
 /// runs the SAME per-pixel math the commit runs — [blendStrokeRegionPixels]
-/// for the kernel modes, and for erase a byte-exact mirror of the stamp
-/// kernel's destination-out at opacity 1 (the erase landing IS one stamp
-/// of the stroke buffer — see `compositeStrokePixelsOntoBitmapSurface`).
+/// for the kernel modes, and for color/erase the stamp blitter ITSELF
+/// ([BrushStampBlitter]) at opacity 1, because that landing IS one
+/// stamp of the stroke buffer (see
+/// `compositeStrokePixelsOntoBitmapSurface`).
 /// The result draws as a plain REPLACEMENT tile, so pen-up cannot move a
 /// byte: identical bytes flow into identical composites.
 ///
 /// [dst]/[src] are BOUNDS-LOCAL straight RGBA; [erase] covers both the
 /// eraser tool and the 소거 blend mode (the tool locks the mode, so the
-/// two arrive together). [BrushBlendMode.color] mirrors the stamp
-/// kernel's srcOver at opacity 1 (the color landing is one stamp of the
+/// two arrive together). [BrushBlendMode.color] is that same stamp
+/// blitter's srcOver at opacity 1 (the color landing is one stamp of the
 /// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
 /// ONE display pipeline, live == commit unconditionally).
 /// [mask] (R28 selection): 1 byte of coverage per pixel, scaling the
@@ -281,79 +285,26 @@ Uint8List preBlendStrokeOverlayPixels({
     );
     src = masked;
   }
-  if (erase || mode == BrushBlendMode.erase) {
-    // Mirror of the stamp-ERASE per-pixel path at dabOpacity 1
-    // (bitmap_surface_brush_commit): sa==0 leaves the pixel verbatim,
-    // sa==255 zeroes it byte-hard, and the general case scales alpha
-    // through the same double expression — the parity test pins this
-    // against the real commit, native kernel included.
-    final result = Uint8List(pixelCount * 4);
-    for (var i = 0; i < pixelCount; i += 1) {
-      final o = i * 4;
-      final sa = src[o + 3];
-      if (sa == 0) {
-        result[o] = dst[o];
-        result[o + 1] = dst[o + 1];
-        result[o + 2] = dst[o + 2];
-        result[o + 3] = dst[o + 3];
-        continue;
-      }
-      if (sa == 255) {
-        continue; // Already zeroed.
-      }
-      final sourceAlpha = sa / 255.0;
-      final outAlpha = (dst[o + 3] / 255.0) * (1.0 - sourceAlpha);
-      if (outAlpha == 0.0) {
-        continue; // Already zeroed.
-      }
-      result[o] = dst[o];
-      result[o + 1] = dst[o + 1];
-      result[o + 2] = dst[o + 2];
-      result[o + 3] = (outAlpha * 255.0).round().clamp(0, 255);
-    }
-    return result;
-  }
-  if (mode == BrushBlendMode.color) {
-    // Mirror of the stamp srcOver per-pixel path at dabOpacity 1
-    // (bitmap_surface_brush_commit) — the same fast paths, the same
-    // double expressions in the same order, so the doubles round to the
-    // same bytes. sa==0 leaves the pixel verbatim (junk α==0 RGB
-    // included, exactly like the commit's skip).
-    final result = Uint8List(pixelCount * 4);
-    for (var i = 0; i < pixelCount; i += 1) {
-      final o = i * 4;
-      final sa = src[o + 3];
-      if (sa == 0) {
-        result[o] = dst[o];
-        result[o + 1] = dst[o + 1];
-        result[o + 2] = dst[o + 2];
-        result[o + 3] = dst[o + 3];
-        continue;
-      }
-      if (sa == 255) {
-        result[o] = src[o];
-        result[o + 1] = src[o + 1];
-        result[o + 2] = src[o + 2];
-        result[o + 3] = 255;
-        continue;
-      }
-      final sourceAlpha = sa / 255.0;
-      final destinationAlpha = dst[o + 3] / 255.0;
-      final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
-      if (outAlpha == 0.0) {
-        continue; // Already zeroed.
-      }
-      final inverseSourceAlpha = 1.0 - sourceAlpha;
-      for (var c = 0; c < 3; c += 1) {
-        result[o + c] =
-            ((src[o + c] * sourceAlpha +
-                        dst[o + c] * destinationAlpha * inverseSourceAlpha) /
-                    outAlpha)
-                .round()
-                .clamp(0, 255);
-      }
-      result[o + 3] = (outAlpha * 255.0).round().clamp(0, 255);
-    }
+  final stampErase = erase || mode == BrushBlendMode.erase;
+  if (stampErase || mode == BrushBlendMode.color) {
+    // The color/erase landing IS one stamp of the stroke buffer at
+    // opacity 1, so this runs THE stamp blitter rather than a hand-kept
+    // mirror of it: sa==0 leaves the pixel verbatim (junk alpha==0 RGB
+    // included, exactly like the commit's skip), sa==255 copies or zeroes
+    // it byte-hard, and the general case runs the same double expressions
+    // in the same order — because it is the same code. The parity test
+    // pins the result against the real commit, native kernel included.
+    //
+    // The blitter writes IN PLACE, over the destination the commit is
+    // about to change. Here the caller wants a fresh buffer instead (the
+    // live rasterizer diffs the result against `dst` to decide whether
+    // the tile moved), so a copy of `dst` is what it blends into.
+    final result = Uint8List.fromList(dst);
+    BrushStampBlitter(
+      rgba: src,
+      dabOpacity: 1.0,
+      erase: stampErase,
+    ).blendSpanInPlace(result, 0, 0, pixelCount);
     return result;
   }
   final result = blendStrokeRegionPixels(

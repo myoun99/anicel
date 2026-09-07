@@ -21,6 +21,7 @@ import 'brush_dab_kernel.dart';
 import 'canvas_selection_region.dart';
 import 'brush_stroke_blend.dart'
     show
+        bitmapSurfaceRegionPixels,
         preBlendStrokeOverlayPixels,
         strokeBlendModeNativeId,
         strokeCoverageMask,
@@ -742,8 +743,20 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // Dart route: the same kernels, in Dart. The straight result is a
     // fresh buffer each time (the reference blend is functional), so the
     // resident entry simply swaps.
-    final staged = Uint8List(byteLength);
-    _copyBaseRectInto(staged, base, tileLeft, tileTop);
+    // The straight result is a fresh buffer each time, which is exactly
+    // what the region gather returns — the base's bytes for this tile
+    // rect, with missing base tiles left as zeros. The base grid is the
+    // surface's own tile size; a stroke tile can overlap up to four base
+    // tiles when the two grids differ, and the walk handles that.
+    final staged = bitmapSurfaceRegionPixels(
+      base,
+      DirtyRegion(
+        left: tileLeft,
+        top: tileTop,
+        rightExclusive: tileLeft + tileSize,
+        bottomExclusive: tileTop + tileSize,
+      ),
+    );
     final blended = preBlendStrokeOverlayPixels(
       dst: staged,
       src: _tiles[key]!,
@@ -857,63 +870,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       promoted.add(PromotedStrokeTile._(tile, result.revision));
     }
     return promoted;
-  }
-
-  /// Copies [base]'s straight bytes for the tile rect at ([left], [top])
-  /// into [target] (stride [tileSize]); missing base tiles stay zero.
-  /// The base grid is the surface's own tile size — a stroke tile can
-  /// overlap up to four base tiles when the two grids differ.
-  void _copyBaseRectInto(
-    Uint8List target,
-    BitmapSurface base,
-    int left,
-    int top,
-  ) {
-    final baseTileSize = base.tileSize;
-    final right = left + tileSize;
-    final bottom = top + tileSize;
-    final (
-      firstX: tileX0,
-      lastX: tileX1,
-      firstY: tileY0,
-      lastY: tileY1,
-    ) = DirtyRegion(
-      left: left,
-      top: top,
-      rightExclusive: right,
-      bottomExclusive: bottom,
-    ).tileRange(tileSize: baseTileSize);
-    for (var tileY = tileY0; tileY <= tileY1; tileY += 1) {
-      for (var tileX = tileX0; tileX <= tileX1; tileX += 1) {
-        final tile = base.tileAt(TileCoord(x: tileX, y: tileY));
-        if (tile == null) {
-          continue;
-        }
-        final worldLeft = tileX * baseTileSize;
-        final worldTop = tileY * baseTileSize;
-        final copyLeft = math.max(left, worldLeft);
-        final copyTop = math.max(top, worldTop);
-        final copyRight = math.min(right, worldLeft + baseTileSize);
-        final copyBottom = math.min(bottom, worldTop + baseTileSize);
-        final rowBytes = (copyRight - copyLeft) * 4;
-        // Inside readPixels: the tile is the receiver, so its buffer cannot
-        // be finalized mid-copy (see BitmapTile.readPixels — this exact
-        // loop is where that bug was caught).
-        tile.readPixels((_, tilePixels) {
-          for (var y = copyTop; y < copyBottom; y += 1) {
-            final srcOffset =
-                ((y - worldTop) * baseTileSize + (copyLeft - worldLeft)) * 4;
-            final dstOffset = ((y - top) * tileSize + (copyLeft - left)) * 4;
-            target.setRange(
-              dstOffset,
-              dstOffset + rowBytes,
-              tilePixels,
-              srcOffset,
-            );
-          }
-        });
-      }
-    }
   }
 
   Uint8List _tileBuffer(int tileX, int tileY) {

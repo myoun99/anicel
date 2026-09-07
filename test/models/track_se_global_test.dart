@@ -7,6 +7,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
@@ -272,6 +273,80 @@ void main() {
       final track = withRotation({0: 10, 6: 20}).transformTrack;
       expect(
         first.globalTransformTrack(track).rotation.keys.keys.toList(),
+        [0, 6],
+      );
+    });
+  });
+
+  // The effect chain's parameter lanes key on the same axis as the
+  // transform lanes and take the same trip — but nothing measured it, so
+  // the effect rebase could have shifted the wrong way (or not at all)
+  // with every test above still green.
+  group('the display clone rebases EFFECT parameter lanes, both ways', () {
+    const window = TrackSeWindow(cutStartFrame: 20, cutDurationFrames: 12);
+
+    LayerEffect blurWith(Map<int, double> keys) => LayerEffect(
+      id: const EffectId('fx-1'),
+      kind: EffectKind.blur,
+      parameters: {
+        'blurX': EffectParameter(
+          track: keys.entries.fold<PropertyTrack<double>>(
+            PropertyTrack<double>(),
+            (track, entry) => track.withKey(entry.key, entry.value),
+          ),
+        ),
+      },
+    );
+
+    Layer withEffect(LayerEffect effect) => Layer(
+      id: const LayerId('se-1'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+      effects: [effect],
+    );
+
+    PropertyTrack<double> blurXOf(List<LayerEffect> effects) =>
+        effects.single.parameters['blurX']!.track;
+
+    test('global keys arrive on the cut-local axis', () {
+      final local = blurXOf(
+        window.displayLayer(withEffect(blurWith({40: 7}))).effects,
+      );
+      expect(local.keys.keys.toList(), [20]);
+      expect(local.keyAt(20)!.value, 7);
+    });
+
+    test('a key from an EARLIER cut is dropped, not folded onto frame 0', () {
+      final local = blurXOf(
+        window.displayLayer(withEffect(blurWith({8: 99, 20: 3}))).effects,
+      );
+      expect(local.keys.keys.toList(), [0]);
+      expect(
+        local.keyAt(0)!.value,
+        3,
+        reason: 'the negative one has no row here; it must not overwrite',
+      );
+    });
+
+    test('an edit made against the clone lands back on the global axis', () {
+      final local = blurXOf(
+        window.displayLayer(withEffect(blurWith({20: 3}))).effects,
+      );
+      final edited = blurWith({}).copyWith(
+        parameters: {'blurX': EffectParameter(track: local.withKey(5, 9))},
+      );
+      final global = blurXOf(window.globalEffects([edited]));
+      expect(global.keys.keys.toList(), [20, 25]);
+      expect(global.keyAt(25)!.value, 9);
+    });
+
+    test('a window at the track start is the identity', () {
+      const first = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 24);
+      expect(
+        blurXOf(first.globalEffects([blurWith({0: 1, 6: 2})])).keys.keys
+            .toList(),
         [0, 6],
       );
     });

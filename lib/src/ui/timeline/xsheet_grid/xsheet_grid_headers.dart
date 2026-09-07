@@ -44,8 +44,9 @@ class _XSheetGridHeaders {
         axis: Axis.vertical,
         hooks: _state.widget.hooks.rowDragHooks,
         onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
-        // The sheet builds every row, so nothing has to be pinned against
-        // a window (see [HeldRowPin]).
+        // ⚠️No A5 grip pin here: this grid's LayerRailWindow is a paint
+        // clip and the sheet builds every row, so nothing can unmount a
+        // held column mid-drag (see [HeldRowPin]).
         child: child,
       );
 

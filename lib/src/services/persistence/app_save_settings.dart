@@ -224,13 +224,8 @@ abstract final class AppSave {
 
   /// The one folder recovery snapshots live in — what the Preferences
   /// list enumerates and the abandoned-snapshot sweep walks.
-  static String recoveryDirectory() {
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return '${Directory.systemTemp.path.replaceAll('\\', '/')}'
-          '/qa_test_recovery_$pid';
-    }
-    return appSupportFilePath('Recovery');
-  }
+  static String recoveryDirectory() =>
+      testRedirectedAppSupportPath('Recovery', sandbox: 'recovery');
 
   /// Every place a recovery snapshot for [projectFilePath] may be found.
   ///
@@ -314,11 +309,7 @@ abstract final class AppSave {
     if (configured != null) {
       return configured.path;
     }
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return '${Directory.systemTemp.path.replaceAll('\\', '/')}'
-          '/qa_test_conform_$pid';
-    }
-    return appSupportFilePath('Conformed');
+    return testRedirectedAppSupportPath('Conformed', sandbox: 'conform');
   }
 
   /// Re-establishes the settings folders' grants for THIS run, answering

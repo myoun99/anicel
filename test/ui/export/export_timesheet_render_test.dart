@@ -91,9 +91,24 @@ void main() {
       );
       expect(scaled.width, rect.width.round() * 2);
 
+      // An explicit output size WINS over the scale — the sheet and the
+      // conte page answer this the same way, and the preview relies on it
+      // to raster a thumbnail at a size it chose.
+      final forced = await renderTimesheetPageImage(
+        document: document,
+        layout: layout,
+        pageIndex: 0,
+        notation: TimesheetNotation.english,
+        scale: 2,
+        outputSize: const CanvasSize(width: 64, height: 40),
+      );
+      expect(forced.width, 64);
+      expect(forced.height, 40);
+
       first.dispose();
       second.dispose();
       scaled.dispose();
+      forced.dispose();
     });
   });
 }

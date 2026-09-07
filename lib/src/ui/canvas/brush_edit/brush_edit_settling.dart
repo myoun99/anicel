@@ -24,6 +24,17 @@ class _BrushEditSettling {
   /// pre-stroke tiles — the "part of the stroke blinks" bug).
   DirtyRegion? _settlingBounds;
 
+  /// Ends the settle window: the flag, the bounds and the fallback timer.
+  ///
+  /// The four fields belong here, so the teardown does too — the overlay
+  /// used to write them out itself, twice.
+  void endWindow() {
+    _settling = false;
+    _settlingBounds = null;
+    _settlingFallbackTimer?.cancel();
+    _settlingFallbackTimer = null;
+  }
+
   /// Lets go of every stand-in whose committed tile can now paint itself.
   ///
   /// A barrier, not a clock: the release is driven by decodes landing, so

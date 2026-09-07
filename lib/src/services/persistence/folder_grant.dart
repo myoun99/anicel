@@ -22,6 +22,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 
+import '../../core/path_names.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 
@@ -491,7 +492,7 @@ abstract final class FolderPicker {
     }
     return (await _invoke('exportFile', {
       'sourcePath': sourcePath,
-      'suggestedName': suggestedName ?? _fileNameOf(sourcePath),
+      'suggestedName': suggestedName ?? fileNameOfPath(sourcePath),
     }, GrantKind.file)).first;
   }
 
@@ -601,12 +602,6 @@ abstract final class FolderPicker {
     ),
     initialDirectory,
   );
-
-  static String _fileNameOf(String path) {
-    final normalized = _normalize(path);
-    final slash = normalized.lastIndexOf('/');
-    return slash < 0 ? normalized : normalized.substring(slash + 1);
-  }
 
   /// Reopens a stored [bookmark], re-acquiring the security scope. Returns
   /// a grant whose path may DIFFER from the original — a bookmark tracks

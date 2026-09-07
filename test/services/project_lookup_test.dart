@@ -76,15 +76,19 @@ void main() {
       );
     });
 
-    test('requireCutLocation is ONE walk — the holding track and the cut '
-        'are its two projections, and an absent id throws', () {
+    test('requireCutPosition is ONE walk — the holding track, the cut and '
+        'its index are its projections, and an absent id throws', () {
       final project = _project(cuts: [_cut('a'), _cut('b')]);
 
-      final location = requireCutLocation(project, const CutId('b'));
-      expect(location.track.id, const TrackId('t'));
-      expect(location.cut.id, const CutId('b'));
+      final position = requireCutPosition(project, const CutId('b'));
+      expect(position.track.id, const TrackId('t'));
+      expect(position.trackId, const TrackId('t'));
+      expect(position.cut.id, const CutId('b'));
+      expect(position.cutId, const CutId('b'));
+      expect(position.cutIndex, 1);
+      expect(position.cutCount, 2);
       expect(
-        () => requireCutLocation(project, const CutId('missing')),
+        () => requireCutPosition(project, const CutId('missing')),
         throwsA(
           isA<StateError>().having(
             (error) => error.message,
@@ -95,12 +99,12 @@ void main() {
       );
     });
 
-    test('cutLocationOrNull answers null for an id that lives nowhere', () {
+    test('cutPositionOf answers null for an id that lives nowhere', () {
       final project = _project(cuts: [_cut('a')]);
 
-      expect(cutLocationOrNull(project, const CutId('missing')), isNull);
+      expect(cutPositionOf(project, const CutId('missing')), isNull);
       expect(
-        cutLocationOrNull(project, const CutId('a'))?.cut.id,
+        cutPositionOf(project, const CutId('a'))?.cut.id,
         const CutId('a'),
       );
     });

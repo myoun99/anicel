@@ -4,6 +4,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/active_cut_edits.dart';
@@ -96,7 +97,7 @@ void main() {
     final selection = _StandingOn(first);
     final changes = _RecordingChanges();
     final edits = ActiveCutEdits(
-      project: _OneCut(s.requireActiveCut),
+      timeline: _OneCut(s.requireActiveCut),
       selection: selection,
       changes: changes,
     );
@@ -128,7 +129,7 @@ void main() {
     final s = session();
     final changes = _RecordingChanges();
     final edits = ActiveCutEdits(
-      project: _OneCut(s.requireActiveCut),
+      timeline: _OneCut(s.requireActiveCut),
       selection: _StandingOn(s.requireActiveCut.layers.first),
       changes: changes,
     );
@@ -174,13 +175,16 @@ class _StandingOn implements SelectionAccess {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _OneCut implements ProjectAccess {
+/// The envelope reads the cut id in ONE place — the editing session's
+/// `activeCutId` — for the row arm as much as for the cut arms.
+class _OneCut implements TimelineAccess {
   _OneCut(this._cut);
 
   final Cut _cut;
 
   @override
-  Cut get requireActiveCut => _cut;
+  EditingSessionState get editingSession =>
+      EditingSessionState(activeCutId: _cut.id);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -16,7 +16,10 @@ class _LayerGridRowDrags {
   ///
   /// A LANE row (an fx chain header, a parameter lane) goes down the same
   /// wrapper: which target it gets is a question about the ROW, answered
-  /// inside [layerRowDragWrapper], not about which grid is asking.
+  /// inside [layerRowDragWrapper], not about which grid is asking. This
+  /// grid and the sheet had each spelled that routing out — the same four
+  /// gates, the same subject, the same tail (the audit's clone scan,
+  /// round 8, the grids' second-largest pair).
   Widget draggable(TimelineDisplayRow row, Widget child) => layerRowDragWrapper(
     row: row,
     dragRows: () => _state._dragRows,

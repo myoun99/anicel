@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// ㊱ — the ACTIVE layer's opacity on the editing canvas.
 ///
@@ -64,7 +65,11 @@ void main() {
               width: 4,
               height: 4,
               child: CanvasLayerStackView(
-                nodes: [CanvasActiveLayerNode(opacity: opacity)],
+                nodes: [
+                  CompositeLeaf<CanvasStackRow>(
+                    CanvasActiveLayerRow(opacity: opacity),
+                  ),
+                ],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(),

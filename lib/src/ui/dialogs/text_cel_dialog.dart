@@ -119,80 +119,51 @@ class _TextCelDialogState extends State<TextCelDialog> {
             ),
           ),
           const SizedBox(height: 10),
-          ExportModuleRow(
+          ExportChoiceRow<String?>(
             label: strings.textCelFontLabel,
-            child: Wrap(
-              spacing: 4,
-              children: [
-                ExportChip(
-                  key: const ValueKey<String>('text-cel-font-system'),
-                  label: strings.textCelFontSystem,
-                  selected: _style.fontFamily == null,
-                  onTap: () => setState(
-                    () => _style = _style.copyWith(fontFamily: null),
-                  ),
-                ),
-                for (final family in const [
-                  conteJpFontFamily,
-                  conteKrFontFamily,
-                ])
-                  ExportChip(
-                    key: ValueKey<String>('text-cel-font-$family'),
-                    label: family,
-                    selected: _style.fontFamily == family,
-                    onTap: () => setState(
-                      () => _style = _style.copyWith(fontFamily: family),
-                    ),
-                  ),
-              ],
+            keyPrefix: 'text-cel-font',
+            values: const [null, conteJpFontFamily, conteKrFontFamily],
+            selected: _style.fontFamily,
+            keyOf: (family) => family ?? 'system',
+            labelOf: (family) => family ?? strings.textCelFontSystem,
+            onSelect: (family) => setState(
+              () => _style = _style.copyWith(fontFamily: family),
             ),
           ),
           const SizedBox(height: 6),
-          ExportModuleRow(
+          ExportChoiceRow<double>(
             label: strings.textCelSizeLabel,
-            child: Wrap(
-              spacing: 4,
-              children: [
-                for (final size in const [24.0, 48.0, 96.0, 160.0])
-                  ExportChip(
-                    key: ValueKey<String>('text-cel-size-${size.round()}'),
-                    label: '${size.round()}',
-                    selected: _style.fontSize == size,
-                    // The outline width is DERIVED from the size — resizing
-                    // with the outline on re-derives it, so toggle order
-                    // can't bake two different widths for one look.
-                    onTap: () => setState(
-                      () => _style = _style.copyWith(
-                        fontSize: size,
-                        outlineWidth: _style.outlineColor == null
-                            ? null
-                            : (size / 12).clamp(2.0, 8.0),
-                      ),
-                    ),
-                  ),
-              ],
+            keyPrefix: 'text-cel-size',
+            values: const [24.0, 48.0, 96.0, 160.0],
+            selected: _style.fontSize,
+            keyOf: (size) => '${size.round()}',
+            labelOf: (size) => '${size.round()}',
+            // The outline width is DERIVED from the size — resizing with
+            // the outline on re-derives it, so toggle order can't bake two
+            // different widths for one look.
+            onSelect: (size) => setState(
+              () => _style = _style.copyWith(
+                fontSize: size,
+                outlineWidth: _style.outlineColor == null
+                    ? null
+                    : (size / 12).clamp(2.0, 8.0),
+              ),
             ),
           ),
           const SizedBox(height: 6),
-          ExportModuleRow(
+          ExportChoiceRow<TextCelAlign>(
             label: strings.textCelAlignLabel,
-            child: Wrap(
-              spacing: 4,
-              children: [
-                for (final align in TextCelAlign.values)
-                  ExportChip(
-                    key: ValueKey<String>('text-cel-align-${align.jsonValue}'),
-                    label: switch (align) {
-                      TextCelAlign.left => strings.textCelAlignLeft,
-                      TextCelAlign.center => strings.textCelAlignCenter,
-                      TextCelAlign.right => strings.textCelAlignRight,
-                    },
-                    selected: _style.align == align,
-                    onTap: () =>
-                        setState(() => _style = _style.copyWith(align: align)),
-                  ),
-              ],
-            ),
+            keyPrefix: 'text-cel-align',
+            values: TextCelAlign.values,
+            selected: _style.align,
+            keyOf: (align) => align.jsonValue,
+            labelOf: (align) => switch (align) {
+              TextCelAlign.left => strings.textCelAlignLeft,
+              TextCelAlign.center => strings.textCelAlignCenter,
+              TextCelAlign.right => strings.textCelAlignRight,
+            },
+            onSelect: (align) =>
+                setState(() => _style = _style.copyWith(align: align)),
           ),
           const SizedBox(height: 6),
           ExportModuleRow(

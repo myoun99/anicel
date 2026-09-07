@@ -24,8 +24,8 @@ void main() {
     test('createFolderLayer holds no cels and prints nothing', () {
       final row = folder('a');
       expect(row.kind, LayerKind.folder);
-      expect(layerKindHoldsDrawings(row.kind), isFalse);
-      expect(layerKindAcceptsBrushInput(row.kind), isFalse);
+      expect(row.kind.holdsDrawings, isFalse);
+      expect(row.kind.acceptsBrushInput, isFalse);
       expect(row.frames, isEmpty);
       expect(row.timeline, isEmpty);
       expect(row.onTimesheet, isFalse);
@@ -33,11 +33,11 @@ void main() {
 
     test('a folder carries the same display state every layer carries', () {
       final row = folder('a');
-      expect(layerKindHasPictureOpacity(row.kind), isTrue);
-      expect(layerKindHasLayerTransform(row.kind), isTrue);
-      expect(layerKindComposites(row.kind), isTrue);
+      expect(row.kind.hasPictureOpacity, isTrue);
+      expect(row.kind.hasLayerTransform, isTrue);
+      expect(row.kind.composites, isTrue);
       // ...but paints no surface of its own — its members do.
-      expect(layerKindPaintsArtwork(row.kind), isFalse);
+      expect(row.kind.paintsArtwork, isFalse);
     });
 
     test('toJson/fromJson round-trips the row, twirl included', () {

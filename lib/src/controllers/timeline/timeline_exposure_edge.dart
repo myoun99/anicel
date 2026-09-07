@@ -129,68 +129,50 @@ class _TimelineExposureEdge {
     required TimelineBlockEdge edge,
     required int delta,
   }) {
-    final blocks = drawingBlocks(timeline);
-    final targetIndex = blocks.indexWhere(
+    final layout = _BlockLayout.of(timeline);
+    final targetIndex = layout.blocks.indexWhere(
       (block) => block.startIndex == blockStartIndex,
     );
     if (targetIndex == -1) {
       throw StateError('No drawing block starts at index $blockStartIndex.');
     }
 
-    // New start/length per block, seeded with the resized target.
-    final newStarts = List<int>.generate(
-      blocks.length,
-      (i) => blocks[i].startIndex,
-      growable: false,
-    );
-    final newLengths = List<int>.generate(
-      blocks.length,
-      (i) => blocks[i].length,
-      growable: false,
-    );
-
-    final target = blocks[targetIndex];
+    final target = layout.blocks[targetIndex];
     switch (edge) {
       case TimelineBlockEdge.end:
-        newLengths[targetIndex] = target.length + delta;
+        layout.lengths[targetIndex] = target.length + delta;
       case TimelineBlockEdge.start:
-        newStarts[targetIndex] = target.startIndex + delta;
-        newLengths[targetIndex] = target.length - delta;
+        layout.starts[targetIndex] = target.startIndex + delta;
+        layout.lengths[targetIndex] = target.length - delta;
     }
 
     // Ripple following blocks (end-edge resizes and front shrinks change
     // where the target ends; contact rules: glued blocks stay glued,
     // separated blocks move only when overlapped).
-    _relayBlocksAfter(blocks, newStarts, newLengths, targetIndex);
+    layout.relayAfter(targetIndex);
 
     // Ripple preceding blocks (start-edge moves): mirror of the above.
     var nextOldStart = target.startIndex;
-    var nextNewStart = newStarts[targetIndex];
+    var nextNewStart = layout.starts[targetIndex];
     for (var i = targetIndex - 1; i >= 0; i -= 1) {
-      final block = blocks[i];
+      final block = layout.blocks[i];
       final glued = block.endIndexExclusive == nextOldStart;
       var end = glued ? nextNewStart : block.endIndexExclusive;
       if (end > nextNewStart) {
         end = nextNewStart;
       }
-      newStarts[i] = end - block.length;
+      layout.starts[i] = end - block.length;
       nextOldStart = block.startIndex;
-      nextNewStart = newStarts[i];
+      nextNewStart = layout.starts[i];
     }
 
-    if (newStarts.isNotEmpty && newStarts.first < 0) {
+    if (layout.starts.isNotEmpty && layout.starts.first < 0) {
       throw StateError(
         'Comma edge shift would push a block before frame 0 '
         '(clamp deltas with clampExposureEdgeDelta first).',
       );
     }
 
-    // Rebuild: drawings at their new starts. Block-owned dots ride inside
-    // the entries for free; copyWith drops offsets a shrink cut off.
-    final next = SplayTreeMap<int, TimelineExposure>();
-    for (var i = 0; i < blocks.length; i += 1) {
-      next[newStarts[i]] = blocks[i].entry.copyWith(length: newLengths[i]);
-    }
-    return next;
+    return layout.toTimeline();
   }
 }

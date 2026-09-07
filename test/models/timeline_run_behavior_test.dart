@@ -281,8 +281,11 @@ void main() {
     // space [6,10) fits the cycle's first part — the 4f hold copy.
     expect(derived.timeline[6]!.ghost, isTrue);
     expect(derived.timeline[6]!.length, 4);
-    expect(timelineIndexIsGhost(derived, 8), isTrue,
-        reason: 'covered by the cycled hold copy, not a separate entry');
+    expect(
+      timelineIndexIsGhost(derived, 8),
+      isTrue,
+      reason: 'covered by the cycled hold copy, not a separate entry',
+    );
     expect(derived.timeline[8], isNull);
   });
 
@@ -316,8 +319,39 @@ void main() {
     expect(derived.timeline[4]!.ghost, isTrue);
     expect(derived.timeline[4]!.length, 2, reason: 'cycled hold copy');
     expect(derived.timeline[0]!.ghost, isTrue);
-    expect(derived.timeline[0]!.length, 2,
-        reason: 'partial lead-in keeps the pattern tail (the hold part)');
+    expect(
+      derived.timeline[0]!.length,
+      2,
+      reason: 'partial lead-in keeps the pattern tail (the hold part)',
+    );
+  });
+
+  test('a pattern anchor ON the run\'s first frame is INSIDE the run', () {
+    // ⛔The bound is `>= run start`, not `>`. The first block of the run
+    // is a legal pattern anchor — picking it is how a start repeat says
+    // "cycle just this one frame" — and an off-by-one there silently
+    // falls back to the whole run, which looks plausible on screen.
+    final layer = _layer(
+      timeline: {5: _draw('a', 1), 6: _draw('b', 1), 7: _draw('c', 1)},
+      behaviors: const [
+        TimelineRunBehavior(
+          anchorFrameId: FrameId('a'),
+          side: TimelineRunEdgeSide.start,
+          mode: TimelineRunEdgeMode.repeat,
+          patternAnchorFrameId: FrameId('a'),
+        ),
+      ],
+    );
+
+    final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+    // Pattern = [a] alone, tiled leftward over [0,5).
+    for (var index = 0; index < 5; index += 1) {
+      expect(
+        derived.timeline[index]!.frameId,
+        const FrameId('a'),
+        reason: 'frame $index cycles the anchor block alone',
+      );
+    }
   });
 
   test('setting the same edge twice: the LAST spec wins the dedupe', () {

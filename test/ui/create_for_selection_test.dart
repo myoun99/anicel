@@ -113,7 +113,7 @@ void main() {
     s.addLayerOfKind(LayerKind.instruction);
     final instrId = s.activeLayer!.id;
     final drawingId = s.layers
-        .firstWhere((l) => layerKindHoldsDrawings(l.kind))
+        .firstWhere((l) => l.kind.holdsDrawings)
         .id;
 
     s.updateFrameRangeSelectionDrag(

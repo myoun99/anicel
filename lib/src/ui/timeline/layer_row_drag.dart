@@ -343,7 +343,7 @@ class LayerRowDragTarget extends StatelessWidget {
   /// 한 것은 **드래그 이동뿐**」.
   ///
   /// ⛔Both rails used to answer this by mounting **no target at all**
-  /// (`if (!layerKindReordersInCut(kind)) return child;`), and the target
+  /// (`if (!kind.reordersInCut) return child;`), and the target
   /// carries BOTH halves of the drag — so 「이동 불가」 silently answered
   /// 「선택 불가」 too. **한 플래그가 두 질문에 답한 것이다.**
   ///
@@ -968,7 +968,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
 /// **카메라나 트랜지션레이어에서 선택범위 시작하려하면 작동안함** … 막으라고
 /// 한 것은 **드래그 이동뿐**」.
 ///
-/// ⛔두 레일이 각자 `if (!layerKindReordersInCut(kind)) return child;` 를
+/// ⛔두 레일이 각자 `if (!kind.reordersInCut) return child;` 를
 /// 적고 있었고, 그 한 줄이 **이동 불가로 선택 불가까지** 답했다. x시트는
 /// 가로 레일의 그 모양을 **베껴서** 같은 버그를 갖고 있었다 — 사본이라
 /// 한쪽만 고치면 갈라진다.
@@ -986,7 +986,7 @@ Widget? unmovableRowSelectTarget({
   required void Function(int rowDelta) onSelectCrossed,
   required Widget child,
 }) {
-  if (layerKindReordersInCut(kind)) {
+  if (kind.reordersInCut) {
     return null;
   }
   if (hooks == null || hooks.onSelectBegin == null) {
@@ -1165,9 +1165,22 @@ Widget _laneSelectOnlyDragTarget(
 /// for every other lane row, and for a header the chain cannot place — the
 /// select-only target above.
 ///
-/// The Transform group header is never a chain member: it is where the
-/// chain ends, so [parseEffectLaneId] refuses it and it falls to select-
-/// only like any parameter lane.
+/// 🚨ONE function for the rail and the sheet, like the two targets above it
+/// (the audit's clone scan, round 8, the grids' second-largest pair). Each
+/// grid had spelled the whole thing: the same four gates (a group header,
+/// an effect lane id, no parameter id, a slot that is still in the chain),
+/// the same subject, the same `effectChainAfterCrossing` tail — and each
+/// had to remember the select-only fallback afterwards. Both answers live
+/// here now, so a caller cannot take one and forget the other.
+///
+/// ⛔The Transform group header is never a chain member: it is where the
+/// chain ends. That is [parseEffectLaneId] answering null, not a rule of
+/// this function's own — so it falls to select-only like any parameter
+/// lane.
+///
+/// ★A lane row cannot be RE-ORDERED unless it heads a chain, but every row
+/// can be SELECTED. Those are two questions, and only the first one ever
+/// needed an answer here (B4-3).
 ///
 /// R5 #15: an fx chain has no "inside a row" to drop into — an effect
 /// holds nothing — so the on-row band is ignored and the caret stays the
@@ -1181,6 +1194,9 @@ Widget _laneRowDragTarget(
     List<TimelineDisplayRow> Function() dragRows,
     void Function(List<TimelineDisplayRow> rows, int rowDelta)?
     onRowSelectionSpan,
+    // The A5 grip: the rail PINS the held row in its window (the window
+    // would otherwise unmount it mid-drag) and the sheet has nothing to
+    // pin, so this is the caller's answer and not a rule of this function.
     VoidCallback? onGripTaken,
     VoidCallback? onGripReleased,
   })
@@ -1226,6 +1242,9 @@ Widget _laneRowDragTarget(
     onGripTaken: wiring.onGripTaken,
     onGripReleased: wiring.onGripReleased,
     isLastRow: slot == headers.length - 1,
+    // An fx chain has no "inside a row" to drop into — an effect holds
+    // nothing — so the on-row band is ignored here and the caret stays
+    // the only answer (R5 #15).
     onCrossed: (steps, _, _) {
       final landed = effectChainAfterCrossing(headers, slot, steps);
       hooks.onEffectUpdate(row.layer.id, landed.effectIds, landed.slot);

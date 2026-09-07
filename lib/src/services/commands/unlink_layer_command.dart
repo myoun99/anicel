@@ -39,18 +39,15 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   @override
   void execute() {
     final project = repository.requireProject();
-    final (:track, :cut) = requireCutLocation(project, cutId);
+    final position = requireCutPosition(project, cutId);
+    final track = position.track;
+    final cut = position.cut;
     final source = requireLayer(project, cutId: cutId, layerId: sourceLayerId);
-    final baseId = source.attachedToLayerId ?? source.id;
-    if (!cut.layers.any((layer) => layer.id == baseId)) {
+    final baseId = attachBaseIdOf(source);
+    final members = attachedGroupSlice(baseId, cut.layers);
+    if (members.isEmpty) {
       throw StateError('Attach base not found: $baseId');
     }
-    // The whole contiguous group — below-placement rows and organizer
-    // folder rows included (the gate scans the same slice).
-    final members = cut.layers.sublist(
-      attachedGroupStartIndex(baseId, cut.layers),
-      attachedGroupEndIndex(baseId, cut.layers),
-    );
 
     // 1. Capture the shared pixels THROUGH the still-linked member keys
     //    (they resolve to the canonical cels).

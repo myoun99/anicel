@@ -117,8 +117,8 @@ void main() {
   group('the kinds that hold their place say so', () {
     test('camera and transition do not re-order in a cut; everything else '
         'does', () {
-      expect(layerKindReordersInCut(LayerKind.camera), isFalse);
-      expect(layerKindReordersInCut(LayerKind.transition), isFalse);
+      expect(LayerKind.camera.reordersInCut, isFalse);
+      expect(LayerKind.transition.reordersInCut, isFalse);
       for (final kind in [
         LayerKind.animation,
         LayerKind.instruction,
@@ -127,7 +127,7 @@ void main() {
         LayerKind.image,
       ]) {
         expect(
-          layerKindReordersInCut(kind),
+          kind.reordersInCut,
           isTrue,
           reason: '$kind has no fixed seat',
         );

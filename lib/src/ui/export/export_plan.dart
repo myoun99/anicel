@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import '../../models/audio_clip.dart' show AudioVolumeKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_cel_naming.dart';
@@ -11,6 +10,7 @@ import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
+import '../../services/project_lookup.dart' show cutPositionOf;
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 
 // The size/naming values moved to the model layer (EX1 — the export spec
@@ -86,29 +86,15 @@ List<Cut> resolveExportCuts({
   required CutId activeCutId,
   required ExportRange range,
 }) {
-  Track? activeTrack;
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == activeCutId) {
-        activeTrack = track;
-        break;
-      }
-    }
-  }
-  activeTrack ??= project.tracks.isEmpty ? null : project.tracks.first;
+  final location = cutPositionOf(project, activeCutId);
+  final activeTrack = location?.track ?? project.tracks.firstOrNull;
   if (activeTrack == null) {
     return const [];
   }
-
   if (range == ExportRange.allCuts) {
     return activeTrack.cuts;
   }
-  for (final cut in activeTrack.cuts) {
-    if (cut.id == activeCutId) {
-      return [cut];
-    }
-  }
-  return const [];
+  return location == null ? const [] : [location.cut];
 }
 
 /// Ordered composite frames for the chosen range. Every cut plays at least
@@ -191,28 +177,21 @@ ScheduledAudioClip? _trimmedExportClip(
   }
   final audibleFrames = at.audibleEnd - at.audibleStart;
   final trimmedLead = at.audibleStart - at.spanExportStart;
-  return ScheduledAudioClip(
-    filePath: span.clip.filePath,
+  return ScheduledAudioClip.ofSpan(
+    span,
     startFrame: at.audibleStart,
     endFrameExclusive: at.audibleEnd,
     // The clip's offset trim seeks past the skipped file head on top of
     // any range clipping.
-    offsetFrames: trimmedLead + span.clip.offsetFrames,
-    gain: layerGain * span.clip.gain,
+    clippedLead: trimmedLead,
+    layerGain: layerGain,
+    layerPan: layerPan,
     fadeInFrames:
         (at.spanExportStart + span.clip.fadeInFrames - at.audibleStart).clamp(
           0,
           audibleFrames,
         ),
     fadeOutFrames: span.clip.fadeOutFrames.clamp(0, audibleFrames),
-    pan: layerPan,
-    fadeCurve: span.clip.fadeCurve,
-    volumeKeys: trimmedLead == 0
-        ? span.clip.volumeKeys
-        : [
-            for (final key in span.clip.volumeKeys)
-              AudioVolumeKey(frame: key.frame - trimmedLead, gain: key.gain),
-          ],
   );
 }
 
@@ -424,10 +403,13 @@ List<ExportCelTask> buildExportCelPlan({
   );
 
   final plan = <ExportCelTask>[];
-  final usedNames = <String>{};
+  final namer = ExportCelFileNamer(
+    naming: naming,
+    fileExtension: fileExtension,
+  );
   for (final cut in cuts) {
     for (final layer in cut.layers) {
-      if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
+      if (!layer.kind.paintsArtwork || !layer.isVisible) {
         continue;
       }
       // Cel-export scope: the timesheet toggle on layer labels marks which
@@ -437,37 +419,67 @@ List<ExportCelTask> buildExportCelPlan({
       }
       for (var index = 0; index < layer.frames.length; index += 1) {
         final frame = layer.frames[index];
-        final base = _celFileBase(
-          projectName: project.name,
-          cut: cut,
-          layer: layer,
-          frame: frame,
-          celPosition: index + 1,
-          naming: naming,
-        );
-        final folder = [
-          if (naming.cutFolder) sanitizeExportFileComponent(cut.name),
-          if (naming.layerFolder) sanitizeExportFileComponent(layer.name),
-        ].join('/');
-        final prefix = folder.isEmpty ? '' : '$folder/';
-        var fileName = '$prefix$base.$fileExtension';
-        var bump = 2;
-        while (!usedNames.add(fileName)) {
-          fileName = '$prefix${base}_$bump.$fileExtension';
-          bump += 1;
-        }
         plan.add(
           ExportCelTask(
             cut: cut,
             layer: layer,
             frame: frame,
-            fileName: fileName,
+            fileName: namer.uniqueFileName(
+              cut: cut,
+              layerName: layer.name,
+              base: _celFileBase(
+                projectName: project.name,
+                cut: cut,
+                layer: layer,
+                frame: frame,
+                celPosition: index + 1,
+                naming: naming,
+              ),
+            ),
           ),
         );
       }
     }
   }
   return plan;
+}
+
+/// Names the files a cel export writes, and keeps them UNIQUE.
+///
+/// 🚨Uniqueness is per RUN, not per cut or per label: two labels can hold
+/// a cel of the same name and a flat naming puts them in one folder, so
+/// the second write would silently replace the first. The bump (`_2`,
+/// `_3`, …) is what the user sees instead of a missing file.
+///
+/// It takes the [base] rather than deriving it: the per-cel and the
+/// per-label planners spell a base differently on purpose (which of the
+/// two spellings should win is a user decision, not this class's), and
+/// what they share is the folder, the extension and the bump.
+class ExportCelFileNamer {
+  ExportCelFileNamer({required this.naming, required this.fileExtension});
+
+  final ExportCelNaming naming;
+  final String fileExtension;
+  final Set<String> _used = <String>{};
+
+  String uniqueFileName({
+    required Cut cut,
+    required String layerName,
+    required String base,
+  }) {
+    final folder = [
+      if (naming.cutFolder) sanitizeExportFileComponent(cut.name),
+      if (naming.layerFolder) sanitizeExportFileComponent(layerName),
+    ].join('/');
+    final prefix = folder.isEmpty ? '' : '$folder/';
+    var fileName = '$prefix$base.$fileExtension';
+    var bump = 2;
+    while (!_used.add(fileName)) {
+      fileName = '$prefix${base}_$bump.$fileExtension';
+      bump += 1;
+    }
+    return fileName;
+  }
 }
 
 String _celFileBase({

@@ -19,15 +19,13 @@ import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_frame_ruler_painter.dart'
-    show TimelineRulerHeaderModel, TimelineRulerScale, timelineRulerSecondsLabel;
+import 'timeline_frame_ruler_painter.dart' show TimelineRulerScale;
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
-import 'layer_drop_policy.dart'
-    show effectHeaderRowsOf;
+import 'layer_drop_policy.dart' show effectHeaderRowsOf;
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -35,7 +33,7 @@ import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
@@ -63,8 +61,8 @@ import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
+import '../repaint_props.dart';
 
-part 'xsheet_grid/xsheet_grid_rail_scrub.dart';
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
 part 'xsheet_grid/xsheet_grid_columns.dart';
@@ -226,11 +224,24 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
 
-  // ── the rail scrub: its own object, in its own file ─────────────────
+  // ── the rail scrub: the SHARED object ───────────────────────────────
   //
-  // A collaborator (timeline/xsheet_grid/xsheet_grid_rail_scrub.dart, a part of this
-  // library). The State keeps the entry points its build tree calls.
-  late final _XSheetGridRailScrub _railScrub = _XSheetGridRailScrub(this);
+  // [TimelineFrameScrub], the one the timeline's ruler holds too — the same
+  // six members, turned by the axis (the audit's clone scan, round 8).
+  late final TimelineFrameScrub _railScrub = TimelineFrameScrub(
+    axis: Axis.vertical,
+    viewportKey: _railScrubViewportKey,
+    controller: _frameScrollController,
+    hooks: () => widget.hooks,
+    frameCellExtent: () => _metrics.frameCellWidth,
+    renderedFrameCount: () => _frameScroll.renderedFrameCount,
+    scrolledFrameOffset: () => _lastEffectiveFrameScrollOffset,
+  );
+
+  /// The fallback rail extent for hosts that keep none of their own — the
+  /// window the splitter sizes and the workspace persists.
+  LayerRailExtent get _railExtent =>
+      widget.railExtent ?? (_ownedRailExtent ??= LayerRailExtent());
 
   // ── the column headers: their own object ────────────────────────────
   //
@@ -293,7 +304,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     isMounted: () => mounted,
   );
   final GlobalKey _railScrubViewportKey = GlobalKey();
-  final FrameScrubDedupe _railScrubbedFrame = FrameScrubDedupe();
 
   TimelineGridMetrics get _metrics => widget.metrics;
 
@@ -437,7 +447,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     return LayerRailSplitter(
       key: const ValueKey<String>('xsheet-rail-splitter'),
       axis: Axis.vertical,
-      extent: _railScrub._railExtent,
+      extent: _railExtent,
       naturalExtent: naturalHeaderBlockExtent,
       availableExtent: availableHeaderExtent,
     );
@@ -550,7 +560,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             children: [
               LayerRailWindow(
                 axis: Axis.vertical,
-                rail: _railScrub._railExtent,
+                rail: _railExtent,
                 naturalExtent: naturalHeaderBlockExtent,
                 availableExtent: availableHeaderExtent,
                 child: Column(
@@ -688,24 +698,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
-        _railScrub.resetRailScrubTracking();
-        _railScrub.selectFrameFromRailGlobalPosition(event.position, autoPan: false);
+        _railScrub.resetTracking();
+        _railScrub.pressAt(event.position);
       },
-      onPointerUp: (_) => _railScrub.endRailScrub(),
-      onPointerCancel: (_) => _railScrub.endRailScrub(),
+      onPointerUp: (_) => _railScrub.endScrub(),
+      onPointerCancel: (_) => _railScrub.endScrub(),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onVerticalDragStart: (details) {
-          _railScrub.selectFrameFromRailGlobalPosition(
-            details.globalPosition,
-            autoPan: false,
-          );
+          _railScrub.pressAt(details.globalPosition);
         },
         onVerticalDragUpdate: (details) {
-          _railScrub.selectFrameFromRailGlobalPosition(details.globalPosition);
+          _railScrub.dragTo(details.globalPosition);
         },
-        onVerticalDragEnd: (_) => _railScrub.resetRailScrubTracking(),
-        onVerticalDragCancel: _railScrub.resetRailScrubTracking,
+        onVerticalDragEnd: (_) => _railScrub.resetTracking(),
+        onVerticalDragCancel: _railScrub.resetTracking,
         child: ClipRect(
           key: _railScrubViewportKey,
           child: OverflowBox(
@@ -747,7 +754,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             leadingFrameSpacerHeight: 0,
                             trailingFrameSpacerHeight: 0,
                             metrics: _metrics,
-                            onSelectFrame: _railScrub.selectClampedFrameFromRail,
+                            onSelectFrame: _railScrub.selectClampedFrame,
                             framesPerSecond: _countingFps,
                             showSeconds: widget.hooks.showSeconds,
                             windowBucket: _frameWindowBucket,
@@ -861,7 +868,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       framesPerSecond: _countingFps,
       controllers: [_frameScrollController, _layerScrollController],
       child: ValueListenableBuilder<double?>(
-        valueListenable: _railScrub._railExtent,
+        valueListenable: _railExtent,
         builder: (context, _, _) => LayoutBuilder(
           builder: (context, constraints) {
             // The header block is ALWAYS its natural extent; the splitter
@@ -879,7 +886,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               railAxis: Axis.vertical,
               scrollbarLaneExtent: layerAxisScrollbarExtent,
             );
-            final headerBlockHeight = _railScrub._railExtent.windowExtent(
+            final headerBlockHeight = _railExtent.windowExtent(
               naturalHeaderBlockExtent,
               availableExtent: availableHeaderExtent,
             );
@@ -1036,7 +1043,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 // window, so the two are cut at one line.
                                 LayerRailWindow(
                                   axis: Axis.vertical,
-                                  rail: _railScrub._railExtent,
+                                  rail: _railExtent,
                                   naturalExtent: naturalHeaderBlockExtent,
                                   availableExtent: availableHeaderExtent,
                                   child: TimelineLayerControlsHeader(
@@ -1079,7 +1086,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               children: [
                                 LayerRailScrollbar(
                                   axis: Axis.vertical,
-                                  rail: _railScrub._railExtent,
+                                  rail: _railExtent,
                                   naturalExtent: naturalHeaderBlockExtent,
                                   availableExtent: availableHeaderExtent,
                                   laneExtent:
@@ -1192,8 +1199,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
         trailingFrameSpacerHeight;
     // PAINTERIZED (UI-R14 #1, the ruler's UI-R13 #1 treatment — 통일화):
     // the whole rail is one CustomPaint; per-frame row widgets are gone.
-    // Tests probe [XSheetFrameRailPainter.modelAt]/`rowRectFor` through
-    // the 'xsheet-frame-rail-paint' key; selection stays on the rail's
+    // Tests probe [TimelineRulerScale.modelAt]/`cellRectFor` through the
+    // 'xsheet-frame-rail-paint' key; selection stays on the rail's
     // viewport-level scrub listener.
     return SizedBox(
       key: const ValueKey<String>('xsheet-frame-number-rail'),
@@ -1204,17 +1211,22 @@ class _XSheetFrameNumberRail extends StatelessWidget {
         size: Size(metrics.layerControlsWidth, height),
         painter: XSheetFrameRailPainter(
           scale: TimelineRulerScale(
+            axis: Axis.vertical,
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
             currentFrameIndex: currentFrameIndex,
             playbackFrameCount: playbackFrameCount,
             leadingFrameSpacer: leadingFrameSpacerHeight,
+            crossExtent: metrics.layerControlsWidth,
             metrics: metrics,
             colorScheme: colorScheme,
             framesPerSecond: framesPerSecond,
             showSeconds: showSeconds,
             windowBucket: windowBucket,
             viewportMainExtent: viewportMainExtent,
+            // The RAIL grays its past-playback tail where the ruler does
+            // not (UI-R18 #9) — see [TimelineRulerScale.pastPlaybackWash].
+            pastPlaybackWash: AppColors.washUp.withValues(alpha: 0.72),
           ),
         ),
       ),
@@ -1226,56 +1238,14 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 /// ruler's UI-R13 #1 treatment, transposed): number rows, the seconds
 /// column, selection tint, playback dimming and the cached strip paint
 /// in a single pass. Public for the test probe.
-class XSheetFrameRailPainter extends CustomPainter {
+class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   XSheetFrameRailPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 
   /// The frame scale this rail draws — the ruler's, field for field
-  /// ([TimelineRulerScale]); only the rect and the paint are transposed.
+  /// ([TimelineRulerScale]), the rect and the model with it. Only the paint
+  /// is this rail's own.
   final TimelineRulerScale scale;
-
-  /// The row's rect in the rail's local coordinates.
-  Rect rowRectFor(int frameIndex) => Rect.fromLTWH(
-    0,
-    scale.leadingFrameSpacer +
-        (frameIndex - scale.frameStartIndex) * scale.metrics.frameCellWidth,
-    scale.metrics.layerControlsWidth,
-    scale.metrics.frameCellWidth,
-  );
-
-  /// The resolved per-row model — the probe surface (the shared ruler's
-  /// model class).
-  ///
-  /// R9 #4: the cadence is the SHARED one now
-  /// ([TimelineGridMetrics.frameLabelEveryFrames], the paper-timesheet
-  /// ladder anchored at frame 1). This painter is a transposed
-  /// re-implementation of the horizontal ruler and had never called it —
-  /// so zooming out crowded every row's number into the next, while the
-  /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
-  /// content: the "never disappears" rule is about what a cell holds.
-  TimelineRulerHeaderModel modelAt(int frameIndex) {
-    final selected = frameIndex == scale.currentFrameIndex;
-    final outside = frameIndex >= scale.playbackFrameCount;
-    final labeled = frameIndex % scale.metrics.frameLabelEveryFrames == 0;
-    return TimelineRulerHeaderModel(
-      frameIndex: frameIndex,
-      label: labeled ? scale.frameNumberLabel(frameIndex) : '',
-      secondsLabel: timelineRulerSecondsLabel(
-        frameIndex: frameIndex,
-        framesPerSecond: scale.framesPerSecond,
-      ),
-      selected: selected,
-      outsidePlaybackRange: outside,
-      background: selected
-          ? Color.alphaBlend(
-              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-              scale.colorScheme.surface,
-            )
-          : outside
-          ? AppColors.washUp.withValues(alpha: 0.72)
-          : scale.colorScheme.surface,
-    );
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1299,8 +1269,8 @@ class XSheetFrameRailPainter extends CustomPainter {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = modelAt(frameIndex);
-      final rect = rowRectFor(frameIndex);
+      final model = scale.modelAt(frameIndex);
+      final rect = scale.cellRectFor(frameIndex);
       canvas.drawRect(rect, fillPaint..color = model.background);
       final ink = timelineFrameBoundaryLineInk(
         frameIndex: frameIndex,
@@ -1314,7 +1284,13 @@ class XSheetFrameRailPainter extends CustomPainter {
           Offset(rect.left, position),
           Offset(rect.right, position),
           boundaryPaint
-            ..color = ink.color
+            // D43 (유저, 2026-08-21): and the LAW's over-ground treatment
+            // too — the half the rail was still missing while the ruler and
+            // the beat-lines overlay both had it (round 8's grid
+            // unification). The fill above has just laid this row's paper,
+            // so the ground is known exactly rather than assumed, and the
+            // sheet's grid stops reading lighter than the timeline's.
+            ..color = timelineGridLineInkOnGround(ink, model.background)
             ..strokeWidth = ink.strokeWidth,
         );
       }
@@ -1350,7 +1326,7 @@ class XSheetFrameRailPainter extends CustomPainter {
             fontSize: timelineFittedGlyphFontSize(
               11,
               metrics.frameCellWidth,
-              crossExtent: metrics.layerControlsWidth,
+              crossExtent: scale.crossExtent,
             ),
             color: model.outsidePlaybackRange
                 ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
@@ -1383,15 +1359,14 @@ class XSheetFrameRailPainter extends CustomPainter {
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
   // across repaints — fresh layout per label was the debug hot spot.
   @override
-  bool shouldRepaint(covariant XSheetFrameRailPainter oldDelegate) =>
-      oldDelegate.scale != scale;
+  Object get props => (scale,);
 
   // Every row gets a node — the rail numbers every frame.
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) =>
       frameWindowSemantics(
         window: scale.visibleWindow(),
-        rectFor: rowRectFor,
+        rectFor: scale.cellRectFor,
         labelFor: (frameIndex) => 'frame ${frameIndex + 1}',
       );
 }

@@ -22,14 +22,10 @@ class RecentProjectsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    if (environment['FLUTTER_TEST'] == 'true') {
-      return '${Directory.systemTemp.path.replaceAll('\\', '/')}/'
-          'qa_test_recent_projects_$pid/recent_projects.json';
-    }
-    return appSupportFilePath('recent_projects.json');
-  }
+  static String defaultFilePath() => testRedirectedAppSupportPath(
+    'recent_projects.json',
+    sandbox: 'recent_projects',
+  );
 
   static const int version = 1;
 

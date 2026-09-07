@@ -6,7 +6,7 @@ import 'layer_kind.dart';
 import 'storyboard_coverage.dart';
 
 /// [cut] with its STORYBOARD row's stored blocks tiling the cut exactly —
-/// the covering grammar ([layerKindCoversWithoutGaps]) kept true in
+/// the covering grammar ([LayerKind.coversWithoutGaps]) kept true in
 /// STORAGE, the same way [cutWithCoveringImageRows] keeps the image row's.
 ///
 /// The storyboard row was left out of this when the image row got it, on

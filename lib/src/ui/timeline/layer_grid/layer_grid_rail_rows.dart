@@ -54,33 +54,11 @@ class _LayerGridRailRows {
     return windowRows[indexInWindow];
   }
 
-  /// Which DISPLAY row the selection sits on — the row the current-row
-  /// address names, and the active layer's row when it names none.
-  int? selectedRowIndex() {
-    final rows = _state._dragRows;
-    if (rows.isEmpty) {
-      return null;
-    }
-    final current = _state.widget.hooks.currentRowHooks?.currentRow.value;
-    if (current is LaneRowAddress) {
-      final at = rows.indexWhere(
-        (row) =>
-            row.layer.id == current.layerId &&
-            row.lane?.laneId == current.laneId,
-      );
-      if (at >= 0) {
-        return at;
-      }
-    }
-    final activeId = _state.widget.hooks.activeLayerId;
-    if (activeId == null) {
-      return null;
-    }
-    final at = rows.indexWhere(
-      (row) => !row.isLane && row.layer.id == activeId,
-    );
-    return at < 0 ? null : at;
-  }
+  // ⛔"Which DISPLAY row the selection sits on" was written out here — a
+  // second copy of [indexOfDisplayRow], which the ↑/↓ walk and the flip HUD
+  // already read. The reveal asks that one now (round 8's grid
+  // unification), so the rail and the walks can no longer disagree about
+  // where the selection is.
 
   /// The memo gate for [_railRow] (UI-R7 #1): a controls row whose inputs
   /// match hands back the CACHED widget instance — a zoom step (or any

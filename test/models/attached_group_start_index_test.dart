@@ -38,4 +38,36 @@ void main() {
     final layers = [_row('x')];
     expect(attachedGroupStartIndex(const LayerId('nope'), layers), 1);
   });
+
+  group('the SLICE the seven callers take', () {
+    test('is the base plus the rows on BOTH sides of it', () {
+      final layers = [
+        _row('x'),
+        _row('below', attachedTo: 'base'),
+        _row('base'),
+        _row('above', attachedTo: 'base'),
+        _row('y'),
+      ];
+      expect(
+        attachedGroupSlice(
+          const LayerId('base'),
+          layers,
+        ).map((layer) => layer.id.value),
+        ['below', 'base', 'above'],
+      );
+    });
+
+    test('a missing base gives an EMPTY slice, never the whole stack', () {
+      final layers = [_row('x'), _row('base')];
+      expect(attachedGroupSlice(const LayerId('nope'), layers), isEmpty);
+    });
+
+    test('the base id of a member is the row it rides; of a base, itself', () {
+      expect(
+        attachBaseIdOf(_row('att', attachedTo: 'base')),
+        const LayerId('base'),
+      );
+      expect(attachBaseIdOf(_row('base')), const LayerId('base'));
+    });
+  });
 }

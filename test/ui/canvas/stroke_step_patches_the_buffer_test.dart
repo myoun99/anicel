@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★ (v) — A STROKE STEP PATCHES THE BUFFER INSTEAD OF REBUILDING IT.
 ///
@@ -61,7 +62,7 @@ void main() {
                 width: 8,
                 height: 8,
                 child: CanvasLayerStackView(
-                  nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                  nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                   imageCache: LayerFrameImageCache(
                     frameStore: BrushFrameStore(),
                   ),

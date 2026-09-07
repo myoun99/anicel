@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
+import '../../core/path_names.dart';
 import 'app_support_path.dart';
 import 'media_blob_codec.dart';
 import '../persistence/sweep_old_files.dart';
@@ -313,8 +314,7 @@ class MediaStagingStore {
   /// drift the derived-name design exists to make impossible.
   static String stagedNameFor(String poolPath) {
     final normalized = poolPath.replaceAll(r'\', '/');
-    final slash = normalized.lastIndexOf('/');
-    final base = slash < 0 ? normalized : normalized.substring(slash + 1);
+    final base = fileNameOfPath(normalized);
     var hash = 0x811c9dc5;
     for (final unit in normalized.codeUnits) {
       hash = ((hash ^ unit) * 0x01000193) & 0xFFFFFFFF;

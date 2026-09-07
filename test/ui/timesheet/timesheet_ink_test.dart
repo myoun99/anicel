@@ -95,6 +95,46 @@ void main() {
       );
     });
 
+    test('a half with no rows gets no window — the same halves the painter '
+        'prints, and no other', () {
+      // The painter and the ink windows re-derive "which halves of a page
+      // have rows" from the same layout; a one-row page (halfFrameCount 0)
+      // is the case where the answer is not simply "both".
+      final document = TimesheetDocument.fromCut(
+        cut: Cut(
+          id: _cutId,
+          name: 'Cut 1',
+          layers: const [],
+          duration: 2,
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ),
+        projectName: 'Project',
+        fps: 1,
+        pageSeconds: 1,
+      );
+      final layout = TimesheetDocumentLayout(document: document);
+      expect(layout.halfRowCount(0), 0);
+      expect(layout.halfRowCount(1), 1);
+
+      final windows = timesheetInkWindows(
+        layout: layout,
+        pagedLayout: layout,
+        cutId: _cutId,
+      );
+      final strips = windows
+          .where((w) => w.plane == TimesheetInkPlane.strip)
+          .toList();
+      expect(strips, hasLength(document.pages.length));
+      for (final strip in strips) {
+        expect(strip.documentRect.height, TimesheetDocumentLayout.rowHeight);
+      }
+      expect(
+        strips.first.documentRect.left,
+        layout.halfLeft(0, 1),
+        reason: 'the empty LEFT half is skipped, not merely drawn thin',
+      );
+    });
+
     test('continuous: page 1 ink in the paged paper geometry + the bands '
         'stacked down the strip', () {
       final document = _document();

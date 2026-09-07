@@ -161,4 +161,41 @@ void main() {
       reason: 'and the streaming walk reads the same directory',
     );
   });
+
+  test('a record overrunning the ZIP64 central directory is a '
+      'FormatException in BOTH parsers', () {
+    // ⛔THE DIRECTORY ENDS AT THE ZIP64 RECORD, NOT AT THE EOCD. Between
+    // them sit the ZIP64 end record and its locator — 76 bytes a record
+    // may not grow into. Bounding at the EOCD instead hands the walk 76
+    // bytes of slack, so an overrun this size reads as well-formed.
+    //
+    // 🚨This is the bound the in-memory parser SILENTLY LACKED while the
+    // two parsers were two hand-written copies (found 2026-09-05, when
+    // they became one). Both are asserted here so neither can lose it.
+    final path = archiveAt('zip64Overrun.anicel', entries: 2);
+    final bytes = bytesOf(path);
+    final central = centralOffsetOf(path);
+    final data = ByteData.sublistView(bytes);
+    // Step over the first record to reach the last one — only the LAST
+    // record can overrun the directory without also landing the walk on a
+    // wrong signature, which every parser refuses anyway.
+    final last =
+        central +
+        46 +
+        data.getUint16(central + 28, Endian.little) +
+        data.getUint16(central + 30, Endian.little) +
+        data.getUint16(central + 32, Endian.little);
+    expect(
+      data.getUint32(last, Endian.little),
+      0x02014b50,
+      reason: 'the walk above must land on the second central record',
+    );
+    // A comment 30 bytes long: past the ZIP64 directory end, short of the
+    // EOCD, so ONLY the correct bound rejects it.
+    data.setUint16(last + 32, 30, Endian.little);
+    writeBytes(path, bytes);
+
+    expect(() => parseAnicelZipLayout(bytes), throwsFormatException);
+    expect(() => parseAnicelZipLayoutFile(path), throwsFormatException);
+  });
 }

@@ -1,7 +1,9 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/argb_channels.dart';
+import 'package:anicel/src/core/contain_rect.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/identity_memo.dart';
 import 'package:anicel/src/core/inserted_at.dart';
@@ -169,6 +171,58 @@ void main() {
       expect(unitDirection(0, 0), isNull);
       expect(unitDirection(double.nan, 1), isNull);
       expect(unitDirection(double.infinity, 1), isNull);
+    });
+  });
+
+  group('containRect — 늘어난 도장은 도장이 아니다', () {
+    test('a wide picture letterboxes: full width, centred vertically', () {
+      expect(
+        containRect(const Size(200, 100), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(0, 25, 100, 50),
+      );
+    });
+
+    test('a tall picture pillarboxes: full height, centred horizontally', () {
+      expect(
+        containRect(const Size(100, 200), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(25, 0, 50, 100),
+      );
+    });
+
+    test('the slot is honoured where it SITS, not at the origin', () {
+      expect(
+        containRect(
+          const Size(20, 10),
+          const Rect.fromLTWH(30, 40, 100, 100),
+        ),
+        const Rect.fromLTWH(30, 65, 100, 50),
+      );
+    });
+
+    test('a picture larger than the slot shrinks; a smaller one grows — '
+        'contain is a fit, not a cap', () {
+      expect(
+        containRect(const Size(400, 400), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(0, 0, 100, 100),
+      );
+      expect(
+        containRect(const Size(10, 10), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(0, 0, 100, 100),
+      );
+    });
+
+    test('an exact-ratio picture fills the slot with nothing left over', () {
+      expect(
+        containRect(const Size(64, 32), const Rect.fromLTWH(5, 5, 128, 64)),
+        const Rect.fromLTWH(5, 5, 128, 64),
+      );
+    });
+
+    test('a picture with no area answers an empty rect at the slot origin', () {
+      expect(
+        containRect(Size.zero, const Rect.fromLTWH(7, 9, 100, 100)),
+        const Rect.fromLTWH(7, 9, 0, 0),
+      );
     });
   });
 

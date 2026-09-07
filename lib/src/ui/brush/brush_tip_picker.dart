@@ -223,15 +223,9 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
 
   BrushTipEntry? get _pickedTip {
     final id = _pickedId;
-    if (id == null) {
-      return null;
-    }
-    for (final tip in widget.tips) {
-      if (tip.id == id) {
-        return tip;
-      }
-    }
-    return null;
+    return id == null
+        ? null
+        : widget.tips.where((tip) => tip.id == id).firstOrNull;
   }
 
   void _pick(String? id, BrushTipMask? mask) {

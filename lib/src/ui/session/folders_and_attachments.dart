@@ -25,25 +25,21 @@ class FoldersAndAttachments {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
-
-  /// The active-row cut-command envelope, shared with the other
-  /// collaborator that writes it (see [ActiveCutEdits]).
-  late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
-    project: _project,
-    selection: _selection,
-    changes: _changes,
-  );
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
@@ -120,9 +116,7 @@ class FoldersAndAttachments {
         // the refusal down. Mirrors the referenced-image behavior, where
         // the refusal lives in a non-inherited field and the attach row
         // is born drawable.
-        kind: layerKindAcceptsBrushInput(base.kind)
-            ? base.kind
-            : LayerKind.animation,
+        kind: base.kind.acceptsBrushInput ? base.kind : LayerKind.animation,
         onTimesheet: false,
         attachedToLayerId: base.id,
         attachedPlacement: placement,
@@ -140,7 +134,7 @@ class FoldersAndAttachments {
 
   /// 폴더 생성: folds the active layer's whole attach group into a new
   /// folder row (mirrors into 겸용 cuts through the coordinator).
-  void groupActiveLayerIntoFolder() => _activeCutEdits.onActiveLayer(
+  void groupActiveLayerIntoFolder() => _activeCut.onActiveLayer(
     when: canGroupActiveLayerIntoFolder,
     command: (cutId, layerId) => _project.cutCommandCoordinator
         .createFolderFromLayer(cutId: cutId, layerId: layerId),
@@ -167,24 +161,18 @@ class FoldersAndAttachments {
   /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
   /// inside its group. Siblings join via [addAttachedLayer]'s sibling
   /// rule; renaming is plain [_internals.renameLayer].
-  void groupActiveAttachIntoFolder() => _activeCutEdits.onActiveLayer(
+  void groupActiveAttachIntoFolder() => _activeCut.onActiveLayer(
     when: canGroupActiveAttachIntoFolder,
     command: (cutId, layerId) => _project.cutCommandCoordinator
         .createAttachOrganizerFolder(cutId: cutId, layerId: layerId),
   );
 
-  void dissolveFolder(LayerId folderId) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.dissolveFolder(
+  void dissolveFolder(LayerId folderId) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.dissolveFolder(
       cutId: cutId,
       folderId: folderId,
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
   /// attach row: the synced-block UI makes those rows look like ordinary

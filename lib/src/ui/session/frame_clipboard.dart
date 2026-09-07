@@ -3,7 +3,6 @@ import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_splice.dart';
 import 'independent_clip_mint.dart';
@@ -105,7 +104,7 @@ class FrameClipboard {
         // phantom undo entry. Its two neighbours on this pill already
         // refuse (독립 붙여넣기 always did, 잘라내기 since this round);
         // this was the third button still lit for a row nothing touches.
-        layerKindHoldsSingleCel(layer.kind)) {
+        layer.kind.holdsSingleCel) {
       return false;
     }
 
@@ -263,13 +262,13 @@ class FrameClipboard {
     if (layer == null || _copiedFrame == null) {
       return false;
     }
-    if (!layerKindHoldsDrawings(layer.kind) ||
+    if (!layer.kind.holdsDrawings ||
         // SYNCED attach rows own no timeline of their own.
         isSyncedAttachedLayer(layer) ||
         // A reference row's picture comes from the library.
         layer.mediaReference != null ||
         // An IMAGE row holds ONE cel by definition.
-        layerKindHoldsSingleCel(layer.kind)) {
+        layer.kind.holdsSingleCel) {
       return false;
     }
     return _timeline.timelineController.currentFrameIndex >= 0;
@@ -330,8 +329,8 @@ class FrameClipboard {
       }
       final row = _project.rangeLayerById(id);
       if (row == null ||
-          !layerKindHoldsDrawings(row.kind) ||
-          layerKindHoldsSingleCel(row.kind) ||
+          !row.kind.holdsDrawings ||
+          row.kind.holdsSingleCel ||
           isSyncedAttachedLayer(row)) {
         continue;
       }

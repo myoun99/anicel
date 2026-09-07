@@ -14,6 +14,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// R27 #29 — the FOLDER GROUP BUFFER, 유저 확정: "폴더는 정식 합성
 /// 레이어로해서 합성 버퍼 같이가자. 그룹 한번합쳐서 한번블렌드."
@@ -60,7 +61,7 @@ void main() {
     isVisible: isVisible,
   );
 
-  List<CutFrameCompositeEntryNode> treeOf(List<Layer> layers) =>
+  List<CompositeNode<CutFrameCompositeRow>> treeOf(List<Layer> layers) =>
       resolveCutFrameCompositeTree(cut: cut(layers), frameIndex: 0);
 
   group('a folder buffers only when it must', () {
@@ -69,7 +70,7 @@ void main() {
       expect(tree, hasLength(1));
       expect(
         tree.single,
-        isA<CutFrameCompositeEntryLeaf>(),
+        isA<CompositeLeaf<CutFrameCompositeRow>>(),
         reason: 'an organizing folder must cost no buffer — the 통과 default',
       );
     });
@@ -79,7 +80,7 @@ void main() {
         member('a', folder: 'f'),
         folderRow('f', blend: LayerBlendMode.multiply),
       ]);
-      final group = tree.single as CutFrameCompositeEntryGroup;
+      final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
       expect(group.blendMode, LayerBlendMode.multiply);
       expect(group.opacity, 1);
       expect(group.children, hasLength(1));
@@ -91,7 +92,7 @@ void main() {
         member('a', folder: 'f'),
         folderRow('f', opacity: 0.5),
       ]);
-      final group = tree.single as CutFrameCompositeEntryGroup;
+      final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
       expect(group.opacity, closeTo(0.5, 1e-9));
       expect(
         group.blendMode,
@@ -113,9 +114,10 @@ void main() {
           ),
         ),
       ]);
-      final leaf = tree.single as CutFrameCompositeEntryLeaf;
+      final leaf = tree.single as CompositeLeaf<CutFrameCompositeRow>;
+      final entry = leaf.payload as CutFrameCompositeEntry;
       expect(
-        leaf.entry.pose?.zoom,
+        entry.pose?.zoom,
         2,
         reason: 'the folder pose still reaches the member, without a buffer',
       );
@@ -129,18 +131,19 @@ void main() {
         member('a', folder: 'f'),
         folderRow('f', blend: LayerBlendMode.multiply, opacity: 0.5),
       ]);
-      final group = tree.single as CutFrameCompositeEntryGroup;
-      final leaf = group.children.single as CutFrameCompositeEntryLeaf;
+      final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
+      final leaf = group.children.single as CompositeLeaf<CutFrameCompositeRow>;
+      final entry = leaf.payload as CutFrameCompositeEntry;
 
       expect(group.opacity, closeTo(0.5, 1e-9));
       expect(group.blendMode, LayerBlendMode.multiply);
       expect(
-        leaf.entry.opacity,
+        entry.opacity,
         1,
         reason: 'the folder opacity belongs to the buffer, not the member',
       );
       expect(
-        leaf.entry.blendMode,
+        entry.blendMode,
         LayerBlendMode.normal,
         reason: 'inside the buffer a member keeps its OWN blend',
       );
@@ -167,11 +170,11 @@ void main() {
         folderRow('inner', parent: 'outer'),
         folderRow('outer', blend: LayerBlendMode.screen),
       ]);
-      final group = tree.single as CutFrameCompositeEntryGroup;
+      final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
       expect(group.blendMode, LayerBlendMode.screen);
       expect(
         group.children.single,
-        isA<CutFrameCompositeEntryLeaf>(),
+        isA<CompositeLeaf<CutFrameCompositeRow>>(),
         reason: 'the inner 통과 folder left no node',
       );
     });
@@ -182,8 +185,8 @@ void main() {
         folderRow('inner', parent: 'outer', blend: LayerBlendMode.multiply),
         folderRow('outer', blend: LayerBlendMode.screen),
       ]);
-      final outer = tree.single as CutFrameCompositeEntryGroup;
-      final inner = outer.children.single as CutFrameCompositeEntryGroup;
+      final outer = tree.single as CompositeGroup<CutFrameCompositeRow>;
+      final inner = outer.children.single as CompositeGroup<CutFrameCompositeRow>;
       expect(outer.blendMode, LayerBlendMode.screen);
       expect(inner.blendMode, LayerBlendMode.multiply);
     });
@@ -213,7 +216,7 @@ void main() {
       ];
       expect(
         treeOf(layers).single,
-        isA<CutFrameCompositeEntryGroup>(),
+        isA<CompositeGroup<CutFrameCompositeRow>>(),
         reason: 'the animated opacity lane pulls it below 1',
       );
       expect(
@@ -223,7 +226,7 @@ void main() {
                 ? layer.copyWith(transformEnabled: false)
                 : layer,
         ]).single,
-        isA<CutFrameCompositeEntryLeaf>(),
+        isA<CompositeLeaf<CutFrameCompositeRow>>(),
         reason: 'the folder\'s transform switch off means opacity 1 again — '
             'no buffer needed',
       );

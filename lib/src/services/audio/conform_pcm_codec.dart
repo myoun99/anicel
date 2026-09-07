@@ -38,6 +38,7 @@ library;
 
 import 'dart:typed_data';
 import '../../models/audio_pcm_scale.dart';
+import '../media/media_byte_source.dart';
 
 /// What a conformed file records about the source it came from, so a
 /// replaced original is detected rather than silently played stale.
@@ -87,51 +88,7 @@ class ConformSourceFingerprint {
       'crc32: $sourceCrc32)';
 }
 
-/// The CHEAP half of "has this source changed": what `stat` says.
-///
-/// Not an identity — that is [ConformSourceFingerprint], which reads the
-/// bytes. This is a hint that lets the common case skip that read: if the
-/// source still has the length and timestamp it had when the conform was
-/// written, nothing has touched it on this machine and the conform stands.
-///
-/// A miss means nothing on its own. A copied, restored or re-synced file
-/// gets a fresh timestamp with identical bytes, and that is exactly the
-/// case a timestamp identity used to answer wrong — so a miss falls
-/// through to the content hash rather than deciding anything.
-class ConformSourceStat {
-  const ConformSourceStat({
-    required this.sourceLength,
-    required this.sourceModifiedMicros,
-  });
-
-  final int sourceLength;
-  final int sourceModifiedMicros;
-
-  bool matches(ConformSourceStat other) =>
-      sourceLength == other.sourceLength &&
-      sourceModifiedMicros == other.sourceModifiedMicros;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ConformSourceStat &&
-          other.sourceLength == sourceLength &&
-          other.sourceModifiedMicros == sourceModifiedMicros;
-
-  @override
-  int get hashCode => Object.hash(sourceLength, sourceModifiedMicros);
-
-  @override
-  String toString() =>
-      'ConformSourceStat(length: $sourceLength, '
-      'modified: $sourceModifiedMicros)';
-}
-
 /// A decoded conform: interleaved samples plus what they mean.
-///
-/// 🪦This line used to sit above [ConformSourceStat], which was inserted
-/// underneath it — so the stat class wore two opening sentences and this
-/// class had none.
 class ConformAudio {
   const ConformAudio({
     required this.samples,
@@ -161,7 +118,7 @@ class ConformAudio {
   /// What `stat` said about the source when this was written, so a reuse
   /// can be decided without reading it. Null on conforms written before
   /// the hint existed — which costs one read, not a rebuild.
-  final ConformSourceStat? sourceStat;
+  final MediaSourceStamp? sourceStat;
 
   /// The audio speed this conform was rendered at (EXPORT-AUDIO ④): 1001/
   /// 1000 is the NTSC pull that keeps frame alignment across a 23.976↔24
@@ -267,7 +224,7 @@ class ConformHeader {
   final int speedNumerator;
   final int speedDenominator;
   final ConformSourceFingerprint? fingerprint;
-  final ConformSourceStat? sourceStat;
+  final MediaSourceStamp? sourceStat;
 
   /// Bytes of PCM this header claims.
   int get dataBytes => frames * channels * 2;
@@ -292,7 +249,7 @@ class ConformHeader {
     view.setUint32(28, speedDenominator, Endian.little);
     view.setUint64(32, fingerprint?.sourceLength ?? 0, Endian.little);
     view.setUint32(40, fingerprint?.sourceCrc32 ?? 0, Endian.little);
-    view.setInt64(48, sourceStat?.sourceModifiedMicros ?? 0, Endian.little);
+    view.setInt64(48, sourceStat?.modifiedMicros ?? 0, Endian.little);
     return out;
   }
 
@@ -337,9 +294,9 @@ class ConformHeader {
           : null,
       sourceStat: flags & _flagSourceStat == 0
           ? null
-          : ConformSourceStat(
-              sourceLength: sourceLength,
-              sourceModifiedMicros: view.getInt64(48, Endian.little),
+          : MediaSourceStamp(
+              lengthBytes: sourceLength,
+              modifiedMicros: view.getInt64(48, Endian.little),
             ),
     );
   }
@@ -371,7 +328,7 @@ Uint8List encodeConform({
   required int channels,
   required int sampleRate,
   ConformSourceFingerprint? fingerprint,
-  ConformSourceStat? sourceStat,
+  MediaSourceStamp? sourceStat,
   int speedNumerator = 1,
   int speedDenominator = 1,
 }) {

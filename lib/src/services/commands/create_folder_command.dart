@@ -114,7 +114,7 @@ class CreateFolderCommand extends LinkRegistrySnapshotCommand {
       }
       folderMembers.add(
         LayerLinkMember(
-          trackId: requireCutLocation(project, target.cutId).track.id,
+          trackId: requireCutPosition(project, target.cutId).trackId,
           cutId: target.cutId,
           layerId: newFolderId,
         ),

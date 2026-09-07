@@ -559,7 +559,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     final view = widget.cameraViewEnabled;
     return [
       for (final layer in _session.layers)
-        if (layerKindGroupsLayers(layer.kind))
+        if (layer.kind.groupsLayers)
           _session.folderBandLayerFor(layer)
         else if (view != null && layer.kind == LayerKind.camera)
           _cameraDisplayLayer(layer, view.value)

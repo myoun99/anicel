@@ -176,7 +176,7 @@ void main() {
     File(staged).renameSync(placed);
     final bytesAsPlaced = File(placed).readAsBytesSync();
 
-    s.adoptPlacedArchive(placed, mediaEntryNames: names);
+    s.adoptArchiveAt(placed, mediaEntryNames: names);
 
     expect(s.projectFilePath, placed);
     expect(

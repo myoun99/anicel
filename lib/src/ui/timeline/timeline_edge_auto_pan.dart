@@ -156,3 +156,37 @@ void edgeAutoPanOvershoot(ScrollController controller, double delta) {
     controller.jumpTo(target);
   }
 }
+
+/// One axis of a grid's reveal: the scrollable that runs it, how long one
+/// step along it is, and which step the selection stands on — NEGATIVE when
+/// the selection is not drawn on this axis, which is the answer
+/// [indexOfDisplayRow] and every other row walk already gives.
+typedef RevealedStep = ({ScrollController controller, double extent, int at});
+
+/// Brings the SELECTION back into view on BOTH of a grid's axes (R5, user
+/// 2026-08-09): the frame under the cursor along the frame axis, the row it
+/// stands on along the rail.
+///
+/// One row/cell of margin, so a walk keeps a neighbour in sight and reads as
+/// a walk rather than as a jump to the edge.
+///
+/// 🚨ONE function for both grids. The timeline runs the frames across and
+/// the rows down, the X-sheet runs the frames down and the columns across,
+/// and each spelled the whole thing (the audit's clone scan, round 8). An
+/// axis is a [RevealedStep] here, so neither grid states an orientation at
+/// all — it hands its two scrollables in whichever order it holds them.
+///
+/// An axis with no clients, a non-positive extent or a negative
+/// [RevealedStep.at] is left where it is; the other still moves.
+void revealSelectionOnBothAxes(RevealedStep first, RevealedStep second) {
+  for (final axis in [first, second]) {
+    if (axis.at < 0 || axis.extent <= 0 || !axis.controller.hasClients) {
+      continue;
+    }
+    jumpToReveal(axis.controller, (
+      start: axis.at * axis.extent,
+      extent: axis.extent,
+      margin: axis.extent,
+    ));
+  }
+}

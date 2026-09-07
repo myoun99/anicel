@@ -50,7 +50,7 @@ extension LayerFolderQueries on List<Layer> {
       return null;
     }
     for (final layer in this) {
-      if (layer.id == id && layerKindGroupsLayers(layer.kind)) {
+      if (layer.id == id && layer.kind.groupsLayers) {
         return layer;
       }
     }
@@ -59,7 +59,7 @@ extension LayerFolderQueries on List<Layer> {
 
   /// Every folder row in the stack, bottom → top.
   Iterable<Layer> get folderLayers =>
-      where((layer) => layerKindGroupsLayers(layer.kind));
+      where((layer) => layer.kind.groupsLayers);
 
   /// [folderId]'s chain up to the top level, NEAREST FIRST. Safe on
   /// malformed stacks: stops if a parent is missing or a cycle appears.
@@ -176,7 +176,7 @@ extension LayerFolderQueries on List<Layer> {
 class LayerFolderIndex {
   LayerFolderIndex(this._layers) {
     for (final layer in _layers) {
-      if (layerKindGroupsLayers(layer.kind)) {
+      if (layer.kind.groupsLayers) {
         // First wins, matching folderById's scan order (a stack with
         // duplicate folder ids is already rejected by
         // folderStructureProblem).
@@ -347,7 +347,7 @@ String? _attachMixProblem(List<Layer> layers) {
     // PLAIN folders already nest).
     final leaves = [
       for (final layer in layers.subtreeMembersOf(folder.id))
-        if (!layerKindGroupsLayers(layer.kind)) layer,
+        if (!layer.kind.groupsLayers) layer,
     ];
     final attachBases = <LayerId>{
       for (final leaf in leaves)
@@ -412,7 +412,7 @@ String? folderStructureProblem(List<Layer> layers) {
 /// ⇒ Walk the subtree and read the LEAVES. A nested folder is not an answer
 /// to 「whose attach is this」; the rows inside it are.
 LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
-  if (!layerKindGroupsLayers(folder.kind)) {
+  if (!folder.kind.groupsLayers) {
     return null;
   }
   LayerId? baseId;
@@ -420,7 +420,7 @@ LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
   for (final layer in layers.subtreeMembersOf(folder.id)) {
     // The folders on the way down are structure, not members with an
     // opinion — the leaves under them carry the answer.
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       continue;
     }
     final memberBase = layer.attachedToLayerId;

@@ -21,7 +21,6 @@ import 'attached_placement.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
-import 'layer_kind.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 
@@ -116,9 +115,9 @@ List<FrameId> _blockCelIds(Layer layer) {
 bool canMountLayerOnBase({required Layer row, required Layer base}) {
   return row.id != base.id &&
       canCarryAttachedLayers(base) &&
-      layerKindIsDrawingCel(row.kind) &&
-      !layerKindGroupsLayers(row.kind) &&
-      !layerKindIsSingletonPerCut(row.kind);
+      row.kind.isDrawingCel &&
+      !row.kind.groupsLayers &&
+      !row.kind.isSingletonPerCut;
 }
 
 /// The fields an attach/detach edit writes, and nothing else.

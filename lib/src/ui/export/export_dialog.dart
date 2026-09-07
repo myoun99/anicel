@@ -20,14 +20,13 @@ import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart'
     show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
-import '../../services/project_lookup.dart' show cutLocationOrNull;
+import '../../services/project_lookup.dart' show cutPositionOf;
 import '../editor_session_manager.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachedLayersOf, isAttachedLayer;
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -632,7 +631,7 @@ class ExportDialogState extends State<ExportDialog> {
       }
       // The sheet belongs to the owner: its canvas sizes the cut-fitted
       // paper and its name the file, whichever sibling was in scope.
-      final owner = cutLocationOrNull(project, ownerId)?.cut ?? cut;
+      final owner = cutPositionOf(project, ownerId)?.cut ?? cut;
       final paper = cutEnvelopePaperSize(
         mode: spec.paperMode,
         cut: owner,
@@ -3001,7 +3000,7 @@ class ExportDialogState extends State<ExportDialog> {
       for (final layer in _activeCut.layers)
         if (!includedIds.contains(layer.id) &&
             !_isAttachedRow(layer) &&
-            layerKindExportsCels(layer.kind))
+            layer.kind.exportsCels)
           layer,
     ];
 

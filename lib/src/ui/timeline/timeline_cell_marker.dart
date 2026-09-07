@@ -30,7 +30,7 @@ String timelineCellMarker({
     // drawn without re-baking the glyphs. The rule is the same everywhere
     // now (user's rule 2026-08-02): an empty run starts where it starts.
     TimelineCellExposureState.uncovered =>
-      !layerKindHoldsDrawings(layer.kind) ||
+      !layer.kind.holdsDrawings ||
               layerKindUsesSeSheetCells(layer.kind) ||
               !emptyRunStart
           ? ''
@@ -43,7 +43,7 @@ String timelineCellMarker({
     // to surface mid-drag when the preview outran the committed name.
     TimelineCellExposureState.drawingStart =>
       layerKindUsesSeSheetCells(layer.kind) ||
-              layerKindBandIsInstructionsOnly(layer.kind) ||
+              layer.kind.bandIsInstructionsOnly ||
               layer.kind == LayerKind.camera
           ? ''
           : frameName == null || frameName.isEmpty

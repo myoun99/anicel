@@ -3,6 +3,10 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:anicel/src/services/media/media_byte_source.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show AnicelZipEntry;
+import 'package:anicel/src/services/persistence/media_blob_codec.dart'
+    show mediaFramedEntrySuffix;
 import 'package:flutter_test/flutter_test.dart';
 
 /// The one named answer to "where are this asset's bytes", introduced while
@@ -76,6 +80,21 @@ void main() {
     expect(tail.sublist(0, 4), [252, 253, 254, 255]);
   });
 
+  test('the app-support file serves the SAME window — a carried conform is '
+      'read block by block like any other file', () {
+    final file = File('${temp.path}/carried.bin')
+      ..writeAsBytesSync(Uint8List.fromList(List<int>.generate(64, (i) => i)));
+    final bytes = MediaAppFileBytes(path: file.path, framed: false);
+
+    final buffer = Uint8List(3);
+    expect(bytes.readIntoSync(buffer, 8, 3), 3);
+    expect(buffer, [8, 9, 10]);
+
+    final tail = Uint8List(8);
+    expect(bytes.readIntoSync(tail, 60, 8), 4);
+    expect(tail.sublist(0, 4), [60, 61, 62, 63]);
+  });
+
   test('a file never claims to know its own checksum', () {
     // Nothing on a filesystem does. The archive variant will, because ZIP
     // writes a CRC-32 per entry anyway — which is the whole reason this
@@ -138,6 +157,42 @@ void main() {
       expect(buffer[10], 0, reason: '0xBB from the next entry never appears');
       expect(source.readIntoSync(buffer, 120, 4), 0);
       expect(source.readIntoSync(buffer, -1, 4), 0);
+    });
+
+    test('an ENTRY names its own framing — the factory reads the name, the '
+        'call site does not', () {
+      final archive = fakeArchive();
+      AnicelZipEntry entry(String name) => AnicelZipEntry(
+        name: name,
+        localHeaderOffset: 0,
+        dataOffset: archive.offset,
+        length: archive.length,
+        crc32: 0x1234,
+      );
+
+      final plain = MediaArchiveBytes.ofEntry(
+        archivePath: archive.path,
+        entry: entry('media/take.wav'),
+      );
+      expect(plain.storedIsFramed, isFalse);
+      expect(plain.range, (
+        path: archive.path,
+        offset: archive.offset,
+        length: archive.length,
+      ), reason: 'decodable in place');
+      expect(plain.knownCrc32, 0x1234);
+      expect(plain.lengthSync(), archive.length);
+
+      final framed = MediaArchiveBytes.ofEntry(
+        archivePath: archive.path,
+        entry: entry('media/take.wav$mediaFramedEntrySuffix'),
+      );
+      expect(framed.storedIsFramed, isTrue);
+      expect(
+        framed.range,
+        isNull,
+        reason: 'framed bytes are compressed blocks, not the container',
+      );
     });
 
     test('a mid-entry window starts where it was asked to', () {

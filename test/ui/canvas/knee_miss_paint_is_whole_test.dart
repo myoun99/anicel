@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 void main() {
   // 12000 canvas px wide: past the 8192 cap at any test viewport, so every
@@ -108,7 +109,11 @@ void main() {
               width: screen.width,
               height: screen.height,
               child: CanvasLayerStackView(
-                nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                nodes: const [
+                  CompositeLeaf<CanvasStackRow>(
+                    CanvasActiveLayerRow(opacity: 1),
+                  ),
+                ],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(zoom: 0.025),
@@ -172,7 +177,11 @@ void main() {
               width: screen.width,
               height: screen.height,
               child: CanvasLayerStackView(
-                nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                nodes: const [
+                  CompositeLeaf<CanvasStackRow>(
+                    CanvasActiveLayerRow(opacity: 1),
+                  ),
+                ],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(zoom: 0.025),

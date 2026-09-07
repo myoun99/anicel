@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../repaint_props.dart';
+
 /// Krita/CSP-style color wheel: a hue ring around a saturation/value
 /// TRIANGLE that rotates with the hue (its full-saturation corner rides
 /// the ring indicator). Dragging the ring spins the hue (the triangle
@@ -293,7 +295,7 @@ class _ColorWheelState extends State<ColorWheel> {
   }
 }
 
-class _ColorWheelPainter extends CustomPainter {
+class _ColorWheelPainter extends CustomPainter with RepaintOnProps {
   _ColorWheelPainter({required this.hsv});
 
   final HSVColor hsv;
@@ -364,6 +366,5 @@ class _ColorWheelPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ColorWheelPainter oldDelegate) =>
-      oldDelegate.hsv != hsv;
+  Object get props => (hsv,);
 }

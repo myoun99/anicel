@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// ★S7 — THE BACKDROP RASTER IS A TRADE, AND THE PREDICATE IS ITS PRICE
 /// CHECK.
@@ -106,10 +107,10 @@ void main() {
               child: CanvasLayerStackView(
                 nodes: [
                   for (var i = 0; i < imageNodesBelow; i += 1)
-                    const CanvasLayerImageNode(
+                    const CompositeLeaf<CanvasStackRow>(
                       CanvasLayerImageRequest(frameKey: frameKey, opacity: 1),
                     ),
-                  const CanvasActiveLayerNode(opacity: 1),
+                  const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
                 ],
                 imageCache: cache,
                 canvasSize: canvasSize,

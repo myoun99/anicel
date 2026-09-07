@@ -13,6 +13,7 @@ import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
 import 'effect_lane_policy.dart';
+import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
@@ -120,7 +121,7 @@ List<PropertyLaneRow> transformPropertyLanes(
             ? null
             : (frame) {
                 final anchor = anchorAt(frame);
-                return '${_number(anchor.x)}, ${_number(anchor.y)}';
+                return '${formatTrimmedDecimal(anchor.x)}, ${formatTrimmedDecimal(anchor.y)}';
               },
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
@@ -162,7 +163,7 @@ List<PropertyLaneRow> transformPropertyLanes(
         track.opacity,
         valueLabel: opacityAt == null
             ? null
-            : (frame) => '${_number(opacityAt(frame) * 100)}%',
+            : (frame) => '${formatTrimmedDecimal(opacityAt(frame) * 100)}%',
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),
       ),
@@ -277,9 +278,9 @@ bool laneSelectionCoversBandRow(
 /// AE-style value formatting for a transform lane.
 String formatTransformLaneValue(String laneId, TransformPose pose) {
   return switch (laneId) {
-    'position' => '${_number(pose.center.x)}, ${_number(pose.center.y)}',
-    'scale' => '${_number(pose.zoom * 100)}%',
-    'rotation' => '${_number(pose.rotationDegrees)}°',
+    'position' => '${formatTrimmedDecimal(pose.center.x)}, ${formatTrimmedDecimal(pose.center.y)}',
+    'scale' => '${formatTrimmedDecimal(pose.zoom * 100)}%',
+    'rotation' => '${formatTrimmedDecimal(pose.rotationDegrees)}°',
     _ => '',
   };
 }
@@ -308,35 +309,28 @@ String? scrubTransformLaneValue(
       if (x == null || y == null) {
         return null;
       }
-      return '${_number(x + dragDelta.dx)}, ${_number(y + dragDelta.dy)}';
+      return '${formatTrimmedDecimal(x + dragDelta.dx)}, ${formatTrimmedDecimal(y + dragDelta.dy)}';
     case 'scale':
       final percent = parse(currentLabel);
       if (percent == null) {
         return null;
       }
-      return '${_number(percent + dragDelta.dx * 0.5)}%';
+      return '${formatTrimmedDecimal(percent + dragDelta.dx * 0.5)}%';
     case 'rotation':
       final degrees = parse(currentLabel);
       if (degrees == null) {
         return null;
       }
-      return '${_number(degrees + dragDelta.dx * 0.5)}°';
+      return '${formatTrimmedDecimal(degrees + dragDelta.dx * 0.5)}°';
     case 'opacity':
       final percent = parse(currentLabel);
       if (percent == null) {
         return null;
       }
       final scrubbed = (percent + dragDelta.dx * 0.5).clamp(0.0, 100.0);
-      return '${_number(scrubbed)}%';
+      return '${formatTrimmedDecimal(scrubbed)}%';
   }
   return null;
-}
-
-String _number(double value) {
-  final rounded = double.parse(value.toStringAsFixed(1));
-  return rounded == rounded.roundToDouble()
-      ? rounded.round().toString()
-      : rounded.toStringAsFixed(1);
 }
 
 PropertyLaneRow _lane<T>(

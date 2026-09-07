@@ -13,6 +13,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import '../../helpers/library_source.dart';
 
 /// 🚨★★★EVERY ROUTE COMPOSITES A GROUP THE SAME WAY.
@@ -163,9 +164,9 @@ void main() {
       );
       final image = await service.renderThroughCamera(
         nodes: [
-          CutFrameCompositeSurfaceGroup(
+          CompositeGroup<CutFrameCompositeLayer>(
             children: [
-              CutFrameCompositeSurfaceLeaf(
+              CompositeLeaf<CutFrameCompositeLayer>(
                 CutFrameCompositeLayer(surface: inkedSurface(), opacity: 1),
               ),
             ],

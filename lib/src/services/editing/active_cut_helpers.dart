@@ -2,6 +2,7 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../project_lookup.dart';
 
 CutId defaultActiveCutIdFor(Project project) {
   for (final track in project.tracks) {
@@ -24,16 +25,5 @@ CutId defaultActiveCutIdFor(Project project) {
 }
 
 /// The track owning [cutId], or `null` when no track holds it.
-TrackId? trackIdOfCut(Project project, CutId? cutId) {
-  if (cutId == null) {
-    return null;
-  }
-
-  for (final track in project.tracks) {
-    if (track.cuts.any((cut) => cut.id == cutId)) {
-      return track.id;
-    }
-  }
-
-  return null;
-}
+TrackId? trackIdOfCut(Project project, CutId? cutId) =>
+    cutId == null ? null : cutPositionOf(project, cutId)?.trackId;

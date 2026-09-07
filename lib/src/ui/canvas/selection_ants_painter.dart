@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -6,6 +6,8 @@ import '../../models/canvas_viewport.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../theme/app_theme.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// The Ctrl+T box chrome in viewport space: the transformed box outline,
 /// the scale handles and the rotate knob (null in QUAD mode — a free
@@ -22,7 +24,7 @@ typedef SelectionTransformChrome = ({
 /// painted under every tool. The selection is a document fact, not a
 /// selection-tool decoration — with the brush armed the user still has to
 /// see where paint will land (R26 #18).
-class SelectionAntsPainter extends CustomPainter {
+class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   SelectionAntsPainter({
     required Animation<double> repaint,
     required this.viewport,
@@ -320,16 +322,19 @@ class SelectionAntsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant SelectionAntsPainter oldDelegate) =>
-      oldDelegate.outlineIsLive != outlineIsLive ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.committedRegion != committedRegion ||
-      oldDelegate.screenOffset != screenOffset ||
-      !listEquals(oldDelegate.marqueeShapes, marqueeShapes) ||
-      oldDelegate.openTrail != openTrail ||
-      oldDelegate.closeTarget != closeTarget ||
-      oldDelegate.closeTargetArmed != closeTargetArmed ||
-      !identical(oldDelegate.cursor, cursor) ||
-      oldDelegate.transformChrome != transformChrome ||
-      oldDelegate.sessionHasChanges != sessionHasChanges;
+  Object get props => (
+    outlineIsLive,
+    viewport,
+    committedRegion,
+    screenOffset,
+    ByList(marqueeShapes),
+    // The live trail is a fresh list per pointer sample, and it is compared
+    // by identity for that reason — as a `List`'s own `==` already was.
+    ByIdentity(openTrail),
+    closeTarget,
+    closeTargetArmed,
+    ByIdentity(cursor),
+    transformChrome,
+    sessionHasChanges,
+  );
 }

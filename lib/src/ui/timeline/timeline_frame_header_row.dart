@@ -13,7 +13,7 @@ import 'timeline_grid_metrics.dart';
 /// PAINTERIZED (UI-R13 #1, the drawing rows' UI-R9 #12b treatment): the
 /// whole strip is one CustomPaint — per-frame header widgets are gone,
 /// so zoom steps and window shifts rebuild nothing here. Tests probe
-/// [TimelineFrameRulerPainter.headerModelAt] / `headerRectFor` through
+/// [TimelineRulerScale.modelAt] / `cellRectFor` through
 /// the 'timeline-frame-ruler-paint' key; selection stays on the
 /// viewport-level scrub listeners (G8 — the strip is passive, and
 /// [onSelectFrame] is accepted only for call-site stability).
@@ -74,11 +74,13 @@ class TimelineFrameHeaderRow extends StatelessWidget {
         size: Size(width, metrics.layerRowHeight),
         painter: TimelineFrameRulerPainter(
           scale: TimelineRulerScale(
+            axis: Axis.horizontal,
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
             currentFrameIndex: currentFrameIndex,
             playbackFrameCount: playbackFrameCount,
             leadingFrameSpacer: leadingFrameSpacerWidth,
+            crossExtent: metrics.layerRowHeight,
             metrics: metrics,
             colorScheme: colorScheme,
             framesPerSecond: framesPerSecond,

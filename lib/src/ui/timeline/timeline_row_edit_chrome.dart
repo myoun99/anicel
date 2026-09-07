@@ -21,6 +21,8 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_run_end_handles.dart';
 import '../text/app_strings.dart';
+import '../repaint_props.dart';
+import 'memo_token.dart';
 
 /// One pointer target in a dense row's edit chrome. Its [rect] is the
 /// row-local hit area — the same rect the painter draws inside, so there is
@@ -386,7 +388,7 @@ class TimelineRowChromeResolver {
 }
 
 /// Draws a dense row's whole edit chrome in one pass.
-class TimelineRowEditChromePainter extends CustomPainter {
+class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   TimelineRowEditChromePainter({
     required this.resolver,
     required this.geometry,
@@ -496,17 +498,23 @@ class TimelineRowEditChromePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimelineRowEditChromePainter oldDelegate) =>
-      // Geometry is absent on purpose — it arrives through `repaint`.
-      // Value-compared, never `identical`: a fresh-but-equal instance is
-      // the common case on a rebuild (the churn that hid in the rulers).
-      !listEquals(oldDelegate.model.targets, model.targets) ||
-      !listEquals(oldDelegate.model.patternSpans, model.patternSpans) ||
-      oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.hoveredId != hoveredId ||
-      oldDelegate.operatingId != operatingId ||
-      oldDelegate.draggingGripId != draggingGripId ||
-      oldDelegate.gripGround != gripGround;
+  // Geometry is absent on purpose — it arrives through `repaint`.
+  // Value-compared, never `identical`: a fresh-but-equal instance is
+  // the common case on a rebuild (the churn that hid in the rulers).
+  Object get props {
+    // Resolved ONCE per side: `model` runs the resolver against the live
+    // geometry, and the old chain asked for it twice per painter.
+    final resolved = model;
+    return (
+      ByList(resolved.targets),
+      ByList(resolved.patternSpans),
+      colorScheme,
+      hoveredId,
+      operatingId,
+      draggingGripId,
+      gripGround,
+    );
+  }
 
   @override
   SemanticsBuilderCallback get semanticsBuilder =>

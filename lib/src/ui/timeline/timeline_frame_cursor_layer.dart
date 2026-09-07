@@ -158,8 +158,7 @@ class TimelineCursorLayer extends StatelessWidget {
     final standingLaneIndex = _standingLaneIndex();
     final children = <Widget>[
       ?_playhead(frame, cursorVisible: cursorVisible),
-      ?_rangeBand(window),
-      ?_laneBand(window),
+      ?_selectedBand(window),
       ?_standingLaneMark(
         frame,
         standingLaneIndex,
@@ -286,36 +285,36 @@ class TimelineCursorLayer extends StatelessWidget {
   /// ★[TimelineFrameRangeSelection.coversRow] is the question, and the rail
   /// already knows each row's [TimelineDisplayRow.address]. Every kind, one
   /// predicate, and a new row kind joins by existing.
-  Widget? _rangeBand(({int startIndex, int endIndexExclusive}) window) {
-    final range = frameRangeSelection?.value;
-    if (range == null) return null;
-    return _selectionBand(
-      window,
-      span: (
-        startIndex: range.startIndex,
-        endIndexExclusive: range.endIndexExclusive,
-      ),
-      coversRow: (row) => range.coversRow(row.address),
-      semantics: (
-        key: const ValueKey<String>('timeline-frame-range-selection'),
-        label: AppText.strings.tlSelectedFrameRange,
-      ),
-    );
-  }
-
-  /// R27 #14: the LANE (fx/key) selection — the SAME band, drawn by the same
-  /// overlay across the spanned lane rows. Lane bands used to paint their
-  /// own flat rectangle each, which is why a key span read as a different
-  /// kind of selection than a cell span.
   ///
-  /// 🚨T6: and only when the CELL span is not already drawing. There is one
-  /// selected state at a time ([claimSelection]) with a single exception — a
-  /// mixed cell drag ends up owning lane state too — and in that one case
-  /// both bands would cover the same rows and stack their fills, so the same
-  /// span would read darker for having been described twice. The cell span
-  /// already knows every row it swept, lanes included.
-  Widget? _laneBand(({int startIndex, int endIndexExclusive}) window) {
-    if (frameRangeSelection?.value != null) return null;
+  /// R27 #14: the LANE (fx/key) selection is the SAME band, drawn by the
+  /// same overlay across the spanned lane rows. Lane bands used to paint
+  /// their own flat rectangle each, which is why a key span read as a
+  /// different kind of selection than a cell span.
+  ///
+  /// 🚨T6: and the CELL span WINS. There is one selected state at a time
+  /// ([claimSelection]) with a single exception — a mixed cell drag ends up
+  /// owning lane state too — and in that one case both bands would cover
+  /// the same rows and stack their fills, so the same span would read
+  /// darker for having been described twice. The cell span already knows
+  /// every row it swept, lanes included. That precedence is why this is one
+  /// method with an early return rather than two bands with a guard between
+  /// them: a guard is a thing to remember, and an early return is not.
+  Widget? _selectedBand(({int startIndex, int endIndexExclusive}) window) {
+    final range = frameRangeSelection?.value;
+    if (range != null) {
+      return _selectionBand(
+        window,
+        span: (
+          startIndex: range.startIndex,
+          endIndexExclusive: range.endIndexExclusive,
+        ),
+        coversRow: (row) => range.coversRow(row.address),
+        semantics: (
+          key: const ValueKey<String>('timeline-frame-range-selection'),
+          label: AppText.strings.tlSelectedFrameRange,
+        ),
+      );
+    }
     final laneRange = laneRangeSelection?.value;
     if (laneRange == null) return null;
     return _selectionBand(

@@ -3,7 +3,7 @@ import 'cut.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
-import 'layer_kind.dart';
+import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
@@ -262,7 +262,12 @@ class TimesheetDocument {
       );
     }
 
-    final playbackFrameCount = cut.duration < 1 ? 1 : cut.duration;
+    final sources = SheetSources.of(
+      cut: cut,
+      trackSeLayers: trackSeLayers,
+      cutStartFrame: cutStartFrame,
+    );
+    final playbackFrameCount = sources.playbackFrameCount;
     // のりしろ. The conte 尺 (and so the cut block, and so the total) never
     // moves — the sheet just has more rows to fill than the cut is long,
     // which is exactly what 「シートは必ずここまで記入する」 asks for.
@@ -284,60 +289,13 @@ class TimesheetDocument {
         );
     final rowCount = pageCount * pageFrameCount;
 
-    // ACTION-block cel columns: ONE gate shared with the envelope and
-    // the XDTS export ([layerTakesSheetCelColumn], D24) — image rows
-    // answer false, a nameless held picture prints nothing.
-    final animationLayers = [
-      for (final layer in cut.layers)
-        if (layerTakesSheetCelColumn(layer)) layer,
-    ];
-    // SE rows are track-owned: window their global timelines to this cut
-    // (spill-in synthesizes a display block). Cut-owned SE layers remain
-    // for legacy fixtures.
-    final seWindow = TrackSeWindow(
-      cutStartFrame: cutStartFrame,
-      cutDurationFrames: cut.duration,
-    );
-    // The display window is open-ended on the right now (SE globalization
-    // — the timeline's runway shows the neighbours' sounds), but a
-    // printed page is no runway: entries starting at or past the cut end
-    // stay off the sheet, crossing blocks keep their true length and the
-    // sheet marks them with the timeline's `~`. One clip for every
-    // cut-scoped export ([clipLayerStartsBefore] — the XDTS sheet reads
-    // the same projection).
+    final animationLayers = sources.celLayers;
+    final seSlots = sources.seLayers;
+    final instructionLayers = sources.instructionLayers;
+    // The one clip, again, for the LIVE preview clone a drag publishes —
+    // it arrives outside [SheetSources] and still owes the same rule.
     Layer clipToSheet(Layer displayClone) =>
         clipLayerStartsBefore(displayClone, playbackFrameCount);
-    bool crossesCutEnd(Layer clone) {
-      for (final entry in clone.timeline.entries) {
-        if (entry.value.isDrawing &&
-            !entry.value.ghost &&
-            entry.key < playbackFrameCount &&
-            entry.key + (entry.value.length ?? 1) > playbackFrameCount) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    final seSlots = [
-      for (final layer in cut.layers)
-        if (layer.kind == LayerKind.se && layer.onTimesheet)
-          (layer: layer, crosses: crossesCutEnd(layer), spills: false),
-      for (final layer in trackSeLayers)
-        if (layer.onTimesheet)
-          () {
-            final clone = clipToSheet(seWindow.displayLayer(layer));
-            return (
-              layer: clone,
-              crosses: crossesCutEnd(clone),
-              spills: seWindow.spillInBlock(layer) != null,
-            );
-          }(),
-    ];
-    final instructionLayers = [
-      for (final layer in cut.layers)
-        if (layer.kind == LayerKind.instruction && layer.onTimesheet) layer,
-    ];
     // The CAM keyframe column obeys the camera layer's timesheet toggle
     // (unified layer controls); toggled off it stays printed blank form
     // space, like an unbacked slot.
@@ -830,7 +788,11 @@ class _LayerCellsPass {
         continue;
       }
 
-      _writeAuthoredBlock(start, exposure);
+      _writeDrawingRun(
+        start,
+        exposure,
+        seName: seNamesByFrameId[exposure.frameId],
+      );
     }
   }
 
@@ -981,24 +943,13 @@ class _LayerCellsPass {
         continue;
       }
       final ghostExposure = entries[chainIndex].value;
-      final ghostEnd = (ghostStart + ghostExposure.length!).clamp(
-        0,
-        rowCount,
+      // VERBATIM means the same writer: the lead-in prints its cel, its
+      // held rows and its speaker name exactly as the authored block does.
+      _writeDrawingRun(
+        ghostStart,
+        ghostExposure,
+        seName: seNamesByFrameId[ghostExposure.frameId],
       );
-      cells[ghostStart] = TimesheetCell(
-        TimesheetCellKind.drawing,
-        label: labelsByFrameId[ghostExposure.frameId] ?? '?',
-        spanLength: ghostEnd - ghostStart,
-      );
-      for (var row = ghostStart + 1; row < ghostEnd; row += 1) {
-        cells[row] = TimesheetCell(
-          ghostExposure.hasBreakdownAt(row - ghostStart)
-              ? TimesheetCellKind.mark
-              : TimesheetCellKind.held,
-          spanLength: ghostEnd - ghostStart,
-          spanOffset: row - ghostStart,
-        );
-      }
     }
   }
 
@@ -1024,14 +975,23 @@ class _LayerCellsPass {
     }
   }
 
-  /// An authored block: its cel at [start], its held rows after it.
-  void _writeAuthoredBlock(int start, TimelineExposure exposure) {
+  /// One drawing run: its cel at [start], its held rows after it.
+  ///
+  /// Written by the authored blocks and, verbatim, by a FRONT repeat's
+  /// lead-in ghosts — [seName] is the only value the two sites differ on,
+  /// and `covered[…]` is idempotent on the ghost path (the chain walk sets
+  /// it before dispatching).
+  void _writeDrawingRun(
+    int start,
+    TimelineExposure exposure, {
+    required String? seName,
+  }) {
     final endExclusive = (start + exposure.length!).clamp(0, rowCount);
     cells[start] = TimesheetCell(
       TimesheetCellKind.drawing,
       label: labelsByFrameId[exposure.frameId] ?? '?',
       spanLength: endExclusive - start,
-      seName: seNamesByFrameId[exposure.frameId],
+      seName: seName,
     );
     covered[start] = true;
     for (var row = start + 1; row < endExclusive; row += 1) {

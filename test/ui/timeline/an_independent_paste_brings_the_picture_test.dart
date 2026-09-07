@@ -33,9 +33,9 @@ void main() {
   BitmapSurface ink(CanvasSize canvasSize) {
     const tile = 256;
     final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, 255);
-    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTile(
+    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
       BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
-    );
+    ]);
   }
 
   ({EditorSessionManager session, LayerId from, LayerId to}) twoRows() {

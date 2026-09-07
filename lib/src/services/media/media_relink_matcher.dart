@@ -21,6 +21,7 @@
 /// one is both available and still needed.
 library;
 
+import '../../core/path_names.dart';
 import '../../models/media_identity.dart';
 
 /// What a relink pass decided.
@@ -63,7 +64,7 @@ MediaRelinkPlan planMediaRelink({
   final byName = <String, List<String>>{};
   for (final raw in candidatePaths) {
     final candidate = _normalize(raw);
-    final name = _fileName(candidate);
+    final name = fileNameOfPath(candidate);
     if (name.isEmpty) {
       continue;
     }
@@ -79,7 +80,7 @@ MediaRelinkPlan planMediaRelink({
 
   for (final raw in missingPaths) {
     final missing = _normalize(raw);
-    final candidates = byName[_fileName(missing).toLowerCase()] ?? const [];
+    final candidates = byName[fileNameOfPath(missing).toLowerCase()] ?? const [];
     // The extension has to survive: a `.png` and a `.psd` of the same name
     // are different files, and swapping one for the other would decode to
     // a failure much later and somewhere else.
@@ -221,16 +222,11 @@ String? _chooseByContent(
 
 String _normalize(String path) => path.replaceAll('\\', '/');
 
-String _fileName(String path) {
-  final slash = path.lastIndexOf('/');
-  return slash < 0 ? path : path.substring(slash + 1);
-}
-
 /// Lowercased, including the dot; empty when there is none. Compared rather
 /// than parsed, so `.tar.gz`-style names simply compare their last part on
 /// both sides.
 String _extension(String path) {
-  final name = _fileName(path);
+  final name = fileNameOfPath(path);
   final dot = name.lastIndexOf('.');
   return dot <= 0 ? '' : name.substring(dot).toLowerCase();
 }
