@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
 
@@ -17,18 +18,18 @@ class ExposureVerbs {
   ExposureVerbs({
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required Camera camera,
   }) : _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _camera = camera;
 
   final Camera _camera;
 
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
 
   /// The timesheet "X here" action: blanks the covering block's hold so the
   /// current cell (and the rest of the old hold) becomes empty.
@@ -44,7 +45,7 @@ class ExposureVerbs {
   Map<LayerId, ({int start, int endExclusive})> _blankableSpanForSelection() =>
       _selection.bandRowsForSelection(
         _blankable,
-        (ids, selection) => _timeline.timelineController.blankableSpanInBand(
+        (ids, selection) => _controllers.timelineController.blankableSpanInBand(
           layerIds: ids,
           startIndex: selection.startIndex,
           endExclusive: selection.endIndexExclusive,
@@ -69,9 +70,9 @@ class ExposureVerbs {
   bool get canBlankExposureAtCurrentFrame => _selection.bandOrActiveRow(
     canBlankExposureForSelection,
     _blankable,
-    (layer) => _timeline.timelineController.canCutExposureAt(
+    (layer) => _controllers.timelineController.canCutExposureAt(
       layer: layer,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
     ),
   );
 
@@ -86,7 +87,7 @@ class ExposureVerbs {
   void blankExposureAtCurrentFrame() {
     final banded = _blankableSpanForSelection();
     if (banded.isNotEmpty) {
-      _timeline.timelineController.blankSpansForLayers(banded);
+      _controllers.timelineController.blankSpansForLayers(banded);
       _changes.notifyChanged();
       return;
     }
@@ -95,7 +96,7 @@ class ExposureVerbs {
       return;
     }
 
-    _timeline.timelineController.cutExposureForLayer(layerId: layer.id);
+    _controllers.timelineController.cutExposureForLayer(layerId: layer.id);
     _changes.notifyChanged();
   }
 
@@ -110,12 +111,12 @@ class ExposureVerbs {
     if (layer == null) {
       return;
     }
-    final block = _timeline.timelineController.blockForLayerAt(layer: layer);
+    final block = _controllers.timelineController.blockForLayerAt(layer: layer);
     if (block == null) {
       return;
     }
 
-    _timeline.timelineController.shiftExposureEdge(
+    _controllers.timelineController.shiftExposureEdge(
       layerId: layer.id,
       blockStartIndex: block.startIndex,
       edge: TimelineBlockEdge.end,
@@ -146,14 +147,14 @@ class ExposureVerbs {
           : TimelineCellExposureState.uncovered;
     }
 
-    if (_timeline.timelineController.isDrawingStartForLayer(
+    if (_controllers.timelineController.isDrawingStartForLayer(
       layer: layer,
       frameIndex: frameIndex,
     )) {
       return TimelineCellExposureState.drawingStart;
     }
 
-    final held = _timeline.timelineController.isHeldExposureForLayer(
+    final held = _controllers.timelineController.isHeldExposureForLayer(
       layer: layer,
       frameIndex: frameIndex,
     );
@@ -161,7 +162,7 @@ class ExposureVerbs {
     // markUncovered is never produced anymore — the enum value survives
     // solely for exhaustive switches over legacy-visual states.
     if (held &&
-        _timeline.timelineController.hasMarkAt(
+        _controllers.timelineController.hasMarkAt(
           layer: layer,
           frameIndex: frameIndex,
         )) {
@@ -177,7 +178,7 @@ class ExposureVerbs {
     if (layer == null) {
       return false;
     }
-    final block = _timeline.timelineController.blockForLayerAt(layer: layer);
+    final block = _controllers.timelineController.blockForLayerAt(layer: layer);
     return block != null && block.length > 1;
   }
 
@@ -186,6 +187,7 @@ class ExposureVerbs {
     if (layer == null) {
       return false;
     }
-    return _timeline.timelineController.blockForLayerAt(layer: layer) != null;
+    return _controllers.timelineController.blockForLayerAt(layer: layer) !=
+        null;
   }
 }

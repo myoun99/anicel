@@ -1,6 +1,7 @@
 import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// VISIBILITY SOLO — showing one layer alone and remembering what the others
@@ -11,12 +12,13 @@ import 'session_roles.dart';
 /// 2026-09-02). Measured before cutting: three fields of its own and eight
 /// session members touched. It names the roles it needs in its constructor.
 class VisibilitySolo {
-  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required SessionInternals internals}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _internals = internals;
+  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required ActiveCutControllers controllers, required SessionInternals internals}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _controllers = controllers, _internals = internals;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
@@ -86,8 +88,8 @@ class VisibilitySolo {
     }
     // Two batches, not one per row: Solo hides most of the stack and shows
     // a few, and each side is one undo step rather than a screenful.
-    _timeline.layerController.setLayersVisible(layerIds: toShow, visible: true);
-    _timeline.layerController.setLayersVisible(
+    _controllers.layerController.setLayersVisible(layerIds: toShow, visible: true);
+    _controllers.layerController.setLayersVisible(
       layerIds: toHide,
       visible: false,
     );

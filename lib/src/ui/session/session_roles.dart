@@ -13,8 +13,6 @@ import 'drags/drawing_block_move_drag.dart';
 import 'attach_fx_confirm.dart';
 import 'editor_app_settings.dart';
 import '../../services/editing/editing_session_state.dart';
-import '../../controllers/layer_controller.dart';
-import '../../controllers/timeline_controller.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/cut.dart';
@@ -124,8 +122,6 @@ abstract interface class FrameIds {
 abstract interface class TimelineAccess {
   TrackFrameAxis axisForTrack(TrackId trackId);
   EditingSessionState get editingSession;
-  LayerController get layerController;
-  TimelineController get timelineController;
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex);
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex);
   TrackFrameAxis trackFrameAxis();
@@ -158,10 +154,6 @@ abstract interface class SessionInternals {
   bool isSingleCelLayerId(LayerId layerId);
   List<CutId> get liveSelectedCutIds;
   LayerId mintLayerId({Set<String>? usedIds});
-  void rebuildActiveCutControllers({
-    LayerId? preferredActiveLayerId,
-    int preferredFrameIndex = 0,
-  });
   int shiftAnchorFor(
     LayerId layerId,
     int anchorIndex, {

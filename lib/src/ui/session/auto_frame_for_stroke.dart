@@ -1,5 +1,6 @@
 import '../../models/app_input_settings.dart';
 import '../../services/command.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'frame_verbs.dart';
 
@@ -16,13 +17,13 @@ class AutoFrameForStroke {
     required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required FrameVerbs frameVerbs,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _timeline = timeline,
+       _controllers = controllers,
        _frameVerbs = frameVerbs;
 
   final FrameVerbs _frameVerbs;
@@ -31,7 +32,7 @@ class AutoFrameForStroke {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
 
   /// 🚨I-10 — THE BLOCK A PEN-DOWN MADE, waiting to be undone WITH the
   /// stroke it was made for.
@@ -68,7 +69,7 @@ class AutoFrameForStroke {
     if (layer == null || !canAutoCreateFrameForStroke) {
       return false;
     }
-    final command = _timeline.timelineController
+    final command = _controllers.timelineController
         .createDrawingFrameCommandForLayer(
           layerId: layer.id,
           frameId: _frameIds.mintFrameId(layer.id),

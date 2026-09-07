@@ -4,6 +4,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import 'playback_rig.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'visibility_solo.dart';
 import 'row_selection.dart';
@@ -33,6 +34,7 @@ class Standing {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required PlaybackRig playbackRig,
     required FrameClipboard clipboard,
@@ -44,6 +46,7 @@ class Standing {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _playbackRig = playbackRig,
        _clipboard = clipboard,
@@ -58,6 +61,7 @@ class Standing {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final PlaybackRig _playbackRig;
   final FrameClipboard _clipboard;
@@ -83,7 +87,7 @@ class Standing {
   /// on purpose there — and overriding the read put the ring on the wrong row.
   /// The two writers say it instead, each where it moved the layer.
   void seatVerbRowOnActiveLayer() {
-    final seated = _timeline.layerController.activeLayerId;
+    final seated = _controllers.layerController.activeLayerId;
     if (seated == null || _verbRow == LayerRowAddress(seated)) {
       return;
     }
@@ -499,9 +503,7 @@ class Standing {
     _selection.clearFrameRangeSelection();
     // The cut comes back on the row it was left on; never visited (or the
     // layer is gone — the rebuild's own guard) falls back to the top row.
-    _internals.rebuildActiveCutControllers(
-      preferredActiveLayerId: nextActiveLayerId,
-    );
+    _controllers.rebuild(preferredActiveLayerId: nextActiveLayerId);
     if (fromGap) {
       // Activating a cut FROM the gap lands on ITS first frame (UI-R10
       // #14): the stale gap-global cursor never leaks into the new cut
@@ -543,7 +545,7 @@ class Standing {
     // app-wide and rebuilt the whole panel, which is what made cell
     // selection feel like it lagged behind the pointer.
     if (_selection.activeLayerId != layerId) {
-      _timeline.layerController.selectLayer(layerId);
+      _controllers.layerController.selectLayer(layerId);
       // The solo mode FOLLOWS the active layer (R4 #7) — nothing to follow
       // when the layer did not move, and re-applying it is what would have
       // fought a manual visibility toggle on every click.

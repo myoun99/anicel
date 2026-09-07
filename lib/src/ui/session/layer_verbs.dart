@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/commands/track_se_layer_commands.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
@@ -21,18 +22,18 @@ class LayerVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   bool get canDeleteActiveLayer {
@@ -330,13 +331,13 @@ class LayerVerbs {
       final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
       final groupStart = attachedGroupStartIndex(baseId, cut.layers);
       if (groupEnd - groupStart > 1) {
-        _timeline.layerController.addLayer(
+        _controllers.layerController.addLayer(
           layer: layer,
           insertionIndex: groupEnd,
         );
         return;
       }
     }
-    _timeline.layerController.addLayer(layer: layer);
+    _controllers.layerController.addLayer(layer: layer);
   }
 }

@@ -12,6 +12,7 @@ import '../../models/media_asset.dart';
 import '../../models/text_cel_style.dart';
 import '../text/text_cel_render.dart';
 import 'render_caches.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The TEXT-CEL BAKES — text cels are baked to pixels in a background sweep
@@ -26,20 +27,20 @@ class TextCelBakes {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
 
@@ -239,7 +240,7 @@ class TextCelBakes {
     if (layer == null || layer.kind != LayerKind.text || frame == null) {
       return;
     }
-    _timeline.timelineController.setTextContentForFrame(
+    _controllers.timelineController.setTextContentForFrame(
       layerId: layer.id,
       frameId: frame.id,
       textContent: content,

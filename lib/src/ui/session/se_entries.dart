@@ -6,6 +6,7 @@ import '../../models/layer_kind.dart';
 import '../../models/se_name_tag.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
 import 'frame_verbs.dart';
@@ -23,7 +24,7 @@ class SeEntries {
     required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required Camera camera,
     required FrameVerbs frameVerbs,
     required TrackSeDisplay trackSe,
@@ -31,7 +32,7 @@ class SeEntries {
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _timeline = timeline,
+       _controllers = controllers,
        _camera = camera,
        _frameVerbs = frameVerbs,
        _trackSe = trackSe;
@@ -44,7 +45,7 @@ class SeEntries {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
 
   /// Whether the active row can carry an on-canvas name tag (R5b): the
   /// SE rows, and only while a cut gives the canvas its geometry.
@@ -150,10 +151,10 @@ class SeEntries {
 
     final remaining =
         _project.requireActiveCut.duration -
-        _timeline.timelineController.currentFrameIndex;
+        _controllers.timelineController.currentFrameIndex;
     final toCutEnd = remaining < 1 ? 1 : remaining;
     final requested = lengthFrames ?? toCutEnd;
-    _timeline.timelineController.createDrawingFrameForLayer(
+    _controllers.timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: _frameIds.mintFrameId(layer.id),
       length: requested < 1 ? 1 : requested,
@@ -201,7 +202,7 @@ class SeEntries {
     if (layer.kind != LayerKind.se) {
       return;
     }
-    _timeline.timelineController.renameFrameForLayer(
+    _controllers.timelineController.renameFrameForLayer(
       layerId: layerId,
       frameId: frameId,
       name: dialogue,

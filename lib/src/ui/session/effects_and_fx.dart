@@ -545,7 +545,7 @@ class EffectsAndFx {
     final next = effectsWithGroupReset(
       track.effects,
       laneId: headerLaneId,
-      frameIndexes: [_timeline.timelineController.currentFrameIndex],
+      frameIndexes: [_selection.currentFrameIndex],
     );
     if (next == null) {
       return false;

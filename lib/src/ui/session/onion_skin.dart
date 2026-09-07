@@ -8,6 +8,7 @@ import '../../models/layer_kind.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/command.dart';
 import '../../services/onion_skin_plan.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The ONION SKIN — which layers ghost, the sweep over the displayed ones,
@@ -22,18 +23,18 @@ class OnionSkin {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   bool isLayerOnionSkinEnabled(LayerId layerId) =>
@@ -162,7 +163,7 @@ class OnionSkin {
             layerKindAcceptsBrushInput(layer.kind))
           for (final plan in planOnionSkin(
             layer: layer,
-            frameIndex: _timeline.timelineController.currentFrameIndex,
+            frameIndex: _controllers.timelineController.currentFrameIndex,
             settings: settings,
           ))
             CanvasLayerImageRequest(

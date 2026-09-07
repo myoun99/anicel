@@ -30,6 +30,7 @@ import '../timeline/timeline_instruction_row_visual.dart'
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'standing.dart';
 
@@ -40,7 +41,7 @@ class LayerStack {
     required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required LayerVerbs layerVerbs,
     required Standing standing,
@@ -51,7 +52,7 @@ class LayerStack {
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _layerVerbs = layerVerbs,
        _standing = standing,
@@ -63,7 +64,7 @@ class LayerStack {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final LayerVerbs _layerVerbs;
   final Standing _standing;
@@ -132,12 +133,12 @@ class LayerStack {
             insertionIndex: activeIndex < 0 ? null : activeIndex + 1,
           ),
         );
-        _timeline.layerController.selectLayer(layerId);
+        _controllers.layerController.selectLayer(layerId);
       case LayerKind.instruction:
-        _timeline.layerController.addLayer(
+        _controllers.layerController.addLayer(
           layer: Layer(
             id: layerId,
-            name: nextInstructionLayerName(_timeline.layerController.layers),
+            name: nextInstructionLayerName(_controllers.layerController.layers),
             frames: const [],
             timeline: const {},
             kind: LayerKind.instruction,
@@ -194,7 +195,7 @@ class LayerStack {
           (cut) => createFolderLayer(id: layerId, name: nextFolderName(cut)),
         );
       case LayerKind.camera:
-        _timeline.layerController.addLayerWithDefaults(layerId: layerId);
+        _controllers.layerController.addLayerWithDefaults(layerId: layerId);
     }
     // F-20: the row you just made IS the subject now. Every arm above seats
     // the controller's active layer directly, so none of them went through
@@ -234,7 +235,7 @@ class LayerStack {
     if (cut == null) {
       return true;
     }
-    final frame = _timeline.timelineController.resolveFrameForLayer(
+    final frame = _controllers.timelineController.resolveFrameForLayer(
       layer: layer,
       frameIndex: frameIndex,
     );

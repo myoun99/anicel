@@ -8,6 +8,7 @@ import '../../models/track_frame_range.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 import 'editor_voice_recording.dart';
@@ -22,7 +23,7 @@ import 'editor_voice_recording.dart';
 /// fourteen session members touched. It names the roles it needs in
 /// its constructor.
 class TrackSeDisplay {
-  TrackSeDisplay({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required TimelineAccess timeline, required Transitions transitions, required EditorVoiceRecording voiceRecording}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _timeline = timeline, _transitions = transitions, _voiceRecording = voiceRecording;
+  TrackSeDisplay({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required Transitions transitions, required EditorVoiceRecording voiceRecording}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _controllers = controllers, _transitions = transitions, _voiceRecording = voiceRecording;
 
   final EditorVoiceRecording _voiceRecording;
 
@@ -30,7 +31,7 @@ class TrackSeDisplay {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final Transitions _transitions;
 
   TrackSeWindow get trackSeWindow => TrackSeWindow(
@@ -211,7 +212,7 @@ class TrackSeDisplay {
     if (fills.isEmpty) {
       return false;
     }
-    final commands = _timeline.timelineController
+    final commands = _controllers.timelineController
         .drawingFramesCommandsForLayers(fills);
     _project.historyManager.execute(
       commands.length == 1

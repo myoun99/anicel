@@ -15,6 +15,7 @@ import '../storyboard_layer_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../timeline/instruction_span_editing.dart';
 import '../timeline/timeline_drag_preview.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'storyboard_cursor.dart';
 import 'range_selections.dart';
@@ -35,7 +36,7 @@ import 'transitions.dart';
 /// It reaches the session through `_session` — the same private seams it
 /// always used, in the same library, so nothing became public to move.
 class EdgeDrag {
-  EdgeDrag({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required SessionInternals internals, required FoldersAndAttachments folders, required RangeSelections rangeSelections, required StoryboardCursor storyboardCursor, required TrackSeDisplay trackSe, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _internals = internals, _folders = folders, _rangeSelections = rangeSelections, _storyboardCursor = storyboardCursor, _trackSe = trackSe, _transitions = transitions;
+  EdgeDrag({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required ActiveCutControllers controllers, required SessionInternals internals, required FoldersAndAttachments folders, required RangeSelections rangeSelections, required StoryboardCursor storyboardCursor, required TrackSeDisplay trackSe, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _controllers = controllers, _internals = internals, _folders = folders, _rangeSelections = rangeSelections, _storyboardCursor = storyboardCursor, _trackSe = trackSe, _transitions = transitions;
 
   final TrackSeDisplay _trackSe;
   final Transitions _transitions;
@@ -43,7 +44,7 @@ class EdgeDrag {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final FoldersAndAttachments _folders;
   final RangeSelections _rangeSelections;
@@ -524,7 +525,7 @@ class EdgeDrag {
       );
       return shifted == null ? before : before.copyWith(instructions: shifted);
     }
-    return _timeline.timelineController.shiftedLayerForEdge(
+    return _controllers.timelineController.shiftedLayerForEdge(
           layer: before,
           blockStartIndex: blockStart,
           edge: edge,
@@ -602,7 +603,7 @@ class EdgeDrag {
       if (beforeLayer == null) {
         continue;
       }
-      final after = _timeline.timelineController.retimedLayerForBlocks(
+      final after = _controllers.timelineController.retimedLayerForBlocks(
         layer: beforeLayer,
         newLengthByStart: {
           for (final start in entry.value)
@@ -714,7 +715,7 @@ class EdgeDrag {
     required Map<CutId, int>? afterGaps,
   }) {
     if (sync == null || afterDurations == null || afterGaps == null) {
-      _timeline.timelineController.commitLayerTimelineDrags(edits);
+      _controllers.timelineController.commitLayerTimelineDrags(edits);
       _changes.warmActiveCut();
       _changes.notifyChanged();
       return;
@@ -726,7 +727,7 @@ class EdgeDrag {
     //
     // No fade re-anchor rides along any more (R4): the fade keys are the
     // TRACK's, on the global axis — a cut resize edits the cut, not them.
-    _timeline.timelineController.commitLayerTimelineDragsWithCutDurations(
+    _controllers.timelineController.commitLayerTimelineDragsWithCutDurations(
       edits: edits,
       beforeDurations: beforeDurations,
       afterDurations: afterDurations,
@@ -1160,7 +1161,7 @@ class EdgeDrag {
             afterDurations: afterDurations,
           );
     if (rowEdits.isNotEmpty) {
-      _timeline.timelineController.commitLayerTimelineDragsWithCutDurations(
+      _controllers.timelineController.commitLayerTimelineDragsWithCutDurations(
         edits: rowEdits,
         beforeDurations: scopedBeforeDurations,
         afterDurations: afterDurations,
@@ -1310,7 +1311,7 @@ class EdgeDrag {
     if (trackTargets != null) {
       // ⛔No active-cut guard: these starts are ALREADY global keys and the
       // retime applies no lens, so a gap changes nothing about them (H11).
-      _timeline.timelineController.retimeBlocksForLayers({
+      _controllers.timelineController.retimeBlocksForLayers({
         for (final entry in trackTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
@@ -1334,7 +1335,7 @@ class EdgeDrag {
         if (_project.activeCutOrNull == null) {
           return;
         }
-        _timeline.timelineController.retimeBlocksForLayers({
+        _controllers.timelineController.retimeBlocksForLayers({
           layerId: {blockStartIndex: comma},
         });
         _changes.warmActiveCut();

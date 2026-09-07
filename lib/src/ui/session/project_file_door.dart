@@ -42,6 +42,7 @@ import 'media_grant_ledger.dart';
 import 'project_file.dart';
 import 'playback_rig.dart';
 import 'render_caches.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'text_cel_bakes.dart';
 
@@ -54,7 +55,7 @@ class ProjectFileDoor {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
-    required SessionInternals internals,
+    required ActiveCutControllers controllers,
     required PlaybackRig playbackRig,
     required RenderCaches renderCaches,
     required MediaStagingStore staging,
@@ -72,7 +73,7 @@ class ProjectFileDoor {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals,
+       _controllers = controllers,
        _playbackRig = playbackRig,
        _renderCaches = renderCaches,
        _staging = staging,
@@ -91,7 +92,7 @@ class ProjectFileDoor {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
+  final ActiveCutControllers _controllers;
   final PlaybackRig _playbackRig;
   final RenderCaches _renderCaches;
   final MediaStagingStore _staging;
@@ -558,7 +559,7 @@ class ProjectFileDoor {
     _timeline.editingSession.setActiveCutId(
       result.project.tracks.first.cuts.first.id,
     );
-    _internals.rebuildActiveCutControllers();
+    _controllers.rebuild();
     // The replaced project's shelf takes are no longer this session's to
     // adopt — they stay on the shelf, findable.
     _voiceRecording.forgetShelfTakes();

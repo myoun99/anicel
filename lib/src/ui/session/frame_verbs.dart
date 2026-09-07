@@ -17,6 +17,7 @@ import '../../models/timeline_row_address.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_pose_paint.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The FRAME VERBS — the playhead's frame and what stands there: stepping
@@ -36,12 +37,14 @@ class FrameVerbs {
     required ChangeSink changes,
     required FrameIds frameIds,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _timeline = timeline,
+       _controllers = controllers,
        _internals = internals;
 
   final ProjectAccess _project;
@@ -49,6 +52,7 @@ class FrameVerbs {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// The geometric pose sample the interactive canvas shows for [layerId]
@@ -77,7 +81,7 @@ class FrameVerbs {
       final pose = resolveLayerPoseAt(
         layer: fxCarrier,
         canvasSize: cut.canvasSize,
-        frameIndex: _timeline.timelineController.currentFrameIndex,
+        frameIndex: _controllers.timelineController.currentFrameIndex,
       );
       if (pose == null) {
         return null;
@@ -86,7 +90,7 @@ class FrameVerbs {
         pose: pose,
         anchorPoint: resolveLayerAnchorPointAt(
           layer: fxCarrier,
-          frameIndex: _timeline.timelineController.currentFrameIndex,
+          frameIndex: _controllers.timelineController.currentFrameIndex,
         ),
       );
     }
@@ -99,7 +103,7 @@ class FrameVerbs {
       return null;
     }
 
-    return _timeline.timelineController.getSelectedFrameForLayer(layer);
+    return _controllers.timelineController.getSelectedFrameForLayer(layer);
   }
 
   bool get canCreateDrawingAtCurrentFrame {
@@ -129,9 +133,9 @@ class FrameVerbs {
       return false;
     }
 
-    return _timeline.timelineController.canCreateDrawingAt(
+    return _controllers.timelineController.canCreateDrawingAt(
       layer: layer,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
     );
   }
 
@@ -180,7 +184,7 @@ class FrameVerbs {
     }
     return coveringDrawingBlockAt(
           layer.timeline,
-          _timeline.timelineController.currentFrameIndex,
+          _controllers.timelineController.currentFrameIndex,
         ) !=
         null;
   }
@@ -192,12 +196,12 @@ class FrameVerbs {
     }
     final block = coveringDrawingBlockAt(
       layer.timeline,
-      _timeline.timelineController.currentFrameIndex,
+      _controllers.timelineController.currentFrameIndex,
     );
     if (block == null) {
       return;
     }
-    final clip = _timeline.timelineController.copyRunForLayer(
+    final clip = _controllers.timelineController.copyRunForLayer(
       layerId: layer.id,
       index: block.startIndex,
       count: block.endIndexExclusive - block.startIndex,
@@ -234,7 +238,7 @@ class FrameVerbs {
       }
       placed = TimelineClipRow(exposures: exposures, length: clip.length);
     }
-    _timeline.timelineController.spliceRunsForLayers(
+    _controllers.timelineController.spliceRunsForLayers(
       runs: [
         (
           layerId: layer.id,
@@ -282,7 +286,7 @@ class FrameVerbs {
     if (edits.isEmpty) {
       return;
     }
-    _timeline.timelineController.commitLayerTimelineDrags(edits);
+    _controllers.timelineController.commitLayerTimelineDrags(edits);
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
@@ -293,9 +297,9 @@ class FrameVerbs {
       return false;
     }
 
-    return _timeline.timelineController.canRenameFrameAt(
+    return _controllers.timelineController.canRenameFrameAt(
       layer: layer,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
     );
   }
 
@@ -315,7 +319,7 @@ class FrameVerbs {
 
     final allowDuplicateName = layer.kind == LayerKind.se;
     if (!allowDuplicateName) {
-      final conflictingFrameId = _timeline.timelineController
+      final conflictingFrameId = _controllers.timelineController
           .conflictingFrameIdForRename(
             layer: layer,
             frameId: frame.id,
@@ -326,7 +330,7 @@ class FrameVerbs {
       }
     }
 
-    _timeline.timelineController.renameFrameForLayer(
+    _controllers.timelineController.renameFrameForLayer(
       layerId: layer.id,
       frameId: frame.id,
       name: name,
@@ -343,7 +347,7 @@ class FrameVerbs {
       return;
     }
 
-    _timeline.timelineController.linkFrameForLayer(
+    _controllers.timelineController.linkFrameForLayer(
       layerId: layer.id,
       sourceFrameId: frame.id,
       targetFrameId: targetFrameId,
@@ -351,12 +355,13 @@ class FrameVerbs {
     _changes.notifyChanged();
   }
 
-  int get currentFrameIndex => _timeline.timelineController.currentFrameIndex;
+  int get currentFrameIndex =>
+      _controllers.timelineController.currentFrameIndex;
 
   /// Steps the playhead one frame back (flipping `,`) — a committed seek,
   /// clamped at the cut start.
   void selectPreviousFrame() {
-    final current = _timeline.timelineController.currentFrameIndex;
+    final current = _controllers.timelineController.currentFrameIndex;
     if (current <= 0) {
       return;
     }
@@ -371,7 +376,7 @@ class FrameVerbs {
       return; // Gap state: no cut axis to flip along.
     }
     final last = math.max(0, cut.duration - 1);
-    final current = _timeline.timelineController.currentFrameIndex;
+    final current = _controllers.timelineController.currentFrameIndex;
     if (current >= last) {
       return;
     }
@@ -394,7 +399,7 @@ class FrameVerbs {
   /// 이동**이고 그건 그것대로 옳다(플립이 아닌 호출자가 쓴다). 플립은 이쪽이다.
   void _flipToFrame(int landing) {
     final floored = landing < 0 ? 0 : landing;
-    if (floored != _timeline.timelineController.currentFrameIndex) {
+    if (floored != _controllers.timelineController.currentFrameIndex) {
       _selection.selectFrameIndex(floored);
     }
   }
@@ -438,7 +443,8 @@ class FrameVerbs {
         // 컷 끝에 갇혀 있던 자리다. 한 프레임 걷는 것은 그대로고, 그 한
         // 프레임이 어디에 내리는지를 이제 두 행이 같이 답한다.
         _flipToFrame(
-          _timeline.timelineController.currentFrameIndex + (forward ? 1 : -1),
+          _controllers.timelineController.currentFrameIndex +
+              (forward ? 1 : -1),
         );
     }
   }
@@ -465,7 +471,7 @@ class FrameVerbs {
     if (_project.activeCutOrNull == null) {
       return; // Gap state: no cut axis — the TRACK row is the one to walk.
     }
-    final current = _timeline.timelineController.currentFrameIndex;
+    final current = _controllers.timelineController.currentFrameIndex;
     final next = flipColumnStep(
       frame: current,
       direction: forward ? 1 : -1,
@@ -513,12 +519,12 @@ class FrameVerbs {
         _project.activeCutOrNull?.layers ?? const <Layer>[],
       );
       if (base != null) {
-        return _timeline.timelineController
+        return _controllers.timelineController
             .resolveFrameForLayer(layer: base, frameIndex: frameIndex)
             ?.name;
       }
     }
-    return _timeline.timelineController
+    return _controllers.timelineController
         .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
         ?.name;
   }
@@ -528,20 +534,20 @@ class FrameVerbs {
     if (layer == null || selectedFrame == null) {
       return null;
     }
-    return _timeline.timelineController.effectiveDurationForLayerAt(
+    return _controllers.timelineController.effectiveDurationForLayerAt(
       layer: layer,
     );
   }
 
   String get currentFrameStatusText {
-    return 'Frame: ${_timeline.timelineController.currentFrameIndex + 1}';
+    return 'Frame: ${_controllers.timelineController.currentFrameIndex + 1}';
   }
 
   String currentFrameDisplayLabel(Layer? layer, Frame? frame) {
     if (layer == null) {
       return '-';
     }
-    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
     final frameName = frame?.name;
     final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {

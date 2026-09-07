@@ -31,6 +31,7 @@ import '../timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'effects_and_fx.dart';
 
@@ -47,11 +48,13 @@ class LaneVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required EffectsAndFx effectsAndFx,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _effectsAndFx = effectsAndFx;
 
@@ -60,6 +63,7 @@ class LaneVerbs {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// Names (or un-names, with null) one TRANSFORM lane KEY — the twin of
@@ -315,7 +319,7 @@ class LaneVerbs {
   /// [_laneVerbLayerFor]. A track-SE row is on the global axis, so the
   /// cut-local cursor has to be translated before it can name a key.
   int _laneVerbFrameFor(LayerId layerId) =>
-      _timeline.timelineController.currentFrameIndex +
+      _controllers.timelineController.currentFrameIndex +
       (_project.isTrackSeLayerId(layerId)
           ? _project.activeCutGlobalStartFrame
           : 0);

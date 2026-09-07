@@ -9,6 +9,7 @@ import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../models/layer_kind.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'lane_verbs.dart';
 import 'range_selections.dart';
@@ -26,6 +27,7 @@ class CellVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
     required LaneVerbs laneVerbs,
@@ -35,6 +37,7 @@ class CellVerbs {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _renderCaches = renderCaches,
        _laneVerbs = laneVerbs,
@@ -47,6 +50,7 @@ class CellVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
   final LaneVerbs _laneVerbs;
@@ -86,7 +90,7 @@ class CellVerbs {
       if (!layerAcceptsBrushInput(layer) || !cut.layers.rowVisible(layer)) {
         return;
       }
-      final frame = _timeline.timelineController.resolveFrameForLayer(
+      final frame = _controllers.timelineController.resolveFrameForLayer(
         layer: layer,
         frameIndex: frameIndex,
       );
@@ -211,7 +215,7 @@ class CellVerbs {
 
   bool get hasActiveNonNegativeCell {
     return _selection.activeLayer != null &&
-        _timeline.timelineController.currentFrameIndex >= 0;
+        _controllers.timelineController.currentFrameIndex >= 0;
   }
 
   /// The SELECTION-borne rungs of the cell delete, alone (B8): lane keys
@@ -267,9 +271,9 @@ class CellVerbs {
       return false;
     }
 
-    return _timeline.timelineController.canDeleteCellAt(
+    return _controllers.timelineController.canDeleteCellAt(
       layer: layer,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
     );
   }
 
@@ -285,7 +289,7 @@ class CellVerbs {
     // leftover selection covers empty cells so it clears with the delete.
     final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
     if (selectionTargets != null) {
-      _timeline.timelineController.deleteBlocksForLayers(selectionTargets);
+      _controllers.timelineController.deleteBlocksForLayers(selectionTargets);
       // Whichever axis answered: the leftover span covers empty cells now.
       _selection.clearFrameRangeSelection();
       _selection.clearStoryboardCutSelection();
@@ -302,7 +306,7 @@ class CellVerbs {
       return;
     }
 
-    _timeline.timelineController.deleteCellForLayer(layerId: layer.id);
+    _controllers.timelineController.deleteCellForLayer(layerId: layer.id);
     _changes.notifyChanged();
   }
 
@@ -321,7 +325,7 @@ class CellVerbs {
       return 'No layer';
     }
 
-    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
     final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     final canPaste = _clipboard.canPasteLinkedFrameAtCurrentFrame;
 
@@ -348,7 +352,7 @@ class CellVerbs {
   }
 
   String _cellStatusLabelForLayer(Layer layer) {
-    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
     final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {
       TimelineCellExposureState.drawingStart =>
