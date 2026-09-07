@@ -12,7 +12,7 @@ import '../../tool/refactor/clean_code_scan.dart';
 /// the score — the cognitive-complexity round said why.
 void main() {
   const wideSignatures = 383;
-  const longBodies = 451;
+  const longBodies = 444;
   const longClasses = 52;
 
   late CleanCodeScan scan;
