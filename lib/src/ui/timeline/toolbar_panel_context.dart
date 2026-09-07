@@ -156,10 +156,10 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void setComma(int comma) => session.setCommaForSelectionOrCurrent(comma);
 
   @override
-  bool get canSelectRowSpan => session.canSelectRowSpanForCurrentRow;
+  bool get canSelectRowSpan => session.rangeSelections.canSelectRowSpanForCurrentRow;
 
   @override
-  void selectRowSpan() => session.selectRowSpanForCurrentRow();
+  void selectRowSpan() => session.rangeSelections.selectRowSpanForCurrentRow();
 
   @override
   /// R5q1: CUTS are the storyboard's noun, so this panel's Edit does not
@@ -340,7 +340,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   get _rowSpanTarget {
     switch (session.selectedRow) {
       case TrackRowAddress(:final trackId):
-        final span = session.trackCutSpan(trackId);
+        final span = session.rowSpans.trackCutSpan(trackId);
         if (span == null) {
           return null;
         }
@@ -351,7 +351,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
           headFrame: span.endFrameExclusive - 1,
         );
       case LayerRowAddress(:final layerId):
-        final span = session.trackRowAuthoredSpan(layerId);
+        final span = session.rowSpans.trackRowAuthoredSpan(layerId);
         if (span == null) {
           return null;
         }

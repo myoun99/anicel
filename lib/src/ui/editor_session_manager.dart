@@ -83,7 +83,6 @@ import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
-import '../models/range_snap.dart';
 import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
@@ -137,7 +136,6 @@ import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
-import 'timeline/instruction_span_editing.dart';
 import 'timeline/layer_row_drag.dart'
     show LayerRowDragState;
 // ⑨: the row selection grows through the SAME span law the cell selection
@@ -166,6 +164,7 @@ import 'session/transitions.dart';
 import 'session/camera.dart';
 import 'session/frame_scrub.dart';
 import 'session/row_selection.dart';
+import 'session/row_spans.dart';
 import 'session/layer_row_drag.dart';
 import 'session/lane_range_move_drag.dart';
 import 'session/instructions.dart';
@@ -644,7 +643,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => _standing.selectCut(cutId);
   @override
@@ -717,7 +716,7 @@ class EditorSessionManager extends ChangeNotifier
     required int headGlobalFrame,
     TrackId? trackId,
     TimelineRowAddress? headRow,
-  }) => _rangeSelections.updateStoryboardCutSelectionByFrame(
+  }) => rangeSelections.updateStoryboardCutSelectionByFrame(
     anchorGlobalFrame: anchorGlobalFrame,
     headGlobalFrame: headGlobalFrame,
     trackId: trackId,
@@ -760,7 +759,13 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/row_selection.dart): the ⑨ row sweep — its
   // anchor, its span and the fold that swallows what left the screen.
-  late final RowSelection rowSelectionVerbs = RowSelection(selection: this, rangeSelections: _rangeSelections);
+  // ── what a row spans: its own object ───────────────────────────────
+  //
+  // A collaborator (session/row_spans.dart): where a row's material starts
+  // and ends, and what a range drag over it snaps to.
+  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, trackSe: _trackSe, transitions: _transitions);
+
+  late final RowSelection rowSelectionVerbs = RowSelection(selection: this, rangeSelections: rangeSelections);
 
   /// ⚠️Two ROLE members, not forwarders: [SessionInternals.rowIsSelected]
   /// and [SelectionAccess.clearRowSelection] are asked of the SESSION by
@@ -776,7 +781,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/range_selections.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final RangeSelections _rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, internals: this, playbackRig: playbackRig);
+  late final RangeSelections rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, rowSpans: rowSpans, internals: this, playbackRig: playbackRig);
 
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
@@ -785,7 +790,7 @@ class EditorSessionManager extends ChangeNotifier
     LayerId? headLayerId,
     String? headLaneId,
     List<TimelineRowAddress> spanRows = const [],
-  }) => _rangeSelections.updateFrameRangeSelectionDrag(
+  }) => rangeSelections.updateFrameRangeSelectionDrag(
     layerId: layerId,
     anchorIndex: anchorIndex,
     headIndex: headIndex,
@@ -795,7 +800,7 @@ class EditorSessionManager extends ChangeNotifier
   );
   @override
   void clearFrameRangeSelection() =>
-      _rangeSelections.clearFrameRangeSelection();
+      rangeSelections.clearFrameRangeSelection();
   void updateTrackRowRangeSelectionByFrame({
     required LayerId layerId,
     required int anchorGlobalFrame,
@@ -803,7 +808,7 @@ class EditorSessionManager extends ChangeNotifier
     TimelineRowAddress? headRow,
     TimelineRowAddress? anchorRow,
     List<TimelineRowAddress> spanRows = const [],
-  }) => _rangeSelections.updateTrackRowRangeSelectionByFrame(
+  }) => rangeSelections.updateTrackRowRangeSelectionByFrame(
     layerId: layerId,
     anchorGlobalFrame: anchorGlobalFrame,
     headGlobalFrame: headGlobalFrame,
@@ -819,7 +824,7 @@ class EditorSessionManager extends ChangeNotifier
     String? headLaneId,
     required List<String> spanLaneIds,
     bool framesAreGlobal = false,
-  }) => _rangeSelections.updateLaneRangeSelectionDrag(
+  }) => rangeSelections.updateLaneRangeSelectionDrag(
     layerId: layerId,
     laneId: laneId,
     anchorIndex: anchorIndex,
@@ -828,22 +833,22 @@ class EditorSessionManager extends ChangeNotifier
     spanLaneIds: spanLaneIds,
     framesAreGlobal: framesAreGlobal,
   );
-  void clearLaneRangeSelection() => _rangeSelections.clearLaneRangeSelection();
+  void clearLaneRangeSelection() => rangeSelections.clearLaneRangeSelection();
   bool standingInsideSelection(
     TimelineRowAddress row, [
     int? frameIndex,
     bool frameIsGlobal = false,
   ]) =>
-      _rangeSelections.standingInsideSelection(row, frameIndex, frameIsGlobal);
-  bool get hasAnySelection => _rangeSelections.hasAnySelection;
+      rangeSelections.standingInsideSelection(row, frameIndex, frameIsGlobal);
+  bool get hasAnySelection => rangeSelections.hasAnySelection;
   @override
-  void clearAllSelections() => _rangeSelections.clearAllSelections();
+  void clearAllSelections() => rangeSelections.clearAllSelections();
   void claimSelection(TimelineSelectionKind kind) =>
-      _rangeSelections.claimSelection(kind);
-  void revealSelection() => _rangeSelections.revealSelection();
+      rangeSelections.claimSelection(kind);
+  void revealSelection() => rangeSelections.revealSelection();
   void beginSelectionInteraction() =>
-      _rangeSelections.beginSelectionInteraction();
-  void endSelectionInteraction() => _rangeSelections.endSelectionInteraction();
+      rangeSelections.beginSelectionInteraction();
+  void endSelectionInteraction() => rangeSelections.endSelectionInteraction();
 
   /// The ladder every band verb climbs at the PLAYHEAD: the band answers
   /// first ([bandAnswers]), a band that names rows this press would miss
@@ -955,7 +960,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: _rangeSelections, clipboard: _clipboard, internals: this, renderCaches: renderCaches);
+  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: rangeSelections, clipboard: _clipboard, internals: this, renderCaches: renderCaches);
 
   bool get canDeleteCellForSelection => _cells.canDeleteCellForSelection;
   bool get cellSelectionClaimsSubject => _cells.cellSelectionClaimsSubject;
@@ -2541,7 +2546,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: _rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
+  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
 
   bool beginExposureEdgeDrag({
     required LayerId layerId,
@@ -3898,7 +3903,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/storyboard_cursor.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: _rangeSelections, cells: _cells, cutVerbs: _cutVerbs, transitions: _transitions, internals: this);
+  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: _cells, cutVerbs: _cutVerbs, transitions: _transitions, internals: this);
 
   bool get canSetCommaForStoryboardCursor =>
       _storyboardCursor.canSetCommaForStoryboardCursor;
@@ -4203,64 +4208,6 @@ class EditorSessionManager extends ChangeNotifier
       if (entry.trackId == trackId) entry,
   ]);
 
-  /// D40, the cut row: [trackId]'s whole cut span — the first cut's start
-  /// through the last cut's end — or null when the track has no cuts.
-  ({int startFrame, int endFrameExclusive})? trackCutSpan(TrackId trackId) {
-    final entries = axisForTrack(trackId).entries;
-    if (entries.isEmpty) {
-      return null;
-    }
-    return (
-      startFrame: entries.first.startFrame,
-      endFrameExclusive: entries.last.endFrame,
-    );
-  }
-
-  /// D40, the track-owned rows: [layerId]'s authored span on the global
-  /// axis — an S row's first block start through its last block end, or
-  /// the transition row's first span start through its last span end.
-  /// Null for empty rows (and for ids that are no track row at all).
-  ({int startFrame, int endFrameExclusive})? trackRowAuthoredSpan(
-    LayerId layerId,
-  ) {
-    final transitionTrack = _transitions.trackTransitionOwner(layerId);
-    if (transitionTrack != null) {
-      final events = transitionTrack.transitionLayer.instructions;
-      if (events.isEmpty) {
-        return null;
-      }
-      int? first;
-      var lastExclusive = 0;
-      for (final entry in events.entries) {
-        if (first == null || entry.key < first) {
-          first = entry.key;
-        }
-        final end = entry.key + entry.value.length;
-        if (end > lastExclusive) {
-          lastExclusive = end;
-        }
-      }
-      return (startFrame: first!, endFrameExclusive: lastExclusive);
-    }
-    final layer = _trackSe.trackSeAnywhere(layerId)?.layer;
-    if (layer == null) {
-      return null;
-    }
-    int? first;
-    var lastExclusive = 0;
-    for (final entry in layer.timeline.entries) {
-      if (entry.value.ghost) {
-        continue;
-      }
-      first ??= entry.key;
-      lastExclusive = entry.key + entry.value.length!;
-    }
-    if (first == null) {
-      return null;
-    }
-    return (startFrame: first, endFrameExclusive: lastExclusive);
-  }
-
   @override
   Track? trackById(TrackId trackId) {
     for (final track in repository.requireProject().tracks) {
@@ -4271,51 +4218,6 @@ class EditorSessionManager extends ChangeNotifier
     return null;
   }
 
-  /// "Where does this row's blocks live" as a snap lane, or null for a row
-  /// that has none to snap to.
-  @override
-  RangeBlock? Function(int)? trackRowSnapLane(
-    TimelineRowAddress row,
-    TrackFrameAxis axis,
-  ) {
-    switch (row) {
-      case TrackRowAddress():
-        return axis.cutBlockAt;
-      case LayerRowAddress(:final layerId):
-        // Resolved on the row's OWN track: the active-track lookup left
-        // every unselected track's sounds snapless.
-        final layer = _trackSe.trackSeAnywhere(layerId)?.layer;
-        if (layer != null) {
-          return (index) => exposureBlockAt(layer, index);
-        }
-        // 🚨The transition row snaps to its SPANS, and a row with no snap lane
-        // at all produced no span — which cleared the selection instead of
-        // making one. Its blocks are instruction events rather than exposures,
-        // so the material differs and the shape does not.
-        final transition = _transitions
-            .trackTransitionOwner(layerId)
-            ?.transitionLayer;
-        if (transition == null) {
-          return null;
-        }
-        return (index) {
-          final covering = instructionSpanCovering(
-            transition.instructions,
-            index,
-          );
-          return covering == null
-              ? null
-              : RangeBlock(
-                  startIndex: covering.key,
-                  endIndexExclusive: covering.key + covering.value.length,
-                );
-        };
-      case LaneRowAddress():
-        // Lane keys are POINTS, not blocks — the lane domain's own rule
-        // ("raw cells, no block snap"), so there is nothing to snap to.
-        return null;
-    }
-  }
 
   /// The selection filtered to cuts that still EXIST — nothing to filter
   /// any more: [storyboardSelectedCutIds] reads the CURRENT layout, so a
@@ -4756,111 +4658,6 @@ class EditorSessionManager extends ChangeNotifier
       ? trackSeGlobalLayerById(layerId)
       : layerById(layerId);
 
-  /// A range-select drag step: [anchorIndex] is where the drag started,
-  /// [headIndex] where the pointer is now (both cut-local cell indices).
-  /// Rows that cannot range-edit (attach/camera rows) stay unselectable;
-  /// SE rows joined in UI-R18 #1.
-  ///
-  /// [headLayerId] (UI-R17 #8, Excel-style): the row under the pointer —
-  /// the selection spans every ELIGIBLE layer between anchor and head in
-  /// display order, and the frame range grows until it covers whole
-  /// blocks on every spanned layer.
-  ///
-  /// [headLaneId] (R27 #14): the pointer is on one of the ANCHOR layer's
-  /// property-lane rows. The drag then reaches down that layer's own lane
-  /// group and stops at the hovered lane — "A셀부터 오파시티까지만" —
-  /// instead of stepping over the whole group to the next layer's cells.
-  /// Cells and lanes are still two selection objects (their edits differ:
-  /// blocks vs keys), but ONE drag now produces both, and the frame range
-  /// is shared so the highlight reads as one rectangle.
-  /// The snap lane a FOLDER row selects against (R9 #1): the very runs its
-  /// band draws, which are its subtree members' exposures merged. Empty for
-  /// every row that owns its own blocks.
-  @override
-  List<({int start, int endExclusive})> aggregateRunsForRow(Layer layer) {
-    if (!layer.kind.groupsLayers) {
-      return const [];
-    }
-    // R10: the band cache's runs, so the snap and the painted band are one
-    // answer. This used to walk the subtree fresh on every call — inside
-    // the select-drag loop.
-    return folderBands.folderBandRunsOf(layer.id);
-  }
-
-  /// D40: whether the standing row has an authored span for
-  /// [selectRowSpanForCurrentRow] to select (one resolver for the pair —
-  /// T25).
-  bool get canSelectRowSpanForCurrentRow => _rowSpanForCurrentRow() != null;
-
-  /// D40: selects the standing row's WHOLE authored span — first authored
-  /// cell through last — through the range-select entry point, so the
-  /// block snap and the ONE-SELECTION claim come with it.
-  void selectRowSpanForCurrentRow() {
-    final target = _rowSpanForCurrentRow();
-    if (target == null) {
-      return;
-    }
-    updateFrameRangeSelectionDrag(
-      layerId: target.layerId,
-      anchorIndex: target.first,
-      headIndex: target.lastExclusive - 1,
-    );
-  }
-
-  /// The standing row's RANGE layer and its authored extremes, or null
-  /// when the row has nothing to select. Lane rows fall back to their
-  /// owning layer — the lane address's own law: standing on a property
-  /// never costs you the layer.
-  ///
-  /// The extremes are read off the SAME three lanes the range snap uses
-  /// ([snapFrameRangeToBlocks]): exposure blocks (ghosts are derived
-  /// projections, not authored cells), instruction chips, and a folder
-  /// row's aggregate runs — so the gate answers true exactly where a drag
-  /// would select something (T25).
-  ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
-    final rowLayerId = switch (currentRow) {
-      LayerRowAddress(:final layerId) => layerId,
-      LaneRowAddress(:final layerId) => layerId,
-      TrackRowAddress() => activeLayerId,
-    };
-    if (rowLayerId == null ||
-        !_rangeSelections.rangeSelectionEligible(rowLayerId)) {
-      return null;
-    }
-    final layer = rangeLayerById(rowLayerId);
-    if (layer == null) {
-      return null;
-    }
-    int? first;
-    var lastExclusive = 0;
-    void widen(int start, int endExclusive) {
-      if (first == null || start < first!) {
-        first = start;
-      }
-      if (endExclusive > lastExclusive) {
-        lastExclusive = endExclusive;
-      }
-    }
-
-    for (final entry in layer.timeline.entries) {
-      if (entry.value.ghost) {
-        continue;
-      }
-      widen(entry.key, entry.key + entry.value.length!);
-    }
-    for (final entry in layer.instructions.entries) {
-      widen(entry.key, entry.key + entry.value.length);
-    }
-    for (final run in aggregateRunsForRow(layer)) {
-      widen(run.start, run.endExclusive);
-    }
-    final start = first;
-    if (start == null) {
-      return null;
-    }
-    return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
-  }
-
   // ── the drawing block move drag: its own object ─────────────────────
   //
   // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
@@ -4949,7 +4746,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -5065,18 +4862,7 @@ class EditorSessionManager extends ChangeNotifier
   /// ghost, so the non-ghost block scans downstream no longer exclude them.
   @override
   bool standsDownFromRetime(LayerId layerId) =>
-      folders.isSyncedAttachedLayerId(layerId) || isSingleCelLayerId(layerId);
-
-  /// Whether [layerId] names a SINGLE-CEL (image) row of the active cut:
-  /// its one covering block is pinned by the write normalization, so the
-  /// reshaping verbs (range move, push/pull, comma set, X-here) stand
-  /// down — committing them would be reverted in the same write, leaving
-  /// a phantom no-op on the undo stack.
-  @override
-  bool isSingleCelLayerId(LayerId layerId) {
-    final layer = layerById(layerId);
-    return layer != null && layer.kind.holdsSingleCel;
-  }
+      folders.isSyncedAttachedLayerId(layerId) || rowSpans.isSingleCelLayerId(layerId);
 
   /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
   /// 버튼 그냥 하나로. 기본적으로 누르면 액티브레이어의 현재 프레임블록 삭제하고,
@@ -5229,7 +5015,7 @@ class EditorSessionManager extends ChangeNotifier
   /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
   /// read here too and the two stay one answer.
   bool get canSetCommaForSelectionOrCurrent =>
-      _rangeSelections.selectionBlockStartsByLayer() != null ||
+      rangeSelections.selectionBlockStartsByLayer() != null ||
       (!cellSelectionClaimsSubject && canDeleteCellAtCurrentFrame);
 
   /// Sets the exposure length of every selected block — or the covering
@@ -5246,7 +5032,7 @@ class EditorSessionManager extends ChangeNotifier
     final selection = frameRangeSelection.value;
     // Single-cel rows are already absent — the shared collector states
     // that standdown once, so this verb and its `can…` gate agree.
-    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
+    final selectionTargets = rangeSelections.selectionBlockStartsByLayer();
     if (selection != null &&
         selectionTargets != null &&
         selectionTargets.isNotEmpty) {
@@ -5254,7 +5040,7 @@ class EditorSessionManager extends ChangeNotifier
         for (final entry in selectionTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
-      _rangeSelections.reselectRetimedSelection(selection, selectionTargets);
+      rangeSelections.reselectRetimedSelection(selection, selectionTargets);
       warmActiveCut();
       notifyListeners();
       return;

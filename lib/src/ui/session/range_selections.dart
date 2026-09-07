@@ -14,6 +14,7 @@ import '../timeline/timeline_section_policy.dart';
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 import 'playback_rig.dart';
+import 'row_spans.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
 import 'storyboard_rows.dart';
@@ -39,6 +40,7 @@ class RangeSelections {
     required PlaybackRig playbackRig,
     required StoryboardRows storyboardRows,
     required TrackSeDisplay trackSe,
+    required RowSpans rowSpans,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -46,7 +48,8 @@ class RangeSelections {
        _internals = internals,
        _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
-       _trackSe = trackSe;
+       _trackSe = trackSe,
+       _rowSpans = rowSpans;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -56,6 +59,7 @@ class RangeSelections {
   final PlaybackRig _playbackRig;
   final StoryboardRows _storyboardRows;
   final TrackSeDisplay _trackSe;
+  final RowSpans _rowSpans;
 
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
@@ -331,7 +335,7 @@ class RangeSelections {
 
     final axis = _timeline.axisForTrack(trackId);
     final lanes = <RangeBlock? Function(int)>[
-      for (final row in spanned) ?_internals.trackRowSnapLane(row, axis),
+      for (final row in spanned) ?_rowSpans.trackRowSnapLane(row, axis),
     ];
     // 🚨No `lanes.isEmpty ? null` short-circuit. A span made only of LANE
     // rows has no block lane to snap against — the lane domain's own rule
@@ -519,6 +523,24 @@ class RangeSelections {
     return _project.layerById(layerId) != null;
   }
 
+  /// A range-select drag step: [anchorIndex] is where the drag started,
+  /// [headIndex] where the pointer is now (both cut-local cell indices).
+  /// Rows that cannot range-edit (attach/camera rows) stay unselectable;
+  /// SE rows joined in UI-R18 #1.
+  ///
+  /// [headLayerId] (UI-R17 #8, Excel-style): the row under the pointer —
+  /// the selection spans every ELIGIBLE layer between anchor and head in
+  /// display order, and the frame range grows until it covers whole
+  /// blocks on every spanned layer.
+  ///
+  /// [headLaneId] (R27 #14): the pointer is on one of the ANCHOR layer's
+  /// property-lane rows. The drag then reaches down that layer's own lane
+  /// group and stops at the hovered lane — "A셀부터 오파시티까지만" —
+  /// instead of stepping over the whole group to the next layer's cells.
+  /// Cells and lanes are still two selection objects (their edits differ:
+  /// blocks vs keys), but ONE drag now produces both, and the frame range
+  /// is shared so the highlight reads as one rectangle.
+  ///
   /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
   /// list ([resolveSelectionSpanRows]).
   ///
@@ -559,7 +581,7 @@ class RangeSelections {
       layer: layer,
       anchorIndex: anchorIndex,
       headIndex: headIndex,
-      aggregateRuns: _internals.aggregateRunsForRow(layer),
+      aggregateRuns: _rowSpans.aggregateRunsForRow(layer),
     );
     if (base == null) {
       _selection.frameRangeSelection.value = null;
@@ -609,7 +631,7 @@ class RangeSelections {
           layer: spanned,
           anchorIndex: start,
           headIndex: end - 1,
-          aggregateRuns: _internals.aggregateRunsForRow(spanned),
+          aggregateRuns: _rowSpans.aggregateRunsForRow(spanned),
         );
         if (snapped == null) {
           continue;
@@ -822,6 +844,79 @@ class RangeSelections {
             endIndexExclusive: end,
             layerIds: selection.layerIds,
           );
+  }
+
+  /// D40: whether the standing row has an authored span for
+  /// [selectRowSpanForCurrentRow] to select (one resolver for the pair —
+  /// T25).
+  bool get canSelectRowSpanForCurrentRow => _rowSpanForCurrentRow() != null;
+
+  /// D40: selects the standing row's WHOLE authored span — first authored
+  /// cell through last — through the range-select entry point, so the
+  /// block snap and the ONE-SELECTION claim come with it.
+  void selectRowSpanForCurrentRow() {
+    final target = _rowSpanForCurrentRow();
+    if (target == null) {
+      return;
+    }
+    updateFrameRangeSelectionDrag(
+      layerId: target.layerId,
+      anchorIndex: target.first,
+      headIndex: target.lastExclusive - 1,
+    );
+  }
+
+  /// The standing row's RANGE layer and its authored extremes, or null
+  /// when the row has nothing to select. Lane rows fall back to their
+  /// owning layer — the lane address's own law: standing on a property
+  /// never costs you the layer.
+  ///
+  /// The extremes are read off the SAME three lanes the range snap uses
+  /// ([snapFrameRangeToBlocks]): exposure blocks (ghosts are derived
+  /// projections, not authored cells), instruction chips, and a folder
+  /// row's aggregate runs — so the gate answers true exactly where a drag
+  /// would select something (T25).
+  ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
+    final rowLayerId = switch (_internals.currentRow) {
+      LayerRowAddress(:final layerId) => layerId,
+      LaneRowAddress(:final layerId) => layerId,
+      TrackRowAddress() => _selection.activeLayerId,
+    };
+    if (rowLayerId == null || !rangeSelectionEligible(rowLayerId)) {
+      return null;
+    }
+    final layer = _project.rangeLayerById(rowLayerId);
+    if (layer == null) {
+      return null;
+    }
+    int? first;
+    var lastExclusive = 0;
+    void widen(int start, int endExclusive) {
+      if (first == null || start < first!) {
+        first = start;
+      }
+      if (endExclusive > lastExclusive) {
+        lastExclusive = endExclusive;
+      }
+    }
+
+    for (final entry in layer.timeline.entries) {
+      if (entry.value.ghost) {
+        continue;
+      }
+      widen(entry.key, entry.key + entry.value.length!);
+    }
+    for (final entry in layer.instructions.entries) {
+      widen(entry.key, entry.key + entry.value.length);
+    }
+    for (final run in _rowSpans.aggregateRunsForRow(layer)) {
+      widen(run.start, run.endExclusive);
+    }
+    final start = first;
+    if (start == null) {
+      return null;
+    }
+    return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
   }
 
   int _selectionInteractionHolds = 0;

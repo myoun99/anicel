@@ -26,7 +26,6 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
-import '../../models/range_snap.dart';
 import '../../models/delete_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -134,7 +133,6 @@ abstract interface class TimelineAccess {
 /// sibling it really is. ⛔Nothing is added here.
 abstract interface class SessionInternals {
   bool activeCutHasLayer(LayerId? layerId);
-  List<({int start, int endExclusive})> aggregateRunsForRow(Layer layer);
   EditorAppSettings get appSettings;
   DrawingBlockMoveDrag? get blockMoveDrag;
   set blockMoveDrag(DrawingBlockMoveDrag? value);
@@ -151,7 +149,6 @@ abstract interface class SessionInternals {
   void followPlaybackCut();
   ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
   frameShiftScope({TimelineRowAddress? currentRow});
-  bool isSingleCelLayerId(LayerId layerId);
   List<CutId> get liveSelectedCutIds;
   LayerId mintLayerId({Set<String>? usedIds});
   int shiftAnchorFor(
@@ -167,10 +164,6 @@ abstract interface class SessionInternals {
   });
   ({int index, int count})? spliceRunOnActiveRow();
   Layer? get targetLayerForKindToggle;
-  RangeBlock? Function(int)? trackRowSnapLane(
-    TimelineRowAddress row,
-    TrackFrameAxis axis,
-  );
   AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   bool get canCreateInstance;

@@ -26,6 +26,7 @@ import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_section_policy.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
+import 'row_spans.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 import 'camera.dart';
@@ -124,6 +125,7 @@ class FrameRangeMoveDrag {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required RowSpans rowSpans,
     required RenderCaches renderCaches,
     required Camera camera,
     required FoldersAndAttachments folders,
@@ -135,6 +137,7 @@ class FrameRangeMoveDrag {
        _changes = changes,
        _controllers = controllers,
        _internals = internals,
+       _rowSpans = rowSpans,
        _renderCaches = renderCaches,
        _camera = camera,
        _folders = folders,
@@ -149,6 +152,7 @@ class FrameRangeMoveDrag {
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final RowSpans _rowSpans;
   final RenderCaches _renderCaches;
   final Camera _camera;
   final FoldersAndAttachments _folders;
@@ -561,7 +565,7 @@ class FrameRangeMoveDrag {
       _folders.noticeSyncedAttachRefusal(selection.layerId);
       return false;
     }
-    if (_internals.isSingleCelLayerId(selection.layerId)) {
+    if (_rowSpans.isSingleCelLayerId(selection.layerId)) {
       return false;
     }
     final layer = _project.layerById(selection.layerId);
