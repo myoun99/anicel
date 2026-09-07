@@ -122,6 +122,19 @@ class MediaAsset {
   /// referenced in place, or predates tracking). Copies keep remembering
   /// their origin so the "original changed → re-import" badge works
   /// (§6-g) without giving up the copy's portability.
+  ///
+  /// 🚨★★★**ONLY A COPY HAS ONE, AND A RELINK NEVER WRITES ONE.** Source
+  /// tracking is what a COPY carries so the badge has two paths to
+  /// compare; a relink of a file that MOVED has only ever had one path,
+  /// and the new location is not an origin.
+  ///
+  /// 🪦That used to be said by a `recordSource` flag on the relink command
+  /// — and the flag answered two questions at once (「is this a copy?」 and
+  /// 「write the origin?」), which is the shape this codebase treats as an
+  /// invention. Nothing in `lib/` ever passed it `true`; one test did. The
+  /// flag is gone and the answer is structural: `copyWith(path:)` keeps
+  /// what it is not given, so a relink leaves whatever tracking was there
+  /// and whoever MAKES a copy is the one that writes these two.
   final String? sourcePath;
 
   /// Change-detection stamp of the source at copy/registration time

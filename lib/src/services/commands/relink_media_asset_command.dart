@@ -17,22 +17,12 @@ class RelinkMediaAssetCommand implements Command {
     required this.repository,
     required this.oldPath,
     required this.newPath,
-    this.recordSource = false,
-    this.sourceStamp,
     this.description = 'Relink media',
   });
 
   final ProjectRepository repository;
   final String oldPath;
   final String newPath;
-
-  /// The new file is a COPY of the old one rather than the same file
-  /// found somewhere else — the per-asset promotion out of the media
-  /// browser. Source tracking is what a copy carries so the
-  /// "original changed" badge has two paths to compare; a relink of a
-  /// moved file has only ever had one.
-  final bool recordSource;
-  final String? sourceStamp;
 
   Project? _previousProject;
   bool _hasExecuted = false;
@@ -106,13 +96,12 @@ class RelinkMediaAssetCommand implements Command {
           if (asset.path != oldPath)
             asset
           else
-            // copyWith keeps what it is not given, so a plain relink
-            // leaves whatever source tracking the asset already had.
-            asset.copyWith(
-              path: newPath,
-              sourcePath: recordSource ? oldPath : null,
-              sourceStamp: recordSource ? sourceStamp : null,
-            ),
+            // 🚨copyWith keeps what it is NOT given, so a relink moves the
+            // path and leaves whatever source tracking the asset already
+            // had. ⛔It does not write any: a relink says 「the same file
+            // is over here now」, and where a copy came from is the copy's
+            // business — see [MediaAsset.sourcePath].
+            asset.copyWith(path: newPath),
       ],
       tracks: tracksChanged ? tracks : project.tracks,
     );

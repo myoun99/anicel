@@ -1175,8 +1175,6 @@ class CutCommandCoordinator {
   void relinkMediaAsset({
     required String oldPath,
     required String newPath,
-    bool recordSource = false,
-    String? sourceStamp,
     String description = 'Relink media',
   }) {
     final project = repository.requireProject();
@@ -1190,8 +1188,6 @@ class CutCommandCoordinator {
         repository: repository,
         oldPath: oldPath,
         newPath: newPath,
-        recordSource: recordSource,
-        sourceStamp: sourceStamp,
         description: description,
       ),
     );

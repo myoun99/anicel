@@ -73,17 +73,12 @@ void main() {
     ],
   );
 
-  RelinkMediaAssetCommand relink(
-    ProjectRepository repository, {
-    bool recordSource = false,
-    String? sourceStamp,
-  }) => RelinkMediaAssetCommand(
-    repository: repository,
-    oldPath: '/old/clip.wav',
-    newPath: '/new/clip.wav',
-    recordSource: recordSource,
-    sourceStamp: sourceStamp,
-  );
+  RelinkMediaAssetCommand relink(ProjectRepository repository) =>
+      RelinkMediaAssetCommand(
+        repository: repository,
+        oldPath: '/old/clip.wav',
+        newPath: '/new/clip.wav',
+      );
 
   test('the pool entry, an SE clip and a media reference all move', () {
     final repository = ProjectRepository(
@@ -202,19 +197,31 @@ void main() {
       expect(repository.requireProject().mediaAssets.single.sourcePath, isNull);
     });
 
-    test('a COPY records where it came from, so the changed badge has two '
-        'paths to compare', () {
+    test('⛔ and it does not ERASE the tracking a copy already had — the '
+        'badge survives the file being moved', () {
+      // The half that would break silently if a relink ever started
+      // writing these two: `copyWith` reads null as「keep」, so passing
+      // them unconditionally would blank a copy's origin on every relink
+      // and the「original changed」badge would go quiet for good.
       final repository = ProjectRepository(
         initialProject: projectWith(
           cutLayers: const [],
-          assets: const [MediaAsset(path: '/old/clip.wav', name: 'clip')],
+          assets: const [
+            MediaAsset(
+              path: '/old/clip.wav',
+              name: 'clip',
+              sourcePath: '/somewhere/original.wav',
+              sourceStamp: 'stamp',
+            ),
+          ],
         ),
       );
 
-      relink(repository, recordSource: true, sourceStamp: 'stamp').execute();
+      relink(repository).execute();
 
       final asset = repository.requireProject().mediaAssets.single;
-      expect(asset.sourcePath, '/old/clip.wav');
+      expect(asset.path, '/new/clip.wav');
+      expect(asset.sourcePath, '/somewhere/original.wav');
       expect(asset.sourceStamp, 'stamp');
     });
   });
