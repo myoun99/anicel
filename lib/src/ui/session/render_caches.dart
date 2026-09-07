@@ -161,6 +161,11 @@ class RenderCaches {
     _warmDebounce?.cancel();
     _warmDebounce = Timer(_warmDebounceWindow, () {
       _warmDebounce = null;
+      // ⚠️Mutating this guard away leaves every suite green (measured
+      // 2026-09-07): [dispose] cancels the pending timer first, so no
+      // route reaches here after teardown. Belt to that brace — kept
+      // because the cancel and this check answer the same question from
+      // two sides and the cheap one is here.
       if (_internals.disposed) {
         return;
       }
