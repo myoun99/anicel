@@ -469,9 +469,19 @@ class ProjectFile {
   bool get isRecoveredSession => _recoveredFromSidecar != null;
 
   /// The user threw this session's unsaved work away (closed without
-  /// saving). Its sidecar has to go with it: "저장 안 하고 닫기 = 버리기"
-  /// is only literally true if the next open cannot offer to resurrect
-  /// exactly what was discarded.
+  /// saving), and any sidecar goes with it: the discard rule is only
+  /// literal if the next open cannot offer to resurrect exactly what was
+  /// discarded.
+  ///
+  /// 🚨**NOTHING WRITES A SIDECAR ANY MORE.** The autosave tick saves the
+  /// PROJECT FILE now (유저 2026-09-07: 「기존 결정대로 자동저장이 파일갱신
+  /// … 그게 싫으면 자동저장 off하면된다」), so the only sidecars left are
+  /// the ones an OLDER BUILD wrote before that landed — including one this
+  /// machine may be holding from a crash right now. ⛔That is why the
+  /// reader and this retirement outlive the writer by one round rather
+  /// than going with it: deleting them together would drop somebody's
+  /// crash work without a word. The round that removes them is the one
+  /// after every such sidecar has been offered once.
   ///
   /// A never-saved project has no sidecar to retire (its dirty ticks ask
   /// for a real file instead of writing one).

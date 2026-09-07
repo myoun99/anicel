@@ -397,9 +397,18 @@ class _HomePageState extends State<HomePage> {
       isDirty: () =>
           _session.projectFile.hasUnsavedChanges &&
           !_session.projectFile.autosaveShouldStandDown,
-      writeSnapshot: _session.projectDoor.writeAutosaveSnapshot,
+      // 🚨★★★**THE TICK SAVES THE PROJECT FILE — the same writer the Save
+      // button uses, minus the window nobody is watching.**
+      //
+      // 유저 2026-09-07, on being asked what happens to 「저장 안 하고 닫기
+      // = 버리기」: 「기존 결정대로 자동저장이 파일갱신. 그게 싫으면 자동
+      // 저장 off하면된다고 말했는데 안바꿧나보네」. So the discard rule is
+      // not abolished, it is the OFF position of a switch the user owns:
+      // autosave on and the file follows the work every n minutes; autosave
+      // off and the file changes on an explicit save alone.
+      saveProject: _session.projectDoor.saveProjectToFile,
       // Only called once needsProjectFile says a real file exists.
-      autosavePath: () => _session.projectFile.autosaveSidecarPath!,
+      projectPath: () => _session.projectFile.path!,
       // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of
       // piling files into hidden app-data dirs for a document with no
       // identity yet, the first dirty pass asks the user to pick a real

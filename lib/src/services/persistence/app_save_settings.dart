@@ -62,16 +62,18 @@ class GrantedDirectory {
   int get hashCode => Object.hash(path, bookmark);
 }
 
-/// SAVE-1: the save/recovery policy (the 2026-07 저장 설계 확정).
+/// SAVE-1: the save policy (the 2026-07 저장 설계 확정).
 ///
-/// - The recovery snapshot is the ONLY thing written without an explicit
-///   save — the project file changes on a save alone ("저장 안 하고 닫기 =
-///   버리기" stays real).
-/// - It lives in the app's own support folder. It used to sit beside the
-///   project with a setting to move it, which put a project-sized write
-///   into whatever cloud folder the project was in and scattered siblings
-///   around a file that is becoming a single document. Nothing to
-///   configure now, so nothing to configure wrong.
+/// - 🚨**AUTOSAVE SAVES THE PROJECT FILE.** This bullet used to say the
+///   opposite — 「the recovery snapshot is the ONLY thing written without
+///   an explicit save; the project file changes on a save alone (「저장 안
+///   하고 닫기 = 버리기」 stays real)」 — and that had already been
+///   overtaken by a decision nobody carried into the comment. 유저
+///   2026-09-07: 「기존 결정대로 자동저장이 파일갱신. **그게 싫으면
+///   자동저장 off하면된다**고 말했는데 안바꿧나보네」.
+///   ⇒ 「저장 안 하고 닫기 = 버리기」 is now a property of
+///   [periodicSnapshotMinutes]: null (OFF) and it is literal, a number and
+///   the file follows the work every n minutes. The switch is the user's.
 /// - REC1-B2: never-saved projects record onto a visible take shelf
 ///   (`<app documents>/Recordings` by default) instead of the hidden OS
 ///   temp; a custom folder is a desktop-only choice.
@@ -90,18 +92,26 @@ class AppSaveSettings {
   static const int minPeriodicSnapshotMinutes = 3;
   static const int maxPeriodicSnapshotMinutes = 60;
 
-  /// Minutes of work the app will let pass without a snapshot, or null for
+  /// Minutes of work the app will let pass without saving, or null for
   /// OFF — 🚨F-1: the whole autosave policy is this one number now.
   ///
   /// 유저 2026-08-26: 「**자동저장 on off만 남기고**, 앱 떠날때·손 멈출때
   /// 스냅샷 기능 삭제. 심플하게 **명시적저장 / n분주기 자동저장**만 남김」.
   ///
-  /// ⚠️Two triggers went with that, and both were real: leaving the app
+  /// 🚨★★★**AND IT IS ALSO THE 「저장 안 하고 닫기 = 버리기」 SWITCH.** A
+  /// tick saves the PROJECT FILE, so with a number here, closing without
+  /// saving keeps everything up to the last tick — the discard rule is
+  /// literal only at null. 유저 2026-09-07, settling it: 「기존 결정대로
+  /// 자동저장이 파일갱신. **그게 싫으면 자동저장 off하면된다**」. ⛔So this
+  /// is not merely「how often」; it is which of the two contracts the user
+  /// is working under, and that is why it stays one visible switch.
+  ///
+  /// ⚠️Two triggers went with F-1, and both were real: leaving the app
   /// (the only warning a mobile OS gives before it stops the process) and
   /// pausing the work. What replaces them is this clock and an explicit
   /// save, which is what was asked for — 「심플하게」. The cost is stated
-  /// where it is paid: close the app without saving and the work since the
-  /// last tick is gone, on every platform.
+  /// where it is paid: with autosave OFF, close the app without saving and
+  /// the work is gone, on every platform.
   ///
   /// 🔑 Still a CEILING rather than a cadence: a snapshot restarts the
   /// count, so ten minutes means "never more than ten minutes of work at

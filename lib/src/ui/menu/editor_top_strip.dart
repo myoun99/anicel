@@ -1657,8 +1657,14 @@ enum UnsavedWorkChoice { cancel, saveAs, save, discard }
 /// so the matrix cell cannot re-open by one door forgetting.
 ///
 /// Returns whether the tear-down may proceed: the save landed, or the
-/// user discarded (which retires the sidecar — 「저장 안 하고 닫기 =
-/// 버리기」 stays literal). False calls the whole thing off.
+/// user discarded. False calls the whole thing off.
+///
+/// ⚠️**What「discard」can still throw away depends on the autosave
+/// switch**, and this gate does not decide that. With autosave ON a tick
+/// has been saving the project file, so discarding drops only the work
+/// since the last tick; with it OFF, 「저장 안 하고 닫기 = 버리기」 is
+/// literal. 유저 2026-09-07 chose that trade explicitly — 「그게 싫으면
+/// 자동저장 off하면된다」 — see [AppSaveSettings.periodicSnapshotMinutes].
 ///
 /// ⚠️It is no longer only a DIRTY session that gets asked — see the first
 /// statement.

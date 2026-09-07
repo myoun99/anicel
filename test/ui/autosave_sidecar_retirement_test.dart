@@ -270,21 +270,23 @@ void main() {
     });
 
     test('an autosave tick stands down while a manual save runs', () async {
-      // A tick that lands after the save's retirement leaves a sidecar for
-      // a project that was saved and closed cleanly, and the next open then
-      // offers to recover it. Sync deletion does not close that window —
-      // it settles delete-versus-write, and this is write-versus-delete.
+      // 🚨Still the law, and now for a blunter reason than the one it was
+      // written for. It used to be about a tick landing after the save's
+      // retirement and leaving a sidecar behind for a project that was
+      // closed cleanly. The tick SAVES now, so a tick inside a save is two
+      // writers on one archive — the same file, the same temp-and-rename.
+      // The flag is what keeps them apart.
       final s = EditorSessionManager(initialProject: createDefaultProject());
       await s.projectDoor.saveProjectToFile(projectPath);
       s.cutVerbs.createCut(); // Any command raises the dirty flag.
       var ticked = false;
       final autosave = ProjectAutosaveService(
         isDirty: () => s.projectFile.hasUnsavedChanges && !s.projectFile.autosaveShouldStandDown,
-        writeSnapshot: (path) async {
+        saveProject: (path) async {
           ticked = true;
-          await s.projectDoor.writeAutosaveSnapshot(path);
+          await s.projectDoor.saveProjectToFile(path);
         },
-        autosavePath: () => s.projectFile.autosaveSidecarPath!,
+        projectPath: () => s.projectFile.path!,
       );
 
       final saving = s.projectDoor.saveProjectToFile(projectPath);

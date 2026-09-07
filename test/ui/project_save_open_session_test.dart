@@ -8,7 +8,6 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/persistence/project_autosave_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// P3 through the session: save/open round-trip, the load→edit→undo
@@ -152,47 +151,14 @@ void main() {
     expect(entries, ['scene.anicel']);
   });
 
-  test('the autosave service snapshots only DIRTY sessions into the '
-      'sidecar; a manual save retires it', () async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    final path = '${directory.path}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(path);
-
-    final autosave = ProjectAutosaveService(
-      isDirty: () => s.projectFile.hasUnsavedChanges,
-      writeSnapshot: s.projectDoor.writeAutosaveSnapshot,
-      autosavePath: () => s.projectFile.autosaveSidecarPath!,
-    );
-    // Clean session: nothing written. The snapshot lives in app support
-    // now, so its path comes from the session rather than from the
-    // project's own name.
-    await autosave.saveNow();
-    final sidecar = File(s.projectFile.autosaveSidecarPath!);
-    addTearDown(() {
-      if (sidecar.parent.existsSync()) {
-        sidecar.parent.deleteSync(recursive: true);
-      }
-    });
-    expect(sidecar.existsSync(), isFalse);
-
-    // Dirty session: the sidecar lands; the dirty flag stays (autosave is
-    // not a manual save).
-    s.cutVerbs.createCut();
-    await autosave.saveNow();
-    expect(sidecar.existsSync(), isTrue);
-    expect(s.projectFile.hasUnsavedChanges, isTrue);
-    expect(
-      ProjectAutosaveService.sidecarIsNewer(
-        filePath: path,
-        sidecarPath: sidecar.path,
-      ),
-      isTrue,
-    );
-
-    // Manual save deletes the sidecar (awaited inside the save).
-    await s.projectDoor.saveProjectToFile(path);
-    expect(sidecar.existsSync(), isFalse);
-  });
+  // 🪦**「the autosave service snapshots only DIRTY sessions into the
+  // sidecar; a manual save retires it」 LIVED HERE.** The tick saves the
+  // PROJECT FILE now (유저 2026-09-07: 「기존 결정대로 자동저장이 파일갱신
+  // … 그게 싫으면 자동저장 off하면된다」), so「only dirty sessions」and「a
+  // clean tick writes nothing」moved to
+  // `an_autosave_tick_saves_the_project_test`, where they are asserted
+  // against the file that now changes. ⛔The claims are not gone; only
+  // the file they were about is.
 
   test('recovery lays the snapshot OVER the real file — the saved drawing '
       'survives, and the session stays dirty until saved', () async {

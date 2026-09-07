@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/project_autosave_service.dart';
 
-/// The recovery-snapshot service decides WHETHER; the shell decides WHEN.
+/// The autosave service decides WHETHER; the shell decides WHEN.
 ///
-/// PEN-12 #8: a NEVER-SAVED project snapshots nowhere — a dirty pass asks
+/// PEN-12 #8: a NEVER-SAVED project has nowhere to write — a dirty pass asks
 /// the shell to prompt for a real file instead of piling files into hidden
 /// app-data folders for a document with no identity yet.
 void main() {
@@ -13,20 +13,20 @@ void main() {
     var hasFile = false;
     final service = ProjectAutosaveService(
       isDirty: () => true,
-      writeSnapshot: (path) async => written.add(path),
-      autosavePath: () => '/projects/x.anicel.autosave',
+      saveProject: (path) async => written.add(path),
+      projectPath: () => '/projects/x.anicel',
       needsProjectFile: () => !hasFile,
       onUnsavedProject: () => prompts += 1,
     );
 
     await service.saveNow();
-    expect(written, isEmpty, reason: 'no silent app-data snapshots');
+    expect(written, isEmpty, reason: 'no silent writes into app-data');
     expect(prompts, 1);
 
-    // Saved (a real file exists): it snapshots as ever.
+    // Saved (a real file exists): the tick saves the PROJECT FILE.
     hasFile = true;
     await service.saveNow();
-    expect(written, ['/projects/x.anicel.autosave']);
+    expect(written, ['/projects/x.anicel']);
     expect(prompts, 1);
   });
 
@@ -35,8 +35,8 @@ void main() {
     var prompts = 0;
     final service = ProjectAutosaveService(
       isDirty: () => false,
-      writeSnapshot: (path) async => written.add(path),
-      autosavePath: () => '/projects/x.anicel.autosave',
+      saveProject: (path) async => written.add(path),
+      projectPath: () => '/projects/x.anicel',
       needsProjectFile: () => true,
       onUnsavedProject: () => prompts += 1,
     );
@@ -55,13 +55,13 @@ void main() {
     var peak = 0;
     final service = ProjectAutosaveService(
       isDirty: () => true,
-      writeSnapshot: (_) async {
+      saveProject: (_) async {
         inFlight += 1;
         peak = inFlight > peak ? inFlight : peak;
         await Future<void>.delayed(Duration.zero);
         inFlight -= 1;
       },
-      autosavePath: () => '/projects/x.anicel.autosave',
+      projectPath: () => '/projects/x.anicel',
     );
 
     await Future.wait([service.saveNow(), service.saveNow(), service.saveNow()]);

@@ -30,41 +30,48 @@ class RecoverySnapshotInfo {
   final int bytes;
 }
 
-/// Autosave (P3): a DIRTY session's work is snapshotted into the app's
-/// recovery folder on the periodic tick — F-1 (유저 2026-08-26) made the
-/// clock the ONLY trigger (「심플하게 명시적저장 / n분주기 자동저장만」).
-/// Opening a file with a newer snapshot offers recovery (the menu's open
-/// flow).
+/// Autosave: a DIRTY session's work is SAVED — into the project file, by
+/// the same writer the Save button uses — on the periodic tick. F-1 (유저
+/// 2026-08-26) made the clock the ONLY trigger (「심플하게 명시적저장 /
+/// n분주기 자동저장만」).
 ///
-/// A clock was here once before and was DELETED, for reasons worth
-/// keeping because they say what had to change before it could return:
+/// 🚨★★★**AND THAT IS WHY 「저장 안 하고 닫기 = 버리기」 IS NOW A
+/// PROPERTY OF THE SWITCH, NOT OF THE APP.** Three decision comments used
+/// to say the project file changes on an explicit save alone, and this
+/// service is what made that true by writing a sidecar instead. 유저
+/// 2026-09-07 settled it the other way and said the rule had already been
+/// settled once: 「기존 결정대로 자동저장이 파일갱신. **그게 싫으면 자동
+/// 저장 off하면된다**고 말했는데 안바꿧나보네」.
 ///
-/// - The old tick wrote a whole-archive snapshot and adopted every cel's
-///   file ref into it, so the next manual save could no longer see its
-///   own work in the project file and rewrote the whole thing —
-///   incremental save never ran. The snapshot is an OVERLAY now (only
-///   the cels since the last save, nothing adopted), which is what makes
-///   a clock affordable on documents this size.
-/// - The lifecycle triggers that replaced it in between (pause, app
-///   going background) are gone with F-1 — see the ⛔F-1 decision note in
-///   home_page for what an OS kill costs now and why that was accepted.
+/// So: autosave ON and the file follows the work every n minutes — close
+/// without saving and you keep what the last tick wrote. Autosave OFF and
+/// the discard rule is literal again. The user owns which, and the switch
+/// is where they say so.
 ///
-/// A snapshot holds unsaved work, so it dies the moment that work stops
-/// existing — see [retireSidecarsFor] for the three moments and why a
-/// surviving snapshot has to mean something.
+/// A clock was here once before and was DELETED, for a reason that still
+/// governs what this may do: the old tick wrote a whole-archive snapshot
+/// and adopted every cel's file ref into it, so the next manual save could
+/// no longer see its own work and rewrote the whole thing — incremental
+/// save never ran. ⛔This must stay an INCREMENTAL save for the same
+/// reason; a tick that rewrote the archive would make a clock unaffordable
+/// on documents this size.
 ///
-/// PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of piling
-/// files into hidden app-data folders for a document that has no identity
-/// yet, it fires [onUnsavedProject] so the shell can ask for a real file
-/// (OpenToonz-style).
+/// ⚠️The lifecycle triggers that replaced that clock in between (pause,
+/// app going background) are gone with F-1 — see the ⛔F-1 decision note
+/// in home_page for what an OS kill costs now and why that was accepted.
+///
+/// PEN-12 #8: a NEVER-SAVED project has nowhere to write — instead of
+/// piling files into hidden app-data folders for a document with no
+/// identity yet, it fires [onUnsavedProject] so the shell can ask for a
+/// real file (OpenToonz-style).
 ///
 /// The service knows nothing about widgets: the shell decides WHEN, this
 /// decides WHETHER.
 class ProjectAutosaveService {
   ProjectAutosaveService({
     required this.isDirty,
-    required this.writeSnapshot,
-    required this.autosavePath,
+    required this.saveProject,
+    required this.projectPath,
     this.needsProjectFile,
     this.onUnsavedProject,
   });
@@ -72,13 +79,13 @@ class ProjectAutosaveService {
   /// Whether unsaved changes exist (the session's dirty flag).
   final bool Function() isDirty;
 
-  /// Writes the current session snapshot to [path] (the session's .anicel
-  /// writer pointed at the recovery file — atomic like a manual save).
-  final Future<void> Function(String path) writeSnapshot;
+  /// Saves the session to [path] — the SAME writer the Save button uses,
+  /// without the progress window (nobody is watching a tick).
+  final Future<void> Function(String path) saveProject;
 
-  /// The recovery path for the CURRENT session state (moves when the
-  /// project is saved under a new name).
-  final String Function() autosavePath;
+  /// The project file's path. Only asked once [needsProjectFile] has said
+  /// there is one.
+  final String Function() projectPath;
 
   /// True while the project has never been saved to a real file — a
   /// dirty pass then calls [onUnsavedProject] instead of snapshotting.
@@ -108,7 +115,7 @@ class ProjectAutosaveService {
     }
     _writing = true;
     try {
-      await writeSnapshot(autosavePath());
+      await saveProject(projectPath());
     } on Object catch (_) {
       // Swallowed by design; the next trigger retries.
     } finally {
