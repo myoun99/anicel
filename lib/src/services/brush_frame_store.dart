@@ -17,6 +17,7 @@ import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/open_project_file.dart';
 import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
+import 'persistence/scratch_file.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
 /// clamped to [384MB, 1536MB]. Null/zero RAM (the platform refused, or
@@ -360,7 +361,7 @@ class BrushFrameStore {
     if (previous != null) {
       _coldBytes -= previous.length;
       if (previous.filePath != path) {
-        ScratchCelFiles.remove(previous.filePath);
+        ScratchFile.remove(previous.filePath);
       }
     }
     _coldCels[key] = AnicelCelFileRef(
@@ -381,7 +382,7 @@ class BrushFrameStore {
       return;
     }
     _coldBytes -= gone.length;
-    ScratchCelFiles.remove(gone.filePath);
+    ScratchFile.remove(gone.filePath);
   }
 
   /// The blob [ref] names, read back out of the scratch room.

@@ -36,7 +36,7 @@ void main() {
   test('what was written reads back byte for byte', () {
     final payload = Uint8List.fromList([1, 2, 3, 250, 0, 99]);
     final path = VolatileScratchFiles.write(payload)!;
-    expect(VolatileScratchFiles.read(path), payload);
+    expect(ScratchFile.read(path), payload);
   });
 
   test('every payload gets its own file — one run parks many', () {
@@ -49,16 +49,16 @@ void main() {
 
   test('a payload that is gone reads as null rather than a blank', () {
     final path = VolatileScratchFiles.write(bytes(8))!;
-    VolatileScratchFiles.remove(path);
+    ScratchFile.remove(path);
     // 🚨Null is a LOST STEP the caller has to report, not a cache miss it
     // may paper over: whatever was parked here is already dropped.
-    expect(VolatileScratchFiles.read(path), isNull);
+    expect(ScratchFile.read(path), isNull);
   });
 
   test('removing what is not there is silent — the room outlives the file',
       () {
     expect(
-      () => VolatileScratchFiles.remove(
+      () => ScratchFile.remove(
         '${SessionScratch.volatileFolder()}/never-written.undo',
       ),
       returnsNormally,

@@ -45,12 +45,14 @@ class ScratchCelFiles {
 
   /// The blob at [path], or null when it will not read — a torn write, a
   /// file somebody removed under us.
+  ///
+  /// ⚠️This one earns its place by TYPING the bytes; there is no
+  /// `remove` beside it because removing takes a path, and a path
+  /// already says which room it came from. [ScratchFile.remove] serves
+  /// both tenants — a per-room name for the same verb is the shape that
+  /// lets one of them quietly start meaning "and the other room too".
   static AnicelCelBlob? read(String path) {
     final bytes = ScratchFile.read(path);
     return bytes == null ? null : AnicelCelBlob(bytes);
   }
-
-  /// Removes the file at [path]. Silent: the room goes with the run
-  /// anyway, so a leftover costs nothing but space until then.
-  static void remove(String path) => ScratchFile.remove(path);
 }
