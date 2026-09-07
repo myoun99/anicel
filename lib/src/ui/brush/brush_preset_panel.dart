@@ -16,6 +16,7 @@ import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_window.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
+import 'brush_group_icon_glyph.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
@@ -964,7 +965,11 @@ class _BrushGroupTab extends StatelessWidget {
   /// a plain folder. Choosing is for when that guess reads wrong.
   Widget _face(ColorScheme colorScheme) {
     if (icon != null) {
-      return Icon(icon!.data, size: 13, color: colorScheme.onSurfaceVariant);
+      return Icon(
+        brushGroupIconGlyph(icon!),
+        size: 13,
+        color: colorScheme.onSurfaceVariant,
+      );
     }
     if (preview != null) {
       return BrushTipPreview(settings: preview!.settings);
@@ -1146,7 +1151,7 @@ class _GroupIconPicker extends StatelessWidget {
               isSelected: selected == icon,
               onTap: () => onPicked(icon),
               child: Icon(
-                icon.data,
+                brushGroupIconGlyph(icon),
                 size: 13,
                 color: colorScheme.onSurfaceVariant,
               ),

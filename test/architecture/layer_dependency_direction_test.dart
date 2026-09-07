@@ -76,14 +76,13 @@ const _settingsStore =
 /// Keyed by the importing file, valued by the import target exactly as it is
 /// written. An entry that no longer matches anything FAILS: a ledger that
 /// keeps paid debts on it stops being read.
+///
+/// 2026-09-07 (audit, Round 8): `brush_group_icon.dart` came off. Its excuse
+/// was that `IconData` must be a const literal or the icon font ships whole —
+/// true, and it never required the LITERAL to sit in the enum. The faces moved
+/// to a const switch in `ui/brush/brush_group_icon_glyph.dart`, still const,
+/// still tree-shaken, and the enum went back to being data.
 const _ledger = <String, List<_Debt>>{
-  'lib/src/models/brush_group_icon.dart': [
-    _Debt(
-      'package:flutter/material.dart',
-      'IconData values must be const literals or the whole icon font ships '
-          '(the file says so at the top). The enum is data; the icon is not.',
-    ),
-  ],
   'lib/src/services/persistence/audio_sync_settings_store.dart': [
     _Debt('../../ui/playback/audio_sync_settings.dart', _settingsStore),
   ],
@@ -190,7 +189,7 @@ void main() {
       final edges = _ledger.values.fold<int>(0, (sum, l) => sum + l.length);
       expect(
         edges,
-        2,
+        1,
         reason:
             'The outward-edge count changed. Going DOWN is the point — update '
             'this number and say so in the commit. Going UP needs an argument.',
