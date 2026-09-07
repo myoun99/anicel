@@ -318,7 +318,11 @@ class CutVerbs {
   /// Whether the selection can delete: cuts selected AND at least one
   /// cut survives (the project never empties).
   bool get canDeleteSelectedCuts {
-    final selection = _internals.liveSelectedCutIds;
+    // ★The selection needs no filtering for cuts that still EXIST:
+    // [StoryboardRows.storyboardSelectedCutIds] reads the CURRENT layout,
+    // so a cut another command deleted since the drag painted the range
+    // is simply not in it.
+    final selection = _storyboardRows.storyboardSelectedCutIds;
     if (selection.isEmpty) {
       return false;
     }
@@ -336,7 +340,7 @@ class CutVerbs {
       return;
     }
     _project.cutCommandCoordinator.deleteCuts(
-      cutIds: _internals.liveSelectedCutIds,
+      cutIds: _storyboardRows.storyboardSelectedCutIds,
     );
     _selection.clearStoryboardCutSelection();
     _changes.refreshAfterCutCommand();

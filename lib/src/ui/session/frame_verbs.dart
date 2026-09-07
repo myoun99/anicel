@@ -10,11 +10,14 @@ import '../../models/timeline_coverage.dart';
 import '../../models/flip_column_step.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_frame_axis.dart';
+import '../../models/track_id.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_pose_paint.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart';
+import 'project_settings.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -38,6 +41,7 @@ class FrameVerbs {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required RenderCaches renderCaches,
+    required ProjectSettings projectSettings,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -45,7 +49,8 @@ class FrameVerbs {
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
-       _renderCaches = renderCaches;
+       _renderCaches = renderCaches,
+       _projectSettings = projectSettings;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -55,6 +60,7 @@ class FrameVerbs {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RenderCaches _renderCaches;
+  final ProjectSettings _projectSettings;
 
   /// The geometric pose sample the interactive canvas shows for [layerId]
   /// at the playhead — the draw-through wrap input. Null = identity (no
@@ -389,6 +395,59 @@ class FrameVerbs {
   ///
   /// ⚠️[selectNextFrame]·[selectPreviousFrame] 은 **컷 안에 갇힌 한 프레임
   /// 이동**이고 그건 그것대로 옳다(플립이 아닌 호출자가 쓴다). 플립은 이쪽이다.
+  /// The V-row half: the track's CUTS are its columns, on the global axis.
+  ///
+  /// The same column step the layer row takes, with the track's cuts as
+  /// the covering material instead of a layer's blocks — which is the
+  /// whole point of stating the rule as columns. It carried the identical
+  /// key-stepping defect before, so a gap between two cuts was skipped in
+  /// both directions here too.
+  ///
+  /// This is also the axis a GAP is walked on: `selectGlobalFrame` lands
+  /// the result inside a cut or parks it in the void, so a playhead
+  /// standing between cuts can step out under its own power.
+  void _flipCuts(TrackId trackId, {required bool forward}) {
+    // The MEMOIZED layout (identity-keyed on the project): a flip step is
+    // a per-move cost, and rebuilding the whole cross-track layout for
+    // each one is exactly the tax that memo exists to remove.
+    final entries = [
+      for (final entry in _projectSettings.projectLayout())
+        if (entry.trackId == trackId) entry,
+    ];
+    if (entries.isEmpty) {
+      return;
+    }
+    final axis = TrackFrameAxis(entries);
+    final globalFrame = _selection.editingGlobalFrame;
+    final next = flipColumnStep(
+      frame: globalFrame,
+      direction: forward ? 1 : -1,
+      columnAt: (frame) {
+        final block = axis.cutBlockAt(frame);
+        return block == null
+            ? null
+            : (start: block.startIndex, endExclusive: block.endIndexExclusive);
+      },
+    );
+    // The start of the film is the only floor; rightward the runway past
+    // the last cut is a place you may stand. F-21: and a step that falls
+    // through that floor lands ON it rather than doing nothing — the layer
+    // row's law, on the axis this row counts.
+    final landing = next < 0 ? 0 : next;
+    if (landing != globalFrame) {
+      // Land on the axis the step was measured on: this row may name a
+      // track that is not the selected one.
+      //
+      // ⛔DROPPING `onAxis` SURVIVES MUTATION (2026-09-07), and the
+      // classification is AN INNER GUARD ALREADY ANSWERS: standing on a
+      // cut row TAKES its track, so by the time the landing resolves
+      // `trackFrameAxis()` is the same axis. Kept because it makes the
+      // step and the landing one axis BY CONSTRUCTION rather than by
+      // that coincidence — the standing rule is free to change.
+      _selection.selectGlobalFrame(landing, onAxis: axis);
+    }
+  }
+
   void _flipToFrame(int landing) {
     final floored = landing < 0 ? 0 : landing;
     if (floored != _controllers.timelineController.currentFrameIndex) {
@@ -412,7 +471,7 @@ class FrameVerbs {
     _selection.clearAllSelections();
     switch (_internals.currentRow) {
       case TrackRowAddress(:final trackId):
-        _internals.flipCuts(trackId, forward: forward);
+        _flipCuts(trackId, forward: forward);
       case LayerRowAddress(:final layerId):
         final layer = _project.layerById(layerId) ?? _selection.activeLayer;
         if (layer == null) {
@@ -420,7 +479,7 @@ class FrameVerbs {
           // (no cut, so no rows), or the stored row outlived its cut. The
           // row you are actually on is the TRACK, so walk cuts rather
           // than dead-ending: that is how a gap is stepped out of.
-          _internals.flipCuts(_selection.selectedTrackId, forward: forward);
+          _flipCuts(_selection.selectedTrackId, forward: forward);
           return;
         }
         _flipBlocks(layer, forward: forward);

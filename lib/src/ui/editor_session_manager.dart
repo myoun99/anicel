@@ -86,7 +86,6 @@ import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
-import '../models/flip_column_step.dart';
 import '../models/timeline_splice.dart';
 import '../models/delete_subject.dart';
 import '../models/edit_instance_subject.dart';
@@ -1644,7 +1643,7 @@ class EditorSessionManager extends ChangeNotifier
       _opacity.setAllLayersOpacity(opacity);
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
-  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
+  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches, projectSettings: _projectSettings);
 
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
       _frameVerbs.layerCanvasPoseSample(layerId);
@@ -3933,14 +3932,6 @@ class EditorSessionManager extends ChangeNotifier
     return null;
   }
 
-
-  /// The selection filtered to cuts that still EXIST — nothing to filter
-  /// any more: [storyboardSelectedCutIds] reads the CURRENT layout, so a
-  /// cut another command deleted since the drag painted the range is simply
-  /// not in it.
-  @override
-  List<CutId> get liveSelectedCutIds => storyboardSelectedCutIds;
-
   // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
 
   // The cut move drag (Round 6): begun, moved, ended or cancelled.
@@ -5072,53 +5063,6 @@ class EditorSessionManager extends ChangeNotifier
   /// Steps one BLOCK forward along [currentRow] (Ctrl+`.`). See
   /// [selectPreviousDrawing] for the rule.
   void selectNextDrawing() => _frameVerbs.flipRow(forward: true);
-
-  /// The V-row half: the track's CUTS are its columns, on the global axis.
-  ///
-  /// The same column step the layer row takes, with the track's cuts as
-  /// the covering material instead of a layer's blocks — which is the
-  /// whole point of stating the rule as columns. It carried the identical
-  /// key-stepping defect before, so a gap between two cuts was skipped in
-  /// both directions here too.
-  ///
-  /// This is also the axis a GAP is walked on: [selectGlobalFrame] lands
-  /// the result inside a cut or parks it in the void, so a playhead
-  /// standing between cuts can step out under its own power.
-  @override
-  void flipCuts(TrackId trackId, {required bool forward}) {
-    // The MEMOIZED layout (identity-keyed on the project): a flip step is
-    // a per-move cost, and rebuilding the whole cross-track layout for
-    // each one is exactly the tax that memo exists to remove.
-    final entries = [
-      for (final entry in _projectSettings.projectLayout())
-        if (entry.trackId == trackId) entry,
-    ];
-    if (entries.isEmpty) {
-      return;
-    }
-    final axis = TrackFrameAxis(entries);
-    final globalFrame = editingGlobalFrame;
-    final next = flipColumnStep(
-      frame: globalFrame,
-      direction: forward ? 1 : -1,
-      columnAt: (frame) {
-        final block = axis.cutBlockAt(frame);
-        return block == null
-            ? null
-            : (start: block.startIndex, endExclusive: block.endIndexExclusive);
-      },
-    );
-    // The start of the film is the only floor; rightward the runway past
-    // the last cut is a place you may stand. F-21: and a step that falls
-    // through that floor lands ON it rather than doing nothing — the layer
-    // row's law, on the axis this row counts.
-    final landing = next < 0 ? 0 : next;
-    if (landing != globalFrame) {
-      // Land on the axis the step was measured on: this row may name a
-      // track that is not the selected one.
-      selectGlobalFrame(landing, onAxis: axis);
-    }
-  }
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
 

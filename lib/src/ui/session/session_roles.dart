@@ -142,11 +142,9 @@ abstract interface class SessionInternals {
     Layer layer,
     TimelineFrameRangeSelection selection,
   );
-  void flipCuts(TrackId trackId, {required bool forward});
   void followPlaybackCut();
   ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
   frameShiftScope({TimelineRowAddress? currentRow});
-  List<CutId> get liveSelectedCutIds;
   int shiftAnchorFor(
     LayerId layerId,
     int anchorIndex, {
