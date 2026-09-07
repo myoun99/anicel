@@ -195,6 +195,19 @@ void main() {
     manager.dispose();
   });
 
+  test('the default shelf is `Recordings` under the app documents home', () {
+    // 🚨The rest of this file reads the shelf from the same getter it is
+    // testing, so it agrees with ANY answer — renaming the folder or
+    // rooting it somewhere else stayed green. This names both halves.
+    expect(AppSave.settings.value.recordingsDirectory, isNull);
+    expect(shelf, '${appDocumentsDirectory()}/Recordings');
+    expect(
+      shelf,
+      '${directory.path.replaceAll('\\', '/')}/docs/Recordings',
+      reason: 'the shelf hangs off the documents home, not the OS temp',
+    );
+  });
+
   test('a custom recordings folder (desktop setting) replaces the '
       'default shelf', () async {
     final custom = '${directory.path.replaceAll('\\', '/')}/my-takes';
