@@ -69,7 +69,7 @@ const _mayNameTheSession = <String, String>{
 /// promotion; every member left is either a host verb with no owner yet
 /// (G1's clusters) or one of the nine edges that would close a construction
 /// CYCLE if injected — those are named in the tool's REFUSED list.
-const _sessionInternalsMembers = 82;
+const _sessionInternalsMembers = 72;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())
