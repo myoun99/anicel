@@ -123,6 +123,43 @@ void main() {
         reason: 'no border strokes in the substrate any more',
       );
     }
+    // 🚨AND EVERY CELL GETS ITS OWN RECT. Emitting the SPAN-START cell's
+    // rect for all four frames left this test green (a mutation,
+    // 2026-09-07): the assertions above read the op KIND and the first
+    // cell's corners, so a tile that stacked four fills on cell 0 and left
+    // three cells blank passed. The probe-the-painter rule is about the
+    // geometry, so the geometry is what gets named.
+    final origin = painter.cellRectFor(0);
+    final originMainCovered = painter.axis == Axis.horizontal
+        ? origin.left
+        : origin.top;
+    bool streamHasFillAt(Int32List ops, Rect local) {
+      for (var i = 0; i < ops.length; i += 8) {
+        if (ops[i] == TimelineGridTileOp.rrectFill &&
+            ops[i + 1] == timelineGridQ8(local.left) &&
+            ops[i + 2] == timelineGridQ8(local.top) &&
+            ops[i + 3] == timelineGridQ8(local.width) &&
+            ops[i + 4] == timelineGridQ8(local.height)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    for (var frame = 0; frame < 4; frame += 1) {
+      final cell = painter.cellRectFor(frame);
+      final local = painter.axis == Axis.horizontal
+          ? cell.shift(Offset(-originMainCovered, 0))
+          : cell.shift(Offset(0, -originMainCovered));
+      expect(
+        streamHasFillAt(covered, local),
+        painter.resolvedCellStyleFor(frame).background.a > 0,
+        reason:
+            'frame $frame: a cell with paper owes the stream a fill at ITS '
+            'own rect, and one without owes none',
+      );
+    }
+
     // The seam the emitter mirrored is the painter's own contract.
     expect(
       painter.heldSeamLineFor(1),
@@ -147,26 +184,28 @@ void main() {
     // back into a formula that recites whatever the code happens to do.
     const emptyStart = 8;
     const emptyEndExclusive = 12;
-    var expectedLines = 0;
+    final expectedLines = <({Rect rect, Color color})>[];
     for (var frame = emptyStart; frame < emptyEndExclusive; frame += 1) {
       expect(
         painter.resolvedCellStyleFor(frame).background.a,
         0,
         reason: 'fixture premise: frame $frame really is empty paper',
       );
-      if (painter.heldSeamLineFor(frame) != null) {
-        expectedLines += 1;
+      final held = painter.heldSeamLineFor(frame);
+      if (held != null) {
+        expectedLines.add(held);
       }
       // 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 **가로선** 있는데
       // 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」 — the CROSS-axis
-      // seam is emitted per cell too. Counted off the painter like its
+      // seam is emitted per cell too. Taken off the painter like its
       // sibling, which is what keeps this from turning into a formula that
       // recites whatever the emitter happens to do.
-      if (painter.rowSeamLineFor(frame) != null) {
-        expectedLines += 1;
+      final row = painter.rowSeamLineFor(frame);
+      if (row != null) {
+        expectedLines.add(row);
       }
     }
-    expect(expectedLines, greaterThan(0), reason: 'the law puts lines here');
+    expect(expectedLines, isNotEmpty, reason: 'the law puts lines here');
     final empty = timelineGridSubstrateOps(
       painter: painter,
       spanStartIndex: emptyStart,
@@ -175,18 +214,50 @@ void main() {
     );
     expect(
       empty.length,
-      expectedLines * 8,
+      expectedLines.length * 8,
       reason:
           'one fill per line the painter names, and nothing more — the '
           'paper really is absent, so UI-R21 #2 still holds for the FILL. '
           'It never governed the line.',
     );
+    // 🚨COUNTING THE LINES WAS NOT ENOUGH. Emitting the ROW seam twice and
+    // the HELD seam never kept the count identical, and this test stayed
+    // green through it (a mutation, 2026-09-07) — which is the whole D43-2
+    // failure again: 「both axes, one law」 read as 「two lines, any two」.
+    // So each op is checked against the rect and ink the painter named,
+    // in order.
+    final horizontal = painter.axis == Axis.horizontal;
+    final originRect = painter.cellRectFor(emptyStart);
+    final originMain = horizontal ? originRect.left : originRect.top;
     for (var i = 0; i < empty.length; i += 8) {
+      final expected = expectedLines[i ~/ 8];
+      final local = horizontal
+          ? expected.rect.shift(Offset(-originMain, 0))
+          : expected.rect.shift(Offset(0, -originMain));
       expect(empty[i], TimelineGridTileOp.rrectFill);
+      expect(empty[i + 1], timelineGridQ8(local.left), reason: 'line $i left');
+      expect(empty[i + 2], timelineGridQ8(local.top), reason: 'line $i top');
+      expect(
+        empty[i + 3],
+        timelineGridQ8(local.width),
+        reason: 'line $i width',
+      );
+      expect(
+        empty[i + 4],
+        timelineGridQ8(local.height),
+        reason: 'line $i height',
+      );
       expect(
         empty[i + 6],
         0,
         reason: 'a grid line is a plain rect — no corner mask',
+      );
+      expect(
+        empty[i + 7],
+        timelineGridPackRgba(expected.color).toSigned(32),
+        reason:
+            'line $i ink (the stream is Int32, so the packed word '
+            'arrives signed)',
       );
     }
   });
