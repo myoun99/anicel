@@ -45,7 +45,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final cut = s.requireActiveCut;
     s.repository.updateCutDuration(cutId: cut.id, duration: 4);
-    s.setProjectBackground(const ProjectBackground.color(paperArgb));
+    s.projectSettings.setProjectBackground(const ProjectBackground.color(paperArgb));
 
     final layer = s.requireActiveCut.layers.firstWhere(
       (candidate) => candidate.kind == LayerKind.animation,

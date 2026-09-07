@@ -160,7 +160,7 @@ void main() {
     final source = buildConteSheetSource(session.repository.requireProject());
     final pages = layoutConteSheet(
       source,
-      metrics: ConteSheetMetrics(cameraAspect: session.cameraFrameAspect),
+      metrics: ConteSheetMetrics(cameraAspect: session.camera.cameraFrameAspect),
     );
     final cell = pages.first.cells.firstWhere(
       (cell) => cell.cutId == '39' && cell.cellIndex == 1,

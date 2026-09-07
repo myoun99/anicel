@@ -153,8 +153,8 @@ void main() {
     // none of them is a value this bar renders. A token that still carried
     // them would reconstruct ~20 buttons for a menu nobody has open.
     var before = toolbar();
-    final oldRate = session.projectFrameRate;
-    session.setProjectFps(session.projectFps + 5);
+    final oldRate = session.projectSettings.projectFrameRate;
+    session.projectSettings.setProjectFps(session.projectSettings.projectFps + 5);
     session.projectAudio.setProjectAudioSampleRate(
       session.projectAudio.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
@@ -164,7 +164,7 @@ void main() {
           : PlaybackQuality.full,
     );
     await tester.pump();
-    expect(session.projectFrameRate == oldRate, isFalse,
+    expect(session.projectSettings.projectFrameRate == oldRate, isFalse,
         reason: 'sanity: the fps mutation must actually change the rate');
     expect(identical(toolbar(), before), isTrue,
         reason: 'the toolbar prints no project axis and no playback quality '

@@ -94,7 +94,7 @@ class _InteractiveCanvasBuild {
     _selection = _inGap
         ? null
         : isCameraLayerActive
-        ? session.cameraBackdropSelection
+        ? session.camera.cameraBackdropSelection
         : session.activeBrushEditorSelection;
     // The layer shown in the interactive view draws POSED (always-applied
     // transforms, active layer included) with draw-through input.
@@ -107,7 +107,7 @@ class _InteractiveCanvasBuild {
     // Gap state (no active cut, UI-R9 #3): the void keeps a stable stage
     // geometry — the camera frame size stands in for the missing cut.
     _canvasSize =
-        session.activeCutOrNull?.canvasSize ?? session.cameraFrameSize;
+        session.activeCutOrNull?.canvasSize ?? session.camera.cameraFrameSize;
     // The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
     // faded frames are worked with fx off). It is the track's static opacity
     // times the TRANSITION row's ramp now.
@@ -151,8 +151,8 @@ class _InteractiveCanvasBuild {
     // fitting the cut canvas there framed the wrong rectangle.
     _fitFocusRect = isCameraLayerActive
         ? cameraFrameBoundsInCanvas(
-            pose: session.cameraPoseAtCurrentFrame,
-            cameraFrameSize: session.cameraFrameSize,
+            pose: session.camera.cameraPoseAtCurrentFrame,
+            cameraFrameSize: session.camera.cameraFrameSize,
           )
         : null;
     return RepaintBoundary(
@@ -347,7 +347,7 @@ class _InteractiveCanvasBuild {
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.brushSurfaceForLayerFrame,
         point: point,
-        paperColor: session.projectBackground.argb,
+        paperColor: session.projectSettings.projectBackground.argb,
         source:
             _state.widget.eyedropperSource?.value ??
             CanvasColorSampleSource.display,
@@ -364,11 +364,11 @@ class _InteractiveCanvasBuild {
       // says it once for all of them (유저, R4 #2). The COMMIT
       // handlers stay — this is still where the pill's swatches are
       // wired, and writing is not the same question as reading.
-      paperColor: session.projectBackground.argb,
+      paperColor: session.projectSettings.projectBackground.argb,
       onPaperColorChanged: (argb) =>
-          session.setProjectBackground(ProjectBackground.color(argb)),
-      onPasteboardColorChanged: session.setPasteboardColor,
-      onBackdropColorChanged: session.setProjectBackdrop,
+          session.projectSettings.setProjectBackground(ProjectBackground.color(argb)),
+      onPasteboardColorChanged: session.projectSettings.setPasteboardColor,
+      onBackdropColorChanged: session.projectSettings.setProjectBackdrop,
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
         _state.widget.brushToolState.value.copyWith(color: color),
       ),
@@ -418,7 +418,7 @@ class _InteractiveCanvasBuild {
         // writes the fill's field, not the brush's.
         opacity: toolState.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
-        paperColor: session.projectBackground.argb,
+        paperColor: session.projectSettings.projectBackground.argb,
         // The same guide the brush obeys, handed down by the view
         // that read it — a symmetry that replicates strokes
         // replicates fills.
@@ -532,7 +532,7 @@ class _InteractiveCanvasBuild {
       // R16-⑥: no cut in a gap — no paper (per-cut papers
       // make anything else confusing; the void is the truth).
       paintPaper: !_inGap,
-      paperBackground: frame.session.projectBackground,
+      paperBackground: frame.session.projectSettings.projectBackground,
     );
     // The paper-stays-put split under a cut pose went with
     // the V row's transform: nothing poses the whole cut on

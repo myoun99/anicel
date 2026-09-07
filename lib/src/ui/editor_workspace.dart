@@ -1353,7 +1353,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     int frameIndex,
     int thumbnailWidth,
   ) {
-    final cameraSize = widget.session.cameraFrameSize;
+    final cameraSize = widget.session.camera.cameraFrameSize;
     final output = cameraSize.scaledToWidth(thumbnailWidth);
     return ExportFrameRenderer(session: widget.session).renderComposite(
       ExportFrameTask(

@@ -238,9 +238,9 @@ void main() {
     final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
     s.selectLayer(camera.id);
     s.selectFrameIndex(2);
-    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame);
+    s.camera.setCameraKeyframeAtCurrentFrame(s.camera.cameraPoseAtCurrentFrame);
     s.selectFrameIndex(4);
-    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame);
+    s.camera.setCameraKeyframeAtCurrentFrame(s.camera.cameraPoseAtCurrentFrame);
 
     // Select the camera row across both keys and slide +3.
     s.updateFrameRangeSelectionDrag(
@@ -1328,7 +1328,7 @@ void main() {
     final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
     s.selectLayer(camera.id);
     s.selectFrameIndex(0);
-    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame);
+    s.camera.setCameraKeyframeAtCurrentFrame(s.camera.cameraPoseAtCurrentFrame);
 
     Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
     final aFrameId = layer(aId).frames.single.id;

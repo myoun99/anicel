@@ -352,7 +352,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         !widget.session.playbackRig.playback.isActive) {
       return null;
     }
-    final frame = widget.session.cameraFrameSize;
+    final frame = widget.session.camera.cameraFrameSize;
     return Offset.zero & Size(frame.width.toDouble(), frame.height.toDouble());
   }
 
@@ -439,7 +439,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   builder: (context) {
                     // Derived HERE (not captured above) so a seek-driven
                     // rebuild re-reads them at the new playhead.
-                    final isCameraLayerActive = session.isCameraLayerActive;
+                    final isCameraLayerActive = session.camera.isCameraLayerActive;
                     final showCameraOverlay =
                         widget.cameraViewEnabled.value || isCameraLayerActive;
                     return labProbe(
@@ -486,9 +486,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       positionsOf: session.rowSpans.trackStackContributionsAt,
       compositeCache: session.renderCaches.cutFrameCompositeCache,
       qualityOf: () => session.playbackRig.playbackQuality,
-      cameraFrameSize: session.cameraFrameSize,
+      cameraFrameSize: session.camera.cameraFrameSize,
       cameraViewEnabled: cameraView,
-      cameraPoseOf: session.cameraPoseForCut,
+      cameraPoseOf: session.camera.cameraPoseForCut,
       seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
       cutFxEnabledOf: session.isCutFxEnabled,
       trackStaticOpacityOf: session.trackStaticOpacityForCut,
@@ -496,7 +496,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       onFrameCached:
           session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
       viewport: viewport,
-      background: session.projectBackground,
+      background: session.projectSettings.projectBackground,
       backdropArgb: project.backdropArgb,
       pasteboardArgb: project.pasteboardArgb,
       showAlphaCheckerboard: alphaPreviewEnabled.value,
@@ -600,14 +600,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           qualityOf: () => session.playbackRig.playbackQuality,
           prerenderProgress: session.playbackRig.prerenderScheduler.progress,
           cameraViewEnabled: widget.cameraViewEnabled.value,
-          cameraFrameSize: session.cameraFrameSize,
-          cameraPoseOf: session.cameraPoseForCut,
+          cameraFrameSize: session.camera.cameraFrameSize,
+          cameraPoseOf: session.camera.cameraPoseForCut,
           seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
           cutFxEnabledOf: session.isCutFxEnabled,
           trackStaticOpacityOf: session.trackStaticOpacityForCut,
           cutPictureVisibleOf: session.isCutPictureVisible,
           viewport: viewport,
-          background: session.projectBackground,
+          background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,
           trackEffectsOf: session.trackEffectsForCut,
           trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
@@ -768,7 +768,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         builder: (context, _) => ValueListenableBuilder<int?>(
           valueListenable: session.gapParkingListenable,
           builder: (context, _, _) {
-            final pose = session.displayedCameraPose;
+            final pose = session.camera.displayedCameraPose;
             // Nothing under the cursor to frame:
             // the scrub is over a gap.
             if (pose == null) {
@@ -776,7 +776,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             }
             return CameraFrameOverlay(
               pose: pose,
-              cameraFrameSize: session.cameraFrameSize,
+              cameraFrameSize: session.camera.cameraFrameSize,
               viewport: viewport,
               // Dim belongs to camera-view mode;
               // plain manipulation keeps the
@@ -785,7 +785,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   ? widget.cameraDimOpacity.value
                   : 0,
               interactive: isCameraLayerActive,
-              onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+              onPoseCommitted: session.camera.setCameraKeyframeAtCurrentFrame,
             );
           },
         ),

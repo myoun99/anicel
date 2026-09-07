@@ -172,7 +172,7 @@ void main() {
     final manager = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
-    final before = manager.cameraFrameSize;
+    final before = manager.camera.cameraFrameSize;
 
     final cameraView = ValueNotifier<bool>(false);
     addTearDown(cameraView.dispose);
@@ -218,12 +218,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      manager.cameraFrameSize,
+      manager.camera.cameraFrameSize,
       const CanvasSize(width: 960, height: 430),
     );
 
     manager.undo();
-    expect(manager.cameraFrameSize, before);
+    expect(manager.camera.cameraFrameSize, before);
 
     await tester.pumpWidget(const SizedBox.shrink());
     manager.dispose();

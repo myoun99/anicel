@@ -76,7 +76,7 @@ void main() {
     expect(instr.instructions[0]!.length, 3);
     expect(
       instr.instructions[0]!.instructionId,
-      s.cameraInstructionSet.defs.first.id,
+      s.camera.cameraInstructionSet.defs.first.id,
     );
   });
 
@@ -86,7 +86,7 @@ void main() {
     final cameraId = s.layers
         .firstWhere((l) => l.kind == LayerKind.camera)
         .id;
-    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame); // key at 0
+    s.camera.setCameraKeyframeAtCurrentFrame(s.camera.cameraPoseAtCurrentFrame); // key at 0
     s.updateFrameRangeSelectionDrag(
       layerId: cameraId,
       anchorIndex: 0,

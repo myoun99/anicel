@@ -43,12 +43,12 @@ void main() {
       'createLinkedCutFromActiveCut': (s) =>
           s.cutVerbs.createLinkedCutFromActiveCut(),
       'setCameraKeyframeAtCurrentFrame': (s) =>
-          s.setCameraKeyframeAtCurrentFrame(
+          s.camera.setCameraKeyframeAtCurrentFrame(
             CameraPose(center: CanvasPoint(x: 10, y: 10)),
           ),
       'removeCameraKeyframeAtCurrentFrame': (s) =>
-          s.removeCameraKeyframeAtCurrentFrame(),
-      'clearActiveCutCamera': (s) => s.clearActiveCutCamera(),
+          s.camera.removeCameraKeyframeAtCurrentFrame(),
+      'clearActiveCutCamera': (s) => s.camera.clearActiveCutCamera(),
       'updateActiveCutCameraTrack': (s) =>
           s.updateActiveCutCameraTrack(TransformTrack.empty()),
       if (layerId != null)

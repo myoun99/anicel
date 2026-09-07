@@ -44,13 +44,11 @@ import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
 import '../models/brush_frame_key.dart';
 import '../models/camera_instruction.dart';
-import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/track_se_migration.dart';
 import '../models/composite_tree.dart';
 import '../models/cut.dart';
-import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
@@ -66,11 +64,9 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/onion_skin_settings.dart';
-import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
-import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
@@ -306,30 +302,13 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the project settings: their own object ──────────────────────────
   //
-  // A collaborator (session/project_settings.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final ProjectSettings _projectSettings = ProjectSettings(
+  // A collaborator (session/project_settings.dart). Callers name it —
+  // `session.projectSettings.setProjectFps(24)` (round 8, G4).
+  late final ProjectSettings projectSettings = ProjectSettings(
     project: this,
     changes: this,
     internals: this,
   );
-
-  void setProjectBackdrop(int argb) =>
-      _projectSettings.setProjectBackdrop(argb);
-  void setProjectPasteboardMargin(double margin) =>
-      _projectSettings.setProjectPasteboardMargin(margin);
-  void setPasteboardColor(int argb) =>
-      _projectSettings.setPasteboardColor(argb);
-  ProjectFrameRate get projectFrameRate => _projectSettings.projectFrameRate;
-  int get projectFps => _projectSettings.projectFps;
-  void setProjectFrameRate(ProjectFrameRate frameRate) =>
-      _projectSettings.setProjectFrameRate(frameRate);
-  void setProjectFps(int fps) => _projectSettings.setProjectFps(fps);
-  ProjectBackground get projectBackground => _projectSettings.projectBackground;
-  void setProjectBackground(ProjectBackground background) =>
-      _projectSettings.setProjectBackground(background);
-  List<StoryboardTimelineLayoutEntry> projectTimelineLayout() =>
-      _projectSettings.projectLayout();
 
   /// The tool a temporary hold sprang FROM; null = no hold live.
   ///
@@ -406,7 +385,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     internals: this,
     renderCaches: renderCaches,
-    settings: _projectSettings,
+    settings: projectSettings,
     audioConformStore: audioConformStore,
     voiceRecording: voiceRecording,
     onStopped: _onPlaybackStopped,
@@ -669,7 +648,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     timeline: this,
-    projectSettings: _projectSettings,
+    projectSettings: projectSettings,
   );
 
   void claimStoryboardRow() => standing.claimStoryboardRow();
@@ -717,7 +696,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/row_spans.dart): where a row's material starts
   // and ends, what a range drag over it snaps to, and where a cut's frame
   // sits on the GLOBAL axis.
-  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: _projectSettings, trackSe: trackSe, transitions: _transitions);
+  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: _transitions);
 
   late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
 
@@ -971,7 +950,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    camera: _camera,
+    camera: camera,
   );
 
   List<TransitionSpan> get activeTrackTransitionSpans =>
@@ -1038,7 +1017,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, trackSe: trackSe, frameVerbs: _frameVerbs);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, trackSe: trackSe, frameVerbs: _frameVerbs);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -1230,7 +1209,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     appSettings: appSettings,
-    camera: _camera,
+    camera: camera,
     trackSe: trackSe,
     transitions: _transitions,
   );
@@ -1320,9 +1299,9 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the camera: its own object, in its own file ────────────────────────
   //
-  // A collaborator (session/camera.dart, a part of this library). The session
-  // keeps the public queries and commands as forwarders.
-  late final Camera _camera = Camera(
+  // A collaborator (session/camera.dart). Callers name it —
+  // `session.camera.cameraPoseAtCurrentFrame` (round 8, G4).
+  late final Camera camera = Camera(
     project: this,
     selection: this,
     changes: this,
@@ -1333,37 +1312,11 @@ class EditorSessionManager extends ChangeNotifier
     activeCut: _activeCutEdits,
   );
 
-  CutCamera get activeCutCamera => _camera.activeCutCamera;
-  CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
-  void setProjectCameraSize(CanvasSize size) =>
-      _camera.setProjectCameraSize(size);
-  CameraPose cameraPoseAtFrame(int frameIndex) =>
-      _camera.cameraPoseAtFrame(frameIndex);
-  CameraPose cameraPoseForCut(Cut cut, int frameIndex) =>
-      _camera.cameraPoseForCut(cut, frameIndex);
-  CameraPose get cameraPoseAtCurrentFrame => _camera.cameraPoseAtCurrentFrame;
-  CameraPose? get displayedCameraPose => _camera.displayedCameraPose;
-  bool get hasCameraKeyframeAtCurrentFrame =>
-      _camera.hasCameraKeyframeAtCurrentFrame;
-  void setCameraKeyframeAtCurrentFrame(CameraPose pose) =>
-      _camera.setCameraKeyframeAtCurrentFrame(pose);
-  void removeCameraKeyframeAtCurrentFrame() =>
-      _camera.removeCameraKeyframeAtCurrentFrame();
-  void clearActiveCutCamera() => _camera.clearActiveCutCamera();
   @override
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',
-  }) => _camera.updateActiveCutCameraTrack(track, description: description);
-  bool get isCameraLayerActive => _camera.isCameraLayerActive;
-  BrushEditorSelection? get cameraBackdropSelection =>
-      _camera.cameraBackdropSelection;
-  CameraInstructionSet get cameraInstructionSet => _camera.cameraInstructionSet;
-  void updateCameraInstructionSet(CameraInstructionSet instructionSet) =>
-      _camera.updateCameraInstructionSet(instructionSet);
-  double get cameraFrameAspect => _camera.cameraFrameAspect;
-  TransformTrack? get activeCutCameraTrack => _camera.activeCutCameraTrack;
-
+  }) => camera.updateActiveCutCameraTrack(track, description: description);
   GuideId? _selectedGuideId;
 
   /// Which guide the guide tool is editing.
@@ -1551,7 +1504,7 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     internals: this,
     renderCaches: renderCaches,
-    projectSettings: _projectSettings,
+    projectSettings: projectSettings,
   );
 
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
@@ -2187,7 +2140,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     cutVerbs: cutVerbs,
-    camera: _camera,
+    camera: camera,
     activeCut: _activeCutEdits,
   );
 
@@ -2802,7 +2755,7 @@ class EditorSessionManager extends ChangeNotifier
     repository: () => repository,
     cutCommandCoordinator: () => cutCommandCoordinator,
     uiStrings: () => uiStrings,
-    projectFrameRate: () => projectFrameRate,
+    projectFrameRate: () => projectSettings.projectFrameRate,
     activeCutGlobalStartFrame: () => activeCutGlobalStartFrame,
     editingGlobalFrame: () => editingGlobalFrame,
     gapParkedGlobalFrame: () => gapParkedGlobalFrame,
@@ -2866,7 +2819,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     controllers: activeCutControllers,
-    camera: _camera,
+    camera: camera,
   );
 
   bool get canBlankExposureForSelection =>
@@ -2921,7 +2874,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
 
   bool createInstancesForSelection() =>
       _instances.createInstancesForSelection();
@@ -3438,7 +3391,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: _transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: _transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -3793,7 +3746,7 @@ class EditorSessionManager extends ChangeNotifier
   /// axis — change it and every panel changes together.
   @override
   TrackFrameAxis trackFrameAxis() {
-    final layout = _projectSettings.projectLayout();
+    final layout = projectSettings.projectLayout();
     final trackId = selectedTrackId;
     final scoped = [
       for (final entry in layout)
@@ -4146,7 +4099,7 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectAudio projectAudio = ProjectAudio(
     project: this,
     changes: this,
-    settings: _projectSettings,
+    settings: projectSettings,
     door: projectDoor,
   );
 

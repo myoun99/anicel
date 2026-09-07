@@ -122,7 +122,7 @@ void main() {
     final (s, first, _, aEnd) = gappedSession();
     addTearDown(s.dispose);
     s.selectCut(first);
-    final pose = s.cameraPoseAtFrame(0); // Captured BEFORE the gap.
+    final pose = s.camera.cameraPoseAtFrame(0); // Captured BEFORE the gap.
     s.selectGlobalFrame(aEnd + 1);
     expect(s.activeCutId, isNull);
 
@@ -133,7 +133,7 @@ void main() {
     s.cutVerbs.deleteActiveCut();
     s.layerStack.addLayer();
     s.layerStack.addLayerOfKind(LayerKind.se);
-    s.setCameraKeyframeAtCurrentFrame(pose);
+    s.camera.setCameraKeyframeAtCurrentFrame(pose);
     s.cutVerbs.toggleActiveCutThumbnailFrame();
     s.selectNextFrame();
     s.selectPreviousFrame();

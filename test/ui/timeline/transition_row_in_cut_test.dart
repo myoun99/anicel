@@ -287,10 +287,10 @@ void main() {
       'reaches it as one-sided', () {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    final foId = session.cameraInstructionSet.defs
+    final foId = session.camera.cameraInstructionSet.defs
         .firstWhere((def) => def.markType == CameraInstructionMarkType.fo)
         .id;
-    final olId = session.cameraInstructionSet.defs
+    final olId = session.camera.cameraInstructionSet.defs
         .firstWhere((def) => def.markType == CameraInstructionMarkType.ol)
         .id;
 
@@ -324,7 +324,7 @@ void main() {
     session.cutVerbs.createCut();
     final first = session.repository.requireProject().tracks.first.cuts.first;
     final crossingStart = first.duration - 4;
-    final foId = session.cameraInstructionSet.defs
+    final foId = session.camera.cameraInstructionSet.defs
         .firstWhere((def) => def.markType == CameraInstructionMarkType.fo)
         .id;
     // One F.O INSIDE cut 1 (applies) and one CROSSING its end (refused —

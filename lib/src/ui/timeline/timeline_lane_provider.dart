@@ -52,7 +52,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
   /// hands this function a previewed LAYER — but a camera row's lanes are
   /// not built from its Layer at all.
   TransformTrack laneTrackOf(Layer target) => target.kind == LayerKind.camera
-      ? (session.activeCutCameraTrack ?? session.requireActiveCut.camera.track)
+      ? (session.camera.activeCutCameraTrack ?? session.requireActiveCut.camera.track)
       : target.transformTrack;
 
   /// AE group collapse: the Transform group header always shows; its member
@@ -218,7 +218,7 @@ PropertyLaneRow? timelineCameraUnionLane({
     return null;
   }
   final track =
-      session.activeCutCameraTrack ?? session.activeCutOrNull?.camera.track;
+      session.camera.activeCutCameraTrack ?? session.activeCutOrNull?.camera.track;
   if (track == null) {
     return null;
   }

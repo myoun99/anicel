@@ -18,7 +18,7 @@ void main() {
     s.selectLayer(cameraLayer.id);
     expect(s.activeLayerId, cameraLayer.id);
 
-    s.setCameraKeyframeAtCurrentFrame(
+    s.camera.setCameraKeyframeAtCurrentFrame(
       CameraPose(
         center: CanvasPoint(x: 100, y: 100),
         zoom: 1.2,
@@ -32,7 +32,7 @@ void main() {
       reason: 'the camera row must stay selected after keying',
     );
 
-    s.removeCameraKeyframeAtCurrentFrame();
+    s.camera.removeCameraKeyframeAtCurrentFrame();
     expect(s.activeLayerId, cameraLayer.id);
   });
 
@@ -43,7 +43,7 @@ void main() {
     s.selectLayer(seLayer.id);
     expect(s.activeLayerId, seLayer.id);
 
-    s.setCameraKeyframeAtCurrentFrame(
+    s.camera.setCameraKeyframeAtCurrentFrame(
       CameraPose(
         center: CanvasPoint(x: 10, y: 10),
         zoom: 1.0,

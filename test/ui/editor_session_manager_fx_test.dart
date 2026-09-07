@@ -91,21 +91,21 @@ void main() {
       final cameraLayer = cut.layers.firstWhere(
         (layer) => layer.kind == LayerKind.camera,
       );
-      session.setCameraKeyframeAtCurrentFrame(
+      session.camera.setCameraKeyframeAtCurrentFrame(
         CameraPose(center: CanvasPoint(x: 100, y: 80), zoom: 2),
       );
 
-      expect(session.cameraPoseForCut(session.requireActiveCut, 0).zoom, 2);
+      expect(session.camera.cameraPoseForCut(session.requireActiveCut, 0).zoom, 2);
 
       session.toggleLayerFx(cameraLayer.id);
-      final bypassed = session.cameraPoseForCut(session.requireActiveCut, 0);
+      final bypassed = session.camera.cameraPoseForCut(session.requireActiveCut, 0);
       expect(bypassed.zoom, 1);
       expect(bypassed.rotationDegrees, 0);
       expect(bypassed.center.x, session.requireActiveCut.canvasSize.width / 2);
       expect(bypassed.center.y, session.requireActiveCut.canvasSize.height / 2);
 
       session.toggleLayerFx(cameraLayer.id);
-      expect(session.cameraPoseForCut(session.requireActiveCut, 0).zoom, 2);
+      expect(session.camera.cameraPoseForCut(session.requireActiveCut, 0).zoom, 2);
     });
 
     test('lane value resolvers: anchor defaults to the canvas center and '

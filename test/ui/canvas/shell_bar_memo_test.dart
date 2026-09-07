@@ -83,7 +83,7 @@ void main() {
       isNotNull,
       reason: 'a canvas surface always has a colour — 「없음」 is a member state',
     );
-    session.setProjectBackground(const ProjectBackground.color(0xFF123456));
+    session.projectSettings.setProjectBackground(const ProjectBackground.color(0xFF123456));
     await tester.pumpAndSettle();
 
     // LIVENESS — a fixture that started on the target colour would pass the

@@ -547,7 +547,7 @@ void main() {
       expect(filtered, isNotEmpty);
       expect(
         filtered.length,
-        lessThan(session.cameraInstructionSet.defs.length),
+        lessThan(session.camera.cameraInstructionSet.defs.length),
       );
       expect(
         session.transitionInstructionDefs.map((def) => def.id),

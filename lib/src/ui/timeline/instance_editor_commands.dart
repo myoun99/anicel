@@ -528,7 +528,7 @@ Future<void> _editInstructionEvent(
   Axis previewAxis,
 ) => _editSpanInstance(context, session, previewAxis, (
   covering: session.instructionSpanAt(layerId, frameIndex),
-  set: session.cameraInstructionSet,
+  set: session.camera.cameraInstructionSet,
   editsSet: true,
   create: session.createDefaultInstructionEventAtCurrentFrame,
   remove: () => session.removeInstructionEventAt(layerId, frameIndex),
@@ -589,8 +589,8 @@ Future<void> _editInstructionSet(
 ) => askThenCommit<CameraInstructionSet>(
   dialogContext,
   dialog: (_) =>
-      InstructionSetEditorDialog(initialSet: session.cameraInstructionSet),
-  commit: session.updateCameraInstructionSet,
+      InstructionSetEditorDialog(initialSet: session.camera.cameraInstructionSet),
+  commit: session.camera.updateCameraInstructionSet,
 );
 
 /// A lane KEY's name — the frame-name flow said of a keyframe, down to the

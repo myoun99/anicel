@@ -27,7 +27,7 @@ void main() {
     );
     // The drawing layer stays the default active layer.
     expect(s.activeLayer?.kind, LayerKind.animation);
-    expect(s.isCameraLayerActive, isFalse);
+    expect(s.camera.isCameraLayerActive, isFalse);
   });
 
   test('new cuts also get a camera layer', () {
@@ -47,7 +47,7 @@ void main() {
 
     s.selectLayer(cameraLayer.id);
 
-    expect(s.isCameraLayerActive, isTrue);
+    expect(s.camera.isCameraLayerActive, isTrue);
     expect(s.layerVerbs.canDeleteActiveLayer, isFalse);
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
@@ -68,7 +68,7 @@ void main() {
     s.selectLayer(cameraLayer.id);
 
     s.selectFrameIndex(3);
-    s.setCameraKeyframeAtCurrentFrame(pose());
+    s.camera.setCameraKeyframeAtCurrentFrame(pose());
 
     expect(
       s.exposureStateForLayer(cameraLayer, 3),
@@ -79,9 +79,9 @@ void main() {
       TimelineCellExposureState.uncovered,
     );
     expect(s.layerMarks.hasMarkForLayer(cameraLayer, 3), isFalse);
-    expect(s.hasCameraKeyframeAtCurrentFrame, isTrue);
+    expect(s.camera.hasCameraKeyframeAtCurrentFrame, isTrue);
 
-    s.removeCameraKeyframeAtCurrentFrame();
+    s.camera.removeCameraKeyframeAtCurrentFrame();
     expect(
       s.exposureStateForLayer(cameraLayer, 3),
       TimelineCellExposureState.uncovered,

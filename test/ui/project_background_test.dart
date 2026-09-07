@@ -39,18 +39,18 @@ void main() {
   test('setProjectBackground is one undo step and no-ops when unchanged', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
 
-    s.setProjectBackground(ProjectBackground.black);
-    expect(s.projectBackground, ProjectBackground.black);
+    s.projectSettings.setProjectBackground(ProjectBackground.black);
+    expect(s.projectSettings.projectBackground, ProjectBackground.black);
     expect(s.canUndo, isTrue);
 
     // Unchanged: no extra undo entry.
-    s.setProjectBackground(ProjectBackground.black);
+    s.projectSettings.setProjectBackground(ProjectBackground.black);
     s.undo();
-    expect(s.projectBackground, ProjectBackground.defaultBackground);
+    expect(s.projectSettings.projectBackground, ProjectBackground.defaultBackground);
     expect(s.canUndo, isFalse);
 
     s.redo();
-    expect(s.projectBackground, ProjectBackground.black);
+    expect(s.projectSettings.projectBackground, ProjectBackground.black);
   });
 
   testWidgets('the dialog applies a preset and a custom hex color', (
@@ -84,7 +84,7 @@ void main() {
       find.byKey(const ValueKey<String>('background-apply-button')),
     );
     await tester.pumpAndSettle();
-    expect(s.projectBackground, ProjectBackground.black);
+    expect(s.projectSettings.projectBackground, ProjectBackground.black);
 
     await openDialog();
     await tester.tap(find.byKey(const ValueKey<String>('background-custom')));
@@ -98,7 +98,7 @@ void main() {
       find.byKey(const ValueKey<String>('background-apply-button')),
     );
     await tester.pumpAndSettle();
-    expect(s.projectBackground, const ProjectBackground.color(0xFF3366CC));
+    expect(s.projectSettings.projectBackground, const ProjectBackground.color(0xFF3366CC));
 
     await openDialog();
     await tester.tap(
@@ -109,7 +109,7 @@ void main() {
       find.byKey(const ValueKey<String>('background-apply-button')),
     );
     await tester.pumpAndSettle();
-    expect(s.projectBackground.transparent, isTrue);
+    expect(s.projectSettings.projectBackground.transparent, isTrue);
   });
 
   group('the stage bars', () {

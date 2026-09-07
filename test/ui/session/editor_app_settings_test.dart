@@ -69,7 +69,7 @@ void main() {
       ),
     );
     first.setAccentSettings(const AppAccentSettings(accent: Color(0xFF123456)));
-    first.setPasteboardColor(0xFF204060);
+    first.projectSettings.setPasteboardColor(0xFF204060);
     first.setInputSettings(
       const AppInputSettings(
         pressureCurveGamma: 1.5,

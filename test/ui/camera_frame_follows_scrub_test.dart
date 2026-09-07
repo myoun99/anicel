@@ -32,21 +32,21 @@ void main() {
 
     s.selectCut(second);
     s.selectFrameIndex(0);
-    s.setCameraKeyframeAtCurrentFrame(
-      s.cameraPoseAtCurrentFrame.copyWith(zoom: 1),
+    s.camera.setCameraKeyframeAtCurrentFrame(
+      s.camera.cameraPoseAtCurrentFrame.copyWith(zoom: 1),
     );
     s.selectFrameIndex(5);
-    s.setCameraKeyframeAtCurrentFrame(
-      s.cameraPoseAtCurrentFrame.copyWith(zoom: 3),
+    s.camera.setCameraKeyframeAtCurrentFrame(
+      s.camera.cameraPoseAtCurrentFrame.copyWith(zoom: 3),
     );
 
     s.selectCut(track.cuts[0].id);
     s.selectFrameIndex(0);
-    s.setCameraKeyframeAtCurrentFrame(
-      s.cameraPoseAtCurrentFrame.copyWith(zoom: 2),
+    s.camera.setCameraKeyframeAtCurrentFrame(
+      s.camera.cameraPoseAtCurrentFrame.copyWith(zoom: 2),
     );
 
-    final layout = s.projectTimelineLayout();
+    final layout = s.projectSettings.projectLayout();
     final secondStart = layout
         .firstWhere((entry) => entry.cutId == second)
         .startFrame;
@@ -93,18 +93,18 @@ void main() {
       final (s, secondStart, _) = scrubSession();
       addTearDown(s.dispose);
 
-      expect(s.cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
+      expect(s.camera.cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
 
       dragTo(s, secondStart, secondStart + 5);
 
       expect(s.frameScrubActive.value, isTrue);
       expect(
-        s.cameraPoseAtCurrentFrame.zoom,
+        s.camera.cameraPoseAtCurrentFrame.zoom,
         2,
         reason: 'the ACTIVE cut is left untouched by the crossing, by design',
       );
       expect(
-        s.displayedCameraPose!.zoom,
+        s.camera.displayedCameraPose!.zoom,
         closeTo(3, 1e-6),
         reason: 'the DISPLAY frames the cut under the cursor',
       );
@@ -118,7 +118,7 @@ void main() {
     dragTo(s, gapFrame, gapFrame + 1);
 
     expect(s.frameScrubActive.value, isTrue);
-    expect(s.displayedCameraPose, isNull);
+    expect(s.camera.displayedCameraPose, isNull);
   });
 
   test('the release lands what the drag was showing — commit and preview '
@@ -127,13 +127,13 @@ void main() {
     addTearDown(s.dispose);
 
     dragTo(s, secondStart, secondStart + 5);
-    final shownDuringDrag = s.displayedCameraPose!.zoom;
+    final shownDuringDrag = s.camera.displayedCameraPose!.zoom;
     s.commitFrameScrub();
 
     expect(s.frameScrubActive.value, isFalse);
     expect(s.currentFrameIndex, 5);
-    expect(s.cameraPoseAtCurrentFrame.zoom, closeTo(shownDuringDrag, 1e-6));
-    expect(s.displayedCameraPose!.zoom, closeTo(shownDuringDrag, 1e-6));
+    expect(s.camera.cameraPoseAtCurrentFrame.zoom, closeTo(shownDuringDrag, 1e-6));
+    expect(s.camera.displayedCameraPose!.zoom, closeTo(shownDuringDrag, 1e-6));
   });
 
   test('a committed parking frames nothing even where a cut covers it — only '
@@ -146,7 +146,7 @@ void main() {
     s.parkGlobalFrame(gapFrame);
 
     expect(s.frameScrubActive.value, isFalse);
-    expect(s.displayedCameraPose, isNull);
+    expect(s.camera.displayedCameraPose, isNull);
   });
 
   testWidgets('the overlay FOLLOWS the crossing per move: the parking is the '

@@ -70,14 +70,14 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     BuildContext context,
     ProjectFrameRate rate,
   ) async {
-    final pull = audioPullBetween(session.projectFrameRate, rate);
+    final pull = audioPullBetween(session.projectSettings.projectFrameRate, rate);
     if (pull == null || !session.projectAudio.projectHasAnyAudio) {
-      session.setProjectFrameRate(rate);
+      session.projectSettings.setProjectFrameRate(rate);
       return;
     }
     final choice = await showFpsAudioChoiceDialog(
       context,
-      from: session.projectFrameRate,
+      from: session.projectSettings.projectFrameRate,
       to: rate,
       strings: session.uiStrings,
     );
@@ -85,7 +85,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       case null:
         return; // cancelled — the rate stays too
       case FpsAudioChoice.keep:
-        session.setProjectFrameRate(rate);
+        session.projectSettings.setProjectFrameRate(rate);
       case FpsAudioChoice.pull:
         session.projectAudio.setProjectFrameRateWithAudioPull(rate);
     }
@@ -94,7 +94,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
   Future<void> _editFrameRate(BuildContext context) async {
     final rate = await showDialog<ProjectFrameRate>(
       context: context,
-      builder: (context) => _FpsWindow(current: session.projectFrameRate),
+      builder: (context) => _FpsWindow(current: session.projectSettings.projectFrameRate),
     );
     if (rate == null || !context.mounted) {
       return;
@@ -144,10 +144,10 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
   Future<void> _editCameraSize(BuildContext context) async {
     final size = await showCameraSizeDialog(
       context,
-      initialSize: session.cameraFrameSize,
+      initialSize: session.camera.cameraFrameSize,
     );
     if (size != null) {
-      session.setProjectCameraSize(size);
+      session.camera.setProjectCameraSize(size);
     }
   }
 
@@ -168,11 +168,11 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
 
   List<PanelFlyoutEntry> _entries(BuildContext context) {
     final strings = AppText.strings;
-    final cameraSize = session.cameraFrameSize;
+    final cameraSize = session.camera.cameraFrameSize;
     return [
       PanelFlyoutItem(
         keyValue: 'project-settings-fps',
-        label: 'FPS ${session.projectFrameRate.label}',
+        label: 'FPS ${session.projectSettings.projectFrameRate.label}',
         icon: Icons.speed_outlined,
         onSelected: () => unawaited(_editFrameRate(context)),
       ),

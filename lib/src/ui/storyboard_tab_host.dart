@@ -456,7 +456,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         // Global · cut-local pair (UI-R9 #6) — the channel already
         // follows scrubs, gap parking and playback ticks.
         globalFrame: _playheadGlobalFrame,
-        projectFrameRate: _session.projectFrameRate,
+        projectFrameRate: _session.projectSettings.projectFrameRate,
         showSeconds: widget.showSeconds,
         pixelsPerFrame: widget.pixelsPerFrame,
         onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
@@ -585,7 +585,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     showSeconds: widget.showSeconds,
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.railExtent,
-                    projectFrameRate: _session.projectFrameRate,
+                    projectFrameRate: _session.projectSettings.projectFrameRate,
                     // The strip's edges preview live and commit ONE undo on
                     // release, like the timeline's comma drags. Which verb a
                     // drag belongs to is settled at BEGIN — by where the grip
@@ -853,7 +853,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     layerLaneEdit: _layerLaneEdit,
                     activeCutFrameCursor: _activeCutFrameCursor,
                     onSelectFrameIndex: _session.selectFrameIndex,
-                    poseDisplaySize: _session.cameraFrameSize,
+                    poseDisplaySize: _session.camera.cameraFrameSize,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the
                     // fade now — an always-visible row rather than two twirls
@@ -968,7 +968,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // The TRANSITION row. This panel is its only editor: the
                     // row is track-owned and its spans address the global
                     // axis, so the cut timeline shows them read-only.
-                    transitionDefById: _session.cameraInstructionSet.defById,
+                    transitionDefById: _session.camera.cameraInstructionSet.defById,
                     // D26: crossing fades are refused and wear the red
                     // corner — the session answers by global key on this
                     // authoring axis, with the SAME predicate the ramp and

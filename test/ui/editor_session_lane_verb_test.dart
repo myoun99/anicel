@@ -165,11 +165,11 @@ void main() {
 
       // Two keys far apart; frame 4 sits exactly between them.
       session.selectFrameIndex(0);
-      session.setCameraKeyframeAtCurrentFrame(
+      session.camera.setCameraKeyframeAtCurrentFrame(
         CameraPose(center: CanvasPoint(x: 100, y: 100), zoom: 2),
       );
       session.selectFrameIndex(8);
-      session.setCameraKeyframeAtCurrentFrame(
+      session.camera.setCameraKeyframeAtCurrentFrame(
         CameraPose(center: CanvasPoint(x: 900, y: 900), zoom: 2),
       );
 

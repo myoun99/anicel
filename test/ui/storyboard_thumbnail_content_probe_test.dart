@@ -76,7 +76,7 @@ void main() {
       // Camera key + a layer transform (small shift + animated opacity) at
       // frame 0 — the merged R3 surface area. Position keys are ABSOLUTE
       // canvas points (identity = canvas center).
-      session.setCameraKeyframeAtCurrentFrame(session.cameraPoseAtCurrentFrame);
+      session.camera.setCameraKeyframeAtCurrentFrame(session.camera.cameraPoseAtCurrentFrame);
       session.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(

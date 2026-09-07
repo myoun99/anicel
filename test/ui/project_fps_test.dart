@@ -11,21 +11,21 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    final start = session.projectFps;
+    final start = session.projectSettings.projectFps;
 
-    session.setProjectFps(12);
-    expect(session.projectFps, 12);
+    session.projectSettings.setProjectFps(12);
+    expect(session.projectSettings.projectFps, 12);
     expect(session.repository.requireProject().fps, 12);
 
     session.undo();
-    expect(session.projectFps, start, reason: 'one undo restores the rate');
+    expect(session.projectSettings.projectFps, start, reason: 'one undo restores the rate');
 
     // A no-op write must not push an undo entry.
-    session.setProjectFps(start);
+    session.projectSettings.setProjectFps(start);
     expect(session.canUndo, isFalse);
     // Nor an invalid one.
-    session.setProjectFps(0);
-    expect(session.projectFps, start);
+    session.projectSettings.setProjectFps(0);
+    expect(session.projectSettings.projectFps, start);
     expect(session.canUndo, isFalse);
   });
 }

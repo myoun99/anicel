@@ -151,7 +151,7 @@ class _WorkspaceCollapsedRows {
       rail: rail,
       naturalRailWidth: _collapsedMetrics().layerControlsWidth,
       pixelsPerFrame: _state._timelinePixelsPerFrame.value,
-      framesPerSecond: _state.widget.session.projectFrameRate.countingBase,
+      framesPerSecond: _state.widget.session.projectSettings.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),
       frameRowBuilder: _collapsedFrameRowBuilder(),
     );
@@ -174,7 +174,7 @@ class _WorkspaceCollapsedRows {
     final session = _state.widget.session;
     final trackId = session.selectedTrackId;
     final entries = [
-      for (final entry in session.projectTimelineLayout())
+      for (final entry in session.projectSettings.projectLayout())
         if (entry.trackId == trackId) entry,
     ];
     final track = entries.isEmpty
@@ -190,7 +190,7 @@ class _WorkspaceCollapsedRows {
       rail: _state._railExtents[LayerRailId.storyboard],
       naturalRailWidth: StoryboardTrackLabelRow.railWidth,
       pixelsPerFrame: pixelsPerFrame,
-      framesPerSecond: session.projectFrameRate.countingBase,
+      framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
       // No track (an empty film) falls back to the overlay's own strip,
       // which draws the snapshot — the same fallback the timeline's lane
       // rows take.
@@ -225,7 +225,7 @@ class _WorkspaceCollapsedRows {
                     Theme.of(context).textTheme.labelSmall ??
                     DefaultTextStyle.of(context).style,
                 showSeconds: _state._showSecondsDisplay.value,
-                countingBase: session.projectFrameRate.countingBase,
+                countingBase: session.projectSettings.projectFrameRate.countingBase,
                 // D15 ③: the thumbnails come from the store the panel
                 // draws from, so a picture rendered for one is already
                 // rendered for the other.
@@ -456,7 +456,7 @@ class _WorkspaceCollapsedRows {
             exposureStateForLayer: session.exposureStateForLayer,
             frameNameForLayer: session.frameNameForLayer,
             celContent: _collapsedCelContent,
-            projectFrameRate: session.projectFrameRate,
+            projectFrameRate: session.projectSettings.projectFrameRate,
             // The CAMERA row's union summary (B4) — the same shared
             // markers the timeline row mounts; ⑩ root C says this overlay
             // mounts the real row, columns and all.

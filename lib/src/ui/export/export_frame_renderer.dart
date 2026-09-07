@@ -144,7 +144,7 @@ class ExportFrameRenderer {
     // The single-cut streams' retention: one cut's cels at a time.
     _retainSurfacesFor([cut.id]);
     final pose = mode == ExportSizeMode.camera
-        ? session.cameraPoseForCut(cut, task.frameIndex)
+        ? session.camera.cameraPoseForCut(cut, task.frameIndex)
         : CameraPose(
             center: CanvasPoint(
               x: cut.canvasSize.width / 2,
@@ -164,7 +164,7 @@ class ExportFrameRenderer {
       ),
       pose: pose,
       cameraFrameSize: mode == ExportSizeMode.camera
-          ? session.cameraFrameSize
+          ? session.camera.cameraFrameSize
           : cut.canvasSize,
       outputSize: outputSize,
       overlayPass: !withNameTags
@@ -245,7 +245,7 @@ class ExportFrameRenderer {
       // what playback shows in the gap. Opaque codecs bake the floor; an
       // alpha master keeps the gap transparent.
       final size = mode == ExportSizeMode.camera
-          ? session.cameraFrameSize
+          ? session.camera.cameraFrameSize
           : task.cut.canvasSize;
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder);
@@ -506,7 +506,7 @@ class ExportFrameRenderer {
     ];
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
-    final size = session.cameraFrameSize;
+    final size = session.camera.cameraFrameSize;
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
@@ -560,7 +560,7 @@ class ExportFrameRenderer {
             cut,
             position.localFrameIndex,
           ),
-          cameraPose: session.cameraPoseForCut(cut, position.localFrameIndex),
+          cameraPose: session.camera.cameraPoseForCut(cut, position.localFrameIndex),
           cameraFrameSize: size,
           // No cutPose/cutAnchorPoint: the V row has no transform.
           cutEffects: trackEffectsAt(
@@ -568,7 +568,7 @@ class ExportFrameRenderer {
             position.globalFrameIndex,
             enabled: trackFxEnabled,
           ),
-          paperBackground: session.projectBackground,
+          paperBackground: session.projectSettings.projectBackground,
           paintPaper: isStage,
           // The alpha matrix (user 2026-07-29): alpha masters exclude the
           // backdrop AND the pasteboard — they are compositing sources,
@@ -662,7 +662,7 @@ class ExportFrameRenderer {
     }
     CameraPose pose;
     if (mode == ExportSizeMode.camera) {
-      pose = session.cameraPoseForCut(task.cut, firstExposure);
+      pose = session.camera.cameraPoseForCut(task.cut, firstExposure);
     } else {
       pose = CameraPose(
         center: CanvasPoint(
@@ -675,7 +675,7 @@ class ExportFrameRenderer {
       layers: layers,
       pose: pose,
       cameraFrameSize: mode == ExportSizeMode.camera
-          ? session.cameraFrameSize
+          ? session.camera.cameraFrameSize
           : task.cut.canvasSize,
       outputSize: outputSize,
     );

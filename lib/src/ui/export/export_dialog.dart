@@ -528,9 +528,9 @@ class ExportDialogState extends State<ExportDialog> {
     final document = TimesheetDocument.fromCut(
       cut: cut,
       projectName: _session.repository.requireProject().name,
-      fps: _session.projectFps,
+      fps: _session.projectSettings.projectFps,
       info: _session.timesheetInfo,
-      instructionDefById: _session.cameraInstructionSet.defById,
+      instructionDefById: _session.camera.cameraInstructionSet.defById,
       trackSeLayers: _session.activeTrack.seLayers,
       cutStartFrame: _trackStartOf(cut),
     );
@@ -575,7 +575,7 @@ class ExportDialogState extends State<ExportDialog> {
     final source = buildConteSheetSource(project);
     final pages = layoutConteSheet(
       source,
-      metrics: ConteSheetMetrics(cameraAspect: _session.cameraFrameAspect),
+      metrics: ConteSheetMetrics(cameraAspect: _session.camera.cameraFrameAspect),
     );
     _conteSheetCache = (project, source, pages);
     return (source, pages);
@@ -873,7 +873,7 @@ class ExportDialogState extends State<ExportDialog> {
     try {
       await _forEachContePicture(
         pages,
-        size: _session.cameraFrameSize.scaledToWidth(width),
+        size: _session.camera.cameraFrameSize.scaledToWidth(width),
         have: images.containsKey,
         take: (key, image) async => images[key] = image,
       );
@@ -1058,7 +1058,7 @@ class ExportDialogState extends State<ExportDialog> {
             );
           case ExportInstructionTask():
             final size = spec.sizeMode == ExportSizeMode.camera
-                ? _session.cameraFrameSize
+                ? _session.camera.cameraFrameSize
                 : entry.cut.canvasSize;
             _preview.request(
               key:
@@ -1185,7 +1185,7 @@ class ExportDialogState extends State<ExportDialog> {
     // will not produce.
     final withNameTags = format.kind == ExportMediaKind.video;
     final source = sizeMode == ExportSizeMode.camera
-        ? _session.cameraFrameSize
+        ? _session.camera.cameraFrameSize
         : task.cut.canvasSize;
     final fitted = previewOutputSize(
       sourceWidth: source.width,
@@ -1284,7 +1284,7 @@ class ExportDialogState extends State<ExportDialog> {
         }
         final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
         if (spec.sizeMode == ExportSizeMode.camera) {
-          final size = _session.cameraFrameSize;
+          final size = _session.camera.cameraFrameSize;
           return '$frames at ${size.width}×${size.height} through the camera.';
         }
         final sizes = _scopeCanvasSizes(spec.scope);
@@ -1295,7 +1295,7 @@ class ExportDialogState extends State<ExportDialog> {
         return "$frames at each cut's own canvas size.";
       case ExportTab.image:
         final size = _specs.image.sizeMode == ExportSizeMode.camera
-            ? _session.cameraFrameSize
+            ? _session.camera.cameraFrameSize
             : _activeCut.canvasSize;
         return 'Frame ${_currentImageFrame() + 1} of ${_activeCut.name} at '
             '${size.width}×${size.height}.';
@@ -1859,7 +1859,7 @@ class ExportDialogState extends State<ExportDialog> {
     // before the next renders — only the raw copies (the document's own
     // material) live to the end.
     _reportProgress(0, pages.length + 1);
-    final cameraSize = _session.cameraFrameSize;
+    final cameraSize = _session.camera.cameraFrameSize;
     const pictureWidth = 640;
     final pdfPictures = <(String, int), ContePdfPicture>{};
     await _forEachContePicture(
@@ -1938,7 +1938,7 @@ class ExportDialogState extends State<ExportDialog> {
           preserveAlpha: alphaVideo,
         ),
         outputFilePath: videoPath,
-        frameRate: _session.projectFrameRate,
+        frameRate: _session.projectSettings.projectFrameRate,
         audioMixPath: audioMixPath,
         container: format.container,
         codec: format.videoCodec,
@@ -2039,7 +2039,7 @@ class ExportDialogState extends State<ExportDialog> {
           ExportInstructionTask() => renderInstructionCelImage(
             task: entry,
             size: spec.sizeMode == ExportSizeMode.camera
-                ? _session.cameraFrameSize
+                ? _session.camera.cameraFrameSize
                 : entry.cut.canvasSize,
             background: spec.format.wantsAlpha
                 ? null
@@ -2060,7 +2060,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportXdts() async {
     final cuts = _timesheetCuts();
-    final defById = _session.cameraInstructionSet.defById;
+    final defById = _session.camera.cameraInstructionSet.defById;
     var written = 0;
     for (final cut in cuts) {
       final content = buildXdtsContent(
@@ -2102,7 +2102,7 @@ class ExportDialogState extends State<ExportDialog> {
         'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
     final written = await writeExportAudioMixWav(
       schedule: schedule,
-      rate: _session.projectFrameRate,
+      rate: _session.projectSettings.projectFrameRate,
       totalFrames: videoPlan.length,
       sampleRate: store.projectSampleRate,
       resolveSource: (filePath) async {
@@ -3458,7 +3458,7 @@ class ExportDialogState extends State<ExportDialog> {
     expansion: _expansion('size', open: open),
     child: ExportSizeModule(
       sizeMode: sizeMode,
-      cameraSize: _session.cameraFrameSize,
+      cameraSize: _session.camera.cameraFrameSize,
       canvasSizes: canvasSizes,
       projectScope: projectScope,
       enabled: !_isExporting,

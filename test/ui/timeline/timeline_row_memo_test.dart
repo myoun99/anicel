@@ -96,7 +96,7 @@ void main() {
     );
     final before = tester.widget(cameraRow);
 
-    manager.setCameraKeyframeAtCurrentFrame(manager.cameraPoseAtCurrentFrame);
+    manager.camera.setCameraKeyframeAtCurrentFrame(manager.camera.cameraPoseAtCurrentFrame);
     await tester.pump();
 
     expect(

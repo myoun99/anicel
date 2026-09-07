@@ -40,7 +40,7 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
   @override
   void initState() {
     super.initState();
-    final background = widget.session.projectBackground;
+    final background = widget.session.projectSettings.projectBackground;
     _choice = background.transparent
         ? _BackgroundChoice.transparent
         : background == ProjectBackground.defaultBackground
@@ -108,19 +108,19 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
     final paper = ProjectBackground.color(
       (_paperAlpha.round() << 24) | paperRgb,
     );
-    if (paper != session.projectBackground) {
-      session.setProjectBackground(paper);
+    if (paper != session.projectSettings.projectBackground) {
+      session.projectSettings.setProjectBackground(paper);
     }
     final pasteboard = (_pasteboardAlpha.round() << 24) | pasteboardRgb;
     if (pasteboard != project.pasteboardArgb) {
-      session.setPasteboardColor(pasteboard);
+      session.projectSettings.setPasteboardColor(pasteboard);
     }
     if (_pasteboardMargin != project.pasteboardMargin) {
-      session.setProjectPasteboardMargin(_pasteboardMargin);
+      session.projectSettings.setProjectPasteboardMargin(_pasteboardMargin);
     }
     final backdrop = 0xFF000000 | backdropRgb;
     if (backdrop != project.backdropArgb) {
-      session.setProjectBackdrop(backdrop);
+      session.projectSettings.setProjectBackdrop(backdrop);
     }
     Navigator.of(context).pop();
   }

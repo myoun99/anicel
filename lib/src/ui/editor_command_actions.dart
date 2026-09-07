@@ -41,7 +41,7 @@ void createActiveInstance(EditorSessionManager session) {
   }
   switch (layer.kind) {
     case LayerKind.camera:
-      session.setCameraKeyframeAtCurrentFrame(session.cameraPoseAtCurrentFrame);
+      session.camera.setCameraKeyframeAtCurrentFrame(session.camera.cameraPoseAtCurrentFrame);
     case LayerKind.se:
       session.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     case LayerKind.instruction:
@@ -101,9 +101,9 @@ void copyCameraAeKeyframes(BuildContext context, EditorSessionManager session) {
   if (cut == null) {
     return; // Gap state: no camera work to bake.
   }
-  final cameraSize = session.cameraFrameSize;
+  final cameraSize = session.camera.cameraFrameSize;
   final text = buildAeTransformKeyframeData(
-    framesPerSecond: session.projectFps,
+    framesPerSecond: session.projectSettings.projectFps,
     sourceWidth: cameraSize.width,
     sourceHeight: cameraSize.height,
     samples: bakeCameraAeSamples(

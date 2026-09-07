@@ -178,7 +178,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
 
   (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
     final project = _session.repository.requireProject();
-    final aspect = _session.cameraFrameAspect;
+    final aspect = _session.camera.cameraFrameAspect;
     return _sheet.resolve(
       identity: project,
       key: aspect,

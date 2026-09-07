@@ -378,7 +378,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // The navigator toggles at the playhead: freeze the property's
           // CURRENT resolved value there (AE behavior).
           resolvedPose: isCamera
-              ? _session.cameraPoseAtCurrentFrame
+              ? _session.camera.cameraPoseAtCurrentFrame
               : _session.layerPoseAtFrame(layer, frameIndex),
           resolvedAnchorPoint: isCamera
               ? null
@@ -744,11 +744,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // rows re-enter the row memo, invalidated exactly by these.
             memoAux: TimelineRowMemoAux(
               cameraTrack: _session.activeCutOrNull?.camera.track,
-              instructionDefs: _session.cameraInstructionSet,
+              instructionDefs: _session.camera.cameraInstructionSet,
             ),
             onActivateCell: _activateCellEditor,
             instructionDefById: (instructionId) =>
-                _session.cameraInstructionSet.defById(instructionId),
+                _session.camera.cameraInstructionSet.defById(instructionId),
             // D26: the crossing-fade refusal marker — this surface shows
             // the cut-local display clone, so the session answers by the
             // clone's PROJECTED keys. Always-on (a refusal warning takes
@@ -1002,7 +1002,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onShowSecondsChanged: widget.onShowSecondsChanged,
             timelineRailExtent: widget.timelineRailExtent,
             xsheetRailExtent: widget.xsheetRailExtent,
-            projectFrameRate: _session.projectFrameRate,
+            projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
             laneOpenOf: widget.expandedLaneLayerIds.contains,
             laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,

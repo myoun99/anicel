@@ -59,7 +59,7 @@ void main() {
   test('🚨REC1-E: NO punch means no cues — a plain record must not count '
       'anybody down into nothing', () async {
     final manager = session();
-    manager.setProjectFps(4);
+    manager.projectSettings.setProjectFps(4);
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
     manager.selectFrameIndex(0);
@@ -75,7 +75,7 @@ void main() {
   test('🚨REC1-E: a punch the roll is ALREADY PAST is not a punch — the '
       'window is behind, so there is nothing to count into', () async {
     final manager = session();
-    manager.setProjectFps(4);
+    manager.projectSettings.setProjectFps(4);
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
     // The playhead sits after the range's far edge.
@@ -104,7 +104,7 @@ void main() {
   test('🚨REC1-E: only the beeps that fall AFTER the roll are kept — a '
       'one-second run-up counts down once, not three times', () async {
     final manager = session();
-    manager.setProjectFps(4); // 1 s = 4 frames
+    manager.projectSettings.setProjectFps(4); // 1 s = 4 frames
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
     manager.selectFrameIndex(0);
@@ -134,7 +134,7 @@ void main() {
   test('REC1-E: a punch ahead of the roll builds three beeps counting '
       'down INTO it, and the streamer window covers the approach', () async {
     final manager = session();
-    manager.setProjectFps(4); // 1 s = 4 frames: three beeps fit a run-up.
+    manager.projectSettings.setProjectFps(4); // 1 s = 4 frames: three beeps fit a run-up.
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
     manager.selectFrameIndex(0);
@@ -174,7 +174,7 @@ void main() {
 
   test('REC1-E: the toggles silence the beeps and hide the streamer', () async {
     final manager = session();
-    manager.setProjectFps(4);
+    manager.projectSettings.setProjectFps(4);
     manager.appSettings.setAudioSyncSettings(
       manager.appSettings.audioSyncSettings.value.copyWith(
         cueBeeps: false,
@@ -234,7 +234,7 @@ void main() {
   ) async {
     final manager = session();
     addTearDown(manager.dispose);
-    manager.setProjectFps(4);
+    manager.projectSettings.setProjectFps(4);
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
     manager.selectFrameIndex(0);

@@ -72,7 +72,7 @@ void main() {
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.brushSurfaceForLayerFrame,
         point: CanvasPoint(x: x, y: y),
-        paperColor: session.projectBackground.argb,
+        paperColor: session.projectSettings.projectBackground.argb,
       );
 
       // Dead center of the stroke: opaque black ink.
@@ -84,7 +84,7 @@ void main() {
       );
 
       // Far from the stroke: the paper, as before.
-      expect(sampleAt(20, 20), session.projectBackground.argb);
+      expect(sampleAt(20, 20), session.projectSettings.projectBackground.argb);
     });
   });
 }

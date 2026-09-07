@@ -100,7 +100,7 @@ class _WorkspaceFlipHud {
   FlipHudSnapshot _flipHudTrackSnapshot(EditorSessionManager session) {
     final trackId = session.selectedTrackId;
     final entries = [
-      for (final entry in session.projectTimelineLayout())
+      for (final entry in session.projectSettings.projectLayout())
         if (entry.trackId == trackId) entry,
     ];
     if (entries.isEmpty) {

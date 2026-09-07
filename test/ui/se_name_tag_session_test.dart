@@ -146,7 +146,7 @@ void main() {
     final cut = s.requireActiveCut;
     final shot = shotRectIn(
       canvas: cut.canvasSize,
-      cameraFrame: s.cameraFrameSize,
+      cameraFrame: s.camera.cameraFrameSize,
     );
     // The fixture must actually exercise the mismatch, or it proves
     // nothing (the first version of this suite used canvas == camera).
