@@ -27,6 +27,7 @@ import '../theme/app_theme.dart' show AppShapes;
 import 'layer_drop_policy.dart';
 import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
+import 'held_row_pin.dart';
 import 'row_control_surface.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
@@ -1015,6 +1016,29 @@ Widget? unmovableRowSelectTarget({
 ///
 /// [dragRows] is a getter: the caret reads the rows drawn at build time,
 /// the selection closures the rows drawn at EVENT time.
+///
+/// 🚨B4-3 (유저, 몇 번째인지 세지 않겠다고 했다) — **EVERY ROW JOINS A
+/// SELECTION.**
+///
+/// > 「행의 **다른 fx끼리 넘어서 선택범위가 불가능.** 그 너머의 다른 행
+/// > 선택해야 그때서야 가능. **이런 다른규칙 삭제좀하자고.**」
+///
+/// ⛔The span resolver never had a rule about lanes — it is a plain slice
+/// of the drawn row list. What was missing is WIRING: a lane row that is
+/// not an fx chain header got no drag target at all, and the one that IS
+/// a header was given `onCrossed` and never `onSelectCrossed`, which is
+/// the only thing that grows a selection during a drag. So a span
+/// anchored on a lane simply never updated, and a span anchored anywhere
+/// else could not stop on one.
+///
+/// ★A lane row cannot be RE-ORDERED unless it heads a chain, but every
+/// row can be SELECTED. Those are two questions, and only the first one
+/// ever needed an answer here — which is why a LANE row goes down its own
+/// branch below rather than being refused a wrapper.
+///
+/// The sheet lists the stack RAW where the rail reverses it, and the
+/// chain the other way round from the rail — neither is stated here.
+/// Both are inferred by the policy from the lists themselves.
 Widget layerRowDragWrapper({
   required TimelineDisplayRow row,
   required List<TimelineDisplayRow> Function() dragRows,
@@ -1023,10 +1047,33 @@ Widget layerRowDragWrapper({
   required TimelineRowDragHooks? hooks,
   required void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan,
-  VoidCallback? onGripTaken,
-  VoidCallback? onGripReleased,
+  HeldRowPin? pin,
   required Widget child,
 }) {
+  // The held row is PINNED in the row window while its grip is taken (the
+  // window would otherwise unmount it mid-drag). Derived ONCE from the
+  // row's address, whichever branch below takes the grip.
+  final address = row.address;
+  final onGripTaken = pin == null ? null : () => pin.take(address);
+  final onGripReleased = pin == null ? null : () => pin.release(address);
+  final lane = row.lane;
+  if (lane != null) {
+    return hooks == null
+        ? child
+        : _laneRowDragTarget(
+            (row: row, lane: lane),
+            hooks,
+            (
+              axis: axis,
+              rowExtent: rowExtent,
+              dragRows: dragRows,
+              onRowSelectionSpan: onRowSelectionSpan,
+              onGripTaken: onGripTaken,
+              onGripReleased: onGripReleased,
+            ),
+            child: child,
+          );
+  }
   final unmovable = unmovableRowSelectTarget(
     kind: row.layer.kind,
     layerId: row.layer.id,
@@ -1090,7 +1137,7 @@ Widget layerRowDragWrapper({
 /// the axis and the row extent are the caller's; everything else is the
 /// law. Written per grid, one of them had `onCrossed` and no
 /// `onSelectCrossed`, which is exactly the bug B4-3 named.
-Widget laneSelectOnlyDragTarget(
+Widget _laneSelectOnlyDragTarget(
   ({TimelineDisplayRow row, String laneId}) lane,
   TimelineRowDragHooks hooks,
   ({Axis axis, double rowExtent, void Function(int rowDelta)? onSelectCrossed})
@@ -1114,38 +1161,39 @@ Widget laneSelectOnlyDragTarget(
   );
 }
 
-/// An fx CHAIN HEADER's drag target — grabbing it re-orders the layer's
-/// effect chain — or null when [lane] heads no chain and the caller should
-/// fall back to the select-only target.
+/// A LANE row's drag wrapper: the fx chain header's re-order target, or —
+/// for every other lane row, and for a header the chain cannot place — the
+/// select-only target above.
 ///
 /// 🚨ONE function for the rail and the sheet, like the two targets above it
 /// (the audit's clone scan, round 8, the grids' second-largest pair). Each
 /// grid had spelled the whole thing: the same four gates (a group header,
 /// an effect lane id, no parameter id, a slot that is still in the chain),
-/// the same subject, the same `effectChainAfterCrossing` tail. The rail
-/// alone passed the A5 grip callbacks, and that stayed a difference the
-/// caller states rather than one written twice.
+/// the same subject, the same `effectChainAfterCrossing` tail — and each
+/// had to remember the select-only fallback afterwards. Both answers live
+/// here now, so a caller cannot take one and forget the other.
 ///
-/// ⛔The Transform group header is never wrapped — it is not a chain member,
-/// it is where the chain ends. That is [parseEffectLaneId] answering null,
-/// not a rule of this function's own.
+/// ⛔The Transform group header is never a chain member: it is where the
+/// chain ends. That is [parseEffectLaneId] answering null, not a rule of
+/// this function's own — so it falls to select-only like any parameter
+/// lane.
 ///
 /// ★A lane row cannot be RE-ORDERED unless it heads a chain, but every row
-/// can be SELECTED. Those are two questions; this one answers only the
-/// first, which is why the miss returns null instead of a bare child —
-/// [laneSelectOnlyDragTarget] answers the second (B4-3).
-/// ⚠️The argument shape is [laneSelectOnlyDragTarget]'s, deliberately: the
-/// two are the lane row's two answers and a caller picks between them, so
-/// they read alike at the call site — the lane it is about, the hooks, and
-/// the wiring this surface supplies.
-Widget? effectChainRowDragTarget(
-  ({TimelineDisplayRow row, PropertyLaneRow lane}) lane,
+/// can be SELECTED. Those are two questions, and only the first one ever
+/// needed an answer here (B4-3).
+///
+/// R5 #15: an fx chain has no "inside a row" to drop into — an effect
+/// holds nothing — so the on-row band is ignored and the caret stays the
+/// only answer.
+Widget _laneRowDragTarget(
+  ({TimelineDisplayRow row, PropertyLaneRow lane}) subject,
   TimelineRowDragHooks hooks,
   ({
     Axis axis,
     double rowExtent,
     List<TimelineDisplayRow> Function() dragRows,
-    void Function(int rowDelta)? onSelectCrossed,
+    void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+    onRowSelectionSpan,
     // The A5 grip: the rail PINS the held row in its window (the window
     // would otherwise unmount it mid-drag) and the sheet has nothing to
     // pin, so this is the caller's answer and not a rule of this function.
@@ -1155,20 +1203,38 @@ Widget? effectChainRowDragTarget(
   wiring, {
   required Widget child,
 }) {
-  final layerId = lane.row.layer.id;
-  final parsed = parseEffectLaneId(lane.lane.laneId);
-  if (!lane.lane.isGroupHeader ||
+  final row = subject.row;
+  final span = wiring.onRowSelectionSpan;
+  // ONE derivation of the select half for both branches below.
+  final onSelectCrossed = span == null
+      ? null
+      : (int rowDelta) => span(wiring.dragRows(), rowDelta);
+  Widget selectOnly() => _laneSelectOnlyDragTarget(
+    (row: row, laneId: subject.lane.laneId),
+    hooks,
+    (
+      axis: wiring.axis,
+      rowExtent: wiring.rowExtent,
+      onSelectCrossed: onSelectCrossed,
+    ),
+    child: child,
+  );
+
+  final parsed = parseEffectLaneId(subject.lane.laneId);
+  if (!subject.lane.isGroupHeader ||
       parsed == null ||
       parsed.parameterId != null) {
-    return null;
+    return selectOnly();
   }
-  final headers = effectHeaderRowsOf(wiring.dragRows(), layerId);
-  final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
+  final headers = effectHeaderRowsOf(wiring.dragRows(), row.layer.id);
+  final slot = headers.indexWhere(
+    (header) => header.effectId == parsed.effectId,
+  );
   if (slot < 0) {
-    return null;
+    return selectOnly();
   }
   return LayerRowDragTarget(
-    subject: EffectRowSubject(layerId, parsed.effectId),
+    subject: EffectRowSubject(row.layer.id, parsed.effectId),
     slotBefore: slot,
     rowExtent: wiring.rowExtent,
     axis: wiring.axis,
@@ -1181,12 +1247,10 @@ Widget? effectChainRowDragTarget(
     // the only answer (R5 #15).
     onCrossed: (steps, _, _) {
       final landed = effectChainAfterCrossing(headers, slot, steps);
-      hooks.onEffectUpdate(layerId, landed.effectIds, landed.slot);
+      hooks.onEffectUpdate(row.layer.id, landed.effectIds, landed.slot);
     },
     // B4-3: the SELECT half, the same one every layer row already had.
-    onSelectCrossed: hooks.onSelectBegin == null
-        ? null
-        : wiring.onSelectCrossed,
+    onSelectCrossed: hooks.onSelectBegin == null ? null : onSelectCrossed,
     child: child,
   );
 }

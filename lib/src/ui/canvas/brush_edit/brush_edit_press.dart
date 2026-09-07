@@ -366,12 +366,7 @@ class _BrushEditPress {
     if (!_state.widget.editable) {
       return;
     }
-    _state._hold._lastContactButtons.remove(event.pointer);
-    _forgetTouchPointer(event.pointer);
-    _state._hold.releaseMappedHold(event.pointer);
-    if (event.pointer == _altPickPointer) {
-      _altPickPointer = null;
-    }
+    _releasePointer(event.pointer);
     // The lone finger lifted with nobody having joined it: the tap was this
     // fill's after all. ⛔BEFORE the drawing-pointer gate below — a fill tap
     // never becomes the drawing pointer, so that gate would drop it.
@@ -423,21 +418,34 @@ class _BrushEditPress {
     if (!_state.widget.editable) {
       return;
     }
-    _state._hold._lastContactButtons.remove(event.pointer);
+    // A cancelled fill tap is a fill that never runs — the lift's branch
+    // runs it instead. Ordering against the release below is free: this
+    // writes only the fill-tap slots, which none of the release steps read.
     if (event.pointer == _state._fillTapPointer) {
       _state._fill.forgetFillTap();
     }
-    _forgetTouchPointer(event.pointer);
-    _state._hold.releaseMappedHold(event.pointer);
-    if (event.pointer == _altPickPointer) {
-      _altPickPointer = null;
-    }
+    _releasePointer(event.pointer);
     if (event.pointer != _state._activeDrawingPointer) {
       return;
     }
 
     _state._stroke.endStrokeInput();
     _state._overlay.resetOverlay();
+  }
+
+  /// THIS POINTER IS GONE — the bookkeeping both endings of a press owe,
+  /// whether the pointer lifted or was cancelled: its contact buttons, its
+  /// place in the touch census, the tool mapping it was holding, and its
+  /// claim on the alt-pick. What each ending does BESIDES this (a lift
+  /// runs the fill tap and commits the dabs; a cancel forgets the tap and
+  /// discards) is the two laws, and they stay at the callers.
+  void _releasePointer(int pointer) {
+    _state._hold._lastContactButtons.remove(pointer);
+    _forgetTouchPointer(pointer);
+    _state._hold.releaseMappedHold(pointer);
+    if (pointer == _altPickPointer) {
+      _altPickPointer = null;
+    }
   }
 
   void _forgetTouchPointer(int pointer) {

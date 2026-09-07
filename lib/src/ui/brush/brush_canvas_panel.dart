@@ -2595,6 +2595,12 @@ class _CanvasViewportPanbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHorizontal = axis == Axis.horizontal;
+    final metrics = CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+    );
     return SizedBox(
       key: ValueKey<String>(
         isHorizontal
@@ -2603,31 +2609,17 @@ class _CanvasViewportPanbar extends StatelessWidget {
       ),
       height: isHorizontal ? 14 : double.infinity,
       width: isHorizontal ? double.infinity : 14,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final metrics = CanvasViewportPanMetrics(
-            axis: axis,
-            viewport: viewport,
-            editorViewportSize: editorViewportSize,
-            canvasSize: canvasSize,
-            trackExtent: isHorizontal
-                ? constraints.maxWidth
-                : constraints.maxHeight,
-          );
-          return AppScrollbar(
-            axis: axis,
-            offset: metrics.scrollOffset,
-            viewportExtent: metrics.visibleExtent,
-            contentExtent: metrics.scaledContentExtent,
-            minThumbExtent: AppScrollbarThumb.minimum,
-            // The whole lane pans relatively: the canvas panbar has always
-            // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
-            lanePress: AppScrollbarLanePress.relativeDrag,
-            onOffsetChanged: (next) =>
-                onViewportChanged(metrics.viewportForScroll(next)),
-            onChangeEnd: onViewportChangeEnd,
-          );
-        },
+      child: AppScrollbar(
+        axis: axis,
+        offset: metrics.scrollOffset,
+        viewportExtent: metrics.visibleExtent,
+        contentExtent: metrics.scaledContentExtent,
+        // The whole lane pans relatively: the canvas panbar has always
+        // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
+        lanePress: AppScrollbarLanePress.relativeDrag,
+        onOffsetChanged: (next) =>
+            onViewportChanged(metrics.viewportForScroll(next)),
+        onChangeEnd: onViewportChangeEnd,
       ),
     );
   }

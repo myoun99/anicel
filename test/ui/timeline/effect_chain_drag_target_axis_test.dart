@@ -3,6 +3,7 @@ import 'package:anicel/src/models/layer_effect.dart' show EffectId;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// So this asks both axes the same questions and demands the same answers,
 /// and pins the one difference that is real — the A5 grip, which the rail
 /// supplies and the sheet has nothing to pin for.
+///
+/// ⚠️It asks them of [layerRowDragWrapper], the ONE entrance both grids
+/// call: which target a lane row gets is a question about the ROW, decided
+/// inside the wrapper, so a test that reached past it into the branch could
+/// not see a grid routing itself wrongly again.
 void main() {
   const layerId = LayerId('layer-1');
   const effectA = EffectId('fx-a');
@@ -71,32 +77,35 @@ void main() {
 
   tearDown(() => drag.dispose());
 
-  Widget? targetFor(Axis axis, PropertyLaneRow lane) =>
-      effectChainRowDragTarget(
-        (row: rowFor(lane), lane: lane),
-        hooks,
-        (
-          axis: axis,
-          rowExtent: 28,
-          dragRows: () => rows,
-          onSelectCrossed: (_) {},
-          onGripTaken: null,
-          onGripReleased: null,
-        ),
-        child: const SizedBox(),
-      );
+  LayerRowDragTarget targetFor(
+    Axis axis,
+    PropertyLaneRow lane, {
+    HeldRowPin? pin,
+  }) =>
+      layerRowDragWrapper(
+            row: rowFor(lane),
+            dragRows: () => rows,
+            rowExtent: 28,
+            axis: axis,
+            hooks: hooks,
+            onRowSelectionSpan: (_, _) {},
+            pin: pin,
+            child: const SizedBox(),
+          )
+          as LayerRowDragTarget;
 
   test('a chain header gets a target down either axis, and only the axis '
       'differs', () {
-    final across = targetFor(Axis.horizontal, header(effectB));
-    final down = targetFor(Axis.vertical, header(effectB));
-    expect(across, isA<LayerRowDragTarget>());
-    expect(down, isA<LayerRowDragTarget>());
-
-    final a = across! as LayerRowDragTarget;
-    final b = down! as LayerRowDragTarget;
+    final a = targetFor(Axis.horizontal, header(effectB));
+    final b = targetFor(Axis.vertical, header(effectB));
     expect(a.axis, Axis.horizontal);
     expect(b.axis, Axis.vertical);
+    expect(
+      a.subject,
+      isA<EffectRowSubject>(),
+      reason: 'a chain header re-orders the chain',
+    );
+    expect(b.subject, isA<EffectRowSubject>());
     expect(b.slotBefore, a.slotBefore, reason: 'slot 1 of the chain, twice');
     expect(b.isLastRow, a.isLastRow);
     expect(b.rowExtent, a.rowExtent);
@@ -108,7 +117,7 @@ void main() {
 
   test('⛔and BOTH get the select half — the omission B4-3 named', () {
     for (final axis in Axis.values) {
-      final target = targetFor(axis, header(effectA))! as LayerRowDragTarget;
+      final target = targetFor(axis, header(effectA));
       expect(
         target.onSelectCrossed,
         isNotNull,
@@ -119,44 +128,47 @@ void main() {
     }
   });
 
-  test('a lane that heads no chain declines on both axes, so the caller '
-      'falls through to the select-only target', () {
-    for (final axis in Axis.values) {
-      expect(targetFor(axis, member(effectA)), isNull, reason: '$axis member');
-      expect(targetFor(axis, plainGroup()), isNull, reason: '$axis transform');
+  test('a lane that heads no chain still gets the SELECT-ONLY target on '
+      'both axes — never a bare child', () {
+    for (final lane in [member(effectA), plainGroup()]) {
+      for (final axis in Axis.values) {
+        final target = targetFor(axis, lane);
+        expect(
+          target.subject,
+          isA<LaneRowSubject>(),
+          reason:
+              '$axis ${lane.laneId}: members do not move — the lane anchors '
+              'where it is drawn',
+        );
+        expect(
+          target.onSelectCrossed,
+          isNotNull,
+          reason: '$axis ${lane.laneId}: every row joins a selection',
+        );
+      }
     }
   });
 
-  test('a header whose effect has left the chain declines on both axes', () {
+  test('a header whose effect has left the chain falls to select-only on '
+      'both axes', () {
     rows = [rowFor(header(effectA))];
     for (final axis in Axis.values) {
-      expect(targetFor(axis, header(effectB)), isNull, reason: '$axis');
+      final target = targetFor(axis, header(effectB));
+      expect(target.subject, isA<LaneRowSubject>(), reason: '$axis');
     }
   });
 
   test('the A5 grip is the CALLER\'s, not the axis\'s', () {
-    var taken = 0;
-    final pinned =
-        effectChainRowDragTarget(
-              (row: rowFor(header(effectA)), lane: header(effectA)),
-              hooks,
-              (
-                axis: Axis.horizontal,
-                rowExtent: 28,
-                dragRows: () => rows,
-                onSelectCrossed: (_) {},
-                onGripTaken: () => taken += 1,
-                onGripReleased: null,
-              ),
-              child: const SizedBox(),
-            )!
-            as LayerRowDragTarget;
+    final pin = HeldRowPin();
+    final row = rowFor(header(effectA));
+    final pinned = targetFor(Axis.horizontal, header(effectA), pin: pin);
     expect(pinned.onGripTaken, isNotNull);
     pinned.onGripTaken!();
-    expect(taken, 1);
+    expect(pin.held, row.address, reason: 'the rail pins the held row');
+    pinned.onGripReleased!();
+    expect(pin.held, isNull);
 
-    final unpinned =
-        targetFor(Axis.vertical, header(effectA))! as LayerRowDragTarget;
+    final unpinned = targetFor(Axis.vertical, header(effectA));
     expect(
       unpinned.onGripTaken,
       isNull,

@@ -381,6 +381,51 @@ int audioDeviceIndexByName(
   return -1;
 }
 
+/// Opens [device] on the output named [preferredName], falling back to the
+/// system default — true when the device is open afterwards.
+///
+/// 🚨The named device failed to open (unplugged mid-enumeration): fall
+/// back to the system default deliberately, never to silence (AUDIO-PRO
+/// R4). The retry only happens when a NAMED device was actually picked;
+/// a default that will not open has nowhere left to fall.
+///
+/// One sequence for the three callers that need a speaker — the playback
+/// transport, the scrub arm and the recording cue — which differ only in
+/// the rate, the channel count and where the name comes from.
+bool openAudioOutput(
+  QaAudioDevice device, {
+  required int sampleRate,
+  required String? preferredName,
+  int channels = 2,
+}) {
+  final index = audioDeviceIndexByName(
+    device,
+    // 🧪MUTATION: flipping this to `capture: true` SURVIVES the suite —
+    // never applied. Every bench here passes a name that is attached on
+    // NEITHER side, so both searches answer -1 and the same default open
+    // follows; only a machine with an output-only device name could tell
+    // the two apart, and the kind axis itself is pinned on real hardware
+    // in `qa_audio_device_test` ("a name that exists only on one side").
+    capture: false,
+    name: preferredName,
+  );
+  var opened = device.open(
+    sampleRate: sampleRate,
+    channels: channels,
+    deviceIndex: index,
+  );
+  // 🧪MUTATION: this retry SURVIVES the suite — never applied. Reaching it
+  // needs a device that enumerates under a name and then REFUSES to open,
+  // which no bench here can stage: `QaAudioDevice` binds to the real
+  // binary and cannot be faked, and the null backend's one device always
+  // opens. The reachable half — an unattached name falling back to the
+  // default rather than to silence — is pinned in `qa_audio_device_test`.
+  if (opened <= 0 && index >= 0) {
+    opened = device.open(sampleRate: sampleRate, channels: channels);
+  }
+  return opened > 0;
+}
+
 /// Reads the played position as a frame index, pulled forward by the
 /// device's own reported latency so the picture matches what is being
 /// HEARD rather than what has merely been queued.

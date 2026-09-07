@@ -134,18 +134,11 @@ class FoldersAndAttachments {
 
   /// 폴더 생성: folds the active layer's whole attach group into a new
   /// folder row (mirrors into 겸용 cuts through the coordinator).
-  void groupActiveLayerIntoFolder() {
-    if (!canGroupActiveLayerIntoFolder) {
-      return;
-    }
-    final activeLayerId = _selection.activeLayer!.id;
-    _project.cutCommandCoordinator.createFolderFromLayer(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayerId,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _changes.notifyChanged();
-  }
+  void groupActiveLayerIntoFolder() => _activeCut.onActiveLayer(
+    when: canGroupActiveLayerIntoFolder,
+    command: (cutId, layerId) => _project.cutCommandCoordinator
+        .createFolderFromLayer(cutId: cutId, layerId: layerId),
+  );
 
   /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
   /// folder ([연출]/[작감]… — 공정별 묶음): an attach row, and that is all.
@@ -168,18 +161,11 @@ class FoldersAndAttachments {
   /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
   /// inside its group. Siblings join via [addAttachedLayer]'s sibling
   /// rule; renaming is plain [_internals.renameLayer].
-  void groupActiveAttachIntoFolder() {
-    if (!canGroupActiveAttachIntoFolder) {
-      return;
-    }
-    final activeLayerId = _selection.activeLayer!.id;
-    _project.cutCommandCoordinator.createAttachOrganizerFolder(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayerId,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    _changes.notifyChanged();
-  }
+  void groupActiveAttachIntoFolder() => _activeCut.onActiveLayer(
+    when: canGroupActiveAttachIntoFolder,
+    command: (cutId, layerId) => _project.cutCommandCoordinator
+        .createAttachOrganizerFolder(cutId: cutId, layerId: layerId),
+  );
 
   void dissolveFolder(LayerId folderId) => _activeCut.onActiveCut(
     (cutId) => _project.cutCommandCoordinator.dissolveFolder(

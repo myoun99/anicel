@@ -6,12 +6,33 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
+    show AudioMixClip, AudioMixSource;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
 /// The shared windowed upload (AUDIO-PRO R6): what the transport AND the
 /// scrubber hand the device when a schedule mixes resident and streaming
 /// sources. The C mixer sees a window through `sourceStart`; everything
 /// here pins that the window is the RIGHT slice of the right file.
+/// The window geometry every production caller uses
+/// ([AudioStreamingWindow]) — the seconds have no defaults, so a test
+/// that measures the app's window has to say so.
+({List<AudioMixClip> clips, List<AudioMixSource> sources, bool hasStreaming})?
+windowedUpload({
+  required AudioMixSchedule mix,
+  required AudioConformStore conformStore,
+  required int deviceRate,
+  required int centerSample,
+}) => windowedMixUpload(
+  mix: mix,
+  conformStore: conformStore,
+  deviceRate: deviceRate,
+  centerSample: centerSample,
+  backSeconds: AudioStreamingWindow.backSeconds,
+  aheadSeconds: AudioStreamingWindow.aheadSeconds,
+);
+
 void main() {
   late Directory directory;
 
@@ -83,7 +104,7 @@ void main() {
   test('a streaming clip gets a PRIVATE windowed source; the resident one '
       'rides unchanged', () async {
     final (store, longSamples) = await storeWithBoth();
-    final upload = windowedMixUpload(
+    final upload = windowedUpload(
       mix: mixOf(const [
         ScheduledAudioClip(
           filePath: 'long',
@@ -148,7 +169,7 @@ void main() {
       ),
     ]);
 
-    final before = windowedMixUpload(
+    final before = windowedUpload(
       mix: mix,
       conformStore: store,
       deviceRate: sampleRate,
@@ -160,7 +181,7 @@ void main() {
       reason: 'not yet started: the window covers the clip head',
     );
 
-    final past = windowedMixUpload(
+    final past = windowedUpload(
       mix: mix,
       conformStore: store,
       deviceRate: sampleRate,
@@ -181,7 +202,7 @@ void main() {
       'stands down instead of pitching the audio', () async {
     final (store, _) = await storeWithBoth();
     expect(
-      windowedMixUpload(
+      windowedUpload(
         mix: mixOf(const [
           ScheduledAudioClip(
             filePath: 'long',
@@ -202,7 +223,7 @@ void main() {
       'schedule keeps playing)', () async {
     final (store, _) = await storeWithBoth();
     expect(
-      windowedMixUpload(
+      windowedUpload(
         mix: mixOf(const [
           ScheduledAudioClip(
             filePath: 'never-conformed',
@@ -241,7 +262,7 @@ void main() {
     store.resultFor('b');
     await pumpEventQueue();
 
-    final upload = windowedMixUpload(
+    final upload = windowedUpload(
       mix: mixOf(const [
         ScheduledAudioClip(filePath: 'a', startFrame: 0, endFrameExclusive: 10),
         ScheduledAudioClip(

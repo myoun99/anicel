@@ -50,12 +50,13 @@ class AppScrollbarGeometry {
     required double contentExtent,
     required double offset,
     required this.minThumbExtent,
-  }) : trackExtent = _finiteNonNegative(trackExtent),
-       viewportExtent = _finiteNonNegative(viewportExtent),
-       contentExtent = _finiteNonNegative(contentExtent) {
-    maxScroll = (this.contentExtent - this.viewportExtent)
-        .clamp(0.0, double.infinity)
-        .toDouble();
+  }) : trackExtent = finiteNonNegativeExtent(trackExtent),
+       viewportExtent = finiteNonNegativeExtent(viewportExtent),
+       contentExtent = finiteNonNegativeExtent(contentExtent) {
+    maxScroll = scrollRangeFor(
+      contentExtent: this.contentExtent,
+      viewportExtent: this.viewportExtent,
+    );
     canScroll = maxScroll > 0 && this.trackExtent > 0;
     if (!canScroll) {
       thumbExtent = this.trackExtent;
@@ -98,13 +99,6 @@ class AppScrollbarGeometry {
 
   bool containsThumb(double axisPosition) =>
       axisPosition >= thumbStart && axisPosition <= thumbStart + thumbExtent;
-
-  static double _finiteNonNegative(double value) {
-    if (!value.isFinite || value <= 0) {
-      return 0;
-    }
-    return value;
-  }
 }
 
 /// The app-wide scrollbar visual: no track, a thin grey thumb whose ONLY

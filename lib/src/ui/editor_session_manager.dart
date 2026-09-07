@@ -794,7 +794,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
 
   bool get canDeleteActiveLayer => _layerVerbs.canDeleteActiveLayer;
   bool canDeleteLayer(Layer activeLayer) =>
@@ -1861,9 +1861,12 @@ class EditorSessionManager extends ChangeNotifier
   /// The pill button reads THIS — the same sentence the verb runs on.
   bool get canCreateCut => cutCreationPlan != null;
 
-  // The envelope thirteen active-cut verbs share, in five collaborators
-  // (session/active_cut_edits.dart).
+  // The envelope every active-cut and active-row verb shares, in seven
+  // collaborators (session/active_cut_edits.dart). It is wired HERE and
+  // handed to each of them; a collaborator that builds its own is a
+  // second envelope waiting to drift.
   late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    selection: this,
     timeline: this,
     changes: this,
   );
@@ -3443,7 +3446,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/instructions.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, cutVerbs: _cutVerbs, camera: _camera);
+  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, cutVerbs: _cutVerbs, camera: _camera, activeCut: _activeCutEdits);
 
   void updateLayerInstructions(
     LayerId layerId,

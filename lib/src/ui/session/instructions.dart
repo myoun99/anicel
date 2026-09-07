@@ -27,13 +27,14 @@ class Instructions {
     required TimelineAccess timeline,
     required CutVerbs cutVerbs,
     required Camera camera,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _cutVerbs = cutVerbs,
        _camera = camera,
-       _activeCut = ActiveCutEdits(timeline: timeline, changes: changes);
+       _activeCut = activeCut;
 
   final CutVerbs _cutVerbs;
   final Camera _camera;

@@ -63,10 +63,10 @@ class AudioScrubber {
   int _deviceRate = 0;
 
   /// Streaming state (AUDIO-PRO R6): the gesture's mix is kept so the
-  /// window can re-center when a long drag leaves it.
-  AudioMixSchedule? _mix;
-  bool _hasStreaming = false;
-  int _windowCenterSample = 0;
+  /// window can re-center when a long drag leaves it. The same object the
+  /// transport owns, which is what keeps scrub and playback on one
+  /// geometry.
+  final AudioStreamingWindow _window = AudioStreamingWindow();
 
   /// Whether the current gesture is playing sound (test surface).
   bool get isArmed => _armed;
@@ -89,12 +89,10 @@ class AudioScrubber {
     final startSample = _rate.frameToSample(localFrame, _deviceRate);
     // A drag that left the streaming window re-centers it — a small
     // synchronous read, same budget as the gesture's first upload.
-    final mix = _mix;
-    if (_hasStreaming &&
-        mix != null &&
-        (startSample - _windowCenterSample).abs() >
-            (_windowAheadSeconds * _deviceRate) ~/ 2) {
-      _uploadWindowedSchedule(mix, startSample);
+    if (_window.hasStreaming &&
+        (startSample - _window.centerSample).abs() >
+            (AudioStreamingWindow.aheadSeconds * _deviceRate) ~/ 2) {
+      _uploadWindow(startSample);
     }
     _device!.play(
       startSample: startSample,
@@ -110,11 +108,6 @@ class AudioScrubber {
     _armed = false;
     _stoodDown = false;
   }
-
-  /// The transport's window lead, reused so scrub and playback stream on
-  /// the same geometry (AUDIO-PRO R6).
-  static const int _windowAheadSeconds = 30;
-  static const int _windowBackSeconds = 2;
 
   /// One decision per gesture, mirroring the transport's activation: the
   /// schedule from the shared scheduler, PCM from the conform store, all
@@ -140,22 +133,13 @@ class AudioScrubber {
     if (device == null) {
       return;
     }
-    if (!device.isOpen) {
-      final index = audioDeviceIndexByName(
-        device,
-        capture: false,
-        name: resolveOutputDeviceName?.call(),
-      );
-      var opened = device.open(
-        sampleRate: conformStore.projectSampleRate,
-        deviceIndex: index,
-      );
-      if (opened <= 0 && index >= 0) {
-        opened = device.open(sampleRate: conformStore.projectSampleRate);
-      }
-      if (opened <= 0) {
-        return;
-      }
+    if (!device.isOpen &&
+        !openAudioOutput(
+          device,
+          sampleRate: conformStore.projectSampleRate,
+          preferredName: resolveOutputDeviceName?.call(),
+        )) {
+      return;
     }
     _deviceRate = device.sampleRate;
     final mix = audioMixScheduleFrom(
@@ -165,11 +149,8 @@ class AudioScrubber {
     );
     device.stop();
     _device = device;
-    _mix = mix;
-    if (!_uploadWindowedSchedule(
-      mix,
-      _rate.frameToSample(localFrame, _deviceRate),
-    )) {
+    _window.mix = mix;
+    if (!_uploadWindow(_rate.frameToSample(localFrame, _deviceRate))) {
       _device = null;
       return; // kicked by the lookups; this gesture stays visual
     }
@@ -177,26 +158,13 @@ class AudioScrubber {
     _stoodDown = false;
   }
 
-  /// Uploads [mix] with streaming windows around [centerSample] — the shared
-  /// [uploadWindowedSchedule], so scrubbed and played streaming can never
-  /// disagree. False uploads nothing.
-  bool _uploadWindowedSchedule(AudioMixSchedule mix, int centerSample) {
-    final hasStreaming = uploadWindowedSchedule(
-      device: _device,
-      mix: mix,
-      conformStore: conformStore,
-      deviceRate: _deviceRate,
-      centerSample: centerSample,
-      backSeconds: _windowBackSeconds,
-      aheadSeconds: _windowAheadSeconds,
-    );
-    if (hasStreaming == null) {
-      return false;
-    }
-    _hasStreaming = hasStreaming;
-    _windowCenterSample = centerSample;
-    return true;
-  }
+  /// Moves the streaming window to [centerSample]. False uploads nothing.
+  bool _uploadWindow(int centerSample) => _window.upload(
+    device: _device,
+    conformStore: conformStore,
+    deviceRate: _deviceRate,
+    centerSample: centerSample,
+  );
 
   void dispose() {
     if (_armed) {

@@ -11,7 +11,7 @@ import '../../models/attached_layer_resolve.dart'
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
-import '../../models/timeline_row_address.dart';
+import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
@@ -361,14 +361,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         rangeMove: _rangeMoveResolver,
         // D42: EVERY range drag (select or move) takes the A5 grip, and the
         // held row is PINNED in the row window while it does.
-        pin: HeldRowPin(
-          take: (row) => _heldDragRow = row,
-          release: (row) {
-            if (_heldDragRow == row) {
-              _heldDragRow = null;
-            }
-          },
-        ),
+        pin: _heldRow,
       );
 
   int get _visibleFrameCount => _rangeGestures.frameRangePolicy.visibleFrameCount;
@@ -480,14 +473,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// notifier the wrapper subscribes to, so a caret moving does not
   /// invalidate one cached row.
   ///
-  /// A5 (2026-08-17): the address of the row a drag gesture is HOLDING —
-  /// move or select, layer row or fx header. The window computation reads
-  /// it to keep that one row built while the rail scrolls past it: the
-  /// recognizer lives in the row's State, and an unmounted row used to
-  /// release the grip mid-gesture (드래그 풀림). A plain field, no
-  /// notifier — the press finds its row already built, and every window
-  /// shift already rebuilds through [_handleVerticalScroll]'s setState.
-  TimelineRowAddress? _heldDragRow;
+  /// A5 (2026-08-17): the row a drag gesture is HOLDING — move or select,
+  /// layer row or fx header. Everything about why it exists, and why it is
+  /// a plain field rather than a notifier, is on [HeldRowPin]; every drag
+  /// surface of this grid takes and releases the SAME one.
+  final HeldRowPin _heldRow = HeldRowPin();
 
   // ── the row drags: their own object ─────────────────────────────────
   //
@@ -560,7 +550,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // grip silently releases mid-gesture.
     // O(1): exactly one extra row, carved out
     // of the spacer it falls in.
-    final heldRow = _heldDragRow;
+    final heldRow = _heldRow.held;
     var pinnedIndex = -1;
     if (heldRow != null) {
       pinnedIndex = rows.indexWhere((row) => row.address == heldRow);

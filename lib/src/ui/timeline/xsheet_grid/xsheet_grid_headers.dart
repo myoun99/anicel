@@ -25,72 +25,30 @@ class _XSheetGridHeaders {
 
   /// One column header, made draggable along the sheet's own axis. A layer
   /// header moves the layer; an fx group header re-orders that layer's
-  /// chain; every other lane header passes through untouched (members do
-  /// not move — the user's rule).
+  /// chain; every other lane header takes the span and nothing else
+  /// (members do not move — the user's rule).
+  ///
+  /// A5-4 / F-16 / F-31: the SAME function the rail calls — the sheet used
+  /// to copy its shape and drift behind it. It copied the LANE half too,
+  /// and drifted there in exactly the same way (round 8), so the routing
+  /// itself is the shared law now: the sheet only says which axis it is.
   ///
   /// The sheet lists the stack RAW where the rail reverses it, and the
   /// chain the other way round from the rail — neither is stated here.
   /// Both are inferred by the policy from the lists themselves.
-  Widget draggableHeader(TimelineDisplayRow entry, Widget child) {
-    final hooks = _state.widget.hooks.rowDragHooks;
-    if (hooks == null) {
-      return child;
-    }
-    final lane = entry.lane;
-    if (lane == null) {
-      // A5-4 / F-16 / F-31: the SAME function the rail calls — the sheet
-      // used to copy its shape and drift behind it.
-      return layerRowDragWrapper(
+  Widget draggableHeader(TimelineDisplayRow entry, Widget child) =>
+      layerRowDragWrapper(
         row: entry,
         dragRows: () => _state._dragRows,
         rowExtent: _state._metrics.layerRowHeight,
         axis: Axis.vertical,
-        hooks: hooks,
+        hooks: _state.widget.hooks.rowDragHooks,
         onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
+        // ⚠️No A5 grip pin here: this grid's LayerRailWindow is a paint
+        // clip and the sheet builds every row, so nothing can unmount a
+        // held column mid-drag (see [HeldRowPin]).
         child: child,
       );
-    }
-    // 🚨B4-3: the same wiring the horizontal rail got. A lane row cannot be
-    // RE-ORDERED unless it heads a chain, but every row can be SELECTED —
-    // two questions, and only the first one ever needed an answer here.
-    Widget selectOnly() => laneSelectOnlyDragTarget(
-      (row: entry, laneId: lane.laneId),
-      hooks,
-      (
-        axis: Axis.vertical,
-        rowExtent: _state._metrics.layerRowHeight,
-        onSelectCrossed: _state.widget.hooks.onRowSelectionSpan == null
-            ? null
-            : (rowDelta) => _state.widget.hooks.onRowSelectionSpan!(
-                _state._dragRows,
-                rowDelta,
-              ),
-      ),
-      child: child,
-    );
-
-    // The chain target is asked first; the select-only one answers whenever
-    // it declines. ⚠️No A5 grip pin here: this grid's LayerRailWindow is a
-    // paint clip, so nothing can unmount a held column mid-drag.
-    return effectChainRowDragTarget(
-          (row: entry, lane: lane),
-          hooks,
-          (
-            axis: Axis.vertical,
-            rowExtent: _state._metrics.layerRowHeight,
-            dragRows: () => _state._dragRows,
-            onSelectCrossed: (rowDelta) => _state
-                .widget
-                .hooks
-                .onRowSelectionSpan
-                ?.call(_state._dragRows, rowDelta),
-            onGripTaken: null,
-            onGripReleased: null,
-          ),
-          child: child,
-        ) ??
-        selectOnly();
-  }
 
   Widget _laneHeader(TimelineDisplayRow entry) {
     return ValueListenableBuilder<int>(

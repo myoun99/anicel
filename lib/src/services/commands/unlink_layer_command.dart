@@ -5,9 +5,8 @@ import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../brush_frame_store.dart';
-import '../command.dart';
+import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
-import '../project_repository.dart';
 
 /// 독립시키기 (L2, layer scale): removes a layer's WHOLE attach group
 /// from its link groups and FORKS the pixels — each member gets its own
@@ -17,26 +16,22 @@ import '../project_repository.dart';
 ///
 /// Symmetric with 링크 복제: the unit is the attach group (one member
 /// leaving alone would break the mirrored structure).
-class UnlinkLayerCommand implements Command {
+class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   UnlinkLayerCommand({
-    required this.repository,
+    required super.repository,
     required this.brushFrameStore,
     required this.cutId,
     required this.sourceLayerId,
   });
 
-  final ProjectRepository repository;
   final BrushFrameStore brushFrameStore;
   final CutId cutId;
 
   /// Any member of the group to unlink (resolves to its base).
   final LayerId sourceLayerId;
 
-  LayerLinkRegistry? _registryBefore;
-
   /// The cels forked at execute — undo removes exactly these.
   final List<(BrushFrameKey, BitmapSurface)> _forkedCels = [];
-  bool _hasExecuted = false;
 
   @override
   String get description => 'Unlink layer $sourceLayerId';
@@ -78,7 +73,7 @@ class UnlinkLayerCommand implements Command {
     }
 
     // 2. Leave the link groups (singleton leftovers dissolve).
-    _registryBefore = project.linkRegistry;
+    snapshotRegistry(project);
     repository.updateProject((current) {
       final memberIds = {for (final member in members) member.id};
       final groups = <LayerLinkGroup>[];
@@ -104,24 +99,19 @@ class UnlinkLayerCommand implements Command {
     for (final (key, surface) in _forkedCels) {
       brushFrameStore.storeBakedSurface(key, surface);
     }
-    _hasExecuted = true;
+    markExecuted();
   }
 
+  /// Remove the forked cels FIRST (keys still self-resolving), then
+  /// restore the registry — reads flow back to the canonical cels. The
+  /// template fixes that order (see [LinkRegistrySnapshotCommand.undo]).
   @override
-  void undo() {
-    final registryBefore = _registryBefore;
-    if (!_hasExecuted || registryBefore == null) {
-      throw StateError('Command has not been executed.');
-    }
-    // Remove the forked cels FIRST (keys still self-resolving), then
-    // restore the registry — reads flow back to the canonical cels.
+  void undoBeforeRegistry() {
     for (final (key, surface) in _forkedCels) {
       brushFrameStore.storeBakedSurface(
         key,
         BitmapSurface(canvasSize: surface.canvasSize),
       );
     }
-    repository.restoreLinkRegistry(registryBefore);
   }
-
 }

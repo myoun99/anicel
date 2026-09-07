@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/commands/track_se_layer_commands.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
@@ -23,17 +24,23 @@ class LayerVerbs {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _activeCutEdits = activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+
+  /// The active-row cut-command envelope — the session's one instance,
+  /// handed in (see [ActiveCutEdits]).
+  final ActiveCutEdits _activeCutEdits;
 
   bool get canDeleteActiveLayer {
     final activeLayer = _selection.activeLayer;
@@ -168,18 +175,11 @@ class LayerVerbs {
 
   /// 링크 복제: duplicates the active layer's whole attach group SHARING
   /// the originals' pictures (the store routes both to one cel bank).
-  void linkDuplicateActiveLayer() {
-    if (!canLinkDuplicateActiveLayer) {
-      return;
-    }
-    final activeLayer = _selection.activeLayer!;
-    _project.cutCommandCoordinator.linkDuplicateLayer(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _changes.notifyChanged();
-  }
+  void linkDuplicateActiveLayer() => _activeCutEdits.onActiveLayer(
+    when: canLinkDuplicateActiveLayer,
+    command: (cutId, layerId) => _project.cutCommandCoordinator
+        .linkDuplicateLayer(cutId: cutId, layerId: layerId),
+  );
 
   bool get canUnlinkActiveLayer {
     final activeLayer = _selection.activeLayer;
@@ -200,18 +200,13 @@ class LayerVerbs {
 
   /// 독립시키기: forks the active layer's group out of its links — the
   /// pictures stay identical but stop being shared from here on.
-  void unlinkActiveLayer() {
-    if (!canUnlinkActiveLayer) {
-      return;
-    }
-    final activeLayer = _selection.activeLayer!;
-    _project.cutCommandCoordinator.unlinkLayer(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _changes.notifyChanged();
-  }
+  void unlinkActiveLayer() => _activeCutEdits.onActiveLayer(
+    when: canUnlinkActiveLayer,
+    command: (cutId, layerId) => _project.cutCommandCoordinator.unlinkLayer(
+      cutId: cutId,
+      layerId: layerId,
+    ),
+  );
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.

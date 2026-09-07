@@ -21,6 +21,20 @@ import 'package:anicel/src/models/stroke_id.dart';
 import 'package:anicel/src/models/stroke_point.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
+/// The refusal has to NAME the map that should have carried the id and
+/// the id that was missing — an ArgumentError that says only "missing" is
+/// a refusal nobody can act on, and the three lookups now share one
+/// thrower.
+Matcher missingMapping(String argument, String what) => throwsA(
+  isA<ArgumentError>()
+      .having((error) => error.name, 'name', argument)
+      .having(
+        (error) => error.message,
+        'message',
+        allOf(contains('Missing mapped'), contains(what)),
+      ),
+);
+
 void main() {
   group('duplicateCutAsIndependentCopy', () {
     test('creates an independent duplicate using caller supplied IDs', () {
@@ -354,7 +368,7 @@ void main() {
             const FrameId('frame-c'): const FrameId('frame-copy-c'),
           },
         ),
-        throwsArgumentError,
+        missingMapping('layerIdMap', 'LayerId for source layer'),
       );
     });
 
@@ -373,7 +387,7 @@ void main() {
             const FrameId('frame-c'): const FrameId('frame-copy-c'),
           },
         ),
-        throwsArgumentError,
+        missingMapping('frameIdMap', 'FrameId for source frame'),
       );
     });
 
@@ -412,7 +426,7 @@ void main() {
           layerIdMap: {const LayerId('layer-a'): const LayerId('layer-copy-a')},
           frameIdMap: {const FrameId('frame-a'): const FrameId('frame-copy-a')},
         ),
-        throwsArgumentError,
+        missingMapping('frameIdMap', 'FrameId for timeline exposure'),
       );
     });
   });

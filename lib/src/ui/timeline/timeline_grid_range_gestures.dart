@@ -1,20 +1,10 @@
 import 'timeline_frame_range_policy.dart';
-import '../../models/timeline_row_address.dart';
+import 'held_row_pin.dart';
 import 'property_lane_model.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_grid_range_callbacks.dart';
-
-/// The row a range drag is HOLDING, pinned by the host that windows its
-/// rows. [take] fires when the A5 grip is taken, [release] when it lets go;
-/// a host that builds every row (the sheet) passes no pin at all.
-class HeldRowPin {
-  const HeldRowPin({required this.take, required this.release});
-
-  final void Function(TimelineRowAddress row) take;
-  final void Function(TimelineRowAddress row) release;
-}
 
 /// THE RANGE GESTURES — the sweep that selects a frame range on a row or
 /// a lane, and the policy that says which rows take one — as their own

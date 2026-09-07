@@ -91,18 +91,10 @@ class AudioDeviceTransport {
   int _deviceRate = 0;
   int _totalFrames = 0;
 
-  /// Streaming window geometry (AUDIO-PRO R6). A window trails a little
-  /// (loop wraps and small seeks land just behind the playhead) and leads
-  /// a lot (the next advance must upload long before the mix reads past
-  /// the edge). ~5.5 MB per streaming stereo clip resident at a time.
-  static const int _windowBackSeconds = 2;
-  static const int _windowAheadSeconds = 30;
-
-  /// The activation's mix schedule, kept so window advances can rebuild
-  /// sources without re-deriving the timeline.
-  AudioMixSchedule? _mix;
-  bool _hasStreaming = false;
-  int _windowCenterSample = 0;
+  /// The streaming window this run plays out of — the activation's mix,
+  /// whether it streams, and where the window sits. The scrubber owns one
+  /// of the same kind, which is what keeps the two on one geometry.
+  final AudioStreamingWindow _window = AudioStreamingWindow();
   bool _windowAdvanceInFlight = false;
 
   /// The frame the current arm started at: the clock clamp while the
@@ -171,30 +163,18 @@ class AudioDeviceTransport {
       rate: _rate,
       sampleRate: _deviceRate,
     );
-    _mix = mix;
-    _uploadWindowedSchedule(mix, device.positionSamples);
+    _window.mix = mix;
+    _uploadWindow(device.positionSamples);
   }
 
-  /// Uploads [mix] with streaming windows around [centerSample] (the shared
-  /// [uploadWindowedSchedule] — the scrubber streams on the same geometry).
-  /// False uploads nothing, so any old schedule keeps playing.
-  bool _uploadWindowedSchedule(AudioMixSchedule mix, int centerSample) {
-    final hasStreaming = uploadWindowedSchedule(
-      device: _device,
-      mix: mix,
-      conformStore: conformStore,
-      deviceRate: _deviceRate,
-      centerSample: centerSample,
-      backSeconds: _windowBackSeconds,
-      aheadSeconds: _windowAheadSeconds,
-    );
-    if (hasStreaming == null) {
-      return false;
-    }
-    _hasStreaming = hasStreaming;
-    _windowCenterSample = centerSample;
-    return true;
-  }
+  /// Moves the streaming window to [centerSample]. False uploads nothing,
+  /// so any old schedule keeps playing.
+  bool _uploadWindow(int centerSample) => _window.upload(
+    device: _device,
+    conformStore: conformStore,
+    deviceRate: _deviceRate,
+    centerSample: centerSample,
+  );
 
   /// The level meter's read (AUDIO-PRO R2): the last mixed block's
   /// pre-clip bus peak per side. Zeros while the device does not carry
@@ -282,21 +262,11 @@ class AudioDeviceTransport {
       device.close();
     }
     if (!device.isOpen) {
-      final index = audioDeviceIndexByName(
+      if (!openAudioOutput(
         device,
-        capture: false,
-        name: desiredName,
-      );
-      var opened = device.open(
         sampleRate: conformStore.projectSampleRate,
-        deviceIndex: index,
-      );
-      if (opened <= 0 && index >= 0) {
-        // The named device failed to open (unplugged mid-enumeration):
-        // fall back to the system default deliberately, never to silence.
-        opened = device.open(sampleRate: conformStore.projectSampleRate);
-      }
-      if (opened <= 0) {
+        preferredName: desiredName,
+      )) {
         return;
       }
       _openedDeviceName = desiredName;
@@ -314,9 +284,8 @@ class AudioDeviceTransport {
       sampleRate: _deviceRate,
     );
     device.stop();
-    _mix = mix;
-    if (!_uploadWindowedSchedule(
-      mix,
+    _window.mix = mix;
+    if (!_uploadWindow(
       _rate.frameToSample(
         controller.globalFrameIndexListenable.value ?? 0,
         _deviceRate,
@@ -351,9 +320,8 @@ class AudioDeviceTransport {
     // Streaming windows re-center on the arm point (a seek can land
     // anywhere in a long clip) — one synchronous read at a press, the
     // same budget as opening any file on click.
-    final mix = _mix;
-    if (_hasStreaming && mix != null) {
-      _uploadWindowedSchedule(mix, startSample);
+    if (_window.hasStreaming) {
+      _uploadWindow(startSample);
     }
     device.play(
       startSample: startSample,
@@ -406,19 +374,20 @@ class AudioDeviceTransport {
     // margin before the mix could read past a window's edge. The read
     // runs off this frame's stack; in-flight guard so polls cannot stack
     // reads.
-    if (_hasStreaming && !_windowAdvanceInFlight) {
+    if (_window.hasStreaming && !_windowAdvanceInFlight) {
       final position = device.positionSamples;
       final recenter =
-          position > _windowCenterSample +
-              (_windowAheadSeconds * _deviceRate) ~/ 2 ||
-          position < _windowCenterSample - _windowBackSeconds * _deviceRate;
+          position > _window.centerSample +
+              (AudioStreamingWindow.aheadSeconds * _deviceRate) ~/ 2 ||
+          position <
+              _window.centerSample -
+                  AudioStreamingWindow.backSeconds * _deviceRate;
       if (recenter) {
         _windowAdvanceInFlight = true;
         unawaited(Future(() {
           try {
-            final mix = _mix;
-            if (_carrying && mix != null && _device != null) {
-              _uploadWindowedSchedule(mix, _device!.positionSamples);
+            if (_carrying && _device != null) {
+              _uploadWindow(_device!.positionSamples);
             }
           } finally {
             _windowAdvanceInFlight = false;

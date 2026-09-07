@@ -597,8 +597,10 @@ windowedMixUpload({
   required AudioConformStore conformStore,
   required int deviceRate,
   required int centerSample,
-  int backSeconds = 2,
-  int aheadSeconds = 30,
+  // ⛔No defaults: the geometry has ONE home ([AudioStreamingWindow]) and
+  // a default here was a second spelling of it.
+  required int backSeconds,
+  required int aheadSeconds,
 }) {
   final resident = _residentSources(
     mix: mix,

@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 
+import '../core/set_toggle.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
@@ -798,11 +799,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   );
 
   void _toggleTimelineSection(TimelineSection section) {
-    final next = Set<TimelineSection>.of(_hiddenTimelineSections.value);
-    if (!next.remove(section)) {
-      next.add(section);
-    }
-    _hiddenTimelineSections.value = next;
+    _hiddenTimelineSections.value = toggledSet(
+      _hiddenTimelineSections.value,
+      section,
+    );
   }
 
   /// The rail's row FILTER (R2 view state): hides layer rows failing its

@@ -3,9 +3,8 @@ import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
-import '../command.dart';
+import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
-import '../project_repository.dart';
 
 /// 폴더 해산: removes the folder ROW, releasing its direct members (layers
 /// and nested folders alike) to its parent. The members themselves stay
@@ -18,14 +17,13 @@ import '../project_repository.dart';
 /// longer exists, and there is nowhere correct to put them: distributing a
 /// group filter over the released members would change the picture wherever
 /// they overlap. Undo restores the row whole, so nothing is lost for good.
-class DissolveFolderCommand implements Command {
+class DissolveFolderCommand extends LinkRegistrySnapshotCommand {
   DissolveFolderCommand({
-    required this.repository,
+    required super.repository,
     required this.cutId,
     required this.folderId,
   });
 
-  final ProjectRepository repository;
   final CutId cutId;
   final LayerId folderId;
 
@@ -38,7 +36,6 @@ class DissolveFolderCommand implements Command {
     })
   >?
   _dissolved;
-  LayerLinkRegistry? _registryBefore;
 
   @override
   String get description => 'Dissolve folder $folderId';
@@ -46,7 +43,7 @@ class DissolveFolderCommand implements Command {
   @override
   void execute() {
     final project = repository.requireProject();
-    _registryBefore ??= project.linkRegistry;
+    snapshotRegistry(project);
     // Every counterpart folder row, resolved BEFORE anything moves.
     final targets = <({CutId cutId, LayerId folderId})>[
       (cutId: cutId, folderId: folderId),
@@ -93,16 +90,12 @@ class DissolveFolderCommand implements Command {
       ));
     }
     _dissolved ??= dissolved;
+    markExecuted();
   }
 
   @override
-  void undo() {
-    final dissolved = _dissolved;
-    final registryBefore = _registryBefore;
-    if (dissolved == null || registryBefore == null) {
-      throw StateError('Command has not been executed.');
-    }
-    for (final entry in dissolved) {
+  void undoBeforeRegistry() {
+    for (final entry in _dissolved!) {
       repository.insertLayer(
         cutId: entry.cutId,
         layer: entry.folder,
@@ -116,6 +109,5 @@ class DissolveFolderCommand implements Command {
         );
       }
     }
-    repository.restoreLinkRegistry(registryBefore);
   }
 }

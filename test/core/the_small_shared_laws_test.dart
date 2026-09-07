@@ -9,6 +9,7 @@ import 'package:anicel/src/core/identity_memo.dart';
 import 'package:anicel/src/core/inserted_at.dart';
 import 'package:anicel/src/core/mapped_or_same.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
+import 'package:anicel/src/core/set_toggle.dart';
 import 'package:anicel/src/core/unit_direction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
@@ -335,6 +336,32 @@ void main() {
         'different arguments', () {
       expect(identical(copyWithSentinel, copyWithSentinel), isTrue);
       expect(copyWithSentinel, isNot(isNull));
+    });
+  });
+
+  group('toggledSet — the copy-then-flip law of the view-state sets', () {
+    test('an absent value is added, a present one is removed', () {
+      expect(toggledSet(const <int>{}, 1), <int>{1});
+      expect(toggledSet(const <int>{1}, 1), isEmpty);
+    });
+
+    test('the other members survive both directions', () {
+      expect(toggledSet(const <int>{1, 2}, 3), <int>{1, 2, 3});
+      expect(toggledSet(const <int>{1, 2, 3}, 2), <int>{1, 3});
+    });
+
+    test('the source set is never touched — the answer is a NEW set', () {
+      final source = <int>{1, 2};
+      final next = toggledSet(source, 2);
+      expect(source, <int>{1, 2});
+      expect(identical(next, source), isFalse);
+      expect(toggledSet(source, 9), isNot(same(source)));
+    });
+
+    test('toggling twice returns to where it started', () {
+      expect(toggledSet(toggledSet(const <String>{'a'}, 'b'), 'b'), <String>{
+        'a',
+      });
     });
   });
 }
