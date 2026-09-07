@@ -10,6 +10,7 @@ import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'cut_placement.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
@@ -32,6 +33,7 @@ class CutVerbs {
     required SessionInternals internals,
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
+    required CutPlacement placement,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -39,9 +41,12 @@ class CutVerbs {
        _controllers = controllers,
        _internals = internals,
        _storyboardRows = storyboardRows,
-       _activeCut = activeCut;
+       _activeCut = activeCut,
+       _placement = placement;
 
   final ActiveCutEdits _activeCut;
+
+  final CutPlacement _placement;
 
   final StoryboardRows _storyboardRows;
 
@@ -53,7 +58,7 @@ class CutVerbs {
   final SessionInternals _internals;
 
   void createCut() {
-    final plan = _internals.cutCreationPlan;
+    final plan = _placement.cutCreationPlan;
     if (plan == null) {
       return;
     }

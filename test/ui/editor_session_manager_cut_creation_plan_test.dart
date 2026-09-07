@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// The old `createCut()` asked nothing: a gap press appended at the
 /// track's end — the cut appeared SOMEWHERE ELSE, and the button never
 /// dimmed because its tear-off could not go null. One expression
-/// ([EditorSessionManager.cutCreationPlan]) now answers the button and
+/// ([CutPlacement.cutCreationPlan]) now answers the button and
 /// the verb (T25: 버튼 근거와 디스패치 근거는 같은 문장 하나).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -80,7 +80,7 @@ void main() {
 
     s.selectGlobalFrame(5); // the gap between a and b
     expect(s.gapParkedGlobalFrame, 5, reason: 'fixture: really parked');
-    expect(s.canCreateCut, isTrue);
+    expect(s.cutPlacement.canCreateCut, isTrue);
 
     s.createCut();
 
@@ -132,7 +132,7 @@ void main() {
       startFrame: 4,
       endFrameExclusive: 7,
     );
-    expect(s.canCreateCut, isTrue);
+    expect(s.cutPlacement.canCreateCut, isTrue);
 
     s.createCut();
 
@@ -161,7 +161,7 @@ void main() {
       endFrameExclusive: 9,
     );
 
-    expect(s.canCreateCut, isFalse);
+    expect(s.cutPlacement.canCreateCut, isFalse);
     s.createCut();
     expect(cutsOf(s), hasLength(2), reason: 'the verb is guarded by the '
         'same sentence that dims the button');

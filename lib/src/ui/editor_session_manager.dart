@@ -111,6 +111,7 @@ import '../core/dev_profile.dart';
 import '../models/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
+import 'session/cut_placement.dart';
 import 'session/cut_shift.dart';
 import 'session/track_spans.dart';
 import 'text/app_strings.dart';
@@ -1275,79 +1276,14 @@ class EditorSessionManager extends ChangeNotifier
 
   // --- Cut commands -------------------------------------------------------
 
-  /// #18 — WHERE Create Cut lands right now, or null when nowhere.
-  ///
-  /// 유저: 「인덱스를 갭에 둔 상태로 컷생성도안되고 선택범위하고 컷생성도안됨.
-  /// (…) 갭에서 컷생성누르면 스토리보드엔 컷 안생기는데 버튼쪽(…)은 활성화됨.」
-  ///
-  /// The old path asked NOTHING: `createCut()` took no arguments, the
-  /// coordinator anchored on the active cut alone, and a gap press
-  /// appended at the track's end — the cut did not fail to appear, it
-  /// appeared somewhere else, which is why the frame buttons lit up.
-  ///
-  /// ★The same ladder as [deleteSubject]/[editInstanceSubject], the same
-  /// order: the RANGE speaks first (it was said out loud), the parked
-  /// playhead second, the active cut last. And per T25, this ONE
-  /// expression answers both the pill button's enabled and the verb's
-  /// dispatch — two sources is exactly how the button lied in the gap.
-  ///
-  /// The range rung answers only when the range lies entirely in EMPTY
-  /// track space — a cut cannot be created over cuts, and saying null
-  /// here is what turns the button off instead of letting it lie.
-  @override
-  ({TrackId trackId, int? index, int leadingGapFrames, int? duration})?
-  get cutCreationPlan {
-    final range = trackFrameRangeSelection.value;
-    if (range != null && range.trackId == selectedTrackId) {
-      final axis = trackFrameAxis();
-      if (axis.cutsIn(range.startFrame, range.endFrameExclusive).isNotEmpty) {
-        return null;
-      }
-      return _cutCreationAt(
-        axis,
-        range.startFrame,
-        duration: range.endFrameExclusive - range.startFrame,
-      );
-    }
-    final parked = gapParkedGlobalFrame;
-    if (parked != null) {
-      return _cutCreationAt(trackFrameAxis(), parked, duration: null);
-    }
-    // The active-cut posture keeps its shape: the coordinator anchors to
-    // the right of the active cut (or the track's end), unchanged.
-    return (
-      trackId: selectedTrackId,
-      index: null,
-      leadingGapFrames: 0,
-      duration: null,
-    );
-  }
-
-  /// The insertion a GLOBAL frame names: in front of the first cut that
-  /// starts past it, with the walk-in distance from the gap's start as
-  /// the new cut's own leading gap. The frame is in a gap by the callers'
-  /// construction, so `gapStart <= globalFrame` always holds.
-  ({TrackId trackId, int? index, int leadingGapFrames, int? duration})
-  _cutCreationAt(TrackFrameAxis axis, int globalFrame, {int? duration}) {
-    var index = 0;
-    var gapStart = 0;
-    for (final entry in axis.entries) {
-      if (entry.startFrame > globalFrame) {
-        break;
-      }
-      index += 1;
-      gapStart = entry.endFrame;
-    }
-    return (
-      trackId: selectedTrackId,
-      index: index,
-      leadingGapFrames: globalFrame - gapStart,
-      duration: duration,
-    );
-  }
-
-  /// The pill button reads THIS — the same sentence the verb runs on.
-  bool get canCreateCut => cutCreationPlan != null;
+  // ── where a new cut lands: its own object, in its own file ────────────
+  //
+  // The one expression the Create Cut pill and the verb both read
+  // (session/cut_placement.dart).
+  late final CutPlacement cutPlacement = CutPlacement(
+    selection: this,
+    timeline: this,
+  );
 
   // The envelope every active-cut and active-row verb shares, in seven
   // collaborators (session/active_cut_edits.dart). It is wired HERE and
@@ -1363,7 +1299,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cut_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits);
+  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits, placement: cutPlacement);
 
   void deleteActiveCut() => _cutVerbs.deleteActiveCut();
   bool get canDeleteSelectedCuts => _cutVerbs.canDeleteSelectedCuts;
