@@ -19,7 +19,7 @@ class _InteractiveCanvasBuild {
   late final bool _inGap;
   late final bool _cameraOverlayVisible;
   late final ({
-    List<CanvasLayerStackNode> nodes,
+    List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
     List<ResolvedLayerEffect> activeSourceEffects,
   })
@@ -65,7 +65,7 @@ class _InteractiveCanvasBuild {
         showCameraOverlay && session.activeCutOrNull != null;
     _layerStack = _inGap
         ? (
-            nodes: const <CanvasLayerStackNode>[],
+            nodes: const <CompositeNode<CanvasStackRow>>[],
             activeLayerOpacity: 1.0,
             activeSourceEffects: const <ResolvedLayerEffect>[],
           )
@@ -142,7 +142,7 @@ class _InteractiveCanvasBuild {
         // covered above — until R6b's adjustment row, which twirls open
         // for its effect lanes while owning no transform at all, and whose
         // commit path throws by design.
-        layerKindHasLayerTransform(activeLayer.kind) &&
+        activeLayer.kind.hasLayerTransform &&
         layerKindShowsFxToggle(activeLayer.kind) &&
         // R8: the TRANSFORM group's switch, not the row master — a row
         // with a colour effect off still has a pose to drag.

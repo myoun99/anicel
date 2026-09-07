@@ -54,23 +54,25 @@ class ActiveLayerFlatImage {
 }
 
 abstract final class ActiveLayerFlatProjection {
-  /// The prologue BOTH flattens share: the operand tiles, the world rect
-  /// they cover, and a recorder already translated into that rect's space.
+  /// The SKELETON both flattens are: resolve the operand tiles, find the
+  /// world rect they cover, record [place] into a canvas already
+  /// translated into that rect's space, and rasterize.
   ///
   /// ⛔NULL IS THE LAW, and it was written twice: the strict subset must
   /// hold and the tiles must have a rect, or the caller falls back to the
   /// walk. Two guards in two places is two chances for one of them to
   /// start answering differently.
-  static ({
-    Map<TileCoord, ui.Image> operands,
-    ui.Rect worldRect,
-    ui.PictureRecorder recorder,
-    ui.Canvas canvas,
-  })?
-  _beginFlattenOrNull({
+  ///
+  /// [place] is the one step that differs — full assembly versus
+  /// incremental replace/clear — and it is a value, not a mode. It is
+  /// called ONCE per flatten (per dab batch), never per tile and never
+  /// per pixel; the tile loop inside it stays a plain for/drawImage.
+  static ActiveLayerFlatImage? _flattenOrNull({
     required BitmapSurface surface,
     required BitmapTileImageCache tileImages,
     ActiveStrokeOverlayModel? overlay,
+    required void Function(ui.Canvas canvas, Map<TileCoord, ui.Image> operands)
+    place,
   }) {
     final operands = _operandsOrNull(
       surface: surface,
@@ -87,44 +89,40 @@ abstract final class ActiveLayerFlatProjection {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder)
       ..translate(-worldRect.left, -worldRect.top);
-    return (
-      operands: operands,
-      worldRect: worldRect,
-      recorder: recorder,
-      canvas: canvas,
-    );
+    place(canvas, operands);
+    return _rasterize(recorder, worldRect);
   }
+
+  /// Raw pixels, placed and never resampled: the flat is the layer's own
+  /// bytes at 1:1, so any filtering or antialiasing here would be a
+  /// second interpretation of them.
+  static ui.Paint _placementPaint() => ui.Paint()
+    ..filterQuality = ui.FilterQuality.none
+    ..isAntiAlias = false;
 
   /// The full flatten, or null when the strict subset does not hold.
   static ActiveLayerFlatImage? buildOrNull({
     required BitmapSurface surface,
     required BitmapTileImageCache tileImages,
     ActiveStrokeOverlayModel? overlay,
-  }) {
-    final start = _beginFlattenOrNull(
-      surface: surface,
-      tileImages: tileImages,
-      overlay: overlay,
-    );
-    if (start == null) {
-      return null;
-    }
-    final canvas = start.canvas;
-    final paint = ui.Paint()
-      ..filterQuality = ui.FilterQuality.none
-      ..isAntiAlias = false;
-    for (final entry in start.operands.entries) {
-      canvas.drawImage(
-        entry.value,
-        ui.Offset(
-          (entry.key.x * surface.tileSize).toDouble(),
-          (entry.key.y * surface.tileSize).toDouble(),
-        ),
-        paint,
-      );
-    }
-    return _rasterize(start.recorder, start.worldRect);
-  }
+  }) => _flattenOrNull(
+    surface: surface,
+    tileImages: tileImages,
+    overlay: overlay,
+    place: (canvas, operands) {
+      final paint = _placementPaint();
+      for (final entry in operands.entries) {
+        canvas.drawImage(
+          entry.value,
+          ui.Offset(
+            (entry.key.x * surface.tileSize).toDouble(),
+            (entry.key.y * surface.tileSize).toDouble(),
+          ),
+          paint,
+        );
+      }
+    },
+  );
 
   /// Re-flattens only [changedCoords] over [previous] — the per-dab-batch
   /// step. Each changed coordinate is REPLACED wholesale
@@ -140,50 +138,39 @@ abstract final class ActiveLayerFlatProjection {
     required BitmapSurface surface,
     required BitmapTileImageCache tileImages,
     ActiveStrokeOverlayModel? overlay,
-  }) {
-    final start = _beginFlattenOrNull(
-      surface: surface,
-      tileImages: tileImages,
-      overlay: overlay,
-    );
-    if (start == null) {
-      return null;
-    }
-    final operands = start.operands;
-    final canvas = start.canvas;
-    // The previous flat lands first, srcOver on transparent = byte
-    // pass-through, at ITS OWN placement — the extent may have grown.
-    canvas.drawImage(
-      previous.image,
-      ui.Offset(previous.worldRect.left, previous.worldRect.top),
-      ui.Paint()
-        ..filterQuality = ui.FilterQuality.none
-        ..isAntiAlias = false,
-    );
-    final replace = ui.Paint()
-      ..filterQuality = ui.FilterQuality.none
-      ..isAntiAlias = false
-      ..blendMode = ui.BlendMode.src;
-    final clear = ui.Paint()
-      ..isAntiAlias = false
-      ..blendMode = ui.BlendMode.clear;
-    final tileSize = surface.tileSize.toDouble();
-    for (final coord in changedCoords) {
-      final origin = ui.Offset(coord.x * tileSize, coord.y * tileSize);
-      final image = operands[coord];
-      if (image != null) {
-        canvas.drawImage(image, origin, replace);
-        continue;
-      }
-      // A coordinate that no longer exists (undo took its tile): the
-      // patch must CLEAR it, or yesterday's ink survives in the flat.
-      canvas.drawRect(
-        ui.Rect.fromLTWH(origin.dx, origin.dy, tileSize, tileSize),
-        clear,
+  }) => _flattenOrNull(
+    surface: surface,
+    tileImages: tileImages,
+    overlay: overlay,
+    place: (canvas, operands) {
+      // The previous flat lands first, srcOver on transparent = byte
+      // pass-through, at ITS OWN placement — the extent may have grown.
+      canvas.drawImage(
+        previous.image,
+        ui.Offset(previous.worldRect.left, previous.worldRect.top),
+        _placementPaint(),
       );
-    }
-    return _rasterize(start.recorder, start.worldRect);
-  }
+      final replace = _placementPaint()..blendMode = ui.BlendMode.src;
+      final clear = ui.Paint()
+        ..isAntiAlias = false
+        ..blendMode = ui.BlendMode.clear;
+      final tileSize = surface.tileSize.toDouble();
+      for (final coord in changedCoords) {
+        final origin = ui.Offset(coord.x * tileSize, coord.y * tileSize);
+        final image = operands[coord];
+        if (image != null) {
+          canvas.drawImage(image, origin, replace);
+          continue;
+        }
+        // A coordinate that no longer exists (undo took its tile): the
+        // patch must CLEAR it, or yesterday's ink survives in the flat.
+        canvas.drawRect(
+          ui.Rect.fromLTWH(origin.dx, origin.dy, tileSize, tileSize),
+          clear,
+        );
+      }
+    },
+  );
 
   /// The per-coordinate finished images, or null when the strict subset
   /// does not hold. Arbitration is deliberately the TRIVIAL case of the

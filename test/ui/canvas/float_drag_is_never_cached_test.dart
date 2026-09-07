@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨(v) — a floating selection moves under the hand, and the composite
 /// buffer must never be kept while one exists.
@@ -65,7 +66,7 @@ void main() {
               width: 4,
               height: 4,
               child: CanvasLayerStackView(
-                nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(),

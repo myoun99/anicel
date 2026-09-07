@@ -127,12 +127,15 @@ class _TimesheetSePass {
 
     final dialogueExtent = spanBottom - 2 - dialogueTop;
     if (dialogueExtent > 4 && (cell.label ?? '').isNotEmpty) {
-      _fitVerticalText(
+      paintDialogueFitColumn(
         canvas,
         cell.label!,
         topCenter: Offset(centerX, dialogueTop),
-        fontSize: 9,
         extent: dialogueExtent,
+        style: const TextStyle(
+          color: TimesheetDocumentPainter._ink,
+          fontSize: 9,
+        ),
       );
     }
 
@@ -180,46 +183,6 @@ class _TimesheetSePass {
       canvas.drawRect(
         Rect.fromLTWH(columnLeft, cellTop, columnWidth, rowHeight),
         Paint()..color = TimesheetDocumentPainter._ink.withValues(alpha: 0.05),
-      );
-    }
-  }
-
-  /// SE dialogue distributed evenly over the covered rows — the sheet's
-  /// "fit" rule, sharing [dialogueGlyphCenters] with the timeline overlay
-  /// so screen and print place glyphs identically. Never truncates: the
-  /// dialogue owns its whole block, exactly like the paper column.
-  ///
-  /// The FORMS come from the app's one vertical-writing table, like every
-  /// other column on this sheet. They used not to — this placer stacked
-  /// every glyph upright, so a `ー` inside dialogue lay across the column
-  /// while the notation word two columns over rotated it.
-  void _fitVerticalText(
-    Canvas canvas,
-    String text, {
-    required Offset topCenter,
-    required double fontSize,
-    required double extent,
-    Color color = TimesheetDocumentPainter._ink,
-  }) {
-    final glyphs = text.characters.toList(growable: false);
-    final centers = dialogueGlyphCenters(
-      glyphCount: glyphs.length,
-      mainExtent: extent,
-    );
-    for (var index = 0; index < glyphs.length; index += 1) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: glyphs[index],
-          style: TextStyle(color: color, fontSize: fontSize),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      paintVerticalTextCell(
-        canvas,
-        verticalGlyphCell(glyphs[index]),
-        painter: painter,
-        center: Offset(topCenter.dx, topCenter.dy + centers[index]),
-        fontSize: fontSize,
       );
     }
   }

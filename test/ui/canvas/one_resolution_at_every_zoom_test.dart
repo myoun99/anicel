@@ -16,6 +16,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨ONE RESOLUTION AT EVERY ZOOM — the editing canvas composites the way
 /// playback, the camera and the export do, and keeps doing it however far
@@ -72,13 +73,13 @@ void main() {
               child: CanvasLayerStackView(
                 nodes: inFolder
                     ? [
-                        const CanvasLayerGroupNode(
-                          children: [CanvasActiveLayerNode(opacity: 1)],
+                        const CompositeGroup<CanvasStackRow>(
+                          children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                           opacity: 1,
                           blendMode: LayerBlendMode.multiply,
                         ),
                       ]
-                    : const [CanvasActiveLayerNode(opacity: 1)],
+                    : const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(zoom: zoom, panX: panX, panY: panY),

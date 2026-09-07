@@ -36,6 +36,34 @@ class CutMovePlan {
   bool get isReorder => order != null;
 }
 
+/// The cut slots as the SHARED rule sees them: a leading gap and a length,
+/// with the cut's identity dropped because the rule does not know about
+/// cuts. Both cut-axis planners hand their slots over this way.
+List<BlockMoveSlot> blockMoveSlotsOf(List<CutMoveSlot> slots) => [
+  for (final slot in slots)
+    (leadingGap: slot.leadingGapFrames, length: slot.duration),
+];
+
+/// The gaps a plan actually changed, keyed by the cut that lands in each
+/// position. [order] is the permutation the shared layout answered with —
+/// a move's own order, or the identity for an axis that cannot permute.
+///
+/// Only the gaps that actually changed, keyed by the cut that lands in
+/// each position: the drag's edit is that sparse, and a full map would
+/// make every step look like it touched the track. The same map serves
+/// both shapes — a reorder's gaps are the position gaps read by their new
+/// occupants, which is exactly how "the gaps stay with the position" lands
+/// on an axis whose cuts each carry their own leading gap.
+Map<CutId, int> changedLeadingGapsByCut({
+  required List<CutMoveSlot> slots,
+  required List<int> order,
+  required List<int> leadingGaps,
+}) => {
+  for (var position = 0; position < order.length; position += 1)
+    if (leadingGaps[position] != slots[order[position]].leadingGapFrames)
+      slots[order[position]].id: leadingGaps[position],
+};
+
 /// Plans a move of `slots[runStart..runEnd]` (inclusive, contiguous) by
 /// [frameDelta] frames — the shared rank rule, stated in cuts.
 CutMovePlan planCutMove({
@@ -45,27 +73,17 @@ CutMovePlan planCutMove({
   required int frameDelta,
 }) {
   final layout = planBlockRunMove(
-    slots: [
-      for (final slot in slots)
-        (leadingGap: slot.leadingGapFrames, length: slot.duration),
-    ],
+    slots: blockMoveSlotsOf(slots),
     runStart: runStart,
     runEnd: runEnd,
     frameDelta: frameDelta,
   );
 
-  // Only the gaps that actually changed, keyed by the cut that lands in
-  // each position: the drag's edit is that sparse, and a full map would
-  // make every step look like it touched the track. The same map serves
-  // both shapes — a reorder's gaps are the position gaps read by their new
-  // occupants, which is exactly how "the gaps stay with the position" lands
-  // on an axis whose cuts each carry their own leading gap.
-  final gaps = <CutId, int>{
-    for (var position = 0; position < layout.order.length; position += 1)
-      if (layout.leadingGaps[position] !=
-          slots[layout.order[position]].leadingGapFrames)
-        slots[layout.order[position]].id: layout.leadingGaps[position],
-  };
+  final gaps = changedLeadingGapsByCut(
+    slots: slots,
+    order: layout.order,
+    leadingGaps: layout.leadingGaps,
+  );
 
   final runStartFrame = layout.startOf(runStart);
   if (layout.isReorder) {

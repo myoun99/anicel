@@ -8,7 +8,6 @@ import '../models/cut.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
-import '../models/layer_kind.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
@@ -206,7 +205,7 @@ int sampleCompositeColor({
   // class of honest gap as this sampler's blend modes and group buffers,
   // and named here so it is not mistaken for a bug.
   for (final layer in cut.layers) {
-    if (layerKindFiltersBelow(layer.kind)) {
+    if (layer.kind.filtersBelow) {
       // "Pick from the current layer" is the what-ink-is-this mode: it
       // reads the row as DRAWN and no adjustment applies to it.
       if (source == CanvasColorSampleSource.layer) {

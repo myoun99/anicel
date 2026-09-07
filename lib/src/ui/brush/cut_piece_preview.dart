@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/straight_rgba_image.dart';
 import '../../models/cut_piece.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// Decodes the held piece ONCE and hands the image to [builder], null until
 /// the decode lands.
@@ -213,7 +215,7 @@ class CutPiecePreview extends StatelessWidget {
   }
 }
 
-class _CutPiecePreviewPainter extends CustomPainter {
+class _CutPiecePreviewPainter extends CustomPainter with RepaintOnProps {
   const _CutPiecePreviewPainter({
     required this.piece,
     required this.image,
@@ -245,10 +247,7 @@ class _CutPiecePreviewPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CutPiecePreviewPainter oldDelegate) =>
-      !identical(oldDelegate.piece, piece) ||
-      !identical(oldDelegate.image, image) ||
-      oldDelegate.checkerColor != checkerColor;
+  Object get props => (ByIdentity(piece), ByIdentity(image), checkerColor);
 }
 
 /// 🚨★★★F-33 — the stamp's ghost, told where it lands in CANVAS space.

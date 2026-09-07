@@ -37,3 +37,22 @@ String appSupportFilePath(String fileName) {
   final normalizedBase = base.replaceAll('\\', '/');
   return '$normalizedBase/anicel/$fileName';
 }
+
+/// [appSupportFilePath], except that a test run gets its own sandbox under
+/// the temp directory: `<temp>/qa_test_<sandbox>_<pid>/<fileName>`.
+///
+/// Every store that resolves an app-support path goes through here rather
+/// than writing the `FLUTTER_TEST` branch out again. Tests reach these
+/// stores through the PRODUCTION wiring, so without the redirect a test run
+/// would read and write the real user's files — and `pid` keeps two runs on
+/// one machine out of each other's sandbox.
+String testRedirectedAppSupportPath(
+  String fileName, {
+  required String sandbox,
+}) {
+  if (Platform.environment['FLUTTER_TEST'] == 'true') {
+    final temp = Directory.systemTemp.path.replaceAll('\\', '/');
+    return '$temp/qa_test_${sandbox}_$pid/$fileName';
+  }
+  return appSupportFilePath(fileName);
+}

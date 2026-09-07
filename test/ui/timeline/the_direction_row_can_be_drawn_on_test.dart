@@ -18,15 +18,15 @@ import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 /// is both now.
 void main() {
   test('a direction row draws, and carries its instructions too', () {
-    expect(layerKindIsDrawingCel(LayerKind.instruction), isTrue);
-    expect(layerKindAcceptsBrushInput(LayerKind.instruction), isTrue);
+    expect(LayerKind.instruction.isDrawingCel, isTrue);
+    expect(LayerKind.instruction.acceptsBrushInput, isTrue);
     expect(
-      layerKindCarriesInstructions(LayerKind.instruction),
+      LayerKind.instruction.carriesInstructions,
       isTrue,
       reason: 'the spans are what the row is FOR — they did not go away',
     );
     expect(
-      layerKindBandIsInstructionsOnly(LayerKind.instruction),
+      LayerKind.instruction.bandIsInstructionsOnly,
       isFalse,
       reason: 'its band is its own timeline now, with the spans over it',
     );
@@ -34,11 +34,11 @@ void main() {
 
   test('⛔and the camera and transition rows are untouched', () {
     for (final kind in [LayerKind.camera, LayerKind.transition]) {
-      expect(layerKindIsDrawingCel(kind), isFalse, reason: '$kind');
-      expect(layerKindAcceptsBrushInput(kind), isFalse, reason: '$kind');
+      expect(kind.isDrawingCel, isFalse, reason: '$kind');
+      expect(kind.acceptsBrushInput, isFalse, reason: '$kind');
     }
     expect(
-      layerKindBandIsInstructionsOnly(LayerKind.transition),
+      LayerKind.transition.bandIsInstructionsOnly,
       isTrue,
       reason:
           'the transition row is instructions-only and stays so — its '
@@ -49,13 +49,13 @@ void main() {
   test('the band predicate answers for every kind, once', () {
     for (final kind in LayerKind.values) {
       expect(
-        layerKindBandIsInstructionsOnly(kind),
-        layerKindCarriesInstructions(kind) && !layerKindIsDrawingCel(kind),
+        kind.bandIsInstructionsOnly,
+        kind.carriesInstructions && !kind.isDrawingCel,
         reason: '$kind — one derivation, so the two halves cannot drift',
       );
-      if (layerKindBandIsInstructionsOnly(kind)) {
+      if (kind.bandIsInstructionsOnly) {
         expect(
-          layerKindAcceptsBrushInput(kind),
+          kind.acceptsBrushInput,
           isFalse,
           reason: '$kind has no timeline to draw into',
         );
@@ -68,19 +68,19 @@ void main() {
     //
     // That notice means 「this layer takes a brush, but there is no cel at
     // this frame」 — so the brush gate was open and the CREATION gate was
-    // shut. R27 #16 flipped `layerKindIsDrawingCel` and left
-    // `layerKindHoldsDrawings`, which is what `canCreateDrawingAtCurrentFrame`
+    // shut. R27 #16 flipped `LayerKind.isDrawingCel` and left
+    // `LayerKind.holdsDrawings`, which is what `canCreateDrawingAtCurrentFrame`
     // asks.
     test('a direction row takes an authored cel; camera and transition do '
         'not', () {
-      expect(layerKindTakesAuthoredCels(LayerKind.instruction), isTrue);
+      expect(LayerKind.instruction.takesAuthoredCels, isTrue);
       for (final kind in [
         LayerKind.camera,
         LayerKind.transition,
         LayerKind.folder,
         LayerKind.adjustment,
       ]) {
-        expect(layerKindTakesAuthoredCels(kind), isFalse, reason: '$kind');
+        expect(kind.takesAuthoredCels, isFalse, reason: '$kind');
       }
     });
 
@@ -88,15 +88,15 @@ void main() {
       // The two predicates disagree on exactly two kinds, and this is the
       // other one. A split that quietly dropped SE would take frame
       // creation off the sound row.
-      expect(layerKindIsDrawingCel(LayerKind.se), isFalse);
-      expect(layerKindTakesAuthoredCels(LayerKind.se), isTrue);
+      expect(LayerKind.se.isDrawingCel, isFalse);
+      expect(LayerKind.se.takesAuthoredCels, isTrue);
     });
 
     test('the derivation is pinned, so the halves cannot drift again', () {
       for (final kind in LayerKind.values) {
         expect(
-          layerKindTakesAuthoredCels(kind),
-          layerKindHoldsDrawings(kind) || layerKindIsDrawingCel(kind),
+          kind.takesAuthoredCels,
+          kind.holdsDrawings || kind.isDrawingCel,
           reason: '$kind — one derivation',
         );
       }
@@ -104,12 +104,12 @@ void main() {
 
     test('⛔THE FURNITURE DID NOT FOLLOW — that is the whole point of the '
         'split', () {
-      // `layerKindHoldsDrawings` also gates the timesheet X in every empty
+      // `LayerKind.holdsDrawings` also gates the timesheet X in every empty
       // cell, the run labels over the blocks, the comma-drag grips and the
       // media drop target. A direction row wearing those is exactly the
       // kind of thing 「누가 멋대로 이상한짓하라했지」 was about.
       expect(
-        layerKindHoldsDrawings(LayerKind.instruction),
+        LayerKind.instruction.holdsDrawings,
         isFalse,
         reason: 'the direction row still wears no drawing-row furniture',
       );
@@ -119,7 +119,7 @@ void main() {
   group('🚨the band shows BOTH — R27 #16 left it showing neither', () {
     // 유저 2026-08-27, on what shipped: 「지금 스샷보면 **블록의 배경색
     // 흰색이 사라졌는데?**」. Giving the row cels flipped
-    // `layerKindBandIsInstructionsOnly` to false, so the band stopped
+    // `LayerKind.bandIsInstructionsOnly` to false, so the band stopped
     // reading the span adapter and started reading cels the row did not
     // have. It drew nothing at all — the row did not gain a feature, it
     // lost its blocks.

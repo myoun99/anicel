@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 import 'drag_value_label.dart';
 import '../text/app_strings.dart' show AppText;
+import '../repaint_props.dart';
 
 /// THE transport bar: a scrub track with IN/OUT handles, the player
 /// buttons, and the two range fields at the ends.
@@ -360,7 +361,7 @@ class _TransportTrackState extends State<TransportTrack> {
   }
 }
 
-class _TrackPainter extends CustomPainter {
+class _TrackPainter extends CustomPainter with RepaintOnProps {
   const _TrackPainter({
     required this.position,
     required this.showRange,
@@ -409,9 +410,5 @@ class _TrackPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_TrackPainter old) =>
-      old.showRange != showRange ||
-      old.position != position ||
-      old.rangeStart != rangeStart ||
-      old.rangeEnd != rangeEnd;
+  Object get props => (showRange, position, rangeStart, rangeEnd);
 }

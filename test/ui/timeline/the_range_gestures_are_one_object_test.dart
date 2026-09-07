@@ -7,6 +7,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
+import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_range_gestures.dart';
@@ -122,22 +123,26 @@ void main() {
   });
 
   test('a pin rides both families\' grips; no pin means no grip', () {
-    final taken = <TimelineRowAddress>[];
-    final released = <TimelineRowAddress>[];
+    final pin = HeldRowPin();
     final pinned = TimelineGridRangeGestures(
       hooks: () => hooks(rangeHooks: rangeHooks(), laneRange: laneHooks()),
       metrics: () => TimelineGridMetrics.defaults,
       dragRows: rows,
       rangeMove: TimelineRangeMoveRowResolver(),
-      pin: HeldRowPin(take: taken.add, release: released.add),
+      pin: pin,
     );
     const row = LayerRowAddress(LayerId('a'));
+    const other = LayerRowAddress(LayerId('b'));
     pinned.rangeGestureFor(rows())!.onGripTaken!(row);
+    expect(pin.held, row);
     pinned.laneRangeFor(rows())!.onGripTaken!(row);
-    pinned.rangeGestureFor(rows())!.onGripReleased!(row);
+    expect(pin.held, row);
+    // ⛔RELEASE ONLY IF STILL MINE: a grip that has moved on must not be
+    // cleared by whoever held it last.
+    pinned.rangeGestureFor(rows())!.onGripReleased!(other);
+    expect(pin.held, row, reason: 'another row\'s release is not mine');
     pinned.laneRangeFor(rows())!.onGripReleased!(row);
-    expect(taken, [row, row]);
-    expect(released, [row, row]);
+    expect(pin.held, isNull);
 
     final unpinned = TimelineGridRangeGestures(
       hooks: () => hooks(rangeHooks: rangeHooks(), laneRange: laneHooks()),

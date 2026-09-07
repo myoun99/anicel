@@ -204,9 +204,9 @@ void main() {
       return BitmapSurface(
         canvasSize: const CanvasSize(width: 4, height: 4),
         tileSize: 4,
-      ).putTile(
+      ).putTiles([
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
-      );
+      ]);
     }
 
     test('an undrawn cel answers false; storing ink flips it; non-drawing '
@@ -241,7 +241,7 @@ void main() {
       // 유저 2026-08-27: 「그림은 그려지지도않아. **프레임이 없다고 뜨거든**」.
       //
       // ⚠️THE PREDICATE TEST IS NOT THIS TEST. Asserting
-      // `layerKindTakesAuthoredCels(instruction)` proves a switch statement;
+      // `instruction.takesAuthoredCels` proves a switch statement;
       // this drives the session and reads what came out, because the gate
       // sits behind three more conditions the predicate knows nothing about.
       final s = EditorSessionManager(initialProject: createDefaultProject());

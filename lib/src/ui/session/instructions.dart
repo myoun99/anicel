@@ -8,6 +8,7 @@ import '../../services/command.dart';
 import '../../services/commands/update_layer_instructions_command.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'active_cut_controllers.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'cut_verbs.dart';
 import 'camera.dart';
@@ -28,13 +29,15 @@ class Instructions {
     required ActiveCutControllers controllers,
     required CutVerbs cutVerbs,
     required Camera camera,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
        _cutVerbs = cutVerbs,
-       _camera = camera;
+       _camera = camera,
+       _activeCut = activeCut;
 
   final CutVerbs _cutVerbs;
   final Camera _camera;
@@ -44,6 +47,7 @@ class Instructions {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
+  final ActiveCutEdits _activeCut;
 
   /// Replaces [layerId]'s instruction span map (instruction rows only).
   /// One undo step; no-op when unchanged. Never touches rendering caches —
@@ -52,19 +56,14 @@ class Instructions {
     LayerId layerId,
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit instructions',
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateLayerInstructions(
+  }) => _activeCut.onActiveCutQuietly(
+    (cutId) => _project.cutCommandCoordinator.updateLayerInstructions(
       cutId: cutId,
       layerId: layerId,
       instructions: instructions,
       description: description,
-    );
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// The instruction span covering [frameIndex] on [layerId], as
   /// (startIndex, event); null on empty cells / non-instruction rows.

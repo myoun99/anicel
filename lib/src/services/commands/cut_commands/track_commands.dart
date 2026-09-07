@@ -87,7 +87,7 @@ class _TrackCommands {
       _coordinator.repository.requireProject(),
       layerId,
     );
-    if (!layerKindHasLayerTransform(layer.kind)) {
+    if (!layer.kind.hasLayerTransform) {
       throw StateError(
         'The camera layer transforms through the cut camera track.',
       );

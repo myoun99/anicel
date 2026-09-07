@@ -6,6 +6,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
@@ -24,17 +25,23 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals;
+       _internals = internals,
+       _activeCutEdits = activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+
+  /// The active-row cut-command envelope — the session's one instance,
+  /// handed in (see [ActiveCutEdits]).
+  final ActiveCutEdits _activeCutEdits;
 
   bool get canDeleteActiveLayer {
     final activeLayer = _selection.activeLayer;
@@ -50,7 +57,7 @@ class LayerVerbs {
   bool canDeleteLayer(Layer activeLayer) {
     // Read-only where a cut can see it: the transition row is deleted (and
     // moved) on the global axis, never from inside a cut.
-    if (layerKindIsReadOnlyInCut(activeLayer.kind)) {
+    if (activeLayer.kind.isReadOnlyInCut) {
       return false;
     }
     // Attach rows are accessories: always deletable, never counted toward
@@ -124,9 +131,9 @@ class LayerVerbs {
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
     // double-link the same base cels).
     if (activeLayer == null ||
-        !layerKindIsClipboardCopyable(activeLayer.kind) ||
+        !activeLayer.kind.isClipboardCopyable ||
         // R9 #7: the copy lands in the same cut — always the second one.
-        layerKindIsSingletonPerCut(activeLayer.kind) ||
+        activeLayer.kind.isSingletonPerCut ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -160,27 +167,20 @@ class LayerVerbs {
     // Same stand-downs as plain duplication; an attach row's LINK
     // duplicate is reached through its base (the group goes whole).
     return activeLayer != null &&
-        layerKindIsClipboardCopyable(activeLayer.kind) &&
+        activeLayer.kind.isClipboardCopyable &&
         // R9 #7: a duplicate lands in the SAME cut, so a singleton kind's
         // copy would always be the second one.
-        !layerKindIsSingletonPerCut(activeLayer.kind) &&
+        !activeLayer.kind.isSingletonPerCut &&
         !isAttachedLayer(activeLayer);
   }
 
   /// 링크 복제: duplicates the active layer's whole attach group SHARING
   /// the originals' pictures (the store routes both to one cel bank).
-  void linkDuplicateActiveLayer() {
-    if (!canLinkDuplicateActiveLayer) {
-      return;
-    }
-    final activeLayer = _selection.activeLayer!;
-    _project.cutCommandCoordinator.linkDuplicateLayer(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _changes.notifyChanged();
-  }
+  void linkDuplicateActiveLayer() => _activeCutEdits.onActiveLayer(
+    when: canLinkDuplicateActiveLayer,
+    command: (cutId, layerId) => _project.cutCommandCoordinator
+        .linkDuplicateLayer(cutId: cutId, layerId: layerId),
+  );
 
   bool get canUnlinkActiveLayer {
     final activeLayer = _selection.activeLayer;
@@ -190,7 +190,7 @@ class LayerVerbs {
     }
     // The verb unlinks the whole attach group; it is offered when ANY
     // member is linked (mirrors the coordinator's own guard).
-    final baseId = activeLayer.attachedToLayerId ?? activeLayer.id;
+    final baseId = attachBaseIdOf(activeLayer);
     final registry = _project.repository.requireProject().linkRegistry;
     return cut.layers.any(
       (layer) =>
@@ -201,18 +201,13 @@ class LayerVerbs {
 
   /// 독립시키기: forks the active layer's group out of its links — the
   /// pictures stay identical but stop being shared from here on.
-  void unlinkActiveLayer() {
-    if (!canUnlinkActiveLayer) {
-      return;
-    }
-    final activeLayer = _selection.activeLayer!;
-    _project.cutCommandCoordinator.unlinkLayer(
-      cutId: _project.requireActiveCut.id,
-      layerId: activeLayer.id,
-    );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
-    _changes.notifyChanged();
-  }
+  void unlinkActiveLayer() => _activeCutEdits.onActiveLayer(
+    when: canUnlinkActiveLayer,
+    command: (cutId, layerId) => _project.cutCommandCoordinator.unlinkLayer(
+      cutId: cutId,
+      layerId: layerId,
+    ),
+  );
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
@@ -327,16 +322,12 @@ class LayerVerbs {
         : isAttachedLayer(active)
         ? active.attachedToLayerId
         : active.id;
-    if (baseId != null) {
-      final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
-      final groupStart = attachedGroupStartIndex(baseId, cut.layers);
-      if (groupEnd - groupStart > 1) {
-        _controllers.layerController.addLayer(
-          layer: layer,
-          insertionIndex: groupEnd,
-        );
-        return;
-      }
+    if (baseId != null && attachedGroupSlice(baseId, cut.layers).length > 1) {
+      _controllers.layerController.addLayer(
+        layer: layer,
+        insertionIndex: attachedGroupEndIndex(baseId, cut.layers),
+      );
+      return;
     }
     _controllers.layerController.addLayer(layer: layer);
   }

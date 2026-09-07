@@ -10,6 +10,7 @@ import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
+import '../dialogs/dialog_verb.dart';
 import '../panels/editor_panel_frame.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_window.dart';
@@ -261,15 +262,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// there rather than pretending.
   BrushGroup? get _openGroup {
     final id = _openGroupId;
-    if (id == null) {
-      return null;
-    }
-    for (final group in widget.groups) {
-      if (group.id == id) {
-        return group;
-      }
-    }
-    return null;
+    return id == null
+        ? null
+        : widget.groups.where((group) => group.id == id).firstOrNull;
   }
 
   /// The rail's tabs, in order: the groups as the library lists them, then
@@ -289,12 +284,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       return _activeGroupId;
     }
     final selectedId = widget.selectedPresetId;
-    if (selectedId != null) {
-      for (final preset in widget.presets) {
-        if (preset.id == selectedId) {
-          return _ownerGroupId(preset);
-        }
-      }
+    final selected = selectedId == null
+        ? null
+        : widget.presets.where((preset) => preset.id == selectedId).firstOrNull;
+    if (selected != null) {
+      return _ownerGroupId(selected);
     }
     return widget.groups.isEmpty ? null : widget.groups.first.id;
   }
@@ -344,158 +338,130 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }
   }
 
-  Future<void> _createGroup() async {
+  Future<void> _createGroup() {
     final onCreated = widget.onGroupCreated;
     if (onCreated == null) {
-      return;
+      return Future<void>.value();
     }
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => _BrushNameDialog(
+    return askThenCommit<String>(
+      context,
+      dialog: (_) => AppPromptDialog.keyed(
         keyPrefix: 'brush-preset-group-new',
         title: AppText.strings.brNewGroup,
         titleIcon: Icons.create_new_folder_outlined,
         fieldLabel: AppText.strings.brGroupNameField,
-        initialName: 'New Group',
+        initialValue: 'New Group',
         confirmLabel: AppText.strings.brCreate,
         emptyError: AppText.strings.brGroupNameEmpty,
       ),
+      commit: onCreated,
     );
-    if (!mounted || name == null) {
-      return;
-    }
-    onCreated(name);
   }
 
-  Future<void> _renameSelectedPreset() async {
+  Future<void> _renameSelectedPreset() {
     final selectedId = widget.selectedPresetId;
     final onRenamed = widget.onPresetRenamed;
-    if (selectedId == null || onRenamed == null) {
-      return;
+    final selected = widget.presets
+        .where((preset) => preset.id == selectedId)
+        .firstOrNull;
+    if (selected == null || onRenamed == null) {
+      return Future<void>.value();
     }
-    BrushPreset? selected;
-    for (final preset in widget.presets) {
-      if (preset.id == selectedId) {
-        selected = preset;
-        break;
-      }
-    }
-    if (selected == null) {
-      return;
-    }
-
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => _BrushNameDialog(
+    return askThenCommit<String>(
+      context,
+      dialog: (_) => AppPromptDialog.keyed(
         keyPrefix: 'brush-preset-rename',
         title: AppText.strings.brRenameBrush,
         titleIcon: Icons.drive_file_rename_outline,
         fieldLabel: AppText.strings.brBrushNameField,
-        initialName: selected!.name,
+        initialValue: selected.name,
         confirmLabel: AppText.strings.commonRename,
         emptyError: AppText.strings.brBrushNameEmpty,
       ),
+      commit: (nextName) => onRenamed(selected.id, nextName),
     );
-    if (!mounted || nextName == null) {
-      return;
-    }
-    onRenamed(selectedId, nextName);
   }
 
   /// The group's name and face, edited together.
   ///
   /// One editor with two ways in — a double tap on the tab, and the tab's
   /// own menu — rather than a rename dialog and an icon dialog in a row.
-  Future<void> _editGroup(BrushGroup group) async {
+  Future<void> _editGroup(BrushGroup group) {
     final onEdited = widget.onGroupEdited;
     if (onEdited == null) {
-      return;
+      return Future<void>.value();
     }
     var icon = group.icon;
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => _BrushNameDialog(
+    return askThenCommit<String>(
+      context,
+      dialog: (_) => StatefulBuilder(
+        builder: (context, setLocal) => AppPromptDialog.keyed(
           keyPrefix: 'brush-preset-group-rename',
           title: AppText.strings.brEditGroup,
           titleIcon: Icons.drive_file_rename_outline,
           fieldLabel: AppText.strings.brGroupNameField,
-          initialName: group.name,
+          initialValue: group.name,
           confirmLabel: AppText.strings.commonSave,
           emptyError: AppText.strings.brGroupNameEmpty,
+          // Content confirmed alongside the name — the group's face, so
+          // the two are one edit rather than two dialogs in a row.
           extra: _GroupIconPicker(
             selected: icon,
             onPicked: (picked) => setLocal(() => icon = picked),
           ),
         ),
       ),
+      commit: (nextName) => onEdited(group.id, nextName, icon),
     );
-    if (!mounted || nextName == null) {
-      return;
-    }
-    onEdited(group.id, nextName, icon);
   }
 
-  Future<void> _deleteGroup(BrushGroup group) async {
-    final keys = confirmDialogKeys('brush-preset-group-delete');
+  Future<void> _deleteGroup(BrushGroup group) {
     final onDeleted = widget.onGroupDeleted;
     if (onDeleted == null) {
-      return;
+      return Future<void>.value();
     }
+    final keys = confirmDialogKeys('brush-preset-group-delete');
     final memberCount = widget.presets
         .where((preset) => _ownerGroupId(preset) == group.id)
         .length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: keys.window,
-        title: AppText.strings.brDeleteGroup,
-        titleIcon: Icons.delete_outline,
-        message: memberCount == 0
-            ? 'Delete the empty group "${group.name}"?'
-            : 'Delete "${group.name}" and the $memberCount '
-                  '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.commonCancel,
-          declineKey: keys.decline,
-          acceptLabel: AppText.strings.commonDelete,
-          acceptKey: keys.accept,
+    return confirmThenCommit(
+      context,
+      dialog: (context) => confirmWindow(
+        context,
+        ConfirmQuestion(
+          keys: keys,
+          title: AppText.strings.brDeleteGroup,
+          titleIcon: Icons.delete_outline,
+          message: memberCount == 0
+              ? 'Delete the empty group "${group.name}"?'
+              : 'Delete "${group.name}" and the $memberCount '
+                    '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
         ),
+        accept: ConfirmChoice(AppText.strings.commonDelete),
       ),
+      commit: () => onDeleted(group.id),
     );
-    if (!mounted || confirmed != true) {
-      return;
-    }
-    onDeleted(group.id);
   }
 
-  Future<void> _resetLibrary() async {
-    final keys = confirmDialogKeys('brush-preset-reset');
+  Future<void> _resetLibrary() {
     final onReset = widget.onLibraryReset;
     if (onReset == null) {
-      return;
+      return Future<void>.value();
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        windowKey: keys.window,
-        title: AppText.strings.brResetLibrary,
-        titleIcon: Icons.restart_alt,
-        message: AppText.strings.brResetLibraryBody,
-        actions: confirmActions(
-          context,
-          declineLabel: AppText.strings.commonCancel,
-          declineKey: keys.decline,
-          acceptLabel: AppText.strings.commonReset,
-          acceptKey: keys.accept,
+    return confirmThenCommit(
+      context,
+      dialog: (context) => confirmWindow(
+        context,
+        ConfirmQuestion(
+          keys: confirmDialogKeys('brush-preset-reset'),
+          title: AppText.strings.brResetLibrary,
+          titleIcon: Icons.restart_alt,
+          message: AppText.strings.brResetLibraryBody,
         ),
+        accept: ConfirmChoice(AppText.strings.commonReset),
       ),
+      commit: onReset,
     );
-    if (!mounted || confirmed != true) {
-      return;
-    }
-    onReset();
   }
 
   void _openTab(BrushGroupId? groupId) {
@@ -1187,49 +1153,6 @@ class _GroupIconPicker extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// The one name-entry window the panel's three naming flows share (preset
-/// rename, group rename, new group); [keyPrefix] names its widget keys.
-class _BrushNameDialog extends StatelessWidget {
-  const _BrushNameDialog({
-    required this.keyPrefix,
-    required this.title,
-    required this.titleIcon,
-    required this.fieldLabel,
-    required this.initialName,
-    required this.confirmLabel,
-    required this.emptyError,
-    this.extra,
-  });
-
-  final String keyPrefix;
-  final String title;
-  final IconData titleIcon;
-  final String fieldLabel;
-  final String initialName;
-  final String confirmLabel;
-  final String emptyError;
-
-  /// Content confirmed alongside the name — the group editor's icon grid.
-  final Widget? extra;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppPromptDialog(
-      extra: extra,
-      windowKey: ValueKey<String>('$keyPrefix-dialog'),
-      title: title,
-      titleIcon: titleIcon,
-      fieldLabel: fieldLabel,
-      initialValue: initialName,
-      confirmLabel: confirmLabel,
-      emptyError: emptyError,
-      fieldKey: ValueKey<String>('$keyPrefix-text-field'),
-      cancelKey: ValueKey<String>('$keyPrefix-cancel-button'),
-      confirmKey: ValueKey<String>('$keyPrefix-ok-button'),
     );
   }
 }

@@ -24,13 +24,11 @@ class _CameraCommands {
       );
     }
 
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.camera.keyframeAt(frameIndex) == pose) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      UpdateCutCameraCommand(
+    _coordinator._executeIfChanged<Cut, CameraPose?>(
+      subject: _coordinator._requireCut(cutId),
+      value: pose,
+      read: (cut) => cut.camera.keyframeAt(frameIndex),
+      command: (cut) => UpdateCutCameraCommand(
         repository: _coordinator.repository,
         cutId: cutId,
         camera: cut.camera.withKeyframe(frameIndex, pose),
@@ -43,13 +41,11 @@ class _CameraCommands {
     required CutId cutId,
     required int frameIndex,
   }) {
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.camera.keyframeAt(frameIndex) == null) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      UpdateCutCameraCommand(
+    _coordinator._executeIfChanged<Cut, CameraPose?>(
+      subject: _coordinator._requireCut(cutId),
+      value: null,
+      read: (cut) => cut.camera.keyframeAt(frameIndex),
+      command: (cut) => UpdateCutCameraCommand(
         repository: _coordinator.repository,
         cutId: cutId,
         camera: cut.camera.withoutKeyframe(frameIndex),
@@ -58,21 +54,18 @@ class _CameraCommands {
     );
   }
 
-  void clearCutCamera({required CutId cutId}) {
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.camera.isEmpty) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      UpdateCutCameraCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        camera: CutCamera.empty(),
-        description: 'Clear camera keyframes',
-      ),
-    );
-  }
+  void clearCutCamera({required CutId cutId}) =>
+      _coordinator._executeIfChanged(
+        subject: _coordinator._requireCut(cutId),
+        value: true,
+        read: (cut) => cut.camera.isEmpty,
+        command: (_) => UpdateCutCameraCommand(
+          repository: _coordinator.repository,
+          cutId: cutId,
+          camera: CutCamera.empty(),
+          description: 'Clear camera keyframes',
+        ),
+      );
 
   /// Replaces the cut's whole camera track in one undo step — the property
   /// lanes edit per-property keys (move/toggle/hold) that the pose-level
@@ -81,34 +74,28 @@ class _CameraCommands {
     required CutId cutId,
     required CutCamera camera,
     String description = 'Edit camera keyframes',
-  }) {
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.camera == camera) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      UpdateCutCameraCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        camera: camera,
-        description: description,
-      ),
-    );
-  }
+  }) => _coordinator._executeIfChanged(
+    subject: _coordinator._requireCut(cutId),
+    value: camera,
+    read: (cut) => cut.camera,
+    command: (_) => UpdateCutCameraCommand(
+      repository: _coordinator.repository,
+      cutId: cutId,
+      camera: camera,
+      description: description,
+    ),
+  );
 
   /// Replaces the project's instruction vocabulary; one undo step, no-op
   /// when unchanged.
-  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
-    if (_coordinator.repository.requireProject().cameraInstructions ==
-        instructionSet) {
-      return;
-    }
-    _coordinator.historyManager.execute(
-      UpdateCameraInstructionSetCommand(
-        repository: _coordinator.repository,
-        instructionSet: instructionSet,
-      ),
-    );
-  }
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) =>
+      _coordinator._executeIfChanged(
+        subject: _coordinator.repository.requireProject(),
+        value: instructionSet,
+        read: (project) => project.cameraInstructions,
+        command: (_) => UpdateCameraInstructionSetCommand(
+          repository: _coordinator.repository,
+          instructionSet: instructionSet,
+        ),
+      );
 }

@@ -52,7 +52,7 @@ class DeleteCutCommand implements Command {
   @override
   void execute() {
     final project = repository.requireProject();
-    final location = _findCutLocation(cutId);
+    final location = requireCutPosition(project, cutId);
     final previousActiveCutId = editingSession.activeCutId;
     final isDeletingActiveCut = previousActiveCutId == cutId;
     final fallbackDecision = isDeletingActiveCut
@@ -66,7 +66,7 @@ class DeleteCutCommand implements Command {
 
     _previousActiveCutId = previousActiveCutId;
     _originalTrackId = location.trackId;
-    _originalIndex = location.index;
+    _originalIndex = location.cutIndex;
     _absorbedByCutId = absorbedByCutId;
     _absorbedGapBefore = absorbedByCutId == null
         ? null
@@ -236,22 +236,4 @@ class DeleteCutCommand implements Command {
     return LayerLinkRegistry(groups: groups);
   }
 
-  _CutLocation _findCutLocation(CutId cutId) {
-    final project = repository.requireProject();
-    for (final track in project.tracks) {
-      final cutIndex = track.cuts.indexWhere((cut) => cut.id == cutId);
-      if (cutIndex != -1) {
-        return _CutLocation(trackId: track.id, index: cutIndex);
-      }
-    }
-
-    throw StateError('Cut not found: $cutId');
-  }
-}
-
-class _CutLocation {
-  const _CutLocation({required this.trackId, required this.index});
-
-  final TrackId trackId;
-  final int index;
 }

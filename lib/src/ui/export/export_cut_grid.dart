@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/cut_id.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../repaint_props.dart';
 
 /// One scope cut for the grid: its number and identity.
 typedef ExportCutEntry = ({CutId id, int number});
@@ -241,7 +242,7 @@ class _CutCell extends StatelessWidget {
 
 /// The excluded-cell hatching (빗금) — selection stays COLOR (teal), the
 /// hatch is the out-of-scope texture, per the v10 mock.
-class _HatchPainter extends CustomPainter {
+class _HatchPainter extends CustomPainter with RepaintOnProps {
   _HatchPainter({required this.color});
 
   final Color color;
@@ -261,5 +262,5 @@ class _HatchPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HatchPainter oldDelegate) => oldDelegate.color != color;
+  Object get props => (color,);
 }

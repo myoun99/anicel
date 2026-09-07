@@ -6,7 +6,6 @@ import '../../models/pixel_verb_subject.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
 import '../../services/commands/cel_pixel_overwrite_command.dart';
-import '../../models/layer_kind.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
@@ -267,7 +266,7 @@ class CellVerbs {
     // the press only cost a phantom undo entry (D22).
     if (layer == null ||
         isSyncedAttachedLayer(layer) ||
-        layerKindHoldsSingleCel(layer.kind)) {
+        layer.kind.holdsSingleCel) {
       return false;
     }
 

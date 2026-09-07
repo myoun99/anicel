@@ -239,6 +239,21 @@ void main() {
     expect(await store.load(), isNull);
   });
 
+  test('the recovery folder is redirected under test, into a sandbox of '
+      'this run\'s own', () {
+    // Without this a test run drops snapshots into the real user's folder
+    // and reads the ones left there — the conform cache's twin law.
+    expect(
+      AppSave.recoveryDirectory(),
+      contains(Directory.systemTemp.path.replaceAll('\\', '/')),
+    );
+    expect(AppSave.recoveryDirectory(), contains('qa_test_recovery_$pid'));
+    expect(
+      AppSave.recoveryPathFor('/projects/a/scene.anicel'),
+      startsWith(AppSave.recoveryDirectory()),
+    );
+  });
+
   test('the recovery snapshot lives in app support, never beside the '
       'project, under an ORIGIN-encoded name', () {
     // Origin-encoded because they all share one folder now: two projects

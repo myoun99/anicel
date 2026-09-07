@@ -14,6 +14,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -316,9 +317,9 @@ void main() {
       // showed. Camera centered at (6,6) with a member at (6,6): visible.
       final image = await service.renderThroughCamera(
         nodes: [
-          CutFrameCompositeSurfaceGroup(
+          CompositeGroup<CutFrameCompositeLayer>(
             children: [
-              CutFrameCompositeSurfaceLeaf(
+              CompositeLeaf<CutFrameCompositeLayer>(
                 CutFrameCompositeLayer(
                   surface: surfaceWithRedPixelAt(6, 6),
                   opacity: 1,

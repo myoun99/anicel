@@ -48,6 +48,7 @@ const _startRepeat = TimelineRunBehavior(
 );
 
 void main() {
+  group('remapFrameIds', _remapTests);
   test('no behaviors and no ghosts returns the SAME layer instance', () {
     final layer = _layer(timeline: {0: _draw('a', 3)});
     expect(
@@ -280,8 +281,11 @@ void main() {
     // space [6,10) fits the cycle's first part — the 4f hold copy.
     expect(derived.timeline[6]!.ghost, isTrue);
     expect(derived.timeline[6]!.length, 4);
-    expect(timelineIndexIsGhost(derived, 8), isTrue,
-        reason: 'covered by the cycled hold copy, not a separate entry');
+    expect(
+      timelineIndexIsGhost(derived, 8),
+      isTrue,
+      reason: 'covered by the cycled hold copy, not a separate entry',
+    );
     expect(derived.timeline[8], isNull);
   });
 
@@ -315,8 +319,39 @@ void main() {
     expect(derived.timeline[4]!.ghost, isTrue);
     expect(derived.timeline[4]!.length, 2, reason: 'cycled hold copy');
     expect(derived.timeline[0]!.ghost, isTrue);
-    expect(derived.timeline[0]!.length, 2,
-        reason: 'partial lead-in keeps the pattern tail (the hold part)');
+    expect(
+      derived.timeline[0]!.length,
+      2,
+      reason: 'partial lead-in keeps the pattern tail (the hold part)',
+    );
+  });
+
+  test('a pattern anchor ON the run\'s first frame is INSIDE the run', () {
+    // ⛔The bound is `>= run start`, not `>`. The first block of the run
+    // is a legal pattern anchor — picking it is how a start repeat says
+    // "cycle just this one frame" — and an off-by-one there silently
+    // falls back to the whole run, which looks plausible on screen.
+    final layer = _layer(
+      timeline: {5: _draw('a', 1), 6: _draw('b', 1), 7: _draw('c', 1)},
+      behaviors: const [
+        TimelineRunBehavior(
+          anchorFrameId: FrameId('a'),
+          side: TimelineRunEdgeSide.start,
+          mode: TimelineRunEdgeMode.repeat,
+          patternAnchorFrameId: FrameId('a'),
+        ),
+      ],
+    );
+
+    final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+    // Pattern = [a] alone, tiled leftward over [0,5).
+    for (var index = 0; index < 5; index += 1) {
+      expect(
+        derived.timeline[index]!.frameId,
+        const FrameId('a'),
+        reason: 'frame $index cycles the anchor block alone',
+      );
+    }
   });
 
   test('setting the same edge twice: the LAST spec wins the dedupe', () {
@@ -382,5 +417,61 @@ void main() {
       TimelineRunEdgeMode.hold,
     );
     expect(runEdgeBehaviorAt(layer, 0, TimelineRunEdgeSide.start), isNull);
+  });
+}
+
+/// remapFrameIds — the anchor-remap the three copy paths share (the copy
+/// of a layer, the paste planner, the attach mount). What an UNMAPPABLE
+/// anchor means is the caller's law, told by what the mapping returns.
+void _remapTests() {
+  const pattern = TimelineRunBehavior(
+    anchorFrameId: FrameId('a'),
+    side: TimelineRunEdgeSide.end,
+    mode: TimelineRunEdgeMode.repeat,
+    patternAnchorFrameId: FrameId('b'),
+  );
+
+  test('both anchors move, and side and mode ride along', () {
+    final remapped = pattern.remapFrameIds(
+      (id) => FrameId('new-${id.value}'),
+    )!;
+    expect(remapped.anchorFrameId, const FrameId('new-a'));
+    expect(remapped.patternAnchorFrameId, const FrameId('new-b'));
+    expect(remapped.side, TimelineRunEdgeSide.end);
+    expect(remapped.mode, TimelineRunEdgeMode.repeat);
+  });
+
+  test('no pattern anchor stays no pattern anchor', () {
+    expect(
+      _endHold.remapFrameIds((id) => FrameId('new-${id.value}'))!
+          .patternAnchorFrameId,
+      isNull,
+    );
+  });
+
+  test('⛔an unmappable ANCHOR answers null — the caller drops the '
+      'behaviour', () {
+    expect(pattern.remapFrameIds((id) => null), isNull);
+  });
+
+  test('an unmappable PATTERN anchor reads as "no pattern", which is the '
+      'whole-run reading — the behaviour survives', () {
+    final remapped = pattern.remapFrameIds(
+      (id) => id == const FrameId('a') ? const FrameId('a2') : null,
+    )!;
+    expect(remapped.anchorFrameId, const FrameId('a2'));
+    expect(remapped.patternAnchorFrameId, isNull);
+  });
+
+  test('a mapping that keeps unknown ids keeps the behaviour whole — what '
+      'the duplicate and the paste pass', () {
+    final map = {const FrameId('a'): const FrameId('a2')};
+    final remapped = pattern.remapFrameIds((id) => map[id] ?? id)!;
+    expect(remapped.anchorFrameId, const FrameId('a2'));
+    expect(
+      remapped.patternAnchorFrameId,
+      const FrameId('b'),
+      reason: 'unmapped means unchanged here, never dropped',
+    );
   });
 }

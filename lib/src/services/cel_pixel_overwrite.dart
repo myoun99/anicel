@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../core/argb_channels.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/bitmap_tile_rewrite.dart';
 import '../models/tile_coord.dart';
 import 'cel_source_effect_pass.dart';
 
@@ -439,14 +440,7 @@ typedef CelPixelWalk =
     if (tile == null) {
       return;
     }
-    // Reads come from the tile's own bytes and writes go to the copy, so
-    // "the original value" stays available even after the pixel beside it
-    // has been overwritten. The copy is made LAZILY, at the first pixel
-    // that actually changes: a tile the walk crosses but never writes keeps
-    // its ORIGINAL object and, the tile map being immutable, is then shared
-    // with the old surface — the single biggest reason a whole-canvas pass
-    // over line art costs almost nothing.
-    final written = tile.readPixels<Uint8List?>((_, view) {
+    final rewritten = rewriteTileLazily(tile, surface.tileSize, (view) {
       Uint8List? out;
       for (var pixel = 0; pixel < pixelCount; pixel += 1) {
         final maskValue = mask == null ? 255 : mask[pixel];
@@ -490,19 +484,15 @@ typedef CelPixelWalk =
       }
       return out;
     });
-    if (written != null) {
-      rebuilt[coord] = BitmapTile(
-        coord: coord,
-        size: surface.tileSize,
-        pixels: written,
-      );
+    if (rewritten != null) {
+      rebuilt[coord] = rewritten;
     }
   });
 
-  if (rebuilt.isEmpty) {
-    return (surface: surface, restore: null);
-  }
-  return (surface: surface.putTiles(rebuilt.values), restore: builder?.build());
+  return (
+    surface: surface.withRebuiltTiles(rebuilt),
+    restore: rebuilt.isEmpty ? null : builder?.build(),
+  );
 }
 
 /// `older + (incoming - older) * coverage / 255`, in the integer mul-div-255

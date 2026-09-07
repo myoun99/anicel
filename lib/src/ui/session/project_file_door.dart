@@ -432,7 +432,8 @@ class ProjectFileDoor {
     // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
     // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE
     // rather than on close or on import-undo, because this is the one
-    // moment the bytes provably live somewhere else.
+    // moment the bytes provably live somewhere else. The save's own step,
+    // so it stays here rather than joining the binding below.
     for (final path in mediaToStore.keys) {
       _staging.retire(path);
     }

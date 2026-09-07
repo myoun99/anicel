@@ -4,7 +4,6 @@ import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/command.dart';
 import '../../services/onion_skin_plan.dart';
@@ -68,8 +67,7 @@ class OnionSkin {
         // displayed, so the sweep over "every displayed layer" must not
         // count it — otherwise the bulk button reads OFF because of rows
         // nobody can see.
-        if (stack.rowVisible(layer) && layerKindAcceptsBrushInput(layer.kind))
-          layer,
+        if (stack.rowVisible(layer) && layer.kind.acceptsBrushInput) layer,
     ];
   }
 
@@ -160,7 +158,7 @@ class OnionSkin {
         // on screen with nothing under them.
         if (enabledIds.contains(layer.id) &&
             cut.layers.rowVisible(layer) &&
-            layerKindAcceptsBrushInput(layer.kind))
+            layer.kind.acceptsBrushInput)
           for (final plan in planOnionSkin(
             layer: layer,
             frameIndex: _controllers.timelineController.currentFrameIndex,

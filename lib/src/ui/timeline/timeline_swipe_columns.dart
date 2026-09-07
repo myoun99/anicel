@@ -58,7 +58,7 @@ RailToggle<TimelineDisplayRow>? _onion(TimelineGridHooks hooks) {
   final enabledOf = hooks.layerOnionSkinEnabledOf;
   if (onToggle == null || enabledOf == null) return null;
   return (
-    valueOf: (row) => !row.isLane && layerKindAcceptsBrushInput(row.layer.kind)
+    valueOf: (row) => !row.isLane && row.layer.kind.acceptsBrushInput
         ? enabledOf(row.layer.id)
         : null,
     toggle: (row) => onToggle(row.layer.id),

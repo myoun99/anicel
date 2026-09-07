@@ -22,6 +22,7 @@ library;
 import 'dart:collection';
 import 'dart:math' as math;
 
+import '../../core/path_names.dart';
 import '../editing/default_cut_helpers.dart';
 import '../../models/camera_pose.dart';
 import '../../models/audio_clip.dart';
@@ -187,12 +188,6 @@ TvpImportPlan planTvpImport({
   // Sound tracks (only the .tvpp reader supplies these): each becomes an
   // SE row whose one block starts where the track's offset lands and runs
   // to the cut's end — the reference links, playback clamps to the file.
-  String baseName(String path) {
-    final normalized = path.replaceAll('\\', '/');
-    final slash = normalized.lastIndexOf('/');
-    return slash < 0 ? normalized : normalized.substring(slash + 1);
-  }
-
   for (final track in parsed.audioTracks) {
     final layerId = mint.nextLayerId();
     final frameId = mint.nextFrameId(layerId);
@@ -201,12 +196,12 @@ TvpImportPlan planTvpImport({
         .clamp(0, math.max(0, duration - 1))
         .toInt();
     if (track.muted) {
-      warnings.add('${baseName(track.filePath)}: 트랙이 뮤트 상태였다 — 소리는 그대로 연결된다.');
+      warnings.add('${fileNameOfPath(track.filePath)}: 트랙이 뮤트 상태였다 — 소리는 그대로 연결된다.');
     }
     layers.add(
       Layer(
         id: layerId,
-        name: baseName(track.filePath),
+        name: fileNameOfPath(track.filePath),
         kind: LayerKind.se,
         frames: [Frame(id: frameId, duration: 1, strokes: const [])],
         timeline: SplayTreeMap<int, TimelineExposure>.from({

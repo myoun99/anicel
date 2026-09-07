@@ -1,3 +1,4 @@
+import '../../core/set_toggle.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -134,11 +135,10 @@ class VisibilitySolo {
 
   /// Toggles an SE row's solo (pro semantics: multiple solos stack).
   void toggleLayerSolo(LayerId layerId) {
-    final next = Set<LayerId>.of(_internals.soloedSeLayerIds.value);
-    if (!next.remove(layerId)) {
-      next.add(layerId);
-    }
-    _internals.soloedSeLayerIds.value = next;
+    _internals.soloedSeLayerIds.value = toggledSet(
+      _internals.soloedSeLayerIds.value,
+      layerId,
+    );
     _changes.refreshLiveAudioSchedule();
     _changes.notifyChanged();
   }

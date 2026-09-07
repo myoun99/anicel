@@ -2,9 +2,8 @@ import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
-import '../command.dart';
+import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
-import '../project_repository.dart';
 import 'folder_mirror.dart';
 
 /// 폴더 생성: folds [memberLayerIds] (a contiguous stack run — the
@@ -16,9 +15,9 @@ import 'folder_mirror.dart';
 /// on the folder's eye, static opacity, blend and name mirror through the
 /// ordinary layer machinery, with its FX lanes and twirl staying per-use
 /// exactly like any other layer's. One undo removes them everywhere.
-class CreateFolderCommand implements Command {
+class CreateFolderCommand extends LinkRegistrySnapshotCommand {
   CreateFolderCommand({
-    required this.repository,
+    required super.repository,
     required this.cutId,
     required this.name,
     required this.memberLayerIds,
@@ -26,7 +25,6 @@ class CreateFolderCommand implements Command {
     required this.groupId,
   });
 
-  final ProjectRepository repository;
   final CutId cutId;
   final String name;
   final List<LayerId> memberLayerIds;
@@ -41,7 +39,6 @@ class CreateFolderCommand implements Command {
 
   /// (cut, layer) → previous folderId, for undo.
   List<({CutId cutId, LayerId layerId, LayerId? previousFolderId})>? _moved;
-  LayerLinkRegistry? _registryBefore;
 
   @override
   String get description => 'Create folder "$name"';
@@ -68,7 +65,7 @@ class CreateFolderCommand implements Command {
 
     final moved =
         <({CutId cutId, LayerId layerId, LayerId? previousFolderId})>[];
-    _registryBefore ??= project.linkRegistry;
+    snapshotRegistry(project);
     final folderMembers = <LayerLinkMember>[];
     for (final target in targets) {
       final cut = requireCut(project, target.cutId);
@@ -117,7 +114,7 @@ class CreateFolderCommand implements Command {
       }
       folderMembers.add(
         LayerLinkMember(
-          trackId: requireCutLocation(project, target.cutId).track.id,
+          trackId: requireCutPosition(project, target.cutId).trackId,
           cutId: target.cutId,
           layerId: newFolderId,
         ),
@@ -136,16 +133,12 @@ class CreateFolderCommand implements Command {
       );
     }
     _moved ??= moved;
+    markExecuted();
   }
 
   @override
-  void undo() {
-    final moved = _moved;
-    final registryBefore = _registryBefore;
-    if (moved == null || registryBefore == null) {
-      throw StateError('Command has not been executed.');
-    }
-    for (final move in moved) {
+  void undoBeforeRegistry() {
+    for (final move in _moved!) {
       repository.updateLayerFolderId(
         cutId: move.cutId,
         layerId: move.layerId,
@@ -161,6 +154,5 @@ class CreateFolderCommand implements Command {
         repository.deleteLayer(cutId: entry.key, layerId: entry.value);
       }
     }
-    repository.restoreLinkRegistry(registryBefore);
   }
 }

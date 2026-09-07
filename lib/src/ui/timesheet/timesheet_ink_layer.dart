@@ -80,26 +80,22 @@ List<SheetInkWindow> timesheetInkWindows({
     );
   }
   for (final pageIndex in visiblePages) {
-    for (var half = 0; half < 2; half += 1) {
-      final rowCount = layout.halfRowCount(half);
-      if (rowCount <= 0) {
-        continue;
-      }
+    for (final strip in layout.halfStrips) {
       windows.add(
         SheetInkWindow(
-          id: 'strip-$pageIndex-h$half',
+          id: 'strip-$pageIndex-h${strip.half}',
           surfaceScale: TimesheetInkController.inkScale.toDouble(),
           plane: TimesheetInkPlane.strip,
           key: TimesheetInkController.stripBandKey(cutId, pageIndex),
           documentRect: Rect.fromLTWH(
-            layout.halfLeft(pageIndex, half),
+            layout.halfLeft(pageIndex, strip.half),
             layout.halfRowsTop(pageIndex),
             layout.halfWidth,
-            rowCount * rowHeight,
+            strip.rowCount * rowHeight,
           ),
           inkOffset: Offset(
             0,
-            half *
+            strip.half *
                 document.halfFrameCount *
                 rowHeight *
                 TimesheetInkController.inkScale,

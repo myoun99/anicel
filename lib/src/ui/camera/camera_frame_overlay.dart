@@ -12,6 +12,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/layer_pose_paint.dart' show cameraProjectionMatrix;
+import '../repaint_props.dart';
 
 /// The camera pose's center in viewport (screen) coordinates.
 Offset cameraCenterInViewport({
@@ -95,10 +96,16 @@ List<Offset> cameraFrameCornersInViewport({
   ];
 }
 
-/// The rotate lever's knob center in viewport coordinates: it sticks out of
-/// the top edge's midpoint, away from the frame center, by
-/// [CameraFrameOverlay.rotateLeverLength] screen pixels.
-Offset cameraRotateKnobInViewport({
+/// The rotate lever in viewport coordinates, as ONE value: its [base] is
+/// the top edge's midpoint and its [knob] sticks out of that midpoint,
+/// away from the frame center, by [CameraFrameOverlay.rotateLeverLength]
+/// screen pixels.
+///
+/// The base and the knob answer together because they are one lever: the
+/// painter drew the midpoint itself and then asked a knob helper that
+/// derived the very same midpoint again, so the line and the circle it
+/// joins were two derivations of one geometry.
+({Offset base, Offset knob}) cameraRotateLeverInViewport({
   required CameraPose pose,
   required CanvasSize cameraFrameSize,
   required CanvasViewport viewport,
@@ -109,14 +116,14 @@ Offset cameraRotateKnobInViewport({
     viewport: viewport,
   );
   final center = cameraCenterInViewport(pose: pose, viewport: viewport);
-  final topMid = Offset(
+  final base = Offset(
     (corners[0].dx + corners[1].dx) / 2,
     (corners[0].dy + corners[1].dy) / 2,
   );
-  final direction = topMid - center;
+  final direction = base - center;
   final distance = direction.distance;
   final unit = distance == 0 ? const Offset(0, -1) : direction / distance;
-  return topMid + unit * CameraFrameOverlay.rotateLeverLength;
+  return (base: base, knob: base + unit * CameraFrameOverlay.rotateLeverLength);
 }
 
 /// The TVPaint-style camera view drawn over the canvas: everything outside
@@ -237,11 +244,11 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     final position = details.localPosition;
     final pose = widget.pose;
 
-    final knob = cameraRotateKnobInViewport(
+    final knob = cameraRotateLeverInViewport(
       pose: pose,
       cameraFrameSize: widget.cameraFrameSize,
       viewport: widget.viewport,
-    );
+    ).knob;
     if ((position - knob).distance <= CameraFrameOverlay.handleHitRadius) {
       _dragMode = _CameraDragMode.rotate;
       _lastPointerAngle = _pointerAngleDegrees(position);
@@ -423,7 +430,7 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   }
 }
 
-class CameraFramePainter extends CustomPainter {
+class CameraFramePainter extends CustomPainter with RepaintOnProps {
   const CameraFramePainter({
     required this.pose,
     required this.cameraFrameSize,
@@ -505,30 +512,21 @@ class CameraFramePainter extends CustomPainter {
         );
       }
 
-      final topMid = Offset(
-        (corners[0].dx + corners[1].dx) / 2,
-        (corners[0].dy + corners[1].dy) / 2,
-      );
-      final knob = cameraRotateKnobInViewport(
+      final lever = cameraRotateLeverInViewport(
         pose: pose,
         cameraFrameSize: cameraFrameSize,
         viewport: viewport,
       );
-      canvas.drawLine(topMid, knob, line);
+      canvas.drawLine(lever.base, lever.knob, line);
       // The knob stays FILLED: it is the one handle that is not on a
       // corner, so the frame's own geometry does not point at it.
-      canvas.drawCircle(knob, 3.5, Paint()..color = outlineColor);
+      canvas.drawCircle(lever.knob, 3.5, Paint()..color = outlineColor);
     }
   }
 
   @override
-  bool shouldRepaint(covariant CameraFramePainter oldDelegate) =>
-      oldDelegate.pose != pose ||
-      oldDelegate.cameraFrameSize != cameraFrameSize ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.dimOpacity != dimOpacity ||
-      oldDelegate.outlineColor != outlineColor ||
-      oldDelegate.showHandles != showHandles;
+  Object get props =>
+      (pose, cameraFrameSize, viewport, dimOpacity, outlineColor, showHandles);
 }
 
 /// PEN-13: the camera pan that never hands its drag to a late finger —

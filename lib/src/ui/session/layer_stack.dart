@@ -89,7 +89,7 @@ class LayerStack {
     if (cut == null) {
       return false;
     }
-    return !layerKindIsSingletonPerCut(kind) ||
+    return !kind.isSingletonPerCut ||
         !cut.layers.any((layer) => layer.kind == kind);
   }
 
@@ -151,7 +151,7 @@ class LayerStack {
         // The COVERING kinds (storyboard, image) are born covering their
         // cut — one cell, edge to edge. There is no "X" in their world,
         // so they never start empty and then have to be filled.
-        Layer newLayerFor(Cut cut) => layerKindCoversWithoutGaps(kind)
+        Layer newLayerFor(Cut cut) => kind.coversWithoutGaps
             ? createCoveringLayer(
                 layerId: layerId,
                 frameId: FrameId(_frameIds.nextFrameId(layerId)),
@@ -209,7 +209,7 @@ class LayerStack {
   /// reads this. Non-drawing sections (SE / camera / instruction) and
   /// uncovered cells always answer true (no tint).
   bool celHasContentForLayer(Layer layer, int frameIndex) {
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       // R28 #11 carried onto the shared painter: a folder frame is grey
       // only when NO member drew there ("다른곳에서 해당위치에 그림그려진
       // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
@@ -227,8 +227,8 @@ class LayerStack {
     //
     // ⛔The two only looked like one question while every cel-holding row
     // happened to sit in the drawing section, which is the same trap R27
-    // #16 found in `layerKindCarriesInstructions`.
-    if (!layerKindIsDrawingCel(layer.kind)) {
+    // #16 found in `LayerKind.carriesInstructions`.
+    if (!layer.kind.isDrawingCel) {
       return true;
     }
     final cut = _project.activeCutOrNull;
@@ -249,7 +249,7 @@ class LayerStack {
       // ⛔It asks the span ADAPTER rather than reading `layer.instructions`
       // again — 「is this frame under a span」 has one home, and the band
       // that draws the block reads the same one ([[no-copy-to-share]]).
-      if (!layerKindCarriesInstructions(layer.kind)) {
+      if (!layer.kind.carriesInstructions) {
         return true;
       }
       return instructionCellExposureState(layer, frameIndex) ==

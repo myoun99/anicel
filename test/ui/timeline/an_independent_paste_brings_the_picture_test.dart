@@ -33,9 +33,9 @@ void main() {
   BitmapSurface ink(CanvasSize canvasSize) {
     const tile = 256;
     final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, 255);
-    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTile(
+    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
       BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
-    );
+    ]);
   }
 
   ({EditorSessionManager session, LayerId from, LayerId to}) twoRows() {
@@ -121,6 +121,50 @@ void main() {
       reason: 'a LINKED paste points at the same cel; this one mints',
     );
     expect(born.name, isNull, reason: '「이름만 없는상태로」');
+  });
+
+  /// The BLOCK DUPLICATE mints through the same kernel, so 「그림 복제되고
+  /// 이름만 없는상태로」 is its law too. It used to run a hand-written second
+  /// copy of the mint that threw the minted map away, so the twin came out
+  /// blank — the same F-62 damage on the verb next door.
+  test('🚨★★★an independent BLOCK DUPLICATE carries the drawing too', () {
+    final f = twoRows();
+    f.session.selectLayer(f.from);
+    f.session.selectFrameIndex(0);
+    expect(
+      hasPicture(f.session, f.from),
+      isTrue,
+      reason: '⛔premise: the source row actually has a picture',
+    );
+
+    f.session.duplicateActiveBlock(linked: false);
+
+    final layer = f.session.layers.firstWhere((l) => l.id == f.from);
+    final bornId = layer.timeline[1]?.frameId;
+    expect(bornId, isNotNull, reason: 'the copy landed after the block');
+    expect(
+      bornId,
+      isNot(layer.timeline[0]?.frameId),
+      reason: 'independent: a new cel, not the source',
+    );
+    final born = layer.frames.firstWhere((frame) => frame.id == bornId);
+    expect(born.name, isNull, reason: '「이름만 없는상태로」');
+    expect(
+      f.session.brushSurfaceForLayerFrame(layer, born)?.tiles.isNotEmpty,
+      isTrue,
+      reason: '🚨「그림 복제되고」 — the duplicate is the picture, not an id',
+    );
+  });
+
+  test('⛔a LINKED block duplicate still copies nothing', () {
+    final f = twoRows();
+    f.session.selectLayer(f.from);
+    f.session.selectFrameIndex(0);
+    f.session.duplicateActiveBlock(linked: true);
+
+    final layer = f.session.layers.firstWhere((l) => l.id == f.from);
+    expect(layer.frames.length, 1, reason: 'nothing was minted');
+    expect(layer.timeline[1]?.frameId, layer.timeline[0]?.frameId);
   });
 
   test('⛔a LINKED paste copies nothing — it points at the cel that exists', () {

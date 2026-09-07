@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/key_range_move.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_stack_order.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
@@ -514,18 +515,8 @@ class FrameRangeMoveDrag {
     KeySources keys,
   ) {
     final sources = <({Layer commit, int offset})>[];
-    for (final id in selection.spanLayerIds) {
-      // Rows whose timing is not their own stand down — see
-      // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
-        continue;
-      }
-      final display = _project.rangeLayerById(id);
-      final commit = _project.commitLayerById(id);
-      if (display == null || commit == null) {
-        continue;
-      }
-      final hasBlock = drawingBlocks(display.timeline).any(
+    for (final row in _rangeSelections.retimableSpanRows(selection)) {
+      final hasBlock = drawingBlocks(row.display.timeline).any(
         (block) => _wholeBlockIn(
           block,
           selection.startIndex,
@@ -534,8 +525,8 @@ class FrameRangeMoveDrag {
       );
       if (hasBlock) {
         sources.add((
-          commit: commit,
-          offset: _rangeMoveCommitOffset(id, selection.startIndex),
+          commit: row.commit,
+          offset: _rangeMoveCommitOffset(row.id, selection.startIndex),
         ));
       }
     }
@@ -619,14 +610,11 @@ class FrameRangeMoveDrag {
       _rangeMoveCameraShifted = null;
       _rangeMoveInstructionShifted = null;
       _camera.showCameraKeysDragPreview(null);
-      final newStart = selection.startIndex + frameDelta;
-      if (newStart >= 0) {
-        _rangeMoveSelection = TimelineFrameRangeSelection(
-          layerId: targetLayerId,
-          startIndex: newStart,
-          endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        );
-      }
+      _slideSelectionOutline(
+        selection,
+        landedLayerId: targetLayerId,
+        shift: frameDelta,
+      );
     }
 
     final sourceIsSe = _project.isTrackSeLayerId(selection.layerId);
@@ -745,17 +733,6 @@ class FrameRangeMoveDrag {
   /// blocks had a perfectly legal home. Each moving row translates this
   /// display hop into its own lattice below.
   List<Layer> _rangeRowOrder() => sectionedLayerOrder(_project.layers);
-
-  /// The display-row hop from [anchorId] to [targetId]; null when either
-  /// row is not on screen.
-  int? _displayRowDelta(List<Layer> rows, LayerId anchorId, LayerId targetId) {
-    final anchorIndex = rows.indexWhere((layer) => layer.id == anchorId);
-    final targetIndex = rows.indexWhere((layer) => layer.id == targetId);
-    if (anchorIndex == -1 || targetIndex == -1) {
-      return null;
-    }
-    return targetIndex - anchorIndex;
-  }
 
   /// The one lattice hop every content-bearing row in [ids] agrees on.
   /// `blocked` when a row cannot land, or when two rows would need
@@ -891,15 +868,35 @@ class FrameRangeMoveDrag {
       selection,
       rowDelta,
     );
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: targetLayerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        layerIds: landedLayerIds,
-      );
+    _slideSelectionOutline(
+      selection,
+      landedLayerId: targetLayerId,
+      shift: frameDelta,
+      layerIds: landedLayerIds,
+    );
+  }
+
+  /// The selection outline follows the previewed landing live.
+  ///
+  /// The `newStart >= 0` clamp is the whole reason this is one function:
+  /// four copies spelled it, and it is precisely the rung that goes
+  /// missing from one of them later.
+  void _slideSelectionOutline(
+    TimelineFrameRangeSelection selection, {
+    required LayerId landedLayerId,
+    required int shift,
+    List<LayerId> layerIds = const [],
+  }) {
+    final newStart = selection.startIndex + shift;
+    if (newStart < 0) {
+      return;
     }
+    _rangeMoveSelection = TimelineFrameRangeSelection(
+      layerId: landedLayerId,
+      startIndex: newStart,
+      endIndexExclusive: selection.endIndexExclusive + shift,
+      layerIds: layerIds,
+    );
   }
 
   /// The span sorted by what each row can DO with the hop, or null when a
@@ -995,7 +992,7 @@ class FrameRangeMoveDrag {
   ) {
     final cast = step.cast;
     final lattices = step.lattices;
-    final displayDelta = _displayRowDelta(
+    final displayDelta = layerIndexDelta(
       lattices.rows,
       _rangeMoveGrabLayerId ?? step.selection.layerId,
       targetLayerId,
@@ -1417,17 +1414,11 @@ class FrameRangeMoveDrag {
           ),
       },
     );
-    // The selection outline follows the previewed landing live.
-    final landedLayerId = plan.isCrossLayer ? plan.targetAfter!.id : source.id;
-    final startShift = plan.destinationStartIndex - groupStart;
-    final newStart = selection.startIndex + startShift;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: landedLayerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + startShift,
-      );
-    }
+    _slideSelectionOutline(
+      selection,
+      landedLayerId: plan.isCrossLayer ? plan.targetAfter!.id : source.id,
+      shift: plan.destinationStartIndex - groupStart,
+    );
   }
 
   void _updateMultiSourceRangeMove(
@@ -1479,16 +1470,12 @@ class FrameRangeMoveDrag {
         ? null
         : instructionShifted;
     _publishSlidePreview(plans, riders);
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      _rangeMoveSelection = TimelineFrameRangeSelection(
-        layerId: selection.layerId,
-        startIndex: newStart,
-        endIndexExclusive: selection.endIndexExclusive + frameDelta,
-        layerIds: selection.layerIds,
-      );
-    }
-    return;
+    _slideSelectionOutline(
+      selection,
+      landedLayerId: selection.layerId,
+      shift: frameDelta,
+      layerIds: selection.layerIds,
+    );
   }
 
   /// Forgets the drag — every stored source, plan and rider shift — and
@@ -1714,19 +1701,48 @@ class FrameRangeMoveDrag {
               cutFrameCount: _project.activeCutFrameCount,
             ),
           ),
-      if (instructionShifted != null)
-        ..._instructionShiftCommands(instructionShifted, cut),
-      if (cameraShifted != null && cut != null)
-        UpdateCutCameraCommand(
-          repository: _project.repository,
-          cutId: cut.id,
-          camera: CutCamera(keyframes: cameraShifted),
-          description: 'Move camera keys',
-        ),
+      ..._riderCommands(instructionShifted, cameraShifted, cut),
     ];
+    if (!_commitRangeMoveCommands(commands, selection, landedSelection)) {
+      return;
+    }
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
+  }
+
+  /// R27 #8: the frame-axis riders (camera keys, instruction spans)
+  /// land in the SAME undo step as the rigid row move — through the
+  /// ONE two-armed projection the plain slide commits with, so a
+  /// riding TRANSITION lands too (C④: this branch used to carry a
+  /// cut-gated copy with the transition arm missing).
+  List<Command> _riderCommands(
+    Map<LayerId, Map<int, InstructionEvent>>? instructionShifted,
+    Map<int, CameraPose>? cameraShifted,
+    Cut? cut,
+  ) => [
+    if (instructionShifted != null)
+      ..._instructionShiftCommands(instructionShifted, cut),
+    if (cameraShifted != null && cut != null)
+      UpdateCutCameraCommand(
+        repository: _project.repository,
+        cutId: cut.id,
+        camera: CutCamera(keyframes: cameraShifted),
+        description: 'Move camera keys',
+      ),
+  ];
+
+  /// Executes a range move's [commands] as ONE undo step and leaves the
+  /// selection on the frames where they landed. False when there was
+  /// nothing to commit — the selection goes back to where the drag
+  /// started and the caller stops.
+  bool _commitRangeMoveCommands(
+    List<Command> commands,
+    TimelineFrameRangeSelection selection,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
     if (commands.isEmpty) {
       _rangeMoveSelection = selection;
-      return;
+      return false;
     }
     _project.historyManager.execute(
       commands.length == 1
@@ -1737,9 +1753,7 @@ class FrameRangeMoveDrag {
             ),
     );
     _rangeMoveSelection = landedSelection;
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
-    return;
+    return true;
   }
 
   void _commitMultiRowMove(
@@ -1754,24 +1768,7 @@ class FrameRangeMoveDrag {
     final commands = <Command>[];
     commands.addAll(_seRowMoveCommands(multiSeRowChanges));
     commands.addAll(_multiRowLayerCommands(multiRowPlan));
-    // R27 #8: the frame-axis riders (camera keys, instruction spans)
-    // land in the SAME undo step as the rigid row move — through the
-    // ONE two-armed projection the plain slide commits with, so a
-    // riding TRANSITION lands too (C④: this branch used to carry a
-    // cut-gated copy with the transition arm missing).
-    if (instructionShifted != null) {
-      commands.addAll(_instructionShiftCommands(instructionShifted, cut));
-    }
-    if (cut != null && cameraShifted != null) {
-      commands.add(
-        UpdateCutCameraCommand(
-          repository: _project.repository,
-          cutId: cut.id,
-          camera: CutCamera(keyframes: cameraShifted),
-          description: 'Move camera keys',
-        ),
-      );
-    }
+    commands.addAll(_riderCommands(instructionShifted, cameraShifted, cut));
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
       commands.add(
         RekeyBrushFramesCommand(
@@ -1786,25 +1783,14 @@ class FrameRangeMoveDrag {
         ),
       );
     }
-    if (commands.isEmpty) {
-      _rangeMoveSelection = selection;
+    if (!_commitRangeMoveCommands(commands, selection, landedSelection)) {
       return;
     }
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Move frame range',
-              commands: commands,
-            ),
-    );
-    _rangeMoveSelection = landedSelection;
     if (landedSelection != null) {
       _controllers.layerController.selectLayer(landedSelection.layerId);
     }
     _changes.warmActiveCut();
     _changes.notifyChanged();
-    return;
   }
 
   /// The timeline commands of the SE row pairs a multi-row move changed:
@@ -1974,7 +1960,7 @@ class FrameRangeMoveDrag {
     // Design E: the storyboard row refuses repeat/hold regions outright —
     // a derived instance would look exactly like a panel while owning no
     // memo of its own. Copy the frames instead.
-    if (!layerKindAcceptsRepeatRegions(before.kind)) {
+    if (!before.kind.acceptsRepeatRegions) {
       return;
     }
     final run = gluedRunAt(before, blockStartIndex);
@@ -2046,18 +2032,45 @@ class FrameRangeMoveDrag {
     TimelineRunEdgeSide side,
     Layer before,
   ) {
-    var edgeAnchor = run.anchorFrameId;
-    if (side == TimelineRunEdgeSide.end) {
-      for (final entry in before.timeline.entries) {
-        if (entry.value.ghost ||
-            entry.key < run.startIndex ||
-            entry.key >= run.endIndexExclusive) {
-          continue;
-        }
-        edgeAnchor = entry.value.frameId!;
+    if (side != TimelineRunEdgeSide.end) {
+      return run.anchorFrameId;
+    }
+    return _lastFrameIdIn(before, run.startIndex, run.endIndexExclusive) ??
+        run.anchorFrameId;
+  }
+
+  /// The LAST real (non-ghost) block's frame in `[startIndex,
+  /// endExclusive)` on [before], or null when the window holds none.
+  ///
+  /// The window's end is the whole difference between the three walks
+  /// that ask this — a run's end or a selection's end.
+  FrameId? _lastFrameIdIn(Layer before, int startIndex, int endExclusive) {
+    FrameId? found;
+    for (final entry in before.timeline.entries) {
+      if (entry.value.ghost ||
+          entry.key < startIndex ||
+          entry.key >= endExclusive) {
+        continue;
+      }
+      found = entry.value.frameId ?? found;
+    }
+    return found;
+  }
+
+  /// The FIRST real (non-ghost) block's frame in `[startIndex,
+  /// endExclusive)` on [before], or null when the window holds none.
+  FrameId? _firstFrameIdIn(Layer before, int startIndex, int endExclusive) {
+    for (final entry in before.timeline.entries) {
+      if (entry.value.ghost ||
+          entry.key < startIndex ||
+          entry.key >= endExclusive) {
+        continue;
+      }
+      if (entry.value.frameId case final frameId?) {
+        return frameId;
       }
     }
-    return edgeAnchor;
+    return null;
   }
 
   /// The pattern anchor a Repeat edge takes from the frame-range selection
@@ -2105,14 +2118,7 @@ class FrameRangeMoveDrag {
         selection.startIndex <= run.startIndex) {
       return null;
     }
-    for (final entry in before.timeline.entries) {
-      if (!entry.value.ghost &&
-          entry.key >= selection.startIndex &&
-          entry.key < run.endIndexExclusive) {
-        return entry.value.frameId;
-      }
-    }
-    return null;
+    return _firstFrameIdIn(before, selection.startIndex, run.endIndexExclusive);
   }
 
   /// Start side: the pattern runs from the run's start to the last block
@@ -2127,16 +2133,7 @@ class FrameRangeMoveDrag {
         selection.endIndexExclusive >= run.endIndexExclusive) {
       return null;
     }
-    FrameId? patternAnchor;
-    for (final entry in before.timeline.entries) {
-      if (entry.value.ghost ||
-          entry.key < run.startIndex ||
-          entry.key >= selection.endIndexExclusive) {
-        continue;
-      }
-      patternAnchor = entry.value.frameId;
-    }
-    return patternAnchor;
+    return _lastFrameIdIn(before, run.startIndex, selection.endIndexExclusive);
   }
 
   /// What [displayDelta] means INSIDE [lattice] for the row [layerId]:
@@ -2157,12 +2154,6 @@ class FrameRangeMoveDrag {
     if (landingIndex < 0 || landingIndex >= rows.length) {
       return null;
     }
-    final landingId = rows[landingIndex].id;
-    final from = lattice.indexWhere((layer) => layer.id == layerId);
-    final to = lattice.indexWhere((layer) => layer.id == landingId);
-    if (from == -1 || to == -1) {
-      return null;
-    }
-    return to - from;
+    return layerIndexDelta(lattice, layerId, rows[landingIndex].id);
   }
 }

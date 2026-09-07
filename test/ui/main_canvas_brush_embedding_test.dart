@@ -23,8 +23,35 @@ import 'package:anicel/src/ui/brush/canvas_viewport_pan_metrics.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 import '../helpers/panel_finders.dart';
+
+/// Where the panbar's thumb sits — the AXIS PROJECTION
+/// ([CanvasViewportPanMetrics]) fed to the app-wide thumb law
+/// ([AppScrollbarGeometry]), exactly as `AppScrollbar` does it. The metrics
+/// no longer keep a second copy of the thumb arithmetic.
+double panbarThumbStart({
+  required Axis axis,
+  required CanvasViewport viewport,
+  required Size editorViewportSize,
+  required CanvasSize canvasSize,
+  required double trackExtent,
+}) {
+  final metrics = CanvasViewportPanMetrics(
+    axis: axis,
+    viewport: viewport,
+    editorViewportSize: editorViewportSize,
+    canvasSize: canvasSize,
+  );
+  return AppScrollbarGeometry(
+    trackExtent: trackExtent,
+    viewportExtent: metrics.visibleExtent,
+    contentExtent: metrics.scaledContentExtent,
+    offset: metrics.scrollOffset,
+    minThumbExtent: AppScrollbarThumb.minimum,
+  ).thumbStart;
+}
 
 void main() {
   testWidgets('HomePage mounts production brush host in the main canvas area', (
@@ -242,7 +269,7 @@ void main() {
       ),
     );
 
-    final initialMetrics = CanvasViewportPanMetrics(
+    final before = panbarThumbStart(
       axis: Axis.horizontal,
       viewport: viewport,
       editorViewportSize: editorViewportSize,
@@ -258,7 +285,7 @@ void main() {
     );
     await tester.pump();
 
-    final finalMetrics = CanvasViewportPanMetrics(
+    final after = panbarThumbStart(
       axis: Axis.horizontal,
       viewport: viewport,
       editorViewportSize: editorViewportSize,
@@ -266,10 +293,7 @@ void main() {
       trackExtent: trackWidth,
     );
 
-    expect(
-      finalMetrics.thumbStart - initialMetrics.thumbStart,
-      closeTo(100, 0.001),
-    );
+    expect(after - before, closeTo(100, 0.001));
   });
 
   testWidgets('vertical panbar thumb follows pointer delta 1:1', (
@@ -300,7 +324,7 @@ void main() {
       ),
     );
 
-    final initialMetrics = CanvasViewportPanMetrics(
+    final before = panbarThumbStart(
       axis: Axis.vertical,
       viewport: viewport,
       editorViewportSize: editorViewportSize,
@@ -314,7 +338,7 @@ void main() {
     );
     await tester.pump();
 
-    final finalMetrics = CanvasViewportPanMetrics(
+    final after = panbarThumbStart(
       axis: Axis.vertical,
       viewport: viewport,
       editorViewportSize: editorViewportSize,
@@ -322,10 +346,7 @@ void main() {
       trackExtent: trackHeight,
     );
 
-    expect(
-      finalMetrics.thumbStart - initialMetrics.thumbStart,
-      closeTo(100, 0.001),
-    );
+    expect(after - before, closeTo(100, 0.001));
   });
 
   testWidgets('panbar drag clamps viewport pan to valid range', (tester) async {

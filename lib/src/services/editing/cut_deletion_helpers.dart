@@ -2,6 +2,7 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
+import '../project_lookup.dart';
 import 'cut_list_helpers.dart';
 
 /// The empty frames a deleted cut leaves standing in its place, and who
@@ -37,20 +38,16 @@ CutDeletionHole cutDeletionHoleFor(
   Project project, {
   required CutId deletingCutId,
 }) {
-  for (final track in project.tracks) {
-    final index = track.cuts.indexWhere((cut) => cut.id == deletingCutId);
-    if (index == -1) {
-      continue;
-    }
-    final cut = track.cuts[index];
-    return CutDeletionHole(
-      frames: cut.leadingGapFrames + cut.duration,
-      absorbedByCutId: index + 1 < track.cuts.length
-          ? track.cuts[index + 1].id
-          : null,
-    );
+  final position = cutPositionOf(project, deletingCutId);
+  if (position == null) {
+    throw StateError('Project does not contain cut ${deletingCutId.value}.');
   }
-  throw StateError('Project does not contain cut ${deletingCutId.value}.');
+  final cuts = position.track.cuts;
+  final index = position.cutIndex;
+  return CutDeletionHole(
+    frames: position.cut.leadingGapFrames + position.cut.duration,
+    absorbedByCutId: index + 1 < cuts.length ? cuts[index + 1].id : null,
+  );
 }
 
 /// The last frame the project's CUTS reach — the movie's content end,

@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart';
 import 'axis_bar_gesture.dart';
 import 'superellipse_clip.dart';
+import '../repaint_props.dart';
 
 /// THE value text a slider shows (F-9, 유저 2026-08-24).
 ///
@@ -575,7 +576,7 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 }
 
-class _FieldSliderTrackPainter extends CustomPainter {
+class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
   const _FieldSliderTrackPainter({
     required this.t,
     required this.accent,
@@ -627,9 +628,5 @@ class _FieldSliderTrackPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FieldSliderTrackPainter oldDelegate) =>
-      oldDelegate.t != t ||
-      oldDelegate.originT != originT ||
-      oldDelegate.axis != axis ||
-      oldDelegate.accent != accent;
+  Object get props => (t, originT, axis, accent);
 }

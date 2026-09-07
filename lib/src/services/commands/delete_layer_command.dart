@@ -2,9 +2,8 @@ import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
-import '../command.dart';
+import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
-import '../project_repository.dart';
 import 'link_mirror.dart';
 
 /// Deletes a layer — and, when it is LINKED, every member of its group
@@ -13,20 +12,17 @@ import 'link_mirror.dart';
 /// friendly warning before calling). The emptied link groups dissolve.
 /// One undo reinserts every member at its exact index and restores the
 /// registry.
-class DeleteLayerCommand implements Command {
+class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
   DeleteLayerCommand({
-    required this.repository,
+    required super.repository,
     required this.cutId,
     required this.layerId,
   });
 
-  final ProjectRepository repository;
   final CutId cutId;
   final LayerId layerId;
 
   List<({CutId cutId, LayerId layerId, Layer layer, int index})>? _targets;
-  LayerLinkRegistry? _registryBefore;
-  bool _hasExecuted = false;
 
   @override
   String get description => 'Delete layer $layerId';
@@ -62,7 +58,7 @@ class DeleteLayerCommand implements Command {
     // here as well as in the coordinator's section rules; both are gone —
     // an empty cut is a representable state (the canvas shows its blank
     // paper, and drawing refuses with the R26 #35 notice).
-    _registryBefore ??= project.linkRegistry;
+    snapshotRegistry(project);
     for (final target in _targets!) {
       repository.deleteLayer(cutId: target.cutId, layerId: target.layerId);
     }
@@ -82,24 +78,17 @@ class DeleteLayerCommand implements Command {
         ),
       ),
     );
-    _hasExecuted = true;
+    markExecuted();
   }
 
   @override
-  void undo() {
-    final targets = _targets;
-    final registryBefore = _registryBefore;
-    if (!_hasExecuted || targets == null || registryBefore == null) {
-      throw StateError('Command has not been executed.');
-    }
-
-    for (final target in targets) {
+  void undoBeforeRegistry() {
+    for (final target in _targets!) {
       repository.insertLayer(
         cutId: target.cutId,
         layer: target.layer,
         index: target.index,
       );
     }
-    repository.restoreLinkRegistry(registryBefore);
   }
 }

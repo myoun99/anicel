@@ -198,6 +198,45 @@ void main() {
       expect(identical(first, second), isTrue);
     });
 
+    test('a CHANGED value misses the cache, at the surface grain and at the '
+        'tile grain', () {
+      // The memo is keyed on identity and VALIDATED by the signature: a
+      // revision moves when the drawing changes, and dragging Tolerance
+      // changes no drawing. Both grains have to answer the new values.
+      final surface = surfaceOf([
+        tileWith(origin, {
+          (0, 0): [255, 255, 255, 255],
+          (1, 0): [250, 250, 250, 255],
+        }),
+      ]);
+      final tight = celSurfaceWithSourceEffects(surface, [
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+      ]);
+      final loose = celSurfaceWithSourceEffects(surface, [
+        key(
+          EffectKind.deleteColor,
+          red: 255,
+          green: 255,
+          blue: 255,
+          tolerance: 10,
+        ),
+      ]);
+
+      expect(identical(tight, loose), isFalse, reason: 'the surface memo');
+      expect(pixelAt(tight, origin, 1, 0)[3], 255);
+      expect(
+        pixelAt(loose, origin, 1, 0)[3],
+        0,
+        reason: 'the TILE memo answered the old tolerance if this is 255',
+      );
+
+      // And back again: the first values are recomputed, not stale.
+      final again = celSurfaceWithSourceEffects(surface, [
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+      ]);
+      expect(pixelAt(again, origin, 1, 0)[3], 255);
+    });
+
     test('two keys in a chain both run, in order', () {
       final surface = surfaceOf([
         tileWith(origin, {

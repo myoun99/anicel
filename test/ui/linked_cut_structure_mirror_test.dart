@@ -110,7 +110,7 @@ void main() {
       cutById(pair.source).layers,
       hasLength(sourceBefore),
       reason:
-          'layerKindLinksIntoLinkedCut is the one predicate for this — CAM '
+          'LayerKind.linksIntoLinkedCut is the one predicate for this — CAM '
           'rows are per-use fixtures every cut already has',
     );
     expect(session.isLayerLinked(session.activeLayer!.id), isFalse);

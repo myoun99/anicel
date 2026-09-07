@@ -67,8 +67,7 @@ class _WorkspaceCollapsedRows {
       // The cells painter's own rule for the X: only rows that hold
       // drawings print one, and SE columns stay blank between entries.
       holdsDrawings:
-          layerKindHoldsDrawings(layer.kind) &&
-          !layerKindUsesSeSheetCells(layer.kind),
+          layer.kind.holdsDrawings && !layerKindUsesSeSheetCells(layer.kind),
     );
   }
 

@@ -17,7 +17,7 @@ import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/project_lookup.dart'
     show
-        cutLocationOrNull,
+        cutPositionOf,
         projectArchivedMediaPaths,
         projectLayerIdValues,
         requireLayerAnywhere;
@@ -61,6 +61,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/track_se_migration.dart';
+import '../models/composite_tree.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
@@ -196,6 +197,8 @@ import 'session/se_entries.dart';
 import 'session/drawing_block_move_drag.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
+import 'session/active_cut_edits.dart';
+import 'session/row_sweep.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
@@ -599,7 +602,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this);
+  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, activeCut: _activeCutEdits);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -1205,22 +1208,16 @@ class EditorSessionManager extends ChangeNotifier
   /// The cut with [cutId] anywhere in the project, or `null`.
   @override
   Cut? cutById(CutId cutId) =>
-      cutLocationOrNull(repository.requireProject(), cutId)?.cut;
+      cutPositionOf(repository.requireProject(), cutId)?.cut;
 
   /// The brush store key of a layer frame within [cut] — same derivation the
   /// canvas selection uses (track containing the cut, first track fallback).
   @override
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
     final project = repository.requireProject();
-    var trackId = project.tracks.isEmpty
-        ? const TrackId('')
-        : project.tracks.first.id;
-    for (final track in project.tracks) {
-      if (track.cuts.any((candidate) => candidate.id == cut.id)) {
-        trackId = track.id;
-        break;
-      }
-    }
+    final trackId =
+        cutPositionOf(project, cut.id)?.trackId ??
+        (project.tracks.isEmpty ? const TrackId('') : project.tracks.first.id);
     return BrushFrameKey(
       projectId: project.id,
       trackId: trackId,
@@ -1459,11 +1456,21 @@ class EditorSessionManager extends ChangeNotifier
   /// The pill button reads THIS — the same sentence the verb runs on.
   bool get canCreateCut => cutCreationPlan != null;
 
+  // The envelope every active-cut and active-row verb shares, in seven
+  // collaborators (session/active_cut_edits.dart). It is wired HERE and
+  // handed to each of them; a collaborator that builds its own is a
+  // second envelope waiting to drift.
+  late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    selection: this,
+    timeline: this,
+    changes: this,
+  );
+
   // ── the cut verbs: their own object, in their own file ──────────────
   //
   // A collaborator (session/cut_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, storyboardRows: _storyboardRows, internals: this);
+  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits);
 
   void deleteActiveCut() => _cutVerbs.deleteActiveCut();
   bool get canDeleteSelectedCuts => _cutVerbs.canDeleteSelectedCuts;
@@ -1620,7 +1627,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/camera.dart, a part of this library). The session
   // keeps the public queries and commands as forwarders.
-  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneMove: _laneMove, internals: this);
+  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneMove: _laneMove, internals: this, activeCut: _activeCutEdits);
 
   CutCamera get activeCutCamera => _camera.activeCutCamera;
   CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
@@ -1740,7 +1747,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The editing canvas's composite TREE at the playhead — the same tree
   /// playback and export composite, with the ACTIVE layer standing in it
-  /// as a [CanvasActiveLayerNode] instead of a cached image.
+  /// as a [CanvasActiveLayerRow] instead of a cached image.
   ///
   /// That node is the whole point: the stack used to be two flat lists
   /// painted around the interactive view, so a folder's group buffer —
@@ -1753,7 +1760,7 @@ class EditorSessionManager extends ChangeNotifier
   /// through [layerCanvasPoseSample] into the interactive draw-through
   /// wrap, so it is repeated on the node for the merged painter.
   ({
-    List<CanvasLayerStackNode> nodes,
+    List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
     List<ResolvedLayerEffect> activeSourceEffects,
   })
@@ -1762,7 +1769,7 @@ class EditorSessionManager extends ChangeNotifier
     final activeLayerId = this.activeLayerId;
     if (cut == null) {
       return (
-        nodes: const <CanvasLayerStackNode>[],
+        nodes: const <CompositeNode<CanvasStackRow>>[],
         activeLayerOpacity: 1.0,
         activeSourceEffects: const <ResolvedLayerEffect>[],
       );
@@ -1784,18 +1791,19 @@ class EditorSessionManager extends ChangeNotifier
       frameIndex: frameIndex,
       activeLayerId: activeLayerId,
     );
-    final nodes = <CanvasLayerStackNode>[
-      for (final node in resolveCutFrameCompositeTree(
-        cut: stackCut,
-        frameIndex: frameIndex,
-        liveLayerId:
-            activeLayerId != null &&
-                stackCut.layers.byId(activeLayerId) != null &&
-                layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
-            ? activeLayerId
-            : null,
-      ))
-        ?walk.map(node),
+    final nodes = <CompositeNode<CanvasStackRow>>[
+      ...walk.mapTree(
+        resolveCutFrameCompositeTree(
+          cut: stackCut,
+          frameIndex: frameIndex,
+          liveLayerId:
+              activeLayerId != null &&
+                  stackCut.layers.byId(activeLayerId) != null &&
+                  layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
+              ? activeLayerId
+              : null,
+        ),
+      ),
       // Track-owned SE rows join as their cut-local display clones — they
       // composite read-only like before the ownership move (their
       // transform tracks are stripped, so the plain resolve path
@@ -1819,13 +1827,13 @@ class EditorSessionManager extends ChangeNotifier
   ) => [
     for (final layer in source)
       preview.layerIds.contains(layer.id) &&
-              layerKindHasPictureOpacity(layer.kind)
+              layer.kind.hasPictureOpacity
           ? layer.copyWith(opacity: preview.opacity)
           : layer,
   ];
 
   /// The track's SE rows as cut-local display clones, read-only.
-  Iterable<CanvasLayerStackNode> _trackSeDisplayNodes(
+  Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
     Cut cut, {
     required int frameIndex,
     required ({Set<LayerId> layerIds, double opacity})? preview,
@@ -1851,7 +1859,7 @@ class EditorSessionManager extends ChangeNotifier
       if (frame == null) {
         continue;
       }
-      yield CanvasLayerImageNode(
+      yield CompositeLeaf(
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: opacity,
@@ -1893,7 +1901,7 @@ class EditorSessionManager extends ChangeNotifier
       _opacity.setAllLayersOpacity(opacity);
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
-  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, controllers: activeCutControllers, internals: this);
+  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
 
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
       _frameVerbs.layerCanvasPoseSample(layerId);
@@ -1923,7 +1931,7 @@ class EditorSessionManager extends ChangeNotifier
   /// lanes are TRACK data on the global axis, like the SE rows).
   @override
   Track? trackOwningCut(CutId cutId) =>
-      cutLocationOrNull(repository.requireProject(), cutId)?.track;
+      cutPositionOf(repository.requireProject(), cutId)?.track;
 
   // `transformTrackForCut` retired with the V row's transform: every route
   // that asked for a track pose or fade now has neither to apply.
@@ -1932,7 +1940,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/effects_and_fx.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
 
   List<LayerEffect> trackEffectsForCut(CutId cutId) =>
       _effectsAndFx.trackEffectsForCut(cutId);
@@ -2395,8 +2403,8 @@ class EditorSessionManager extends ChangeNotifier
   @override
   List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
     (layer) =>
-        layerKindIsClipboardCopyable(layer.kind) &&
-        !layerKindIsSingletonPerCut(layer.kind) &&
+        layer.kind.isClipboardCopyable &&
+        !layer.kind.isSingletonPerCut &&
         !isAttachedLayer(layer),
   );
 
@@ -2431,7 +2439,7 @@ class EditorSessionManager extends ChangeNotifier
   /// inside a cut is not this cut's to edit.
   @override
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layerKindIsReadOnlyInCut(layer.kind));
+      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
 
   /// Renames any row by id — folders included, because a folder is a row.
   @override
@@ -2450,7 +2458,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/folders_and_attachments.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, internals: this);
+  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, activeCut: _activeCutEdits);
 
   bool get canAddAttachedLayerToActive => _folders.canAddAttachedLayerToActive;
   void addAttachedLayer(
@@ -2819,7 +2827,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_marks.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers);
+  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
 
   void setLayerMark(LayerId layerId, LayerMark mark) =>
       _marks.setLayerMark(layerId, mark);
@@ -2848,32 +2856,29 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in [
+    final swept = sweepRows(
+      history: historyManager,
+      rows: [
         ...cut.layers,
         ...activeTrack.seLayers,
         activeTrack.transitionLayer,
-      ])
-        if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
-          UpdateLayerTimesheetCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layer.id,
-            onTimesheet: onTimesheet,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: onTimesheet
-            ? 'Add all layers to timesheet'
-            : 'Remove all layers from timesheet',
-        commands: commands,
-      ),
+      ],
+      description: onTimesheet
+          ? 'Add all layers to timesheet'
+          : 'Remove all layers from timesheet',
+      commandFor: (layer) =>
+          layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet
+          ? UpdateLayerTimesheetCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layer.id,
+              onTimesheet: onTimesheet,
+            )
+          : null,
     );
-    notifyListeners();
+    if (swept) {
+      notifyListeners();
+    }
   }
 
   /// Drops the fill-reference flag from every layer — one undo (cut-owned
@@ -2884,33 +2889,29 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in cut.layers)
-        if (layer.isFillReference)
-          UpdateLayerFillReferenceCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layer.id,
-            isFillReference: false,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: 'Clear all fill references',
-        commands: commands,
-      ),
+    final swept = sweepRows(
+      history: historyManager,
+      rows: cut.layers,
+      description: 'Clear all fill references',
+      commandFor: (layer) => layer.isFillReference
+          ? UpdateLayerFillReferenceCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layer.id,
+              isFillReference: false,
+            )
+          : null,
     );
-    notifyListeners();
+    if (swept) {
+      notifyListeners();
+    }
   }
 
   // ── the instructions: their own object, in their own file ───────────
   //
   // A collaborator (session/instructions.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, cutVerbs: _cutVerbs, camera: _camera);
+  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, cutVerbs: _cutVerbs, camera: _camera, activeCut: _activeCutEdits);
 
   void updateLayerInstructions(
     LayerId layerId,
@@ -4457,7 +4458,7 @@ class EditorSessionManager extends ChangeNotifier
       return false;
     }
     final layer = activeLayer;
-    if (layer != null && layerKindHoldsSingleCel(layer.kind)) {
+    if (layer != null && layer.kind.holdsSingleCel) {
       return false;
     }
     return canCopyFrameAtCurrentFrame;
@@ -4780,7 +4781,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     final layer = layerById(layerId);
     return layer != null &&
-        layerKindHoldsDrawings(layer.kind) &&
+        layer.kind.holdsDrawings &&
         layer.kind != LayerKind.se;
   }
 
@@ -5194,7 +5195,7 @@ class EditorSessionManager extends ChangeNotifier
   /// every row that owns its own blocks.
   @override
   List<({int start, int endExclusive})> aggregateRunsForRow(Layer layer) {
-    if (!layerKindGroupsLayers(layer.kind)) {
+    if (!layer.kind.groupsLayers) {
       return const [];
     }
     // R10: the band cache's runs, so the snap and the painted band are one
@@ -5491,7 +5492,7 @@ class EditorSessionManager extends ChangeNotifier
   @override
   bool isSingleCelLayerId(LayerId layerId) {
     final layer = layerById(layerId);
-    return layer != null && layerKindHoldsSingleCel(layer.kind);
+    return layer != null && layer.kind.holdsSingleCel;
   }
 
   /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
@@ -5685,7 +5686,7 @@ class EditorSessionManager extends ChangeNotifier
     // single-cel rows are pinned by the covering normalization.
     if (layer == null ||
         isSyncedAttachedLayer(layer) ||
-        layerKindHoldsSingleCel(layer.kind)) {
+        layer.kind.holdsSingleCel) {
       return;
     }
     final block = coveringDrawingBlockAt(

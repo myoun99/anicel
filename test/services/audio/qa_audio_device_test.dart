@@ -132,9 +132,84 @@ void main() {
       expect(index, 0);
       // The helper's fallback paths hold on any machine, sound card or
       // not: null and unattached names mean the system default.
-      expect(audioOutputDeviceIndexByName(device, null), -1);
-      expect(audioOutputDeviceIndexByName(device, 'no-such-speaker'), -1,
-          reason: 'unplugged hardware falls back to the system default');
+      expect(audioDeviceIndexByName(device, capture: false, name: null), -1);
+      expect(
+        audioDeviceIndexByName(
+          device,
+          capture: false,
+          name: 'no-such-speaker',
+        ),
+        -1,
+        reason: 'unplugged hardware falls back to the system default',
+      );
+      // The capture side answers on the same two paths (R5), so the one
+      // search is exercised on both kinds.
+      expect(audioDeviceIndexByName(device, capture: true, name: null), -1);
+      expect(
+        audioDeviceIndexByName(device, capture: true, name: 'no-such-mic'),
+        -1,
+        reason: 'an unplugged microphone falls back to the system default',
+      );
+
+      // And it searches the SIDE it was asked for. Only real hardware can
+      // show that: the helper enumerates the default backend on purpose,
+      // and a runner with no sound card has two empty lists, where every
+      // name answers -1 whichever side is read.
+      final speakers = device.devicesOf(capture: false);
+      final mics = device.devicesOf(capture: true);
+      for (final (capture, list) in [(false, speakers), (true, mics)]) {
+        if (list.isEmpty) {
+          continue;
+        }
+        expect(
+          audioDeviceIndexByName(
+            device,
+            capture: capture,
+            name: list.first.name,
+          ),
+          0,
+          reason: 'the first enumerated device on this side is index 0',
+        );
+        final other = capture ? speakers : mics;
+        final onlyHere = list
+            .map((entry) => entry.name)
+            .where((name) => other.every((entry) => entry.name != name));
+        if (onlyHere.isNotEmpty) {
+          expect(
+            audioDeviceIndexByName(
+              device,
+              capture: !capture,
+              name: onlyHere.first,
+            ),
+            -1,
+            reason: 'a name that exists only on one side is not found on '
+                'the other — the kind axis really reaches the enumeration',
+          );
+        }
+      }
+    }, skip: skip);
+
+    test('openAudioOutput opens on an unattached NAME — the fallback is to '
+        'the system default, never to silence (AUDIO-PRO R4)', () {
+      final device = QaAudioDevice.instance!;
+      expect(
+        openAudioOutput(
+          device,
+          sampleRate: 48000,
+          preferredName: 'no-such-speaker',
+        ),
+        isTrue,
+        reason: 'the name resolves to -1, so the FIRST open is the default',
+      );
+      expect(device.isOpen, isTrue);
+      device.close();
+
+      expect(
+        openAudioOutput(device, sampleRate: 48000, preferredName: null),
+        isTrue,
+        reason: 'no preference is the same default',
+      );
+      device.close();
     }, skip: skip);
   });
 

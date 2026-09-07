@@ -41,9 +41,9 @@ void main() {
     pixels[3] = 255;
     s.renderCaches.brushFrameStore.storeBakedSurface(
       key,
-      BitmapSurface(canvasSize: originalSize).putTile(
+      BitmapSurface(canvasSize: originalSize).putTiles([
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 256, pixels: pixels),
-      ),
+      ]),
     );
     // The corruption vector: a DIRECT model-size write (what the pre-R7
     // split effectively did to cuts whose raster half was skipped).

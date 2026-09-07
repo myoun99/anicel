@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD.
 ///
@@ -113,11 +114,11 @@ void main() {
   }
 
   final live = buildLive();
-  final nodes = <CanvasLayerStackNode>[
-    CanvasLayerImageNode(
+  final nodes = <CompositeNode<CanvasStackRow>>[
+    CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(frameKey: keyFor('under'), opacity: 1),
     ),
-    const CanvasActiveLayerNode(opacity: 1),
+    const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
   ];
 
   Future<LayerFrameImageCache> warmCache(WidgetTester tester) async {
@@ -260,14 +261,14 @@ void main() {
     final cache = await warmCache(tester);
     final buffers = DisplayBufferCache();
     addTearDown(buffers.dispose);
-    final posed = <CanvasLayerStackNode>[
-      CanvasLayerImageNode(
+    final posed = <CompositeNode<CanvasStackRow>>[
+      CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(frameKey: keyFor('under'), opacity: 1),
       ),
-      CanvasActiveLayerNode(
+      CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(
         opacity: 1,
         pose: TransformPose(center: CanvasPoint(x: 3, y: 2)),
-      ),
+      )),
     ];
     Future<void> pumpAt(CanvasViewport viewport) async {
       await tester.pumpWidget(

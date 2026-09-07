@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// BEING THE ROW YOU ARE DRAWING ON IS NOT A REASON TO COMPOSITE DIFFERENTLY.
 ///
@@ -30,7 +31,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// This has now happened twice with the same shape, and both times the value
 /// was correct everywhere except at the one place that could carry it:
 ///
-///  * ㊱ — the row's OPACITY. `CanvasActiveLayerNode` had the field, the
+///  * ㊱ — the row's OPACITY. `CanvasActiveLayerRow` had the field, the
 ///    painter's `_PaintActiveSurface` did not, so the live surface drew at
 ///    full strength while every other row honoured its slider.
 ///  * this round — the row's BLEND. Neither class had the field at all, so a
@@ -49,7 +50,7 @@ void main() {
       ).readAsLinesSync();
 
       final cached = _fieldsOf(lines, 'CanvasLayerImageRequest');
-      final live = _fieldsOf(lines, 'CanvasActiveLayerNode');
+      final live = _fieldsOf(lines, 'CanvasActiveLayerRow');
 
       expect(
         cached,
@@ -77,7 +78,7 @@ void main() {
             'same layer when you step off it — which is exactly what the '
             'user reported twice (㊱ opacity, then blendMode).\n'
             '  only on CanvasLayerImageRequest: $missingFromLive\n'
-            '  only on CanvasActiveLayerNode:   $missingFromCached\n'
+            '  only on CanvasActiveLayerRow:    $missingFromCached\n'
             'Either give the twin the field, or add it to _asymmetryReasons '
             'with the reason it genuinely cannot exist there.',
       );
@@ -90,7 +91,7 @@ void main() {
       final known = _fieldsOf(
         lines,
         'CanvasLayerImageRequest',
-      ).union(_fieldsOf(lines, 'CanvasActiveLayerNode'));
+      ).union(_fieldsOf(lines, 'CanvasActiveLayerRow'));
 
       final stale = _asymmetryReasons.keys
           .where((field) => !known.contains(field))
@@ -143,7 +144,7 @@ void main() {
                 height: 4,
                 child: CanvasLayerStackView(
                   nodes: [
-                    CanvasActiveLayerNode(opacity: 1, blendMode: blend),
+                    CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, blendMode: blend)),
                   ],
                   imageCache: LayerFrameImageCache(
                     frameStore: BrushFrameStore(),
@@ -256,12 +257,14 @@ void main() {
       return (s, target, other);
     }
 
-    CanvasActiveLayerNode? activeNodeIn(List<CanvasLayerStackNode> nodes) {
+    CanvasActiveLayerRow? activeNodeIn(
+      List<CompositeNode<CanvasStackRow>> nodes,
+    ) {
       for (final node in nodes) {
-        if (node is CanvasActiveLayerNode) {
-          return node;
+        if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
+          return row;
         }
-        if (node is CanvasLayerGroupNode) {
+        if (node is CompositeGroup<CanvasStackRow>) {
           final found = activeNodeIn(node.children);
           if (found != null) {
             return found;
@@ -272,12 +275,12 @@ void main() {
     }
 
     Iterable<CanvasLayerImageRequest> imageRequestsIn(
-      List<CanvasLayerStackNode> nodes,
+      List<CompositeNode<CanvasStackRow>> nodes,
     ) sync* {
       for (final node in nodes) {
-        if (node is CanvasLayerImageNode) {
-          yield node.request;
-        } else if (node is CanvasLayerGroupNode) {
+        if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r)) {
+          yield r;
+        } else if (node is CompositeGroup<CanvasStackRow>) {
           yield* imageRequestsIn(node.children);
         }
       }
@@ -344,7 +347,7 @@ const _asymmetryReasons = <String, String>{
       'addressed — it is the surface the brush is writing into.',
   'tint':
       'onion-skin Colors mode only, and a ghost is always built as a '
-      'CanvasLayerImageNode (editor_canvas_area builds them that way), so an '
+      'CanvasLayerImageRequest (editor_canvas_area builds them that way), so an '
       'active node can never carry one.',
 };
 
@@ -357,7 +360,7 @@ Set<String> _fieldsOf(List<String> lines, String className) {
   // The declaration may carry `final`, `extends`, `implements` — match the
   // NAME and the opening brace, not a spelling of the whole line. (Matching
   // the whole line is how this contract first passed while parsing nothing:
-  // `CanvasActiveLayerNode` declares `extends CanvasLayerStackNode`.)
+  // `CanvasActiveLayerRow` declares `extends CanvasStackRow`.)
   final declaration = RegExp(r'\bclass\s+' + className + r'\b.*\{\s*$');
   final start = lines.indexWhere(declaration.hasMatch);
   if (start < 0) {

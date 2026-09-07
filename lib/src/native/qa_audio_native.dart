@@ -210,24 +210,10 @@ final class QaAudioNative {
       return result;
     }
 
-    final clipArray = calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length);
-    final sourceArray = calloc<QaAudioSourceStruct>(
-      sources.isEmpty ? 1 : sources.length,
-    );
-    // Every clip's envelope points flatten into ONE shared array; the
-    // clips reference their slice by offset/count (mirrors the C layout).
-    final envelopeTotal = qaAudioEnvelopeTotal(clips);
-    final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
-      envelopeTotal <= 0 ? 1 : envelopeTotal,
-    );
+    final arrays = QaAudioScheduleArrays(clips, sources);
     final sampleBuffers = <Pointer<Float>>[];
     final bus = calloc<Double>(total);
     try {
-      qaAudioWriteClips(
-        clips: clips,
-        clipArray: clipArray,
-        envelopeArray: envelopeArray,
-      );
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
         final samples = calloc<Float>(
@@ -237,21 +223,18 @@ final class QaAudioNative {
         for (var i = 0; i < source.samples.length; i += 1) {
           samples[i] = source.samples[i];
         }
-        final target = sourceArray[index];
-        target.sourceStart = source.sourceStart;
-        target.length = source.length;
-        target.channels = source.channels;
-        target.reserved = 0;
-        target.samples = samples;
+        // The mixer reads the source IN PLACE: the struct keeps a pointer
+        // into this Dart-owned buffer for the length of the call.
+        arrays.writeSource(index, source, samples);
       }
 
       _mix(
-        clipArray,
+        arrays.clipArray,
         clips.length,
-        sourceArray,
+        arrays.sourceArray,
         sources.length,
-        envelopeArray,
-        envelopeTotal,
+        arrays.envelopeArray,
+        arrays.envelopeTotal,
         startSample,
         sampleCount,
         outChannels,
@@ -266,9 +249,7 @@ final class QaAudioNative {
         calloc.free(buffer);
       }
       calloc.free(bus);
-      calloc.free(envelopeArray);
-      calloc.free(sourceArray);
-      calloc.free(clipArray);
+      arrays.free();
     }
   }
 
@@ -417,6 +398,80 @@ int qaAudioEnvelopeTotal(List<AudioMixClip> clips) {
     total += clip.envelope.length;
   }
   return total;
+}
+
+/// The C schedule layout, allocated and filled once: the clip array, the
+/// source array, and the ONE flattened envelope key array beside them.
+///
+/// ⛔BOTH FFI PATHS HAND THE C SIDE THIS EXACT LAYOUT — the device's
+/// schedule and the one-shot mixer — and each used to allocate it out
+/// itself: three `calloc`s with the same `max(1, n)` guard, the same
+/// [qaAudioWriteClips], the same four-field source write, and the same
+/// reverse-order frees. The clip half was already shared; the SOURCE
+/// struct was still exposed to the hazard the comment on
+/// [qaAudioWriteClips] names.
+///
+/// What genuinely differs between the two paths stays with each caller:
+/// the device flattens its PCM into one block with an offset table
+/// (the C copies it), the mixer callocs a buffer per source and points
+/// the struct at it. That is a value — the `samples` pointer handed to
+/// [writeSource] — not a mode.
+final class QaAudioScheduleArrays {
+  factory QaAudioScheduleArrays(
+    List<AudioMixClip> clips,
+    List<AudioMixSource> sources,
+  ) {
+    // Every clip's envelope points flatten into ONE shared array; the
+    // clips reference their slice by offset/count (mirrors the C layout).
+    final envelopeTotal = qaAudioEnvelopeTotal(clips);
+    final arrays = QaAudioScheduleArrays._(
+      clipArray: calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length),
+      sourceArray: calloc<QaAudioSourceStruct>(
+        sources.isEmpty ? 1 : sources.length,
+      ),
+      envelopeArray: calloc<QaAudioEnvelopeKeyStruct>(
+        envelopeTotal <= 0 ? 1 : envelopeTotal,
+      ),
+      envelopeTotal: envelopeTotal,
+    );
+    qaAudioWriteClips(
+      clips: clips,
+      clipArray: arrays.clipArray,
+      envelopeArray: arrays.envelopeArray,
+    );
+    return arrays;
+  }
+
+  QaAudioScheduleArrays._({
+    required this.clipArray,
+    required this.sourceArray,
+    required this.envelopeArray,
+    required this.envelopeTotal,
+  });
+
+  final Pointer<QaAudioClipStruct> clipArray;
+  final Pointer<QaAudioSourceStruct> sourceArray;
+  final Pointer<QaAudioEnvelopeKeyStruct> envelopeArray;
+  final int envelopeTotal;
+
+  /// Writes [source]'s struct at [index], pointed at [samples] — the C
+  /// copy's `nullptr` for the device path, a Dart-owned buffer for the
+  /// mixer's.
+  void writeSource(int index, AudioMixSource source, Pointer<Float> samples) {
+    final target = sourceArray[index];
+    target.sourceStart = source.sourceStart;
+    target.length = source.length;
+    target.channels = source.channels;
+    target.reserved = 0;
+    target.samples = samples;
+  }
+
+  /// Frees the three arrays in reverse allocation order.
+  void free() {
+    calloc.free(envelopeArray);
+    calloc.free(sourceArray);
+    calloc.free(clipArray);
+  }
 }
 
 /// Copies [clips] into [clipArray] and flattens their envelopes into

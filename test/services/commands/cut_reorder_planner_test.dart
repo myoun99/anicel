@@ -7,6 +7,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/cut_reorder_planner.dart';
+import 'package:anicel/src/services/project_lookup.dart';
 
 void main() {
   const planner = CutReorderPlanner();
@@ -17,9 +18,9 @@ void main() {
         _track(id: 'track-a', cutIds: ['cut-a', 'cut-b', 'cut-c']),
       ]);
 
-      final position = planner.findCutPosition(
-        project: project,
-        cutId: const CutId('cut-b'),
+      final position = cutPositionOf(
+        project,
+        const CutId('cut-b'),
       );
 
       expect(position, isNotNull);
@@ -35,9 +36,9 @@ void main() {
         _track(id: 'track-b', cutIds: ['cut-b', 'cut-c']),
       ]);
 
-      final position = planner.findCutPosition(
-        project: project,
-        cutId: const CutId('cut-c'),
+      final position = cutPositionOf(
+        project,
+        const CutId('cut-c'),
       );
 
       expect(position, isNotNull);
@@ -53,16 +54,16 @@ void main() {
       ]);
 
       expect(
-        planner.findCutPosition(
-          project: project,
-          cutId: const CutId('missing-cut'),
+        cutPositionOf(
+          project,
+          const CutId('missing-cut'),
         ),
         isNull,
       );
       expect(
-        () => planner.requireCutPosition(
-          project: project,
-          cutId: const CutId('missing-cut'),
+        () => requireCutPosition(
+          project,
+          const CutId('missing-cut'),
         ),
         throwsStateError,
       );
@@ -105,12 +106,9 @@ void main() {
     test('a one-cut track cannot move either way', () {
       // The guards used to be two sentences; a lone cut is where they both
       // have to say no.
-      final first = _positionsForThreeCuts()[0];
-      final only = CutPosition(
-        trackId: first.trackId,
-        cutId: first.cutId,
-        cutIndex: 0,
-        cutCount: 1,
+      final only = requireCutPosition(
+        _projectWithTracks([_track(id: 'track-a', cutIds: ['cut-a'])]),
+        const CutId('cut-a'),
       );
       expect(planner.canMove(only, CutMoveDirection.left), isFalse);
       expect(planner.canMove(only, CutMoveDirection.right), isFalse);
@@ -122,12 +120,11 @@ List<CutPosition> _positionsForThreeCuts() {
   final project = _projectWithTracks([
     _track(id: 'track-a', cutIds: ['cut-a', 'cut-b', 'cut-c']),
   ]);
-  const planner = CutReorderPlanner();
 
   return [
-    planner.requireCutPosition(project: project, cutId: const CutId('cut-a')),
-    planner.requireCutPosition(project: project, cutId: const CutId('cut-b')),
-    planner.requireCutPosition(project: project, cutId: const CutId('cut-c')),
+    requireCutPosition(project, const CutId('cut-a')),
+    requireCutPosition(project, const CutId('cut-b')),
+    requireCutPosition(project, const CutId('cut-c')),
   ];
 }
 

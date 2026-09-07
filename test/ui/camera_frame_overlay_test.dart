@@ -106,8 +106,8 @@ void main() {
     });
   });
 
-  test('rotate knob sits above the top edge midpoint', () {
-    final knob = cameraRotateKnobInViewport(
+  test('the rotate lever runs from the top edge midpoint to its knob', () {
+    final lever = cameraRotateLeverInViewport(
       pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
       cameraFrameSize: frameSize,
       viewport: CanvasViewport(zoom: 0.5),
@@ -115,7 +115,35 @@ void main() {
 
     // Top edge midpoint (500, 30), sticking 24 screen px away from the
     // center (500, 300).
-    expect(knob, const Offset(500, 6));
+    expect(lever.base, const Offset(500, 30));
+    expect(lever.knob, const Offset(500, 6));
+  });
+
+  test('the lever base is the top edge midpoint at any rotation — the line '
+      'the painter draws and the knob it joins are ONE derivation', () {
+    final lever = cameraRotateLeverInViewport(
+      pose: CameraPose(
+        center: CanvasPoint(x: 1000, y: 600),
+        rotationDegrees: 90,
+      ),
+      cameraFrameSize: frameSize,
+      viewport: CanvasViewport(zoom: 0.5),
+    );
+    final corners = cameraFrameCornersInViewport(
+      pose: CameraPose(
+        center: CanvasPoint(x: 1000, y: 600),
+        rotationDegrees: 90,
+      ),
+      cameraFrameSize: frameSize,
+      viewport: CanvasViewport(zoom: 0.5),
+    );
+
+    expect(lever.base.dx, closeTo((corners[0].dx + corners[1].dx) / 2, 1e-9));
+    expect(lever.base.dy, closeTo((corners[0].dy + corners[1].dy) / 2, 1e-9));
+    expect(
+      (lever.knob - lever.base).distance,
+      closeTo(CameraFrameOverlay.rotateLeverLength, 1e-9),
+    );
   });
 
   group('CameraFrameOverlay interaction', () {

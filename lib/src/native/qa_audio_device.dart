@@ -248,32 +248,17 @@ final class QaAudioDevice {
       totalFloats += source.samples.length;
     }
 
-    final clipArray = calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length);
-    final sourceArray = calloc<QaAudioSourceStruct>(
-      sources.isEmpty ? 1 : sources.length,
-    );
+    // The clips' envelopes flatten into one shared key array, exactly as
+    // the mixer FFI does (the C copies it beside the PCM) — one scope
+    // builds that whole layout for both paths.
+    final arrays = QaAudioScheduleArrays(clips, sources);
     final pcm = calloc<Float>(totalFloats <= 0 ? 1 : totalFloats);
     final offsetArray = calloc<Int64>(offsets.isEmpty ? 1 : offsets.length);
-    // The clips' envelopes flatten into one shared key array, exactly as
-    // the mixer FFI does (the C copies it beside the PCM).
-    final envelopeTotal = qaAudioEnvelopeTotal(clips);
-    final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
-      envelopeTotal <= 0 ? 1 : envelopeTotal,
-    );
     try {
-      qaAudioWriteClips(
-        clips: clips,
-        clipArray: clipArray,
-        envelopeArray: envelopeArray,
-      );
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
-        final target = sourceArray[index];
-        target.sourceStart = source.sourceStart;
-        target.length = source.length;
-        target.channels = source.channels;
-        target.reserved = 0;
-        target.samples = nullptr; // repointed at the C copy
+        // repointed at the C copy
+        arrays.writeSource(index, source, nullptr);
         offsetArray[index] = offsets[index];
         if (source.samples.isNotEmpty) {
           pcm
@@ -286,23 +271,21 @@ final class QaAudioDevice {
         }
       }
       return _setSchedule(
-            clipArray,
+            arrays.clipArray,
             clips.length,
-            sourceArray,
+            arrays.sourceArray,
             sources.length,
             pcm,
             totalFloats,
             offsetArray,
-            envelopeArray,
-            envelopeTotal,
+            arrays.envelopeArray,
+            arrays.envelopeTotal,
           ) !=
           0;
     } finally {
-      calloc.free(envelopeArray);
       calloc.free(offsetArray);
       calloc.free(pcm);
-      calloc.free(sourceArray);
-      calloc.free(clipArray);
+      arrays.free();
     }
   }
 
@@ -364,15 +347,32 @@ final class QaAudioDevice {
   int get captureLatencySamples => _captureLatency();
 }
 
-/// The enumeration index for the output device named [name], or -1 (the
-/// system default) when [name] is null or no longer attached — a missing
-/// speaker falls back to the default rather than failing playback
-/// (AUDIO-PRO R4).
-int audioOutputDeviceIndexByName(QaAudioDevice device, String? name) {
+/// The enumeration index, on the [capture] side or the playback side, for
+/// the device named [name].
+///
+/// Playback: or -1 (the system default) when [name] is null or no longer
+/// attached — a missing speaker falls back to the default rather than
+/// failing playback (AUDIO-PRO R4).
+///
+/// Capture: or -1 (the system default microphone) when [name] is null or
+/// unplugged (AUDIO-PRO R5).
+///
+/// [capture] is the enumeration-kind axis [QaAudioDevice.devicesOf] already
+/// takes (it becomes the C `kind`), not a behaviour switch: one search, one
+/// question.
+int audioDeviceIndexByName(
+  QaAudioDevice device, {
+  required bool capture,
+  required String? name,
+}) {
+  // 🧪Mutating this guard away leaves every ANSWER unchanged — the loop
+  // below finds no device named null and returns -1 anyway. It stays as an
+  // early-out: no saved device is the common case, and it skips an FFI
+  // enumeration plus a 256-byte calloc on every open.
   if (name == null) {
     return -1;
   }
-  final devices = device.devicesOf(capture: false);
+  final devices = device.devicesOf(capture: capture);
   for (var index = 0; index < devices.length; index += 1) {
     if (devices[index].name == name) {
       return index;
@@ -381,19 +381,49 @@ int audioOutputDeviceIndexByName(QaAudioDevice device, String? name) {
   return -1;
 }
 
-/// The capture-side twin: the input device named [name], or -1 (the system
-/// default microphone) when [name] is null or unplugged (AUDIO-PRO R5).
-int audioInputDeviceIndexByName(QaAudioDevice device, String? name) {
-  if (name == null) {
-    return -1;
+/// Opens [device] on the output named [preferredName], falling back to the
+/// system default — true when the device is open afterwards.
+///
+/// 🚨The named device failed to open (unplugged mid-enumeration): fall
+/// back to the system default deliberately, never to silence (AUDIO-PRO
+/// R4). The retry only happens when a NAMED device was actually picked;
+/// a default that will not open has nowhere left to fall.
+///
+/// One sequence for the three callers that need a speaker — the playback
+/// transport, the scrub arm and the recording cue — which differ only in
+/// the rate, the channel count and where the name comes from.
+bool openAudioOutput(
+  QaAudioDevice device, {
+  required int sampleRate,
+  required String? preferredName,
+  int channels = 2,
+}) {
+  final index = audioDeviceIndexByName(
+    device,
+    // 🧪MUTATION: flipping this to `capture: true` SURVIVES the suite —
+    // never applied. Every bench here passes a name that is attached on
+    // NEITHER side, so both searches answer -1 and the same default open
+    // follows; only a machine with an output-only device name could tell
+    // the two apart, and the kind axis itself is pinned on real hardware
+    // in `qa_audio_device_test` ("a name that exists only on one side").
+    capture: false,
+    name: preferredName,
+  );
+  var opened = device.open(
+    sampleRate: sampleRate,
+    channels: channels,
+    deviceIndex: index,
+  );
+  // 🧪MUTATION: this retry SURVIVES the suite — never applied. Reaching it
+  // needs a device that enumerates under a name and then REFUSES to open,
+  // which no bench here can stage: `QaAudioDevice` binds to the real
+  // binary and cannot be faked, and the null backend's one device always
+  // opens. The reachable half — an unattached name falling back to the
+  // default rather than to silence — is pinned in `qa_audio_device_test`.
+  if (opened <= 0 && index >= 0) {
+    opened = device.open(sampleRate: sampleRate, channels: channels);
   }
-  final devices = device.devicesOf(capture: true);
-  for (var index = 0; index < devices.length; index += 1) {
-    if (devices[index].name == name) {
-      return index;
-    }
-  }
-  return -1;
+  return opened > 0;
 }
 
 /// Reads the played position as a frame index, pulled forward by the

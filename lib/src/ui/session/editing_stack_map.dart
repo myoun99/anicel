@@ -4,7 +4,7 @@ part of '../editor_session_manager.dart';
 ///
 /// The cut layers ride the tree as it is (skip rules, fx sharing, the W5
 /// attach-layer expansion AND the group buffers agree with playback by
-/// construction); the ACTIVE row becomes a [CanvasActiveLayerNode] where
+/// construction); the ACTIVE row becomes a [CanvasActiveLayerRow] where
 /// the tree placed it.
 ///
 /// ⛔It also CARRIES OUT two facts about the active row — its display
@@ -38,65 +38,32 @@ class EditingStackMap {
   /// "발신자에 따라 길이 갈렸다" shape #1280 was about.
   List<ResolvedLayerEffect> activeSourceEffects = const <ResolvedLayerEffect>[];
 
-  CanvasLayerStackNode? map(CutFrameCompositeEntryNode node) => switch (node) {
-    CutFrameCompositeEntryGroup() => _group(node),
-    CutFrameCompositeEntryAdjustment() => _adjustment(node),
-    CutFrameCompositeEntryLive() => _live(node),
-    CutFrameCompositeEntryLeaf() => _leaf(node),
-  };
-
-  /// A folder's children, or null when every one of them was skipped —
-  /// an empty group buffer is a `saveLayer` around nothing.
-  List<CanvasLayerStackNode>? _childrenOf(
-    List<CutFrameCompositeEntryNode> children,
-  ) {
-    final mapped = <CanvasLayerStackNode>[
-      for (final child in children) ?map(child),
-    ];
-    // ⛔EQUIVALENT today — the shared tree already drops a folder whose
-    // members are all skipped, so an empty list never reaches here, and
-    // mutating this away leaves the suite green (2026-09-05). Kept as the
-    // statement of what a group node MEANS: a buffer around nothing is a
-    // `saveLayer` for nothing.
-    return mapped.isEmpty ? null : List.unmodifiable(mapped);
-  }
-
-  CanvasLayerStackNode? _group(CutFrameCompositeEntryGroup node) {
-    final children = _childrenOf(node.children);
-    return children == null
-        ? null
-        : CanvasLayerGroupNode(
-            children: children,
-            opacity: node.opacity,
-            blendMode: node.blendMode,
-            effects: node.effects,
-          );
-  }
-
-  CanvasLayerStackNode? _adjustment(CutFrameCompositeEntryAdjustment node) {
-    final children = _childrenOf(node.children);
-    return children == null
-        ? null
-        : CanvasLayerAdjustmentNode(
-            children: children,
-            effects: node.effects,
-            mix: node.mix,
-          );
-  }
+  /// The tree the plan resolved, with each ROW turned into the stack node
+  /// that draws it — the shared fold carries the "a group left empty is a
+  /// `saveLayer` around nothing" law.
+  List<CompositeNode<CanvasStackRow>> mapTree(
+    List<CompositeNode<CutFrameCompositeRow>> nodes,
+  ) => mapCompositeLeaves(
+    nodes,
+    (row) => switch (row) {
+      CutFrameCompositeLiveRow() => _live(row),
+      CutFrameCompositeEntry() => _leaf(row),
+    },
+  );
 
   /// The row being drawn on with NOTHING exposed at this frame — the plan
   /// still placed it, in its folder and at its z, so the first stroke
   /// lands where the picture says it should (유저 확정 2026-09-04: 재생과
   /// 똑같이). The hand-built block this replaced appended it at the top
   /// level and lost all three.
-  CanvasLayerStackNode _live(CutFrameCompositeEntryLive node) {
+  CanvasStackRow _live(CutFrameCompositeLiveRow node) {
     activeLayerOpacity = session._opacity.stackLayerOpacity(
       node.layer,
       stackCut.layers,
       frameIndex,
     );
     activeSourceEffects = splitSourceEffects(node.render.effects).source;
-    return CanvasActiveLayerNode(
+    return CanvasActiveLayerRow(
       opacity: node.render.opacity,
       blendMode: node.render.blendMode,
       pose: node.render.placement?.pose,
@@ -110,23 +77,20 @@ class EditingStackMap {
   /// A brush-banned active layer (SE/instruction, R6-④; a media REFERENCE
   /// layer, §6-z23) has no interactive surface — it composites like any
   /// other stack row so its existing cels keep displaying read-only.
-  CanvasLayerStackNode _leaf(CutFrameCompositeEntryLeaf node) {
-    final entry = node.entry;
+  CanvasStackRow _leaf(CutFrameCompositeEntry entry) {
     if (entry.layer.id != activeLayerId ||
         !layerAcceptsBrushInput(entry.layer)) {
-      return CanvasLayerImageNode(
-        CanvasLayerImageRequest(
-          frameKey: session.brushFrameKeyForCut(
-            cut,
-            entry.layer.id,
-            entry.frame.id,
-          ),
-          opacity: entry.opacity,
-          blendMode: entry.blendMode,
-          pose: entry.pose,
-          anchorPoint: entry.anchorPoint,
-          effects: entry.effects,
+      return CanvasLayerImageRequest(
+        frameKey: session.brushFrameKeyForCut(
+          cut,
+          entry.layer.id,
+          entry.frame.id,
         ),
+        opacity: entry.opacity,
+        blendMode: entry.blendMode,
+        pose: entry.pose,
+        anchorPoint: entry.anchorPoint,
+        effects: entry.effects,
       );
     }
     activeLayerOpacity = !entry.layer.isVisible
@@ -137,7 +101,7 @@ class EditingStackMap {
             frameIndex,
           );
     activeSourceEffects = splitSourceEffects(entry.effects).source;
-    return CanvasActiveLayerNode(
+    return CanvasActiveLayerRow(
       opacity: entry.opacity,
       // The active row's CEL key — the SAME key the image branch above
       // would have requested, so the stack can keep that route's image as

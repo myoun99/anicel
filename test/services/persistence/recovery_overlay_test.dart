@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -117,6 +118,40 @@ void main() {
     // that grew by one cut outweighs a cel holding a four-pixel dab, so
     // bytes would measure the wrong thing; which entries are present is
     // the property itself.
+  });
+
+  test('a cel DELETED since the save is named as removed, and the merge '
+      'drops it — the base still holds it', () async {
+    final s = session();
+    drawOnCurrentFrame(s);
+    final selection = s.activeBrushEditorSelection!;
+    final deletedKey = s.brushFrameKeyForCut(
+      s.requireActiveCut,
+      selection.layerId,
+      selection.frameId,
+    );
+    s.createCut();
+    drawOnCurrentFrame(s);
+    await s.projectDoor.saveProjectToFile(projectPath);
+    expect(celEntriesOf(projectPath), hasLength(2));
+
+    // The cel loses its last tile: the store drops it from every tier and
+    // still counts it dirty. The overlay has to SAY it is gone, because
+    // the base it lays over still holds it.
+    s.renderCaches.brushFrameStore.storeBakedSurface(
+      deletedKey,
+      BitmapSurface(canvasSize: s.requireActiveCut.canvasSize),
+    );
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
+
+    final restored = session();
+    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    expect(
+      restored.renderCaches.brushFrameStore.celHasRenderableContent(deletedKey),
+      isFalse,
+      reason: 'a merge that merely did not mention it would keep the base '
+          'copy, and the deleted drawing would come back',
+    );
   });
 
   test('opening the project WITH the overlay restores the unsaved work', () async {

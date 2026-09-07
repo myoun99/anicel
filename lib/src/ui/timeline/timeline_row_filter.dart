@@ -1,3 +1,5 @@
+import '../../core/collection_equality.dart';
+import '../../core/set_toggle.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -148,28 +150,18 @@ class TimelineRowFilter {
   }
 
   /// Toggles [mark] in the color set.
-  TimelineRowFilter toggledMark(LayerMark mark) {
-    final next = Set<LayerMark>.of(markColors);
-    if (!next.remove(mark)) {
-      next.add(mark);
-    }
-    return copyWith(markColors: next);
-  }
+  TimelineRowFilter toggledMark(LayerMark mark) =>
+      copyWith(markColors: toggledSet(markColors, mark));
 
   /// Toggles [kind] in the kind set.
-  TimelineRowFilter toggledKind(LayerKind kind) {
-    final next = Set<LayerKind>.of(kinds);
-    if (!next.remove(kind)) {
-      next.add(kind);
-    }
-    return copyWith(kinds: next);
-  }
+  TimelineRowFilter toggledKind(LayerKind kind) =>
+      copyWith(kinds: toggledSet(kinds, kind));
 
   @override
   bool operator ==(Object other) {
     return other is TimelineRowFilter &&
-        _setEquals(other.markColors, markColors) &&
-        _setEquals(other.kinds, kinds) &&
+        setEquals(other.markColors, markColors) &&
+        setEquals(other.kinds, kinds) &&
         other.onTimesheetOnly == onTimesheetOnly &&
         other.fxOnly == fxOnly &&
         other.fillReferenceOnly == fillReferenceOnly;
@@ -183,16 +175,4 @@ class TimelineRowFilter {
     fxOnly,
     fillReferenceOnly,
   );
-}
-
-bool _setEquals<T>(Set<T> a, Set<T> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (final value in a) {
-    if (!b.contains(value)) {
-      return false;
-    }
-  }
-  return true;
 }

@@ -400,7 +400,7 @@ void main() {
     });
 
     test('a row that is READ-ONLY in this cut is not renamed with the rest', () {
-      // ⚠️The exclusion is exactly [layerKindIsReadOnlyInCut] — the rows a
+      // ⚠️The exclusion is exactly [LayerKind.isReadOnlyInCut] — the rows a
       // cut only BORROWS from its track. The camera is NOT one of them: its
       // name is editable today through the ordinary rename, and ⑨ invents no
       // new restriction (the assumption that it would was mine, and the
@@ -410,7 +410,7 @@ void main() {
         (layer) => layer.kind == LayerKind.camera,
       );
       final readOnly = s.layers
-          .where((layer) => layerKindIsReadOnlyInCut(layer.kind))
+          .where((layer) => layer.kind.isReadOnlyInCut)
           .toList();
 
       s.rowSelection.value = [

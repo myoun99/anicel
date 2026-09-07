@@ -22,10 +22,7 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../native/qa_audio_native.dart' show QaAudioNative;
 import '../../native/qa_audio_device.dart'
-    show
-        QaAudioDevice,
-        audioInputDeviceIndexByName,
-        audioOutputDeviceIndexByName;
+    show QaAudioDevice, audioDeviceIndexByName, openAudioOutput;
 import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import '../playback/audio_input_monitor.dart';
@@ -33,7 +30,8 @@ import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../../services/audio/conform_pcm_codec.dart' show encodeConform;
 import '../../services/commands/update_media_assets_command.dart';
 import '../../models/se_take_placement.dart';
-import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
+import '../../services/audio/audio_peaks_extractor.dart'
+    show AudioPeakBucketFold, AudioPeaks, loudestChannelMagnitude;
 import '../playback/audio_recorder.dart';
 import '../playback/voice_take_processing.dart';
 import '../../services/project_repository.dart';
@@ -348,19 +346,13 @@ class EditorVoiceRecording {
     if (device == null || playback.isActive || device.isOpen) {
       return null;
     }
-    final index = audioOutputDeviceIndexByName(
-      device,
-      audioSyncSettings.value.outputDeviceName,
-    );
-    var opened = device.open(
-      sampleRate: 48000,
-      channels: 2,
-      deviceIndex: index,
-    );
-    if (opened == 0 && index >= 0) {
-      opened = device.open(sampleRate: 48000, channels: 2);
-    }
-    return opened == 0 ? null : device;
+    return openAudioOutput(
+          device,
+          sampleRate: 48000,
+          preferredName: audioSyncSettings.value.outputDeviceName,
+        )
+        ? device
+        : null;
   }
 
   void _playCountInBeeps(int seconds) {
@@ -444,9 +436,10 @@ class EditorVoiceRecording {
       sampleRate: audioConformStore.projectSampleRate,
       deviceIndex: device == null
           ? -1
-          : audioInputDeviceIndexByName(
+          : audioDeviceIndexByName(
               device,
-              audioSyncSettings.value.inputDeviceName,
+              capture: true,
+              name: audioSyncSettings.value.inputDeviceName,
             ),
     );
   }
@@ -525,10 +518,12 @@ class EditorVoiceRecording {
   /// The growing |peak| envelope of the take being recorded, folded from
   /// the recorder's chunk tap in the waveform store's own format.
   AudioPeaks? _voiceRecordLivePeaks;
-  final List<double> _voiceRecordPeakBuckets = [];
-  double _voiceRecordBucketMax = 0;
-  int _voiceRecordBucketFill = 0;
-  int _voiceRecordSamplesPerBucket = 0;
+
+  /// The same bucket fold the file path uses ([AudioPeakBucketFold]);
+  /// non-null between arm and stop. The live path never [flush]es — a
+  /// partial bucket waits for the next chunk, because a take in progress
+  /// has no end yet.
+  AudioPeakBucketFold? _voiceRecordPeakFold;
   int _voiceRecordLastPreviewLength = 0;
 
   /// What the waveform strips should paint for [path]: the live envelope
@@ -545,8 +540,8 @@ class EditorVoiceRecording {
   /// keep, the gain scales it — the envelope and the clip light both
   /// show what lands in the file, which is the whole point of baking.
   void debugIngestVoiceRecordChunk(Float32List interleaved, int channels) {
-    final perBucket = _voiceRecordSamplesPerBucket;
-    if (channels <= 0 || perBucket <= 0) {
+    final fold = _voiceRecordPeakFold;
+    if (channels <= 0 || fold == null) {
       return;
     }
     final factor = micGainFactor(_voiceRecordGainDb);
@@ -557,44 +552,21 @@ class EditorVoiceRecording {
     for (var frame = 0; frame < frames; frame += 1) {
       final base = frame * channels;
       double magnitude;
-      switch (mode) {
-        case VoiceInputChannelMode.monoMix:
-          var sum = 0.0;
-          for (var channel = 0; channel < channels; channel += 1) {
-            sum += interleaved[base + channel];
-          }
-          final mixed = sum / channels;
-          magnitude = mixed < 0 ? -mixed : mixed;
-        case VoiceInputChannelMode.left:
-          final value = interleaved[base];
-          magnitude = value < 0 ? -value : value;
-        case VoiceInputChannelMode.right:
-          final value = interleaved[base + 1];
-          magnitude = value < 0 ? -value : value;
-        case VoiceInputChannelMode.device:
-          magnitude = 0;
-          for (var channel = 0; channel < channels; channel += 1) {
-            final value = interleaved[base + channel];
-            final size = value < 0 ? -value : value;
-            if (size > magnitude) {
-              magnitude = size;
-            }
-          }
+      if (mode == VoiceInputChannelMode.device) {
+        // ⛔NOT the fold. `device` keeps every channel in the TAKE, so
+        // there is nothing to fold — and a meter needs one scalar, so it
+        // takes the loudest channel, the same honest single-lane answer
+        // [peaksFromSamples] gives a file. Same rule, same function.
+        magnitude = loudestChannelMagnitude(interleaved, base, channels);
+      } else {
+        final picked = mode.pickFrame(interleaved, base, channels);
+        magnitude = picked < 0 ? -picked : picked;
       }
       final scaled = magnitude * factor;
       if (scaled >= voiceClipThreshold && !voiceRecordClipLit.value) {
         voiceRecordClipLit.value = true;
       }
-      final clamped = scaled > 1.0 ? 1.0 : scaled;
-      if (clamped > _voiceRecordBucketMax) {
-        _voiceRecordBucketMax = clamped;
-      }
-      _voiceRecordBucketFill += 1;
-      if (_voiceRecordBucketFill == perBucket) {
-        _voiceRecordPeakBuckets.add(_voiceRecordBucketMax);
-        _voiceRecordBucketMax = 0;
-        _voiceRecordBucketFill = 0;
-      }
+      fold.add(scaled);
     }
   }
 
@@ -630,9 +602,11 @@ class EditorVoiceRecording {
       return; // Same frame: the boundary gate holds the rebuild back.
     }
     _voiceRecordLastPreviewLength = length;
+    // No flush: a take in progress has no end, so its partial bucket
+    // waits for the next chunk rather than landing short.
     _voiceRecordLivePeaks = AudioPeaks(
       bucketsPerSecond: 40,
-      peaks: Float32List.fromList(_voiceRecordPeakBuckets),
+      peaks: _voiceRecordPeakFold?.toFloat32List() ?? Float32List(0),
     );
     var minted = 0;
     final plan = planSeTakePlacement(
@@ -649,10 +623,7 @@ class EditorVoiceRecording {
   void _clearVoiceRecordPreview() {
     playback.globalFrameIndexListenable.removeListener(_syncVoiceRecordPreview);
     _voiceRecordLivePeaks = null;
-    _voiceRecordPeakBuckets.clear();
-    _voiceRecordBucketMax = 0;
-    _voiceRecordBucketFill = 0;
-    _voiceRecordSamplesPerBucket = 0;
+    _voiceRecordPeakFold = null;
     _voiceRecordLastPreviewLength = 0;
     voiceRecordClipLit.value = false;
     // The ADR cueing retires with the take (REC1-E): the stop's own
@@ -752,7 +723,9 @@ class EditorVoiceRecording {
     // Live preview (REC1-C): the recorder's chunk tap feeds the growing
     // waveform; the playback frame channel drives the block preview at
     // frame boundaries — no session notify per tick (R12-B).
-    _voiceRecordSamplesPerBucket = opened.rate ~/ 40;
+    _voiceRecordPeakFold = AudioPeakBucketFold(
+      samplesPerBucket: opened.rate ~/ 40,
+    );
     opened.recorder.onChunk = debugIngestVoiceRecordChunk;
     playback.globalFrameIndexListenable.addListener(_syncVoiceRecordPreview);
 
@@ -786,9 +759,10 @@ class EditorVoiceRecording {
           : audioConformStore.projectSampleRate,
       deviceIndex: device == null
           ? -1
-          : audioInputDeviceIndexByName(
+          : audioDeviceIndexByName(
               device,
-              audioSyncSettings.value.inputDeviceName,
+              capture: true,
+              name: audioSyncSettings.value.inputDeviceName,
             ),
     );
     if (rate == 0) {

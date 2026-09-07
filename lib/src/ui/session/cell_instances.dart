@@ -167,8 +167,7 @@ class CellInstances {
   /// cels, a synced mirror, or a covering row.
   List<({int startIndex, int length, FrameId frameId, String? name})>
   _authoredFillsFor(Layer layer, TimelineFrameRangeSelection selection) {
-    if (!layerKindTakesAuthoredCels(layer.kind) ||
-        isSyncedAttachedLayer(layer)) {
+    if (!layer.kind.takesAuthoredCels || isSyncedAttachedLayer(layer)) {
       return const []; // Synced mirrors follow their base; nothing to author.
     }
     // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
@@ -177,7 +176,7 @@ class CellInstances {
     // by luck (the covering normalization leaves no empty gap to fill),
     // and #1 is about to put folders — and so their image members — into
     // range selections on purpose. Say it instead of relying on it.
-    if (layerKindCoversWithoutGaps(layer.kind)) {
+    if (layer.kind.coversWithoutGaps) {
       return const [];
     }
     final layerFills =

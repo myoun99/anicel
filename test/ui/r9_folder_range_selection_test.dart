@@ -98,7 +98,7 @@ void main() {
       session.layerStack.addLayerOfKind(LayerKind.image);
       final image = session.activeLayer!;
       expect(image.kind, LayerKind.image);
-      expect(layerKindCoversWithoutGaps(image.kind), isTrue);
+      expect(image.kind.coversWithoutGaps, isTrue);
       final imageFramesBefore = image.frames.length;
       final imageTimelineBefore = Map.of(image.timeline);
 

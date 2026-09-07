@@ -5,9 +5,11 @@ import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import 'active_cut_controllers.dart';
+import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
@@ -29,13 +31,17 @@ class CutVerbs {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required StoryboardRows storyboardRows,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
-       _storyboardRows = storyboardRows;
+       _storyboardRows = storyboardRows,
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final StoryboardRows _storyboardRows;
 
@@ -71,32 +77,20 @@ class CutVerbs {
   void resizeActiveCutCanvas(
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.resizeCutCanvas(
+  }) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.resizeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
-  void duplicateActiveCut() {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.duplicateCut(
+  void duplicateActiveCut() => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
       targetTrackId: _selection.selectedTrackId,
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the
@@ -105,13 +99,9 @@ class CutVerbs {
       deleteSelectedCuts();
       return;
     }
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.deleteCut(cutId: cutId);
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
+    _activeCut.onActiveCut(
+      (cutId) => _project.cutCommandCoordinator.deleteCut(cutId: cutId),
+    );
   }
 
   CutPosition? get _activeCutPositionOrNull {
@@ -119,10 +109,7 @@ class CutVerbs {
     if (cutId == null) {
       return null;
     }
-    return _internals.cutReorderPlanner.findCutPosition(
-      project: _project.repository.requireProject(),
-      cutId: cutId,
-    );
+    return cutPositionOf(_project.repository.requireProject(), cutId);
   }
 
   CutPosition get _activeCutPosition {
@@ -171,15 +158,10 @@ class CutVerbs {
 
   String? get activeCutNote => _project.activeCutOrNull?.metadata.note;
 
-  void updateActiveCutNote(String note) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note);
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+  void updateActiveCutNote(String note) => _activeCut.onActiveCut(
+    (cutId) =>
+        _project.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note),
+  );
 
   /// Whether the active cut's storyboard thumbnail is pinned to the
   /// playhead frame (drives the toolbar toggle's state).
@@ -206,15 +188,12 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
-  void renameActiveCut(String newName) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.renameCut(cutId: cutId, newName: newName);
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+  void renameActiveCut(String newName) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.renameCut(
+      cutId: cutId,
+      newName: newName,
+    ),
+  );
 
   /// R26 #32: sets the PROJECT's frame rate (one undo step, no-op when
   /// unchanged). Everything timed — ruler seconds, sheet rows, playback,
@@ -247,15 +226,10 @@ class CutVerbs {
 
   /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
   /// active cut's (empty timelines — same pictures, own timing).
-  void createLinkedCutFromActiveCut() {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId);
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
-  }
+  void createLinkedCutFromActiveCut() => _activeCut.onActiveCut(
+    (cutId) =>
+        _project.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId),
+  );
 
   /// 겸용 변경 preview: what linking the active cut with [targetCutId]
   /// would do (drives the confirmation dialog's 안내문). Null when there
@@ -296,14 +270,7 @@ class CutVerbs {
       return null;
     }
     final project = _project.repository.requireProject();
-    Cut? targetCut;
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == targetCutId) {
-          targetCut = cut;
-        }
-      }
-    }
+    final targetCut = cutPositionOf(project, targetCutId)?.cut;
     if (targetCut == null) {
       return null;
     }

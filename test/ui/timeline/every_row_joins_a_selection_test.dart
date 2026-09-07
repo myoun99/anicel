@@ -183,43 +183,43 @@ void main() {
       'lib/src/ui/timeline/layer_timeline_grid.dart',
       'lib/src/ui/timeline/xsheet_timeline_grid.dart',
     ]) {
-      test('$path hands a lane row a selection target', () {
+      test('$path hands EVERY row to the shared wrapper', () {
         final text = source(path);
-        expect(
-          text,
-          contains('laneSelectOnlyDragTarget('),
-          reason:
-              'a lane row that heads no fx chain used to get NO drag target '
-              'at all, so a span could neither start on it nor stop on it. '
-              'The target itself moved to the shared law (the clone scan, '
-              '2026-09-04) — what each grid still owes is the ROUTING to it',
-        );
-        expect(
-          RegExp('onSelectCrossed:').allMatches(text).length,
-          greaterThanOrEqualTo(2),
-          reason:
-              'the fx CHAIN HEADER and the select-only lane each need their '
-              'own. The header was handed onCrossed and never this — an '
-              'unremarked omission, and the whole bug',
-        );
         expect(
           text,
           contains('layerRowDragWrapper('),
           reason:
-              'the LAYER row\'s own target comes from the shared wrapper '
-              '(the audit\'s clone scan, 2026-09-03) — a grid that builds '
-              'it by hand is the copy that drifted',
+              'the row\'s target comes from the shared wrapper (the audit\'s '
+              'clone scans, 2026-09-03 and round 8) — a grid that builds '
+              'one by hand is the copy that drifts',
+        );
+        expect(
+          text,
+          isNot(contains('LayerRowDragTarget(')),
+          reason:
+              '⛔a grid that constructs a target itself is deciding which '
+              'hooks that row gets, and that is the decision the fx header '
+              'got wrong: it was handed onCrossed and never onSelectCrossed. '
+              'Which target a row gets is a question about the ROW, and it '
+              'is answered once, in layerRowDragWrapper',
+        );
+        expect(
+          text,
+          isNot(contains('laneSelectOnlyDragTarget(')),
+          reason:
+              'the lane branch is inside the wrapper now, not routed to '
+              'from each grid',
         );
       });
     }
 
-    test('the select-only lane target is spelled ONCE, in the shared law', () {
-      // Both grids used to build it themselves, which is how one of them
-      // came to carry onCrossed and no onSelectCrossed at all.
+    test('the shared wrapper answers for a LANE row, both targets', () {
+      // Both grids used to route lane rows themselves, which is how one of
+      // them came to carry onCrossed and no onSelectCrossed at all.
       final text = source('lib/src/ui/timeline/layer_row_drag.dart');
-      expect(text, contains('Widget laneSelectOnlyDragTarget('));
+      expect(text, contains('Widget _laneSelectOnlyDragTarget('));
       final law = text.substring(
-        text.indexOf('Widget laneSelectOnlyDragTarget('),
+        text.indexOf('Widget _laneSelectOnlyDragTarget('),
       );
       expect(
         law,
@@ -232,6 +232,21 @@ void main() {
         reason:
             'the select half is the entire reason this target exists — '
             'onCrossed is deliberately empty beside it',
+      );
+      expect(
+        law,
+        contains('EffectRowSubject('),
+        reason:
+            'and the fx CHAIN HEADER'
+            's re-order target is the branch beside it, in the same law',
+      );
+      expect(
+        RegExp('onSelectCrossed:').allMatches(law).length,
+        greaterThanOrEqualTo(2),
+        reason:
+            'the select-only lane and the fx header each hand the span on — '
+            'the header was handed onCrossed and never this, and that '
+            'omission was the whole bug',
       );
     });
 

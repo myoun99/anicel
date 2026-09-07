@@ -181,13 +181,11 @@ class _CutCommands {
       );
     }
 
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.canvasSize == canvasSize) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      ResizeCutCanvasCommand(
+    _coordinator._executeIfChanged(
+      subject: _coordinator._requireCut(cutId),
+      value: canvasSize,
+      read: (cut) => cut.canvasSize,
+      command: (_) => ResizeCutCanvasCommand(
         repository: _coordinator.repository,
         cutId: cutId,
         canvasSize: canvasSize,
@@ -228,40 +226,33 @@ class _CutCommands {
     );
   }
 
-  void updateCutNote({required CutId cutId, required String note}) {
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.metadata.note == note) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      UpdateCutNoteCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        note: note,
-      ),
-    );
-  }
+  void updateCutNote({required CutId cutId, required String note}) =>
+      _coordinator._executeIfChanged(
+        subject: _coordinator._requireCut(cutId),
+        value: note,
+        read: (cut) => cut.metadata.note,
+        command: (_) => UpdateCutNoteCommand(
+          repository: _coordinator.repository,
+          cutId: cutId,
+          note: note,
+        ),
+      );
 
   /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
   /// first frame); one undo step.
   void updateCutThumbnailFrame({
     required CutId cutId,
     required int? frameIndex,
-  }) {
-    final cut = _coordinator._requireCut(cutId);
-    if (cut.metadata.thumbnailFrameIndex == frameIndex) {
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      UpdateCutThumbnailFrameCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        frameIndex: frameIndex,
-      ),
-    );
-  }
+  }) => _coordinator._executeIfChanged(
+    subject: _coordinator._requireCut(cutId),
+    value: frameIndex,
+    read: (cut) => cut.metadata.thumbnailFrameIndex,
+    command: (_) => UpdateCutThumbnailFrameCommand(
+      repository: _coordinator.repository,
+      cutId: cutId,
+      frameIndex: frameIndex,
+    ),
+  );
 
   /// Moves ONE cut to [newIndex] — the left/right nudge buttons' form of
   /// the order edit, stated as the resulting order so both forms share a

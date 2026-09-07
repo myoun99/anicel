@@ -60,7 +60,9 @@ class CreateLinkedCutCommand implements Command {
   void execute() {
     _previousActiveCutId = editingSession.activeCutId;
     repository.updateProject((project) {
-      final (:track, cut: source) = requireCutLocation(project, sourceCutId);
+      final position = requireCutPosition(project, sourceCutId);
+      final track = position.track;
+      final source = position.cut;
 
       final linkedLayers = <Layer>[
         for (final layer in source.layers)

@@ -2,7 +2,6 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 
 /// The 겸용 변경 plan: what linking [targetCutId] to [originCutId] will
@@ -78,14 +77,13 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   required Cut originCut,
   required Cut targetCut,
 }) {
-  // The CONVERT rule ([layerKindJoinsLinkedCutConvert]), a shade narrower
+  // The CONVERT rule ([LayerKind.joinsLinkedCutConvert]), a shade narrower
   // than 겸용컷 생성's: a row this union APPENDS lands at the top with its
   // folder stripped, which an ADJUSTMENT row cannot survive (its position
   // is what it grades). The two rules used to be hand-written here and in
   // the create planner, and the copies had already drifted — this one had
   // no folder clause. Layer pairing stays by NAME.
-  bool linksIntoLinkedCut(Layer layer) =>
-      layerKindJoinsLinkedCutConvert(layer.kind);
+  bool linksIntoLinkedCut(Layer layer) => layer.kind.joinsLinkedCutConvert;
   final originDrawing = [
     for (final layer in originCut.layers)
       if (linksIntoLinkedCut(layer)) layer,
@@ -201,8 +199,8 @@ LayerMergeResolution resolveLayerMerge({
   // on both sides so ambiguity cannot arise; drawing layers keep the
   // unnamed-never-conflicts rule below (unnamed cels can be many).
   final imageSingleCelPair =
-      layerKindHoldsSingleCel(origin.kind) &&
-      layerKindHoldsSingleCel(target.kind) &&
+      origin.kind.holdsSingleCel &&
+      target.kind.holdsSingleCel &&
       origin.frames.length == 1 &&
       target.frames.length == 1 &&
       origin.frames.single.name == null &&

@@ -91,7 +91,7 @@ String? timelineCellSemanticsLabel({
   required TimelineCellExposureState exposureState,
   String? frameName,
 }) {
-  if (layerKindBandIsInstructionsOnly(layerKind)) {
+  if (layerKind.bandIsInstructionsOnly) {
     return null;
   }
   return switch (exposureState) {

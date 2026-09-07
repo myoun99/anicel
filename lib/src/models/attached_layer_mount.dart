@@ -21,7 +21,6 @@ import 'attached_placement.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
-import 'layer_kind.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 
@@ -116,9 +115,9 @@ List<FrameId> _blockCelIds(Layer layer) {
 bool canMountLayerOnBase({required Layer row, required Layer base}) {
   return row.id != base.id &&
       canCarryAttachedLayers(base) &&
-      layerKindIsDrawingCel(row.kind) &&
-      !layerKindGroupsLayers(row.kind) &&
-      !layerKindIsSingletonPerCut(row.kind);
+      row.kind.isDrawingCel &&
+      !row.kind.groupsLayers &&
+      !row.kind.isSingletonPerCut;
 }
 
 /// The fields an attach/detach edit writes, and nothing else.
@@ -210,17 +209,13 @@ Layer detachedLayer({
       baked[index] = exposure;
     }
   });
+  // The mount only knows the cels it linked: a behaviour whose anchor has
+  // no link is dropped, and an unlinked pattern anchor reads as "no
+  // pattern". Both answers come out of the LOOKUP, which is what
+  // [TimelineRunBehavior.remapFrameIds] takes.
   final behaviors = <TimelineRunBehavior>[
     for (final behavior in base.runBehaviors)
-      if (links[behavior.anchorFrameId] != null)
-        TimelineRunBehavior(
-          anchorFrameId: links[behavior.anchorFrameId]!,
-          side: behavior.side,
-          mode: behavior.mode,
-          patternAnchorFrameId: behavior.patternAnchorFrameId == null
-              ? null
-              : links[behavior.patternAnchorFrameId!],
-        ),
+      ?behavior.remapFrameIds((id) => links[id]),
   ];
   return rederiveRunBehaviors(
     attached.copyWith(

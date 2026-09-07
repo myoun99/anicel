@@ -28,7 +28,7 @@ import '../../models/transform_track.dart';
 ///   copy has no base, so it pastes as a row of its own;
 /// - SE-only state (mute/gain/pan, the on-canvas name tag): SE rows are
 ///   track-owned and refuse the clipboard outright
-///   ([layerKindIsClipboardCopyable]).
+///   ([LayerKind.isClipboardCopyable]).
 class LayerCopyPayload {
   LayerCopyPayload({
     required this.name,

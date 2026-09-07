@@ -1,12 +1,15 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/argb_channels.dart';
+import 'package:anicel/src/core/contain_rect.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/identity_memo.dart';
 import 'package:anicel/src/core/inserted_at.dart';
 import 'package:anicel/src/core/mapped_or_same.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
+import 'package:anicel/src/core/set_toggle.dart';
 import 'package:anicel/src/core/unit_direction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
@@ -171,6 +174,58 @@ void main() {
     });
   });
 
+  group('containRect — 늘어난 도장은 도장이 아니다', () {
+    test('a wide picture letterboxes: full width, centred vertically', () {
+      expect(
+        containRect(const Size(200, 100), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(0, 25, 100, 50),
+      );
+    });
+
+    test('a tall picture pillarboxes: full height, centred horizontally', () {
+      expect(
+        containRect(const Size(100, 200), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(25, 0, 50, 100),
+      );
+    });
+
+    test('the slot is honoured where it SITS, not at the origin', () {
+      expect(
+        containRect(
+          const Size(20, 10),
+          const Rect.fromLTWH(30, 40, 100, 100),
+        ),
+        const Rect.fromLTWH(30, 65, 100, 50),
+      );
+    });
+
+    test('a picture larger than the slot shrinks; a smaller one grows — '
+        'contain is a fit, not a cap', () {
+      expect(
+        containRect(const Size(400, 400), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(0, 0, 100, 100),
+      );
+      expect(
+        containRect(const Size(10, 10), const Rect.fromLTWH(0, 0, 100, 100)),
+        const Rect.fromLTWH(0, 0, 100, 100),
+      );
+    });
+
+    test('an exact-ratio picture fills the slot with nothing left over', () {
+      expect(
+        containRect(const Size(64, 32), const Rect.fromLTWH(5, 5, 128, 64)),
+        const Rect.fromLTWH(5, 5, 128, 64),
+      );
+    });
+
+    test('a picture with no area answers an empty rect at the slot origin', () {
+      expect(
+        containRect(Size.zero, const Rect.fromLTWH(7, 9, 100, 100)),
+        const Rect.fromLTWH(7, 9, 0, 0),
+      );
+    });
+  });
+
   group('insertedAt', () {
     test('a null index appends', () {
       expect(insertedAt([1, 2], 3, null), [1, 2, 3]);
@@ -281,6 +336,32 @@ void main() {
         'different arguments', () {
       expect(identical(copyWithSentinel, copyWithSentinel), isTrue);
       expect(copyWithSentinel, isNot(isNull));
+    });
+  });
+
+  group('toggledSet — the copy-then-flip law of the view-state sets', () {
+    test('an absent value is added, a present one is removed', () {
+      expect(toggledSet(const <int>{}, 1), <int>{1});
+      expect(toggledSet(const <int>{1}, 1), isEmpty);
+    });
+
+    test('the other members survive both directions', () {
+      expect(toggledSet(const <int>{1, 2}, 3), <int>{1, 2, 3});
+      expect(toggledSet(const <int>{1, 2, 3}, 2), <int>{1, 3});
+    });
+
+    test('the source set is never touched — the answer is a NEW set', () {
+      final source = <int>{1, 2};
+      final next = toggledSet(source, 2);
+      expect(source, <int>{1, 2});
+      expect(identical(next, source), isFalse);
+      expect(toggledSet(source, 9), isNot(same(source)));
+    });
+
+    test('toggling twice returns to where it started', () {
+      expect(toggledSet(toggledSet(const <String>{'a'}, 'b'), 'b'), <String>{
+        'a',
+      });
     });
   });
 }

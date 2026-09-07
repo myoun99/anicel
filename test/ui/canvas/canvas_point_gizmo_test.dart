@@ -15,12 +15,43 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/canvas/layer_position_gizmo.dart';
+import 'package:anicel/src/ui/canvas/canvas_point_gizmo.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
 const _gizmoKey = ValueKey<String>('layer-position-gizmo');
+const _anchorKey = ValueKey<String>('layer-anchor-gizmo');
+
+/// The two glyphs are one drawing with two sets of radii, so the radii are
+/// what a test has to hold — a test on the painter's fields would pass
+/// while the drawing moved (the C9 characterisation's rule).
+class _CanvasSpy implements Canvas {
+  final circles = <({Offset center, double radius})>[];
+  final lines = <({Offset from, Offset to})>[];
+
+  @override
+  void drawCircle(Offset c, double radius, Paint paint) =>
+      circles.add((center: c, radius: radius));
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) =>
+      lines.add((from: p1, to: p2));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+_CanvasSpy _spyOnGlyph(WidgetTester tester, Key handleKey) {
+  final paint = tester.widget<CustomPaint>(
+    find
+        .descendant(of: find.byKey(handleKey), matching: find.byType(CustomPaint))
+        .first,
+  );
+  final spy = _CanvasSpy();
+  paint.painter!.paint(spy, tester.getSize(find.byKey(handleKey)));
+  return spy;
+}
 
 /// Stands on the Transform GROUP header — the row that declares every
 /// manipulator its members do (R5 #10).
@@ -79,17 +110,18 @@ void main() {
     });
   });
 
-  group('LayerPositionGizmo', () {
+  group('CanvasPointGizmo', () {
     testWidgets('dragging the handle commits ONE position in canvas '
         'coordinates (screen delta ÷ viewport zoom)', (tester) async {
       final committed = <CanvasPoint>[];
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: LayerPositionGizmo(
-              pose: TransformPose(center: CanvasPoint(x: 100, y: 80)),
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.crosshair,
+              point: CanvasPoint(x: 100, y: 80),
               viewport: CanvasViewport(zoom: 2),
-              onPositionCommitted: committed.add,
+              onCommitted: committed.add,
             ),
           ),
         ),
@@ -101,6 +133,101 @@ void main() {
       expect(committed, hasLength(1));
       expect(committed.single.x, closeTo(100 + 48 / 2, 0.001));
       expect(committed.single.y, closeTo(80 - 20 / 2, 0.001));
+    });
+
+    testWidgets('a drag that lands back where it started commits NOTHING — '
+        'one undo entry per real move, none for a handle that did not move', (
+      tester,
+    ) async {
+      final committed = <CanvasPoint>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.crosshair,
+              point: CanvasPoint(x: 100, y: 80),
+              viewport: CanvasViewport(),
+              onCommitted: committed.add,
+            ),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(_gizmoKey)),
+      );
+      await gesture.moveBy(const Offset(24, 16));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-24, -16));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(committed, isEmpty);
+    });
+
+    testWidgets('the crosshair glyph: one circle and four ticks OUTSIDE it '
+        '(AE-style move handle)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.crosshair,
+              point: CanvasPoint(x: 100, y: 80),
+              viewport: CanvasViewport(),
+              onCommitted: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.getSize(find.byKey(_gizmoKey)), const Size(22, 22));
+      final spy = _spyOnGlyph(tester, _gizmoKey);
+      expect(spy.circles, hasLength(1));
+      expect(spy.circles.single.center, const Offset(11, 11));
+      expect(spy.circles.single.radius, 9);
+      expect(spy.lines, hasLength(4));
+      expect(
+        spy.lines.map((l) => (l.from, l.to)).toSet(),
+        {
+          (const Offset(16, 11), const Offset(21, 11)),
+          (const Offset(6, 11), const Offset(1, 11)),
+          (const Offset(11, 16), const Offset(11, 21)),
+          (const Offset(11, 6), const Offset(11, 1)),
+        },
+      );
+    });
+
+    testWidgets('the anchor glyph: a smaller circle with the four ticks '
+        'reaching THROUGH it — a pivot, not a move handle', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.anchor,
+              point: CanvasPoint(x: 60, y: 40),
+              viewport: CanvasViewport(),
+              onCommitted: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.getSize(find.byKey(_anchorKey)), const Size(24, 24));
+      final spy = _spyOnGlyph(tester, _anchorKey);
+      expect(spy.circles, hasLength(1));
+      expect(spy.circles.single.center, const Offset(12, 12));
+      expect(spy.circles.single.radius, 6);
+      expect(spy.lines, hasLength(4));
+      expect(
+        spy.lines.map((l) => (l.from, l.to)).toSet(),
+        {
+          (const Offset(18, 12), const Offset(23, 12)),
+          (const Offset(6, 12), const Offset(1, 12)),
+          (const Offset(12, 18), const Offset(12, 23)),
+          (const Offset(12, 6), const Offset(12, 1)),
+        },
+      );
     });
 
     // TS9's law reaches the layer chrome too (유저: 드로잉모드가 아닌이상은
@@ -121,10 +248,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: LayerPositionGizmo(
-              pose: TransformPose(center: CanvasPoint(x: 100, y: 80)),
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.crosshair,
+              point: CanvasPoint(x: 100, y: 80),
               viewport: CanvasViewport(),
-              onPositionCommitted: committed.add,
+              onCommitted: committed.add,
             ),
           ),
         ),
@@ -153,17 +281,18 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: LayerAnchorGizmo(
-              anchorPoint: CanvasPoint(x: 60, y: 40),
+            body: CanvasPointGizmo(
+              glyph: HandleGlyph.anchor,
+              point: CanvasPoint(x: 60, y: 40),
               viewport: CanvasViewport(zoom: 2),
-              onAnchorCommitted: committed.add,
+              onCommitted: committed.add,
             ),
           ),
         ),
       );
 
       await tester.drag(
-        find.byKey(const ValueKey<String>('layer-anchor-gizmo')),
+        find.byKey(_anchorKey),
         const Offset(30, 10),
       );
       await tester.pumpAndSettle();
@@ -242,7 +371,7 @@ void main() {
       await _standOnTransformHeader(tester);
       expect(find.byKey(_gizmoKey), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('layer-anchor-gizmo')),
+        find.byKey(_anchorKey),
         findsOneWidget,
       );
 
@@ -254,7 +383,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(_gizmoKey), findsNothing);
       expect(
-        find.byKey(const ValueKey<String>('layer-anchor-gizmo')),
+        find.byKey(_anchorKey),
         findsNothing,
       );
     });

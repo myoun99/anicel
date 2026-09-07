@@ -84,6 +84,7 @@ import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 import '../listenable_rebind.dart';
+import '../repaint_props.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
@@ -2594,6 +2595,12 @@ class _CanvasViewportPanbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHorizontal = axis == Axis.horizontal;
+    final metrics = CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+    );
     return SizedBox(
       key: ValueKey<String>(
         isHorizontal
@@ -2602,31 +2609,17 @@ class _CanvasViewportPanbar extends StatelessWidget {
       ),
       height: isHorizontal ? 14 : double.infinity,
       width: isHorizontal ? double.infinity : 14,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final metrics = CanvasViewportPanMetrics(
-            axis: axis,
-            viewport: viewport,
-            editorViewportSize: editorViewportSize,
-            canvasSize: canvasSize,
-            trackExtent: isHorizontal
-                ? constraints.maxWidth
-                : constraints.maxHeight,
-          );
-          return AppScrollbar(
-            axis: axis,
-            offset: metrics.scrollOffset,
-            viewportExtent: metrics.visibleExtent,
-            contentExtent: metrics.scaledContentExtent,
-            minThumbExtent: AppScrollbarThumb.minimum,
-            // The whole lane pans relatively: the canvas panbar has always
-            // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
-            lanePress: AppScrollbarLanePress.relativeDrag,
-            onOffsetChanged: (next) =>
-                onViewportChanged(metrics.viewportForScroll(next)),
-            onChangeEnd: onViewportChangeEnd,
-          );
-        },
+      child: AppScrollbar(
+        axis: axis,
+        offset: metrics.scrollOffset,
+        viewportExtent: metrics.visibleExtent,
+        contentExtent: metrics.scaledContentExtent,
+        // The whole lane pans relatively: the canvas panbar has always
+        // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
+        lanePress: AppScrollbarLanePress.relativeDrag,
+        onOffsetChanged: (next) =>
+            onViewportChanged(metrics.viewportForScroll(next)),
+        onChangeEnd: onViewportChangeEnd,
       ),
     );
   }
@@ -2715,7 +2708,7 @@ class _StagePlanes extends StatelessWidget {
 /// Fills with the backdrop, then lays the pasteboard over the region it
 /// occupies — a canvas-space rectangle, so it rides zoom, pan, rotation
 /// and both flips like everything else on the stage.
-class _StagePlanesPainter extends CustomPainter {
+class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   const _StagePlanesPainter({
     required this.backdrop,
     required this.pasteboard,
@@ -2797,12 +2790,7 @@ class _StagePlanesPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _StagePlanesPainter oldDelegate) =>
-      oldDelegate.backdrop != backdrop ||
-      oldDelegate.pasteboard != pasteboard ||
-      oldDelegate.margin != margin ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.viewport != viewport;
+  Object get props => (backdrop, pasteboard, margin, canvasSize, viewport);
 }
 
 /// Which of the pill's foldable groups are OUT at a given width — the fold

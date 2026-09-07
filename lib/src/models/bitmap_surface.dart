@@ -44,48 +44,35 @@ class BitmapSurface {
 
   BitmapTile? tileAt(TileCoord coord) => _tiles[coord];
 
-  BitmapSurface putTile(BitmapTile tile) {
-    if (!containsTileCoord(tile.coord)) {
-      throw ArgumentError.value(
-        tile.coord,
-        'tile.coord',
-        'BitmapSurface tile coord must be inside surface tile bounds.',
-      );
-    }
-    if (tile.size != tileSize) {
-      throw ArgumentError.value(
-        tile.size,
-        'tile.size',
-        'BitmapSurface tile size must match surface tileSize.',
-      );
-    }
-    return copyWith(tiles: {..._tiles, tile.coord: tile});
-  }
-
-  /// Puts MANY tiles in one map rebuild — [putTile] copies the whole
-  /// tile map per call, which is O(n²) across a full-canvas commit's n
-  /// tiles (417ms of an 8000² fill was exactly this).
+  /// Puts tiles — however few — in ONE map rebuild.
+  ///
+  /// ⛔THE BATCH IS THE ONLY PUT. A per-tile put copied the whole tile map
+  /// per call, which is O(n²) across a full-canvas commit's n tiles (417ms
+  /// of an 8000² fill was exactly this), so there is deliberately no
+  /// one-tile form to reach for: `putTiles([tile])` is the n = 1 case and
+  /// costs the same as the old single put did.
+  ///
+  /// ⛔THE STORABILITY LAW IS [_validateTileEntry]'s, and only its. This
+  /// put re-typed the same two throws with the same two messages; the
+  /// constructor every write goes through already applies them, so the
+  /// copy was dead weight that could drift (a mutant that disabled the
+  /// copy's bounds check survived every test, 2026-09-07).
   BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     for (final tile in tilesToPut) {
-      if (!containsTileCoord(tile.coord)) {
-        throw ArgumentError.value(
-          tile.coord,
-          'tile.coord',
-          'BitmapSurface tile coord must be inside surface tile bounds.',
-        );
-      }
-      if (tile.size != tileSize) {
-        throw ArgumentError.value(
-          tile.size,
-          'tile.size',
-          'BitmapSurface tile size must match surface tileSize.',
-        );
-      }
       updated[tile.coord] = tile;
     }
     return copyWith(tiles: updated);
   }
+
+  /// The end of a copy-on-write pass: the surface with [rebuilt] put back,
+  /// or THIS VERY SURFACE when the pass wrote nothing.
+  ///
+  /// Handing the same object back is the structural-sharing half of the
+  /// rewrite — callers test it with `identical`, and every tile the pass
+  /// did not touch keeps its identity either way.
+  BitmapSurface withRebuiltTiles(Map<TileCoord, BitmapTile> rebuilt) =>
+      rebuilt.isEmpty ? this : putTiles(rebuilt.values);
 
   BitmapSurface removeTile(TileCoord coord) {
     final nextTiles = Map<TileCoord, BitmapTile>.of(_tiles)..remove(coord);

@@ -3,7 +3,6 @@ import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
 import '../command.dart';
 import '../project_lookup.dart';
@@ -58,21 +57,19 @@ class LinkDuplicateLayerCommand implements Command {
   @override
   void execute() {
     repository.updateProject((project) {
-      final (:track, :cut) = requireCutLocation(project, cutId);
+      final position = requireCutPosition(project, cutId);
+      final track = position.track;
+      final cut = position.cut;
       final source = requireLayer(
         project,
         cutId: cutId,
         layerId: sourceLayerId,
       );
-      // Resolve to the group's base, then take the contiguous run —
-      // below-side rows and organizer folder rows included.
-      final baseId = source.attachedToLayerId ?? source.id;
-      if (!cut.layers.any((layer) => layer.id == baseId)) {
+      final baseId = attachBaseIdOf(source);
+      final members = attachedGroupSlice(baseId, cut.layers);
+      if (members.isEmpty) {
         throw StateError('Attach base not found: $baseId');
       }
-      final startIndex = attachedGroupStartIndex(baseId, cut.layers);
-      final endIndex = attachedGroupEndIndex(baseId, cut.layers);
-      final members = cut.layers.sublist(startIndex, endIndex);
 
       final copies = <Layer>[
         for (final member in members)
@@ -100,7 +97,8 @@ class LinkDuplicateLayerCommand implements Command {
           }(),
       ];
 
-      final nextLayers = [...cut.layers]..insertAll(endIndex, copies);
+      final nextLayers = [...cut.layers]
+        ..insertAll(attachedGroupEndIndex(baseId, cut.layers), copies);
 
       _registryBefore = project.linkRegistry;
       var groups = [...project.linkRegistry.groups];
@@ -109,7 +107,7 @@ class LinkDuplicateLayerCommand implements Command {
         // groups: linking shares cel banks, and a folder has none —
         // joining the ORIGINAL organizer's group would make deleting the
         // copy dissolve the original's mirror in another cut.
-        if (layerKindGroupsLayers(member.kind)) {
+        if (member.kind.groupsLayers) {
           continue;
         }
         groups = linkGroupsJoined(

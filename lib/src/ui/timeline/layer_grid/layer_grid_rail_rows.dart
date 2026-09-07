@@ -54,33 +54,11 @@ class _LayerGridRailRows {
     return windowRows[indexInWindow];
   }
 
-  /// Which DISPLAY row the selection sits on — the row the current-row
-  /// address names, and the active layer's row when it names none.
-  int? selectedRowIndex() {
-    final rows = _state._dragRows;
-    if (rows.isEmpty) {
-      return null;
-    }
-    final current = _state.widget.hooks.currentRowHooks?.currentRow.value;
-    if (current is LaneRowAddress) {
-      final at = rows.indexWhere(
-        (row) =>
-            row.layer.id == current.layerId &&
-            row.lane?.laneId == current.laneId,
-      );
-      if (at >= 0) {
-        return at;
-      }
-    }
-    final activeId = _state.widget.hooks.activeLayerId;
-    if (activeId == null) {
-      return null;
-    }
-    final at = rows.indexWhere(
-      (row) => !row.isLane && row.layer.id == activeId,
-    );
-    return at < 0 ? null : at;
-  }
+  // ⛔"Which DISPLAY row the selection sits on" was written out here — a
+  // second copy of [indexOfDisplayRow], which the ↑/↓ walk and the flip HUD
+  // already read. The reveal asks that one now (round 8's grid
+  // unification), so the rail and the walks can no longer disagree about
+  // where the selection is.
 
   /// The memo gate for [_railRow] (UI-R7 #1): a controls row whose inputs
   /// match hands back the CACHED widget instance — a zoom step (or any
@@ -95,7 +73,7 @@ class _LayerGridRailRows {
 
   Widget _railRowMemoized(TimelineDisplayRow row) {
     if (row.isLane) {
-      return _state._rowDrags._effectDraggable(row, _railRow(row));
+      return _state._rowDrags.draggable(row, _railRow(row));
     }
     final fold = _groupFoldFor(row);
     final inputs = (
@@ -136,11 +114,11 @@ class _LayerGridRailRows {
     );
     final cached = _state._railRowMemo[row.layer.id];
     if (cached != null && cached.inputs == inputs) {
-      return _state._rowDrags._draggable(row, cached.row);
+      return _state._rowDrags.draggable(row, cached.row);
     }
     final built = _railRow(row);
     _state._railRowMemo[row.layer.id] = (inputs: inputs, row: built);
-    return _state._rowDrags._draggable(row, built);
+    return _state._rowDrags.draggable(row, built);
   }
 
   /// The rail row's element key — ONE builder for the window loop and the

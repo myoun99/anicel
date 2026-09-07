@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -9,7 +9,7 @@ import '../../models/cut_id.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
-import '../text/dialogue_fit_layout.dart';
+import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
 import '../canvas/viewport_canvas_transform.dart';
@@ -21,6 +21,8 @@ import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
@@ -186,6 +188,17 @@ class TimesheetDocumentLayout {
   int halfRowCount(int half) => half == 0
       ? document.halfFrameCount
       : document.pageFrameCount - document.halfFrameCount;
+
+  /// Which halves of a page actually carry rows, in print order.
+  ///
+  /// The layout's own fact, asked by both consumers — the painter's cell
+  /// pass and the ink windows, which must cover exactly the strips the
+  /// painter prints. They used to walk `half 0..1, skip halfRowCount <= 0`
+  /// each for themselves.
+  List<({int half, int rowCount})> get halfStrips => [
+    for (var half = 0; half < 2; half += 1)
+      if (halfRowCount(half) > 0) (half: half, rowCount: halfRowCount(half)),
+  ];
 
   int get _maxHalfRows =>
       halfRowCount(0) > halfRowCount(1) ? halfRowCount(0) : halfRowCount(1);
@@ -375,12 +388,34 @@ class TimesheetDocumentLayout {
   }
 }
 
+/// Clips to the panel and enters DOCUMENT SPACE — the prologue every
+/// painter over this sheet shares, so the paper and the overlays on it
+/// cannot land on different grids. The caller owns the matching
+/// `canvas.restore()`.
+///
+/// P8's ONE transform. ⛔The snap already happened at the host, so
+/// this, the playhead overlay and the ink windows all share one
+/// value; passing the ratio keeps the helper's own snap idempotent
+/// rather than a second, coarser rounding.
+void _enterDocumentSpace(
+  Canvas canvas,
+  Size size,
+  CanvasViewport? viewport,
+  double effectiveRatio,
+) {
+  canvas.save();
+  canvas.clipRect(Offset.zero & size);
+  if (viewport != null) {
+    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
+  }
+}
+
 /// Paints the sheet document — the paper form (header band, Direction memo
 /// band, group/letter rows, second-heavy grid), cel numbers, holds, ○
 /// marks, X cells, camera keys, the data-driven cut-end strikethrough and
 /// the playhead row — under the panel viewport transform (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
-class TimesheetDocumentPainter extends CustomPainter {
+class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
@@ -528,20 +563,8 @@ class TimesheetDocumentPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.clipRect(Offset.zero & size);
     final resolvedViewport = viewport;
-    if (resolvedViewport != null) {
-      // P8's ONE transform. ⛔The snap already happened at the host, so
-      // this, the playhead overlay and the ink windows all share one
-      // value; passing the ratio keeps the helper's own snap idempotent
-      // rather than a second, coarser rounding.
-      applyViewportTransform(
-        canvas,
-        resolvedViewport,
-        devicePixelRatio: effectiveRatio,
-      );
-    }
+    _enterDocumentSpace(canvas, size, resolvedViewport, effectiveRatio);
     // The clip above, carried back through the viewport transform into
     // document space. Everything outside it is already invisible; the
     // only question is whether we spend the ops finding that out.
@@ -589,18 +612,15 @@ class TimesheetDocumentPainter extends CustomPainter {
         if (_drawContent) {
           _bands.paintMemoBand(canvas, page.index, drawTexts: drawTexts);
         }
-        for (var half = 0; half < 2; half += 1) {
-          final rowCount = layout.halfRowCount(half);
-          if (rowCount <= 0) {
-            continue;
-          }
+        for (final strip in layout.halfStrips) {
           _cells.paintHalf(
             canvas,
             pageIndex: page.index,
-            half: half,
+            half: strip.half,
             startFrame:
-                page.startFrame + (half == 0 ? 0 : document.halfFrameCount),
-            rowCount: rowCount,
+                page.startFrame +
+                (strip.half == 0 ? 0 : document.halfFrameCount),
+            rowCount: strip.rowCount,
             drawTexts: drawTexts,
           );
         }
@@ -707,28 +727,30 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimesheetDocumentPainter oldDelegate) {
-    return !identical(oldDelegate.document, document) ||
-        oldDelegate.layout.continuous != layout.continuous ||
-        oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
-        oldDelegate.viewport != viewport ||
-        !identical(oldDelegate.notation, notation) ||
-        !setEquals(oldDelegate.layers, layers) ||
-        // Everything `paint` reads has to be compared here or the sheet
-        // keeps printing the old value. `accent` tints the SE name boxes
-        // and `cutId` decides which cut's end line is data — the latter
-        // was masked only because `document` identity happens to change
-        // with the active cut, which is a coincidence and not a contract.
-        oldDelegate.accent != accent ||
-        oldDelegate.cutId != cutId ||
-        // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
-        // `paint` reads this for the text-zoom threshold (and now for the
-        // transform), so a monitor or UI-scale change has to reach the
-        // sheet. It did not — the threshold kept the old value until
-        // something else happened to repaint.
-        oldDelegate.effectiveRatio != effectiveRatio ||
-        !identical(oldDelegate.dragPreview, dragPreview);
-  }
+  Object get props => (
+    ByIdentity(document),
+    layout.continuous,
+    layout.resolvedSinglePage,
+    viewport,
+    ByIdentity(notation),
+    // Null means ALL strata, which is a different input from an empty set,
+    // so the null is carried instead of folded into one.
+    layers == null ? null : BySet(layers!),
+    // Everything `paint` reads has to be compared here or the sheet
+    // keeps printing the old value. `accent` tints the SE name boxes
+    // and `cutId` decides which cut's end line is data — the latter
+    // was masked only because `document` identity happens to change
+    // with the active cut, which is a coincidence and not a contract.
+    accent,
+    cutId,
+    // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
+    // `paint` reads this for the text-zoom threshold (and now for the
+    // transform), so a monitor or UI-scale change has to reach the
+    // sheet. It did not — the threshold kept the old value until
+    // something else happened to repaint.
+    effectiveRatio,
+    ByIdentity(dragPreview),
+  );
 }
 
 /// The sheet's PLAYHEAD row highlight as its own repaint-only layer
@@ -739,7 +761,7 @@ class TimesheetDocumentPainter extends CustomPainter {
 /// single share of the frame-flip hitch. This painter repaints one rect
 /// through [CustomPainter.repaint]; the sheet above never hears about the
 /// playhead at all.
-class TimesheetPlayheadPainter extends CustomPainter {
+class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
   TimesheetPlayheadPainter({
     required this.document,
     required this.layout,
@@ -770,19 +792,11 @@ class TimesheetPlayheadPainter extends CustomPainter {
     if (frame == null || frame < 0 || frame >= document.rowCount) {
       return;
     }
-    canvas.save();
-    canvas.clipRect(Offset.zero & size);
-    final resolvedViewport = viewport;
-    if (resolvedViewport != null) {
-      // 🚨THE SAME TRANSFORM THE DOCUMENT TOOK, from the same host-snapped
-      // viewport — this overlay highlights the rows that painter drew, so
-      // a different grid would put the playhead a sub-pixel off them.
-      applyViewportTransform(
-        canvas,
-        resolvedViewport,
-        devicePixelRatio: effectiveRatio,
-      );
-    }
+    // 🚨THE SAME TRANSFORM THE DOCUMENT TOOK, from the same host-snapped
+    // viewport — this overlay highlights the rows that painter drew, so
+    // a different grid would put the playhead a sub-pixel off them. It is
+    // the same CODE now, not a second copy kept in step by hand.
+    _enterDocumentSpace(canvas, size, viewport, effectiveRatio);
     final position = layout.positionOfFrame(frame);
     // Page view (R26 #41): the playhead highlights nothing while the user
     // is looking at another page.
@@ -804,11 +818,11 @@ class TimesheetPlayheadPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant TimesheetPlayheadPainter oldDelegate) {
-    return !identical(oldDelegate.document, document) ||
-        oldDelegate.layout.continuous != layout.continuous ||
-        oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
-        oldDelegate.viewport != viewport ||
-        oldDelegate.effectiveRatio != effectiveRatio;
-  }
+  Object get props => (
+    ByIdentity(document),
+    layout.continuous,
+    layout.resolvedSinglePage,
+    viewport,
+    effectiveRatio,
+  );
 }

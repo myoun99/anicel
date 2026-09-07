@@ -28,6 +28,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★ (v) 1단계의 진짜 계약 — **더 빨라도 되고, 다르게 그리면 안 된다.**
 ///
@@ -95,8 +96,8 @@ void main() {
     return LayerFrameImageCache(frameStore: store);
   }
 
-  CanvasLayerStackNode drawnRow(String id, {double opacity = 1}) =>
-      CanvasLayerImageNode(
+  CompositeNode<CanvasStackRow> drawnRow(String id, {double opacity = 1}) =>
+      CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(frameKey: key(id), opacity: opacity),
       );
 
@@ -120,7 +121,7 @@ void main() {
 
   Future<CustomPainter> pumpStack(
     WidgetTester tester, {
-    required List<CanvasLayerStackNode> nodes,
+    required List<CompositeNode<CanvasStackRow>> nodes,
     required BitmapSurfacePainter surfacePainter,
     required LayerFrameImageCache cache,
     required bool disableBake,
@@ -172,7 +173,7 @@ void main() {
 
   Future<void> expectSamePixels(
     WidgetTester tester,
-    List<CanvasLayerStackNode> nodes, {
+    List<CompositeNode<CanvasStackRow>> nodes, {
     required List<String> drawn,
     required String reason,
   }) async {
@@ -216,7 +217,7 @@ void main() {
       tester,
       [
         drawnRow('under', opacity: 0.6),
-        const CanvasActiveLayerNode(opacity: 1),
+        const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
         drawnRow('over', opacity: 0.4),
       ],
       drawn: const ['under', 'over'],
@@ -230,10 +231,10 @@ void main() {
       tester,
       [
         drawnRow('under'),
-        CanvasLayerGroupNode(
+        CompositeGroup<CanvasStackRow>(
           children: [
             drawnRow('folder-under'),
-            const CanvasActiveLayerNode(opacity: 1),
+            const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
             drawnRow('folder-over'),
           ],
           opacity: 0.5,
@@ -253,12 +254,12 @@ void main() {
     await expectSamePixels(
       tester,
       [
-        CanvasLayerGroupNode(
+        CompositeGroup<CanvasStackRow>(
           children: [drawnRow('a'), drawnRow('b')],
           opacity: 0.5,
           blendMode: LayerBlendMode.multiply,
         ),
-        const CanvasActiveLayerNode(opacity: 1),
+        const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
       ],
       drawn: const ['a', 'b'],
       reason: 'a folder off the chain is static for the stroke, buffer and all',
@@ -271,13 +272,13 @@ void main() {
       tester,
       [
         drawnRow('root-under'),
-        CanvasLayerGroupNode(
+        CompositeGroup<CanvasStackRow>(
           children: [
             drawnRow('outer-under'),
-            CanvasLayerGroupNode(
+            CompositeGroup<CanvasStackRow>(
               children: [
                 drawnRow('inner-under'),
-                const CanvasActiveLayerNode(opacity: 0.75),
+                const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 0.75)),
                 drawnRow('inner-over'),
               ],
               opacity: 0.5,
@@ -306,10 +307,10 @@ void main() {
     await expectSamePixels(
       tester,
       [
-        CanvasLayerAdjustmentNode(
+        CompositeAdjustment<CanvasStackRow>(
           children: [
             drawnRow('graded'),
-            const CanvasActiveLayerNode(opacity: 1),
+            const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
           ],
           effects: const [],
           mix: 0.5,
@@ -340,7 +341,7 @@ void main() {
   /// surface in a folder.
   Future<void> expectStrokeFollowsThePen(
     WidgetTester tester, {
-    required CanvasLayerStackNode Function(List<CanvasLayerStackNode>) enclose,
+    required CompositeNode<CanvasStackRow> Function(List<CompositeNode<CanvasStackRow>>) enclose,
   }) async {
     final surfacePainter = _SwappableSurface(canvasSize);
     final painter = await pumpStack(
@@ -349,7 +350,7 @@ void main() {
         drawnRow('under'),
         enclose([
           drawnRow('inside'),
-          const CanvasActiveLayerNode(opacity: 1),
+          const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
         ]),
         drawnRow('over'),
       ],
@@ -385,7 +386,7 @@ void main() {
       // both resolve to black, so the ink swap would be invisible for a
       // reason that has nothing to do with the bake — this failed on correct
       // code until that was spotted.
-      enclose: (children) => CanvasLayerGroupNode(
+      enclose: (children) => CompositeGroup<CanvasStackRow>(
         children: children,
         opacity: 1,
         blendMode: LayerBlendMode.normal,
@@ -397,7 +398,7 @@ void main() {
       'recording either', (tester) async {
     await expectStrokeFollowsThePen(
       tester,
-      enclose: (children) => CanvasLayerAdjustmentNode(
+      enclose: (children) => CompositeAdjustment<CanvasStackRow>(
         children: children,
         effects: const [],
         mix: 0.5,
@@ -412,7 +413,7 @@ void main() {
       tester,
       nodes: [
         drawnRow('under'),
-        const CanvasActiveLayerNode(opacity: 1),
+        const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
         drawnRow('over'),
       ],
       cache: cacheWithStrokes(const ['under', 'over']),

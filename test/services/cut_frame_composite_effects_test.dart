@@ -14,6 +14,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// How the R6 effect chain reaches the SHARED composite visit — the one
 /// place every route (editing stack, playback cache, camera renders,
@@ -175,11 +176,12 @@ void main() {
         ]),
         frameIndex: 0,
       );
-      final group = tree.single as CutFrameCompositeEntryGroup;
+      final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
       expect(group.effects.single.parameter('brightness'), 20);
-      final leaf = group.children.single as CutFrameCompositeEntryLeaf;
+      final leaf = group.children.single as CompositeLeaf<CutFrameCompositeRow>;
+      final entry = leaf.payload as CutFrameCompositeEntry;
       expect(
-        leaf.entry.effects,
+        entry.effects,
         isEmpty,
         reason: 'per-member application is the wrong picture (§6-z16)',
       );
@@ -197,7 +199,7 @@ void main() {
       );
       expect(
         tree.single,
-        isA<CutFrameCompositeEntryLeaf>(),
+        isA<CompositeLeaf<CutFrameCompositeRow>>(),
         reason: 'nothing left to buffer, so the folder leaves no node',
       );
     });
@@ -214,8 +216,9 @@ void main() {
         ]),
         frameIndex: 0,
       );
-      final leaf = tree.single as CutFrameCompositeEntryLeaf;
-      expect(leaf.entry.effects.single.parameter('blurX'), 4);
+      final leaf = tree.single as CompositeLeaf<CutFrameCompositeRow>;
+      final entry = leaf.payload as CutFrameCompositeEntry;
+      expect(entry.effects.single.parameter('blurX'), 4);
     });
   });
 

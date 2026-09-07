@@ -8,7 +8,6 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/stroke.dart';
 import '../../models/timeline_exposure.dart';
-import '../../models/timeline_repeat.dart';
 
 Cut duplicateCutAsIndependentCopy({
   required Cut source,
@@ -22,10 +21,20 @@ Cut duplicateCutAsIndependentCopy({
     name: newName,
     layers: source.layers
         .map(
-          (layer) => _duplicateLayer(
-            layer: layer,
-            layerIdMap: layerIdMap,
+          (layer) => duplicateLayerAsIndependentCopy(
+            source: layer,
+            newLayerId: _requireMapped(
+              layerIdMap,
+              layer.id,
+              argument: 'layerIdMap',
+              what: 'LayerId for source layer',
+            ),
+            newName: layer.name,
             frameIdMap: frameIdMap,
+            // The whole cut duplicates together: attach linkage remaps
+            // onto the copied base (both the layer pointer and the
+            // per-cel links).
+            layerIdMap: layerIdMap,
           ),
         )
         .toList(),
@@ -35,31 +44,6 @@ Cut duplicateCutAsIndependentCopy({
     // Share the immutable track directly: a pose-view round-trip would
     // resynchronize (and thus lose) independently keyed properties.
     camera: CutCamera.fromTrack(source.camera.track),
-  );
-}
-
-Layer _duplicateLayer({
-  required Layer layer,
-  required Map<LayerId, LayerId> layerIdMap,
-  required Map<FrameId, FrameId> frameIdMap,
-}) {
-  final newLayerId = layerIdMap[layer.id];
-  if (newLayerId == null) {
-    throw ArgumentError.value(
-      layerIdMap,
-      'layerIdMap',
-      'Missing mapped LayerId for source layer ${layer.id}.',
-    );
-  }
-
-  return duplicateLayerAsIndependentCopy(
-    source: layer,
-    newLayerId: newLayerId,
-    newName: layer.name,
-    frameIdMap: frameIdMap,
-    // The whole cut duplicates together: attach linkage remaps onto the
-    // copied base (both the layer pointer and the per-cel links).
-    layerIdMap: layerIdMap,
   );
 }
 
@@ -74,8 +58,8 @@ Layer duplicateLayerAsIndependentCopy({
   final attachedTo = source.attachedToLayerId;
   final folderId = source.folderId;
   // Field-by-field reconstruction is this helper's trap, the same one
-  // [_duplicateFrame] documents: every field NOT listed here is silently
-  // reset to its default. The R6 audit found nine already lost that way —
+  // [duplicateFrameContent] documents: every field NOT listed here is
+  // silently reset to its default. The R6 audit found nine already lost —
   // blendMode, folderId (so a duplicated cut FLATTENED every folder),
   // seNameTag, isFillReference, runBehaviors, collapsed, audioGain,
   // audioPan and attachedMode. Anything added to [Layer] belongs here.
@@ -83,12 +67,22 @@ Layer duplicateLayerAsIndependentCopy({
     id: newLayerId,
     name: newName,
     frames: source.frames
-        .map((frame) => _duplicateFrame(frame: frame, frameIdMap: frameIdMap))
+        .map(
+          (frame) => duplicateFrameContent(
+            frame: frame,
+            newFrameId: _requireMapped(
+              frameIdMap,
+              frame.id,
+              argument: 'frameIdMap',
+              what: 'FrameId for source frame',
+            ),
+          ),
+        )
         .toList(),
     timeline: source.timeline.map(
       (index, exposure) => MapEntry(
         index,
-        _duplicateTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
+        remapTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
       ),
     ),
     isVisible: source.isVisible,
@@ -110,23 +104,13 @@ Layer duplicateLayerAsIndependentCopy({
     // duplicated cut keeps its 촬영 work.
     effects: source.effects,
     instructions: source.instructions,
-    // Run behaviours are addressed by FRAME ID (the anchor block, and the
-    // pattern block for a ranged repeat), so carrying them verbatim into a
-    // copy whose frames were all re-minted names blocks that do not exist
-    // there — `rederiveRunBehaviors` then drops the behaviour on the first
-    // edit, which is the same loss with extra steps.
+    // Why the anchors remap at all: see
+    // [TimelineRunBehavior.remapFrameIds]. An id the map does not cover
+    // stays itself, so the anchor is always kept and every behaviour
+    // survives the copy.
     runBehaviors: [
       for (final behavior in source.runBehaviors)
-        TimelineRunBehavior(
-          anchorFrameId:
-              frameIdMap[behavior.anchorFrameId] ?? behavior.anchorFrameId,
-          side: behavior.side,
-          mode: behavior.mode,
-          patternAnchorFrameId: behavior.patternAnchorFrameId == null
-              ? null
-              : (frameIdMap[behavior.patternAnchorFrameId!] ??
-                    behavior.patternAnchorFrameId),
-        ),
+        behavior.remapFrameIds((id) => frameIdMap[id] ?? id)!,
     ],
     audioClips: [
       for (final clip in source.audioClips)
@@ -178,36 +162,47 @@ Frame duplicateFrameContent({
   );
 }
 
-Frame _duplicateFrame({
-  required Frame frame,
-  required Map<FrameId, FrameId> frameIdMap,
-}) {
-  final newFrameId = frameIdMap[frame.id];
-  if (newFrameId == null) {
-    throw ArgumentError.value(
-      frameIdMap,
-      'frameIdMap',
-      'Missing mapped FrameId for source frame ${frame.id}.',
-    );
-  }
-
-  return duplicateFrameContent(frame: frame, newFrameId: newFrameId);
-}
-
-TimelineExposure _duplicateTimelineExposure({
+/// One timeline cell pointed at the copied cel: the exposure's frame id
+/// resolved through [frameIdMap], which must cover it.
+///
+/// Public because the paste planner rebuilds a layer's whole timeline with
+/// exactly this rule and used to spell it out inline.
+TimelineExposure remapTimelineExposure({
   required TimelineExposure exposure,
   required Map<FrameId, FrameId> frameIdMap,
 }) {
   final sourceFrameId = exposure.frameId;
-  final newFrameId = sourceFrameId == null ? null : frameIdMap[sourceFrameId];
-  if (sourceFrameId == null || newFrameId == null) {
+  if (sourceFrameId == null) {
     throw ArgumentError.value(
       frameIdMap,
       'frameIdMap',
       'Missing mapped FrameId for timeline exposure ${exposure.frameId}.',
     );
   }
-  return exposure.copyWith(frameId: newFrameId);
+  return exposure.copyWith(
+    frameId: _requireMapped(
+      frameIdMap,
+      sourceFrameId,
+      argument: 'frameIdMap',
+      what: 'FrameId for timeline exposure',
+    ),
+  );
+}
+
+/// The id [key] was minted as, or an [ArgumentError] naming the map that
+/// should have carried it. Three walks of this file look a minted id up
+/// and refuse the same way when it is missing.
+V _requireMapped<K, V>(
+  Map<K, V> map,
+  K key, {
+  required String argument,
+  required String what,
+}) {
+  final mapped = map[key];
+  if (mapped == null) {
+    throw ArgumentError.value(map, argument, 'Missing mapped $what $key.');
+  }
+  return mapped;
 }
 
 Stroke _duplicateStroke(Stroke stroke) {

@@ -560,6 +560,37 @@ void main() {
       expect(clone.timeline.containsKey(2), isTrue);
     });
 
+    test('a frame-range MOVE spanning base + mirror slides the base only; '
+        'the stored mirror timeline stays empty', () {
+      final (s, base) = sessionWithBase();
+      s.createDrawingAtCurrentFrame();
+      s.addAttachedLayer(AttachedPlacement.above);
+      final attachId = s.activeLayer!.id;
+
+      s.updateFrameRangeSelectionDrag(
+        layerId: base.id,
+        anchorIndex: 0,
+        headIndex: 0,
+        headLayerId: attachId,
+      );
+      expect(s.beginFrameRangeMoveDrag(), isTrue);
+      s.updateFrameRangeMoveDrag(frameDelta: 2);
+      s.endFrameRangeMoveDrag();
+
+      final storedBase = cutLayers(s).firstWhere((l) => l.id == base.id);
+      expect(storedBase.timeline[2], isNotNull, reason: 'the base slid');
+      expect(storedBase.timeline[0], isNull);
+      final storedMirror = cutLayers(s).firstWhere((l) => l.id == attachId);
+      expect(
+        storedMirror.timeline,
+        isEmpty,
+        reason: 'the synced row stands down from the retime — it holds no '
+            'timing of its own to move',
+      );
+      final clone = s.layers.firstWhere((l) => l.id == attachId);
+      expect(clone.timeline[2], isNotNull, reason: 'the mirror derived it');
+    });
+
     test('a mirror-only selection keeps the delete/comma verbs OFF (their '
         'blocks are borrowed — pressing them would silently no-op)', () {
       final (s, _) = sessionWithBase();
