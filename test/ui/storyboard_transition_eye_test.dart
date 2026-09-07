@@ -79,7 +79,7 @@ void main() {
 
     // ON: inside the O.L both cuts contribute (the fade is applying).
     expect(session.transitionSpansOfTrack(_trackId), hasLength(1));
-    expect(session.trackStackContributionsAt(10), hasLength(2));
+    expect(session.rowSpans.trackStackContributionsAt(10), hasLength(2));
 
     // The TIMELINE host (the default tab) carries the eye on the clone row
     // — the cut timeline is a device-visible host too.
@@ -110,7 +110,7 @@ void main() {
       reason: 'eye OFF: playback and export see no spans',
     );
     expect(
-      session.trackStackContributionsAt(10),
+      session.rowSpans.trackStackContributionsAt(10),
       hasLength(1),
       reason: 'the O.L stopped fading — one cut owns the frame again',
     );
@@ -131,6 +131,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.transitionSpansOfTrack(_trackId), hasLength(1));
-    expect(session.trackStackContributionsAt(10), hasLength(2));
+    expect(session.rowSpans.trackStackContributionsAt(10), hasLength(2));
   });
 }

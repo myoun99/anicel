@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// WHAT A ROW SPANS — the four reads every snap, gate and D40 verb asks of
@@ -63,7 +65,7 @@ void main() {
     expect(span!.startFrame, 0);
     expect(span.endFrameExclusive, s.requireActiveCut.duration);
 
-    s.createCut();
+    s.cutVerbs.createCut();
     expect(
       s.rowSpans.trackCutSpan(s.selectedTrackId)!.endFrameExclusive,
       greaterThan(span.endFrameExclusive),
@@ -109,5 +111,85 @@ void main() {
     expect(selection!.layerId, rowId);
     expect(selection.startIndex, 0);
     expect(selection.lengthFrames, greaterThan(0));
+  });
+
+  // ── carried from the cut/track lane's own characterisation file ──────
+  //
+  // 🚨Both G3 lanes pinned this same subject before moving it (2026-09-07).
+  // `RowSpans` kept the name, so its file keeps the cases the other one
+  // had and this one lacked: the empty axis, an authored S row, the block
+  // bounds a snap lane actually returns, and the global-frame read.
+
+  test('a track with NO cuts on the axis has no cut span at all', () {
+    final s = session();
+
+    expect(s.rowSpans.trackCutSpan(const TrackId('no-such-track')), isNull);
+  });
+
+  test('an S row spans its first authored block through its last', () {
+    final s = session();
+    final se = s.activeTrack.seLayers.first;
+    s.selectLayer(se.id);
+    s.selectFrameIndex(2);
+    s.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+
+    final span = s.rowSpans.trackRowAuthoredSpan(se.id);
+    expect(span, isNotNull);
+    expect(span!.startFrame, 2);
+    expect(span.endFrameExclusive, 5);
+  });
+
+  test('an id that is no row at all has no authored span', () {
+    final s = session();
+
+    expect(
+      s.rowSpans.trackRowAuthoredSpan(const LayerId('not-a-row')),
+      isNull,
+    );
+  });
+
+  test('the CUT row snaps to WHOLE cut blocks, edge to edge', () {
+    final s = session();
+    s.cutVerbs.createCut();
+    final trackId = s.selectedTrackId;
+    final axis = s.axisForTrack(trackId);
+
+    final lane = s.rowSpans.trackRowSnapLane(TrackRowAddress(trackId), axis);
+    expect(lane, isNotNull);
+    final first = axis.entries.first;
+    final block = lane!(first.startFrame);
+    expect(block, isNotNull);
+    expect(block!.startIndex, first.startFrame);
+    expect(block.endIndexExclusive, first.endFrame);
+  });
+
+  test('an S row snaps to its own exposure blocks, on its OWN track', () {
+    final s = session();
+    final se = s.activeTrack.seLayers.first;
+    s.selectLayer(se.id);
+    s.selectFrameIndex(2);
+    s.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+
+    final lane = s.rowSpans.trackRowSnapLane(
+      LayerRowAddress(se.id),
+      s.axisForTrack(s.selectedTrackId),
+    );
+    expect(lane, isNotNull);
+    final block = lane!(3);
+    expect(block, isNotNull);
+    expect(block!.startIndex, 2);
+    expect(block.endIndexExclusive, 5);
+    expect(lane(20), isNull, reason: 'past the authored block there is none');
+  });
+
+  test('a cut local frame reads back as its GLOBAL frame on the track axis',
+      () {
+    final s = session();
+    s.cutVerbs.createCut();
+    final track = s.repository.requireProject().tracks.single;
+    final second = track.cuts[1].id;
+    final start = s.axisForTrack(track.id).entryFor(second)!.startFrame;
+
+    expect(s.rowSpans.trackGlobalFrameOf(second, 2), start + 2);
   });
 }

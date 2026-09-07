@@ -1,12 +1,16 @@
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/storyboard_timeline_layout.dart';
 import '../../models/timeline_frame_range.dart' show exposureBlockAt;
 import '../../models/range_snap.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
+import '../../services/playback/playback_frame_mapping.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'folder_bands.dart';
+import 'project_settings.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
 import 'transitions.dart';
@@ -24,22 +28,34 @@ import 'transitions.dart';
 /// ⛔It selects NOTHING. The verb that turns a span into a selection is
 /// [RangeSelections.selectRowSpanForCurrentRow] — which holds one of these
 /// — because a selection is the range object's to make.
+///
+/// 🚨TWO LANES CARVED THIS SAME LAW OUT AT ONCE (2026-09-07): G3's row
+/// lane wrote `RowSpans` and G3's cut/track lane wrote `TrackSpans`, with
+/// [trackCutSpan], [trackRowAuthoredSpan] and [trackRowSnapLane] the same
+/// algorithm in both. `RowSpans` landed first and keeps the name;
+/// `TrackSpans` was deleted and the two reads only it had —
+/// [trackGlobalFrameOf] and [trackStackContributionsAt] — were carried
+/// here, because where a cut's frame sits on the GLOBAL axis is the same
+/// question as where a row's material sits on it.
 class RowSpans {
   RowSpans({
     required ProjectAccess project,
     required TimelineAccess timeline,
     required FolderBands folderBands,
+    required ProjectSettings projectSettings,
     required TrackSeDisplay trackSe,
     required Transitions transitions,
   }) : _project = project,
        _timeline = timeline,
        _folderBands = folderBands,
+       _projectSettings = projectSettings,
        _trackSe = trackSe,
        _transitions = transitions;
 
   final ProjectAccess _project;
   final TimelineAccess _timeline;
   final FolderBands _folderBands;
+  final ProjectSettings _projectSettings;
   final TrackSeDisplay _trackSe;
   final Transitions _transitions;
 
@@ -69,6 +85,8 @@ class RowSpans {
       if (events.isEmpty) {
         return null;
       }
+      // Transition spans are keyed by START and carry their own length,
+      // so NEITHER end can be read off the map's order: both are swept.
       int? first;
       var lastExclusive = 0;
       for (final entry in events.entries) {
@@ -168,4 +186,31 @@ class RowSpans {
     final layer = _project.layerById(layerId);
     return layer != null && layer.kind.holdsSingleCel;
   }
+
+  /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
+  /// — what the track-owned lanes are keyed in.
+  int trackGlobalFrameOf(CutId cutId, int frameIndex) {
+    for (final entry in buildStoryboardTimelineLayout(
+      _project.repository.requireProject(),
+    )) {
+      if (entry.cutId == cutId) {
+        return entry.startFrame + frameIndex;
+      }
+    }
+    return frameIndex;
+  }
+
+  /// The multitrack display resolution WITH transitions: every track's
+  /// covered cut at [globalFrame], in project track order, and an O.L
+  /// answers with BOTH cuts — leaving one first, each carrying its share
+  /// of the frame. Unlike `TimelineAccess.trackFrameAxis` this is never
+  /// scoped to the selected track and has no whole-layout fallback: a
+  /// track that gaps here simply contributes nothing. One reader for the
+  /// parked canvas, all-cuts playback and the camera-size bake.
+  List<TrackStackContribution> trackStackContributionsAt(int globalFrame) =>
+      resolveTrackStackContributions(
+        layout: _projectSettings.projectLayout(),
+        spansOf: _transitions.transitionSpansOfTrack,
+        globalFrameIndex: globalFrame,
+      );
 }

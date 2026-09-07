@@ -277,7 +277,10 @@ class ExportFrameRenderer {
     // (their row's eye is the switch).
     final image = await renderComposite(task, mode, withNameTags: true);
     // The V effects are TRACK data on the global axis (R4).
-    final trackFrame = session.trackGlobalFrameOf(task.cut.id, task.frameIndex);
+    final trackFrame = session.rowSpans.trackGlobalFrameOf(
+      task.cut.id,
+      task.frameIndex,
+    );
     // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
     // R8 ("a bypass that vanished on reload while a per-effect bypass
     // survived" is exactly what R8 refused). It gates the effect chain —

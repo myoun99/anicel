@@ -110,6 +110,7 @@ import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
 import '../models/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
+import 'session/track_spans.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -723,8 +724,9 @@ class EditorSessionManager extends ChangeNotifier
   // ── what a row spans: its own object ───────────────────────────────
   //
   // A collaborator (session/row_spans.dart): where a row's material starts
-  // and ends, and what a range drag over it snaps to.
-  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, trackSe: _trackSe, transitions: _transitions);
+  // and ends, what a range drag over it snaps to, and where a cut's frame
+  // sits on the GLOBAL axis.
+  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: _projectSettings, trackSe: _trackSe, transitions: _transitions);
 
   late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
 
@@ -1941,19 +1943,6 @@ class EditorSessionManager extends ChangeNotifier
   void toggleTrackFx(TrackId trackId) => _effectsAndFx.toggleTrackFx(trackId);
   void setAllLayersFxBypassed(bool bypassed) =>
       _effectsAndFx.setAllLayersFxBypassed(bypassed);
-
-  /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
-  /// — what the track-owned lanes are keyed in.
-  int trackGlobalFrameOf(CutId cutId, int frameIndex) {
-    for (final entry in buildStoryboardTimelineLayout(
-      repository.requireProject(),
-    )) {
-      if (entry.cutId == cutId) {
-        return entry.startFrame + frameIndex;
-      }
-    }
-    return frameIndex;
-  }
 
   // `activeCutCanvasPoseSample` retired with the V row's transform: there is
   // no track pose for the editing canvas or the scrub preview to apply.
@@ -5091,29 +5080,6 @@ class EditorSessionManager extends ChangeNotifier
     return trackFrameAxis().globalOf(cutId, currentFrameIndex) ??
         currentFrameIndex;
   }
-
-  /// The multitrack display resolution: every track's covered cut at
-  /// [globalFrame], STRICT containment, in project track order. Unlike
-  /// [trackFrameAxis] this is never scoped to the selected track and has
-  /// no whole-layout fallback — a track that gaps here simply contributes
-  /// nothing. The parked canvas stacks these (one camera-projected
-  /// composite per covered track).
-  ///
-  List<PlaybackPosition> trackStackPositionsAt(int globalFrame) =>
-      resolveTrackStackPositions(
-        layout: _projectSettings.projectLayout(),
-        globalFrameIndex: globalFrame,
-      );
-
-  /// The same resolution WITH transitions: an O.L answers with both cuts,
-  /// leaving one first, each carrying its share of the frame. One reader for
-  /// the parked canvas, all-cuts playback and the camera-size bake.
-  List<TrackStackContribution> trackStackContributionsAt(int globalFrame) =>
-      resolveTrackStackContributions(
-        layout: _projectSettings.projectLayout(),
-        spansOf: transitionSpansOfTrack,
-        globalFrameIndex: globalFrame,
-      );
 
   /// Deselects the active cut for a GAP landing (UI-R9 #3): standing in a
   /// gap means NO cut is selected — the timeline/timesheet show their

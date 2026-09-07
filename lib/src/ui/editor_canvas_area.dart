@@ -485,7 +485,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final project = session.repository.requireProject();
     return CanvasTrackStackView(
       globalFrame: globalFrame ?? session.gapParkingListenable,
-      positionsOf: session.trackStackContributionsAt,
+      positionsOf: session.rowSpans.trackStackContributionsAt,
       compositeCache: session.renderCaches.cutFrameCompositeCache,
       qualityOf: () => session.playbackRig.playbackQuality,
       cameraFrameSize: session.cameraFrameSize,
@@ -607,7 +607,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               .requireProject()
               .pasteboardArgb,
           trackEffectsOf: session.trackEffectsForCut,
-          trackGlobalFrameOf: session.trackGlobalFrameOf,
+          trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
           // ALL-CUTS playback watches the whole stage: the
           // frame is the track stack on the clock's global
           // axis (R3a) — a selected-track gap shows what
