@@ -300,7 +300,7 @@ void main() {
     // the GLOBAL axis, so a trim moving it would break the O.L outright.
     final (s, first, _) = twoCutSession();
     final duration = s.cutById(first)!.duration;
-    s.updateTransitionInstructions({
+    s.transitions.updateTransitionInstructions({
       duration - 3: const InstructionEvent(instructionId: 'ol', length: 6),
     });
     final spans = s.activeTrack.transitionLayer.instructions;
@@ -334,7 +334,7 @@ void main() {
       'they stay at their global frames and read shifted from the cut', () {
     final (s, first, second) = twoCutSession();
     final secondStart = layoutStart(s, second);
-    s.updateTransitionInstructions({
+    s.transitions.updateTransitionInstructions({
       secondStart - 2: const InstructionEvent(instructionId: 'ol', length: 4),
     });
     final spans = s.activeTrack.transitionLayer.instructions;

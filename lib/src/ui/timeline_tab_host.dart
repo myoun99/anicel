@@ -754,7 +754,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // clone's PROJECTED keys. Always-on (a refusal warning takes
             // no settings gate).
             instructionCrossingTooltip:
-                _session.transitionCrossingWarningInCutAt,
+                _session.transitions.transitionCrossingWarningInCutAt,
             // Display resolver: the live take's sentinel path maps to the
             // growing envelope (REC1-C), everything else to the conform
             // store's peaks.

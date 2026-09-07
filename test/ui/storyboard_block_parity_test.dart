@@ -538,11 +538,11 @@ void main() {
       final session = EditorSessionManager(initialProject: _project());
       addTearDown(session.dispose);
 
-      expect(session.transitionSpansOfTrack(_trackId), hasLength(1));
+      expect(session.transitions.transitionSpansOfTrack(_trackId), hasLength(1));
 
       session.layerSwitches.toggleLayerVisibility(session.activeTrack.transitionLayer.id);
 
-      expect(session.transitionSpansOfTrack(_trackId), isEmpty);
+      expect(session.transitions.transitionSpansOfTrack(_trackId), isEmpty);
     });
 
     test('the sheet toggle works from a GAP — the row is track-owned, so '

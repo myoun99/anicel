@@ -84,7 +84,7 @@ void main() {
     // is guarded on the TRANSITION row now — a span straddles a cut boundary,
     // so a slide moving it would break the O.L outright.
     final firstDuration = manager.activeTrack.cuts[0].duration;
-    manager.updateTransitionInstructions({
+    manager.transitions.updateTransitionInstructions({
       firstDuration - 2: const InstructionEvent(
         instructionId: 'ol',
         length: 4,

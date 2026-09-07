@@ -169,7 +169,7 @@ void main() {
     manager.selectRow(TrackRowAddress(manager.activeTrack.id));
     manager.selectGlobalFrame(3);
     await tester.pumpAndSettle();
-    manager.createStoryboardPanelAtCursor();
+    manager.storyboardCursor.createStoryboardPanelAtCursor();
     await tester.pumpAndSettle();
 
     // Comma 4 on the FIRST panel: the panel takes length 4 and the later
@@ -217,7 +217,7 @@ void main() {
     manager.selectGlobalFrame(3);
     await tester.pumpAndSettle();
     expect(panel.canCreateInstance, isTrue);
-    manager.createStoryboardPanelAtCursor();
+    manager.storyboardCursor.createStoryboardPanelAtCursor();
     await tester.pumpAndSettle();
 
     final row = manager.activeCutOrNull!.layers.firstWhere(
@@ -257,14 +257,14 @@ void main() {
 
     // Transition span: standing the 🔀 row, cursor on the span → its length.
     manager.selectGlobalFrame(5);
-    manager.createTransitionSpanAtPlayhead();
+    manager.transitions.createTransitionSpanAtPlayhead();
     final transition = manager.activeTrack.transitionLayer;
     manager.selectRow(LayerRowAddress(transition.id));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('set-comma-3-button')));
     await tester.pumpAndSettle();
     expect(
-      manager.transitionSpanAt(5)!.value.length,
+      manager.transitions.transitionSpanAt(5)!.value.length,
       3,
       reason: 'the span under the cursor took the pressed length',
     );
@@ -451,7 +451,7 @@ void main() {
     final instruction = s.activeCutOrNull!.layers.firstWhere(
       (layer) => layer.kind == LayerKind.instruction,
     );
-    s.updateLayerInstructions(instruction.id, const {
+    s.instructionVerbs.updateLayerInstructions(instruction.id, const {
       6: InstructionEvent(instructionId: 'pan', length: 3),
     });
     s.selectLayer(instruction.id);

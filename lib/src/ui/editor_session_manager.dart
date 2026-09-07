@@ -43,7 +43,6 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
 import '../models/brush_frame_key.dart';
-import '../models/camera_instruction.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/track_se_migration.dart';
@@ -67,7 +66,6 @@ import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/row_block_shift.dart';
-import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
 import '../models/delete_subject.dart';
@@ -79,7 +77,6 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
-import '../models/transition_geometry.dart';
 import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../services/cut_frame_composite_plan.dart';
@@ -247,7 +244,7 @@ class EditorSessionManager extends ChangeNotifier
     // Text cel projections follow the model through EVERY mutation path
     // (edit/undo/redo/paste/duplicate/link) — one history listener, the
     // sweep re-renders whatever went stale (R5).
-    historyManager.addListener(_textCelBakes.scheduleTextCelBakeSweep);
+    historyManager.addListener(textCelBakes.scheduleTextCelBakeSweep);
   }
 
   @override
@@ -499,7 +496,7 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
     trackSeDisplayLayers: () => trackSe.trackSeDisplayLayers,
-    trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
+    trackTransitionDisplayLayer: () => transitions.trackTransitionDisplayLayer,
     onRebuilt: () {
       standing.unseatStrandedVerbRow();
       // A cut switch re-seats the active layer, which is what the drawn row
@@ -693,7 +690,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/row_spans.dart): where a row's material starts
   // and ends, what a range drag over it snaps to, and where a cut's frame
   // sits on the GLOBAL axis.
-  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: _transitions);
+  late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
 
   late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
 
@@ -932,51 +929,16 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/transitions.dart, a part of this library). The
   // session keeps the public queries and commands as forwarders.
-  late final Transitions _transitions = Transitions(
+  late final Transitions transitions = Transitions(
     project: this,
     selection: this,
     changes: this,
     camera: camera,
   );
 
-  List<TransitionSpan> get activeTrackTransitionSpans =>
-      _transitions.activeTrackTransitionSpans;
   @override
   bool isTrackTransitionLayerId(LayerId layerId) =>
-      _transitions.isTrackTransitionLayerId(layerId);
-  Layer get trackTransitionDisplayLayer =>
-      _transitions.trackTransitionDisplayLayer;
-  String? transitionCrossingWarningInCutAt(int projectedStartKey) =>
-      _transitions.transitionCrossingWarningInCutAt(projectedStartKey);
-  Layer get trackTransitionSheetLayer => _transitions.trackTransitionSheetLayer;
-  String? transitionCrossingWarningAtGlobalKey(int globalStartKey) =>
-      _transitions.transitionCrossingWarningAtGlobalKey(globalStartKey);
-  List<CameraInstructionDef> get transitionInstructionDefs =>
-      _transitions.transitionInstructionDefs;
-  ({int startFrame, int length})? get transitionSpanCreationOrNull =>
-      _transitions.transitionSpanCreationOrNull;
-  bool get canCreateTransitionSpanAtPlayhead =>
-      _transitions.canCreateTransitionSpanAtPlayhead;
-  void createTransitionSpanAtPlayhead() =>
-      _transitions.createTransitionSpanAtPlayhead();
-  void updateTransitionInstructions(
-    Map<int, InstructionEvent> instructions, {
-    String description = 'Edit transition',
-  }) => _transitions.updateTransitionInstructions(
-    instructions,
-    description: description,
-  );
-  CameraInstructionSet get transitionInstructionSet =>
-      _transitions.transitionInstructionSet;
-  MapEntry<int, InstructionEvent>? transitionSpanAt(int globalFrame) =>
-      _transitions.transitionSpanAt(globalFrame);
-  void replaceTransitionEventAt(int globalFrame, InstructionEvent event) =>
-      _transitions.replaceTransitionEventAt(globalFrame, event);
-  void removeTransitionSpanAt(int globalFrame) =>
-      _transitions.removeTransitionSpanAt(globalFrame);
-  List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) =>
-      _transitions.transitionSpansOfTrack(trackId);
-
+      transitions.isTrackTransitionLayerId(layerId);
   /// The active cut's global start frame on its track (cumulative cut
   /// durations — the storyboard layout's number for this cut).
   @override
@@ -989,7 +951,7 @@ class EditorSessionManager extends ChangeNotifier
   // gone (G3, 2026-09-07): callers say `session.trackSe.x`. What is left
   // below is the session IMPLEMENTING a role — those three are members of
   // `ProjectAccess`/`SessionInternals`, not a second name for a verb.
-  late final TrackSeDisplay trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: _transitions, voiceRecording: voiceRecording);
+  late final TrackSeDisplay trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: transitions, voiceRecording: voiceRecording);
 
   @override
   TrackSeWindow get trackSeWindow => trackSe.trackSeWindow;
@@ -1102,7 +1064,7 @@ class EditorSessionManager extends ChangeNotifier
     // flag set when it resumes — it stops touching the stores and never
     // notifies a disposed ChangeNotifier.
     disposed = true;
-    _textCelBakes.dispose();
+    textCelBakes.dispose();
     layerStack.dispose();
     currentRowListenable.dispose();
     rowSelectionVerbs.dispose();
@@ -1115,7 +1077,7 @@ class EditorSessionManager extends ChangeNotifier
     );
     historyManager.removeListener(projectFile.markDirty);
     historyManager.removeListener(refreshLiveAudioSchedule);
-    historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
+    historyManager.removeListener(textCelBakes.scheduleTextCelBakeSweep);
     voiceRecording.dispose();
     playbackRig.dispose();
     renderCaches.dispose();
@@ -1197,7 +1159,7 @@ class EditorSessionManager extends ChangeNotifier
     appSettings: appSettings,
     camera: camera,
     trackSe: trackSe,
-    transitions: _transitions,
+    transitions: transitions,
   );
 
   /// ⛔THIS USED TO RE-DERIVE THE MEMBERSHIP BY KIND and knew only two of
@@ -1452,7 +1414,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     controllers: activeCutControllers,
-    transitions: _transitions,
+    transitions: transitions,
     internals: this,
   );
 
@@ -2003,7 +1965,7 @@ class EditorSessionManager extends ChangeNotifier
   late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, layerIds: layerIds, activeCut: _activeCutEdits);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
-  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
+  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor, internals: this);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
   /// listener and by the repo-direct mix edits (mute/fader/pan/solo,
@@ -2119,7 +2081,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/instructions.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final Instructions _instructions = Instructions(
+  late final Instructions instructionVerbs = Instructions(
     project: this,
     selection: this,
     changes: this,
@@ -2129,35 +2091,6 @@ class EditorSessionManager extends ChangeNotifier
     camera: camera,
     activeCut: _activeCutEdits,
   );
-
-  void updateLayerInstructions(
-    LayerId layerId,
-    Map<int, InstructionEvent> instructions, {
-    String description = 'Edit instructions',
-  }) => _instructions.updateLayerInstructions(
-    layerId,
-    instructions,
-    description: description,
-  );
-  MapEntry<int, InstructionEvent>? instructionSpanAt(
-    LayerId layerId,
-    int frameIndex,
-  ) => _instructions.instructionSpanAt(layerId, frameIndex);
-  void createDefaultInstructionEventAtCurrentFrame() =>
-      _instructions.createDefaultInstructionEventAtCurrentFrame();
-  void upsertInstructionEventAt(
-    LayerId layerId,
-    int frameIndex,
-    InstructionEvent event, {
-    int? createLengthFrames,
-  }) => _instructions.upsertInstructionEventAt(
-    layerId,
-    frameIndex,
-    event,
-    createLengthFrames: createLengthFrames,
-  );
-  void removeInstructionEventAt(LayerId layerId, int frameIndex) =>
-      _instructions.removeInstructionEventAt(layerId, frameIndex);
 
   // ---------------------------------------------------------------------
   // The TRANSITION row (O.L / F.I / F.O). Same spans, same dialog, same
@@ -2176,7 +2109,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: _storyboardCursor, trackSe: trackSe, transitions: _transitions, internals: this);
+  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, internals: this);
 
   bool beginExposureEdgeDrag({
     required LayerId layerId,
@@ -2702,7 +2635,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/text_cel_bakes.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final TextCelBakes _textCelBakes = TextCelBakes(
+  late final TextCelBakes textCelBakes = TextCelBakes(
     project: this,
     selection: this,
     changes: this,
@@ -2710,11 +2643,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     renderCaches: renderCaches,
   );
-
-  TextCelContent? get selectedTextCelContent =>
-      _textCelBakes.selectedTextCelContent;
-  void setTextCelContentForSelectedFrame(TextCelContent content) =>
-      _textCelBakes.setTextCelContentForSelectedFrame(content);
 
   @override
   bool disposed = false;
@@ -2767,33 +2695,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/storyboard_cursor.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: _transitions, internals: this);
-
-  bool get canSetCommaForStoryboardCursor =>
-      _storyboardCursor.canSetCommaForStoryboardCursor;
-  bool get canDeleteBlockAtStoryboardCursor =>
-      _storyboardCursor.canDeleteBlockAtStoryboardCursor;
-  void deleteBlockAtStoryboardCursor() =>
-      _storyboardCursor.deleteBlockAtStoryboardCursor();
-  bool get canCreateSeEntryAtStoryboardCursor =>
-      _storyboardCursor.canCreateSeEntryAtStoryboardCursor;
-  void createSeEntryAtStoryboardCursor() =>
-      _storyboardCursor.createSeEntryAtStoryboardCursor();
-  bool get canCreateStoryboardPanelAtCursor =>
-      _storyboardCursor.canCreateStoryboardPanelAtCursor;
-  void createStoryboardPanelAtCursor() =>
-      _storyboardCursor.createStoryboardPanelAtCursor();
-  void setStoryboardCellAction({
-    required CutId cutId,
-    required int cellIndex,
-    required String action,
-  }) => _storyboardCursor.setStoryboardCellAction(
-    cutId: cutId,
-    cellIndex: cellIndex,
-    action: action,
-  );
-  String? get targetLayerStoryboardRefusal =>
-      _storyboardCursor.targetLayerStoryboardRefusal;
+  late final StoryboardCursor storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: transitions, internals: this);
 
   // --- Frame / cell state / commands -------------------------------------
 
@@ -2844,7 +2746,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: _frameVerbs, internals: this);
 
   @override
   bool get canCreateInstance => cellInstances.canCreateInstance;
@@ -3349,7 +3251,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: _transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -4041,7 +3943,7 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
-    textCelBakes: _textCelBakes,
+    textCelBakes: textCelBakes,
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,

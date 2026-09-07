@@ -377,7 +377,7 @@ class ExportFrameRenderer {
     final globalFrame = own.startFrame + task.frameIndex;
     final contributions = resolveTransitionContributions(
       playlist: entries,
-      spans: session.transitionSpansOfTrack(own.trackId),
+      spans: session.transitions.transitionSpansOfTrack(own.trackId),
       globalFrameIndex: globalFrame,
     );
     if (contributions.length < 2) {
@@ -489,7 +489,7 @@ class ExportFrameRenderer {
     }
     final positions = resolveTrackStackContributions(
       layout: layout,
-      spansOf: session.transitionSpansOfTrack,
+      spansOf: session.transitions.transitionSpansOfTrack,
       globalFrameIndex: globalFrame,
     );
     _retainSurfacesFor([

@@ -55,7 +55,7 @@ void main() {
     final first = session.repository.requireProject().tracks.first.cuts.first;
     // Straddling the boundary between cut 1 and cut 2: 8 frames, half on each
     // side. This is the O.L both cuts take a のりしろ for.
-    session.updateTransitionInstructions(
+    session.transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         first.duration - 4: const InstructionEvent(
           instructionId: 'ol',
@@ -121,7 +121,7 @@ void main() {
     final crossingStart = first.duration - 4;
     // One F.O that CROSSES cut 1's end (refused + marked), one that stays
     // INSIDE it (applies, no marker).
-    session.updateTransitionInstructions(
+    session.transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         2: const InstructionEvent(instructionId: 'fo', length: 4),
         crossingStart: const InstructionEvent(instructionId: 'fo', length: 8),
@@ -217,7 +217,7 @@ void main() {
     // The cut's projected mark starts at local 0 for the incoming side and
     // overhangs the end for the outgoing one; cut 1 is the OUTGOING side, so
     // its mark sits at its tail. Seek onto a frame the span covers.
-    final marks = session.trackTransitionDisplayLayer.instructions;
+    final marks = session.transitions.trackTransitionDisplayLayer.instructions;
     expect(marks, isNotEmpty, reason: 'the projection produced a mark');
     final markStart = marks.keys.first;
     final span = marks[markStart]!;
@@ -270,7 +270,7 @@ void main() {
     // nothing about spans, so the row measured empty before.
     expect(
       session.exposureStateForLayer(
-        session.trackTransitionDisplayLayer,
+        session.transitions.trackTransitionDisplayLayer,
         markStart,
       ),
       TimelineCellExposureState.uncovered,
@@ -294,14 +294,14 @@ void main() {
         .firstWhere((def) => def.markType == CameraInstructionMarkType.ol)
         .id;
 
-    session.updateTransitionInstructions(
+    session.transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         0: InstructionEvent(instructionId: foId, length: 4),
         8: InstructionEvent(instructionId: olId, length: 4),
       }),
     );
 
-    final spans = session.activeTrackTransitionSpans;
+    final spans = session.transitions.activeTrackTransitionSpans;
     expect(spans, hasLength(2));
     expect(
       spans.map((span) => span.mark),
@@ -329,7 +329,7 @@ void main() {
         .id;
     // One F.O INSIDE cut 1 (applies) and one CROSSING its end (refused —
     // 미적용, inert in playback and export).
-    session.updateTransitionInstructions(
+    session.transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         2: InstructionEvent(instructionId: foId, length: 4),
         crossingStart: InstructionEvent(instructionId: foId, length: 8),
@@ -339,12 +339,12 @@ void main() {
 
     // The cut-view ROW keeps both: the red warning needs the block.
     expect(
-      session.trackTransitionDisplayLayer.instructions.keys,
+      session.transitions.trackTransitionDisplayLayer.instructions.keys,
       containsAll([2, crossingStart]),
     );
     // The printed SHEET carries only what applies — an animator must not
     // shoot material for a fade the compositor never runs.
-    expect(session.trackTransitionSheetLayer.instructions.keys, [2]);
+    expect(session.transitions.trackTransitionSheetLayer.instructions.keys, [2]);
   });
 
   /// ③ Create / edit / delete are ONE verb — the instance editor.
@@ -390,13 +390,13 @@ void main() {
     // The create half needs no BuildContext: it is the session verb the
     // editor falls through to when no span covers the playhead. Reached the
     // same way `editTransitionSpanInstance` reaches it.
-    expect(session.transitionSpanAt(session.editingGlobalFrame), isNull);
-    expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
-    session.createTransitionSpanAtPlayhead();
+    expect(session.transitions.transitionSpanAt(session.editingGlobalFrame), isNull);
+    expect(session.transitions.canCreateTransitionSpanAtPlayhead, isTrue);
+    session.transitions.createTransitionSpanAtPlayhead();
 
     expect(session.activeTrack.transitionLayer.instructions, hasLength(1));
     expect(
-      session.transitionSpanAt(session.editingGlobalFrame),
+      session.transitions.transitionSpanAt(session.editingGlobalFrame),
       isNotNull,
       reason: 'so a second Edit Instance opens the dialog instead',
     );

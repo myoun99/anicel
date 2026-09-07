@@ -45,7 +45,7 @@ void createActiveInstance(EditorSessionManager session) {
     case LayerKind.se:
       session.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     case LayerKind.instruction:
-      session.createDefaultInstructionEventAtCurrentFrame();
+      session.instructionVerbs.createDefaultInstructionEventAtCurrentFrame();
     case LayerKind.folder:
     case LayerKind.adjustment:
       // Nothing to create on either row — a folder holds rows and an

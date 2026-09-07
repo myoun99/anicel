@@ -238,7 +238,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     if (selected == null) {
       return;
     }
-    _session.setStoryboardCellAction(
+    _session.storyboardCursor.setStoryboardCellAction(
       cutId: CutId(selected.$1),
       cellIndex: selected.$2,
       action: _action.text,

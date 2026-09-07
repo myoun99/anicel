@@ -321,7 +321,7 @@ void main() {
       expect(session.activeCutSpan.activeCutDrawnFrameCount, duration);
 
       // Straddling the cut's END: the cut owes a 6-frame TAIL handle.
-      session.updateTransitionInstructions({
+      session.transitions.updateTransitionInstructions({
         duration - 6: const InstructionEvent(instructionId: 'ol', length: 12),
       });
       expect(session.activeCutSpan.activeCutDrawnFrameCount, duration + 6);
@@ -344,7 +344,7 @@ void main() {
       addTearDown(session.dispose);
       final duration = session.activeCutSpan.activeCutPlaybackFrameCount;
 
-      session.updateTransitionInstructions({
+      session.transitions.updateTransitionInstructions({
         2: const InstructionEvent(instructionId: 'ol', length: 4),
       });
       expect(session.activeCutSpan.activeCutDrawnFrameCount, duration);
@@ -379,7 +379,7 @@ void main() {
           .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
           .session;
       final duration = session.activeCutSpan.activeCutPlaybackFrameCount;
-      session.updateTransitionInstructions(
+      session.transitions.updateTransitionInstructions(
         SplayTreeMap<int, InstructionEvent>.from({
           duration - 4: const InstructionEvent(instructionId: 'ol', length: 8),
         }),
@@ -430,7 +430,7 @@ void main() {
           .first
           .cuts[1]
           .duration;
-      session.updateTransitionInstructions(
+      session.transitions.updateTransitionInstructions(
         SplayTreeMap<int, InstructionEvent>.from({
           first - 2: const InstructionEvent(instructionId: 'fi', length: 4),
           first + second - 2: const InstructionEvent(
@@ -483,7 +483,7 @@ void main() {
       expect(washStart(), moreOrLessEquals(cutEndX));
       expect(find.byType(TimelineBodyNoriShiroBoundary), findsOneWidget);
 
-      session.updateTransitionInstructions(
+      session.transitions.updateTransitionInstructions(
         SplayTreeMap<int, InstructionEvent>.from({
           duration - 4: const InstructionEvent(instructionId: 'ol', length: 8),
         }),

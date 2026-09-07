@@ -298,16 +298,16 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       return true;
     }
     if (_standingOnTransitionRow) {
-      return session.transitionSpanAt(session.editingGlobalFrame) != null ||
-          session.canCreateTransitionSpanAtPlayhead;
+      return session.transitions.transitionSpanAt(session.editingGlobalFrame) != null ||
+          session.transitions.canCreateTransitionSpanAtPlayhead;
     }
     // D28: on the cut row with a storyboard layer, the ＋ divides the
     // panel under the cursor — the same one-resolver pair the dispatch
     // reads.
-    if (session.canCreateStoryboardPanelAtCursor) {
+    if (session.storyboardCursor.canCreateStoryboardPanelAtCursor) {
       return true;
     }
-    return session.canCreateSeEntryAtStoryboardCursor;
+    return session.storyboardCursor.canCreateSeEntryAtStoryboardCursor;
   }
 
   // An exposure X and a cell mark are cut-local, active-layer notions with
@@ -326,7 +326,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   void toggleMark() {}
 
   @override
-  bool get canSetComma => session.canSetCommaForStoryboardCursor;
+  bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
 
   @override
   void setComma(int comma) => session.setCommaForStoryboardCursor(comma);
@@ -416,8 +416,8 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     switch (session.selectedRow) {
       case LayerRowAddress(:final layerId)
           when session.isTrackTransitionLayerId(layerId):
-        return session.transitionSpanAt(session.editingGlobalFrame) != null ||
-                session.canCreateTransitionSpanAtPlayhead
+        return session.transitions.transitionSpanAt(session.editingGlobalFrame) != null ||
+                session.transitions.canCreateTransitionSpanAtPlayhead
             ? const StoryboardEditTransitionSpan()
             : null;
       case LayerRowAddress(:final layerId):
@@ -489,7 +489,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.cells.cellSelectionClaimsSubject) {
       return DeleteSubject.nothing;
     }
-    return session.canDeleteBlockAtStoryboardCursor
+    return session.storyboardCursor.canDeleteBlockAtStoryboardCursor
         ? DeleteSubject.cells
         : DeleteSubject.nothing;
   }
@@ -507,6 +507,6 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.cells.cellSelectionClaimsSubject) {
       return;
     }
-    session.deleteBlockAtStoryboardCursor();
+    session.storyboardCursor.deleteBlockAtStoryboardCursor();
   }
 }

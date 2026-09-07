@@ -89,19 +89,19 @@ void main() {
   test('the fixture: standing inside the sound, the cursor holds a block', () {
     final s = standingOnSeAt(3);
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2]);
-    expect(s.canDeleteBlockAtStoryboardCursor, isTrue);
+    expect(s.storyboardCursor.canDeleteBlockAtStoryboardCursor, isTrue);
   });
 
   test('deleting the SE block under the cursor removes it from the row', () {
     final s = standingOnSeAt(3);
-    s.deleteBlockAtStoryboardCursor();
+    s.storyboardCursor.deleteBlockAtStoryboardCursor();
     expect(
       s.trackSeGlobalLayerById(seLayerId)!.timeline.keys,
       isEmpty,
       reason: 'the sound at [2,5) was the block under the cursor',
     );
     expect(
-      s.canDeleteBlockAtStoryboardCursor,
+      s.storyboardCursor.canDeleteBlockAtStoryboardCursor,
       isFalse,
       reason: 'nothing stands under the cursor now',
     );
@@ -109,10 +109,10 @@ void main() {
 
   test('a block the cursor authored in the gap deletes the same way', () {
     final s = standingOnSeAt(10);
-    s.createSeEntryAtStoryboardCursor();
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2, 10]);
-    expect(s.canDeleteBlockAtStoryboardCursor, isTrue, reason: 'H11 — lit');
-    s.deleteBlockAtStoryboardCursor();
+    expect(s.storyboardCursor.canDeleteBlockAtStoryboardCursor, isTrue, reason: 'H11 — lit');
+    s.storyboardCursor.deleteBlockAtStoryboardCursor();
     expect(
       s.trackSeGlobalLayerById(seLayerId)!.timeline.keys,
       [2],
@@ -128,9 +128,9 @@ void main() {
     // cut-2 covers [12,18): global 14 is cut-local 2 — the lens is 12, and
     // a global row must not be read through it twice.
     final s = standingOnSeAt(14);
-    s.createSeEntryAtStoryboardCursor();
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2, 14]);
-    s.deleteBlockAtStoryboardCursor();
+    s.storyboardCursor.deleteBlockAtStoryboardCursor();
     expect(
       s.trackSeGlobalLayerById(seLayerId)!.timeline.keys,
       [2],

@@ -70,7 +70,7 @@ void main() {
   test('the row is never actually missing — the guard was the thing that '
       'said so', () {
     final s = session();
-    final transition = s.trackTransitionDisplayLayer;
+    final transition = s.transitions.trackTransitionDisplayLayer;
     s.selectLayer(transition.id);
     dragCutEnd(s);
 

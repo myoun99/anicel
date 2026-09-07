@@ -47,7 +47,7 @@ void main() {
     s.addListener(listener);
     addTearDown(() => s.removeListener(listener));
 
-    s.setTextCelContentForSelectedFrame(
+    s.textCelBakes.setTextCelContentForSelectedFrame(
       const TextCelContent(
         text: 'カット 12',
         style: TextCelStyle(fontSize: 64, bold: true),

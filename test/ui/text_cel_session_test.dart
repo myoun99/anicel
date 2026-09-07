@@ -51,7 +51,7 @@ void main() {
     expect(s.layerStack.celHasContentForLayer(refreshed, 0), isFalse);
 
     // Typing bakes the projection.
-    s.setTextCelContentForSelectedFrame(
+    s.textCelBakes.setTextCelContentForSelectedFrame(
       const TextCelContent(
         text: 'カット 12',
         style: TextCelStyle(fontSize: 64, bold: true),
@@ -62,7 +62,7 @@ void main() {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layer.id);
       return s.layerStack.celHasContentForLayer(l, 0);
     });
-    expect(s.selectedTextCelContent?.text, 'カット 12');
+    expect(s.textCelBakes.selectedTextCelContent?.text, 'カット 12');
 
     // Undo: parameters revert AND the projection reads blank again.
     s.undo();
@@ -70,7 +70,7 @@ void main() {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layer.id);
       return !s.layerStack.celHasContentForLayer(l, 0);
     });
-    expect(s.selectedTextCelContent, isNull);
+    expect(s.textCelBakes.selectedTextCelContent, isNull);
 
     // Redo: both come back.
     s.redo();
@@ -78,7 +78,7 @@ void main() {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layer.id);
       return s.layerStack.celHasContentForLayer(l, 0);
     });
-    expect(s.selectedTextCelContent?.text, 'カット 12');
+    expect(s.textCelBakes.selectedTextCelContent?.text, 'カット 12');
     await tester.pumpAndSettle();
   });
 
@@ -91,7 +91,7 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
-    s.setTextCelContentForSelectedFrame(
+    s.textCelBakes.setTextCelContentForSelectedFrame(
       const TextCelContent(text: 'BANK', style: TextCelStyle(fontSize: 80)),
     );
     await settle(tester, () {
@@ -139,7 +139,7 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
-    s.setTextCelContentForSelectedFrame(
+    s.textCelBakes.setTextCelContentForSelectedFrame(
       const TextCelContent(text: 'C-12', style: TextCelStyle(fontSize: 48)),
     );
     await settle(tester, () {
@@ -280,7 +280,7 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.text);
     final originLayerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
-    s.setTextCelContentForSelectedFrame(
+    s.textCelBakes.setTextCelContentForSelectedFrame(
       const TextCelContent(text: 'C-12', style: TextCelStyle(fontSize: 48)),
     );
     await settle(tester, () {

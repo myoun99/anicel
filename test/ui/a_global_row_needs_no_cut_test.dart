@@ -105,7 +105,7 @@ void main() {
 
   test('the ＋ is LIVE on an S row parked in a gap', () {
     expect(
-      standingAt(10).canCreateSeEntryAtStoryboardCursor,
+      standingAt(10).storyboardCursor.canCreateSeEntryAtStoryboardCursor,
       isTrue,
       reason: '「각 행들은 독립적인 글로벌행이라 뭐든 가능해야함」',
     );
@@ -113,7 +113,7 @@ void main() {
 
   test('and it authors the entry at the GLOBAL frame, unshifted', () {
     final s = standingAt(10);
-    s.createSeEntryAtStoryboardCursor();
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
 
     final row = s.trackSeGlobalLayerById(seLayerId);
     expect(row, isNotNull);
@@ -130,8 +130,8 @@ void main() {
       'same sentence, not a second one', () {
     final s = standingAt(14); // cut-2 covers [12,18): local 2, global 14.
     expect(s.activeCutOrNull, isNotNull, reason: 'not a gap this time');
-    expect(s.canCreateSeEntryAtStoryboardCursor, isTrue);
-    s.createSeEntryAtStoryboardCursor();
+    expect(s.storyboardCursor.canCreateSeEntryAtStoryboardCursor, isTrue);
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
 
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2, 14]);
   });
@@ -141,7 +141,7 @@ void main() {
     s.selectRow(const LayerRowAddress(seLayerId));
     s.selectGlobalFrame(3); // inside the existing [2,5) sound.
     expect(
-      s.canCreateSeEntryAtStoryboardCursor,
+      s.storyboardCursor.canCreateSeEntryAtStoryboardCursor,
       isFalse,
       reason: 'the EMPTY-cursor half of the gate is untouched',
     );
@@ -149,9 +149,9 @@ void main() {
 
   test('delete answers in the gap too — the same law, said once', () {
     final s = standingAt(10);
-    s.createSeEntryAtStoryboardCursor();
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
     expect(
-      s.canDeleteBlockAtStoryboardCursor,
+      s.storyboardCursor.canDeleteBlockAtStoryboardCursor,
       isTrue,
       reason: 'the cursor now stands on a block it authored; a gap is not a '
           'reason it cannot be removed',

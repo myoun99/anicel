@@ -327,7 +327,7 @@ Future<void> editSeEntryInstance(
     // already stood on this row and seeked to this frame, which is the pair
     // the frame `＋` acts on. Passing them again would be a second address
     // for one cell.
-    session.createSeEntryAtStoryboardCursor();
+    session.storyboardCursor.createSeEntryAtStoryboardCursor();
     return;
   }
   Frame? entry;
@@ -408,7 +408,7 @@ Future<void> _editTextCel(
   }
 
   final cut = session.activeCutOrNull;
-  final content = session.selectedTextCelContent;
+  final content = session.textCelBakes.selectedTextCelContent;
   return askThenCommit<TextCelContent>(
     context,
     dialog: (_) => TextCelDialog(
@@ -418,7 +418,7 @@ Future<void> _editTextCel(
           ? null
           : Offset(cut.canvasSize.width / 2, cut.canvasSize.height / 2),
     ),
-    commit: session.setTextCelContentForSelectedFrame,
+    commit: session.textCelBakes.setTextCelContentForSelectedFrame,
   );
 }
 
@@ -527,15 +527,15 @@ Future<void> _editInstructionEvent(
   int frameIndex,
   Axis previewAxis,
 ) => _editSpanInstance(context, session, previewAxis, (
-  covering: session.instructionSpanAt(layerId, frameIndex),
+  covering: session.instructionVerbs.instructionSpanAt(layerId, frameIndex),
   set: session.camera.cameraInstructionSet,
   editsSet: true,
-  create: session.createDefaultInstructionEventAtCurrentFrame,
-  remove: () => session.removeInstructionEventAt(layerId, frameIndex),
+  create: session.instructionVerbs.createDefaultInstructionEventAtCurrentFrame,
+  remove: () => session.instructionVerbs.removeInstructionEventAt(layerId, frameIndex),
   // The direction row's events are one frame each; the cell you opened
   // is the span.
   length: (_) => 1,
-  commit: (event) => session.upsertInstructionEventAt(
+  commit: (event) => session.instructionVerbs.upsertInstructionEventAt(
     layerId,
     frameIndex,
     event,
@@ -568,15 +568,15 @@ Future<void> editTransitionSpanInstance(
 }) {
   final frame = globalFrame ?? session.editingGlobalFrame;
   return _editSpanInstance(context, session, previewAxis, (
-    covering: session.transitionSpanAt(frame),
-    set: session.transitionInstructionSet,
+    covering: session.transitions.transitionSpanAt(frame),
+    set: session.transitions.transitionInstructionSet,
     editsSet: false,
-    create: session.createTransitionSpanAtPlayhead,
-    remove: () => session.removeTransitionSpanAt(frame),
+    create: session.transitions.createTransitionSpanAtPlayhead,
+    remove: () => session.transitions.removeTransitionSpanAt(frame),
     // LENGTH is not taken from the dialog. The grips own it, so a re-pick
     // can never resize a span out from under the boundary it fires across.
     length: (covering) => covering.length,
-    commit: (event) => session.replaceTransitionEventAt(frame, event),
+    commit: (event) => session.transitions.replaceTransitionEventAt(frame, event),
   ));
 }
 

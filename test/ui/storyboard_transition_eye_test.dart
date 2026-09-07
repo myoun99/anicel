@@ -78,7 +78,7 @@ void main() {
     final transitionId = session.activeTrack.transitionLayer.id;
 
     // ON: inside the O.L both cuts contribute (the fade is applying).
-    expect(session.transitionSpansOfTrack(_trackId), hasLength(1));
+    expect(session.transitions.transitionSpansOfTrack(_trackId), hasLength(1));
     expect(session.rowSpans.trackStackContributionsAt(10), hasLength(2));
 
     // The TIMELINE host (the default tab) carries the eye on the clone row
@@ -105,7 +105,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.transitionSpansOfTrack(_trackId),
+      session.transitions.transitionSpansOfTrack(_trackId),
       isEmpty,
       reason: 'eye OFF: playback and export see no spans',
     );
@@ -130,7 +130,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(session.transitionSpansOfTrack(_trackId), hasLength(1));
+    expect(session.transitions.transitionSpansOfTrack(_trackId), hasLength(1));
     expect(session.rowSpans.trackStackContributionsAt(10), hasLength(2));
   });
 }

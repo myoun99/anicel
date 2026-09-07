@@ -368,7 +368,7 @@ void main() {
     );
 
     expect(
-      s.canSetCommaForStoryboardCursor,
+      s.storyboardCursor.canSetCommaForStoryboardCursor,
       isFalse,
       reason:
           'the storyboard panel\'s comma gate reads it too — its own '

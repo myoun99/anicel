@@ -243,8 +243,8 @@ void main() {
       seekStoryboardGlobalFrame(session, aEnd + 2);
       expect(session.activeCutId, isNull, reason: 'a gap holds no cut');
 
-      expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
-      session.createTransitionSpanAtPlayhead();
+      expect(session.transitions.canCreateTransitionSpanAtPlayhead, isTrue);
+      session.transitions.createTransitionSpanAtPlayhead();
 
       expect(
         session.activeTrack.transitionLayer.instructions.keys,
@@ -259,7 +259,7 @@ void main() {
       session.selectCut(second);
       session.selectFrameIndex(1);
 
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
 
       expect(session.activeTrack.transitionLayer.instructions.keys, [
         aEnd + 4 + 1,
@@ -294,8 +294,8 @@ void main() {
         final (session, selectOverTransition) = rangedSession();
         selectOverTransition(4, 9);
 
-        expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
-        session.createTransitionSpanAtPlayhead();
+        expect(session.transitions.canCreateTransitionSpanAtPlayhead, isTrue);
+        session.transitions.createTransitionSpanAtPlayhead();
 
         final spans = session.activeTrack.transitionLayer.instructions;
         expect(spans.keys, [4]);
@@ -311,7 +311,7 @@ void main() {
         final (session, _) = rangedSession();
         session.selectGlobalFrame(3);
 
-        session.createTransitionSpanAtPlayhead();
+        session.transitions.createTransitionSpanAtPlayhead();
 
         final spans = session.activeTrack.transitionLayer.instructions;
         expect(spans.keys, [3]);
@@ -322,16 +322,16 @@ void main() {
           'says so with the SAME sentence the verb uses', () {
         final (session, selectOverTransition) = rangedSession();
         session.selectGlobalFrame(4);
-        session.createTransitionSpanAtPlayhead();
+        session.transitions.createTransitionSpanAtPlayhead();
         expect(session.activeTrack.transitionLayer.instructions.keys, [4]);
 
         selectOverTransition(4, 9);
         expect(
-          session.canCreateTransitionSpanAtPlayhead,
+          session.transitions.canCreateTransitionSpanAtPlayhead,
           isFalse,
           reason: 'the button must not light for a press that cannot land',
         );
-        session.createTransitionSpanAtPlayhead();
+        session.transitions.createTransitionSpanAtPlayhead();
         expect(
           session.activeTrack.transitionLayer.instructions[4]!.length,
           1,
@@ -343,11 +343,11 @@ void main() {
           'refusing — the room ran out, the press did not', () {
         final (session, selectOverTransition) = rangedSession();
         session.selectGlobalFrame(8);
-        session.createTransitionSpanAtPlayhead();
+        session.transitions.createTransitionSpanAtPlayhead();
 
         selectOverTransition(4, 20);
-        expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
-        session.createTransitionSpanAtPlayhead();
+        expect(session.transitions.canCreateTransitionSpanAtPlayhead, isTrue);
+        session.transitions.createTransitionSpanAtPlayhead();
 
         final spans = session.activeTrack.transitionLayer.instructions;
         expect(spans.keys, [4, 8]);
@@ -367,7 +367,7 @@ void main() {
       );
       addTearDown(session.dispose);
       session.selectGlobalFrame(3);
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
       expect(session.activeTrack.transitionLayer.instructions[3]!.length, 1);
 
       expect(
@@ -408,7 +408,7 @@ void main() {
       );
       addTearDown(session.dispose);
       session.selectGlobalFrame(10);
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
       session.beginTransitionEdgeDrag(
         spanStartIndex: 10,
         edge: TimelineBlockEdge.end,
@@ -439,7 +439,7 @@ void main() {
       );
       addTearDown(session.dispose);
       session.selectGlobalFrame(1);
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
 
       session.beginTransitionEdgeDrag(
         spanStartIndex: 1,
@@ -472,7 +472,7 @@ void main() {
       );
       addTearDown(session.dispose);
       session.selectGlobalFrame(3);
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
 
       expect(
         session.beginTransitionEdgeDrag(
@@ -512,7 +512,7 @@ void main() {
       );
       addTearDown(session.dispose);
       session.selectGlobalFrame(2);
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
       session.beginTransitionEdgeDrag(
         spanStartIndex: 2,
         edge: TimelineBlockEdge.end,
@@ -520,10 +520,10 @@ void main() {
       session.updateTransitionEdgeDrag(9);
       session.endTransitionEdgeDrag();
 
-      final terms = session.transitionInstructionDefs;
+      final terms = session.transitions.transitionInstructionDefs;
       expect(terms.length, greaterThan(1));
       final other = terms.last;
-      session.replaceTransitionEventAt(
+      session.transitions.replaceTransitionEventAt(
         6,
         session.activeTrack.transitionLayer.instructions[2]!.copyWith(
           instructionId: other.id,
@@ -543,14 +543,14 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      final filtered = session.transitionInstructionSet.defs;
+      final filtered = session.transitions.transitionInstructionSet.defs;
       expect(filtered, isNotEmpty);
       expect(
         filtered.length,
         lessThan(session.camera.cameraInstructionSet.defs.length),
       );
       expect(
-        session.transitionInstructionDefs.map((def) => def.id),
+        session.transitions.transitionInstructionDefs.map((def) => def.id),
         filtered.map((def) => def.id),
       );
     });
@@ -561,10 +561,10 @@ void main() {
       );
       addTearDown(session.dispose);
       session.selectGlobalFrame(5);
-      session.createTransitionSpanAtPlayhead();
-      expect(session.transitionSpanAt(5), isNotNull);
+      session.transitions.createTransitionSpanAtPlayhead();
+      expect(session.transitions.transitionSpanAt(5), isNotNull);
 
-      session.removeTransitionSpanAt(5);
+      session.transitions.removeTransitionSpanAt(5);
       expect(session.activeTrack.transitionLayer.instructions, isEmpty);
 
       session.undo();
@@ -612,7 +612,7 @@ void main() {
           .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
           .session;
       session.selectGlobalFrame(5);
-      session.createTransitionSpanAtPlayhead();
+      session.transitions.createTransitionSpanAtPlayhead();
       await tester.pumpAndSettle();
       session.selectRow(
         LayerRowAddress(session.activeTrack.transitionLayer.id),
@@ -628,7 +628,7 @@ void main() {
       final dialog = tester.widget<InstructionEventDialog>(
         find.byType(InstructionEventDialog),
       );
-      expect(dialog.instructionSet.defs, session.transitionInstructionDefs);
+      expect(dialog.instructionSet.defs, session.transitions.transitionInstructionDefs);
       expect(dialog.onEditInstructionSet, isNull);
       // Dismiss through the route so the test leaves no dialog standing.
       Navigator.of(tester.element(find.byType(InstructionEventDialog))).pop();
@@ -664,7 +664,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(InstructionEventDialog), findsNothing);
-      expect(session.transitionSpanAt(7), isNotNull);
+      expect(session.transitions.transitionSpanAt(7), isNotNull);
     });
   });
 }

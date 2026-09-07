@@ -379,12 +379,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     }
     // D28: on the cut row with a storyboard layer, the ＋ divides the
     // panel under the cursor (self-gated by the one cursor resolver).
-    if (_session.canCreateStoryboardPanelAtCursor) {
-      _session.createStoryboardPanelAtCursor();
+    if (_session.storyboardCursor.canCreateStoryboardPanelAtCursor) {
+      _session.storyboardCursor.createStoryboardPanelAtCursor();
       return;
     }
     // Self-gated: only a standing S row with an EMPTY cursor frame authors.
-    _session.createSeEntryAtStoryboardCursor();
+    _session.storyboardCursor.createSeEntryAtStoryboardCursor();
   }
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
@@ -974,7 +974,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // authoring axis, with the SAME predicate the ramp and
                     // のりしろ read.
                     transitionCrossingTooltip:
-                        _session.transitionCrossingWarningAtGlobalKey,
+                        _session.transitions.transitionCrossingWarningAtGlobalKey,
                     transitionPreview: _session.transitionEdgeDragPreview,
                     transitionCommaDrag: TimelineCommaDragCallbacks(
                       onBegin: (layerId, blockStartIndex, edge) =>

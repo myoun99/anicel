@@ -69,7 +69,7 @@ void main() {
     var notified = 0;
     s.addListener(() => notified += 1);
 
-    s.updateLayerInstructions(
+    s.instructionVerbs.updateLayerInstructions(
       layer.id,
       {0: const InstructionEvent(instructionId: 'pan', length: 2)},
     );

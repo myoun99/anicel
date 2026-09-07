@@ -173,11 +173,11 @@ void main() {
 
     s.layerStack.addLayerOfKind(LayerKind.instruction);
     final instrId = s.activeLayer!.id;
-    s.createDefaultInstructionEventAtCurrentFrame();
+    s.instructionVerbs.createDefaultInstructionEventAtCurrentFrame();
     expect(layerOf(s, instrId).instructions[0], isNotNull);
     // Creation never edits: a second press on the covered cell no-ops.
     final before = layerOf(s, instrId).instructions[0];
-    s.createDefaultInstructionEventAtCurrentFrame();
+    s.instructionVerbs.createDefaultInstructionEventAtCurrentFrame();
     expect(layerOf(s, instrId).instructions[0], same(before));
   });
 }
