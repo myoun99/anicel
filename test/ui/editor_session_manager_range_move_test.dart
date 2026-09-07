@@ -81,7 +81,7 @@ void main() {
     expect(selection.startIndex, 2);
     expect(selection.endIndexExclusive, 6);
     expect(
-      s.beginFrameRangeMoveDrag(),
+      s.rangeMove.beginFrameRangeMoveDrag(),
       isFalse,
       reason:
           'no keys in range — nothing to move (P3b-2: WITH keys the '
@@ -113,8 +113,8 @@ void main() {
       greaterThanOrEqualTo(5),
       reason: 'SE + instruction rows in between join the span',
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.cancelFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.cancelFrameRangeMoveDrag();
 
     // Regression pin: a drawing-only span still moves.
     s.updateFrameRangeSelectionDrag(
@@ -122,8 +122,8 @@ void main() {
       anchorIndex: 0,
       headIndex: 3,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.cancelFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.cancelFrameRangeMoveDrag();
   });
 
   test('selection clears on layer switch and cut refresh', () {
@@ -150,8 +150,8 @@ void main() {
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
 
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
@@ -166,7 +166,7 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
     expect(notifies, 0);
 
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(s.dragPreview.value, isNull);
     expect(notifies, 1);
     final moved = s.layers.firstWhere((l) => l.id == a.id);
@@ -203,9 +203,9 @@ void main() {
       anchorIndex: 0,
       headIndex: 3,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: b.id);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: b.id);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     expect(s.activeLayer!.id, b.id, reason: 'selection follows the frames');
     final movedA = s.layers.firstWhere((l) => l.id == a.id);
@@ -248,8 +248,8 @@ void main() {
       anchorIndex: 2,
       headIndex: 4,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 3);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
     // The cells follow the preview keys while the repository stays put.
     expect(
       s.exposureStateForLayer(camera, 5),
@@ -261,7 +261,7 @@ void main() {
     );
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
 
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(s.activeCutOrNull!.camera.keyframeAt(5), isNotNull);
     expect(s.activeCutOrNull!.camera.keyframeAt(7), isNotNull);
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNull);
@@ -278,11 +278,11 @@ void main() {
       anchorIndex: 2,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
     expect(s.dragPreview.value, isNull);
     final undoDepth = s.canUndo;
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
     expect(s.canUndo, undoDepth, reason: 'void moves commit nothing');
   });
@@ -307,15 +307,15 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 4);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 4);
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
     final previewLayer =
         (preview! as BlockMoveDragPreview).previewLayers[instruction.id];
     expect(previewLayer!.instructions.containsKey(5), isTrue);
 
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     final moved = s.layers.firstWhere((l) => l.id == instruction.id);
     expect(moved.instructions.containsKey(5), isTrue);
     expect(moved.instructions.containsKey(1), isFalse);
@@ -354,15 +354,15 @@ void main() {
       anchorIndex: 0,
       headIndex: 3,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     expect(
       preview.previewLayers[a.id]!.transformTrack.position.keys.keys.toSet(),
       {0, 3},
       reason: 'the transform keys do NOT ride the frame move',
     );
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     final moved = s.layers.firstWhere((l) => l.id == a.id);
     expect(moved.timeline.containsKey(2), isTrue);
     expect(moved.transformTrack.position.keys.keys.toSet(), {0, 3});
@@ -391,7 +391,7 @@ void main() {
       headIndex: 8,
     );
     expect(
-      s.beginFrameRangeMoveDrag(),
+      s.rangeMove.beginFrameRangeMoveDrag(),
       isFalse,
       reason: 'a key-only span has no blocks to move',
     );
@@ -419,9 +419,9 @@ void main() {
       anchorIndex: 0,
       headIndex: 0,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: storyboard.id);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: storyboard.id);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     final landed = s.layers.firstWhere((l) => l.id == storyboard.id);
     expect(
@@ -499,11 +499,11 @@ void main() {
       headIndex: 4,
     );
     expect(s.frameRangeSelection.value, isNotNull);
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[1]);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[1]);
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     expect(preview.previewLayers.keys.toSet(), seIds.toSet());
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     Layer seLayer(int index) =>
         s.activeTrack.seLayers.firstWhere((l) => l.id == seIds[index]);
@@ -546,10 +546,10 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
     expect(s.dragPreview.value, isNotNull);
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     Layer row(LayerId id) => s.layers.firstWhere((l) => l.id == id);
     expect(row(first.id).instructions, isEmpty);
@@ -571,11 +571,11 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
     expect(s.dragPreview.value, isNull, reason: '[3,5) overlaps [2,4)');
     final undoProbe = s.canUndo;
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(s.canUndo, undoProbe, reason: 'void drops commit nothing');
 
     // A cross-kind hover (instruction → drawing row) clears the preview.
@@ -585,10 +585,10 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: drawing.id);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: drawing.id);
     expect(s.dragPreview.value, isNull);
-    s.cancelFrameRangeMoveDrag();
+    s.rangeMove.cancelFrameRangeMoveDrag();
   });
 
   test('GHOST exposures are TEXT-ONLY (UI-R23 #6): repeat instances never '
@@ -599,7 +599,7 @@ void main() {
     final layerId = s.activeLayer!.id;
     // Author a repeat edge after the single 1-frame block at 0 (UI-R9
     // #10: ghosts fill to the cut end).
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -636,9 +636,9 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 4);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 4);
+    s.rangeMove.endFrameRangeMoveDrag();
     final moved = s.layers.firstWhere((l) => l.id == layerId);
     expect(moved.timeline[4]!.ghost, isFalse);
     expect(moved.timeline[5]!.ghost, isTrue);
@@ -652,7 +652,7 @@ void main() {
       headIndex: 6,
     );
     expect(s.frameRangeSelection.value, isNotNull);
-    expect(s.beginFrameRangeMoveDrag(), isFalse);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isFalse);
   });
 
   test('a HOLD-edge ghost (one multi-frame span) never swallows the '
@@ -660,7 +660,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -686,7 +686,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final aId = s.activeLayer!.id;
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: aId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -698,14 +698,14 @@ void main() {
     // Select the REAL block on A and drop it on the empty layer B.
     s.selectLayer(aId);
     s.updateFrameRangeSelectionDrag(layerId: aId, anchorIndex: 0, headIndex: 0);
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(
       s.dragPreview.value,
       isNotNull,
       reason: 'the cross-row drop is legal now (ghosts are not real links)',
     );
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     final aAfter = s.layers.firstWhere((l) => l.id == aId);
     final bAfter = s.layers.firstWhere((l) => l.id == bId);
@@ -727,16 +727,16 @@ void main() {
 
     s.selectLayer(aId);
     s.updateFrameRangeSelectionDrag(layerId: aId, anchorIndex: 0, headIndex: 0);
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
 
     // A valid drop on B: preview + outline follow to B.
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(s.dragPreview.value, isNotNull);
     expect(s.frameRangeSelection.value!.layerId, bId);
 
     // Wander onto the incompatible camera section: the last valid landing
     // HOLDS (preview stays, outline stays on B) — no snap-back to A.
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: camId);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: camId);
     expect(
       s.dragPreview.value,
       isNotNull,
@@ -745,9 +745,9 @@ void main() {
     expect(s.frameRangeSelection.value!.layerId, bId);
 
     // Return to B resumes cleanly; the release commits on B.
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(s.frameRangeSelection.value!.layerId, bId);
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     final aAfter = s.layers.firstWhere((l) => l.id == aId);
     final bAfter = s.layers.firstWhere((l) => l.id == bId);
     expect(bAfter.timeline.containsKey(0), isTrue);
@@ -781,11 +781,11 @@ void main() {
       headLayerId: bId,
     );
     expect(s.frameRangeSelection.value!.spanLayerIds, [aId, bId]);
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(s.dragPreview.value, isNotNull);
     expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     // The whole group shifted down one row; cels rode along.
     expect(layer(aId).timeline.keys, isEmpty);
@@ -840,15 +840,15 @@ void main() {
     );
     final span = s.frameRangeSelection.value!.spanLayerIds;
     expect(span, containsAll(<LayerId>[aId, seIds[0]]));
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     expect(
       preview.previewLayers.keys,
       containsAll(<LayerId>[seIds[0], seIds[1]]),
       reason: 'the SE passenger previews on both SE rows',
     );
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     expect(layer(aId).timeline, isEmpty);
     expect(layer(bId).timeline[0]!.frameId, aFrameId);
@@ -886,17 +886,17 @@ void main() {
       headIndex: 0,
       headLayerId: bId,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
     // A valid one-row shift (A->B, B->C).
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
 
     // Dragging further so B would fall off the bottom is illegal — the last
     // valid one-row shift HOLDS (no snap-back, no partial move).
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: cId);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: cId);
     expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
     expect(s.dragPreview.value, isNotNull);
-    s.cancelFrameRangeMoveDrag();
+    s.rangeMove.cancelFrameRangeMoveDrag();
   });
 
   test('a span with EMPTY rows row-moves its content (UI-R24 #3): '
@@ -918,16 +918,16 @@ void main() {
       headLayerId: bId,
     );
     expect(s.frameRangeSelection.value!.spanLayerIds, [aId, bId]);
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
     // Drag down one row: A's block lands on B; the empty B maps to C but
     // carries nothing — the move must NOT refuse.
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(
       s.dragPreview.value,
       isNotNull,
       reason: 'empty selected rows never block the row move',
     );
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
     expect(layer(aId).timeline.keys, isEmpty);
@@ -988,15 +988,15 @@ void main() {
 
     // The move shifts ONLY the position lane's covered key (+2): the
     // scale key at 2 and the position key at 8 stay put.
-    expect(s.beginLaneRangeMoveDrag(), isTrue);
-    s.updateLaneRangeMoveDrag(frameDelta: 2);
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    s.laneMove.updateLaneRangeMoveDrag(frameDelta: 2);
     expect(s.dragPreview.value, isNotNull);
     // A blocked further step (landing on the unmoved key at 8: 2+2 range
     // would collide at... use a big delta landing 2->8) HOLDS the last
     // valid preview (UI-R23 #10).
-    s.updateLaneRangeMoveDrag(frameDelta: 6);
+    s.laneMove.updateLaneRangeMoveDrag(frameDelta: 6);
     expect(s.laneRangeSelection.value!.startIndex, 3, reason: 'held at +2');
-    s.endLaneRangeMoveDrag();
+    s.laneMove.endLaneRangeMoveDrag();
 
     Layer layer() => s.layers.firstWhere((l) => l.id == a.id);
     expect(layer().transformTrack.position.keys.keys.toSet(), {4, 8});
@@ -1040,8 +1040,8 @@ void main() {
       headIndex: 3,
       spanLaneIds: const [],
     );
-    expect(s.beginLaneRangeMoveDrag(), isTrue);
-    s.updateLaneRangeMoveDrag(frameDelta: 2);
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    s.laneMove.updateLaneRangeMoveDrag(frameDelta: 2);
     expect(s.dragPreview.value, isNotNull, reason: 'a move is in flight');
 
     // A keyless span on the SAME row: nothing to move, so the begin refuses.
@@ -1052,7 +1052,7 @@ void main() {
       headIndex: 3,
       spanLaneIds: const [],
     );
-    expect(s.beginLaneRangeMoveDrag(), isFalse);
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isFalse);
     expect(
       s.dragPreview.value,
       isNotNull,
@@ -1060,7 +1060,7 @@ void main() {
     );
 
     // And the original drag still closes the normal way.
-    s.cancelLaneRangeMoveDrag();
+    s.laneMove.cancelLaneRangeMoveDrag();
     expect(s.dragPreview.value, isNull);
   });
 
@@ -1101,9 +1101,9 @@ void main() {
 
     // The move shifts BOTH covered keys (+2) in one undo; the rotation
     // key outside the span stays put.
-    expect(s.beginLaneRangeMoveDrag(), isTrue);
-    s.updateLaneRangeMoveDrag(frameDelta: 2);
-    s.endLaneRangeMoveDrag();
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    s.laneMove.updateLaneRangeMoveDrag(frameDelta: 2);
+    s.laneMove.endLaneRangeMoveDrag();
     Layer layer() => s.layers.firstWhere((l) => l.id == a.id);
     expect(layer().transformTrack.position.keys.keys.toSet(), {4});
     expect(layer().transformTrack.scale.keys.keys.toSet(), {5});
@@ -1125,9 +1125,9 @@ void main() {
       spanLaneIds: const [],
     );
     expect(s.laneRangeSelection.value!.spanLaneIds, ['transform-group']);
-    expect(s.beginLaneRangeMoveDrag(), isTrue);
-    s.updateLaneRangeMoveDrag(frameDelta: 3);
-    s.endLaneRangeMoveDrag();
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    s.laneMove.updateLaneRangeMoveDrag(frameDelta: 3);
+    s.laneMove.endLaneRangeMoveDrag();
     expect(layer().transformTrack.position.keys.keys.toSet(), {5});
     expect(layer().transformTrack.scale.keys.keys.toSet(), {6});
     expect(
@@ -1216,9 +1216,9 @@ void main() {
 
       // The pointer went down on the SOUND block (S2) — that row, not the
       // selection's anchor, is what lands on the row under the pointer.
-      expect(s.beginFrameRangeMoveDrag(seIds[1]), isTrue);
-      s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[0]);
-      s.endFrameRangeMoveDrag();
+      expect(s.rangeMove.beginFrameRangeMoveDrag(seIds[1]), isTrue);
+      s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[0]);
+      s.rangeMove.endFrameRangeMoveDrag();
 
       expect(seRow(s, seIds[1]).timeline, isEmpty, reason: 'the sound left S2');
       expect(seRow(s, seIds[0]).timeline.containsKey(0), isTrue);
@@ -1247,11 +1247,11 @@ void main() {
         headIndex: 0,
         headLayerId: cam,
       );
-      expect(s.beginFrameRangeMoveDrag(), isTrue);
+      expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
       // Up one row AND one frame right: the sound changes rows, the
       // instruction key stays on CAM1 but travels the frame delta.
-      s.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: seIds[0]);
-      s.endFrameRangeMoveDrag();
+      s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: seIds[0]);
+      s.rangeMove.endFrameRangeMoveDrag();
 
       expect(seRow(s, seIds[1]).timeline, isEmpty);
       expect(seRow(s, seIds[0]).timeline.containsKey(1), isTrue);
@@ -1277,10 +1277,10 @@ void main() {
       anchorIndex: 0,
       headIndex: 0,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
 
     // Out to the right…
-    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
     expect(s.dragPreview.value, isNotNull);
     expect(s.frameRangeSelection.value!.startIndex, 2);
 
@@ -1288,7 +1288,7 @@ void main() {
     // answers null for a no-op exactly as it does for an impossible
     // landing — so the preview HELD at +2 and the block refused to come
     // back: "더 이상 왼쪽으로 이동이 안먹혀버리고 그 자리에서 멈춰버린다".
-    s.updateFrameRangeMoveDrag(frameDelta: 0);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0);
     expect(
       s.dragPreview.value,
       isNull,
@@ -1301,12 +1301,12 @@ void main() {
     );
 
     // …and the drag still works afterwards, in both directions.
-    s.updateFrameRangeMoveDrag(frameDelta: 1);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
     expect(s.frameRangeSelection.value!.startIndex, 1);
-    s.updateFrameRangeMoveDrag(frameDelta: 0);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0);
     expect(s.frameRangeSelection.value!.startIndex, 0);
 
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     // Ending at the origin commits nothing.
     expect(
       s.layers.firstWhere((l) => l.id == a.id).timeline[0],
@@ -1345,15 +1345,15 @@ void main() {
       s.frameRangeSelection.value!.spanLayerIds,
       containsAll(<LayerId>[aId, camera.id]),
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: bId);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: bId);
     expect(
       s.activeCutOrNull!.camera.keyframeAt(0),
       isNotNull,
       reason: 'the repository stays put while the drag previews',
     );
     final undoDepthBefore = s.canUndo;
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
 
     expect(layer(aId).timeline, isEmpty);
     expect(layer(bId).timeline[2]!.frameId, aFrameId);
@@ -1389,8 +1389,8 @@ void main() {
       headIndex: 0,
       headLayerId: bId,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     expect(s.frameRangeSelection.value!.startIndex, 0);
     expect(
@@ -1425,17 +1425,17 @@ void main() {
     expect(s.frameRangeSelection.value!.startIndex, 0);
     expect(s.frameRangeSelection.value!.endIndexExclusive, 4);
 
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
     // The block can only travel 3 frames left; the outline would need to
     // start at -3.
-    s.updateFrameRangeMoveDrag(frameDelta: -3);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: -3);
     expect(
       s.frameRangeSelection.value!.startIndex,
       0,
       reason: 'a negative start is not a selection',
     );
     expect(s.frameRangeSelection.value!.endIndexExclusive, 4);
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(s.layers.firstWhere((l) => l.id == aId).timeline[0], isNotNull);
   });
 }

@@ -44,20 +44,20 @@ void main() {
       headIndex: 0,
       headLayerId: bId,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
     expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
 
     // Off the rows entirely: nothing to hop to, so the step neither hops
     // nor falls back to the slide — the landing it had is the one it keeps.
-    s.updateFrameRangeMoveDrag(
+    s.rangeMove.updateFrameRangeMoveDrag(
       frameDelta: 0,
       targetLayerId: const LayerId('no-such-row'),
     );
     expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
     expect(s.dragPreview.value, isNotNull);
 
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(layerOf(s, aId).timeline.keys, isEmpty);
     expect(layerOf(s, bId).timeline[0]!.frameId, aFrameId);
   });
@@ -72,8 +72,8 @@ void main() {
       headIndex: 0,
       headLayerId: bId,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 1);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
     expect(s.frameRangeSelection.value!.startIndex, 1);
     final held = s.dragPreview.value;
     expect(held, isNotNull);
@@ -81,11 +81,11 @@ void main() {
     // Into the wall: the run clamps to frame 0, where it already was, so no
     // plan lands and the step changes nothing — not the outline, not the
     // preview, not what the drop will commit.
-    s.updateFrameRangeMoveDrag(frameDelta: -1000);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: -1000);
     expect(s.frameRangeSelection.value!.startIndex, 1);
     expect(s.dragPreview.value, same(held));
 
-    s.endFrameRangeMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(layerOf(s, aId).timeline.containsKey(1), isTrue);
     expect(layerOf(s, bId).timeline.containsKey(1), isTrue);
   });
@@ -115,9 +115,9 @@ void main() {
       s.frameRangeSelection.value!.spanLayerIds,
       containsAll([syncedId, bId]),
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: cId);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: cId);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     // B stayed home: the synced row's timing belongs to its base, so the
     // span could only slide — and a zero slide is no move at all.

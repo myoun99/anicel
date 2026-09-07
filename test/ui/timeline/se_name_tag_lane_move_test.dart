@@ -137,14 +137,14 @@ void main() {
         framesAreGlobal: true,
       );
       expect(
-        session.beginLaneRangeMoveDrag(),
+        session.laneMove.beginLaneRangeMoveDrag(),
         isTrue,
         reason:
             'the nametag family used to refuse in silence — the '
             'observed C① symptom',
       );
-      session.updateLaneRangeMoveDrag(frameDelta: 5);
-      session.endLaneRangeMoveDrag();
+      session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);
+      session.laneMove.endLaneRangeMoveDrag();
 
       SeNameTagTrack keysOf() =>
           session.activeTrack.seLayers.first.seNameTag!.track!;
@@ -180,9 +180,9 @@ void main() {
         spanLaneIds: const [],
         framesAreGlobal: true,
       );
-      expect(session.beginLaneRangeMoveDrag(), isTrue);
-      session.updateLaneRangeMoveDrag(frameDelta: 4);
-      session.endLaneRangeMoveDrag();
+      expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
+      session.laneMove.updateLaneRangeMoveDrag(frameDelta: 4);
+      session.laneMove.endLaneRangeMoveDrag();
 
       final keys = session.activeTrack.seLayers.first.seNameTag!.track!;
       expect(keys.fontSize.keys.keys.toList(), [6]);
@@ -204,7 +204,7 @@ void main() {
         spanLaneIds: const [],
         framesAreGlobal: true,
       );
-      expect(session.beginLaneRangeMoveDrag(), isFalse);
+      expect(session.laneMove.beginLaneRangeMoveDrag(), isFalse);
     });
 
     test('a blocked step HOLDS the last valid preview (UI-R23 #10)', () {
@@ -236,11 +236,11 @@ void main() {
         spanLaneIds: const [],
         framesAreGlobal: true,
       );
-      expect(session.beginLaneRangeMoveDrag(), isTrue);
-      session.updateLaneRangeMoveDrag(frameDelta: 2);
+      expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
+      session.laneMove.updateLaneRangeMoveDrag(frameDelta: 2);
       // 2+7=9 collides with the unshifted key at 9 — the step holds.
-      session.updateLaneRangeMoveDrag(frameDelta: 7);
-      session.endLaneRangeMoveDrag();
+      session.laneMove.updateLaneRangeMoveDrag(frameDelta: 7);
+      session.laneMove.endLaneRangeMoveDrag();
 
       final keys = session.activeTrack.seLayers.first.seNameTag!.track!;
       expect(
@@ -300,8 +300,8 @@ void main() {
         spanLaneIds: const [],
         framesAreGlobal: true,
       );
-      expect(session.beginLaneRangeMoveDrag(), isTrue);
-      session.updateLaneRangeMoveDrag(frameDelta: 5);
+      expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
+      session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);
 
       // 🚨MID-DRAG, the preview AXIS: previewLayers carries the ACTIVE-CUT
       // DISPLAY CLONE (cut-local keys), never the global form — a
@@ -328,7 +328,7 @@ void main() {
         [firstDuration + 7, firstDuration + 8],
       );
 
-      session.endLaneRangeMoveDrag();
+      session.laneMove.endLaneRangeMoveDrag();
 
       expect(
         session.activeTrack.seLayers.first.seNameTag!.track!.fontSize.keys.keys

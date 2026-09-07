@@ -504,10 +504,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return TimelineCutEndDragCallbacks(
       cutId: cutId,
       onBegin: () =>
-          _session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end),
-      onUpdate: _session.updateCutEdgeDrag,
-      onEnd: _session.endCutEdgeDrag,
-      onCancel: _session.cancelCutEdgeDrag,
+          _session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end),
+      onUpdate: _session.edgeDrag.updateCutEdgeDrag,
+      onEnd: _session.edgeDrag.endCutEdgeDrag,
+      onCancel: _session.edgeDrag.cancelCutEdgeDrag,
     );
   }
 
@@ -834,14 +834,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // snapshot and commit as ONE undo entry on release.
             commaDrag: TimelineCommaDragCallbacks(
               onBegin: (layerId, blockStartIndex, edge) =>
-                  _session.beginExposureEdgeDrag(
+                  _session.edgeDrag.beginExposureEdgeDrag(
                     layerId: layerId,
                     blockStartIndex: blockStartIndex,
                     edge: edge,
                   ),
-              onUpdate: _session.updateExposureEdgeDrag,
-              onEnd: _session.endExposureEdgeDrag,
-              onCancel: _session.cancelExposureEdgeDrag,
+              onUpdate: _session.edgeDrag.updateExposureEdgeDrag,
+              onEnd: _session.edgeDrag.endExposureEdgeDrag,
+              onCancel: _session.edgeDrag.cancelExposureEdgeDrag,
             ),
             // TVP-style frame ranges (UI-R8): a cell drag SELECTS a range
             // (block-snapped), a drag starting inside the selection MOVES it
@@ -867,14 +867,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   ),
               onClear: _session.clearFrameRangeSelection,
               move: TimelineRangeMoveCallbacks(
-                onBegin: _session.beginFrameRangeMoveDrag,
+                onBegin: _session.rangeMove.beginFrameRangeMoveDrag,
                 onUpdate: ({required frameDelta, targetLayerId}) =>
-                    _session.updateFrameRangeMoveDrag(
+                    _session.rangeMove.updateFrameRangeMoveDrag(
                       frameDelta: frameDelta,
                       targetLayerId: targetLayerId,
                     ),
-                onEnd: _session.endFrameRangeMoveDrag,
-                onCancel: _session.cancelFrameRangeMoveDrag,
+                onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
               ),
             ),
             // The LANE selection domain (UI-R23 #3 part 2; MULTI-LANE since
@@ -908,11 +908,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // that turned out to be a tap takes its anchor span back
               // instead of leaving a one-cell band behind.
               onTapClear: _session.clearLaneRangeSelection,
-              onMoveBegin: _session.beginLaneRangeMoveDrag,
+              onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
               onMoveUpdate: (frameDelta) =>
-                  _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
-              onMoveEnd: _session.endLaneRangeMoveDrag,
-              onMoveCancel: _session.cancelLaneRangeMoveDrag,
+                  _session.laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+              onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
+              onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
             ),
             // R10 #19's rail half: the row you are standing on is DRAWN,
             // and a lane's label is a place you can stand.
@@ -963,14 +963,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // None/Hold/Repeat mode (ghosts fill to the cut boundary).
             runEdit: TimelineRunEditCallbacks(
               onAddBegin: (layerId, blockStartIndex, {required atEnd}) =>
-                  _session.beginRunFramesAddDrag(
+                  _session.runFramesAdd.beginRunFramesAddDrag(
                     layerId: layerId,
                     blockStartIndex: blockStartIndex,
                     atEnd: atEnd,
                   ),
-              onAddUpdate: _session.updateRunFramesAddDrag,
-              onAddEnd: _session.endRunFramesAddDrag,
-              onAddCancel: _session.cancelRunFramesAddDrag,
+              onAddUpdate: _session.runFramesAdd.updateRunFramesAddDrag,
+              onAddEnd: _session.runFramesAdd.endRunFramesAddDrag,
+              onAddCancel: _session.runFramesAdd.cancelRunFramesAddDrag,
               onEdgeModeSelected:
                   (
                     layerId,
@@ -978,7 +978,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                     side,
                     mode, {
                     scopeToSelection = false,
-                  }) => _session.setRunEdgeBehavior(
+                  }) => _session.rangeMove.setRunEdgeBehavior(
                     layerId: layerId,
                     blockStartIndex: blockStartIndex,
                     side: side,

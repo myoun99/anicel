@@ -40,10 +40,10 @@ void main() {
     s.addListener(() => notifies += 1);
 
     expect(
-      s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
+      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
       isTrue,
     );
-    s.updateDrawingBlockMoveDrag(frameDelta: 2);
+    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 2);
 
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
@@ -54,7 +54,7 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
     expect(notifies, 0);
 
-    s.endDrawingBlockMoveDrag();
+    s.drawingBlockMove.endDrawingBlockMoveDrag();
     expect(s.dragPreview.value, isNull);
     expect(notifies, 1);
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNull);
@@ -76,16 +76,16 @@ void main() {
     s.renderCaches.brushFrameStore.getOrCreateFrame(fromKey);
 
     expect(
-      s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
+      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
       isTrue,
     );
-    s.updateDrawingBlockMoveDrag(frameDelta: 1, targetLayerId: b.id);
+    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 1, targetLayerId: b.id);
 
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     expect(preview.previewLayers.keys, containsAll([a.id, b.id]));
     expect(preview.previewLayers[b.id]!.timeline[1]!.frameId, frameId);
 
-    s.endDrawingBlockMoveDrag();
+    s.drawingBlockMove.endDrawingBlockMoveDrag();
     // The selection follows the block onto its new layer (R12-④).
     expect(s.activeLayer!.id, b.id);
     final movedA = s.layers.firstWhere((l) => l.id == a.id);
@@ -120,9 +120,9 @@ void main() {
   test('an occupied landing PUSHES the block in the way (R12-②)', () {
     final (s, a, b) = twoLayerSession();
 
-    s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
+    s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
     // Layer B's block sits at frame 6 — landing on it pushes it behind.
-    s.updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
+    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     final previewB = preview.previewLayers[b.id]!;
     expect(previewB.timeline[6], isNotNull, reason: 'moved block lands at 6');
@@ -132,7 +132,7 @@ void main() {
       reason: 'the resident block pushed from 6 to 7',
     );
 
-    s.endDrawingBlockMoveDrag();
+    s.drawingBlockMove.endDrawingBlockMoveDrag();
     final movedB = s.layers.firstWhere((l) => l.id == b.id);
     expect(movedB.timeline[6], isNotNull);
     expect(movedB.timeline[7], isNotNull);
@@ -169,10 +169,10 @@ void main() {
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
-    s.updateDrawingBlockMoveDrag(frameDelta: 3);
+    s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
+    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 3);
     expect(s.dragPreview.value, isNotNull);
-    s.cancelDrawingBlockMoveDrag();
+    s.drawingBlockMove.cancelDrawingBlockMoveDrag();
 
     expect(s.dragPreview.value, isNull);
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
@@ -185,12 +185,12 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final seLayer = s.layers.firstWhere((l) => l.name.startsWith('S'));
     expect(
-      s.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
+      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
       isFalse,
     );
     // No block at frame 9.
     expect(
-      s.beginDrawingBlockMoveDrag(
+      s.drawingBlockMove.beginDrawingBlockMoveDrag(
         layerId: s.activeLayer!.id,
         blockStartIndex: 9,
       ),
@@ -209,17 +209,17 @@ void main() {
     final seLayer = s.layers.firstWhere((l) => l.name.startsWith('S'));
 
     expect(
-      s.beginDrawingBlockMoveDrag(
+      s.drawingBlockMove.beginDrawingBlockMoveDrag(
         layerId: s.activeLayer!.id,
         blockStartIndex: 0,
       ),
       isTrue,
     );
-    s.updateDrawingBlockMoveDrag(frameDelta: 2);
+    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 2);
     expect(s.dragPreview.value, isNotNull, reason: 'a move is in flight');
 
     expect(
-      s.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
+      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
       isFalse,
     );
     expect(
@@ -230,7 +230,7 @@ void main() {
     expect(s.dragPreview.value, isNotNull, reason: 'and it kept its preview');
 
     // And the original drag can still be closed the normal way.
-    s.cancelDrawingBlockMoveDrag();
+    s.drawingBlockMove.cancelDrawingBlockMoveDrag();
     expect(s.isBlockMoveDragActive, isFalse);
     expect(s.dragPreview.value, isNull);
   });

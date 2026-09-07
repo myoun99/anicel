@@ -180,9 +180,9 @@ void main() {
       anchorIndex: 6,
       headIndex: 6,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: base.id);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: base.id);
+    s.rangeMove.endFrameRangeMoveDrag();
     attached = cutLayers(s).firstWhere((l) => l.id == attachId);
     expect(
       attached.frames,
@@ -198,7 +198,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     // Name the base cel '1' and author a HOLD run edge after it.
     expect(s.frameVerbs.renameSelectedFrame('1'), isNull);
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: base.id,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -229,13 +229,13 @@ void main() {
     final (s, base) = sessionWithBase();
     // Base cel at 0, stretched to a 3-frame hold via a comma drag.
     s.createDrawingAtCurrentFrame();
-    s.beginExposureEdgeDrag(
+    s.edgeDrag.beginExposureEdgeDrag(
       layerId: base.id,
       blockStartIndex: 0,
       edge: TimelineBlockEdge.end,
     );
-    s.updateExposureEdgeDrag(2);
-    s.endExposureEdgeDrag();
+    s.edgeDrag.updateExposureEdgeDrag(2);
+    s.edgeDrag.endExposureEdgeDrag();
     expect(
       cutLayers(s).firstWhere((l) => l.id == base.id).timeline[0]!.length,
       3,
@@ -285,15 +285,15 @@ void main() {
     // Timing edits behave like any drawing layer. A COMMA DRAG stretches
     // the block to length 3 (the old attach standdown refused the begin):
     expect(
-      s.beginExposureEdgeDrag(
+      s.edgeDrag.beginExposureEdgeDrag(
         layerId: attachId,
         blockStartIndex: 0,
         edge: TimelineBlockEdge.end,
       ),
       isTrue,
     );
-    s.updateExposureEdgeDrag(2);
-    s.endExposureEdgeDrag();
+    s.edgeDrag.updateExposureEdgeDrag(2);
+    s.edgeDrag.endExposureEdgeDrag();
     expect(
       cutLayers(s).firstWhere((l) => l.id == attachId).timeline[0]!.length,
       3,
@@ -314,8 +314,8 @@ void main() {
       headIndex: 0,
     );
     expect(s.frameRangeSelection.value, isNotNull);
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.cancelFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.cancelFrameRangeMoveDrag();
 
     // Still an ATTACH row structurally: no nesting base, cascades with
     // the base's delete, and adding from it targets ITS base.
@@ -347,7 +347,7 @@ void main() {
     // Mirror-only selection: nothing of its own to move — and the
     // refusal SAYS so at the cursor (the synced-block UI made the row
     // look grabbable).
-    expect(s.beginFrameRangeMoveDrag(), isFalse);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isFalse);
     expect(cursorNotices.message, AppText.strings.noticeEditAttachOwner);
     cursorNotices.clear();
 
@@ -361,9 +361,9 @@ void main() {
     );
     selection = s.frameRangeSelection.value;
     expect(selection!.spanLayerIds, containsAll([base.id, attachId]));
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 3);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     final movedBase = cutLayers(s).firstWhere((l) => l.id == base.id);
     expect(movedBase.timeline.containsKey(3), isTrue);
@@ -414,7 +414,7 @@ void main() {
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(
-      s.beginExposureEdgeDrag(
+      s.edgeDrag.beginExposureEdgeDrag(
         layerId: attachId,
         blockStartIndex: 0,
         edge: TimelineBlockEdge.end,
@@ -512,15 +512,15 @@ void main() {
         headLayerId: attachId,
       );
       expect(
-        s.beginExposureEdgeDrag(
+        s.edgeDrag.beginExposureEdgeDrag(
           layerId: base.id,
           blockStartIndex: 0,
           edge: TimelineBlockEdge.end,
         ),
         isTrue,
       );
-      s.updateExposureEdgeDrag(2);
-      s.endExposureEdgeDrag();
+      s.edgeDrag.updateExposureEdgeDrag(2);
+      s.edgeDrag.endExposureEdgeDrag();
 
       final storedBase = cutLayers(s).firstWhere((l) => l.id == base.id);
       expect(storedBase.timeline[0]!.length, 3, reason: 'the base retimed');
@@ -573,9 +573,9 @@ void main() {
         headIndex: 0,
         headLayerId: attachId,
       );
-      expect(s.beginFrameRangeMoveDrag(), isTrue);
-      s.updateFrameRangeMoveDrag(frameDelta: 2);
-      s.endFrameRangeMoveDrag();
+      expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      s.rangeMove.endFrameRangeMoveDrag();
 
       final storedBase = cutLayers(s).firstWhere((l) => l.id == base.id);
       expect(storedBase.timeline[2], isNotNull, reason: 'the base slid');

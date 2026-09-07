@@ -72,9 +72,9 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 1);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     expect(
       exposedAt(s, a),
@@ -101,9 +101,9 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 2);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     expect(
       framesOf(s, a, pair),

@@ -136,7 +136,7 @@ void main() {
       );
 
       expect(
-        session.beginTrackRangeMoveDrag(_se1),
+        session.rangeMove.beginTrackRangeMoveDrag(_se1),
         isTrue,
         reason:
             'the anchor is a lane row of S1, so the move machine reads '
@@ -148,9 +148,9 @@ void main() {
       final session = sessionFor();
       selectLaneAnchoredBand(session);
 
-      expect(session.beginTrackRangeMoveDrag(_se1), isTrue);
-      session.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _se1);
-      session.endFrameRangeMoveDrag();
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_se1), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _se1);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       final se1 = session.repository
           .requireProject()

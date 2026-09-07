@@ -329,7 +329,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
 
   @override
-  void setComma(int comma) => session.setCommaForStoryboardCursor(comma);
+  void setComma(int comma) => session.edgeDrag.setCommaForStoryboardCursor(comma);
 
   /// D40's one resolver (T25): the standing row's whole span on the
   /// track's global axis — a null layerId means the CUT row, whose span is

@@ -371,13 +371,13 @@ void main() {
       expect(session.activeTrack.transitionLayer.instructions[3]!.length, 1);
 
       expect(
-        session.beginTransitionEdgeDrag(
+        session.edgeDrag.beginTransitionEdgeDrag(
           spanStartIndex: 3,
           edge: TimelineBlockEdge.end,
         ),
         isTrue,
       );
-      session.updateTransitionEdgeDrag(11);
+      session.edgeDrag.updateTransitionEdgeDrag(11);
       // The in-flight form is on the preview channel, so the strip can follow
       // the hand while the repository still holds the committed span.
       expect(
@@ -390,7 +390,7 @@ void main() {
         reason: 'nothing is committed until release',
       );
 
-      session.endTransitionEdgeDrag();
+      session.edgeDrag.endTransitionEdgeDrag();
       expect(session.transitionEdgeDragPreview.value, isNull);
       expect(session.activeTrack.transitionLayer.instructions[3]!.length, 12);
 
@@ -409,20 +409,20 @@ void main() {
       addTearDown(session.dispose);
       session.selectGlobalFrame(10);
       session.transitions.createTransitionSpanAtPlayhead();
-      session.beginTransitionEdgeDrag(
+      session.edgeDrag.beginTransitionEdgeDrag(
         spanStartIndex: 10,
         edge: TimelineBlockEdge.end,
       );
-      session.updateTransitionEdgeDrag(5);
-      session.endTransitionEdgeDrag();
+      session.edgeDrag.updateTransitionEdgeDrag(5);
+      session.edgeDrag.endTransitionEdgeDrag();
       expect(session.activeTrack.transitionLayer.instructions[10]!.length, 6);
 
-      session.beginTransitionEdgeDrag(
+      session.edgeDrag.beginTransitionEdgeDrag(
         spanStartIndex: 10,
         edge: TimelineBlockEdge.start,
       );
-      session.updateTransitionEdgeDrag(-4);
-      session.endTransitionEdgeDrag();
+      session.edgeDrag.updateTransitionEdgeDrag(-4);
+      session.edgeDrag.endTransitionEdgeDrag();
 
       final spans = session.activeTrack.transitionLayer.instructions;
       expect(spans.keys, [6]);
@@ -441,12 +441,12 @@ void main() {
       session.selectGlobalFrame(1);
       session.transitions.createTransitionSpanAtPlayhead();
 
-      session.beginTransitionEdgeDrag(
+      session.edgeDrag.beginTransitionEdgeDrag(
         spanStartIndex: 1,
         edge: TimelineBlockEdge.end,
       );
-      session.updateTransitionEdgeDrag(20);
-      session.cancelTransitionEdgeDrag();
+      session.edgeDrag.updateTransitionEdgeDrag(20);
+      session.edgeDrag.cancelTransitionEdgeDrag();
 
       expect(session.transitionEdgeDragPreview.value, isNull);
       expect(session.activeTrack.transitionLayer.instructions[1]!.length, 1);
@@ -458,7 +458,7 @@ void main() {
       );
       addTearDown(session.dispose);
       expect(
-        session.beginTransitionEdgeDrag(
+        session.edgeDrag.beginTransitionEdgeDrag(
           spanStartIndex: 4,
           edge: TimelineBlockEdge.end,
         ),
@@ -475,18 +475,18 @@ void main() {
       session.transitions.createTransitionSpanAtPlayhead();
 
       expect(
-        session.beginTransitionEdgeDrag(
+        session.edgeDrag.beginTransitionEdgeDrag(
           spanStartIndex: 3,
           edge: TimelineBlockEdge.end,
         ),
         isTrue,
       );
-      session.updateTransitionEdgeDrag(5);
+      session.edgeDrag.updateTransitionEdgeDrag(5);
 
       // A second grip lands where no span starts: refused — and the drag
       // already in flight neither loses its preview nor its commit.
       expect(
-        session.beginTransitionEdgeDrag(
+        session.edgeDrag.beginTransitionEdgeDrag(
           spanStartIndex: 9,
           edge: TimelineBlockEdge.end,
         ),
@@ -498,8 +498,8 @@ void main() {
         reason: 'the refusal must not clear the live preview',
       );
 
-      session.updateTransitionEdgeDrag(7);
-      session.endTransitionEdgeDrag();
+      session.edgeDrag.updateTransitionEdgeDrag(7);
+      session.edgeDrag.endTransitionEdgeDrag();
       expect(session.transitionEdgeDragPreview.value, isNull);
       expect(session.activeTrack.transitionLayer.instructions[3]!.length, 8);
     });
@@ -513,12 +513,12 @@ void main() {
       addTearDown(session.dispose);
       session.selectGlobalFrame(2);
       session.transitions.createTransitionSpanAtPlayhead();
-      session.beginTransitionEdgeDrag(
+      session.edgeDrag.beginTransitionEdgeDrag(
         spanStartIndex: 2,
         edge: TimelineBlockEdge.end,
       );
-      session.updateTransitionEdgeDrag(9);
-      session.endTransitionEdgeDrag();
+      session.edgeDrag.updateTransitionEdgeDrag(9);
+      session.edgeDrag.endTransitionEdgeDrag();
 
       final terms = session.transitions.transitionInstructionDefs;
       expect(terms.length, greaterThan(1));

@@ -59,7 +59,7 @@ void main() {
     final imageId = s.activeLayer!.id;
 
     expect(
-      s.beginExposureEdgeDrag(
+      s.edgeDrag.beginExposureEdgeDrag(
         layerId: imageId,
         blockStartIndex: 0,
         edge: TimelineBlockEdge.end,
@@ -112,7 +112,7 @@ void main() {
       headLayerId: imageId,
     );
     expect(
-      s.beginExposureEdgeDrag(
+      s.edgeDrag.beginExposureEdgeDrag(
         layerId: celId,
         blockStartIndex: 0,
         edge: TimelineBlockEdge.end,
@@ -121,7 +121,7 @@ void main() {
       reason: 'the DRAWING row still drags — only the image row stands down',
     );
 
-    s.updateExposureEdgeDrag(3);
+    s.edgeDrag.updateExposureEdgeDrag(3);
     expect(
       previewedRealLength() ?? 1,
       1,
@@ -132,7 +132,7 @@ void main() {
     );
     expect(realLength(), 1);
 
-    s.endExposureEdgeDrag();
+    s.edgeDrag.endExposureEdgeDrag();
     expect(realLength(), 1, reason: 'and the commit leaves it alone too');
     var covered = 0;
     for (final exposure in imageRow().timeline.values) {

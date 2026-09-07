@@ -403,9 +403,9 @@ void main() {
       headIndex: 3,
       spanLaneIds: const [],
     );
-    expect(session.beginLaneRangeMoveDrag(), isTrue);
-    session.updateLaneRangeMoveDrag(frameDelta: 5);
-    session.endLaneRangeMoveDrag();
+    expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    session.laneMove.updateLaneRangeMoveDrag(frameDelta: 5);
+    session.laneMove.endLaneRangeMoveDrag();
 
     expect(
       session.activeLayer!.effects.single

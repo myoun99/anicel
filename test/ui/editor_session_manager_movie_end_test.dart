@@ -10,11 +10,11 @@ void main() {
       'and ONE undo; the movie end never dips below the content end', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    final contentEnd = s.movieContentEndFrame;
+    final contentEnd = s.movieEnd.movieContentEndFrame;
     expect(s.repository.requireProject().trailingFrames, 0);
 
-    expect(s.beginMovieEndDrag(), isTrue);
-    s.updateMovieEndDrag(6);
+    expect(s.movieEnd.beginMovieEndDrag(), isTrue);
+    s.movieEnd.updateMovieEndDrag(6);
     // The preview rides the channel; the repository stays untouched.
     expect(
       (s.dragPreview.value! as MovieEndDragPreview).trailingFrames,
@@ -23,13 +23,13 @@ void main() {
     expect(s.repository.requireProject().trailingFrames, 0);
 
     // Below the content end clamps at 0 trailing.
-    s.updateMovieEndDrag(-40);
+    s.movieEnd.updateMovieEndDrag(-40);
     expect(s.dragPreview.value, isNull, reason: 'clamped back to no change');
 
-    s.updateMovieEndDrag(10);
-    s.endMovieEndDrag();
+    s.movieEnd.updateMovieEndDrag(10);
+    s.movieEnd.endMovieEndDrag();
     expect(s.repository.requireProject().trailingFrames, 10);
-    expect(s.movieContentEndFrame, contentEnd, reason: 'cuts untouched');
+    expect(s.movieEnd.movieContentEndFrame, contentEnd, reason: 'cuts untouched');
     expect(s.dragPreview.value, isNull);
 
     // ONE undo step.
@@ -42,9 +42,9 @@ void main() {
   test('the trailing gap round-trips through json', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.beginMovieEndDrag();
-    s.updateMovieEndDrag(7);
-    s.endMovieEndDrag();
+    s.movieEnd.beginMovieEndDrag();
+    s.movieEnd.updateMovieEndDrag(7);
+    s.movieEnd.endMovieEndDrag();
 
     final json = s.repository.requireProject().toJson();
     expect(json['trailingFrames'], 7);
@@ -57,10 +57,10 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
-    s.beginMovieEndDrag();
-    s.updateMovieEndDrag(10);
+    s.movieEnd.beginMovieEndDrag();
+    s.movieEnd.updateMovieEndDrag(10);
     s.dragPreview.value = null; // A consumer dropped the preview.
-    s.endMovieEndDrag();
+    s.movieEnd.endMovieEndDrag();
 
     expect(s.repository.requireProject().trailingFrames, 10);
   });
@@ -70,9 +70,9 @@ void main() {
     addTearDown(s.dispose);
     final undoProbe = s.canUndo;
 
-    s.beginMovieEndDrag();
-    s.updateMovieEndDrag(5);
-    s.cancelMovieEndDrag();
+    s.movieEnd.beginMovieEndDrag();
+    s.movieEnd.updateMovieEndDrag(5);
+    s.movieEnd.cancelMovieEndDrag();
 
     expect(s.dragPreview.value, isNull);
     expect(s.repository.requireProject().trailingFrames, 0);

@@ -105,10 +105,10 @@ void main() {
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
 
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
       // Drag far past the floor: it holds at 6.
-      session.updateCutEdgeDrag(-100);
-      session.endCutEdgeDrag();
+      session.edgeDrag.updateCutEdgeDrag(-100);
+      session.edgeDrag.endCutEdgeDrag();
 
       expect(session.requireActiveCut.duration, 6);
       // The drawings are all still inside the cut, which is the point.
@@ -133,9 +133,9 @@ void main() {
       // the duration.
       expect(minimumCutDurationFor(session.requireActiveCut), 6);
 
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
-      session.updateCutEdgeDrag(100);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.edgeDrag.updateCutEdgeDrag(100);
+      session.edgeDrag.endCutEdgeDrag();
 
       expect(session.requireActiveCut.duration, duration - 4);
       expect(
@@ -165,15 +165,15 @@ void main() {
       final cutId = session.activeCutId!;
 
       // Open room in front so the lead edge has somewhere to grow into.
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
-      session.updateCutEdgeDrag(3);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.edgeDrag.updateCutEdgeDrag(3);
+      session.edgeDrag.endCutEdgeDrag();
       final shrunk = session.requireActiveCut.duration;
 
       // …then pull it back out. The cut grows from the front.
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
-      session.updateCutEdgeDrag(-3);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.edgeDrag.updateCutEdgeDrag(-3);
+      session.edgeDrag.endCutEdgeDrag();
       final cut = session.requireActiveCut;
       expect(cut.duration, shrunk + 3);
       expect(cut.leadingGapFrames, 0);
@@ -212,9 +212,9 @@ void main() {
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
 
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
-      session.updateCutEdgeDrag(2);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.edgeDrag.updateCutEdgeDrag(2);
+      session.edgeDrag.endCutEdgeDrag();
       final trimmed = session.requireActiveCut.duration;
 
       // "The cut ENDS WHERE THE ROW ENDS" — the invariant the end/comma
@@ -256,9 +256,9 @@ void main() {
       final session = sessionFor();
       final cutId = session.activeCutId!;
 
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
-      session.updateCutEdgeDrag(-100);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
+      session.edgeDrag.updateCutEdgeDrag(-100);
+      session.edgeDrag.endCutEdgeDrag();
 
       expect(session.requireActiveCut.duration, 1);
     });

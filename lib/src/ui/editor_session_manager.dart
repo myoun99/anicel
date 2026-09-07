@@ -1254,7 +1254,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     controllers: activeCutControllers,
-    laneMove: _laneMove,
+    laneMove: laneMove,
     internals: this,
     activeCut: _activeCutEdits,
   );
@@ -1934,58 +1934,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, internals: this);
-
-  bool beginExposureEdgeDrag({
-    required LayerId layerId,
-    required int blockStartIndex,
-    required TimelineBlockEdge edge,
-    bool blockStartIsGlobal = false,
-  }) => _edgeDrag.beginExposureEdgeDrag(
-    layerId: layerId,
-    blockStartIndex: blockStartIndex,
-    edge: edge,
-    blockStartIsGlobal: blockStartIsGlobal,
-  );
-  void updateExposureEdgeDrag(int cumulativeDelta) =>
-      _edgeDrag.updateExposureEdgeDrag(cumulativeDelta);
-  void endExposureEdgeDrag() => _edgeDrag.endExposureEdgeDrag();
-  void cancelExposureEdgeDrag() => _edgeDrag.cancelExposureEdgeDrag();
-  bool beginCutEdgeDrag({
-    required CutId cutId,
-    required TimelineBlockEdge edge,
-    int panelIndex = 0,
-  }) => _edgeDrag.beginCutEdgeDrag(
-    cutId: cutId,
-    edge: edge,
-    panelIndex: panelIndex,
-  );
-  void updateCutEdgeDrag(int cumulativeDelta) =>
-      _edgeDrag.updateCutEdgeDrag(cumulativeDelta);
-  void endCutEdgeDrag() => _edgeDrag.endCutEdgeDrag();
-  void cancelCutEdgeDrag() => _edgeDrag.cancelCutEdgeDrag();
-  bool beginTransitionEdgeDrag({
-    required int spanStartIndex,
-    required TimelineBlockEdge edge,
-    LayerId? layerId,
-  }) => _edgeDrag.beginTransitionEdgeDrag(
-    spanStartIndex: spanStartIndex,
-    edge: edge,
-    layerId: layerId,
-  );
-  void updateTransitionEdgeDrag(int cumulativeDelta) =>
-      _edgeDrag.updateTransitionEdgeDrag(cumulativeDelta);
-  void endTransitionEdgeDrag() => _edgeDrag.endTransitionEdgeDrag();
-  void cancelTransitionEdgeDrag() => _edgeDrag.cancelTransitionEdgeDrag();
-  bool beginStoryboardCommaDrag({
-    required CutId cutId,
-    required int blockStartIndex,
-  }) => _edgeDrag.beginStoryboardCommaDrag(
-    cutId: cutId,
-    blockStartIndex: blockStartIndex,
-  );
-  void setCommaForStoryboardCursor(int comma) =>
-      _edgeDrag.setCommaForStoryboardCursor(comma);
+  late final EdgeDrag edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, internals: this);
 
   /// The transition row as the in-flight edge drag would leave it — the
   /// strip renders THIS while a grip is held, so the mark follows the hand
@@ -2634,18 +2583,11 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/movie_end_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final MovieEndDragVerbs _movieEnd = MovieEndDragVerbs(
+  late final MovieEndDragVerbs movieEnd = MovieEndDragVerbs(
     project: this,
     changes: this,
     internals: this,
   );
-
-  int get movieContentEndFrame => _movieEnd.movieContentEndFrame;
-  bool beginMovieEndDrag() => _movieEnd.beginMovieEndDrag();
-  void updateMovieEndDrag(int cumulativeDelta) =>
-      _movieEnd.updateMovieEndDrag(cumulativeDelta);
-  void endMovieEndDrag() => _movieEnd.endMovieEndDrag();
-  void cancelMovieEndDrag() => _movieEnd.cancelMovieEndDrag();
 
   // --- Storyboard cut RANGE selection (UI-R18 #1, O2c) ----------------------
 
@@ -3001,7 +2943,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/lane_range_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LaneRangeMoveDragVerbs _laneMove = LaneRangeMoveDragVerbs(
+  late final LaneRangeMoveDragVerbs laneMove = LaneRangeMoveDragVerbs(
     project: this,
     selection: this,
     changes: this,
@@ -3009,12 +2951,6 @@ class EditorSessionManager extends ChangeNotifier
     effectsAndFx: effectsAndFx,
     internals: this,
   );
-
-  bool beginLaneRangeMoveDrag() => _laneMove.beginLaneRangeMoveDrag();
-  void updateLaneRangeMoveDrag({required int frameDelta}) =>
-      _laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta);
-  void endLaneRangeMoveDrag() => _laneMove.endLaneRangeMoveDrag();
-  void cancelLaneRangeMoveDrag() => _laneMove.cancelLaneRangeMoveDrag();
 
   /// The layer a RANGE selection reads (cut-local DISPLAY indexes): cut
   /// layers as-is, track-SE rows as their display clones.
@@ -3055,25 +2991,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this);
-
-  bool beginDrawingBlockMoveDrag({
-    required LayerId layerId,
-    required int blockStartIndex,
-  }) => _drawingBlockMove.beginDrawingBlockMoveDrag(
-    layerId: layerId,
-    blockStartIndex: blockStartIndex,
-  );
-  void updateDrawingBlockMoveDrag({
-    required int frameDelta,
-    LayerId? targetLayerId,
-  }) => _drawingBlockMove.updateDrawingBlockMoveDrag(
-    frameDelta: frameDelta,
-    targetLayerId: targetLayerId,
-  );
-  void endDrawingBlockMoveDrag() => _drawingBlockMove.endDrawingBlockMoveDrag();
-  void cancelDrawingBlockMoveDrag() =>
-      _drawingBlockMove.cancelDrawingBlockMoveDrag();
+  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this);
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
@@ -3084,39 +3002,12 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: _drawingBlockMove, transitions: transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: drawingBlockMove, transitions: transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
   @override
   void notifyChanged() => notifyListeners();
-
-  bool beginFrameRangeMoveDrag([LayerId? grabLayerId]) =>
-      _rangeMove.beginFrameRangeMoveDrag(grabLayerId);
-  bool beginTrackRangeMoveDrag([LayerId? grabLayerId]) =>
-      _rangeMove.beginTrackRangeMoveDrag(grabLayerId);
-  void updateFrameRangeMoveDrag({
-    required int frameDelta,
-    LayerId? targetLayerId,
-  }) => _rangeMove.updateFrameRangeMoveDrag(
-    frameDelta: frameDelta,
-    targetLayerId: targetLayerId,
-  );
-  void endFrameRangeMoveDrag() => _rangeMove.endFrameRangeMoveDrag();
-  void cancelFrameRangeMoveDrag() => _rangeMove.cancelFrameRangeMoveDrag();
-  void setRunEdgeBehavior({
-    required LayerId layerId,
-    required int blockStartIndex,
-    required TimelineRunEdgeSide side,
-    TimelineRunEdgeMode? mode,
-    bool scopeToSelection = true,
-  }) => _rangeMove.setRunEdgeBehavior(
-    layerId: layerId,
-    blockStartIndex: blockStartIndex,
-    side: side,
-    mode: mode,
-    scopeToSelection: scopeToSelection,
-  );
 
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
 
@@ -3124,26 +3015,12 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/run_frames_add_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final RunFramesAddDragVerbs _runFramesAdd = RunFramesAddDragVerbs(
+  late final RunFramesAddDragVerbs runFramesAdd = RunFramesAddDragVerbs(
     project: this,
     changes: this,
     controllers: activeCutControllers,
     internals: this,
   );
-
-  bool beginRunFramesAddDrag({
-    required LayerId layerId,
-    required int blockStartIndex,
-    required bool atEnd,
-  }) => _runFramesAdd.beginRunFramesAddDrag(
-    layerId: layerId,
-    blockStartIndex: blockStartIndex,
-    atEnd: atEnd,
-  );
-  void updateRunFramesAddDrag(int count) =>
-      _runFramesAdd.updateRunFramesAddDrag(count);
-  void endRunFramesAddDrag() => _runFramesAdd.endRunFramesAddDrag();
-  void cancelRunFramesAddDrag() => _runFramesAdd.cancelRunFramesAddDrag();
 
   // --- Run-edge properties (UI-R9 #10 N/H/R tags) ----------------------------
 

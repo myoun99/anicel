@@ -68,25 +68,25 @@ void main() {
         .id;
 
     // Warmup, discarded: the first step wears the tree's JIT.
-    session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
+    session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
     for (var i = 1; i <= 3; i += 1) {
-      session.updateCutEdgeDrag(i);
+      session.edgeDrag.updateCutEdgeDrag(i);
       await tester.pump();
     }
-    session.cancelCutEdgeDrag();
+    session.edgeDrag.cancelCutEdgeDrag();
     await tester.pumpAndSettle();
 
     final watch = Stopwatch();
-    session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
+    session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
     for (var round = 1; round <= rounds; round += 1) {
       // The delta is CUMULATIVE, so every step is a genuinely new preview —
       // a repeated value would publish nothing and measure an empty pump.
-      session.updateCutEdgeDrag(round);
+      session.edgeDrag.updateCutEdgeDrag(round);
       watch.start();
       await tester.pump();
       watch.stop();
     }
-    session.cancelCutEdgeDrag();
+    session.edgeDrag.cancelCutEdgeDrag();
     await tester.pumpAndSettle();
     return watch.elapsedMicroseconds / rounds / 1000;
   }

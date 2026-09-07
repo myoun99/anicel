@@ -243,9 +243,9 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
-      session.updateFrameRangeMoveDrag(frameDelta: 2);
-      session.endFrameRangeMoveDrag();
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       // ONLY the selected sound moved — a shove would have carried the
       // other one too.
@@ -263,9 +263,9 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
-      session.updateFrameRangeMoveDrag(frameDelta: 2);
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       final landed = session.trackFrameRangeSelection.value!;
       expect(landed.startFrame, 4);
@@ -284,11 +284,11 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
       // +3 keeps [2,5) on its own side of the neighbour's midpoint, so it
       // re-times inside its free space and the sound at 9 holds still.
-      session.updateFrameRangeMoveDrag(frameDelta: 3);
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       expect(seLayerOf(session).timeline.keys, [5, 9]);
       expect(seLayerOf(session).timeline[5]!.frameId, const FrameId('se-one'));
@@ -302,7 +302,7 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
       // +7 drives [2,5) onto [9,12)'s own start, so the two change places.
       // The second sound is pushed off frame 9 and heads straight back for
       // it, stopping the instant it touches the run — frame 6 (H9/H10,
@@ -311,8 +311,8 @@ void main() {
       // ⛔It does NOT land on frame 2 where the FIRST sound used to be. A
       // block standing somewhere it has never been is exactly what the user
       // photographed and asked to be rid of.
-      session.updateFrameRangeMoveDrag(frameDelta: 7);
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 7);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       expect(seLayerOf(session).timeline.keys, [6, 9]);
       expect(seLayerOf(session).timeline[6]!.frameId, const FrameId('se-two'));
@@ -328,12 +328,12 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
-      session.updateFrameRangeMoveDrag(
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.updateFrameRangeMoveDrag(
         frameDelta: 0,
         targetLayerId: _seLayer2Id,
       );
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.endFrameRangeMoveDrag();
 
       // The sound left S1 for S2 at the SAME global frames — proof the
       // row change read the span in the track axis (a cut-local reading
@@ -350,12 +350,12 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
-      session.updateFrameRangeMoveDrag(
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.updateFrameRangeMoveDrag(
         frameDelta: 0,
         targetLayerId: _seLayer2Id,
       );
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.endFrameRangeMoveDrag();
 
       expect(
         session.trackFrameRangeSelection.value!.anchorRow,
@@ -371,12 +371,12 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
-      session.updateFrameRangeMoveDrag(
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.updateFrameRangeMoveDrag(
         frameDelta: 4,
         targetLayerId: _seLayer2Id,
       );
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.endFrameRangeMoveDrag();
 
       expect(seLayer2Of(session).timeline.keys, [6]);
     });
@@ -389,9 +389,9 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.beginTrackRangeMoveDrag(_seLayerId);
-      session.updateFrameRangeMoveDrag(frameDelta: 2);
-      session.cancelFrameRangeMoveDrag();
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.rangeMove.cancelFrameRangeMoveDrag();
 
       expect(seLayerOf(session).timeline.keys, [2, 9]);
       expect(session.trackFrameRangeSelection.value!.startFrame, 2);
@@ -405,8 +405,8 @@ void main() {
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
       );
-      session.beginTrackRangeMoveDrag(_seLayerId);
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.beginTrackRangeMoveDrag(_seLayerId);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       // The SAME row, selected the other way: the timeline's cut-local
       // view of it (cut 1 starts at 0, so the sound at 2 is local 2). The
@@ -416,9 +416,9 @@ void main() {
         anchorIndex: 2,
         headIndex: 2,
       );
-      expect(session.beginFrameRangeMoveDrag(), isTrue);
-      session.updateFrameRangeMoveDrag(frameDelta: 1);
-      session.cancelFrameRangeMoveDrag();
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
+      session.rangeMove.cancelFrameRangeMoveDrag();
 
       // The restore landed in the CUT-LOCAL object, not the track one.
       expect(session.frameRangeSelection.value, isNotNull);
@@ -472,8 +472,8 @@ void main() {
       );
       expect(session.trackFrameRangeSelection.value!.trackId, track2Id);
 
-      expect(session.beginTrackRangeMoveDrag(transitionId), isTrue);
-      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      expect(session.rangeMove.beginTrackRangeMoveDrag(transitionId), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
       // MID-DRAG: the shifted span still names the track it is ON.
       // Re-keying to the SELECTED track's id here made the band vanish for
       // the whole drag on any other track (the painter's own-track gate),
@@ -482,7 +482,7 @@ void main() {
       expect(midDrag.trackId, track2Id);
       expect(midDrag.startFrame, 4);
 
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.endFrameRangeMoveDrag();
       final landed = session.trackFrameRangeSelection.value!;
       expect(landed.trackId, track2Id);
       expect(landed.startFrame, 4);
@@ -499,9 +499,9 @@ void main() {
         headGlobalFrame: 4,
       );
 
-      session.beginTrackRangeMoveDrag(transitionId);
-      session.updateFrameRangeMoveDrag(frameDelta: 2);
-      session.cancelFrameRangeMoveDrag();
+      session.rangeMove.beginTrackRangeMoveDrag(transitionId);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.rangeMove.cancelFrameRangeMoveDrag();
 
       final restored = session.trackFrameRangeSelection.value!;
       expect(restored.trackId, track2Id);
@@ -531,13 +531,13 @@ void main() {
       expect(selection.startFrame, 2);
 
       expect(
-        session.beginTrackRangeMoveDrag(_seLayerId),
+        session.rangeMove.beginTrackRangeMoveDrag(_seLayerId),
         isTrue,
         reason: 'the lane anchor resolves to its owning layer — a refusal '
             'here silently re-drew the selection instead of moving',
       );
-      session.updateFrameRangeMoveDrag(frameDelta: 2);
-      session.endFrameRangeMoveDrag();
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.rangeMove.endFrameRangeMoveDrag();
 
       expect(seLayerOf(session).timeline.keys, [4, 9]);
     });

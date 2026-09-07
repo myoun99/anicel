@@ -85,8 +85,8 @@ void main() {
       headGlobalFrame: 4,
       headRow: const LayerRowAddress(_seLayerId),
     );
-    expect(session.beginTrackRangeMoveDrag(), isTrue);
-    session.updateFrameRangeMoveDrag(frameDelta: 1);
+    expect(session.rangeMove.beginTrackRangeMoveDrag(), isTrue);
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
 
     final preview = session.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
@@ -99,6 +99,6 @@ void main() {
     );
     expect(global!.timeline.keys, [3], reason: 'the global form moved by one');
     expect(blocks.previewLayers[_seLayerId], isNotNull);
-    session.cancelFrameRangeMoveDrag();
+    session.rangeMove.cancelFrameRangeMoveDrag();
   });
 }

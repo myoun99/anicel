@@ -14,7 +14,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
     // End REPEAT: frames 1.. become derived ghost instances of frame 0.
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,

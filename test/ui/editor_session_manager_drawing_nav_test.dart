@@ -346,7 +346,7 @@ void main() {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       s.createDrawingAtCurrentFrame(); // 1-cell block at index 0
       final layerId = s.activeLayer!.id;
-      s.setRunEdgeBehavior(
+      s.rangeMove.setRunEdgeBehavior(
         layerId: layerId,
         blockStartIndex: 0,
         side: TimelineRunEdgeSide.end,

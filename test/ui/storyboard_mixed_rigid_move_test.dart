@@ -137,10 +137,10 @@ void main() {
     final session = sessionFor();
     selectMixedSpan(session);
 
-    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
     // A step with BOTH a frame delta and a row hop (S1 → S2): the rigid
     // machine owns it.
-    session.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
 
     // Mid-step: the transition previews its shifted span on its own
     // channel (C④: it used to be CLEARED here — the spans snapped home
@@ -155,7 +155,7 @@ void main() {
       expect(preview.previewLayers.containsKey(transitionId()), isFalse);
     }
 
-    session.endFrameRangeMoveDrag();
+    session.rangeMove.endFrameRangeMoveDrag();
 
     // The sound hopped S1 → S2 and slid +1; the transition span slid +1
     // on its OWN row.
@@ -205,14 +205,14 @@ void main() {
     final session = sessionFor();
     selectMixedSpan(session);
 
-    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
     // Landing at -1: the transition span cannot shift, so the whole rigid
     // step holds (the rider contract).
-    session.updateFrameRangeMoveDrag(
+    session.rangeMove.updateFrameRangeMoveDrag(
       frameDelta: -3,
       targetLayerId: _seLayer2Id,
     );
-    session.endFrameRangeMoveDrag();
+    session.rangeMove.endFrameRangeMoveDrag();
 
     expect(transitionSpansOf(session).keys.toList(), [2]);
     expect(
@@ -234,10 +234,10 @@ void main() {
     final session = sessionFor();
     selectMixedSpan(session);
 
-    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
     // Straight down onto S2: no frame delta at all.
-    session.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: _seLayer2Id);
-    session.endFrameRangeMoveDrag();
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: _seLayer2Id);
+    session.rangeMove.endFrameRangeMoveDrag();
 
     expect(
       session.repository
@@ -279,13 +279,13 @@ void main() {
     final session = sessionFor();
     selectMixedSpan(session);
 
-    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
     // Step A: a valid rigid diagonal (+1, S1 → S2) captures rider shifts.
-    session.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
     // Step B: back over the grab row, far left — the slide owns the step
     // and the transition's landing (-7) is illegal, so it HOLDS.
-    session.updateFrameRangeMoveDrag(frameDelta: -9);
-    session.endFrameRangeMoveDrag();
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: -9);
+    session.rangeMove.endFrameRangeMoveDrag();
 
     // The rigid group is all-or-nothing THROUGH the release: nothing
     // landed — most of all not the transition alone.
@@ -319,9 +319,9 @@ void main() {
     final session = sessionFor();
     selectMixedSpan(session);
 
-    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
     // No row hop: the plain slide owns the step.
-    session.updateFrameRangeMoveDrag(frameDelta: 1);
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
 
     final preview = session.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
@@ -335,6 +335,6 @@ void main() {
     );
     expect(session.transitionEdgeDragPreview.value, isNotNull);
 
-    session.cancelFrameRangeMoveDrag();
+    session.rangeMove.cancelFrameRangeMoveDrag();
   });
 }

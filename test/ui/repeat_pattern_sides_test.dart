@@ -39,7 +39,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -64,7 +64,7 @@ void main() {
       anchorIndex: 2,
       headIndex: 3,
     );
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 2,
       side: TimelineRunEdgeSide.start,

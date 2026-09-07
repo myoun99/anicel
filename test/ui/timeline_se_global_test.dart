@@ -119,7 +119,7 @@ void main() {
     // The cut-2 sound sits at display key 10 (global 10, cut start 0).
     // Comma-drag its end through the timeline's own verb funnel.
     expect(
-      session.beginExposureEdgeDrag(
+      session.edgeDrag.beginExposureEdgeDrag(
         layerId: const LayerId('se-row-1'),
         blockStartIndex: 10,
         edge: TimelineBlockEdge.end,
@@ -127,8 +127,8 @@ void main() {
       isTrue,
       reason: 'the runway block is a real, editable block now',
     );
-    session.updateExposureEdgeDrag(2);
-    session.endExposureEdgeDrag();
+    session.edgeDrag.updateExposureEdgeDrag(2);
+    session.edgeDrag.endExposureEdgeDrag();
     await tester.pumpAndSettle();
 
     final global = session.repository

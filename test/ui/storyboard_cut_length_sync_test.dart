@@ -65,15 +65,15 @@ void main() {
       headLayerId: storyboardId,
     );
     expect(
-      session.beginExposureEdgeDrag(
+      session.edgeDrag.beginExposureEdgeDrag(
         layerId: anchorId,
         blockStartIndex: 0,
         edge: TimelineBlockEdge.end,
       ),
       isTrue,
     );
-    session.updateExposureEdgeDrag(delta);
-    session.endExposureEdgeDrag();
+    session.edgeDrag.updateExposureEdgeDrag(delta);
+    session.edgeDrag.endExposureEdgeDrag();
   }
 
   group('a bulk retime that reaches the storyboard row moves the cut too', () {
@@ -182,9 +182,9 @@ void main() {
       final (session, storyboardId, _, _) = scene();
       final cutId = session.activeCutId!;
 
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
-      session.updateCutEdgeDrag(-100);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
+      session.edgeDrag.updateCutEdgeDrag(-100);
+      session.edgeDrag.endCutEdgeDrag();
 
       final cut = session.requireActiveCut;
       expect(rowOf(session, storyboardId), {0: 5, 5: 1});
@@ -220,9 +220,9 @@ void main() {
       );
       expect(session.requireActiveCut.duration, 24);
 
-      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
-      session.updateCutEdgeDrag(-4);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end);
+      session.edgeDrag.updateCutEdgeDrag(-4);
+      session.edgeDrag.endCutEdgeDrag();
 
       // Deriving the duration from a DELTA would have taken 24 down to 20
       // while the row still ended at 26. The cut lands ON the row's end.
@@ -267,9 +267,9 @@ void main() {
       // the strip hid and the timeline painted.
       expect(minimumCutDurationFor(session.requireActiveCut), 21);
 
-      session.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 5);
-      session.updateCutEdgeDrag(-14);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 5);
+      session.edgeDrag.updateCutEdgeDrag(-14);
+      session.edgeDrag.endCutEdgeDrag();
 
       expect(rowOf(session, storyboardId), {0: 5, 5: 1, 6: 4});
       expect(
@@ -285,17 +285,17 @@ void main() {
       final cutId = session.activeCutId!;
 
       // Step 1 used to commit a desynced pair silently…
-      session.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 5);
-      session.updateCutEdgeDrag(-14);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 5);
+      session.edgeDrag.updateCutEdgeDrag(-14);
+      session.edgeDrag.endCutEdgeDrag();
       final afterFirst = session.requireActiveCut.duration;
 
       // …and step 2 — the LAST panel's edge, the one the user reached for
       // next — detonated it, snapping the cut down onto the row's real end
       // and shoving every cut behind it.
-      session.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 6);
-      session.updateCutEdgeDrag(2);
-      session.endCutEdgeDrag();
+      session.edgeDrag.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 6);
+      session.edgeDrag.updateCutEdgeDrag(2);
+      session.edgeDrag.endCutEdgeDrag();
 
       expect(session.requireActiveCut.duration, afterFirst + 2);
       expect(

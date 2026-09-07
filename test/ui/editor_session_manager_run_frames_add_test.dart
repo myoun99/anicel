@@ -27,14 +27,14 @@ void main() {
     s.addListener(() => notifies += 1);
 
     expect(
-      s.beginRunFramesAddDrag(
+      s.runFramesAdd.beginRunFramesAddDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         atEnd: true,
       ),
       isTrue,
     );
-    s.updateRunFramesAddDrag(3);
+    s.runFramesAdd.updateRunFramesAddDrag(3);
 
     // The in-flight form rides the channel; the repository stays put.
     final preview = s.dragPreview.value;
@@ -44,7 +44,7 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == layer.id).timeline[3], isNull);
     expect(notifies, 0);
 
-    s.endRunFramesAddDrag();
+    s.runFramesAdd.endRunFramesAddDrag();
     expect(s.dragPreview.value, isNull);
     expect(notifies, 1);
 
@@ -76,16 +76,16 @@ void main() {
     final layer = s.activeLayer!;
 
     expect(
-      s.beginRunFramesAddDrag(
+      s.runFramesAdd.beginRunFramesAddDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         atEnd: true,
       ),
       isTrue,
     );
-    s.updateRunFramesAddDrag(2);
+    s.runFramesAdd.updateRunFramesAddDrag(2);
     s.dragPreview.value = null; // A consumer dropped the preview.
-    s.endRunFramesAddDrag();
+    s.runFramesAdd.endRunFramesAddDrag();
 
     final committed = s.layers.firstWhere((l) => l.id == layer.id);
     expect(committed.timeline[1], isNotNull);
@@ -99,16 +99,16 @@ void main() {
     final undoProbe = s.canUndo;
 
     expect(
-      s.beginRunFramesAddDrag(
+      s.runFramesAdd.beginRunFramesAddDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         atEnd: true,
       ),
       isTrue,
     );
-    s.updateRunFramesAddDrag(4);
-    s.updateRunFramesAddDrag(0); // The hand came back to the edge.
-    s.endRunFramesAddDrag();
+    s.runFramesAdd.updateRunFramesAddDrag(4);
+    s.runFramesAdd.updateRunFramesAddDrag(0); // The hand came back to the edge.
+    s.runFramesAdd.endRunFramesAddDrag();
 
     expect(s.layers.firstWhere((l) => l.id == layer.id).timeline[1], isNull);
     expect(s.canUndo, undoProbe);
@@ -118,7 +118,7 @@ void main() {
     final s = sessionWithRun();
     addTearDown(s.dispose);
     expect(
-      s.beginRunFramesAddDrag(
+      s.runFramesAdd.beginRunFramesAddDrag(
         layerId: s.activeLayer!.id,
         blockStartIndex: 9,
         atEnd: true,

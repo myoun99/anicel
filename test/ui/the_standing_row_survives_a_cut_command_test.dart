@@ -29,12 +29,12 @@ void main() {
   /// The end-line drag, as the timeline's cut-end handle runs it.
   void dragCutEnd(EditorSessionManager s, {int frames = 3}) {
     expect(
-      s.beginCutEdgeDrag(cutId: s.activeCutId!, edge: TimelineBlockEdge.end),
+      s.edgeDrag.beginCutEdgeDrag(cutId: s.activeCutId!, edge: TimelineBlockEdge.end),
       isTrue,
       reason: 'fixture premise: the end line is draggable on this cut',
     );
-    s.updateCutEdgeDrag(frames);
-    s.endCutEdgeDrag();
+    s.edgeDrag.updateCutEdgeDrag(frames);
+    s.edgeDrag.endCutEdgeDrag();
   }
 
   test('EVERY row kind keeps the active row through an end-line drag', () {

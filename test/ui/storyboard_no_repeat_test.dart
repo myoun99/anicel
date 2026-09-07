@@ -16,7 +16,7 @@ void main() {
     // The default animation row takes one.
     s.createDrawingAtCurrentFrame();
     final animationId = s.activeLayer!.id;
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: animationId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -33,7 +33,7 @@ void main() {
     expect(s.activeLayer!.kind, LayerKind.storyboard);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: storyboardId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,

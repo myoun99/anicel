@@ -22,7 +22,7 @@ void main() {
     final (s, layerId) = sessionWithBlock();
     final cutEnd = s.requireActiveCut.duration;
 
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -47,7 +47,7 @@ void main() {
 
   test('None clears the edge (behaviors AND ghosts)', () {
     final (s, layerId) = sessionWithBlock();
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -55,7 +55,7 @@ void main() {
     );
     expect(layerOf(s, layerId).timeline[1]!.ghost, isTrue);
 
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -80,7 +80,7 @@ void main() {
       headIndex: 2,
     );
 
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -170,7 +170,7 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -198,7 +198,7 @@ void main() {
     s.createDrawingAtCurrentFrame(); // block 3 at 2 — run {0,1,2}
     final lastBlockFrameId = layerOf(s, layerId).timeline[2]!.frameId;
 
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -216,9 +216,9 @@ void main() {
       anchorIndex: 1,
       headIndex: 2,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 4);
-    s.endFrameRangeMoveDrag();
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 4);
+    s.rangeMove.endFrameRangeMoveDrag();
 
     final layer = layerOf(s, layerId);
     // Fragment {5,6}: ghosts refill after ITS end (7..), and the lone
@@ -229,13 +229,13 @@ void main() {
 
   test('re-setting the same edge replaces the previous behavior', () {
     final (s, layerId) = sessionWithBlock();
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
       mode: TimelineRunEdgeMode.repeat,
     );
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -253,7 +253,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
 
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 4,
       side: TimelineRunEdgeSide.start,
@@ -270,7 +270,7 @@ void main() {
       'repository choke point (storyboard end-trim)', () {
     final (s, layerId) = sessionWithBlock();
     final cutEnd = s.requireActiveCut.duration;
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -279,14 +279,14 @@ void main() {
     expect(layerOf(s, layerId).timeline[1]!.length, cutEnd - 1);
 
     expect(
-      s.beginCutEdgeDrag(
+      s.edgeDrag.beginCutEdgeDrag(
         cutId: s.requireActiveCut.id,
         edge: TimelineBlockEdge.end,
       ),
       isTrue,
     );
-    s.updateCutEdgeDrag(6);
-    s.endCutEdgeDrag();
+    s.edgeDrag.updateCutEdgeDrag(6);
+    s.edgeDrag.endCutEdgeDrag();
 
     expect(s.requireActiveCut.duration, cutEnd + 6);
     expect(layerOf(s, layerId).timeline[1]!.length, cutEnd + 5);
@@ -311,7 +311,7 @@ void main() {
     }
     for (final start in [0, 4]) {
       for (final side in TimelineRunEdgeSide.values) {
-        s.setRunEdgeBehavior(
+        s.rangeMove.setRunEdgeBehavior(
           layerId: layerId,
           blockStartIndex: start,
           side: side,
@@ -326,7 +326,7 @@ void main() {
     );
 
     // Re-set ONE of them. The other three are untouched.
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 0,
       side: TimelineRunEdgeSide.end,
@@ -379,7 +379,7 @@ void main() {
       ),
       isTrue,
     );
-    s.setRunEdgeBehavior(
+    s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
       blockStartIndex: 3,
       side: TimelineRunEdgeSide.start,

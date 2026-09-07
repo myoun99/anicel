@@ -595,19 +595,19 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // were never set): the continuations are one funnel.
                     stripEdges: StoryboardStripEdgeCallbacks(
                       onCutEdgeBegin: (cutId, edge, panelIndex) =>
-                          _session.beginCutEdgeDrag(
+                          _session.edgeDrag.beginCutEdgeDrag(
                             cutId: cutId,
                             edge: edge,
                             panelIndex: panelIndex,
                           ),
                       onCommaBegin: (cutId, blockStartIndex) =>
-                          _session.beginStoryboardCommaDrag(
+                          _session.edgeDrag.beginStoryboardCommaDrag(
                             cutId: cutId,
                             blockStartIndex: blockStartIndex,
                           ),
-                      onUpdate: _session.updateCutEdgeDrag,
-                      onEnd: _session.endCutEdgeDrag,
-                      onCancel: _session.cancelCutEdgeDrag,
+                      onUpdate: _session.edgeDrag.updateCutEdgeDrag,
+                      onEnd: _session.edgeDrag.endCutEdgeDrag,
+                      onCancel: _session.edgeDrag.cancelCutEdgeDrag,
                     ),
                     // Whole-block moves (R10-④): a drag re-times the cut where
                     // it has room and REORDERS the track where it reaches past
@@ -648,14 +648,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // one the timeline's rows use, because the strip's
                       // selection is that same object on that same axis.
                       move: StoryboardRangeMoveCallbacks(
-                        onBegin: _session.beginFrameRangeMoveDrag,
+                        onBegin: _session.rangeMove.beginFrameRangeMoveDrag,
                         onUpdate: (frameDelta, targetLayerId) =>
-                            _session.updateFrameRangeMoveDrag(
+                            _session.rangeMove.updateFrameRangeMoveDrag(
                               frameDelta: frameDelta,
                               targetLayerId: targetLayerId,
                             ),
-                        onEnd: _session.endFrameRangeMoveDrag,
-                        onCancel: _session.cancelFrameRangeMoveDrag,
+                        onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                        onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
                       ),
                     ),
                     // D30: the no-layer cut's create affordance — gate and
@@ -670,10 +670,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // The end line edits the MOVIE length (UI-R20 #3): the
                     // project's trailing gap, never the cuts.
                     movieEnd: StoryboardMovieEndCallbacks(
-                      onBegin: _session.beginMovieEndDrag,
-                      onUpdate: _session.updateMovieEndDrag,
-                      onEnd: _session.endMovieEndDrag,
-                      onCancel: _session.cancelMovieEndDrag,
+                      onBegin: _session.movieEnd.beginMovieEndDrag,
+                      onUpdate: _session.movieEnd.updateMovieEndDrag,
+                      onEnd: _session.movieEnd.endMovieEndDrag,
+                      onCancel: _session.movieEnd.cancelMovieEndDrag,
                     ),
                     playheadFrame: _playheadGlobalFrame,
                     revealSelectionTick: _session.revealSelectionTick,
@@ -775,11 +775,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           ),
                       // H18: the cells family's release rule, here too.
                       onTapClear: _session.clearLaneRangeSelection,
-                      onMoveBegin: _session.beginLaneRangeMoveDrag,
+                      onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
                       onMoveUpdate: (frameDelta) => _session
-                          .updateLaneRangeMoveDrag(frameDelta: frameDelta),
-                      onMoveEnd: _session.endLaneRangeMoveDrag,
-                      onMoveCancel: _session.cancelLaneRangeMoveDrag,
+                          .laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+                      onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
+                      onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
                     ),
                     // R10 #19's rail half. Standing is not seeking, so a
                     // label press moves the SUBJECT and leaves the playhead
@@ -937,14 +937,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // to the global layer either way).
                       move: StoryboardRangeMoveCallbacks(
                         onBegin: (layerId) =>
-                            _session.beginTrackRangeMoveDrag(layerId),
+                            _session.rangeMove.beginTrackRangeMoveDrag(layerId),
                         onUpdate: (frameDelta, targetLayerId) =>
-                            _session.updateFrameRangeMoveDrag(
+                            _session.rangeMove.updateFrameRangeMoveDrag(
                               frameDelta: frameDelta,
                               targetLayerId: targetLayerId,
                             ),
-                        onEnd: _session.endFrameRangeMoveDrag,
-                        onCancel: _session.cancelFrameRangeMoveDrag,
+                        onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                        onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
                       ),
                     ),
                     // The ACTIVE cut's SE blocks reuse the timeline's comma
@@ -953,15 +953,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // cut's blocks drag here, not just the active cut's).
                     seCommaDrag: TimelineCommaDragCallbacks(
                       onBegin: (layerId, blockStartIndex, edge) =>
-                          _session.beginExposureEdgeDrag(
+                          _session.edgeDrag.beginExposureEdgeDrag(
                             layerId: layerId,
                             blockStartIndex: blockStartIndex,
                             edge: edge,
                             blockStartIsGlobal: true,
                           ),
-                      onUpdate: _session.updateExposureEdgeDrag,
-                      onEnd: _session.endExposureEdgeDrag,
-                      onCancel: _session.cancelExposureEdgeDrag,
+                      onUpdate: _session.edgeDrag.updateExposureEdgeDrag,
+                      onEnd: _session.edgeDrag.endExposureEdgeDrag,
+                      onCancel: _session.edgeDrag.cancelExposureEdgeDrag,
                     ),
                     // The Audio lane's slide edit (active cut).
                     onSetAudioClipOffset: _session.audioClips.setAudioClipOffset,
@@ -978,14 +978,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     transitionPreview: _session.transitionEdgeDragPreview,
                     transitionCommaDrag: TimelineCommaDragCallbacks(
                       onBegin: (layerId, blockStartIndex, edge) =>
-                          _session.beginTransitionEdgeDrag(
+                          _session.edgeDrag.beginTransitionEdgeDrag(
                             layerId: layerId,
                             spanStartIndex: blockStartIndex,
                             edge: edge,
                           ),
-                      onUpdate: _session.updateTransitionEdgeDrag,
-                      onEnd: _session.endTransitionEdgeDrag,
-                      onCancel: _session.cancelTransitionEdgeDrag,
+                      onUpdate: _session.edgeDrag.updateTransitionEdgeDrag,
+                      onEnd: _session.edgeDrag.endTransitionEdgeDrag,
+                      onCancel: _session.edgeDrag.cancelTransitionEdgeDrag,
                     ),
                     onEditTransitionSpan: _editTransitionSpan,
                     // B6: the SE blocks' same-cell double tap opens the SAME

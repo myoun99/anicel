@@ -199,14 +199,14 @@ void main() {
       s.addListener(() => notifies += 1);
 
       expect(
-        s.beginExposureEdgeDrag(
+        s.edgeDrag.beginExposureEdgeDrag(
           layerId: layer.id,
           blockStartIndex: 0,
           edge: TimelineBlockEdge.end,
         ),
         isTrue,
       );
-      s.updateExposureEdgeDrag(3);
+      s.edgeDrag.updateExposureEdgeDrag(3);
 
       // The preview rides the channel; the repository and the session
       // listeners stay untouched (the drag-lag fix's core invariant).
@@ -219,7 +219,7 @@ void main() {
       expect(s.activeLayer!.timeline[0]!.length, baseTimeline[0]!.length);
       expect(notifies, 0);
 
-      s.endExposureEdgeDrag();
+      s.edgeDrag.endExposureEdgeDrag();
       expect(s.dragPreview.value, isNull);
       expect(s.activeLayer!.timeline[0]!.length, baseTimeline[0]!.length! + 3);
       expect(notifies, 1);
@@ -240,13 +240,13 @@ void main() {
       var notifies = 0;
       s.addListener(() => notifies += 1);
 
-      s.beginExposureEdgeDrag(
+      s.edgeDrag.beginExposureEdgeDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         edge: TimelineBlockEdge.end,
       );
-      s.updateExposureEdgeDrag(5);
-      s.cancelExposureEdgeDrag();
+      s.edgeDrag.updateExposureEdgeDrag(5);
+      s.edgeDrag.cancelExposureEdgeDrag();
 
       expect(s.dragPreview.value, isNull);
       expect(s.activeLayer!.timeline[0]!.length, baseLength);
