@@ -31,7 +31,7 @@ class BrushHandSettingsStore {
   final String filePath;
 
   static String defaultBrushHandSettingsFilePath() =>
-      appSupportFilePath('brush_hand_settings.json');
+      appSettingsFilePath('brush_hand_settings.json');
 
   static const int version = 1;
 

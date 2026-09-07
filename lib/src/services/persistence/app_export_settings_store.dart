@@ -14,7 +14,7 @@ class AppExportSettingsStore {
 
   final String filePath;
 
-  static String defaultFilePath() => testRedirectedAppSupportPath(
+  static String defaultFilePath() => testRedirectedAppSettingsPath(
     'export_settings.json',
     sandbox: 'export_settings',
   );

@@ -13,7 +13,7 @@ class ShortcutSettingsStore {
   final String filePath;
 
   static String defaultShortcutSettingsFilePath() =>
-      appSupportFilePath('shortcut_overrides.json');
+      appSettingsFilePath('shortcut_overrides.json');
 
   static const int version = 1;
 

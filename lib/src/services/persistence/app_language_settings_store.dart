@@ -13,7 +13,7 @@ class AppLanguageSettingsStore {
   final String filePath;
 
   static String defaultFilePath() =>
-      appSupportFilePath('language_settings.json');
+      appSettingsFilePath('language_settings.json');
 
   static const int version = 1;
 

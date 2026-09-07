@@ -22,7 +22,7 @@ class RecentProjectsStore {
 
   final String filePath;
 
-  static String defaultFilePath() => testRedirectedAppSupportPath(
+  static String defaultFilePath() => testRedirectedAppSettingsPath(
     'recent_projects.json',
     sandbox: 'recent_projects',
   );

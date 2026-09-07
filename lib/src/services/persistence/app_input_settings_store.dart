@@ -13,7 +13,7 @@ class AppInputSettingsStore {
   final String filePath;
 
   static String defaultFilePath() =>
-      appSupportFilePath('input_settings.json');
+      appSettingsFilePath('input_settings.json');
 
   static const int version = 1;
 

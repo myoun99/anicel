@@ -20,7 +20,7 @@ class AppUiScaleStore {
 
   final String filePath;
 
-  static String defaultFilePath() => appSupportFilePath('ui_scale.json');
+  static String defaultFilePath() => appSettingsFilePath('ui_scale.json');
 
   static const int version = 1;
 

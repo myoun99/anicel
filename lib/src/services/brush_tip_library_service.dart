@@ -27,7 +27,7 @@ class BrushTipLibraryService {
   final String directoryPath;
 
   static String defaultBrushTipDirectoryPath() =>
-      appSupportFilePath('brush_tips');
+      appSettingsFilePath('brush_tips');
 
   /// Index file format version.
   static const int indexVersion = 1;

@@ -19,7 +19,7 @@ class WorkspaceLayoutStore {
   final String filePath;
 
   static String defaultWorkspaceLayoutFilePath() =>
-      appSupportFilePath('workspace_layout.json');
+      appSettingsFilePath('workspace_layout.json');
 
   static const int layoutVersion = 1;
 

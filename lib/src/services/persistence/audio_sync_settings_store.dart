@@ -20,7 +20,7 @@ class AudioSyncSettingsStore {
   final String filePath;
 
   static String defaultFilePath() =>
-      appSupportFilePath('audio_sync_settings.json');
+      appSettingsFilePath('audio_sync_settings.json');
 
   static const int version = 1;
 

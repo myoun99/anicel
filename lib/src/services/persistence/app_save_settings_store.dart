@@ -13,7 +13,7 @@ class AppSaveSettingsStore {
   final String filePath;
 
   static String defaultFilePath() =>
-      appSupportFilePath('save_settings.json');
+      appSettingsFilePath('save_settings.json');
 
   static const int version = 1;
 

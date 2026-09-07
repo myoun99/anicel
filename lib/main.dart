@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
+import 'src/services/persistence/app_support_path.dart';
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
@@ -40,6 +41,15 @@ Future<void> main() async {
   // [AnicelBinding] rather than [WidgetsFlutterBinding]: it is the same
   // binding plus the UI scale in the root device matrix.
   AnicelBinding.ensureInitialized();
+  // 🚨★★★**BEFORE ANY STORE READS ANYTHING.** The settings moved into a
+  // room of their own (`<container>/Settings/`), and a store that resolved
+  // its path first would find nothing, write a default, and hand the user
+  // a factory-fresh app whose real settings were sitting one folder up.
+  // ⛔The migration never deletes and never overwrites — every step is a
+  // rename into a name that does not exist yet — so the worst a failure
+  // here can do is leave an entry at the old address for the next launch
+  // to try again. See [migrateSettingsIntoTheirRoom].
+  migrateSettingsIntoTheirRoom();
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
   // canvas across the top, and a drawing app is the case the immersive

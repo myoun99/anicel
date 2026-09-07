@@ -476,11 +476,15 @@ class _AppContainerBlockState extends State<_AppContainerBlock> {
   static List<_ContainerArea> _measure() {
     final strings = AppText.strings;
     return [
-      _ContainerArea.settingsFiles('settings', strings.containerAreaSettings),
+      // 🪦**ONE ROW WHERE THERE WERE TWO.** The settings row measured the
+      // loose files at the container ROOT and `brush-tips` measured the
+      // folder beside them; both now live under `Settings/`, and two rows
+      // over one tree would double-count — which on a block whose whole
+      // job is a trustworthy total is worse than a missing line.
       _ContainerArea.folder(
-        'brush-tips',
-        strings.containerAreaBrushTips,
-        appSupportFilePath('brush_tips'),
+        'settings',
+        strings.containerAreaSettings,
+        appSupportFilePath('Settings'),
       ),
       _ContainerArea.folder(
         'recovery',
@@ -575,17 +579,12 @@ class _ContainerArea {
     required this.exists,
   });
 
-  /// The loose settings files, which share the container's root with the
-  /// folders rather than having one of their own.
-  factory _ContainerArea.settingsFiles(String id, String label) {
-    final root = appSupportFilePath('');
-    return _measureDirectory(
-      id: id,
-      label: label,
-      path: root.endsWith('/') ? root.substring(0, root.length - 1) : root,
-      recursive: false,
-    );
-  }
+  // 🪦`_ContainerArea.settingsFiles` measured the container ROOT
+  // non-recursively, because the settings were loose files sharing it with
+  // the folders. They have a room now, so the ordinary folder factory
+  // measures it and this special case has nothing left to be special
+  // about.
+
 
   factory _ContainerArea.folder(String id, String label, String path) =>
       _measureDirectory(id: id, label: label, path: path, recursive: true);

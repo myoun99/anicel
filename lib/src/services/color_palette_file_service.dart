@@ -68,7 +68,7 @@ class ColorPaletteFileService {
   final String filePath;
 
   static String defaultColorPaletteFilePath() =>
-      appSupportFilePath('color_palette.json');
+      appSettingsFilePath('color_palette.json');
 
   static const int version = 1;
 

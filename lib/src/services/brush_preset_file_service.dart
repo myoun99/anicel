@@ -33,7 +33,7 @@ class BrushPresetFileService {
   final String filePath;
 
   static String defaultBrushPresetFilePath() =>
-      appSupportFilePath('brush_presets.json');
+      appSettingsFilePath('brush_presets.json');
 
   /// Library file format version. Bump when a release adds new built-in
   /// groups or presets: libraries saved with an older version get the new

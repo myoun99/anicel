@@ -14,7 +14,7 @@ class AppWorkspaceColorsStore {
   final String filePath;
 
   static String defaultFilePath() =>
-      appSupportFilePath('workspace_colors.json');
+      appSettingsFilePath('workspace_colors.json');
 
   static const int version = 1;
 

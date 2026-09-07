@@ -13,7 +13,7 @@ class AppAccentSettingsStore {
   final String filePath;
 
   static String defaultFilePath() =>
-      appSupportFilePath('accent_settings.json');
+      appSettingsFilePath('accent_settings.json');
 
   static const int version = 1;
 
