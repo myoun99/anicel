@@ -53,7 +53,7 @@ void main() {
     addTearDown(session.dispose);
     expect(keysOf(session, 'position'), isEmpty);
 
-    expect(session.createInstancesForSelection(), isTrue);
+    expect(session.cellInstances.createInstancesForSelection(), isTrue);
 
     expect(keysOf(session, 'position'), {3});
     expect(
@@ -68,7 +68,7 @@ void main() {
     final session = sessionOnLane(transformGroupHeaderLane.laneId);
     addTearDown(session.dispose);
 
-    expect(session.createInstancesForSelection(), isTrue);
+    expect(session.cellInstances.createInstancesForSelection(), isTrue);
 
     expect(keysOf(session, 'position'), {3});
     expect(keysOf(session, 'scale'), {3});
@@ -79,11 +79,11 @@ void main() {
       'a cel', () {
     final session = sessionOnLane('position');
     addTearDown(session.dispose);
-    session.createInstancesForSelection();
+    session.cellInstances.createInstancesForSelection();
     expect(keysOf(session, 'position'), {3});
 
-    expect(session.canDeleteCellAtCurrentFrame, isTrue);
-    session.deleteCellAtCurrentFrame();
+    expect(session.cells.canDeleteCellAtCurrentFrame, isTrue);
+    session.cells.deleteCellAtCurrentFrame();
 
     expect(keysOf(session, 'position'), isEmpty);
   });
@@ -94,7 +94,7 @@ void main() {
     addTearDown(session.dispose);
 
     expect(
-      session.canDeleteCellAtCurrentFrame,
+      session.cells.canDeleteCellAtCurrentFrame,
       isFalse,
       reason: 'an empty property row has nothing to delete, and must not '
           'pretend otherwise',
@@ -109,7 +109,7 @@ void main() {
     session.selectLayer(layerId);
     expect(session.currentRow, LayerRowAddress(layerId));
     expect(
-      session.createInstancesForSelection(),
+      session.cellInstances.createInstancesForSelection(),
       isFalse,
       reason: 'no selection and no lane subject: the Add button dispatches '
           'on the layer KIND, as it always did',
@@ -139,7 +139,7 @@ void main() {
       addTearDown(session.dispose);
       session.selectFrameIndex(3);
 
-      expect(session.createInstancesForSelection(), isTrue);
+      expect(session.cellInstances.createInstancesForSelection(), isTrue);
       expect(cameraKeysOf(session, 'position'), {3});
       expect(
         transformLaneKeyFrames(
@@ -152,8 +152,8 @@ void main() {
         reason: 'the camera pseudo-layer never carries the keys',
       );
 
-      expect(session.canDeleteCellAtCurrentFrame, isTrue);
-      session.deleteCellAtCurrentFrame();
+      expect(session.cells.canDeleteCellAtCurrentFrame, isTrue);
+      session.cells.deleteCellAtCurrentFrame();
       expect(cameraKeysOf(session, 'position'), isEmpty);
     });
 
@@ -182,7 +182,7 @@ void main() {
         ),
       );
       session.selectFrameIndex(4);
-      expect(session.createInstancesForSelection(), isTrue);
+      expect(session.cellInstances.createInstancesForSelection(), isTrue);
 
       final keyed = session.requireActiveCut.camera.track.position.keyAt(4);
       expect(keyed, isNotNull);
@@ -201,7 +201,7 @@ void main() {
       addTearDown(session.dispose);
       session.selectFrameIndex(2);
 
-      expect(session.createInstancesForSelection(), isTrue);
+      expect(session.cellInstances.createInstancesForSelection(), isTrue);
 
       expect(cameraKeysOf(session, 'position'), {2});
       expect(cameraKeysOf(session, 'scale'), {2});

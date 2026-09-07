@@ -115,7 +115,7 @@ void main() {
         reason: 'the premise: the image row really is inside the selection',
       );
 
-      session.createInstancesForSelection();
+      session.cellInstances.createInstancesForSelection();
 
       final imageAfter = session.layers.firstWhere((l) => l.id == image.id);
       expect(

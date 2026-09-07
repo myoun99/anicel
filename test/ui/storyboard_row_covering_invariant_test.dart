@@ -75,7 +75,7 @@ void main() {
     session.selectLayer(rowId);
     session.selectFrameIndex(8);
 
-    session.deleteCellAtCurrentFrame();
+    session.cells.deleteCellAtCurrentFrame();
 
     expectRowTilesItsCut(session, rowId);
     final row = session.layers.firstWhere((layer) => layer.id == rowId);
@@ -92,7 +92,7 @@ void main() {
     session.selectLayer(rowId);
     session.selectFrameIndex(16);
 
-    session.deleteCellAtCurrentFrame();
+    session.cells.deleteCellAtCurrentFrame();
 
     expectRowTilesItsCut(session, rowId);
     expect(
@@ -106,7 +106,7 @@ void main() {
     final rowId = storyboardRowId(session);
     session.selectLayer(rowId);
     session.selectFrameIndex(8);
-    session.deleteCellAtCurrentFrame();
+    session.cells.deleteCellAtCurrentFrame();
 
     session.undo();
 

@@ -112,7 +112,7 @@ void main() {
       headIndex: 3,
       headLayerId: layerId,
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
 
     final layer = layerOf(s, layerId);
     final fill = layer.timeline[1];

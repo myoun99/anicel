@@ -40,7 +40,7 @@ void main() {
       spanLaneIds: [laneId],
     );
     expect(
-      session.createInstancesForSelection(),
+      session.cellInstances.createInstancesForSelection(),
       isTrue,
       reason: 'the lane selection is what the verb acts on',
     );
@@ -111,5 +111,5 @@ void keyLaneRangeExpectingNothing(
     headIndex: 3,
     spanLaneIds: const ['position'],
   );
-  session.createInstancesForSelection();
+  session.cellInstances.createInstancesForSelection();
 }

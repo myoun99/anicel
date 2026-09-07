@@ -370,7 +370,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// on a covered one (「그게아니라 인스턴스편집버튼으로 작동하도록」); on
   /// an S row the `＋` authors a fresh entry at the cursor.
   void _createInstanceHere() {
-    if (_session.createInstancesForSelection()) {
+    if (_session.cellInstances.createInstancesForSelection()) {
       return;
     }
     if (_standingOnTransitionRow) {

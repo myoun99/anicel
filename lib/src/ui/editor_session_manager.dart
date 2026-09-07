@@ -59,7 +59,6 @@ import '../models/layer.dart';
 import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../services/canvas_selection_region.dart';
-import '../services/cel_pixel_overwrite.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -72,7 +71,6 @@ import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
 import '../models/delete_subject.dart';
-import '../models/edit_instance_subject.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -96,7 +94,6 @@ import 'session/cut_shift.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
-import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -881,7 +878,7 @@ class EditorSessionManager extends ChangeNotifier
   /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
   @override
   PixelVerbSubject get pixelVerbSubject {
-    if (pixelVerbCellKeys().isEmpty) {
+    if (cells.pixelVerbCellKeys().isEmpty) {
       return PixelVerbSubject.nothing;
     }
     return frameRangeSelection.value == null
@@ -893,18 +890,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
-
-  bool get canDeleteCellForSelection => _cells.canDeleteCellForSelection;
-  bool get cellSelectionClaimsSubject => _cells.cellSelectionClaimsSubject;
-  bool get canDeleteCellAtCurrentFrame => _cells.canDeleteCellAtCurrentFrame;
-  void deleteCellAtCurrentFrame() => _cells.deleteCellAtCurrentFrame();
-  String get currentCellStatusText => _cells.currentCellStatusText;
-  String get compactCellActionText => _cells.compactCellActionText;
-  bool get hasActiveNonNegativeCell => _cells.hasActiveNonNegativeCell;
-  List<BrushFrameKey> pixelVerbCellKeys() => _cells.pixelVerbCellKeys();
-  bool get canRunPixelVerb => _cells.canRunPixelVerb;
-  void runPixelVerb(CelPixelVerb verb) => _cells.runPixelVerb(verb);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
 
   @override
   TimelineRowAddress get selectedRow => standing.selectedRow;
@@ -2781,7 +2767,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/storyboard_cursor.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: _cells, cutVerbs: cutVerbs, transitions: _transitions, internals: this);
+  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: _transitions, internals: this);
 
   bool get canSetCommaForStoryboardCursor =>
       _storyboardCursor.canSetCommaForStoryboardCursor;
@@ -2815,28 +2801,18 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/exposure_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final ExposureVerbs _exposure = ExposureVerbs(
+  late final ExposureVerbs exposureVerbs = ExposureVerbs(
     selection: this,
     changes: this,
     controllers: activeCutControllers,
     camera: camera,
   );
 
-  bool get canBlankExposureForSelection =>
-      _exposure.canBlankExposureForSelection;
-  bool get canBlankExposureAtCurrentFrame =>
-      _exposure.canBlankExposureAtCurrentFrame;
-  void blankExposureAtCurrentFrame() => _exposure.blankExposureAtCurrentFrame();
-  void increaseSelectedExposure() => _exposure.increaseSelectedExposure();
-  void decreaseSelectedExposure() => _exposure.decreaseSelectedExposure();
   @override
   TimelineCellExposureState exposureStateForLayer(
     Layer layer,
     int frameIndex,
-  ) => _exposure.exposureStateForLayer(layer, frameIndex);
-  bool get canDecreaseSelectedExposure => _exposure.canDecreaseSelectedExposure;
-  bool get canIncreaseSelectedExposure => _exposure.canIncreaseSelectedExposure;
-
+  ) => exposureVerbs.exposureStateForLayer(layer, frameIndex);
   void createDrawingAtCurrentFrame() {
     final layer = activeLayer;
     if (layer == null || !canCreateDrawingAtCurrentFrame) {
@@ -2855,7 +2831,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/auto_frame_for_stroke.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final AutoFrameForStroke _autoFrame = AutoFrameForStroke(
+  late final AutoFrameForStroke autoFrame = AutoFrameForStroke(
     project: this,
     selection: this,
     changes: this,
@@ -2864,32 +2840,14 @@ class EditorSessionManager extends ChangeNotifier
     frameVerbs: _frameVerbs,
   );
 
-  bool get canAutoCreateFrameForStroke =>
-      _autoFrame.canAutoCreateFrameForStroke;
-  bool beginAutoFrameForStroke() => _autoFrame.beginAutoFrameForStroke();
-  Command? takeAutoFrameForStroke() => _autoFrame.takeAutoFrameForStroke();
-  void flushAutoFrameForStroke() => _autoFrame.flushAutoFrameForStroke();
-
   // ── the cell instances: their own object, in their own file ─────────
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: _frameVerbs, internals: this);
 
-  bool createInstancesForSelection() =>
-      _instances.createInstancesForSelection();
   @override
-  bool get canCreateInstance => _instances.canCreateInstance;
-  bool get activeCellHoldsAnInstance => _instances.activeCellHoldsAnInstance;
-  bool get canCreateInstanceForSelection =>
-      _instances.canCreateInstanceForSelection;
-  bool get canEditCellInstanceAtCurrentFrame =>
-      _instances.canEditCellInstanceAtCurrentFrame;
-  EditInstanceSubject get editInstanceSubject => _instances.editInstanceSubject;
-  EditInstanceSubject editInstanceSubjectFor({
-    required bool cutsAreThisPanels,
-  }) => _instances.editInstanceSubjectFor(cutsAreThisPanels: cutsAreThisPanels);
-
+  bool get canCreateInstance => cellInstances.canCreateInstance;
   /// The selection range's maximal EMPTY runs on [layer]'s timeline.
   ///
   /// D20 (2026-08-18) rewrote the coverage half: GHOST coverage is
@@ -3539,7 +3497,7 @@ class EditorSessionManager extends ChangeNotifier
     if (layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
       return DeleteSubject.layers;
     }
-    return canDeleteCellAtCurrentFrame
+    return cells.canDeleteCellAtCurrentFrame
         ? DeleteSubject.cells
         : DeleteSubject.nothing;
   }
@@ -3553,7 +3511,7 @@ class EditorSessionManager extends ChangeNotifier
       case DeleteSubject.layers:
         layerVerbs.deleteSelectedLayers();
       case DeleteSubject.cells:
-        deleteCellAtCurrentFrame();
+        cells.deleteCellAtCurrentFrame();
       case DeleteSubject.nothing:
         break;
     }
@@ -3608,7 +3566,7 @@ class EditorSessionManager extends ChangeNotifier
   /// read here too and the two stay one answer.
   bool get canSetCommaForSelectionOrCurrent =>
       rangeSelections.selectionBlockStartsByLayer() != null ||
-      (!cellSelectionClaimsSubject && canDeleteCellAtCurrentFrame);
+      (!cells.cellSelectionClaimsSubject && cells.canDeleteCellAtCurrentFrame);
 
   /// Sets the exposure length of every selected block — or the covering
   /// block at the playhead without a selection — to [comma], packing each
@@ -3637,7 +3595,7 @@ class EditorSessionManager extends ChangeNotifier
       notifyListeners();
       return;
     }
-    if (cellSelectionClaimsSubject) {
+    if (cells.cellSelectionClaimsSubject) {
       // Same law as the delete verb: a band that resolves to nothing
       // retimable is a no-op, never a press that lands on some other row.
       return;

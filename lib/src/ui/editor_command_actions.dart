@@ -32,7 +32,7 @@ import 'export/ae_keyframe_data.dart';
 /// button is no longer its only entrance: [EditorActionIds.frameNewDrawing]
 /// dispatches here too, and a custom rail slot will.
 void createActiveInstance(EditorSessionManager session) {
-  if (session.createInstancesForSelection()) {
+  if (session.cellInstances.createInstancesForSelection()) {
     return;
   }
   final layer = session.activeLayer;

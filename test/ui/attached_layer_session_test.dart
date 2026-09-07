@@ -303,7 +303,7 @@ void main() {
     // cel deletes from anywhere on it — both gates open now.
     s.selectFrameIndex(1);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isTrue);
-    expect(s.canDeleteCellAtCurrentFrame, isTrue);
+    expect(s.cells.canDeleteCellAtCurrentFrame, isTrue);
     s.selectFrameIndex(0);
 
     // Range selection + move are open too (the synced mirror stands down
@@ -408,9 +408,9 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final attachId = s.activeLayer!.id;
 
-    expect(s.canBlankExposureAtCurrentFrame, isFalse);
+    expect(s.exposureVerbs.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
-    expect(s.canDeleteCellAtCurrentFrame, isFalse);
+    expect(s.cells.canDeleteCellAtCurrentFrame, isFalse);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(

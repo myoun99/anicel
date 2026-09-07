@@ -599,8 +599,8 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.frameNewDrawing:
         createActiveInstance(_session);
       case EditorActionIds.frameBlankExposure:
-        if (_session.canBlankExposureAtCurrentFrame) {
-          _session.blankExposureAtCurrentFrame();
+        if (_session.exposureVerbs.canBlankExposureAtCurrentFrame) {
+          _session.exposureVerbs.blankExposureAtCurrentFrame();
         }
       case EditorActionIds.frameToggleMark:
         if (_session.layerMarks.canToggleMarkAtCurrentFrame) {

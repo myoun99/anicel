@@ -138,10 +138,10 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   bool get canCreateInstance => session.canCreateInstance;
 
   @override
-  bool get canBlankExposure => session.canBlankExposureAtCurrentFrame;
+  bool get canBlankExposure => session.exposureVerbs.canBlankExposureAtCurrentFrame;
 
   @override
-  void blankExposure() => session.blankExposureAtCurrentFrame();
+  void blankExposure() => session.exposureVerbs.blankExposureAtCurrentFrame();
 
   @override
   bool get canToggleMark => session.layerMarks.canToggleMarkAtCurrentFrame;
@@ -165,7 +165,7 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   /// R5q1: CUTS are the storyboard's noun, so this panel's Edit does not
   /// reach for them — 「타임라인에서는 타임라인의 것을」.
   bool get canEditInstance =>
-      session.editInstanceSubjectFor(cutsAreThisPanels: false) !=
+      session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false) !=
       EditInstanceSubject.nothing;
 
   @override
@@ -294,7 +294,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// fresh SE entry on the standing S row's empty cursor frame.
   @override
   bool get canCreateInstance {
-    if (session.canCreateInstanceForSelection) {
+    if (session.cellInstances.canCreateInstanceForSelection) {
       return true;
     }
     if (_standingOnTransitionRow) {
@@ -410,7 +410,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     // the cut". Delete and Rename are documented as ONE ladder; splitting
     // them here left the same band dark on one button and aimed at the
     // cut on the other.
-    if (session.cellSelectionClaimsSubject) {
+    if (session.cells.cellSelectionClaimsSubject) {
       return null;
     }
     switch (session.selectedRow) {
@@ -479,14 +479,14 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.trackFrameRangeSelection.value != null) {
       return DeleteSubject.cuts;
     }
-    if (session.canDeleteCellForSelection) {
+    if (session.cells.canDeleteCellForSelection) {
       return DeleteSubject.cells;
     }
     // A live CELL band claims the press even when it holds nothing this
     // panel may delete — the same guard the strip's comma verb already
     // states. Without it a band the collector refuses fell through to the
     // cursor rung, where a TRACK-ROW cursor means "delete the cut".
-    if (session.cellSelectionClaimsSubject) {
+    if (session.cells.cellSelectionClaimsSubject) {
       return DeleteSubject.nothing;
     }
     return session.canDeleteBlockAtStoryboardCursor
@@ -500,11 +500,11 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       session.deleteSelectionSubject();
       return;
     }
-    if (session.canDeleteCellForSelection) {
-      session.deleteCellAtCurrentFrame();
+    if (session.cells.canDeleteCellForSelection) {
+      session.cells.deleteCellAtCurrentFrame();
       return;
     }
-    if (session.cellSelectionClaimsSubject) {
+    if (session.cells.cellSelectionClaimsSubject) {
       return;
     }
     session.deleteBlockAtStoryboardCursor();

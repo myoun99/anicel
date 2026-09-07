@@ -225,7 +225,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.canDeleteCellAtCurrentFrame,
+      session.cells.canDeleteCellAtCurrentFrame,
       isFalse,
       reason:
           'read-only: the row is selectable and measurable, and still refuses '

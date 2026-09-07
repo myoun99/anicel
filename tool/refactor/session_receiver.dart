@@ -27,6 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 
 const _hostType = "for the type 'EditorSessionManager'";
+const _hostFile = 'lib/src/ui/editor_session_manager.dart';
 
 void main(List<String> args) {
   final log = File(args[0]).readAsLinesSync();
@@ -49,10 +50,15 @@ void main(List<String> args) {
   final locus = RegExp(r'\s-\s(\S+\.dart):(\d+):(\d+)\s-\s');
   final quoted = RegExp("'([A-Za-z_][A-Za-z0-9_]*)'");
   for (final line in log) {
-    if (!line.contains(_hostType)) continue;
     final where = locus.firstMatch(line);
+    if (where == null) continue;
+    // Inside the host itself the call sites read `foo()`, not
+    // `session.foo()`, so the analyzer says "Undefined name" and never
+    // names the type. There the FILE is the gate instead.
+    final inHost = where.group(1)!.replaceAll(r'\', '/').endsWith(_hostFile);
+    if (!inHost && !line.contains(_hostType)) continue;
     final what = quoted.firstMatch(line);
-    if (where == null || what == null) continue;
+    if (what == null) continue;
     final member = what.group(1)!;
     if (!replacement.containsKey(member)) {
       unknown.add(member);

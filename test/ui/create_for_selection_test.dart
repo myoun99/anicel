@@ -16,7 +16,7 @@ void main() {
 
   test('no selection = not owned (the plain playhead flow runs)', () {
     final s = session();
-    expect(s.createInstancesForSelection(), isFalse);
+    expect(s.cellInstances.createInstancesForSelection(), isFalse);
   });
 
   test('a drawing-row span fills every EMPTY gap with a gap-length cel in '
@@ -34,7 +34,7 @@ void main() {
       headIndex: 5,
       headLayerId: bId,
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
 
     final a = layerOf(s, aId);
     // Gaps [0,2) and [3,6) filled around the untouched island at 2.
@@ -60,7 +60,7 @@ void main() {
       anchorIndex: 1,
       headIndex: 4,
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
     final se = layerOf(s, seId);
     expect(se.timeline[1]!.length, 4);
 
@@ -71,7 +71,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
     final instr = layerOf(s, instrId);
     expect(instr.instructions[0]!.length, 3);
     expect(
@@ -92,7 +92,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 3,
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
     final camera = s.activeCutOrNull!.camera;
     for (var frame = 0; frame < 4; frame += 1) {
       expect(camera.keyframeAt(frame), isNotNull, reason: 'frame $frame');
@@ -128,7 +128,7 @@ void main() {
       containsAll(<LayerId>[cameraId, instrId, drawingId]),
       reason: 'the span must cover all three row kinds for this contract',
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
     expect(layerOf(s, instrId).instructions, isNotEmpty);
     expect(layerOf(s, drawingId).timeline, isNotEmpty);
@@ -155,7 +155,7 @@ void main() {
       headIndex: 4,
       spanLaneIds: const [],
     );
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
     expect(
       layerOf(s, layerId).transformTrack.position.keys.keys.toSet(),
       {2, 3, 4},

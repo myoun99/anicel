@@ -86,7 +86,7 @@ void main() {
     addTearDown(s.dispose);
     s.trackFrameRangeSelection.value = range();
 
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
 
     final timeline = seLayerOf(s).timeline;
     expect(
@@ -119,7 +119,7 @@ void main() {
     addTearDown(s.dispose);
     s.trackFrameRangeSelection.value = range();
 
-    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
 
     final timeline = seLayerOf(s).timeline;
     expect(timeline[10]!.length, 1, reason: 'the run before the block');
@@ -140,7 +140,7 @@ void main() {
     );
 
     expect(
-      s.createInstancesForSelection(),
+      s.cellInstances.createInstancesForSelection(),
       isFalse,
       reason: 'a cut-row range is the cut pill\'s business (#18)',
     );

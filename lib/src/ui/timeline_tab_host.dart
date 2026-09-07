@@ -1240,7 +1240,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.selectedFrame != null,
       session.canCreateDrawingAtCurrentFrame,
       session.canRenameFrameAtCurrentFrame,
-      session.canBlankExposureAtCurrentFrame,
+      session.exposureVerbs.canBlankExposureAtCurrentFrame,
       session.layerMarks.canToggleMarkAtCurrentFrame,
       session.canCopyFrameAtCurrentFrame,
       session.canPasteLinkedFrameAtCurrentFrame,
@@ -1251,10 +1251,10 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // paste while every entry around them holds its value.
       session.clipboard.canCutRunAtCurrentFrame,
       session.canPasteIndependentFrameAtCurrentFrame,
-      session.canEditCellInstanceAtCurrentFrame,
-      session.canDeleteCellAtCurrentFrame,
-      session.canDecreaseSelectedExposure,
-      session.canIncreaseSelectedExposure,
+      session.cellInstances.canEditCellInstanceAtCurrentFrame,
+      session.cells.canDeleteCellAtCurrentFrame,
+      session.exposureVerbs.canDecreaseSelectedExposure,
+      session.exposureVerbs.canIncreaseSelectedExposure,
       session.canSetCommaForSelectionOrCurrent,
       // The Add button gates on the active layer's kind + cell state.
       // NOTE: these two move together with the can* getters above in every
@@ -1262,7 +1262,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // listed because the Add button genuinely reads them, not because a
       // test proves each one.
       session.activeLayer?.kind,
-      session.hasActiveNonNegativeCell,
+      session.cells.hasActiveNonNegativeCell,
       // Edit Instance means THAT LANE'S KEY while you stand on a lane row,
       // an enablement no layer kind can answer. The row you stand on
       // publishes through its OWN notifier without a session notify, which

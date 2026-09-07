@@ -587,7 +587,7 @@ class TimelineActionToolbar extends StatelessWidget {
           CelPixelVerb.deleteColour => Icons.format_color_reset,
           CelPixelVerb.keepColour => Icons.colorize_outlined,
         },
-        onSelected: () => session.runPixelVerb(verb),
+        onSelected: () => session.cells.runPixelVerb(verb),
       ),
   ];
 
@@ -843,7 +843,7 @@ class TimelineActionToolbar extends StatelessWidget {
       // and what the press DOES have to come from one answer.
       onEditInstance != null && panelContext.canEditInstance,
       // The two pixel verbs read the same one-question gate their press runs.
-      session.canRunPixelVerb,
+      session.cells.canRunPixelVerb,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -964,7 +964,7 @@ class TimelineActionToolbar extends StatelessWidget {
             key: const ValueKey<String>('shared-colour-edit-button'),
             tooltip: AppText.strings.tlSharedColourEdit,
             icon: Icons.palette_outlined,
-            onPressed: session.canRunPixelVerb
+            onPressed: session.cells.canRunPixelVerb
                 ? () => showPanelFlyout(context, entries: _colourEditEntries())
                 : null,
           ),

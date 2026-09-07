@@ -330,8 +330,8 @@ class _InteractiveCanvasBuild {
       onPressNeedsCel: () {
         return _state._pressNeedsCel(toolState, session);
       },
-      takeStrokePrefixCommand: session.takeAutoFrameForStroke,
-      onAutoFrameSettled: session.flushAutoFrameForStroke,
+      takeStrokePrefixCommand: session.autoFrame.takeAutoFrameForStroke,
+      onAutoFrameSettled: session.autoFrame.flushAutoFrameForStroke,
       // P5 eyedropper. Picks NEVER switch tools (R11-②): the
       // eyedropper stays armed until the user changes tools,
       // Alt-picks keep the painting tool.

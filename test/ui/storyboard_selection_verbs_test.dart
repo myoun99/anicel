@@ -114,7 +114,7 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.deleteCellAtCurrentFrame();
+      session.cells.deleteCellAtCurrentFrame();
 
       // The [2,5) sound is gone; the one in the OTHER cut is untouched —
       // proof the delete ran on the global layer, not on a cut-local clone
@@ -132,7 +132,7 @@ void main() {
         headGlobalFrame: 10,
       );
 
-      session.deleteCellAtCurrentFrame();
+      session.cells.deleteCellAtCurrentFrame();
 
       expect(seLayerOf(session).timeline, isEmpty);
     });
@@ -144,7 +144,7 @@ void main() {
         anchorGlobalFrame: 3,
         headGlobalFrame: 10,
       );
-      session.deleteCellAtCurrentFrame();
+      session.cells.deleteCellAtCurrentFrame();
 
       session.undo();
 

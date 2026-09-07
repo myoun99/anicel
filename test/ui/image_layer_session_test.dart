@@ -154,7 +154,7 @@ void main() {
     s.selectFrameIndex(0);
 
     expect(
-      s.canDeleteCellAtCurrentFrame,
+      s.cells.canDeleteCellAtCurrentFrame,
       isFalse,
       reason:
           'the ghost hold keeps the cel referenced, so the delete would '
@@ -170,7 +170,7 @@ void main() {
       headIndex: 3,
     );
     expect(
-      s.canDeleteCellForSelection,
+      s.cells.canDeleteCellForSelection,
       isFalse,
       reason: 'an image-only selection offers no cell delete either',
     );
@@ -204,13 +204,13 @@ void main() {
     expect(celRow().frames, hasLength(1));
 
     expect(
-      s.canDeleteCellAtCurrentFrame,
+      s.cells.canDeleteCellAtCurrentFrame,
       isFalse,
       reason:
           'the highlighted row IS the subject — with nothing deletable '
           'in it the button goes dark instead of retargeting',
     );
-    s.deleteCellAtCurrentFrame();
+    s.cells.deleteCellAtCurrentFrame();
     expect(
       celRow().frames,
       hasLength(1),
@@ -285,9 +285,9 @@ void main() {
       headIndex: 3,
       headLaneId: 'position',
     );
-    s.createInstancesForSelection();
+    s.cellInstances.createInstancesForSelection();
 
-    expect(s.cellSelectionClaimsSubject, isTrue);
+    expect(s.cells.cellSelectionClaimsSubject, isTrue);
     expect(
       s.canSetCommaForSelectionOrCurrent,
       isFalse,
@@ -359,7 +359,7 @@ void main() {
       reason: 'the band claims the press and holds nothing deletable',
     );
     expect(
-      s.editInstanceSubject,
+      s.cellInstances.editInstanceSubject,
       EditInstanceSubject.nothing,
       reason:
           'Edit Instance is DOCUMENTED as the same ladder as Delete — '
@@ -407,7 +407,7 @@ void main() {
     s.setCommaForSelectionOrCurrent(4);
     s.selectFrameIndex(2);
     expect(
-      s.canBlankExposureAtCurrentFrame,
+      s.exposureVerbs.canBlankExposureAtCurrentFrame,
       isTrue,
       reason: 'the control: this row IS blankable at this frame',
     );
@@ -423,13 +423,13 @@ void main() {
     );
 
     expect(
-      s.canBlankExposureAtCurrentFrame,
+      s.exposureVerbs.canBlankExposureAtCurrentFrame,
       isFalse,
       reason:
           'X edits an EXISTING hold, so a band holding nothing ends '
           'the ladder instead of shortening the unswept active row\'s hold',
     );
-    s.blankExposureAtCurrentFrame();
+    s.exposureVerbs.blankExposureAtCurrentFrame();
     expect(
       s.layers.firstWhere((layer) => layer.id == celId).timeline[0]!.length,
       4,
@@ -466,7 +466,7 @@ void main() {
       headIndex: 1,
     );
     expect(
-      s.canDeleteCellForSelection,
+      s.cells.canDeleteCellForSelection,
       isTrue,
       reason: 'the control: this band DOES hold editable blocks',
     );
@@ -497,7 +497,7 @@ void main() {
     // axis read from the other side. What this test guards is unchanged and
     // is asserted below: the UNSWEPT active row must not move.
     expect(
-      s.canBlankExposureAtCurrentFrame,
+      s.exposureVerbs.canBlankExposureAtCurrentFrame,
       isTrue,
       reason:
           'X serves the band now (결정 14 ①ⓑ) rather than ending the '
@@ -507,7 +507,7 @@ void main() {
     for (final (name, gate) in [
       ('mark', s.layerMarks.canToggleMarkAtCurrentFrame),
       ('잘라내기', s.clipboard.canCutRunAtCurrentFrame),
-      ('rename', s.canEditCellInstanceAtCurrentFrame),
+      ('rename', s.cellInstances.canEditCellInstanceAtCurrentFrame),
       ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
       ('링크 붙여넣기', s.canPasteLinkedFrameAtCurrentFrame),
       ('복제', s.canDuplicateActiveBlock),
@@ -524,7 +524,7 @@ void main() {
       );
     }
 
-    s.blankExposureAtCurrentFrame();
+    s.exposureVerbs.blankExposureAtCurrentFrame();
     s.layerMarks.toggleMarkAtCurrentFrame();
     s.clipboard.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();

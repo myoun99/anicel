@@ -32,10 +32,10 @@ void main() {
   test('delete stands down on a ghost frame (pin)', () {
     final (s, _) = sessionWithGhostTail();
     s.selectFrameIndex(0);
-    expect(s.canDeleteCellAtCurrentFrame, isTrue);
+    expect(s.cells.canDeleteCellAtCurrentFrame, isTrue);
 
     s.selectFrameIndex(2);
-    expect(s.canDeleteCellAtCurrentFrame, isFalse);
+    expect(s.cells.canDeleteCellAtCurrentFrame, isFalse);
   });
 
   test('rename on a ghost frame renames the ANCHOR cel (UI-R19b: the '

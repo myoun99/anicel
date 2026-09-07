@@ -167,7 +167,7 @@ void main() {
     final session = await pump(tester);
     await drawableRow(tester, session);
     expect(session.pixelVerbSubject, PixelVerbSubject.standing);
-    expect(session.pixelVerbCellKeys(), hasLength(1));
+    expect(session.cells.pixelVerbCellKeys(), hasLength(1));
   });
 
   testWidgets(
@@ -175,7 +175,7 @@ void main() {
       '옛날에 했다가 폐기했어」', (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    final standing = session.pixelVerbCellKeys();
+    final standing = session.cells.pixelVerbCellKeys();
     expect(standing, hasLength(1));
 
     // Select every row there is. Under the discarded design this would have
@@ -194,7 +194,7 @@ void main() {
           '「recolour all of their drawings」',
     );
     expect(
-      session.pixelVerbCellKeys().map((k) => k.frameId).toList(),
+      session.cells.pixelVerbCellKeys().map((k) => k.frameId).toList(),
       standing.map((k) => k.frameId).toList(),
     );
   });
@@ -217,7 +217,7 @@ void main() {
     // to say 「more than standing would give you」 or it is not about the range
     // at all.
     expect(
-      session.pixelVerbCellKeys().length,
+      session.cells.pixelVerbCellKeys().length,
       greaterThan(1),
       reason: 'a range is drawn ACROSS the cels, which is why it is the one '
           'rung allowed to name more than one',
@@ -245,7 +245,7 @@ void main() {
     final session = await pump(tester);
     await drawableRow(tester, session);
     expect(session.pixelVerbSubject, PixelVerbSubject.standing);
-    final key = session.pixelVerbCellKeys().single;
+    final key = session.cells.pixelVerbCellKeys().single;
 
     // 🚨What 픽셀 비우기 leaves behind: the tiles are still there, every
     // alpha at zero. It cannot drop them — undo walks the tiles that EXIST
@@ -295,11 +295,11 @@ void main() {
       'coordinator has been published', (tester) async {
     final session = await pump(tester);
     session.pixelEditingCoordinator = null;
-    expect(session.canRunPixelVerb, isFalse);
+    expect(session.cells.canRunPixelVerb, isFalse);
     // ⛔And the press is a no-op rather than an exception: a gate and a verb
     // that disagree is the bug T25 exists to prevent.
     expect(
-      () => session.runPixelVerb(CelPixelVerb.replaceColour),
+      () => session.cells.runPixelVerb(CelPixelVerb.replaceColour),
       returnsNormally,
     );
   });

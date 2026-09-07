@@ -39,9 +39,9 @@ void main() {
   test('⛔OFF by default — the toggle has to be asked for', () {
     final session = sessionOnEmptyCell();
     expect(AppInput.settings.value.autoCreateFrameOnDraw, isFalse);
-    expect(session.canAutoCreateFrameForStroke, isFalse);
+    expect(session.autoFrame.canAutoCreateFrameForStroke, isFalse);
     expect(
-      session.beginAutoFrameForStroke(),
+      session.autoFrame.beginAutoFrameForStroke(),
       isFalse,
       reason:
           'a press on an empty cell is still refused until the user '
@@ -55,8 +55,8 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    expect(session.canAutoCreateFrameForStroke, isTrue);
-    expect(session.beginAutoFrameForStroke(), isTrue);
+    expect(session.autoFrame.canAutoCreateFrameForStroke, isTrue);
+    expect(session.autoFrame.beginAutoFrameForStroke(), isTrue);
     expect(
       session.activeLayer!.frames,
       hasLength(1),
@@ -70,7 +70,7 @@ void main() {
     );
     final session = sessionOnEmptyCell();
     final before = session.historyManager.canUndo;
-    session.beginAutoFrameForStroke();
+    session.autoFrame.beginAutoFrameForStroke();
     expect(
       session.historyManager.canUndo,
       before,
@@ -79,10 +79,10 @@ void main() {
           'is exactly what 「답은 추천대로(merged)」 ruled out',
     );
 
-    final taken = session.takeAutoFrameForStroke();
+    final taken = session.autoFrame.takeAutoFrameForStroke();
     expect(taken, isNotNull, reason: 'the stroke gets it to compose with');
     expect(
-      session.takeAutoFrameForStroke(),
+      session.autoFrame.takeAutoFrameForStroke(),
       isNull,
       reason: 'and only once — a second stroke must not inherit it',
     );
@@ -97,10 +97,10 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    session.beginAutoFrameForStroke();
+    session.autoFrame.beginAutoFrameForStroke();
     expect(session.activeLayer!.frames, hasLength(1));
 
-    session.flushAutoFrameForStroke();
+    session.autoFrame.flushAutoFrameForStroke();
     expect(
       session.activeLayer!.frames,
       hasLength(1),
@@ -120,11 +120,11 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    session.beginAutoFrameForStroke();
+    session.autoFrame.beginAutoFrameForStroke();
     // Nothing consumed it. The next press must not sweep it into ITS undo
     // entry — that would put two unrelated blocks behind one undo.
     session.selectFrameIndex(4);
-    expect(session.beginAutoFrameForStroke(), isTrue);
+    expect(session.autoFrame.beginAutoFrameForStroke(), isTrue);
     expect(session.activeLayer!.frames, hasLength(2));
     expect(
       session.historyManager.canUndo,
@@ -145,7 +145,7 @@ void main() {
     // path must say no for the SAME reason rather than growing a second
     // answer to 「can this row take a cel here」.
     expect(session.canCreateDrawingAtCurrentFrame, isFalse);
-    expect(session.canAutoCreateFrameForStroke, isFalse);
-    expect(session.beginAutoFrameForStroke(), isFalse);
+    expect(session.autoFrame.canAutoCreateFrameForStroke, isFalse);
+    expect(session.autoFrame.beginAutoFrameForStroke(), isFalse);
   });
 }

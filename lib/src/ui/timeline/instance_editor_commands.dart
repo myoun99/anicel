@@ -134,7 +134,7 @@ Future<void> activateCellOnDoubleTap(
   // branch: a drawing row standing on its Rotation lane is asking about the
   // LANE, and a lane's key creation is not this fork's business — so the
   // fork stands down and the editor's own lane branch answers.
-  if (!session.canNameLaneKeys && !session.activeCellHoldsAnInstance) {
+  if (!session.canNameLaneKeys && !session.cellInstances.activeCellHoldsAnInstance) {
     createActiveInstance(session);
     return;
   }
@@ -171,7 +171,7 @@ Future<void> editSelectionInstance(
   // the rung; the timeline host passes false.
   bool cutsAreThisPanels = true,
 }) async {
-  switch (session.editInstanceSubjectFor(
+  switch (session.cellInstances.editInstanceSubjectFor(
     cutsAreThisPanels: cutsAreThisPanels,
   )) {
     case EditInstanceSubject.cuts:

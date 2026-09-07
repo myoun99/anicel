@@ -47,7 +47,7 @@ void main() {
       headLayerId: mirror.id,
       spanRows: [LayerRowAddress(base.id), LayerRowAddress(mirror.id)],
     );
-    session.createInstancesForSelection();
+    session.cellInstances.createInstancesForSelection();
 
     expect(
       layerOf(base.id).timeline,

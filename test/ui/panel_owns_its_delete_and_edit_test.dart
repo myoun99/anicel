@@ -40,7 +40,7 @@ void main() {
       reason: 'fixture premise: a cut range is live',
     );
     expect(session.deleteSubject, DeleteSubject.cuts);
-    expect(session.editInstanceSubject, EditInstanceSubject.cuts);
+    expect(session.cellInstances.editInstanceSubject, EditInstanceSubject.cuts);
   });
 
   test('the TIMELINE panel does not reach for them', () {
@@ -62,14 +62,14 @@ void main() {
     // The gate is what the button lights on; if it lights, the press has to
     // do the timeline's thing (T25: one answer behind both).
     expect(
-      session.editInstanceSubjectFor(cutsAreThisPanels: false),
+      session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false),
       isNot(EditInstanceSubject.cuts),
     );
     // Reading it through the panel too, because the panel is what the
     // toolbar actually asks.
     expect(
       timeline.canEditInstance,
-      session.editInstanceSubjectFor(cutsAreThisPanels: false) !=
+      session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false) !=
           EditInstanceSubject.nothing,
     );
   });

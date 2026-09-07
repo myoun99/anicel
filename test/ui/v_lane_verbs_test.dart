@@ -67,12 +67,12 @@ void main() {
       ),
     );
     expect(
-      manager.canDeleteCellAtCurrentFrame,
+      manager.cells.canDeleteCellAtCurrentFrame,
       isTrue,
       reason: 'the key under the cursor is what Delete is offered for',
     );
 
-    manager.deleteCellAtCurrentFrame();
+    manager.cells.deleteCellAtCurrentFrame();
 
     expect(
       manager.activeTrack.effects.single.parameters['brightness']!.track,
@@ -102,7 +102,7 @@ void main() {
         brightnessLaneId(effect),
       ),
     );
-    manager.createInstancesForSelection();
+    manager.cellInstances.createInstancesForSelection();
 
     expect(
       manager.activeTrack.effects.single.parameters['brightness']!.track

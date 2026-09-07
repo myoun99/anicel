@@ -134,7 +134,7 @@ void main() {
     await _collapse(tester);
     expect(_isCollapsed(tester), isTrue, reason: 'really folded');
 
-    session.deleteCellAtCurrentFrame();
+    session.cells.deleteCellAtCurrentFrame();
     await tester.pumpAndSettle();
     final foldedEmpty = {
       for (final key in _barButtons) key: _enabledOf(tester, key),

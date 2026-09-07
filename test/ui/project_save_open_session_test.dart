@@ -131,9 +131,9 @@ void main() {
           'the load replaces the project, so the band pointing into the '
           'old one goes with it',
     );
-    expect(s.cellSelectionClaimsSubject, isFalse);
+    expect(s.cells.cellSelectionClaimsSubject, isFalse);
     expect(
-      s.canDeleteCellAtCurrentFrame,
+      s.cells.canDeleteCellAtCurrentFrame,
       isTrue,
       reason: 'and the cell verbs are live again on the loaded project',
     );

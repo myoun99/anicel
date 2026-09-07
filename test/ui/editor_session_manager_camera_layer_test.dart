@@ -51,7 +51,7 @@ void main() {
     expect(s.layerVerbs.canDeleteActiveLayer, isFalse);
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
-    expect(s.canBlankExposureAtCurrentFrame, isFalse);
+    expect(s.exposureVerbs.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
 
     // Copy/duplicate quietly refuse the camera layer.

@@ -110,8 +110,8 @@ void main() {
   test('a sweep in the middle leaves the head AND the tail standing', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 4);
-    expect(session.canBlankExposureForSelection, isTrue);
-    session.blankExposureAtCurrentFrame();
+    expect(session.exposureVerbs.canBlankExposureForSelection, isTrue);
+    session.exposureVerbs.blankExposureAtCurrentFrame();
 
     for (final id in ids) {
       expect(
@@ -126,7 +126,7 @@ void main() {
   test('the tail re-opens on the SAME cel, not a new drawing', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 4);
-    session.blankExposureAtCurrentFrame();
+    session.exposureVerbs.blankExposureAtCurrentFrame();
 
     final layer = session.layers.firstWhere((l) => l.id == ids.first);
     expect(layer.timeline[4]?.frameId, FrameId('${ids.first.value}-cel'));
@@ -141,7 +141,7 @@ void main() {
   test('a sweep that runs off the block only eats the overlap', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 4, toExclusive: 9);
-    session.blankExposureAtCurrentFrame();
+    session.exposureVerbs.blankExposureAtCurrentFrame();
     expect(
       coveredFrames(session, ids.first),
       [0, 1, 2, 3],
@@ -153,7 +153,7 @@ void main() {
   test('a sweep that swallows the block whole leaves the row empty', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 0, toExclusive: 6);
-    session.blankExposureAtCurrentFrame();
+    session.exposureVerbs.blankExposureAtCurrentFrame();
     for (final id in ids) {
       expect(coveredFrames(session, id), isEmpty);
     }
@@ -162,7 +162,7 @@ void main() {
   test('one press is ONE undo across every swept row', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 4);
-    session.blankExposureAtCurrentFrame();
+    session.exposureVerbs.blankExposureAtCurrentFrame();
     expect(coveredFrames(session, ids.first), [0, 4, 5]);
     expect(coveredFrames(session, ids[1]), [0, 4, 5]);
 
@@ -180,8 +180,8 @@ void main() {
     final (session, ids) = rig();
     // Frames 6..9 are past both blocks.
     sweep(session, ids, from: 6, toExclusive: 9);
-    expect(session.canBlankExposureForSelection, isFalse);
-    session.blankExposureAtCurrentFrame();
+    expect(session.exposureVerbs.canBlankExposureForSelection, isFalse);
+    session.exposureVerbs.blankExposureAtCurrentFrame();
     for (final id in ids) {
       expect(coveredFrames(session, id), [0, 1, 2, 3, 4, 5]);
     }
@@ -193,8 +193,8 @@ void main() {
     session.selectFrameIndex(3);
     session.clearFrameRangeSelection();
 
-    expect(session.canBlankExposureAtCurrentFrame, isTrue);
-    session.blankExposureAtCurrentFrame();
+    expect(session.exposureVerbs.canBlankExposureAtCurrentFrame, isTrue);
+    session.exposureVerbs.blankExposureAtCurrentFrame();
     expect(
       coveredFrames(session, ids.first),
       [0, 1, 2],

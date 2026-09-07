@@ -639,7 +639,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (!canvasToolMarksCel(toolState.tool)) {
       return false;
     }
-    if (session.beginAutoFrameForStroke()) {
+    if (session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }
     cursorNotices.show(_drawRefusalFor(session));

@@ -445,7 +445,7 @@ void main() {
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
     session.selectLayer(_seLayerId);
     session.selectFrameIndex(0);
-    session.deleteCellAtCurrentFrame();
+    session.cells.deleteCellAtCurrentFrame();
     await tester.pumpAndSettle();
 
     // The frame is gone AND the link went with it — the sound has no

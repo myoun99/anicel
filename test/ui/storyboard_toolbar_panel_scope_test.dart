@@ -341,7 +341,7 @@ void main() {
     manager.setCommaForSelectionOrCurrent(4);
     manager.selectFrameIndex(1);
     await tester.pumpAndSettle();
-    expect(manager.canBlankExposureAtCurrentFrame, isTrue,
+    expect(manager.exposureVerbs.canBlankExposureAtCurrentFrame, isTrue,
         reason: 'the SESSION would say yes — the refusal is the panel\'s');
     expect(manager.canCopyFrameAtCurrentFrame, isTrue);
 

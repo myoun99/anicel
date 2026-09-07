@@ -103,7 +103,7 @@ void main() {
     expect(manager.laneRangeSelection.value!.startIndex, 0);
     expect(manager.laneRangeSelection.value!.endIndexExclusive, 20);
 
-    manager.deleteCellAtCurrentFrame();
+    manager.cells.deleteCellAtCurrentFrame();
 
     expect(
       positionKeysOf(manager),
@@ -134,7 +134,7 @@ void main() {
       framesAreGlobal: true,
     );
     expect(
-      manager.canDeleteCellAtCurrentFrame,
+      manager.cells.canDeleteCellAtCurrentFrame,
       isTrue,
       reason:
           'the enablement predicate must read the GLOBAL layer too, or the '
@@ -163,7 +163,7 @@ void main() {
       reason: 'the window offset is added on the way in',
     );
 
-    manager.deleteCellAtCurrentFrame();
+    manager.cells.deleteCellAtCurrentFrame();
     expect(
       positionKeysOf(manager),
       [4],
