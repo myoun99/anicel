@@ -964,7 +964,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onCancel: _session.cancelExposureEdgeDrag,
                     ),
                     // The Audio lane's slide edit (active cut).
-                    onSetAudioClipOffset: _session.setAudioClipOffset,
+                    onSetAudioClipOffset: _session.audioClips.setAudioClipOffset,
                     // The TRANSITION row. This panel is its only editor: the
                     // row is track-owned and its spans address the global
                     // axis, so the cut timeline shows them read-only.

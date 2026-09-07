@@ -128,31 +128,31 @@ void main() {
 
     Layer seLayer() => _seLayer(session.repository);
     expect(
-      session.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0),
+      session.audioClips.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0),
       isTrue,
     );
 
     // Live preview: the MODEL carries the dragged offset (waveforms
     // everywhere repaint from it), history untouched.
-    session.updateAudioClipOffsetDrag(5);
+    session.audioClips.updateAudioClipOffsetDrag(5);
     expect(seLayer().audioClips.single.offsetFrames, 5);
     expect(session.canUndo, isFalse);
 
-    session.updateAudioClipOffsetDrag(9);
+    session.audioClips.updateAudioClipOffsetDrag(9);
     expect(seLayer().audioClips.single.offsetFrames, 9);
 
     // Release: ONE undo step back to the untouched clip.
-    session.endAudioClipOffsetDrag();
+    session.audioClips.endAudioClipOffsetDrag();
     expect(seLayer().audioClips.single.offsetFrames, 9);
     expect(session.canUndo, isTrue);
     session.undo();
     expect(seLayer().audioClips.single.offsetFrames, 0);
 
     // Cancel reverts silently.
-    session.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0);
-    session.updateAudioClipOffsetDrag(7);
+    session.audioClips.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0);
+    session.audioClips.updateAudioClipOffsetDrag(7);
     expect(seLayer().audioClips.single.offsetFrames, 7);
-    session.cancelAudioClipOffsetDrag();
+    session.audioClips.cancelAudioClipOffsetDrag();
     expect(seLayer().audioClips.single.offsetFrames, 0);
   });
 
@@ -276,7 +276,7 @@ void main() {
       '0f',
     );
 
-    // Tap to type: Enter commits through session.setAudioClipOffset.
+    // Tap to type: Enter commits through session.audioClips.setAudioClipOffset.
     await tester.tap(valueCell);
     await tester.pumpAndSettle();
     // F-22 ②: the `f` is CHROME — the box holds the number alone, and a
@@ -339,7 +339,7 @@ void main() {
         .firstWhere((layer) => layer.id == const LayerId('sea-cel'));
 
     // A DRAWING row has no clips to edit — and asking must not create one.
-    session.setAudioClipGain(const LayerId('sea-cel'), 0, 0.5);
+    session.audioClips.setAudioClipGain(const LayerId('sea-cel'), 0, 0.5);
     expect(celLayer().audioClips, isEmpty);
     expect(
       session.canUndo,
@@ -348,18 +348,18 @@ void main() {
     );
 
     // An index past the end is refused, not clamped to the last clip.
-    session.setAudioClipGain(_seLayerId, 7, 0.5);
+    session.audioClips.setAudioClipGain(_seLayerId, 7, 0.5);
     expect(seLayer().audioClips.single.gain, 1.0);
     expect(session.canUndo, isFalse);
 
     // Negative numbers clamp to zero rather than reaching the model.
-    session.setAudioClipOffset(_seLayerId, 0, -4);
+    session.audioClips.setAudioClipOffset(_seLayerId, 0, -4);
     expect(
       seLayer().audioClips.single.offsetFrames,
       0,
       reason: 'a negative slide is zero, not a negative offset',
     );
-    session.setAudioClipGain(_seLayerId, 0, -2);
+    session.audioClips.setAudioClipGain(_seLayerId, 0, -2);
     expect(
       seLayer().audioClips.single.gain,
       0.0,
@@ -422,7 +422,7 @@ void main() {
         .expand((cut) => cut.layers)
         .firstWhere((layer) => layer.id == const LayerId('sea-cel'));
 
-    session.setAudioClipGain(const LayerId('sea-cel'), 0, 0.25);
+    session.audioClips.setAudioClipGain(const LayerId('sea-cel'), 0, 0.25);
     expect(
       celLayer().audioClips.single.gain,
       0.75,

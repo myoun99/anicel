@@ -412,7 +412,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         if (offset == null || span == null) {
           return;
         }
-        _session.setAudioClipOffset(layer.id, span.clipIndex, offset);
+        _session.audioClips.setAudioClipOffset(layer.id, span.clipIndex, offset);
         return;
       }
       final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
@@ -782,9 +782,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                     blockStartFrame: blockStartFrame,
                     path: path,
                   ),
-              onSetClipOffset: _session.setAudioClipOffset,
+              onSetClipOffset: _session.audioClips.setAudioClipOffset,
               onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-                  _session.setAudioClipFades(
+                  _session.audioClips.setAudioClipFades(
                     layerId,
                     clipIndex,
                     fadeInFrames: fadeIn,

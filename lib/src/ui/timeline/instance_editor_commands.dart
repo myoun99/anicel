@@ -274,7 +274,7 @@ Future<void> _editSeLabel(
   // R5 #19: the block says what sound it carries. The clip's INDEX is the
   // token — a clip has no id, and it is read once here so the dialog and the
   // unlink below address the same list.
-  final linked = session.selectedSeAudioClips;
+  final linked = session.audioClips.selectedSeAudioClips;
   await _editSeEntryWithDialog(
     context,
     initialSeName: session.selectedFrameSeName ?? '',
@@ -286,7 +286,7 @@ Future<void> _editSeLabel(
     previewAxis: previewAxis,
     commit: (dialogue, seName) =>
         session.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
-    unlink: session.unlinkAudioClipsFromActiveLayer,
+    unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
   );
 }
 
@@ -355,7 +355,7 @@ Future<void> editSeEntryInstance(
       dialogue: dialogue,
       seName: seName,
     ),
-    unlink: (tokens) => session.unlinkAudioClipsFromLayer(layerId, tokens),
+    unlink: (tokens) => session.audioClips.unlinkAudioClipsFromLayer(layerId, tokens),
   );
 }
 

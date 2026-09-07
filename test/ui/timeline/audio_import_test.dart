@@ -105,15 +105,15 @@ void main() {
     // Animation layer active: the row cannot take a sound.
     session.selectLayer(_celLayerId);
     await tester.pumpAndSettle();
-    expect(session.canImportAudioToActiveLayer, isFalse);
+    expect(session.audioClips.canImportAudioToActiveLayer, isFalse);
 
     // SE layer at frame 4: imports at the playhead.
     session.selectLayer(_seLayerId);
     session.selectFrameIndex(4);
     await tester.pumpAndSettle();
-    expect(session.canImportAudioToActiveLayer, isTrue);
+    expect(session.audioClips.canImportAudioToActiveLayer, isTrue);
 
-    session.addAudioClipToActiveSeLayer(
+    session.audioClips.addAudioClipToActiveSeLayer(
       r'C:\sound\voice.wav',
       copyIntoProject: false,
     );
@@ -140,7 +140,7 @@ void main() {
 
     // Removal API round-trip.
     session.redo();
-    session.removeAudioClipAt(_seLayerId, 0);
+    session.audioClips.removeAudioClipAt(_seLayerId, 0);
     expect(seLayer().audioClips, isEmpty);
     // Flush the prerender scheduler's zero-delay yields before teardown.
     await tester.pumpAndSettle();
@@ -261,8 +261,8 @@ void main() {
     // Remove refuses while referenced, succeeds once the clips are gone,
     // and undoes back into the pool.
     expect(session.mediaPool.removeMediaAsset(moved), isFalse);
-    session.removeAudioClipAt(_seLayerId, 1);
-    session.removeAudioClipAt(_seLayerId, 0);
+    session.audioClips.removeAudioClipAt(_seLayerId, 1);
+    session.audioClips.removeAudioClipAt(_seLayerId, 0);
     expect(session.mediaPool.removeMediaAsset(moved), isTrue);
     expect(session.mediaPool.mediaAssets, isEmpty);
     session.undo();
@@ -380,9 +380,9 @@ void main() {
     expect(session.mediaPool.mediaAssets.single.path, foot);
 
     // The audio lane's slide edit: one undo step, clamped non-negative.
-    session.setAudioClipOffset(_seLayerId, 0, 6);
+    session.audioClips.setAudioClipOffset(_seLayerId, 0, 6);
     expect(seLayer().audioClips.single.offsetFrames, 6);
-    session.setAudioClipOffset(_seLayerId, 0, -4); // clamps back to 0
+    session.audioClips.setAudioClipOffset(_seLayerId, 0, -4); // clamps back to 0
     expect(seLayer().audioClips.single.offsetFrames, 0);
     session.undo();
     expect(seLayer().audioClips.single.offsetFrames, 6);
@@ -519,7 +519,7 @@ void main() {
       session.selectLayer(_seLayerId);
       session.selectFrameIndex(2);
       await tester.pumpAndSettle();
-      session.addAudioClipToActiveSeLayer(
+      session.audioClips.addAudioClipToActiveSeLayer(
         r'C:\sound\door-slam.wav',
         copyIntoProject: false,
       );
