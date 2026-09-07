@@ -125,12 +125,12 @@ void main() {
   group('the session', () {
     test('discarding retires the open project\'s sidecar', () async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
-      await s.writeAutosaveSnapshot(s.autosaveSidecarPath!);
-      final sidecar = File(s.autosaveSidecarPath!);
+      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.writeAutosaveSnapshot(s.projectFile.autosaveSidecarPath!);
+      final sidecar = File(s.projectFile.autosaveSidecarPath!);
       expect(sidecar.existsSync(), isTrue, reason: 'the tick wrote one');
 
-      s.discardAutosaveSidecar();
+      s.projectFile.discardAutosaveSidecar();
 
       expect(sidecar.existsSync(), isFalse);
     });
@@ -140,7 +140,7 @@ void main() {
       // so there is no path to retire and no null to trip over.
       EditorSessionManager(
         initialProject: createDefaultProject(),
-      ).discardAutosaveSidecar();
+      ).projectFile.discardAutosaveSidecar();
     });
 
     test('a snapshot armed BEFORE a save refuses to land AFTER it — the '
@@ -152,12 +152,12 @@ void main() {
       // file for a cleanly saved project, whose Accept can only fail the
       // stamp check. The completed-save generation is what still says no.
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
 
-      final armedBeforeSave = s.beginAutosaveStaleCheck();
+      final armedBeforeSave = s.projectFile.beginAutosaveStaleCheck();
       expect(armedBeforeSave(), isFalse, reason: 'nothing completed yet');
 
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
 
       expect(
         armedBeforeSave(),
@@ -168,7 +168,7 @@ void main() {
             'just deleted',
       );
       expect(
-        s.beginAutosaveStaleCheck()(),
+        s.projectFile.beginAutosaveStaleCheck()(),
         isFalse,
         reason: 'a freshly armed check starts clean',
       );
@@ -181,7 +181,7 @@ void main() {
       // used. Neither is where the save is going, so only a retirement
       // that looks at the path it came FROM reaches them.
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       final beside = File('$projectPath.autosave')..writeAsStringSync('old');
       final current = File(AppSave.recoveryPathFor(projectPath))
         ..createSync(recursive: true)
@@ -189,7 +189,7 @@ void main() {
       addTearDown(() => current.parent.deleteSync(recursive: true));
       expect(beside.path, isNot(current.path));
 
-      await s.saveProjectToFile(
+      await s.projectDoor.saveProjectToFile(
         '${folder.path.replaceAll('\\', '/')}/Cut 13.anicel',
       );
 
@@ -208,39 +208,39 @@ void main() {
       // fires before the user has touched anything, with Close as the
       // primary button. Retiring there deletes the crash work at one tap.
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       final sidecar = '$projectPath.autosave';
-      await s.writeAutosaveSnapshot(sidecar);
+      await s.projectDoor.writeAutosaveSnapshot(sidecar);
 
       final recovered = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
       // The modern route: the snapshot is an OVERLAY laid over the base
       // (the legacy `recoverAs:` arm is for pre-overlay whole archives).
-      await recovered.openProjectFromFile(projectPath, overlayPath: sidecar);
-      recovered.discardAutosaveSidecar();
+      await recovered.projectDoor.openProjectFromFile(projectPath, overlayPath: sidecar);
+      recovered.projectFile.discardAutosaveSidecar();
 
       expect(File(sidecar).existsSync(), isTrue);
 
       // And saving DOES retire it: the work is in the project file now, so
       // the exception ends with the reason for it.
-      await recovered.saveProjectToFile(projectPath);
+      await recovered.projectDoor.saveProjectToFile(projectPath);
       expect(File(sidecar).existsSync(), isFalse);
     });
 
     test('an ordinary open does not inherit the recovery exception', () async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       final sidecar = '$projectPath.autosave';
-      await s.writeAutosaveSnapshot(sidecar);
-      await s.openProjectFromFile(projectPath, overlayPath: sidecar);
+      await s.projectDoor.writeAutosaveSnapshot(sidecar);
+      await s.projectDoor.openProjectFromFile(projectPath, overlayPath: sidecar);
       // …then opens something else the normal way.
       final other = '${folder.path.replaceAll('\\', '/')}/Cut 99.anicel';
-      await s.saveProjectToFile(other);
-      await s.openProjectFromFile(other);
+      await s.projectDoor.saveProjectToFile(other);
+      await s.projectDoor.openProjectFromFile(other);
       final otherSidecar = File('$other.autosave')..writeAsStringSync('x');
 
-      s.discardAutosaveSidecar();
+      s.projectFile.discardAutosaveSidecar();
 
       expect(otherSidecar.existsSync(), isFalse);
     });
@@ -253,20 +253,20 @@ void main() {
       // is still dirty, so a fresh snapshot renames straight over the
       // retirement and the next open hands the discarded work back.
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.createCut();
-      expect(s.hasUnsavedChanges, isTrue);
+      expect(s.projectFile.hasUnsavedChanges, isTrue);
 
-      s.discardAutosaveSidecar();
+      s.projectFile.discardAutosaveSidecar();
 
       expect(
-        s.autosaveShouldStandDown,
+        s.projectFile.autosaveShouldStandDown,
         isTrue,
         reason: 'the exit lifecycle is still to come',
       );
       // And the writer refuses even if something calls it directly.
-      await s.writeAutosaveSnapshot(s.autosaveSidecarPath!);
-      expect(File(s.autosaveSidecarPath!).existsSync(), isFalse);
+      await s.projectDoor.writeAutosaveSnapshot(s.projectFile.autosaveSidecarPath!);
+      expect(File(s.projectFile.autosaveSidecarPath!).existsSync(), isFalse);
     });
 
     test('an autosave tick stands down while a manual save runs', () async {
@@ -275,19 +275,19 @@ void main() {
       // offers to recover it. Sync deletion does not close that window —
       // it settles delete-versus-write, and this is write-versus-delete.
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.createCut(); // Any command raises the dirty flag.
       var ticked = false;
       final autosave = ProjectAutosaveService(
-        isDirty: () => s.hasUnsavedChanges && !s.autosaveShouldStandDown,
+        isDirty: () => s.projectFile.hasUnsavedChanges && !s.projectFile.autosaveShouldStandDown,
         writeSnapshot: (path) async {
           ticked = true;
-          await s.writeAutosaveSnapshot(path);
+          await s.projectDoor.writeAutosaveSnapshot(path);
         },
-        autosavePath: () => s.autosaveSidecarPath!,
+        autosavePath: () => s.projectFile.autosaveSidecarPath!,
       );
 
-      final saving = s.saveProjectToFile(projectPath);
+      final saving = s.projectDoor.saveProjectToFile(projectPath);
       await autosave.saveNow();
       await saving;
 
@@ -300,13 +300,13 @@ void main() {
       // the work moved to a new file, so reopening the old one would offer
       // to restore a session that no longer belongs to it.
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      await s.saveProjectToFile(projectPath);
-      await s.writeAutosaveSnapshot(s.autosaveSidecarPath!);
-      final oldSidecar = File(s.autosaveSidecarPath!);
+      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.writeAutosaveSnapshot(s.projectFile.autosaveSidecarPath!);
+      final oldSidecar = File(s.projectFile.autosaveSidecarPath!);
       expect(oldSidecar.existsSync(), isTrue);
 
       final newPath = '${folder.path.replaceAll('\\', '/')}/Cut 13.anicel';
-      await s.saveProjectToFile(newPath);
+      await s.projectDoor.saveProjectToFile(newPath);
 
       expect(oldSidecar.existsSync(), isFalse);
     });
@@ -405,7 +405,7 @@ void main() {
           selection.layerId,
           selection.frameId,
         ),
-        frameStore: s.brushFrameStore,
+        frameStore: s.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(
           canvasSize: s.requireActiveCut.canvasSize,
           tileSize: 256,
@@ -429,7 +429,7 @@ void main() {
           ),
         ],
       );
-      await tester.runAsync(() => s.saveProjectToFile(projectPath));
+      await tester.runAsync(() => s.projectDoor.saveProjectToFile(projectPath));
       final savedCels = [
         for (final entry in parseAnicelZipLayoutFile(projectPath).entries)
           if (entry.name.endsWith('.celz')) entry.name,
@@ -439,7 +439,7 @@ void main() {
       // current candidate spot, newer than the base.
       s.createCut();
       final sidecar = AppSave.recoveryPathFor(projectPath);
-      await tester.runAsync(() => s.writeAutosaveSnapshot(sidecar));
+      await tester.runAsync(() => s.projectDoor.writeAutosaveSnapshot(sidecar));
       addTearDown(() => File(sidecar).parent.deleteSync(recursive: true));
       File(sidecar).setLastModifiedSync(
         File(projectPath).lastModifiedSync().add(const Duration(minutes: 5)),
@@ -624,14 +624,14 @@ void main() {
           .widget<EditorWorkspace>(find.byType(EditorWorkspace))
           .session;
       expect(
-        session.projectFilePath,
+        session.projectFile.path,
         projectPath,
         reason: 'the rest of this test is meaningless without the open',
       );
 
       // Now dirty it, and let a tick write a fresh snapshot of the edits.
       session.setProjectBackground(ProjectBackground.black);
-      expect(session.hasUnsavedChanges, isTrue);
+      expect(session.projectFile.hasUnsavedChanges, isTrue);
       final sidecar = File(writeNewerSidecar(projectPath));
 
       // Reopen the SAME project and decline again.

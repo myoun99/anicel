@@ -75,7 +75,7 @@ void main() {
     // no hub wired, so nothing here counts as an edit burst yet.
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey,
-      frameStore: session.brushFrameStore,
+      frameStore: session.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
         tileSize: 4,
@@ -100,16 +100,16 @@ void main() {
       ],
     );
 
-    await session.cutFrameCompositeCache.prepareComposite(
+    await session.renderCaches.cutFrameCompositeCache.prepareComposite(
       cut: activeCut,
       frameIndex: 0,
-      quality: session.playbackQuality,
+      quality: session.playbackRig.playbackQuality,
     );
     expect(
-      session.cutFrameCompositeCache.validCompositeOrNull(
+      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
-        quality: session.playbackQuality,
+        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
     );
@@ -120,29 +120,29 @@ void main() {
 
     var restarts = 0;
     void countRestarts() {
-      final value = session.prerenderScheduler.progress.value;
+      final value = session.playbackRig.prerenderScheduler.progress.value;
       if (value.cached == 0 && value.total > 0) {
         restarts += 1;
       }
     }
 
-    session.prerenderScheduler.progress.addListener(countRestarts);
+    session.playbackRig.prerenderScheduler.progress.addListener(countRestarts);
     addTearDown(
-      () => session.prerenderScheduler.progress.removeListener(countRestarts),
+      () => session.playbackRig.prerenderScheduler.progress.removeListener(countRestarts),
     );
 
     // The burst: five dab commits' worth of invalidations, synchronously.
     for (var i = 0; i < 5; i += 1) {
-      session.cacheInvalidationHub.invalidateBrushFrame(
+      session.renderCaches.cacheInvalidationHub.invalidateBrushFrame(
         BrushFrameCacheInvalidation(frameKey: frameKey, wholeFrame: true),
       );
     }
 
     expect(
-      session.cutFrameCompositeCache.validCompositeOrNull(
+      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
-        quality: session.playbackQuality,
+        quality: session.playbackRig.playbackQuality,
       ),
       isNull,
       reason: 'only the RESTART is deferred — a stale composite must be '

@@ -48,7 +48,7 @@ void main() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
 
     for (var i = 0; i < extraLayers; i += 1) {
-      session.addLayer();
+      session.layerStack.addLayer();
     }
     // Fill each layer with drawings so the grid has real content to lay
     // out — an empty timeline is not what the user's project looks like.
@@ -561,7 +561,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       for (var i = 0; i < layers; i += 1) {
-        session.addLayer();
+        session.layerStack.addLayer();
       }
       for (final layer in session.layers.toList()) {
         session.selectLayer(layer.id);

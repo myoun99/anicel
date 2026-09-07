@@ -139,7 +139,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       windowKey: 'playback-quality-dialog',
       title: AppText.strings.playbackQuality,
       titleIcon: Icons.high_quality_outlined,
-      current: session.playbackQuality,
+      current: session.playbackRig.playbackQuality,
       choices: [
         for (final preset in PlaybackQuality.values)
           (
@@ -150,7 +150,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       ],
     );
     if (quality != null) {
-      session.setPlaybackQuality(quality);
+      session.playbackRig.setPlaybackQuality(quality);
     }
   }
 
@@ -184,7 +184,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
         keyValue: 'project-settings-quality',
         label:
             '${strings.playbackQuality} · '
-            '${PlaybackTransportControls.qualityLabel(session.playbackQuality)}',
+            '${PlaybackTransportControls.qualityLabel(session.playbackRig.playbackQuality)}',
         icon: Icons.high_quality_outlined,
         onSelected: () => unawaited(_editQuality(context)),
       ),

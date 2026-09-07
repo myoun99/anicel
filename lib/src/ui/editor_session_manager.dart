@@ -1,4 +1,4 @@
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -10,12 +10,7 @@ import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
 import '../services/import/media_identity_reader.dart';
-import '../services/persistence/media_blob_codec.dart';
 import '../services/persistence/media_staging_store.dart';
-import '../services/persistence/anicel_incremental_writer.dart'
-    show parseAnicelZipLayoutFile;
-import '../services/media/media_byte_source.dart';
-import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_import_planner.dart';
@@ -24,7 +19,6 @@ import '../services/project_lookup.dart'
     show
         cutPositionOf,
         projectArchivedMediaPaths,
-        projectAudioSourcePaths,
         projectLayerIdValues,
         requireLayerAnywhere;
 import '../models/app_language.dart';
@@ -51,7 +45,6 @@ import '../models/app_accents.dart';
 import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
 import '../services/editing/layer_standing_after_change.dart';
-import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/attached_layer_mount.dart';
 import '../models/attached_layer_resolve.dart';
@@ -62,8 +55,6 @@ import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
 import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
-import '../models/conte/conte_ink_keys.dart';
-import '../models/envelope/cut_envelope_ink_keys.dart';
 import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
@@ -89,7 +80,6 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
-import '../models/layer_section_defaults.dart';
 import '../models/media_asset.dart';
 import '../models/onion_skin_settings.dart';
 import '../models/project_background.dart';
@@ -118,35 +108,21 @@ import '../models/track_se_window.dart';
 import '../models/transition_geometry.dart';
 import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
-import '../services/brush_frame_store.dart';
 import '../services/commands/convert_to_linked_cut_plan.dart';
-import '../models/brush_frame_cache_invalidation.dart';
-import '../models/playback_quality.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../services/se_name_tag_plan.dart';
-import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
-import 'playback/audio_device_transport.dart';
-import 'playback/audio_playback_sync.dart';
-import 'playback/audio_scrubber.dart';
 import 'playback/audio_sync_settings.dart';
-import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
-import 'playback/cut_frame_composite_cache.dart';
-import 'playback/layer_frame_image_cache.dart';
-import 'playback/playback_cache_budget.dart';
-import 'playback/playback_prerender_scheduler.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/cut_command_input_planner.dart'
-    show nextFolderName;
 import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
@@ -154,24 +130,14 @@ import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
-import '../services/persistence/project_autosave_service.dart';
-import '../services/persistence/anicel_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
-import '../native/qa_audio_device.dart' show QaAudioDevice;
-import '../native/qa_native_engine.dart' show QaNativeEngine;
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
-import '../services/audio/audio_conform_pipeline.dart' show ConformCacheLayout;
-import '../services/audio/conform_cache_maintenance.dart'
-    show pruneConformCache;
 import '../services/persistence/folder_grant.dart'
     show FolderPicker;
-import '../services/persistence/anicel_project_archive.dart'
-    show anicelConformEntryNames, remapProjectMediaPaths;
 import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
-import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
@@ -189,8 +155,6 @@ import 'timeline/property_lane_model.dart'
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
-import 'timeline/timeline_instruction_row_visual.dart'
-    show instructionCellExposureState;
 import 'timeline/timeline_drag_preview.dart';
 import 'session/session_roles.dart';
 import 'session/media_fingerprint_ledger.dart';
@@ -198,6 +162,10 @@ import 'session/media_grant_ledger.dart';
 import 'session/import_landing.dart';
 import 'session/project_import_doors.dart';
 import 'session/cut_folder_import_door.dart';
+import 'session/project_file.dart';
+import 'session/project_file_door.dart';
+import 'session/playback_rig.dart';
+import 'session/render_caches.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -220,7 +188,8 @@ import 'session/storyboard_cursor.dart';
 import 'session/storyboard_rows.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
-import 'session/playback_cache_budget.dart';
+import 'session/active_cut_controllers.dart';
+import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/range_selections.dart';
@@ -284,52 +253,33 @@ class EditorSessionManager extends ChangeNotifier
       repository: repository,
       editingSession: editingSession,
       historyManager: historyManager,
-      brushFrameStore: brushFrameStore,
+      brushFrameStore: renderCaches.brushFrameStore,
     );
-    rebuildActiveCutControllers();
-    cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
-    // Transport FIRST: listener order is its contract with the fallback —
-    // carryingPlayback must be decided before the sync consults it.
-    audioDeviceTransport.attach();
-    audioPlaybackSync.attach();
-    playback.globalFrameIndexListenable.addListener(followPlaybackCut);
+    activeCutControllers.rebuild();
+    renderCaches.attach();
+    playbackRig.attach();
+    playbackRig.playback.globalFrameIndexListenable.addListener(
+      followPlaybackCut,
+    );
     // The lane span's cut-window view follows the span itself; the other
     // half of its input (which cut is open) republishes on cut switch.
     laneRangeSelection.addListener(_publishCutLocalLaneRange);
     // Dirty tracking (P3): every history change — commands, undo/redo and
     // brush strokes, which execute here straight from the canvas — marks
     // the project unsaved.
-    historyManager.addListener(_markProjectDirty);
+    historyManager.addListener(projectFile.markDirty);
     // AUDIO-PRO R3: any history change while the device carries playback
     // re-uploads the schedule, so edits (and their undo/redo) are heard
     // within one mixed block. Gated on carrying — the reupload costs a
     // PCM copy, and outside live playback the activation rebuild covers
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
-    // The unworked-block tint's two events (see [celTintRevision]): the
-    // store's empty↔drawn crossing, and the pen going down on a cel.
-    brushFrameStore.celContentRevision.addListener(_bumpCelTintRevision);
-    brushInputActive.addListener(_bumpCelTintRevision);
-    // 🚨And the THIRD: any pixel edit at all. The crossing detector above
-    // asks whether the store HOLDS a surface for the cel, not whether that
-    // surface has ink in it — so 픽셀 비우기 leaves an all-transparent
-    // surface, `has == had`, and it never bumps. The block went on showing
-    // 「그려짐」 for a cel with nothing in it (유저 2026-08-27: 「블록도
-    // 반영안되는데」), because the tint's own revision never moved and the
-    // painter's repaint gating had no reason to re-ask.
-    //
-    // ⚠️This fires as often as the user draws — but the timeline host ALSO
-    // merges `celPixelRevision` into its frame-ready signal, so the rebuild
-    // it costs is one that was already happening; what changes is that the
-    // tint re-reads inside it instead of serving a stale answer.
-    brushFrameStore.celPixelRevision.addListener(_bumpCelTintRevision);
+    layerStack.attach();
     // Text cel projections follow the model through EVERY mutation path
     // (edit/undo/redo/paste/duplicate/link) — one history listener, the
     // sweep re-renders whatever went stale (R5).
     historyManager.addListener(_textCelBakes.scheduleTextCelBakeSweep);
   }
-
-  static const FrameId _frameId = FrameId('default-frame');
 
   @override
   final EditingSessionState editingSession;
@@ -419,34 +369,35 @@ class EditorSessionManager extends ChangeNotifier
   /// it. Not a listenable: only the release path reads it.
   CanvasTool? heldOriginalTool;
 
-  /// App-level brush stroke store shared with the canvas host, so commands
-  /// (e.g. anchored canvas resize) can transform stroke data.
-  ///
-  /// The link resolver reads the CURRENT project's registry on every
-  /// resolve (L1) — link edits need no event plumbing to reach the store.
-  @override
-  late final BrushFrameStore brushFrameStore = BrushFrameStore()
-    // 유저 확정 (2026-08-16): the hot budget scales to the MACHINE —
-    // RAM/4 clamped — instead of assuming a desktop. Unknown RAM (no
-    // engine: tests, host) keeps the old 1536MB, byte-for-byte.
-    ..hotCelByteBudget = deviceScaledHotCelBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    )
-    ..setLinkResolver(
-      (key) =>
-          repository.currentProject?.linkRegistry.canonicalCelKey(key) ?? key,
-    );
+  // ── every pixel this session is holding: its own object ─────────────
+  //
+  // A collaborator (session/render_caches.dart): the cel stores the
+  // archive persists, the two playback render caches built over them,
+  // the invalidation hub the commands publish on, and the debounce that
+  // restarts warming once per edit burst.
+  //
+  // ⛔The session keeps [warmActiveCut] — which cut, around which frame,
+  // at which quality reads the standing row, the timeline controller and
+  // the storyboard order. A cache stack that reached back out for it
+  // could not be built at all: the playback rig reaches IN here for the
+  // composite cache.
+  late final RenderCaches renderCaches = RenderCaches(
+    project: this,
+    changes: this,
+    internals: this,
+    onEditActivity: () => playbackRig.prerenderScheduler.notifyEditActivity(),
+  );
 
   /// The OS memory-pressure signal, forwarded by the workspace's binding
   /// observer: the hot cel tier halves and cools, and the playback caches
   /// re-run their budget against the shrunken world. Standing down is
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
-    brushFrameStore.respondToMemoryPressure();
+    renderCaches.brushFrameStore.respondToMemoryPressure();
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();
-    playbackCache.respondToMemoryPressure();
+    playbackRig.playbackCache.respondToMemoryPressure();
     memoryPressureTicks.value += 1;
   }
 
@@ -465,198 +416,30 @@ class EditorSessionManager extends ChangeNotifier
   /// bool would coalesce the second one into silence).
   final ValueNotifier<int> memoryPressureTicks = ValueNotifier<int>(0);
 
-  /// Page-raster bytes each mounted media viewer is holding, by viewer id.
-  ///
-  /// 🚨**PUSHED, where every other census number is PULLED.** The census
-  /// is deliberately addition rather than measurement — it reads counters
-  /// the holder already keeps — and it can do that because the session
-  /// owns those holders. It does not own these: the viewer's pages live in
-  /// a widget State that mounts and unmounts as tabs open and rails fold,
-  /// and there are two of them. So the viewers write here instead, and
-  /// clear their entry when they go.
-  ///
-  /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
-  /// about a cache that can hold a quarter of a gigabyte per viewer — the
-  /// gap would land in `untrackedBytes` and read as engine overhead.
-  final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
-
-  /// What the media viewers hold between them.
-  int get viewerRasterBytes {
-    var total = 0;
-    for (final bytes in viewerRasterBytesByViewer.values) {
-      total += bytes;
-    }
-    return total;
-  }
-
-  /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
-  /// archive can persist them (the second cel namespace), while the ink
-  /// controller (workspace UI) keeps the coordinators. The ROW store's
-  /// keys carry storyboard block [FrameId]s: entries whose block no longer
-  /// exists are pruned at LOAD (never at save — a deleted block's ink must
-  /// survive its own undo), so "ink dies with the drawing" lands at the
-  /// session boundary.
-  final BrushFrameStore conteInkRowStore = BrushFrameStore();
-  final BrushFrameStore conteInkPageStore = BrushFrameStore();
-
-  /// The cut envelope's ink store — SESSION-owned for the same reason: the
-  /// archive persists it, the workspace's controller owns the coordinator.
-  /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
-  /// pruned at LOAD exactly like a conte row's.
-  final BrushFrameStore envelopeInkStore = BrushFrameStore();
-
-  /// Production sink for brush edit invalidations; playback caches and the
-  /// prerender scheduler listen here.
-  @override
-  final EditorCacheInvalidationHub cacheInvalidationHub =
-      EditorCacheInvalidationHub();
-
-  // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
-
-  @override
-  late final LayerFrameImageCache layerFrameImageCache = LayerFrameImageCache(
-    frameStore: brushFrameStore,
-  );
-
-  @override
-  late final CutFrameCompositeCache cutFrameCompositeCache =
-      CutFrameCompositeCache(
-        layerImages: layerFrameImageCache,
-        frameStore: brushFrameStore,
-        frameKeyOf: brushFrameKeyForCut,
-      );
-
-  // ── the playback cache budget: its own object ───────────────────────
+  // ── playback's own machinery: its own object ────────────────────────
   //
-  // A collaborator (session/playback_cache_budget.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final PlaybackCacheBudget playbackCache = PlaybackCacheBudget(project: this, internals: this);
-
-  int get playbackCacheByteBudget => playbackCache.playbackCacheByteBudget;
-  void enforcePlaybackCacheBudget() =>
-      playbackCache.enforcePlaybackCacheBudget();
-  bool isPlaybackFrameReady(int frameIndex) =>
-      playbackCache.isPlaybackFrameReady(frameIndex);
-  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) =>
-      playbackCache.isPlaybackFrameReadyForCut(cut, frameIndex);
-
-  @override
-  late final PlaybackPrerenderScheduler prerenderScheduler =
-      PlaybackPrerenderScheduler(
-        composites: cutFrameCompositeCache,
-        resolveCut: cutById,
-        // Widget tests: zero idle delay, like before R13-3 — the
-        // quiet-window polls otherwise leave a pending gate timer at
-        // teardown (the session's tearDown dispose runs AFTER the
-        // binding's timer invariant). The debounce/hold semantics have
-        // their own scheduler unit tests with injected delays.
-        //
-        // Production: 1200ms (R13-4) — during an active work session the
-        // warmer resumes only in REAL pauses; per-tile abort granularity
-        // covers whatever still collides at the resume boundary.
-        idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
-            ? Duration.zero
-            : const Duration(milliseconds: 1200),
-        afterFrameCached: enforcePlaybackCacheBudget,
-      );
-
-  /// Playback preview quality (Premiere/AE monitor resolution analogue).
-  @override
-  PlaybackQuality playbackQuality = defaultPlaybackQuality;
-
-  void setPlaybackQuality(PlaybackQuality quality) {
-    if (playbackQuality == quality) {
-      return;
-    }
-    playbackQuality = quality;
-    warmActiveCut();
-    notifyListeners();
-  }
-
-  /// Canvas playback state machine; only the playback view and transport
-  /// controls listen (the session playhead syncs once on stop).
-  @override
-  late final CanvasPlaybackController playback = CanvasPlaybackController(
-    resolveProject: repository.requireProject,
-    resolveActiveCutId: () => editingSession.activeCutId,
-    resolveActiveTrackId: () => selectedTrackId,
-    resolveFrameRate: () => projectFrameRate,
+  // A collaborator (session/playback_rig.dart): the transport, its three
+  // audio paths, the prerender warmer and the cache budget it feeds.
+  //
+  // ⛔The session keeps the REACTIONS below — where the playhead lands
+  // when a run stops, which cut goes active while it crosses one, what a
+  // rolling take does about it. They touch the selection, the standing
+  // row and the voice recorder, and a rig that reached back out for those
+  // could not be built: `Standing` and `RangeSelections` reach IN here
+  // for the warmer.
+  late final PlaybackRig playbackRig = PlaybackRig(
+    project: this,
+    selection: this,
+    changes: this,
+    timeline: this,
+    internals: this,
+    renderCaches: renderCaches,
+    settings: _projectSettings,
+    voiceRecording: _voiceRecording,
+    audioConformStore: audioConformStore,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
-  );
-
-  /// The native device transport (audio program wiring): when it carries a
-  /// run, playback rides the audio master clock — the picture follows the
-  /// samples handed to the device, and cumulative drift is structurally
-  /// zero. Stands down per run (no binary/device, PCM not resident) onto
-  /// [audioPlaybackSync].
-  late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
-    controller: playback,
-    resolveFrameRate: () => projectFrameRate,
-    resolveProject: () => repository.currentProject,
-    conformStore: audioConformStore,
-    // Widget tests must never open a real OS audio device.
-    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
-        ? () => null
-        : null,
-    resolveUserOffsetSamples: (sampleRate) =>
-        audioSyncSettings.value.offsetSamples(
-          sampleRate: sampleRate,
-          frameRateNumerator: projectFrameRate.numerator,
-          frameRateDenominator: projectFrameRate.denominator,
-        ),
-    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
-    resolveCueClips: () => voiceRecordCueClips,
-    resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
-  );
-
-  /// The output/input device lists for the Preferences pickers (AUDIO-PRO
-  /// R4); empty without a native binary (widget tests, engine-less runs).
-  List<({String name, bool isDefault})> audioDevicesOf({
-    required bool capture,
-  }) {
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return const [];
-    }
-    return QaAudioDevice.instance?.devicesOf(capture: capture) ?? const [];
-  }
-
-  /// Scrubbing the playhead plays each crossed frame's slice of the mix
-  /// (2D): one `play(frame, frame+1)` per crossed frame on the same
-  /// transport playback uses. Stands down silently without a device or
-  /// resident PCM — the scrub stays visual-only, as before.
-  @override
-  late final AudioScrubber audioScrubber = AudioScrubber(
-    controller: playback,
-    resolveFrameRate: () => projectFrameRate,
-    resolveProject: () => repository.currentProject,
-    conformStore: audioConformStore,
-    // Widget tests must never open a real OS audio device.
-    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
-        ? () => null
-        : null,
-    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
-    resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
-  );
-
-  /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
-  /// come from the conform store (exact sample counts, with the ffmpeg
-  /// peaks approximation as its own fallback). Fallback path — stands down
-  /// for runs the device transport carries.
-  late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
-    controller: playback,
-    resolveFrameRate: () => projectFrameRate,
-    durationSecondsFor: audioConformStore.durationSecondsFor,
-    playerFactory: AudioplayersClipPlayer.new,
-    // Track-owned SE rows schedule from the tracks' global axes.
-    resolveProject: () => repository.currentProject,
-    deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
-    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
-    resolveCueClips: () => voiceRecordCueClips,
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -673,7 +456,7 @@ class EditorSessionManager extends ChangeNotifier
     if (lastPosition.cutId != editingSession.activeCutId) {
       selectCut(lastPosition.cutId);
     }
-    selectFrameIndex(_clampedFrameIndex(lastPosition.localFrameIndex));
+    selectFrameIndex(activeCutControllers.clampedFrameIndex(lastPosition.localFrameIndex));
     // The mid-playback cut follow is QUIET (R12-B) — this is the one
     // session notify that catches every activeCut consumer up with where
     // playback landed.
@@ -705,16 +488,16 @@ class EditorSessionManager extends ChangeNotifier
   /// consumers catch up on the stop notify.
   @override
   void followPlaybackCut() {
-    if (playback.globalFrameIndexListenable.value == null) {
+    if (playbackRig.playback.globalFrameIndexListenable.value == null) {
       return;
     }
-    final position = playback.position;
+    final position = playbackRig.playback.position;
     if (position == null || position.cutId == editingSession.activeCutId) {
       return;
     }
     editingSession.setActiveCutId(position.cutId);
     _clipboard.dropCopiedFrame();
-    rebuildActiveCutControllers(preferredFrameIndex: position.localFrameIndex);
+    activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
   }
 
   void _onPlaybackPlaylistWarmRequested(
@@ -734,9 +517,9 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final start = startGlobalFrame.clamp(0, frames.length - 1);
-    prerenderScheduler.requestWarmFrames(
+    playbackRig.prerenderScheduler.requestWarmFrames(
       frames: [...frames.sublist(start), ...frames.sublist(0, start)],
-      quality: playbackQuality,
+      quality: playbackRig.playbackQuality,
     );
   }
 
@@ -746,10 +529,35 @@ class EditorSessionManager extends ChangeNotifier
   late final CutCommandCoordinator cutCommandCoordinator;
   @override
   final CutReorderPlanner cutReorderPlanner = const CutReorderPlanner();
-  @override
-  late LayerController layerController;
-  @override
-  late TimelineController timelineController;
+
+  // ── the active cut's two controllers: their own object ──────────────
+  //
+  // A collaborator (session/active_cut_controllers.dart). Everything
+  // reads them and exactly one thing replaces them, together, because
+  // they are one fact: the cut this session is editing.
+  //
+  // ⛔The session keeps the REACTION to a rebuild — the stranded verb
+  // row, the drawn row, the cut-local view of a track-global lane span.
+  // Those touch the standing row, and `Standing` reads the controllers,
+  // so they arrive there as the `onRebuilt` callback.
+  late final ActiveCutControllers activeCutControllers = ActiveCutControllers(
+    project: this,
+    selection: this,
+    timeline: this,
+    internals: this,
+    playbackFrameCount: () => activeCutPlaybackFrameCount,
+    trackSeDisplayLayers: () => trackSeDisplayLayers,
+    trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
+    onRebuilt: () {
+      _standing.unseatStrandedVerbRow();
+      // A cut switch re-seats the active layer, which is what the drawn row
+      // falls back to when nothing is engaged.
+      _standing.publishCurrentRow();
+      // The window moved, so the part of a track-global lane span this cut
+      // can see moved with it. The selection itself is untouched.
+      _publishCutLocalLaneRange();
+    },
+  );
 
   int _layerSequence = 1;
   int _frameSequence = 0;
@@ -787,14 +595,36 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, timeline: this, internals: this);
-  late final LayerClipboard _layerClipboard = LayerClipboard(project: this, selection: this, changes: this, internals: this);
+  late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
+  late final LayerClipboard _layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
 
   // ── the layer verbs: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
+  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, activeCut: _activeCutEdits);
+
+  // ── the cut's row stack: its own object ─────────────────────────────
+  //
+  // A collaborator (session/layer_stack.dart): which rows this cut can
+  // still gain, and whether the row it already has is holding a picture.
+  //
+  // ⛔It does not reimplement "insert above the active row" — that verb
+  // is [LayerVerbs.addRowAboveActive] and the stack calls it. What lives
+  // there is the kind-by-kind decision of WHAT to insert.
+  late final LayerStack layerStack = LayerStack(
+    project: this,
+    selection: this,
+    changes: this,
+    frameIds: this,
+    controllers: activeCutControllers,
+    internals: this,
+    layerVerbs: _layerVerbs,
+    standing: _standing,
+    folderBands: _folderBands,
+    renderCaches: renderCaches,
+    brushInputActive: brushInputActive,
+  );
 
   bool get canDeleteActiveLayer => _layerVerbs.canDeleteActiveLayer;
   bool canDeleteLayer(Layer activeLayer) =>
@@ -837,48 +667,8 @@ class EditorSessionManager extends ChangeNotifier
   bool get canUndo => historyManager.canUndo;
   bool get canRedo => historyManager.canRedo;
 
-  @override
-  void rebuildActiveCutControllers({
-    LayerId? preferredActiveLayerId,
-    int preferredFrameIndex = 0,
-  }) {
-    final activeCutId = editingSession.activeCutId;
-    final initialActiveLayerId = activeCutHasLayer(preferredActiveLayerId)
-        ? preferredActiveLayerId
-        : null;
-
-    layerController = LayerController(
-      repository: repository,
-      historyManager: historyManager,
-      cutId: activeCutId,
-      frameId: _frameId,
-      initialActiveLayerId: initialActiveLayerId,
-      trackSeDisplayLayers: () => trackSeDisplayLayers,
-      trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
-    );
-    timelineController = TimelineController(
-      repository: repository,
-      historyManager: historyManager,
-      cutId: activeCutId,
-      initialFrameIndex: _clampedFrameIndex(preferredFrameIndex),
-      // Track-SE mutations shift to the global axis inside the controller;
-      // reads keep flowing through the cut-local display clones.
-      frameOffsetForLayer: (layerId) =>
-          isTrackSeLayerId(layerId) ? activeCutGlobalStartFrame : 0,
-      trackSeLayers: () => activeTrack.seLayers,
-    );
-    editingFrameCursor.value = timelineController.currentFrameIndex;
-    _standing.unseatStrandedVerbRow();
-    // A cut switch re-seats the active layer, which is what the drawn row
-    // falls back to when nothing is engaged.
-    _standing.publishCurrentRow();
-    // The window moved, so the part of a track-global lane span this cut
-    // can see moved with it. The selection itself is untouched.
-    _publishCutLocalLaneRange();
-  }
-
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, clipboard: _clipboard, rowSelectionVerbs: _rowSelection, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this);
+  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: _rowSelection, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => _standing.selectCut(cutId);
   @override
@@ -901,11 +691,6 @@ class EditorSessionManager extends ChangeNotifier
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
       _standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
   void claimTimelineRow() => _standing.claimTimelineRow();
-
-  int _clampedFrameIndex(int frameIndex) {
-    final maxIndex = math.max(0, activeCutPlaybackFrameCount - 1);
-    return frameIndex.clamp(0, maxIndex);
-  }
 
   /// THE selected track — the storyboard's row selection, read by everything
   /// that used to hunt for "whichever track owns the active cut".
@@ -1016,7 +801,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/range_selections.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final RangeSelections _rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, internals: this);
+  late final RangeSelections _rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, internals: this, playbackRig: playbackRig);
 
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
@@ -1227,7 +1012,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, laneVerbs: _laneVerbs, rangeSelections: _rangeSelections, clipboard: _clipboard, internals: this);
+  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: _rangeSelections, clipboard: _clipboard, internals: this, renderCaches: renderCaches);
 
   bool get canDeleteCellForSelection => _cells.canDeleteCellForSelection;
   bool get cellSelectionClaimsSubject => _cells.cellSelectionClaimsSubject;
@@ -1330,7 +1115,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/track_se_display.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final TrackSeDisplay _trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, timeline: this, transitions: _transitions, voiceRecording: _voiceRecording);
+  late final TrackSeDisplay _trackSe = TrackSeDisplay(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, transitions: _transitions, voiceRecording: _voiceRecording);
 
   @override
   TrackSeWindow get trackSeWindow => _trackSe.trackSeWindow;
@@ -1348,7 +1133,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final SeEntries _seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, timeline: this, camera: _camera, trackSe: _trackSe, frameVerbs: _frameVerbs);
+  late final SeEntries _seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, trackSe: _trackSe, frameVerbs: _frameVerbs);
 
   void createSeEntryAtCurrentFrame({
     required String name,
@@ -1405,14 +1190,14 @@ class EditorSessionManager extends ChangeNotifier
   }) {
     _clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
-    rebuildActiveCutControllers(
+    activeCutControllers.rebuild(
       // The ACTIVE layer survives cut commands by default (UI-R20 #1:
       // adding a camera key must not throw the selection to the bottom
       // row) — commands that switch cuts fall back naturally because the
       // old layer fails the has-layer check.
       preferredActiveLayerId: preferredActiveLayerId ?? activeLayerId,
       preferredFrameIndex:
-          preferredFrameIndex ?? timelineController.currentFrameIndex,
+          preferredFrameIndex ?? activeCutControllers.timelineController.currentFrameIndex,
     );
     // Layer add/delete/undo may have moved the active row: keep the solo
     // mode following it (or exit if the command switched cuts).
@@ -1442,43 +1227,6 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// A5 — the trailing edge of an edit burst, so the warming queue
-  /// restarts ONCE per burst instead of once per dab commit. Only the
-  /// RESTART is deferred: the cache invalidations and the yield signal
-  /// stay synchronous, because a stale composite must be unservable the
-  /// instant the stroke lands. The window costs nothing in production —
-  /// warming cannot start until [PlaybackPrerenderScheduler.idleDelay]
-  /// (1200ms) of quiet anyway, so any window under that only merges
-  /// restarts it never delays.
-  Timer? _warmDebounce;
-
-  static final Duration _warmDebounceWindow =
-      Platform.environment['FLUTTER_TEST'] == 'true'
-      // Tests: next-turn, mirroring the scheduler's zero idleDelay — a
-      // pending 200ms timer at teardown trips the binding's timer
-      // invariant before the session's tearDown dispose runs. Zero still
-      // debounces: a synchronous burst re-arms one timer and fires once.
-      ? Duration.zero
-      : const Duration(milliseconds: 200);
-
-  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
-    layerFrameImageCache.invalidateFrame(invalidation.frameKey);
-    cutFrameCompositeCache.invalidateWhereLayerFrame(
-      layerId: invalidation.frameKey.layerId,
-      frameId: invalidation.frameKey.frameId,
-    );
-    // Warming yields to the edit and then re-renders the dirty frames.
-    prerenderScheduler.notifyEditActivity();
-    _warmDebounce?.cancel();
-    _warmDebounce = Timer(_warmDebounceWindow, () {
-      _warmDebounce = null;
-      if (disposed) {
-        return;
-      }
-      warmActiveCut();
-    });
-  }
-
   /// Warms the active cut's composites around the playhead ("navigate away
   /// from a frame and it gets pre-rendered") — and the NEXT cut behind it
   /// (#31, 유저 확정: 스토리보드 프로의 룩어헤드를 따른다). The next cut
@@ -1491,10 +1239,10 @@ class EditorSessionManager extends ChangeNotifier
     if (cut == null) {
       return;
     }
-    prerenderScheduler.requestWarmCut(
+    playbackRig.prerenderScheduler.requestWarmCut(
       cutId: cut.id,
-      quality: playbackQuality,
-      aroundFrameIndex: timelineController.currentFrameIndex,
+      quality: playbackRig.playbackQuality,
+      aroundFrameIndex: activeCutControllers.timelineController.currentFrameIndex,
       followedByCutId: _storyboardRows.nextCutIdInStoryboardOrder(cut.id),
     );
   }
@@ -1506,30 +1254,22 @@ class EditorSessionManager extends ChangeNotifier
     // notifies a disposed ChangeNotifier.
     disposed = true;
     _textCelBakes.dispose();
-    brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
-    brushFrameStore.celPixelRevision.removeListener(_bumpCelTintRevision);
-    brushInputActive.removeListener(_bumpCelTintRevision);
-    celTintRevision.dispose();
+    layerStack.dispose();
     currentRowListenable.dispose();
     rowSelection.dispose();
     laneRangeSelection.removeListener(_publishCutLocalLaneRange);
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
     memoryPressureTicks.dispose();
-    _warmDebounce?.cancel();
-    cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
-    playback.globalFrameIndexListenable.removeListener(followPlaybackCut);
-    historyManager.removeListener(_markProjectDirty);
+    playbackRig.playback.globalFrameIndexListenable.removeListener(
+      followPlaybackCut,
+    );
+    historyManager.removeListener(projectFile.markDirty);
     historyManager.removeListener(refreshLiveAudioSchedule);
     historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
     _voiceRecording.dispose();
-    audioPlaybackSync.dispose();
-    audioScrubber.dispose();
-    audioDeviceTransport.dispose();
-    playback.dispose();
-    prerenderScheduler.dispose();
-    cutFrameCompositeCache.dispose();
-    layerFrameImageCache.dispose();
+    playbackRig.dispose();
+    renderCaches.dispose();
     audioConformStore.dispose();
     appSettings.dispose();
     soloedSeLayerIds.dispose();
@@ -1563,27 +1303,6 @@ class EditorSessionManager extends ChangeNotifier
   late final MediaStagingStore mediaStagingStore =
       _injectedMediaStagingStore ?? MediaStagingStore();
 
-  /// Whether the PROJECT has [poolPath]'s bytes, wherever the file on disk
-  /// has got to.
-  ///
-  /// 🚨★★★**THIS IS WHAT「MISSING」HAS TO MEAN.** An asset whose original
-  /// is gone but whose bytes the project holds is not missing — that is
-  /// carrying working. Asking only about the ARCHIVE was right until 품기
-  /// started staging at import: between the import and the first save the
-  /// bytes are in the container and nowhere else, so a carried asset whose
-  /// original the user deleted wore a "File missing — relink it" banner
-  /// over a file the project had already secured.
-  ///
-  /// ⛔And the banner is not cosmetic. It feeds the relink hunt, whose
-  /// "success" re-keys the asset to a different path — which, for bytes
-  /// held under the OLD key, is how you lose them.
-  ///
-  /// ⚠️Cheap on purpose: a map lookup and a stat. The pool draws a row per
-  /// asset and must not open the archive to do it.
-  bool projectHoldsMediaBytes(String poolPath) =>
-      _mediaEntryNames.containsKey(poolPath) ||
-      mediaStagingStore.find(poolPath) != null;
-
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
   /// ONCE per file off the UI isolate. Conforms live in the app container
@@ -1593,9 +1312,9 @@ class EditorSessionManager extends ChangeNotifier
   late final AudioConformStore audioConformStore =
       (_injectedAudioConformStore ??
             AudioConformStore(
-              resolveConformPath: _conformPathFor,
-              resolveByteSource: mediaByteSourceFor,
-              resolveCarriedConform: _carriedConformFor,
+              resolveConformPath: projectFile.conformPathFor,
+              resolveByteSource: projectFile.mediaByteSourceFor,
+              resolveCarriedConform: projectFile.carriedConformFor,
               resolveProjectSampleRate: () =>
                   repository.requireProject().audioSampleRate,
               resolveAudioSpeed: () {
@@ -1615,132 +1334,8 @@ class EditorSessionManager extends ChangeNotifier
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.
-        ..addListener(_invalidateConformStoredBytes)
+        ..addListener(projectFile.invalidateConformStoredBytes)
         ..addListener(notifyListeners);
-
-  /// Resolved per call rather than cached: the cache root is a live
-  /// setting and the project's rate and speed are live settings too, so a
-  /// conform path held from before any of them would name a file nothing
-  /// writes to.
-  ///
-  /// Never null now. It used to be, for a project with no path — the cache
-  /// was named after the project, so an unsaved one had no name to cache
-  /// under and re-decoded its audio every launch. Keying by source removed
-  /// the question.
-  String? _conformPathFor(String sourcePath) {
-    final project = repository.requireProject();
-    return ConformCacheLayout.forAudio(
-      sampleRate: project.audioSampleRate,
-      speedNumerator: project.audioSpeedNumerator,
-      speedDenominator: project.audioSpeedDenominator,
-    ).conformPathFor(sourcePath);
-  }
-
-  /// What a save should do about conforms — the bytes to write and the
-  /// entry names this project may hold — at the CURRENT audio settings.
-  ///
-  /// ⚠️Resolved fresh at every save, like the media sources beside it: the
-  /// archive half is a byte range, and offsets belong to one layout.
-  ProjectConforms _conformsToStore() {
-    final project = repository.requireProject();
-    return projectConformSources(
-      project: project,
-      conformBasePathFor: _conformPathFor,
-      projectFilePath: _projectFilePath,
-      sampleRate: project.audioSampleRate,
-      speedNumerator: project.audioSpeedNumerator,
-      speedDenominator: project.audioSpeedDenominator,
-    );
-  }
-
-  /// The conform this project CARRIES for [sourcePath], as a range inside
-  /// the `.anicel`, or null when it carries none.
-  ///
-  /// 🚨★★★**WHAT `conform-in-project` = always BUYS** (유저 2026-08-30).
-  /// Open the project on another machine, or after the cache was emptied,
-  /// and the pipeline copies this out instead of decoding and resampling
-  /// every sound first. An hour of dialogue is the difference between
-  /// playing now and playing after a full pass over 55MB of compressed
-  /// audio.
-  ///
-  /// ⚠️Resolved per call and never held — the same rule
-  /// [mediaByteSourceFor] follows: a compaction moves every byte, and a
-  /// range kept from before would read whatever landed on those offsets.
-  ///
-  /// ⛔The entry name is DERIVED, not recorded. Media records its entry
-  /// names because an old project may have been written under a different
-  /// rule; a conform is younger than that problem, and recording a second
-  /// map would be a second thing to keep in step.
-  MediaByteSource? _carriedConformFor(String sourcePath) {
-    final archivePath = _projectFilePath;
-    if (archivePath == null) {
-      return null;
-    }
-    final project = repository.requireProject();
-    try {
-      final layout = parseAnicelZipLayoutFile(archivePath);
-      // Only the names the CURRENT settings produce. A conform carried at
-      // another rate is not a conform for this project any more, and the
-      // next save is what takes it away.
-      for (final name in anicelConformEntryNames(
-        sourcePath,
-        sampleRate: project.audioSampleRate,
-        speedNumerator: project.audioSpeedNumerator,
-        speedDenominator: project.audioSpeedDenominator,
-      )) {
-        final entry = layout.entryNamed(name);
-        if (entry != null) {
-          return MediaArchiveBytes.ofEntry(
-            archivePath: archivePath,
-            entry: entry,
-          );
-        }
-      }
-    } on Object {
-      // A torn or momentarily unreadable archive: the decode below still
-      // works, which is the entire fallback this optimisation stands on.
-    }
-    return null;
-  }
-
-  /// Every audio path the project references (SE clips + the SOUND entries
-  /// of the media pool) — what a project open warms so waveforms and
-  /// playback PCM are ready before the first play.
-  ///
-  void _warmAudioConforms() {
-    audioConformStore.warmPaths(
-      projectAudioSourcePaths(repository.requireProject()),
-    );
-  }
-
-  /// Settles the conform cache's size — ON PROJECT OPEN ONLY.
-  ///
-  /// That is the moment a fresh batch of conforms is about to be built, so
-  /// it is where the bound is worth enforcing, and it costs one directory
-  /// scan instead of one per conform on the UI isolate. Pruning FIRST also
-  /// means the entries this project is about to touch are the newest in
-  /// the cache, so they are the last things a later prune considers.
-  ///
-  /// ⛔ NOT on the audio-settings knobs. Warming happens there too — a
-  /// rate or speed change re-keys every conform — but a directory walk on
-  /// the UI isolate is not something to hang off a knob somebody drags
-  /// through four values to compare them ([[old-device-support-policy]]).
-  ///
-  /// The store lets go BEFORE the collector runs. A conform past the
-  /// streaming threshold is held with no resident PCM and the file as the
-  /// copy of record, so pruning one out from under a live entry leaves the
-  /// clip silent for the session — see [AudioConformStore.releaseDiskBacked].
-  ///
-  /// ⚠️ Deliberately NOT switched off under `FLUTTER_TEST`. The root is
-  /// already redirected to a temp folder there, and a call site compiled
-  /// out of every test is a call site with no observer — which is how the
-  /// path assembly went unwatched before ([[verify-before-claiming-shared]]).
-  /// It costs nothing when the cache does not exist yet, which is the
-  /// state every test starts in.
-  void _settleConformCache() {
-    audioConformStore.releaseDiskBacked();
-    pruneConformCache();
-  }
 
   /// Every row the ACTIVE cut SHOWS — the cut's own layers plus the
   /// TRACK-owned rows that join them, which is exactly what
@@ -1875,7 +1470,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cut_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits);
+  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits);
 
   void deleteActiveCut() => _cutVerbs.deleteActiveCut();
   bool get canDeleteSelectedCuts => _cutVerbs.canDeleteSelectedCuts;
@@ -2032,7 +1627,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/camera.dart, a part of this library). The session
   // keeps the public queries and commands as forwarders.
-  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, laneMove: _laneMove, internals: this, activeCut: _activeCutEdits);
+  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneMove: _laneMove, internals: this, activeCut: _activeCutEdits);
 
   CutCamera get activeCutCamera => _camera.activeCutCamera;
   CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
@@ -2120,7 +1715,7 @@ class EditorSessionManager extends ChangeNotifier
         audioSpeedDenominator: denominator,
       ),
     );
-    _warmAudioConforms();
+    projectDoor.warmAudioConforms();
     warmActiveCut();
     notifyListeners();
   }
@@ -2146,7 +1741,7 @@ class EditorSessionManager extends ChangeNotifier
         audioSampleRate: sampleRate,
       ),
     );
-    _warmAudioConforms();
+    projectDoor.warmAudioConforms();
     notifyListeners();
   }
 
@@ -2180,7 +1775,7 @@ class EditorSessionManager extends ChangeNotifier
       );
     }
 
-    final frameIndex = timelineController.currentFrameIndex;
+    final frameIndex = activeCutControllers.timelineController.currentFrameIndex;
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -2279,7 +1874,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/opacity_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final OpacityVerbs _opacity = OpacityVerbs(project: this, changes: this, timeline: this, transitions: _transitions, internals: this);
+  late final OpacityVerbs _opacity = OpacityVerbs(project: this, changes: this, controllers: activeCutControllers, transitions: _transitions, internals: this);
 
   double activeCutEditingFadeOpacity({int? frameIndex}) =>
       _opacity.activeCutEditingFadeOpacity(frameIndex: frameIndex);
@@ -2306,7 +1901,7 @@ class EditorSessionManager extends ChangeNotifier
       _opacity.setAllLayersOpacity(opacity);
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
-  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, internals: this);
+  late final FrameVerbs _frameVerbs = FrameVerbs(project: this, selection: this, changes: this, frameIds: this, timeline: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
 
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
       _frameVerbs.layerCanvasPoseSample(layerId);
@@ -2483,7 +2078,7 @@ class EditorSessionManager extends ChangeNotifier
     // R19 P3b: the baked raster is the truth — the resolver is a plain
     // reference read (valid display cache first, else baked). No replay
     // exists anymore.
-    return brushFrameStore.currentSurfaceWithoutReplay(
+    return renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
       frameKey,
       canvasSize: cut.canvasSize,
     );
@@ -2553,7 +2148,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/lane_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LaneVerbs _laneVerbs = LaneVerbs(project: this, selection: this, timeline: this, effectsAndFx: _effectsAndFx, internals: this);
+  late final LaneVerbs _laneVerbs = LaneVerbs(project: this, selection: this, timeline: this, controllers: activeCutControllers, effectsAndFx: _effectsAndFx, internals: this);
 
   bool get canNameLaneKeys => _laneVerbs.canNameLaneKeys;
   String? get laneKeyNameForSelection => _laneVerbs.laneKeyNameForSelection;
@@ -2654,7 +2249,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/visibility_solo.dart, a part of this library). The
   // session keeps the public toggles as forwarders.
-  late final VisibilitySolo _solo = VisibilitySolo(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final VisibilitySolo _solo = VisibilitySolo(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, internals: this);
 
   bool get layerVisibilitySoloEnabled => _solo.layerVisibilitySoloEnabled;
   void toggleLayerVisibilitySolo() => _solo.toggleLayerVisibilitySolo();
@@ -2726,8 +2321,8 @@ class EditorSessionManager extends ChangeNotifier
     final beforeLayers = List<Layer>.of(
       activeCutOrNull?.layers ?? const <Layer>[],
     );
-    final previousActiveLayerId = layerController.activeLayerId;
-    final previousFrameIndex = timelineController.currentFrameIndex;
+    final previousActiveLayerId = activeCutControllers.layerController.activeLayerId;
+    final previousFrameIndex = activeCutControllers.timelineController.currentFrameIndex;
 
     move();
     final preferredLayerId = preferredLayerAfterLayerListChange(
@@ -2749,11 +2344,11 @@ class EditorSessionManager extends ChangeNotifier
   // --- Layer state / commands --------------------------------------------
 
   @override
-  List<Layer> get layers => layerController.layers;
+  List<Layer> get layers => activeCutControllers.layerController.layers;
   @override
-  LayerId? get activeLayerId => layerController.activeLayerId;
+  LayerId? get activeLayerId => activeCutControllers.layerController.activeLayerId;
   @override
-  Layer? get activeLayer => layerController.activeLayer;
+  Layer? get activeLayer => activeCutControllers.layerController.activeLayer;
 
   BrushEditorSelection? get activeBrushEditorSelection {
     final activeLayer = this.activeLayer;
@@ -2858,142 +2453,12 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
-  /// THE unified Add Layer entrance: a new layer of the ACTIVE layer's
-  /// kind, inserted directly above it, named by its section's own scheme
-  /// (cel letters / S3 / CAM 2). The camera cannot be duplicated (exactly
-  /// one per cut) — with it (or nothing) active, a default cel is added.
-  void addLayer() => addLayerOfKind(activeLayer?.kind ?? LayerKind.animation);
-
-  /// Whether the ACTIVE cut can take another row of [kind] (R9 #7): false
-  /// once a singleton kind already has its one row. The Add Layer menu
-  /// reads this to disable the entry rather than swallowing the tap, so a
-  /// dead menu item never looks like a bug.
-  @override
-  bool canAddLayerOfKind(LayerKind kind) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return false;
-    }
-    return !kind.isSingletonPerCut ||
-        !cut.layers.any((layer) => layer.kind == kind);
-  }
-
-  /// Kind-explicit Add Layer (the split button's ▾ list): the same naming
-  /// and insertion rules as [addLayer] with the requested kind.
-  void addLayerOfKind(LayerKind kind) {
-    if (activeCutOrNull == null) {
-      return; // Gap state: no cut to add into (SE rows need one too —
-      //         selection lives in the cut-scoped row list).
-    }
-    if (!canAddLayerOfKind(kind)) {
-      return; // The cut already holds its one row of a singleton kind.
-    }
-    final layerId = mintLayerId();
-    switch (kind) {
-      case LayerKind.transition:
-        // A track fixture, created with the track — "Add layer" never makes
-        // one (canAddLayerOfKind refuses first; this keeps the switch
-        // exhaustive and the intent stated).
-        return;
-      case LayerKind.se:
-        // SE rows are track-owned: insert directly above the active SE row
-        // in the TRACK list (the same S1,S3,S2 insertion order the
-        // timeline shows — the single ordering every panel renders).
-        final seLayers = activeTrack.seLayers;
-        final activeIndex = seLayers.indexWhere(
-          (layer) => layer.id == activeLayerId,
-        );
-        final newLayer = Layer(
-          id: layerId,
-          name: nextSeLayerName(seLayers),
-          frames: const [],
-          timeline: const {},
-          kind: LayerKind.se,
-        );
-        historyManager.execute(
-          AddTrackSeLayerCommand(
-            repository: repository,
-            trackId: selectedTrackId,
-            layer: newLayer,
-            insertionIndex: activeIndex < 0 ? null : activeIndex + 1,
-          ),
-        );
-        layerController.selectLayer(layerId);
-      case LayerKind.instruction:
-        layerController.addLayer(
-          layer: Layer(
-            id: layerId,
-            name: nextInstructionLayerName(layerController.layers),
-            frames: const [],
-            timeline: const {},
-            kind: LayerKind.instruction,
-          ),
-        );
-      case LayerKind.animation:
-      case LayerKind.storyboard:
-      case LayerKind.image:
-      case LayerKind.text:
-        // The COVERING kinds (storyboard, image) are born covering their
-        // cut — one cell, edge to edge. There is no "X" in their world,
-        // so they never start empty and then have to be filled.
-        Layer newLayerFor(Cut cut) => kind.coversWithoutGaps
-            ? createCoveringLayer(
-                layerId: layerId,
-                frameId: FrameId(nextFrameId(layerId)),
-                cut: cut,
-                kind: kind,
-              )
-            : kind == LayerKind.text
-            // A text row starts all-empty like an animation cel row, under
-            // its own T1/T2 naming (cel letters stay the pen rows').
-            ? Layer(
-                id: layerId,
-                name: nextTextLayerName(requireActiveCut.layers),
-                frames: const [],
-                timeline: const {},
-                kind: LayerKind.text,
-              )
-            : createDefaultAnimationLayer(layerId: layerId, cut: cut);
-        _layerVerbs.addRowAboveActive(newLayerFor);
-      case LayerKind.adjustment:
-        // R6b: a real row you ADD (unlike a folder), joining the stack
-        // above the active layer like every other kind — which is exactly
-        // what puts the rows it filters below it.
-        _layerVerbs.addRowAboveActive(
-          (cut) => createAdjustmentLayer(
-            id: layerId,
-            name: nextAdjustmentLayerName(cut.layers),
-          ),
-        );
-      case LayerKind.folder:
-        // R5 #14: a folder is ADDED now, and it is born EMPTY.
-        //
-        // It used to be MADE by wrapping the active row, and Add Layer with
-        // a folder selected quietly added a drawing cel instead. The user
-        // asked for the file-manager shape every other app they work in
-        // has: make the container, then put things in it by dropping them
-        // on it. The drop is this round's other half; without it an empty
-        // folder would be a room with no door, because a caret between
-        // rows cannot address the inside of a folder that has none (the
-        // "in" and the "below" are the same slot).
-        _layerVerbs.addRowAboveActive(
-          (cut) => createFolderLayer(id: layerId, name: nextFolderName(cut)),
-        );
-      case LayerKind.camera:
-        layerController.addLayerWithDefaults(layerId: layerId);
-    }
-    // F-20: the row you just made IS the subject now. Every arm above seats
-    // the controller's active layer directly, so none of them went through
-    // [selectLayer].
-    _standing.seatVerbRowOnActiveLayer();
-    notifyListeners();
-  }
 
   // ── folders and attachments: their own object ───────────────────────
   //
   // A collaborator (session/folders_and_attachments.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
+  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, activeCut: _activeCutEdits);
 
   bool get canAddAttachedLayerToActive => _folders.canAddAttachedLayerToActive;
   void addAttachedLayer(
@@ -3069,7 +2534,7 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
-  late final LayerSwitchVerbs _layerSwitches = LayerSwitchVerbs(project: this, changes: this, frameIds: this, timeline: this, storyboardCursor: _storyboardCursor, internals: this);
+  late final LayerSwitchVerbs _layerSwitches = LayerSwitchVerbs(project: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
 
   void toggleLayerVisibility(LayerId layerId) =>
       _layerSwitches.toggleLayerVisibility(layerId);
@@ -3093,8 +2558,8 @@ class EditorSessionManager extends ChangeNotifier
   /// which bypass history).
   @override
   void refreshLiveAudioSchedule() {
-    if (audioDeviceTransport.carryingPlayback) {
-      audioDeviceTransport.refreshSchedule();
+    if (playbackRig.audioDeviceTransport.carryingPlayback) {
+      playbackRig.audioDeviceTransport.refreshSchedule();
     }
   }
 
@@ -3200,7 +2665,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
-    layerController.toggleLayerCollapsed(layerId);
+    activeCutControllers.layerController.toggleLayerCollapsed(layerId);
     // H6: the fold law's selection half, on the FOLDER fold too — every
     // row inside a folder that just shut is off the screen, and the band
     // must not go on drawing over them ([_foldRowSelection]). The active
@@ -3225,7 +2690,7 @@ class EditorSessionManager extends ChangeNotifier
           cut.layers.byId(activeId)?.folderId,
           layerId,
         )) {
-      layerController.selectLayer(layerId);
+      activeCutControllers.layerController.selectLayer(layerId);
     }
     notifyListeners();
   }
@@ -3362,7 +2827,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_marks.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this, activeCut: _activeCutEdits);
+  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
 
   void setLayerMark(LayerId layerId, LayerMark mark) =>
       _marks.setLayerMark(layerId, mark);
@@ -3446,7 +2911,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/instructions.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, cutVerbs: _cutVerbs, camera: _camera, activeCut: _activeCutEdits);
+  late final Instructions _instructions = Instructions(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, cutVerbs: _cutVerbs, camera: _camera, activeCut: _activeCutEdits);
 
   void updateLayerInstructions(
     LayerId layerId,
@@ -3494,7 +2959,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, timeline: this, folders: _folders, rangeSelections: _rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
+  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: _folders, rangeSelections: _rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
 
   bool beginExposureEdgeDrag({
     required LayerId layerId,
@@ -3572,9 +3037,9 @@ class EditorSessionManager extends ChangeNotifier
     // Conform from scratch — the file may have changed on disk since a
     // previous import.
     final effectivePath = importAudioFile(filePath);
-    final frameIndex = timelineController.currentFrameIndex < 0
+    final frameIndex = activeCutControllers.timelineController.currentFrameIndex < 0
         ? 0
-        : timelineController.currentFrameIndex;
+        : activeCutControllers.timelineController.currentFrameIndex;
     var frame = resolveExposedFrameAt(layer, frameIndex);
     if (frame == null) {
       createSeEntryAtCurrentFrame(name: '');
@@ -3691,6 +3156,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     internals: this,
+    renderCaches: renderCaches,
     landing: importLanding,
     fingerprints: mediaFingerprints,
   );
@@ -3700,6 +3166,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     internals: this,
+    renderCaches: renderCaches,
     timeline: this,
     landing: importLanding,
     staging: mediaStagingStore,
@@ -3782,7 +3249,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     bakeCelSurface(
-      brushFrameStore,
+      renderCaches.brushFrameStore,
       brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       BitmapSurface(canvasSize: cut.canvasSize).putTiles([
         for (final tile in tiles)
@@ -3846,21 +3313,19 @@ class EditorSessionManager extends ChangeNotifier
   /// The whole-state reset an .anicel open performs, minus the parts that
   /// only exist for saved files (recovery, cel restore, healing).
   void _resetSessionForImportedProject(CutId firstCutId) {
-    brushFrameStore.restoreFromFile(const {});
-    conteInkRowStore.restoreFromFile(const {});
-    conteInkPageStore.restoreFromFile(const {});
-    envelopeInkStore.restoreFromFile(const {});
+    renderCaches.brushFrameStore.restoreFromFile(const {});
+    renderCaches.conteInkRowStore.restoreFromFile(const {});
+    renderCaches.conteInkPageStore.restoreFromFile(const {});
+    renderCaches.envelopeInkStore.restoreFromFile(const {});
     historyManager.clear();
     _clipboard.clear();
     _layerClipboard.clear();
     clearAllSelections();
     trackFrameRangeSelection.value = null;
     editingSession.setActiveCutId(firstCutId);
-    rebuildActiveCutControllers();
+    activeCutControllers.rebuild();
     _voiceRecording.forgetShelfTakes();
-    _projectFilePath = null;
-    _recoveredFromSidecar = null;
-    _discardedUnsavedWork = false;
+    projectFile.unbind();
   }
 
   /// Every cel this import has to bake, paired with the cut it landed in
@@ -3922,7 +3387,7 @@ class EditorSessionManager extends ChangeNotifier
     // whole TVPaint project holds every cel it builds.
     MemoryBlackBox.begin('tvpp-import');
 
-    playback.stop();
+    playbackRig.playback.stop();
     // The .tvpp becomes the WHOLE project, so its shooting frame does
     // too — fitting a 960×430 layout camera into our 16:9 default framed
     // wider than TVPaint did (288, hands-on).
@@ -4064,11 +3529,11 @@ class EditorSessionManager extends ChangeNotifier
       }
     }
 
-    _settleConformCache();
-    _warmAudioConforms();
+    projectDoor.settleConformCache();
+    projectDoor.warmAudioConforms();
     refreshMediaExistence();
     // A conversion is unsaved by definition — nothing on disk holds it.
-    _hasUnsavedChanges = true;
+    projectFile.markDirty();
     warmActiveCut();
     frameSeekCommitted.value += 1;
     refreshAfterCutCommand();
@@ -4089,7 +3554,7 @@ class EditorSessionManager extends ChangeNotifier
   void rasterizeActiveLayer() {
     final layer = activeLayer;
     if (layer != null && layer.kind == LayerKind.text) {
-      timelineController.rasterizeTextLayer(layerId: layer.id);
+      activeCutControllers.timelineController.rasterizeTextLayer(layerId: layer.id);
       refreshAfterCutCommand(preferredActiveLayerId: layer.id);
       notifyListeners();
       return;
@@ -4137,7 +3602,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/text_cel_bakes.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final TextCelBakes _textCelBakes = TextCelBakes(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final TextCelBakes _textCelBakes = TextCelBakes(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
 
   TextCelContent? get selectedTextCelContent =>
       _textCelBakes.selectedTextCelContent;
@@ -4159,8 +3624,8 @@ class EditorSessionManager extends ChangeNotifier
   // That is deliberate and harmless — every line of its `dispose` is a
   // null-guarded no-op on an object that never ran.
   late final EditorVoiceRecording _voiceRecording = EditorVoiceRecording(
-    playback: () => playback,
-    audioDeviceTransport: () => audioDeviceTransport,
+    playback: () => playbackRig.playback,
+    audioDeviceTransport: () => playbackRig.audioDeviceTransport,
     audioConformStore: () => audioConformStore,
     audioSyncSettings: () => audioSyncSettings,
     repository: () => repository,
@@ -4177,7 +3642,7 @@ class EditorSessionManager extends ChangeNotifier
     rememberMediaFingerprint: mediaFingerprints.rememberMediaFingerprint,
     stageCarriedBytes: mediaStagingStore.stageCarriedBytes,
     frameRangeSelection: () => frameRangeSelection,
-    projectFilePath: () => _projectFilePath,
+    projectFilePath: () => projectFile.path,
     notify: notifyListeners,
   );
 
@@ -4701,7 +4166,7 @@ class EditorSessionManager extends ChangeNotifier
         // missing — relink it" banner on assets the project already owns
         // and fed them to the relink hunt, whose "success" would re-key
         // the asset and orphan what held its bytes.
-        if (!projectHoldsMediaBytes(asset.path)) {
+        if (!projectFile.projectHoldsMediaBytes(asset.path)) {
           missing.add(asset.path);
         }
         continue;
@@ -4729,6 +4194,21 @@ class EditorSessionManager extends ChangeNotifier
     _missingMediaPaths = missing;
     _mediaModifiedTimes = modified;
     notifyListeners();
+  }
+
+  /// Where [path]'s conformed audio is on disk, building it if this machine
+  /// has not yet — or null when the asset has no audio to conform.
+  ///
+  /// 🔑The pool panel's export asks for this and nothing else. Reading the
+  /// conform, swapping the header and placing the file are three different
+  /// jobs living in three different places already; what was missing was
+  /// only the session saying WHICH file.
+  Future<String?> conformPathForExport(String path) async {
+    final result = await audioConformStore.ensureFor(path);
+    if (result == null || !result.isUsable) {
+      return null;
+    }
+    return result.conformPath;
   }
 
   /// Marks the [path] asset as one the project CARRIES — the per-asset
@@ -4760,35 +4240,6 @@ class EditorSessionManager extends ChangeNotifier
   /// ⚠️Async because securing the bytes runs in an isolate — see
   /// [MediaStagingStore.stageCarriedBytes]. The answer still means「something changed」, and
   /// it is still decided before any waiting happens.
-  /// Whether this project HAS a file on disk and that file is gone.
-  ///
-  /// 🚨A clean cel lives as a ref into the project file — the store drops
-  /// its cold blob on adoption — so the file disappearing takes those
-  /// pixels with it. Nothing here can bring them back; the point of asking
-  /// is to say so while the FILE can still be restored from a trash.
-  ///
-  /// ⛔False for a never-saved project. There is no file to have lost, and
-  /// a session with nothing on disk is the ordinary state.
-  bool projectFileHasVanished() {
-    final path = _projectFilePath;
-    return path != null && !File(path).existsSync();
-  }
-
-  /// Where [path]'s conformed audio is on disk, building it if this machine
-  /// has not yet — or null when the asset has no audio to conform.
-  ///
-  /// 🔑The pool panel's export asks for this and nothing else. Reading the
-  /// conform, swapping the header and placing the file are three different
-  /// jobs living in three different places already; what was missing was
-  /// only the session saying WHICH file.
-  Future<String?> conformPathForExport(String path) async {
-    final result = await audioConformStore.ensureFor(path);
-    if (result == null || !result.isUsable) {
-      return null;
-    }
-    return result.conformPath;
-  }
-
   Future<bool> promoteMediaAssetIntoProject(String path) async {
     final pool = mediaAssets;
     var promotes = false;
@@ -4864,7 +4315,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/storyboard_cursor.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, timeline: this, rangeSelections: _rangeSelections, cells: _cells, cutVerbs: _cutVerbs, transitions: _transitions, internals: this);
+  late final StoryboardCursor _storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: _rangeSelections, cells: _cells, cutVerbs: _cutVerbs, transitions: _transitions, internals: this);
 
   bool get canSetCommaForStoryboardCursor =>
       _storyboardCursor.canSetCommaForStoryboardCursor;
@@ -4898,7 +4349,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/exposure_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final ExposureVerbs _exposure = ExposureVerbs(selection: this, changes: this, timeline: this, camera: _camera);
+  late final ExposureVerbs _exposure = ExposureVerbs(selection: this, changes: this, controllers: activeCutControllers, camera: _camera);
 
   bool get canBlankExposureForSelection =>
       _exposure.canBlankExposureForSelection;
@@ -4922,7 +4373,7 @@ class EditorSessionManager extends ChangeNotifier
     }
 
     _frameSequence += 1;
-    timelineController.createDrawingFrameForLayer(
+    activeCutControllers.timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(nextFrameId(layer.id)),
     );
@@ -4933,7 +4384,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/auto_frame_for_stroke.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final AutoFrameForStroke _autoFrame = AutoFrameForStroke(project: this, selection: this, changes: this, frameIds: this, timeline: this, frameVerbs: _frameVerbs);
+  late final AutoFrameForStroke _autoFrame = AutoFrameForStroke(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, frameVerbs: _frameVerbs);
 
   bool get canAutoCreateFrameForStroke =>
       _autoFrame.canAutoCreateFrameForStroke;
@@ -4945,7 +4396,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, timeline: this, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, trackSe: _trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, trackSe: _trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
 
   bool createInstancesForSelection() =>
       _instances.createInstancesForSelection();
@@ -5032,7 +4483,7 @@ class EditorSessionManager extends ChangeNotifier
     // 아니다」.
     final selection = frameRangeSelection.value;
     final banked = _clipboard.bankedRowLayerIds;
-    timelineController.spliceRunsForLayers(
+    activeCutControllers.timelineController.spliceRunsForLayers(
       runs: [
         for (final bankedLayerId in banked)
           (
@@ -5086,7 +4537,7 @@ class EditorSessionManager extends ChangeNotifier
         count: selection.lengthFrames,
       );
     }
-    final index = timelineController.currentFrameIndex;
+    final index = activeCutControllers.timelineController.currentFrameIndex;
     final covering = coveringDrawingBlockAt(layer.timeline, index);
     if (covering == null) {
       return (index: index, count: 1);
@@ -5401,7 +4852,7 @@ class EditorSessionManager extends ChangeNotifier
       );
     }
     final layerId = activeLayerId;
-    final index = timelineController.currentFrameIndex;
+    final index = activeCutControllers.timelineController.currentFrameIndex;
     if (layerId == null ||
         index < 0 ||
         standsDownFromRetime(layerId) ||
@@ -5831,7 +5282,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, timeline: this, folders: _folders, internals: this);
+  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: _folders, internals: this);
 
   bool beginDrawingBlockMoveDrag({
     required LayerId layerId,
@@ -5890,7 +5341,7 @@ class EditorSessionManager extends ChangeNotifier
       final cut = requireActiveCut;
       commands.add(
         RekeyBrushFramesCommand(
-          store: brushFrameStore,
+          store: renderCaches.brushFrameStore,
           pairs: [
             for (final frameId in plan.movedFrameIds)
               (
@@ -5915,7 +5366,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, timeline: this, camera: _camera, folders: _folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: _folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -5955,7 +5406,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/run_frames_add_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final RunFramesAddDragVerbs _runFramesAdd = RunFramesAddDragVerbs(project: this, changes: this, timeline: this, internals: this);
+  late final RunFramesAddDragVerbs _runFramesAdd = RunFramesAddDragVerbs(project: this, changes: this, controllers: activeCutControllers, internals: this);
 
   bool beginRunFramesAddDrag({
     required LayerId layerId,
@@ -6216,7 +5667,7 @@ class EditorSessionManager extends ChangeNotifier
     if (selection != null &&
         selectionTargets != null &&
         selectionTargets.isNotEmpty) {
-      timelineController.retimeBlocksForLayers({
+      activeCutControllers.timelineController.retimeBlocksForLayers({
         for (final entry in selectionTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
@@ -6240,12 +5691,12 @@ class EditorSessionManager extends ChangeNotifier
     }
     final block = coveringDrawingBlockAt(
       layer.timeline,
-      timelineController.currentFrameIndex,
+      activeCutControllers.timelineController.currentFrameIndex,
     );
     if (block == null || block.entry.ghost) {
       return;
     }
-    timelineController.retimeBlocksForLayer(
+    activeCutControllers.timelineController.retimeBlocksForLayer(
       layerId: layer.id,
       newLengthByStart: {block.startIndex: comma},
     );
@@ -6278,12 +5729,12 @@ class EditorSessionManager extends ChangeNotifier
     // seek re-parks AFTER this call when it lands in a gap.
     gapGlobalFrame = null;
     labProbe('selectFrameIndex(sync)', () {
-      timelineController.selectFrameIndex(frameIndex);
+      activeCutControllers.timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
       // A seek is activity (R13-3): rapid frame flipping keeps pushing the
       // warm window, so composite warming never lands a full-canvas build
       // in the middle of a flip run.
-      prerenderScheduler.notifyEditActivity();
+      playbackRig.prerenderScheduler.notifyEditActivity();
       warmActiveCut();
       frameSeekCommitted.value += 1;
     });
@@ -6305,9 +5756,9 @@ class EditorSessionManager extends ChangeNotifier
     }
     brushInputActive.value = active;
     if (active) {
-      prerenderScheduler.beginInputHold();
+      playbackRig.prerenderScheduler.beginInputHold();
     } else {
-      prerenderScheduler.endInputHold();
+      playbackRig.prerenderScheduler.endInputHold();
     }
   }
 
@@ -6482,7 +5933,7 @@ class EditorSessionManager extends ChangeNotifier
     editingSession.setActiveCutId(null);
     _clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
-    rebuildActiveCutControllers();
+    activeCutControllers.rebuild();
     return true;
   }
 
@@ -6582,7 +6033,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_scrub.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FrameScrub _frameScrub = FrameScrub(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final FrameScrub _frameScrub = FrameScrub(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, internals: this, playbackRig: playbackRig);
 
   void scrubGlobalFrame(int globalFrame) =>
       _frameScrub.scrubGlobalFrame(globalFrame);
@@ -6610,7 +6061,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/onion_skin.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final OnionSkin _onionSkin = OnionSkin(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final OnionSkin _onionSkin = OnionSkin(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this);
 
   bool isLayerOnionSkinEnabled(LayerId layerId) =>
       _onionSkin.isLayerOnionSkinEnabled(layerId);
@@ -6623,696 +6074,6 @@ class EditorSessionManager extends ChangeNotifier
   void toggleOnionSkin() => _onionSkin.toggleOnionSkin();
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() =>
       _onionSkin.onionSkinCanvasRequests();
-
-  // --- Project persistence (P3: the .anicel container) -------------------------
-
-  static const AnicelFileService _anicelFileService = AnicelFileService();
-
-  String? _projectFilePath;
-
-  /// Pool path → archive entry, for the media this project carries.
-  ///
-  /// NAMES, not offsets. A compaction moves every byte in the file, so a
-  /// remembered offset would read a window of whatever landed in its
-  /// place — a project that opens fine and plays the wrong sound. The
-  /// offset is looked up from the layout at the moment it is wanted, and
-  /// the layout is already being parsed then.
-  Map<String, String> _mediaEntryNames = const {};
-
-  /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
-  /// the file on disk knows.
-  ///
-  /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
-  /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
-  /// The media pool used to read `identity.lengthBytes` — the length
-  /// the file had when it was REGISTERED — which after compression is a
-  /// number matching nothing: not the disk, not the project file, not the
-  /// staged copy.
-  ///
-  /// ⛔[MediaAsset.identity] is left alone. That field answers「is this the
-  /// same file?」for relink, and a compressed length would make every
-  /// carried asset fail to match itself.
-  ///
-  /// ⚠️Cheap by construction — a stat on the staged file, or a length the
-  /// archive layout already handed over. The browser draws a row per asset
-  /// and must not parse a ZIP to do it, which is why the archive half is
-  /// remembered at save/open rather than asked for here.
-  int? mediaStoredBytesFor(String poolPath) {
-    final staged = mediaStagingStore.find(poolPath);
-    if (staged != null) {
-      return staged.storedLength;
-    }
-    return _archivedMediaBytes()[poolPath];
-  }
-
-  /// Stored lengths for the media inside the project file, parsed ONCE per
-  /// completed save and kept until the next one.
-  ///
-  /// ⚠️Keyed on [_completedSaveGeneration] rather than time: a compaction
-  /// moves every byte, so a length from before one describes nothing. The
-  /// generation is the thing that already changes exactly when that
-  /// happens.
-  Map<String, int> _archivedMediaBytes() => _archivedBytes().media;
-
-  /// The archived lengths of the media AND of the conforms, from ONE walk
-  /// of the central directory.
-  ///
-  /// 🚨★★★**ONE PARSE, BECAUSE THE SECOND ONE WAS FREE-LOOKING AND WAS
-  /// NOT.** The conform column asks the same question about the same file,
-  /// and answering it separately meant a tail parse PER ASSET — and then
-  /// again every time the conform store answered, which is once per sound
-  /// while a project is warming up. The media half was already careful
-  /// about this; the fix was to join them rather than to be careful twice.
-  ({Map<String, int> media, Map<String, int> conform}) _archivedBytes() {
-    final path = _projectFilePath;
-    if (path == null) {
-      return (media: const {}, conform: const {});
-    }
-    if (_archivedBytesGeneration == _completedSaveGeneration) {
-      return (media: _mediaStoredBytes, conform: _conformArchivedBytes);
-    }
-    var media = const <String, int>{};
-    var conform = const <String, int>{};
-    try {
-      final layout = parseAnicelZipLayoutFile(path);
-      media = {
-        for (final entry in _mediaEntryNames.entries)
-          if (layout.entryNamed(entry.value) case final found?)
-            entry.key: found.length,
-      };
-      final project = repository.requireProject();
-      conform = {
-        for (final asset in project.mediaAssets)
-          for (final name in anicelConformEntryNames(
-            asset.path,
-            sampleRate: project.audioSampleRate,
-            speedNumerator: project.audioSpeedNumerator,
-            speedDenominator: project.audioSpeedDenominator,
-          ))
-            if (layout.entryNamed(name) case final found?)
-              asset.path: found.length,
-      };
-    } on Object {
-      // A torn or momentarily unreadable archive answers nothing rather
-      // than a wrong number; the row falls back to what it always showed.
-    }
-    _mediaStoredBytes = media;
-    _conformArchivedBytes = conform;
-    _archivedBytesGeneration = _completedSaveGeneration;
-    return (media: media, conform: conform);
-  }
-
-  Map<String, int> _mediaStoredBytes = const {};
-  Map<String, int> _conformArchivedBytes = const {};
-  int _archivedBytesGeneration = -1;
-
-  /// What [poolPath]'s CONFORM occupies, or null when it has none.
-  ///
-  /// 🚨★★★**ASKED FOR BY NAME** (유저 2026-08-30, answering
-  /// `conform-in-project`): 「가시화정책에 따라 미디어풀 패널에서 해당파일의
-  /// 컨폼파일 크기 표시할것」. A conform is the biggest thing an audio asset
-  /// costs — several times the sound itself — and until now it was a
-  /// number only the settings dialog knew, as one lump for the whole
-  /// container.
-  ///
-  /// The CACHE file first, the carried entry second, and they are the same
-  /// bytes: whichever is present answers. A pruned cache still has a size
-  /// to report, because the project is still carrying one.
-  ///
-  /// ⚠️Compressed size, not decoded — the same「실제크기」policy
-  /// [mediaStoredBytesFor] follows, because it is the number that says
-  /// what the disk lost.
-  int? conformStoredBytesFor(String poolPath) {
-    final base = _conformPathFor(poolPath);
-    if (base != null) {
-      for (final candidate in mediaFramedOrPlainPaths(base)) {
-        final stat = FileStat.statSync(candidate);
-        if (stat.type == FileSystemEntityType.file) {
-          return stat.size;
-        }
-      }
-    }
-    // ⛔Through the shared per-generation walk, NOT [_carriedConformFor]:
-    // that one parses the archive on the spot, which is right for a single
-    // playback request and wrong for a column drawn per asset.
-    return _archivedBytes().conform[poolPath];
-  }
-
-  /// [conformStoredBytesFor] for every asset that has one — the map the
-  /// pool panel draws from.
-  ///
-  /// 🚨★★★**MEMOISED, BECAUSE A ROW MUST NOT STAT THE DISK TO DRAW
-  /// ITSELF.** The panel reads this in `build`, and a panel is rebuilt for
-  /// reasons that have nothing to do with the file system — which is the
-  /// same reason `missingPaths` and `modifiedTimes` are handed in as maps
-  /// instead of probed per row. Without this, every repaint cost two stats
-  /// per asset.
-  ///
-  /// ⚠️Invalidated by [_invalidateConformStoredBytes] on two events and
-  /// they are BOTH needed: a completed save (the carried entry's length
-  /// moved) and the conform store answering (a conform was just built, or
-  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the save
-  /// generation alone — what the media map does — would leave a freshly
-  /// conformed sound showing nothing until the next save.
-  Map<String, int> get conformStoredBytes {
-    final known = _conformStoredBytes;
-    if (known != null) {
-      return known;
-    }
-    final sizes = <String, int>{};
-    for (final asset in repository.requireProject().mediaAssets) {
-      final bytes = conformStoredBytesFor(asset.path);
-      if (bytes != null && bytes > 0) {
-        sizes[asset.path] = bytes;
-      }
-    }
-    return _conformStoredBytes = Map<String, int>.unmodifiable(sizes);
-  }
-
-  Map<String, int>? _conformStoredBytes;
-
-  void _invalidateConformStoredBytes() => _conformStoredBytes = null;
-
-  /// Cels the last save could not write because the file their only copy
-  /// lived in had been deleted.
-  ///
-  /// 🚨★★★**EMPTY IS THE ONLY ANSWER ANYBODY EXPECTED** until 유저 hit it
-  /// on an iPad (2026-08-30): open a project, delete the file in the Files
-  /// app, draw a stroke, press Save. A save turns every cel into a file ref
-  /// and drops its cold blob as「redundant with the file」, so once that
-  /// file is gone the untouched cels have their bytes nowhere — and the
-  /// save used to come apart with a raw `PathNotFoundException` carrying a
-  /// path.
-  ///
-  /// It now writes everything it can still reach and says what it could
-  /// not. ⛔The UI has to SHOW this: a save that quietly wrote fewer cels
-  /// than it holds is the shape this repo refuses for media, and a cel is
-  /// the picture itself.
-  Set<BrushFrameKey> celsLostToAMissingFile = const {};
-
-  /// Every carried asset's actual size, for a list that shows sizes.
-  Map<String, int> get mediaStoredBytes {
-    final sizes = <String, int>{};
-    for (final asset in mediaAssets) {
-      final bytes = mediaStoredBytesFor(asset.path);
-      if (bytes != null) {
-        sizes[asset.path] = bytes;
-      }
-    }
-    return sizes;
-  }
-
-  /// What the project carries, for tests and for anything that needs to
-  /// resolve an asset's bytes without going through a save.
-  Map<String, String> get mediaEntryNames =>
-      Map<String, String>.unmodifiable(_mediaEntryNames);
-
-  /// Where [poolPath]'s bytes actually are RIGHT NOW — the read side of
-  /// carrying. The save always knew how to stream an embedded asset
-  /// forward; playback, the waveform and the existence probe kept asking
-  /// the filesystem, so deleting the import original (the very act
-  /// carrying exists to survive) silenced the clip and hung a "missing"
-  /// banner on an asset the project owns.
-  ///
-  /// Resolved fresh per call, never held: offsets belong to one layout
-  /// and a compaction moves every byte. The archive range carries the
-  /// entry's CRC, and the conform pipeline treats a mismatch as transient
-  /// — a read that raced a compaction retries against fresh offsets
-  /// rather than decoding whatever moved into the window.
-  MediaByteSource mediaByteSourceFor(String poolPath) {
-    final entryName = _mediaEntryNames[poolPath];
-    final archivePath = _projectFilePath;
-    if (entryName != null && archivePath != null) {
-      try {
-        final entry = parseAnicelZipLayoutFile(
-          archivePath,
-        ).entryNamed(entryName);
-        if (entry != null) {
-          final range = MediaArchiveBytes.ofEntry(
-            archivePath: archivePath,
-            entry: entry,
-          );
-          // 🚨A framed entry is decoded HERE and nowhere downstream. Every
-          // consumer asked for「the bytes of this asset」and must keep
-          // getting them — the block index is this layer's business, and
-          // the reader still serves a window rather than the whole file.
-          return mediaSourceDecodingFrames(range);
-        }
-      } on Object {
-        // A torn or momentarily unreadable archive: the file fallback
-        // below still answers for assets whose original survives, and the
-        // conform store's transient handling covers the rest.
-      }
-    }
-    // ⚠️Not in the archive yet — but 품기 may have staged it, and after an
-    // import that is the only place its bytes are.
-    final staged = mediaStagingStore.find(poolPath);
-    if (staged != null) {
-      // Through [mediaAppFileSource] rather than assembling the pair here:
-      // framed-or-not is written into the name, and one place reads it.
-      return mediaAppFileSource(staged.path);
-    }
-    return MediaFileBytes(poolPath);
-  }
-
-  /// The open project's file path; null until first saved/opened (Save
-  /// falls back to Save As).
-  String? get projectFilePath => _projectFilePath;
-
-  bool _hasUnsavedChanges = false;
-
-  /// Whether edits exist since the last save/open (autosave + title dots).
-  bool get hasUnsavedChanges => _hasUnsavedChanges;
-
-  void _markProjectDirty() {
-    _hasUnsavedChanges = true;
-  }
-
-  /// The recovery overlay for the CURRENT state — always in the app
-  /// container ([AppSave.recoveryPathFor]), never beside the file: a
-  /// sibling would need the grant the crash just took down with it.
-  /// Null while the project has never been saved (the service prompts
-  /// for a real file instead of writing into hidden app-data dirs).
-  String? get autosaveSidecarPath {
-    final path = _projectFilePath;
-    return path == null ? null : AppSave.recoveryPathFor(path);
-  }
-
-  /// Writes the current state to [path] WITHOUT touching the dirty flag or
-  /// the project path — the recovery service's snapshot writer.
-  ///
-  /// An OVERLAY on the saved project: only the cels edited since the last
-  /// manual save. This runs mid-session on the periodic tick (F-1 made the
-  /// clock the only trigger), so it has to cost what the user drew rather
-  /// than what the project weighs. Everything left out is already in the
-  /// project file, unchanged, which is also what the base stamp inside the
-  /// overlay is there to guarantee.
-  Future<void> writeAutosaveSnapshot(String path) async {
-    final base = _projectFilePath;
-    if (base == null) {
-      return;
-    }
-    // 🚨A RECOVERED session must not write one. Recovery pointed every
-    // restored cel's ref INTO this file and cleared the RAM tiers, and it
-    // also cleared the dirty set — so a snapshot taken now would carry no
-    // cels at all and rename itself over the only copy of the work, and
-    // the live refs would then read past the end of a file holding a
-    // stamp and a project.json. The session has nothing new to snapshot
-    // until a manual save moves those pixels into the project file, which
-    // is exactly when this unblocks.
-    if (_recoveredFromSidecar != null) {
-      return;
-    }
-    // The user chose to throw this session's work away and the app is
-    // shutting down around that choice; the lifecycle callbacks that
-    // follow must not put it back.
-    if (_discardedUnsavedWork) {
-      return;
-    }
-    await _textCelBakes.flushTextCelBakes();
-    await _anicelFileService.writeRecoveryOverlay(
-      project: repository.requireProject(),
-      brushFrameStore: brushFrameStore,
-      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
-      filePath: path,
-      baseFilePath: base,
-      // The overlay's project.json replaces the base file's, so a snapshot
-      // that left these out would hand the recovered session no grants —
-      // and its first save would write that emptiness back over the file.
-      grants: mediaGrants.grantsToStore(),
-      // What the base file already carries. Without it the recovered
-      // session forgets its media is inside the archive and its first
-      // save writes one that no longer holds it.
-      mediaInArchive: _mediaEntryNames.keys.toSet(),
-      // And what it knows about its media's content. A recovered session
-      // without these still opens and still looks right — it has just
-      // forgotten how to tell one `A1.png` from another.
-      mediaCrcs: mediaFingerprints.crcsToStore(),
-      // Asked again at the rename: a manual save can begin and finish
-      // while this one is in the isolate, and it retires the snapshot on
-      // its way out. Generation-armed, not just the in-flight flag — the
-      // flag is already down again by the time a spanning snapshot asks.
-      isStale: beginAutosaveStaleCheck(),
-    );
-  }
-
-  /// Saves the project + every drawn frame into ONE .anicel file (atomic
-  /// temp-then-rename write; media stays external with relative paths
-  /// recorded for Drive portability). A successful save retires the
-  /// autosave sidecar.
-  ///
-  /// [onProgress] is called with 0..1 as the write proceeds, for the window
-  /// a manual save puts in front of itself. Omitted by the autosave tick,
-  /// which nobody is watching.
-  Future<void> saveProjectToFile(
-    String filePath, {
-    void Function(double)? onProgress,
-  }) async {
-    // A text bake in flight must land before the store snapshots — the
-    // archive's parameters and raster must never disagree.
-    // Raised for the WHOLE save, retirement included. An autosave tick that
-    // starts inside a save renames its own temp onto the sidecar path
-    // AFTER the retirement ran, and the session is clean by then — so the
-    // exit gate returns early, nothing retires it, and the next open offers
-    // recovery for a project that was closed cleanly. Making the delete
-    // synchronous did not close this: sync ordering settles delete-versus-
-    // write, and this is write-versus-delete, which is an isolate wide.
-    _saveInFlight = true;
-    // The breadcrumb a silent kill cannot erase. A save is the work this
-    // app is most likely to die inside — and when iOS kills for memory
-    // there is no exception, no crash report, and nothing in App Store
-    // Connect (실기 08-27: three kills, an iPad that survived the same
-    // press, and not one line of evidence anywhere). An entry with no END
-    // at the next launch is the only thing that says otherwise.
-    MemoryBlackBox.begin('save');
-    try {
-      await _writeProjectToFile(filePath, onProgress: onProgress);
-    } finally {
-      _saveInFlight = false;
-      MemoryBlackBox.end('save');
-    }
-  }
-
-  /// True while a manual save is running, so the autosave tick stands down
-  /// instead of racing it. Read through [autosaveShouldStandDown].
-  bool _saveInFlight = false;
-
-  /// Bumped each time a manual save COMPLETES. [_saveInFlight] is a
-  /// point-in-time flag: a snapshot that started BEFORE a save and came
-  /// out of its isolate AFTER it sees the flag down again — and would
-  /// rename an overlay stamped against the pre-save base onto the path
-  /// the save just retired. That is a recovery file for a cleanly saved
-  /// project, and its Accept can only fail the stamp check. A snapshot
-  /// therefore captures this at its start and refuses to land if it
-  /// moved — see [beginAutosaveStaleCheck].
-  int _completedSaveGeneration = 0;
-
-  /// The staleness question a recovery snapshot carries into its isolate:
-  /// armed when the snapshot starts, it answers true the moment any
-  /// manual save has completed since (or the session stood down).
-  bool Function() beginAutosaveStaleCheck() {
-    final generationAtStart = _completedSaveGeneration;
-    return () =>
-        autosaveShouldStandDown ||
-        _completedSaveGeneration != generationAtStart;
-  }
-
-  /// Whether a snapshot should do nothing right now: a save is mid-flight
-  /// (anything written would land beside a retirement that has already
-  /// run), the session was recovered (its refs point INTO the snapshot,
-  /// see [writeAutosaveSnapshot]), or the user threw the work away.
-  bool get autosaveShouldStandDown =>
-      _saveInFlight || _discardedUnsavedWork || _recoveredFromSidecar != null;
-
-  /// Writes the CURRENT state to [path] as a complete, standalone archive
-  /// and changes NOTHING about this session — no path adoption, no ref
-  /// adoption, no dirty-flag or sidecar movement. The Save As STAGING
-  /// writer on scoped platforms: the file this produces is about to be
-  /// MOVED by a document picker, so anything the session learned from it
-  /// would name a path that stops existing moments later.
-  ///
-  /// 🚨 Exists because of the 22-byte placeholder this replaces (실측
-  /// iPhone+Drive, 08-26): a provider that refuses in-place writes made
-  /// the post-placement save fail, and what the picker had placed was the
-  /// EMPTY placeholder — an unopenable husk where the user meant to put
-  /// their project. A complete archive staged up front costs the same
-  /// move and can never strand a husk.
-  /// Returns the media entry names the archive was written with, which is
-  /// what [adoptArchiveAt] needs if this copy becomes the project.
-  Future<Map<String, String>> writeArchiveCopy(
-    String path, {
-    void Function(double)? onProgress,
-  }) async {
-    await _textCelBakes.flushTextCelBakes();
-    final mediaToStore = projectMediaSources(
-      project: repository.requireProject(),
-      projectFilePath: _projectFilePath,
-      mediaEntryNames: _mediaEntryNames,
-      staging: mediaStagingStore,
-    );
-    final conforms = _conformsToStore();
-    await _anicelFileService.save(
-      project: repository.requireProject(),
-      brushFrameStore: brushFrameStore,
-      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
-      filePath: path,
-      mediaToStore: mediaToStore,
-      conforms: conforms,
-      grants: mediaGrants.grantsToStore(),
-      mediaCrcs: mediaFingerprints.crcsToStore(),
-      onProgress: onProgress,
-      adoptRefs: false,
-    );
-    return mediaEntryNamesFor(mediaToStore);
-  }
-
-  /// The archive at [placedPath] IS this project now — no second write.
-  ///
-  /// iOS has no save panel: the export picker MOVES a file the app wrote
-  /// and reports where it landed, so by the time Save As knows the
-  /// destination, [writeArchiveCopy]'s bytes are already sitting there and
-  /// the picker's modality means nothing could have edited them since.
-  ///
-  /// 🚨Saving AGAIN over that path was the old shape and it is not merely
-  /// wasteful. A destination the picker moved a file INTO is not one the
-  /// app may keep writing to: Save As died with 「the location refused
-  /// both a direct write and a coordinated replace」 on a path it had just
-  /// successfully filled (실기 08-27, iPhone). Adoption cannot be refused,
-  /// because there is nothing left to write.
-  ///
-  /// ⚠️Cel refs are NOT repointed into the placed file. [writeArchiveCopy]
-  /// writes with `adoptRefs: false` precisely because a file about to be
-  /// MOVED cannot back a ref, and the destination may be somewhere the app
-  /// cannot read back on demand either. The pixels stay where they were —
-  /// in RAM — which is what a never-saved session was already doing.
-  /// THE "the session now lives at [path]" transition, for the placed
-  /// archive above AND for an ordinary save's tail — nine steps that were
-  /// written out twice, once here and once at the end of
-  /// [_writeProjectToFile], because the placed variant was carved out for
-  /// iOS as a copy of the save's tail rather than by extracting it.
-  ///
-  /// The recovered work now lives in the project file, so the snapshot is
-  /// ordinary again and the retirement below is free to take it.
-  ///
-  /// A save is the session saying it is worth keeping after all; whatever
-  /// was discarded before it is not this session's state any more.
-  ///
-  /// No conform refresh here any more. It existed because a take MOVED
-  /// into the project on first save, which changed the path a conform is
-  /// keyed by; takes stay put now, and the cache is keyed by source
-  /// rather than by anything the project owns, so a save moves nothing a
-  /// conform depends on.
-  void adoptArchiveAt(
-    String path, {
-    required Map<String, String> mediaEntryNames,
-  }) {
-    final previousPath = _projectFilePath;
-    _mediaEntryNames = mediaEntryNames;
-    _projectFilePath = path;
-    _hasUnsavedChanges = false;
-    _completedSaveGeneration += 1;
-    _invalidateConformStoredBytes();
-    _recoveredFromSidecar = null;
-    _discardedUnsavedWork = false;
-    if (previousPath != null) {
-      ProjectAutosaveService.retireSidecarsFor(previousPath);
-    }
-    ProjectAutosaveService.retireSidecarsFor(path);
-    notifyListeners();
-  }
-
-  /// The provider-refusal fallback: a complete archive written into the
-  /// app's own Recovery folder (so an orphan is swept in ≤30 days), then
-  /// swapped over [filePath] by the platform's file coordinator.
-  ///
-  /// The staging save ADOPTS normally — its refs are valid while the
-  /// staging file exists, and it exists until the sweep. After a
-  /// successful replace the copy at [filePath] is byte-identical, so the
-  /// same offsets hold there and clean keys' refs are simply repointed.
-  /// ⚠️ Keys dirty AGAIN (drawn on while the save ran) keep their staging
-  /// refs and their dirt: repointing them through [adoptSavedFile] would
-  /// CLEAR that dirt, and the next save would quietly skip the stroke —
-  /// the exact loss shape the editTick round closed.
-  ///
-  /// A replace that also fails rethrows the file-system refusal: the
-  /// notice names the real problem, and Q-drive-resave owns what the app
-  /// should offer instead.
-  Future<void> _saveViaCoordinatedReplace(
-    String filePath, {
-    required Map<String, MediaByteSource> mediaToStore,
-    required ProjectConforms conforms,
-    void Function(double)? onProgress,
-  }) async {
-    final stagingDirectory = Directory(AppSave.recoveryDirectory())
-      ..createSync(recursive: true);
-    final staging =
-        '${stagingDirectory.path.replaceAll('\\', '/')}'
-        '/replace.tmp-${DateTime.now().microsecondsSinceEpoch}';
-    await _anicelFileService.save(
-      project: repository.requireProject(),
-      brushFrameStore: brushFrameStore,
-      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
-      filePath: staging,
-      mediaToStore: mediaToStore,
-      conforms: conforms,
-      grants: mediaGrants.grantsToStore(),
-      mediaCrcs: mediaFingerprints.crcsToStore(),
-      onProgress: onProgress,
-    );
-    final replaced = await FolderPicker.replaceFileCoordinated(
-      sourcePath: staging,
-      destinationPath: filePath,
-    );
-    if (!replaced) {
-      throw FileSystemException(
-        'the location refused both a direct write and a coordinated '
-        'replace — this provider cannot be saved to in place',
-        filePath,
-      );
-    }
-    for (final store in [
-      brushFrameStore,
-      conteInkRowStore,
-      conteInkPageStore,
-      envelopeInkStore,
-    ]) {
-      final snapshot = store.bakedSnapshotForSave();
-      final dirtyAgain = store.dirtyCelKeysSinceSave;
-      final moved = <BrushFrameKey, AnicelCelFileRef>{
-        for (final entry in snapshot.fileRefs.entries)
-          if (!dirtyAgain.contains(entry.key) &&
-              entry.value.filePath.replaceAll('\\', '/') == staging)
-            entry.key: AnicelCelFileRef(
-              filePath: filePath,
-              dataOffset: entry.value.dataOffset,
-              length: entry.value.length,
-              canvasSize: entry.value.canvasSize,
-              tileSize: entry.value.tileSize,
-            ),
-      };
-      if (moved.isNotEmpty) {
-        store.adoptSavedFile(moved, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
-      }
-    }
-  }
-
-  Future<void> _writeProjectToFile(
-    String filePath, {
-    void Function(double)? onProgress,
-  }) async {
-    await _textCelBakes.flushTextCelBakes();
-    // Captured BEFORE the save moves the project path: a Save As has to
-    // retire the sidecars of the file it was saved FROM as well.
-    final previousPath = _projectFilePath;
-    // Before serializing: the first save takes this session's recordings
-    // off the shelf. Nothing moves on disk — see the verb.
-    _voiceRecording.releaseShelfTakesToProject();
-    // Resolved against the CURRENT project path, before it moves. On a
-    // save-as that makes each source point into the file being left
-    // behind, and the writer streams from there into the new one — which
-    // is how a copy carries its media without a copy step of its own.
-    final mediaToStore = projectMediaSources(
-      project: repository.requireProject(),
-      projectFilePath: _projectFilePath,
-      mediaEntryNames: _mediaEntryNames,
-      staging: mediaStagingStore,
-    );
-    final conforms = _conformsToStore();
-    try {
-      celsLostToAMissingFile = await _anicelFileService.save(
-        project: repository.requireProject(),
-        brushFrameStore: brushFrameStore,
-        auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
-        filePath: filePath,
-        mediaToStore: mediaToStore,
-        conforms: conforms,
-        grants: mediaGrants.grantsToStore(),
-        mediaCrcs: mediaFingerprints.crcsToStore(),
-        onProgress: onProgress,
-        // 🚨A Save As is「writing somewhere else」and nothing more subtle:
-        // the target is not the file this session has been saving to. 유저
-        // 2026-08-31 asked for it to be a full write every time — 「기존
-        // 파일에 저장 덮어씌우기를 하더라도 고치기위해 풀저장」 — and the
-        // case that was NOT already whole is exactly this one, an overwrite
-        // onto an older copy of the same project.
-        rewriteWhole:
-            previousPath != null &&
-            previousPath.replaceAll(r'\', '/') !=
-                filePath.replaceAll(r'\', '/'),
-      );
-    } on FileSystemException {
-      // 실측 (08-26, iPhone + Google Drive): a File Provider can refuse
-      // plain in-place writes outright. The sanctioned way through is a
-      // COORDINATED replace — write the whole archive app-locally, then
-      // hand it to NSFileCoordinator to swap over the provider file.
-      // Scoped platforms only: a desktop refusal (locked file, dead
-      // drive) has no coordinator to appeal to and must stay loud.
-      if (!FolderPicker.grantsAreScoped) {
-        rethrow;
-      }
-      await _saveViaCoordinatedReplace(
-        filePath,
-        mediaToStore: mediaToStore,
-        conforms: conforms,
-        onProgress: onProgress,
-      );
-    }
-    // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
-    // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE
-    // rather than on close or on import-undo, because this is the one
-    // moment the bytes provably live somewhere else. The save's own step,
-    // so it stays here rather than joining the adoption below.
-    for (final path in mediaToStore.keys) {
-      mediaStagingStore.retire(path);
-    }
-    adoptArchiveAt(filePath, mediaEntryNames: mediaEntryNamesFor(mediaToStore));
-  }
-
-  /// The sidecar this session was RECOVERED from, while its contents still
-  /// live nowhere else. Null in every ordinary session.
-  ///
-  /// Recovery loads the sidecar's bytes and mints every cel ref into it,
-  /// then clears the RAM tiers — so from that moment the sidecar is the
-  /// only home those pixels have. A manual save moves them into the
-  /// project file and clears this.
-  String? _recoveredFromSidecar;
-
-  /// The user threw this session's unsaved work away (closed without
-  /// saving). Its sidecar has to go with it: "저장 안 하고 닫기 = 버리기"
-  /// is only literally true if the next open cannot offer to resurrect
-  /// exactly what was discarded.
-  ///
-  /// A never-saved project has no sidecar to retire (its dirty ticks ask
-  /// for a real file instead of writing one).
-  ///
-  /// 🚨A RECOVERED session is the exception, and the reason is that the
-  /// sidecar is not this session's discard to make. It holds the PREVIOUS
-  /// session's crash work, it is the only copy of it (recovery drops every
-  /// RAM tier and points every ref inside it), and a recovered session
-  /// arrives already dirty with zero edits — so the exit gate fires and
-  /// offers Close as the primary button before the user has touched
-  /// anything. Retiring here deletes hours of crash work at one tap on a
-  /// prompt that says nothing about it. Keeping it means the next open
-  /// offers recovery again, which is what it did before this round; the
-  /// user discards it by saving, not by closing.
-  void discardAutosaveSidecar() {
-    // Recorded even when there is nothing to delete: what this really
-    // says is "the user threw this session away", and the shutdown that
-    // follows delivers the same lifecycle callbacks as any other — which
-    // would otherwise write a fresh snapshot straight over the retirement
-    // and hand the discarded work back at the next open. Deleting without
-    // stopping the trigger is a race the trigger wins.
-    _discardedUnsavedWork = true;
-    final path = _projectFilePath;
-    if (path == null || _recoveredFromSidecar != null) {
-      return;
-    }
-    ProjectAutosaveService.retireSidecarsFor(path);
-  }
-
-  /// True once the user has closed without saving. The session is on its
-  /// way out; nothing may snapshot it again.
-  bool _discardedUnsavedWork = false;
 
   // ── the pool's content fingerprints: their own object ────────────────
   //
@@ -7330,210 +6091,38 @@ class EditorSessionManager extends ChangeNotifier
   // neither means anything without the other.
   late final MediaGrantLedger mediaGrants = MediaGrantLedger(project: this);
 
-  /// Every cut the project holds — what a loaded envelope's owner is
-  /// checked against.
-  static Set<CutId> _everyCutId(Project project) => {
-    for (final track in project.tracks)
-      for (final cut in track.cuts) cut.id,
-  };
+  // --- Project persistence (P3: the .anicel container) ----------------------
+  //
+  // Two collaborators, and the split is between the record and the writer.
+  // [ProjectFile] is WHICH archive this session is bound to, what it
+  // carries, where those bytes are right now and whether anything is
+  // unsaved; [ProjectFileDoor] is the only thing that writes one or reads
+  // one back, and it pushes every fact it learns down into the record.
+  late final ProjectFile projectFile = ProjectFile(
+    project: this,
+    staging: mediaStagingStore,
+  );
 
-  /// Every drawing the project holds — what a loaded ROW ink entry is
-  /// checked against.
-  static Set<FrameId> _everyFrameId(Project project) => {
-    for (final track in project.tracks)
-      for (final cut in track.cuts)
-        for (final layer in cut.layers)
-          for (final frame in layer.frames) frame.id,
-  };
-
-  /// The loaded cels, split by which store owns them — and PRUNED of the
-  /// ones whose drawing no longer exists in the project being opened.
-  ///
-  /// The conte ink namespace routes to its own stores (R5); a ROW entry
-  /// whose storyboard block no longer exists in the loaded project is
-  /// pruned HERE — the load boundary is where "ink dies with the drawing"
-  /// becomes permanent (saving never prunes, so an undone delete keeps
-  /// its ink within the session).
-  ({
-    Map<BrushFrameKey, AnicelCelFileRef> main,
-    Map<BrushFrameKey, AnicelCelFileRef> inkRow,
-    Map<BrushFrameKey, AnicelCelFileRef> inkPage,
-    Map<BrushFrameKey, AnicelCelFileRef> envelope,
-  })
-  _sortLoadedCels(AnicelOpenResult result) {
-    final main = <BrushFrameKey, AnicelCelFileRef>{};
-    final inkRow = <BrushFrameKey, AnicelCelFileRef>{};
-    final inkPage = <BrushFrameKey, AnicelCelFileRef>{};
-    final envelope = <BrushFrameKey, AnicelCelFileRef>{};
-    Set<FrameId>? liveFrameIds;
-    Set<CutId>? liveCutIds;
-    for (final entry in result.cels.entries) {
-      final key = entry.key;
-      if (isEnvelopeInkKey(key)) {
-        // An envelope's ink is keyed by its OWNER cut: the sheet dies with
-        // the cut it describes. Which BOX a stroke sits in is never pruned
-        // — swapping the form preset back has to bring the writing back
-        // with it.
-        liveCutIds ??= _everyCutId(result.project);
-        if (liveCutIds.contains(key.cutId)) {
-          envelope[key] = entry.value;
-        }
-      } else if (!isConteInkKey(key)) {
-        main[key] = entry.value;
-      } else if (key.layerId == conteInkRowLayerId) {
-        liveFrameIds ??= _everyFrameId(result.project);
-        if (liveFrameIds.contains(key.frameId)) {
-          inkRow[key] = entry.value;
-        }
-      } else {
-        inkPage[key] = entry.value;
-      }
-    }
-    return (main: main, inkRow: inkRow, inkPage: inkPage, envelope: envelope);
-  }
-
-  /// R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): heal cels whose
-  /// stored canvas size disagrees with their cut.
-  ///
-  /// Files written while the resize was still split in two could leave
-  /// 겸용 or unselected cuts' cels at a stale size, which display as EMPTY
-  /// and turn permanent on the first stroke (the D5 loss, preserved in the
-  /// save). A healthy file walks this map once and finds nothing; a broken
-  /// cel gets the same strictly cut-scoped crop the resize itself uses
-  /// (R27), and the heal marks the project unsaved so the next save writes
-  /// the repaired truth.
-  /// Answers whether anything WAS healed — a session whose load repaired
-  /// a cel is dirty, because the file on disk still holds the broken one.
-  bool _healStaleCelSizes(
-    Map<BrushFrameKey, AnicelCelFileRef> cels, {
-    required Project project,
-  }) {
-    final cutSizes = {
-      for (final track in project.tracks)
-        for (final cut in track.cuts) cut.id: cut.canvasSize,
-    };
-    final healedCuts = <CutId>{};
-    for (final entry in cels.entries) {
-      final cutSize = cutSizes[entry.key.cutId];
-      if (cutSize != null && entry.value.canvasSize != cutSize) {
-        healedCuts.add(entry.key.cutId);
-      }
-    }
-    for (final cutId in healedCuts) {
-      brushFrameStore.resizeBakedSurfaces(cutSizes[cutId]!, cutId: cutId);
-    }
-    return healedCuts.isNotEmpty;
-  }
-
-  /// Opens a .anicel file, replacing the WHOLE session state: project,
-  /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
-  /// (loaded state has no history; the load→draw→undo path is pinned by
-  /// test). [recoverAs] opens autosave SIDECAR bytes while keeping the
-  /// real file as the project path (the recovery flow).
-  Future<void> openProjectFromFile(
-    String filePath, {
-    String? recoverAs,
-    String? overlayPath,
-  }) async {
-    // The mirror of "a whole archive is refused as an overlay" (pinned in
-    // recovery_overlay_test): an OVERLAY fed through the legacy
-    // whole-archive arm is refused too. Its project.json is the full
-    // project, so it would OPEN and look right while every base cel reads
-    // as empty — and the next full rewrite makes that loss permanent.
-    // Loud beats silently lossy; the shell's routing is the one caller and
-    // routes overlays to [overlayPath].
-    if (recoverAs != null && anicelSnapshotIsOverlay(filePath)) {
-      throw const FormatException(
-        'this snapshot is a recovery overlay — it holds only what changed '
-        'since its base was saved, and has to be opened OVER that base, '
-        'never as the project itself',
-      );
-    }
-    final result = await _anicelFileService.open(
-      filePath: filePath,
-      overlayPath: overlayPath,
-    );
-    playback.stop();
-    // BEFORE the project lands: a bookmark tracks the file rather than the
-    // path, so resolving one is how a referenced movie that was renamed or
-    // moved is found again — and the project has to be told, or the pool
-    // goes on naming an address nothing answers at. This is the same move
-    // the relative-path remap above makes, at the same moment, for the
-    // same reason.
-    final movedByGrant = await mediaGrants.resolveMediaGrants(result.grants);
-    repository.replaceProject(
-      movedByGrant.isEmpty
-          ? result.project
-          : remapProjectMediaPaths(result.project, movedByGrant),
-    );
-    // What this project carries, as the file on disk says. Anything the
-    // pool names that is NOT here is an ordinary outside reference and
-    // resolves by path like it always did.
-    _mediaEntryNames = result.mediaEntryNames;
-    // Through the bookmark move as well. The service already narrowed these
-    // against the RELATIVE-path remap it can see; this second move happens
-    // out here, after a bookmark resolved to a file the user renamed, and
-    // the service never learns about it. Two movers, both of which have to
-    // be followed — miss one and the next save deletes the fact.
-    mediaFingerprints.restoreFromFile(
-      result.mediaFingerprints.moved(movedByGrant),
-    );
-    // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
-    // until a cel is first shown (near-zero RAM for 1500-cut projects).
-    // The conte ink namespace routes to its own stores (R5); a ROW entry
-    // whose storyboard block no longer exists in the loaded project is
-    // pruned HERE — the load boundary is where "ink dies with the
-    // drawing" becomes permanent (saving never prunes, so an undone
-    // delete keeps its ink within the session).
-    final cels = _sortLoadedCels(result);
-    brushFrameStore.restoreFromFile(cels.main);
-    final healed = _healStaleCelSizes(cels.main, project: result.project);
-    conteInkRowStore.restoreFromFile(cels.inkRow);
-    conteInkPageStore.restoreFromFile(cels.inkPage);
-    envelopeInkStore.restoreFromFile(cels.envelope);
-    historyManager.clear();
-    _clipboard.clear();
-    _layerClipboard.clear();
-    // The selections name rows of the project being discarded, so no grid
-    // can draw them — and a band nothing shows still CLAIMS the cell verbs
-    // ([cellSelectionClaimsSubject]), which would leave Delete and the
-    // comma buttons dark with nothing on screen to explain why. Every
-    // other whole-state reset clears here; this one was the omission.
-    clearAllSelections();
-    trackFrameRangeSelection.value = null;
-    editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
-    rebuildActiveCutControllers();
-    // The replaced project's shelf takes are no longer this session's to
-    // adopt — they stay on the shelf, findable.
-    _voiceRecording.forgetShelfTakes();
-    _projectFilePath = recoverAs ?? filePath;
-    // Remembered because the recovered work lives ONLY in that file — an
-    // overlay holds the edited cels and every ref for them points inside
-    // it, and the RAM tiers were just cleared — so until a save moves
-    // those pixels into the project file, deleting it is deleting the
-    // work. (A snapshot from an older build is a whole archive opened as
-    // [filePath]; same reasoning, same field.) Reset on an ordinary open
-    // so a later session never inherits another one's exception.
-    _recoveredFromSidecar =
-        overlayPath ?? (recoverAs == null ? null : filePath);
-    // A different project is a different session; a discard that belonged
-    // to the last one must not silence this one's snapshots.
-    _discardedUnsavedWork = false;
-    _settleConformCache();
-    _warmAudioConforms();
-    // RELINK-2: the first of the three refresh moments. A project opened
-    // on a machine that does not have its referenced media has to SAY so —
-    // that is the whole point of the banner, and it is the one moment the
-    // user has not done anything to prompt it.
-    refreshMediaExistence();
-    // A recovered session stays dirty: its content differs from the real
-    // file until the user saves — and so does a session whose load just
-    // HEALED mismatched cels (R7q2).
-    _hasUnsavedChanges = recoverAs != null || overlayPath != null || healed;
-    warmActiveCut();
-    frameSeekCommitted.value += 1;
-    notifyListeners();
-  }
+  late final ProjectFileDoor projectDoor = ProjectFileDoor(
+    file: projectFile,
+    project: this,
+    selection: this,
+    changes: this,
+    timeline: this,
+    controllers: activeCutControllers,
+    playbackRig: playbackRig,
+    renderCaches: renderCaches,
+    staging: mediaStagingStore,
+    grants: mediaGrants,
+    fingerprints: mediaFingerprints,
+    textCelBakes: _textCelBakes,
+    voiceRecording: _voiceRecording,
+    clipboard: _clipboard,
+    layerClipboard: _layerClipboard,
+    audioConformStore: audioConformStore,
+    frameSeekCommitted: frameSeekCommitted,
+    refreshMediaExistence: refreshMediaExistence,
+  );
 
   // --- Frame flipping (P1 shortcuts) ----------------------------------------
 
@@ -7698,84 +6287,6 @@ class EditorSessionManager extends ChangeNotifier
   // instruction is kept exactly where it belongs: a crossed frame costs one
   // derivation and zero rebuilds unless something actually changed.
 
-  /// R26 #44: whether the drawing block covering [frameIndex] holds ANY
-  /// picture in its cel — the ACTION-section rows' unworked-block tint
-  /// reads this. Non-drawing sections (SE / camera / instruction) and
-  /// uncovered cells always answer true (no tint).
-  bool celHasContentForLayer(Layer layer, int frameIndex) {
-    if (layer.kind.groupsLayers) {
-      // R28 #11 carried onto the shared painter: a folder frame is grey
-      // only when NO member drew there ("다른곳에서 해당위치에 그림그려진
-      // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
-      // the drawing-section branch, resolves no frame of its own and
-      // answers `true` — the union grey would vanish silently.
-      return folderBandMembersOf(
-        layer.id,
-      ).any((member) => celHasContentForLayer(member, frameIndex));
-    }
-    // 🚨THE QUESTION IS 「CAN THIS ROW HOLD A PICTURE」, not 「is it in the
-    // drawing SECTION」 (유저 2026-08-27, R27 #16: 「추가로 **없으면 블록을
-    // 회색으로**. 로직은 통일」). The direction row is a camera-section row
-    // that holds cels, so the section test answered `true` — no tint — and
-    // an empty block there was indistinguishable from a full one.
-    //
-    // ⛔The two only looked like one question while every cel-holding row
-    // happened to sit in the drawing section, which is the same trap R27
-    // #16 found in `LayerKind.carriesInstructions`.
-    if (!layer.kind.isDrawingCel) {
-      return true;
-    }
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return true;
-    }
-    final frame = timelineController.resolveFrameForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    if (frame == null) {
-      // 🚨A SPAN-COVERED CELL ON A DIRECTION ROW IS A BLOCK — it simply has
-      // no cel behind it yet, which is the state 유저 asked to see: 「추가로
-      // **없으면 블록을 회색으로**」. Everywhere else a cell with no frame
-      // is not a block at all, so there is nothing to tint and `true` is
-      // the right answer.
-      //
-      // ⛔It asks the span ADAPTER rather than reading `layer.instructions`
-      // again — 「is this frame under a span」 has one home, and the band
-      // that draws the block reads the same one ([[no-copy-to-share]]).
-      if (!layer.kind.carriesInstructions) {
-        return true;
-      }
-      return instructionCellExposureState(layer, frameIndex) ==
-          TimelineCellExposureState.uncovered;
-    }
-    // A LIVE stroke already counts. The store only learns about pixels at
-    // commit (`markCelEdited` on pen-up), so waiting for it left the block
-    // grey for the whole stroke — the user asked for it to go white the
-    // moment the line starts, which is also when the cel stops being
-    // "unworked" in any sense that matters.
-    if (brushInputActive.value &&
-        layer.id == activeLayerId &&
-        frame.id == selectedFrame?.id) {
-      return true;
-    }
-    return brushFrameStore.celHasRenderableContent(
-      brushFrameKeyForCut(cut, layer.id, frame.id),
-    );
-  }
-
-  /// Bumps whenever [celHasContentForLayer] can have changed anywhere: the
-  /// store crosses empty↔drawn, or the pen goes down on a cel.
-  ///
-  /// The store's own crossing signal (R27 #13) already existed and NOTHING
-  /// SUBSCRIBED TO IT — which is the whole bug: the tint is derived state
-  /// living outside the immutable Layer, so with no listener it only caught
-  /// up when an unrelated edit announced app-wide (switch layers, rename a
-  /// frame). This adds the live-stroke half and hands the row painters one
-  /// thing to listen to.
-  final ValueNotifier<int> celTintRevision = ValueNotifier<int>(0);
-
-  void _bumpCelTintRevision() => celTintRevision.value += 1;
 
   // The per-layer "empty cels" memo TOKEN that used to live here is gone
   // with [celContentRevision]. It was the weaker form of the same idea: a
@@ -7805,7 +6316,7 @@ class EditorSessionManager extends ChangeNotifier
   CanvasEditorSelectionLabels get canvasSelectionLabels {
     final project = repository.requireProject();
     final cut = activeCutOrNull;
-    final layer = layerController.activeLayer;
+    final layer = activeCutControllers.layerController.activeLayer;
     final frame = selectedFrame;
     return CanvasEditorSelectionLabels(
       projectLabel: project.name,

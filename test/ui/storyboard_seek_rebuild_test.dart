@@ -91,7 +91,7 @@ void main() {
   /// a second chance to rebuild and hide the very thing being asserted — so
   /// the warm loop's idle timers are stood down by hand instead.
   void quiesce(EditorSessionManager manager) =>
-      manager.prerenderScheduler.cancel();
+      manager.playbackRig.prerenderScheduler.cancel();
 
   testWidgets('a committed seek moves the playhead and leaves the panel\'s '
       'painted rows untouched', (tester) async {

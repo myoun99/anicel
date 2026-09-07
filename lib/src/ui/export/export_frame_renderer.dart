@@ -70,7 +70,7 @@ class ExportFrameRenderer {
       // (valid display cache first, else baked; the coordinator donates
       // on every commit, undo and redo). Nothing is stored back, so
       // batch exports don't grow the shared cache; null = an empty cel.
-      return session.brushFrameStore.currentSurfaceWithoutReplay(
+      return session.renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
         frameKey,
         canvasSize: cut.canvasSize,
       );

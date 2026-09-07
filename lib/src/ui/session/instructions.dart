@@ -7,6 +7,7 @@ import '../../models/timeline_frame_range.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_layer_instructions_command.dart';
 import '../timeline/instruction_span_editing.dart';
+import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'cut_verbs.dart';
@@ -25,6 +26,7 @@ class Instructions {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required CutVerbs cutVerbs,
     required Camera camera,
     required ActiveCutEdits activeCut,
@@ -32,6 +34,7 @@ class Instructions {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
+       _controllers = controllers,
        _cutVerbs = cutVerbs,
        _camera = camera,
        _activeCut = activeCut;
@@ -43,6 +46,7 @@ class Instructions {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final ActiveCutEdits _activeCut;
 
   /// Replaces [layerId]'s instruction span map (instruction rows only).
@@ -83,7 +87,7 @@ class Instructions {
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
-    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
     if (frameIndex < 0 ||
         instructionSpanAt(layer.id, frameIndex) != null ||
         _camera.cameraInstructionSet.defs.isEmpty) {

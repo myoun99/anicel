@@ -158,8 +158,8 @@ void main() {
     session.setProjectAudioSampleRate(
       session.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
-    session.setPlaybackQuality(
-      session.playbackQuality == PlaybackQuality.full
+    session.playbackRig.setPlaybackQuality(
+      session.playbackRig.playbackQuality == PlaybackQuality.full
           ? PlaybackQuality.half
           : PlaybackQuality.full,
     );
@@ -185,7 +185,7 @@ void main() {
     // with it, so the token would change even without the kind entry (a
     // mutation run proved exactly that). There is no API that changes a
     // layer's kind in place, so the kind entry stays unpinned by design.
-    session.addLayerOfKind(LayerKind.se);
+    session.layerStack.addLayerOfKind(LayerKind.se);
     final seLayer = session.layers.firstWhere((l) => l.kind == LayerKind.se);
     session.selectLayer(seLayer.id);
     await tester.pump();
@@ -245,7 +245,7 @@ void main() {
     session.selectLayer(rowA);
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final rowB = session.activeLayer!.id;
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();

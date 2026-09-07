@@ -34,10 +34,10 @@ void main() {
     );
     addTearDown(s.dispose);
     final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     spy.releases = 0;
-    await s.openProjectFromFile(path);
+    await s.projectDoor.openProjectFromFile(path);
 
     expect(
       spy.releases,

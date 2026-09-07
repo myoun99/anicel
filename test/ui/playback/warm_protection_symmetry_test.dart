@@ -71,13 +71,13 @@ void main() {
       final s = session();
       addTearDown(s.dispose);
       final activeCut = s.activeCutOrNull!;
-      final quality = s.playbackQuality;
+      final quality = s.playbackRig.playbackQuality;
 
-      final range = s.playbackCache.debugPlaybackProtectedRanges().single;
+      final range = s.playbackRig.playbackCache.debugPlaybackProtectedRanges().single;
       expect(range.endFrame, cutWarmFrameCount(activeCut) - 1);
       expect(range.endFrame, 6, reason: 'the runway reaches frame 6');
 
-      await s.cutFrameCompositeCache.prepareComposite(
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
         quality: quality,
@@ -88,19 +88,19 @@ void main() {
       final other = quality == PlaybackQuality.full
           ? PlaybackQuality.half
           : PlaybackQuality.full;
-      await s.cutFrameCompositeCache.prepareComposite(
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
         quality: other,
       );
 
-      s.cutFrameCompositeCache.enforceBudget(
+      s.renderCaches.cutFrameCompositeCache.enforceBudget(
         maxBytes: 0,
-        protect: s.playbackCache.debugPlaybackProtectedRanges(),
+        protect: s.playbackRig.playbackCache.debugPlaybackProtectedRanges(),
       );
 
       expect(
-        s.cutFrameCompositeCache.validCompositeOrNull(
+        s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: activeCut,
           frameIndex: 5,
           quality: quality,
@@ -110,7 +110,7 @@ void main() {
             'the one-law derivation exists to end',
       );
       expect(
-        s.cutFrameCompositeCache.validCompositeOrNull(
+        s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: activeCut,
           frameIndex: 5,
           quality: other,
@@ -128,25 +128,25 @@ void main() {
     addTearDown(s.dispose);
     final activeCut = s.activeCutOrNull!;
 
-    s.prerenderScheduler.requestWarmCut(
+    s.playbackRig.prerenderScheduler.requestWarmCut(
       cutId: activeCut.id,
-      quality: s.playbackQuality,
+      quality: s.playbackRig.playbackQuality,
     );
 
     expect(
-      s.prerenderScheduler.progress.value.total,
+      s.playbackRig.prerenderScheduler.progress.value.total,
       cutWarmFrameCount(activeCut),
     );
     expect(
-      s.playbackCache.debugPlaybackProtectedRanges().single.endFrame + 1,
-      s.prerenderScheduler.progress.value.total,
+      s.playbackRig.playbackCache.debugPlaybackProtectedRanges().single.endFrame + 1,
+      s.playbackRig.prerenderScheduler.progress.value.total,
       reason: 'one function, two readers — the disagreement WAS the bug',
     );
 
     // Stand the run down INSIDE the test: its zero-length yield timer
     // otherwise trips the binding's timer invariant, which runs before
     // the teardown dispose (the scheduler's own documented hazard).
-    s.prerenderScheduler.cancel();
+    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   });
 
@@ -158,29 +158,29 @@ void main() {
       final activeCut = s.activeCutOrNull!;
 
       expect(
-        s.isPlaybackFrameReadyForCut(activeCut, 2),
+        s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 2),
         isTrue,
         reason: 'the hole between blocks composes to nothing — ready by '
             'definition, no bake required',
       );
       expect(
-        s.isPlaybackFrameReadyForCut(activeCut, 8),
+        s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 8),
         isTrue,
         reason: 'past every drawing is the same nothing',
       );
       expect(
-        s.isPlaybackFrameReadyForCut(activeCut, 5),
+        s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 5),
         isFalse,
         reason: 'the runway cel is REAL content — green must wait for its '
             'bake, or the bar claims readiness playback cannot deliver',
       );
 
-      await s.cutFrameCompositeCache.prepareComposite(
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
-        quality: s.playbackQuality,
+        quality: s.playbackRig.playbackQuality,
       );
-      expect(s.isPlaybackFrameReadyForCut(activeCut, 5), isTrue);
+      expect(s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 5), isTrue);
     });
   });
 

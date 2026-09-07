@@ -49,9 +49,9 @@ void main() {
     final path = '${directory.path}/scene.anicel';
 
     final first = EditorSessionManager(initialProject: createDefaultProject());
-    first.addLayer();
-    first.addLayer();
-    first.addLayer();
+    first.layerStack.addLayer();
+    first.layerStack.addLayer();
+    first.layerStack.addLayer();
     expectNoDuplicateIds(first, reason: 'precondition: one session is fine');
     final savedIds = everyLayerId(first).map((id) => id.value).toSet();
     expect(
@@ -60,17 +60,17 @@ void main() {
       reason: 'fixture: the file must carry an id the fresh counter will '
           'reach, or reopening proves nothing',
     );
-    await first.saveProjectToFile(path);
+    await first.projectDoor.saveProjectToFile(path);
     first.dispose();
 
     // A NEW session: its counter starts at 1 again, knowing nothing about
     // the ids in the file it is about to open.
     final second = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(second.dispose);
-    await second.openProjectFromFile(path);
+    await second.projectDoor.openProjectFromFile(path);
     expectNoDuplicateIds(second, reason: 'precondition: the file is sound');
 
-    second.addLayer();
+    second.layerStack.addLayer();
     expectNoDuplicateIds(second);
   });
 
@@ -78,19 +78,19 @@ void main() {
     final path = '${directory.path}/scene.anicel';
 
     final first = EditorSessionManager(initialProject: createDefaultProject());
-    first.addLayer();
-    first.addLayer();
-    await first.saveProjectToFile(path);
+    first.layerStack.addLayer();
+    first.layerStack.addLayer();
+    await first.projectDoor.saveProjectToFile(path);
     first.dispose();
 
     final second = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(second.dispose);
-    await second.openProjectFromFile(path);
+    await second.projectDoor.openProjectFromFile(path);
     // Several in a row: a fix that only skips the FIRST collision leaves the
     // second add colliding again.
-    second.addLayer();
-    second.addLayer();
-    second.addLayer();
+    second.layerStack.addLayer();
+    second.layerStack.addLayer();
+    second.layerStack.addLayer();
     expectNoDuplicateIds(second);
   });
 }

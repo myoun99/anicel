@@ -23,7 +23,7 @@ void main() {
       'with the new projection', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.text)
         .id;
@@ -31,7 +31,7 @@ void main() {
 
     Layer layerNow() =>
         s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
-    bool baked() => s.celHasContentForLayer(layerNow(), 0);
+    bool baked() => s.layerStack.celHasContentForLayer(layerNow(), 0);
     expect(baked(), isFalse, reason: 'the cel starts blank');
 
     // Every notification, asked at the moment it arrives: was the

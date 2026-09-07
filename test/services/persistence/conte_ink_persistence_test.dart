@@ -78,51 +78,51 @@ void main() {
     final liveKey = conteInkRowKey(cut.id, const FrameId('sb-f1'));
     final deadKey = conteInkRowKey(cut.id, const FrameId('long-dead-block'));
 
-    s.conteInkRowStore.storeBakedSurface(liveKey, inkSurface(seed: 3));
-    s.conteInkRowStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
-    s.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
-    await s.saveProjectToFile(path);
+    s.renderCaches.conteInkRowStore.storeBakedSurface(liveKey, inkSurface(seed: 3));
+    s.renderCaches.conteInkRowStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
+    s.renderCaches.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
+    await s.projectDoor.saveProjectToFile(path);
 
     final loaded = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(loaded.dispose);
-    await loaded.openProjectFromFile(path);
+    await loaded.projectDoor.openProjectFromFile(path);
 
     expect(
-      loaded.conteInkRowStore.celHasRenderableContent(liveKey),
+      loaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey),
       isTrue,
       reason: 'the live block\'s ink reopens with the project',
     );
     expect(
-      loaded.conteInkRowStore.celHasRenderableContent(deadKey),
+      loaded.renderCaches.conteInkRowStore.celHasRenderableContent(deadKey),
       isFalse,
       reason: 'a dead block\'s ink prunes at the load boundary',
     );
     expect(
-      loaded.conteInkPageStore.celHasRenderableContent(conteInkPageKey(0)),
+      loaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(0)),
       isTrue,
       reason: 'page-plane ink (margins) reopens too',
     );
     expect(
-      loaded.brushFrameStore.fileCelKeys.where(isConteInkKey),
+      loaded.renderCaches.brushFrameStore.fileCelKeys.where(isConteInkKey),
       isEmpty,
       reason: 'the ink namespace never leaks into the cel store',
     );
 
     // A second save from the LOADED session (incremental path over the
     // same file) keeps the ink sound.
-    loaded.conteInkPageStore.storeBakedSurface(
+    loaded.renderCaches.conteInkPageStore.storeBakedSurface(
       conteInkPageKey(1),
       inkSurface(seed: 7),
     );
-    await loaded.saveProjectToFile(path);
+    await loaded.projectDoor.saveProjectToFile(path);
     final reloaded = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(reloaded.dispose);
-    await reloaded.openProjectFromFile(path);
-    expect(reloaded.conteInkRowStore.celHasRenderableContent(liveKey), isTrue);
+    await reloaded.projectDoor.openProjectFromFile(path);
+    expect(reloaded.renderCaches.conteInkRowStore.celHasRenderableContent(liveKey), isTrue);
     expect(
-      reloaded.conteInkPageStore.celHasRenderableContent(conteInkPageKey(1)),
+      reloaded.renderCaches.conteInkPageStore.celHasRenderableContent(conteInkPageKey(1)),
       isTrue,
     );
   });

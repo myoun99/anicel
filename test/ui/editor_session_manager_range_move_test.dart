@@ -28,7 +28,7 @@ void main() {
     final layerA = s.activeLayer!;
     s.selectFrameIndex(3);
     s.createDrawingAtCurrentFrame();
-    s.addLayer();
+    s.layerStack.addLayer();
     final layerB = s.activeLayer!;
     s.selectLayer(layerA.id);
     s.selectFrameIndex(0);
@@ -195,7 +195,7 @@ void main() {
       for (final id in frameIds) s.brushFrameKeyForCut(cut, b.id, id),
     ];
     for (final key in fromKeys) {
-      s.brushFrameStore.getOrCreateFrame(key);
+      s.renderCaches.brushFrameStore.getOrCreateFrame(key);
     }
 
     s.updateFrameRangeSelectionDrag(
@@ -214,8 +214,8 @@ void main() {
     expect(movedB.timeline[0], isNotNull);
     expect(movedB.timeline[3], isNotNull);
     for (var i = 0; i < frameIds.length; i += 1) {
-      expect(s.brushFrameStore.frameOrNull(fromKeys[i]), isNull);
-      expect(s.brushFrameStore.frameOrNull(toKeys[i]), isNotNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(fromKeys[i]), isNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(toKeys[i]), isNotNull);
     }
 
     s.undo();
@@ -225,8 +225,8 @@ void main() {
     expect(backA.timeline[3], isNotNull);
     expect(backB.timeline, isEmpty);
     for (var i = 0; i < frameIds.length; i += 1) {
-      expect(s.brushFrameStore.frameOrNull(fromKeys[i]), isNotNull);
-      expect(s.brushFrameStore.frameOrNull(toKeys[i]), isNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(fromKeys[i]), isNotNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(toKeys[i]), isNull);
     }
   });
 
@@ -410,7 +410,7 @@ void main() {
   test('P3b-3 (#2): cross-row drops land within the SAME SECTION now — '
       'animation ↔ storyboard/art interchange', () {
     final (s, a, _) = fixture();
-    s.addLayerOfKind(LayerKind.storyboard);
+    s.layerStack.addLayerOfKind(LayerKind.storyboard);
     final storyboard = s.activeLayer!;
     s.selectLayer(a.id);
 
@@ -529,7 +529,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final first = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
-    s.addLayerOfKind(LayerKind.instruction);
+    s.layerStack.addLayerOfKind(LayerKind.instruction);
     final second = s.layers.lastWhere(
       (l) => l.kind == LayerKind.instruction && l.id != first.id,
     );
@@ -692,7 +692,7 @@ void main() {
       side: TimelineRunEdgeSide.end,
       mode: TimelineRunEdgeMode.repeat,
     );
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id;
 
     // Select the REAL block on A and drop it on the empty layer B.
@@ -721,7 +721,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id;
     final camId = s.layers.firstWhere((l) => l.kind == LayerKind.camera).id;
 
@@ -760,12 +760,12 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame(); // block on A
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id;
     s.selectLayer(bId);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame(); // block on B
-    s.addLayer();
+    s.layerStack.addLayer();
     final cId = s.activeLayer!.id; // empty target row below
 
     Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
@@ -807,7 +807,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame(); // block on A at frame 0
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id; // empty drawing row below A
 
     final seIds = [for (final l in s.activeTrack.seLayers) l.id];
@@ -871,12 +871,12 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id;
     s.selectLayer(bId);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.addLayer();
+    s.layerStack.addLayer();
     final cId = s.activeLayer!.id;
 
     s.selectLayer(aId);
@@ -905,9 +905,9 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame(); // block on A
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id; // stays EMPTY, joins the selection
-    s.addLayer();
+    s.layerStack.addLayer();
     final cId = s.activeLayer!.id; // target row
 
     s.selectLayer(aId);
@@ -1322,7 +1322,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame(); // block on A at frame 0
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id; // empty drawing row below A
 
     final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
@@ -1377,7 +1377,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame(); // block on A at frame 0
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id;
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame(); // block on B at frame 0

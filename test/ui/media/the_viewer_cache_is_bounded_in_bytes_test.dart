@@ -226,7 +226,7 @@ void main() {
   group('the census can see the viewer', () {
     testWidgets('a loaded viewer reports its page bytes', (tester) async {
       expect(
-        session.viewerRasterBytes,
+        session.renderCaches.viewerRasterBytes,
         0,
         reason: 'fixture premise: nothing loaded yet',
       );
@@ -242,26 +242,26 @@ void main() {
         greaterThan(0),
         reason: 'two rendered pages are in the census, not in the gap',
       );
-      expect(item.bytes, session.viewerRasterBytes);
+      expect(item.bytes, session.renderCaches.viewerRasterBytes);
     });
 
     testWidgets('and stops reporting when it goes away', (tester) async {
       await openConte(tester, pages: 3);
       await turnTo(tester, 1);
-      expect(session.viewerRasterBytes, greaterThan(0));
+      expect(session.renderCaches.viewerRasterBytes, greaterThan(0));
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
 
       expect(
-        session.viewerRasterBytesByViewer,
+        session.renderCaches.viewerRasterBytesByViewer,
         isEmpty,
         reason:
             '⛔the entry is REMOVED, not zeroed — a closed tab is not a '
             'viewer holding nothing, and one entry per close would grow '
             'for the life of the session',
       );
-      expect(session.viewerRasterBytes, 0);
+      expect(session.renderCaches.viewerRasterBytes, 0);
     });
   });
 

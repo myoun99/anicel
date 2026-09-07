@@ -22,7 +22,7 @@ class RecordingStreamerOverlay extends StatelessWidget {
           return const SizedBox.shrink();
         }
         return ValueListenableBuilder<int?>(
-          valueListenable: session.playback.globalFrameIndexListenable,
+          valueListenable: session.playbackRig.playback.globalFrameIndexListenable,
           builder: (context, frame, _) {
             final window = session.voiceRecordStreamerWindow;
             if (frame == null || window == null) {

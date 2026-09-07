@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/commands/track_se_layer_commands.dart';
+import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
@@ -22,20 +23,20 @@ class LayerVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _activeCutEdits = activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// The active-row cut-command envelope — the session's one instance,
@@ -321,14 +322,13 @@ class LayerVerbs {
         : isAttachedLayer(active)
         ? active.attachedToLayerId
         : active.id;
-    if (baseId != null &&
-        attachedGroupSlice(baseId, cut.layers).length > 1) {
-      _timeline.layerController.addLayer(
+    if (baseId != null && attachedGroupSlice(baseId, cut.layers).length > 1) {
+      _controllers.layerController.addLayer(
         layer: layer,
         insertionIndex: attachedGroupEndIndex(baseId, cut.layers),
       );
       return;
     }
-    _timeline.layerController.addLayer(layer: layer);
+    _controllers.layerController.addLayer(layer: layer);
   }
 }

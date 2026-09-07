@@ -24,7 +24,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final from = session.activeLayerId!;
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final to = session.activeLayerId!;
     expect(to, isNot(from));
 
@@ -83,7 +83,7 @@ void main() {
     // per cut, so `addLayerOfKind` hands back the row that already exists
     // and the active layer never moves — the first version of this test
     // was still standing on an animation row while claiming otherwise.
-    f.session.addLayerOfKind(LayerKind.camera);
+    f.session.layerStack.addLayerOfKind(LayerKind.camera);
     final camera = f.session.layers.firstWhere(
       (layer) => layer.kind == LayerKind.camera,
     );

@@ -371,8 +371,8 @@ class _WorkspaceCollapsedRows {
   /// painters every pass and defeats the repaint gating it exists for.
   late final TimelineCelContentSource _collapsedCelContent =
       TimelineCelContentSource(
-        hasContent: _state.widget.session.celHasContentForLayer,
-        revision: _state.widget.session.celTintRevision,
+        hasContent: _state.widget.session.layerStack.celHasContentForLayer,
+        revision: _state.widget.session.layerStack.celTintRevision,
       );
 
   /// The FRAME half of the collapsed row: the REAL row the timeline draws.

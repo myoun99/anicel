@@ -5,7 +5,20 @@ import '../../models/cut_warm_extent.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
+import '../../models/playback_quality.dart';
+import '../playback/canvas_playback_controller.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
+
+/// The RUN this budget is trimming for — declared on the CONSUMER's
+/// side (2026-09-06) so that [PlaybackRig], which both implements it and
+/// builds this object, does not have to import a file that imports it
+/// back. The pair is one cycle in the file graph and none at all in the
+/// dependency direction: the budget knows about a run, not about a rig.
+abstract interface class PlaybackRun {
+  CanvasPlaybackController get playback;
+  PlaybackQuality get playbackQuality;
+}
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
 /// the ranges it must not evict (what is playing, what is about to), the
@@ -20,17 +33,20 @@ import 'session_roles.dart';
 class PlaybackCacheBudget {
   PlaybackCacheBudget({
     required ProjectAccess project,
-    required SessionInternals internals,
+    required RenderCaches renderCaches,
+    required PlaybackRun run,
   }) : _project = project,
-       _internals = internals;
+       _renderCaches = renderCaches,
+       _run = run;
 
   final ProjectAccess _project;
-  final SessionInternals _internals;
+  final RenderCaches _renderCaches;
+  final PlaybackRun _run;
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
       PlaybackCacheBudgetEnforcer(
-        layerImages: _internals.layerFrameImageCache,
-        composites: _internals.cutFrameCompositeCache,
+        layerImages: _renderCaches.layerFrameImageCache,
+        composites: _renderCaches.cutFrameCompositeCache,
         maxBytes: _debugMaxBytes ?? playbackCacheBudgetBytes,
       );
 
@@ -65,7 +81,7 @@ class PlaybackCacheBudget {
 
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),
-    reservedForDisplayBytes: _internals.layerFrameImageCache.pinnedBytes,
+    reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
   );
 
   /// The OS memory warning, the playback caches' share: the enforcer
@@ -88,14 +104,14 @@ class PlaybackCacheBudget {
   /// plays exactly its duration, and protecting more than plays would
   /// starve the budget during the one activity that needs it most.
   List<PlaybackProtectedRange> _playbackProtectedRanges() {
-    if (_internals.playback.isActive) {
+    if (_run.playback.isActive) {
       return [
-        for (final entry in _internals.playback.playlist)
+        for (final entry in _run.playback.playlist)
           PlaybackProtectedRange(
             cutId: entry.cutId,
             startFrame: 0,
             endFrame: math.max(0, entry.duration - 1),
-            quality: _internals.playbackQuality,
+            quality: _run.playbackQuality,
           ),
       ];
     }
@@ -109,7 +125,7 @@ class PlaybackCacheBudget {
         cutId: cut.id,
         startFrame: 0,
         endFrame: cutWarmFrameCount(cut) - 1,
-        quality: _internals.playbackQuality,
+        quality: _run.playbackQuality,
       ),
     ];
   }
@@ -146,10 +162,10 @@ class PlaybackCacheBudget {
   /// The empty answer reads the same shared visit the signature rides, so
   /// it cannot disagree with what the compose loop would actually paint.
   bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
-    if (_internals.cutFrameCompositeCache.validCompositeOrNull(
+    if (_renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: cut,
           frameIndex: frameIndex,
-          quality: _internals.playbackQuality,
+          quality: _run.playbackQuality,
         ) !=
         null) {
       return true;

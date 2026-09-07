@@ -6,6 +6,7 @@ import '../../models/layer_kind.dart';
 import '../../models/edit_instance_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../services/command.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
 import 'instructions.dart';
@@ -26,7 +27,7 @@ class CellInstances {
     required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required Camera camera,
     required Instructions instructionVerbs,
@@ -38,7 +39,7 @@ class CellInstances {
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _camera = camera,
        _instructionVerbs = instructionVerbs,
@@ -54,7 +55,7 @@ class CellInstances {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final Camera _camera;
   final Instructions _instructionVerbs;
@@ -140,7 +141,9 @@ class CellInstances {
       ...cameraCommands,
       ...instructionCommands,
       if (fills.isNotEmpty)
-        ..._timeline.timelineController.drawingFramesCommandsForLayers(fills),
+        ..._controllers.timelineController.drawingFramesCommandsForLayers(
+          fills,
+        ),
     ];
     if (commands.isNotEmpty) {
       _project.historyManager.execute(
@@ -244,7 +247,7 @@ class CellInstances {
       // No cell at all is not an empty cell: there is nowhere to create.
       return true;
     }
-    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
     return switch (layer.kind) {
       LayerKind.camera =>
         _project.activeCutOrNull?.camera.keyframeAt(frameIndex) != null,

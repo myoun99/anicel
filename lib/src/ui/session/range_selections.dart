@@ -13,6 +13,7 @@ import '../timeline/timeline_row_span_resolver.dart'
 import '../timeline/timeline_section_policy.dart';
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
+import 'playback_rig.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
 import 'storyboard_rows.dart';
@@ -35,6 +36,7 @@ class RangeSelections {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required PlaybackRig playbackRig,
     required StoryboardRows storyboardRows,
     required TrackSeDisplay trackSe,
   }) : _project = project,
@@ -42,6 +44,7 @@ class RangeSelections {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
        _trackSe = trackSe;
 
@@ -50,6 +53,7 @@ class RangeSelections {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final PlaybackRig _playbackRig;
   final StoryboardRows _storyboardRows;
   final TrackSeDisplay _trackSe;
 
@@ -825,13 +829,13 @@ class RangeSelections {
   void beginSelectionInteraction() {
     _selectionInteractionHolds += 1;
     _internals.selectionInteractionActive.value = true;
-    _internals.prerenderScheduler.beginInputHold();
+    _playbackRig.prerenderScheduler.beginInputHold();
   }
 
   void endSelectionInteraction() {
     if (_selectionInteractionHolds > 0) {
       _selectionInteractionHolds -= 1;
-      _internals.prerenderScheduler.endInputHold();
+      _playbackRig.prerenderScheduler.endInputHold();
     }
     _internals.selectionInteractionActive.value =
         _selectionInteractionHolds > 0;

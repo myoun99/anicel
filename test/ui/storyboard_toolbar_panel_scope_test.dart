@@ -164,7 +164,7 @@ void main() {
     final manager = await pumpStoryboard(tester);
     // Give the active cut a storyboard layer (born covering the cut) and
     // divide it: panels [0,3) and [3,duration).
-    manager.addLayerOfKind(LayerKind.storyboard);
+    manager.layerStack.addLayerOfKind(LayerKind.storyboard);
     final cutBefore = manager.activeCutOrNull!;
     manager.selectRow(TrackRowAddress(manager.activeTrack.id));
     manager.selectGlobalFrame(3);
@@ -201,7 +201,7 @@ void main() {
   testWidgets('D28: the frame ＋ DIVIDES the panel under the cursor, and '
       'refuses at an existing division start', (tester) async {
     final manager = await pumpStoryboard(tester);
-    manager.addLayerOfKind(LayerKind.storyboard);
+    manager.layerStack.addLayerOfKind(LayerKind.storyboard);
     manager.selectRow(TrackRowAddress(manager.activeTrack.id));
     manager.selectGlobalFrame(0);
     await tester.pumpAndSettle();
@@ -446,7 +446,7 @@ void main() {
     if (!s.activeCutOrNull!.layers.any(
       (layer) => layer.kind == LayerKind.instruction,
     )) {
-      s.addLayerOfKind(LayerKind.instruction);
+      s.layerStack.addLayerOfKind(LayerKind.instruction);
     }
     final instruction = s.activeCutOrNull!.layers.firstWhere(
       (layer) => layer.kind == LayerKind.instruction,

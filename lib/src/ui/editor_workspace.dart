@@ -973,7 +973,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     unawaited(ensureConteFontsLoaded());
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
-      invalidationHub: widget.session.cacheInvalidationHub,
+      invalidationHub: widget.session.renderCaches.cacheInvalidationHub,
     );
     _layoutPersistence._layoutStore =
         widget.layoutStore ??
@@ -1138,7 +1138,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   bool _toldProjectFileVanished = false;
 
   Future<void> _warnIfProjectFileVanished() async {
-    if (!widget.session.projectFileHasVanished()) {
+    if (!widget.session.projectFile.hasVanished()) {
       // Back again — restored from a trash, or re-synced. The next
       // disappearance is worth saying out loud too.
       _toldProjectFileVanished = false;

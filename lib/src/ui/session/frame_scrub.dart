@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import 'playback_rig.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The FRAME SCRUB — dragging the playhead: the preview it shows while the
@@ -15,18 +17,24 @@ class FrameScrub {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required PlaybackRig playbackRig,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _controllers = controllers,
+       _internals = internals,
+       _playbackRig = playbackRig;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final PlaybackRig _playbackRig;
 
   /// Global scrub: rides the cursor path inside the active cut's
   /// territory; EVERY out-of-territory move — a gap OR another cut's
@@ -121,11 +129,11 @@ class FrameScrub {
     if (_internals.editingInteractionBusy) {
       return;
     }
-    if (frameIndex != _timeline.timelineController.currentFrameIndex) {
-      _timeline.timelineController.selectFrameIndex(frameIndex);
+    if (frameIndex != _controllers.timelineController.currentFrameIndex) {
+      _controllers.timelineController.selectFrameIndex(frameIndex);
       _internals.editingFrameCursor.value = frameIndex;
       // Each crossed frame plays its slice of the mix (2D audio scrub).
-      _internals.audioScrubber.onScrubFrame(frameIndex);
+      _playbackRig.audioScrubber.onScrubFrame(frameIndex);
       if (!_internals.frameScrubActive.value) {
         _internals.frameScrubActive.value = true;
         // One warm per gesture. A scrub is a seek and every other seek
@@ -161,7 +169,7 @@ class FrameScrub {
   }
 
   void commitFrameScrub() {
-    _internals.audioScrubber.onScrubEnd();
+    _playbackRig.audioScrubber.onScrubEnd();
     if (_internals.frameScrubActive.value) {
       _internals.frameScrubActive.value = false;
     }
@@ -187,6 +195,8 @@ class FrameScrub {
       _selection.selectGlobalFrame(parked);
       return;
     }
-    _selection.selectFrameIndex(_timeline.timelineController.currentFrameIndex);
+    _selection.selectFrameIndex(
+      _controllers.timelineController.currentFrameIndex,
+    );
   }
 }

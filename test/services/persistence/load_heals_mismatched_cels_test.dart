@@ -39,7 +39,7 @@ void main() {
     );
     final pixels = Uint8List(256 * 256 * 4);
     pixels[3] = 255;
-    s.brushFrameStore.storeBakedSurface(
+    s.renderCaches.brushFrameStore.storeBakedSurface(
       key,
       BitmapSurface(canvasSize: originalSize).putTiles([
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 256, pixels: pixels),
@@ -51,15 +51,15 @@ void main() {
       cutId: cut.id,
       canvasSize: const CanvasSize(width: 640, height: 360),
     );
-    await s.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path);
 
     final loaded = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(loaded.dispose);
-    await loaded.openProjectFromFile(path);
+    await loaded.projectDoor.openProjectFromFile(path);
 
-    final healed = loaded.brushFrameStore.bakedSurfaceOrNull(key)!;
+    final healed = loaded.renderCaches.brushFrameStore.bakedSurfaceOrNull(key)!;
     expect(
       healed.canvasSize,
       const CanvasSize(width: 640, height: 360),
@@ -68,18 +68,18 @@ void main() {
           'overwritten by a blank-seeded first stroke',
     );
     expect(
-      loaded.hasUnsavedChanges,
+      loaded.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'the repaired truth differs from the file — it wants a save',
     );
 
     // A healthy round-trip stays untouched and clean.
-    await loaded.saveProjectToFile(path);
+    await loaded.projectDoor.saveProjectToFile(path);
     final clean = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(clean.dispose);
-    await clean.openProjectFromFile(path);
-    expect(clean.hasUnsavedChanges, isFalse);
+    await clean.projectDoor.openProjectFromFile(path);
+    expect(clean.projectFile.hasUnsavedChanges, isFalse);
   });
 }

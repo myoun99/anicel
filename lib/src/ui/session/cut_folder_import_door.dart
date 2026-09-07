@@ -17,6 +17,7 @@ import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/persistence/media_staging_store.dart';
 import 'import_landing.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// The cut-folder import.
@@ -26,6 +27,7 @@ class CutFolderImportDoor {
     required SelectionAccess selection,
     required ChangeSink changes,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
     required TimelineAccess timeline,
     required ImportLanding landing,
     required MediaStagingStore staging,
@@ -33,6 +35,7 @@ class CutFolderImportDoor {
        _selection = selection,
        _changes = changes,
        _internals = internals,
+       _renderCaches = renderCaches,
        _timeline = timeline,
        _landing = landing,
        _staging = staging;
@@ -41,6 +44,7 @@ class CutFolderImportDoor {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final TimelineAccess _timeline;
   final ImportLanding _landing;
   final MediaStagingStore _staging;
@@ -157,7 +161,7 @@ class CutFolderImportDoor {
             fit: bake.fit,
           );
           bakeCelSurface(
-            _internals.brushFrameStore,
+            _renderCaches.brushFrameStore,
             _internals.brushFrameKeyForCut(
               bakedCut,
               bake.layerId,

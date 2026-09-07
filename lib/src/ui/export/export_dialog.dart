@@ -690,7 +690,9 @@ class ExportDialogState extends State<ExportDialog> {
       if (images.containsKey(key)) {
         continue;
       }
-      final surface = _session.envelopeInkStore.bakedSurfaceOrNull(key);
+      final surface = _session.renderCaches.envelopeInkStore.bakedSurfaceOrNull(
+        key,
+      );
       if (surface == null) {
         continue;
       }
@@ -761,7 +763,7 @@ class ExportDialogState extends State<ExportDialog> {
 
     for (final page in pages) {
       await compose(
-        _session.conteInkPageStore,
+        _session.renderCaches.conteInkPageStore,
         conteInkPageKey(page.pageIndex),
       );
       for (final cell in page.cells) {
@@ -770,7 +772,7 @@ class ExportDialogState extends State<ExportDialog> {
           continue;
         }
         await compose(
-          _session.conteInkRowStore,
+          _session.renderCaches.conteInkRowStore,
           conteInkRowKey(CutId(cell.cutId), frameId),
         );
       }

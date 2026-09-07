@@ -26,7 +26,7 @@ void main() {
     addTearDown(s.dispose);
     final duration = s.requireActiveCut.duration;
 
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final layer = s.activeLayer!;
     expect(layer.kind, LayerKind.image);
     expect(layer.frames, hasLength(1));
@@ -54,7 +54,7 @@ void main() {
       'on its own block (D22)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
 
     expect(
@@ -80,7 +80,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
 
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
 
     Layer imageRow() => s.layers.firstWhere((layer) => layer.id == imageId);
@@ -147,7 +147,7 @@ void main() {
       'the row\'s definition, so the row is what you delete (D22)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
     s.selectFrameIndex(0);
 
@@ -185,7 +185,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
 
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
     // A cell band never moves the active layer, so sweeping the BG row
     // while a drawing row stays active is the ORDINARY case.
@@ -226,7 +226,7 @@ void main() {
       'too — a track-row cursor behind it means DELETE THE CUT', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
     final cutsBefore = s.activeTrack.cuts.length;
 
@@ -267,7 +267,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
 
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
 
     // The mixed cell→lane drag (R26 #3): a band over the image row that
@@ -306,7 +306,7 @@ void main() {
       'it never claims to remove the picture', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
 
     for (final frameIndex in [0, 5]) {
       s.selectFrameIndex(frameIndex);
@@ -336,7 +336,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     s.renameSelectedFrame('KEEP');
 
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
     s.selectLayer(celId);
     s.selectFrameIndex(0);
@@ -403,7 +403,7 @@ void main() {
       reason: 'the control: this row IS blankable at this frame',
     );
 
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
     s.selectLayer(celId);
     s.selectFrameIndex(2);
@@ -442,7 +442,7 @@ void main() {
     // A SECOND drawing row, with a block of its own — so the band holds
     // real blocks and the collector answers non-null. That is exactly
     // where "a band that holds nothing" stopped guarding.
-    s.addLayerOfKind(LayerKind.animation);
+    s.layerStack.addLayerOfKind(LayerKind.animation);
     final rowB = s.activeLayer!.id;
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
@@ -552,7 +552,7 @@ void main() {
       'second cel — duplicate and LINK paste join the standdown (D22)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
 
     for (final frameIndex in [0, 5]) {
       s.selectFrameIndex(frameIndex);
@@ -581,7 +581,7 @@ void main() {
   test('an image layer carries attach rows like any drawing base', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     expect(s.canAddAttachedLayerToActive, isTrue);
     s.addAttachedLayer(AttachedPlacement.above);
     expect(s.activeLayer!.attachedToLayerId, isNotNull);
@@ -592,7 +592,7 @@ void main() {
       'unnamed-never-conflicts rule)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.addLayerOfKind(LayerKind.image);
+    s.layerStack.addLayerOfKind(LayerKind.image);
     final imageName = s.activeLayer!.name;
     final origin = s.requireActiveCut;
 

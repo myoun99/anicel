@@ -59,7 +59,7 @@ void main() {
   test('REC1-B: a take lands on the given lane — <lane>_T01 WAV, pool '
       'entry, block at the anchor, ONE undo strips it all', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final lane = manager.activeTrack.seLayers.first;
 
     final placed = await manager.placeVoiceRecording(
@@ -112,7 +112,7 @@ void main() {
     'REC1-B: recording along trims the monitoring latency off the head',
     () async {
       final manager = session();
-      await manager.saveProjectToFile('${directory.path}/scene.anicel');
+      await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
       final lane = manager.activeTrack.seLayers.first;
 
       final placed = await manager.placeVoiceRecording(
@@ -139,7 +139,7 @@ void main() {
     'REC1-B: a take shorter than the latency it rode on places nothing',
     () async {
       final manager = session();
-      await manager.saveProjectToFile('${directory.path}/scene.anicel');
+      await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
       expect(
         await manager.placeVoiceRecording(
           takeOfSeconds(0.1),
@@ -156,7 +156,7 @@ void main() {
   test('REC1-B: a second take over the first TRIMS it, tape-style — same '
       'lane, no new row, both files kept', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final laneId = manager.activeTrack.seLayers.first.id;
     final rowsBefore = manager.activeTrack.seLayers.length;
 
@@ -203,7 +203,7 @@ void main() {
 
   test('REC1-B: the punch window clamps the take — block AND file', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
@@ -243,7 +243,7 @@ void main() {
   test('REC1-B: a null lane refuses the take rather than landing it '
       'anywhere', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     expect(
       await manager.placeVoiceRecording(
         takeOfSeconds(0.5),
@@ -266,15 +266,15 @@ void main() {
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     // Record = play + capture: the transport rolls the whole track.
-    expect(manager.playback.isPlaying, isTrue);
-    expect(manager.playback.scope, PlaybackScope.allCuts);
+    expect(manager.playbackRig.playback.isPlaying, isTrue);
+    expect(manager.playbackRig.playback.scope, PlaybackScope.allCuts);
     // The armed lane yields to the microphone (DAW armed-track rule).
     expect(manager.recordingMutedLayerIds, {laneId});
 
     final message = await manager.stopVoiceRecordingAndPlace();
     expect(message, isNull);
     expect(
-      manager.playback.isActive,
+      manager.playbackRig.playback.isActive,
       isFalse,
       reason: 'the roll this take started stops with it',
     );
@@ -293,7 +293,7 @@ void main() {
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
 
-    manager.playback.stop();
+    manager.playbackRig.playback.stop();
     // ⚠️The take lands a beat later now: `_onPlaybackStopped` awaits the
     // isolate that secures the take's bytes before the command that places
     // it runs, so the clip is not there the instant `stop()` returns. That

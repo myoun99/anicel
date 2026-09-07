@@ -28,8 +28,15 @@ void main() {
     final session = sessionFor();
     final before = session.activeLayerId;
     expect(before, isNotNull, reason: 'fixture premise');
+    // 🚨THE PREMISE THIS TEST WAS MISSING (measured 2026-09-07): with
+    // nothing ever picked, the verb row is unset and `currentRow` falls
+    // back to the active layer — so the seating below could be deleted and
+    // this still passed. Standing on a row first is what makes the stale
+    // row possible at all.
+    session.selectLayer(before!);
+    expect(session.currentRow, LayerRowAddress(before));
 
-    session.addLayer();
+    session.layerStack.addLayer();
 
     final active = session.activeLayerId;
     expect(
@@ -47,7 +54,7 @@ void main() {
 
   test('and deleting one leaves them agreeing too', () {
     final session = sessionFor();
-    session.addLayer();
+    session.layerStack.addLayer();
 
     session.deleteActiveLayer();
 

@@ -24,6 +24,8 @@ import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/commands/track_transition_commands.dart';
 import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_section_policy.dart';
+import 'render_caches.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 import 'camera.dart';
@@ -120,8 +122,9 @@ class FrameRangeMoveDrag {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
     required Camera camera,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
@@ -130,8 +133,9 @@ class FrameRangeMoveDrag {
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
+       _renderCaches = renderCaches,
        _camera = camera,
        _folders = folders,
        _rangeSelections = rangeSelections,
@@ -143,8 +147,9 @@ class FrameRangeMoveDrag {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final Camera _camera;
   final FoldersAndAttachments _folders;
   final RangeSelections _rangeSelections;
@@ -1670,7 +1675,7 @@ class FrameRangeMoveDrag {
     // The selection stays on the moved frames where they landed.
     _rangeMoveSelection = landedSelection;
     if (plan.isCrossLayer) {
-      _timeline.layerController.selectLayer(plan.targetAfter!.id);
+      _controllers.layerController.selectLayer(plan.targetAfter!.id);
     }
     _changes.warmActiveCut();
     _changes.notifyChanged();
@@ -1767,7 +1772,7 @@ class FrameRangeMoveDrag {
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
       commands.add(
         RekeyBrushFramesCommand(
-          store: _internals.brushFrameStore,
+          store: _renderCaches.brushFrameStore,
           pairs: [
             for (final rekey in multiRowPlan!.rekeys)
               (
@@ -1782,7 +1787,7 @@ class FrameRangeMoveDrag {
       return;
     }
     if (landedSelection != null) {
-      _timeline.layerController.selectLayer(landedSelection.layerId);
+      _controllers.layerController.selectLayer(landedSelection.layerId);
     }
     _changes.warmActiveCut();
     _changes.notifyChanged();
@@ -1875,7 +1880,7 @@ class FrameRangeMoveDrag {
         ),
       );
       _rangeMoveSelection = landedSelection;
-      _timeline.layerController.selectLayer(instructionRowChange.targetId);
+      _controllers.layerController.selectLayer(instructionRowChange.targetId);
       _changes.warmActiveCut();
       _changes.notifyChanged();
     } else {
@@ -1914,7 +1919,7 @@ class FrameRangeMoveDrag {
       ),
     );
     _rangeMoveSelection = landedSelection;
-    _timeline.layerController.selectLayer(seRowChange.targetId);
+    _controllers.layerController.selectLayer(seRowChange.targetId);
     _changes.warmActiveCut();
     _changes.notifyChanged();
     return;
@@ -1994,7 +1999,7 @@ class FrameRangeMoveDrag {
     if (after == before) {
       return;
     }
-    _timeline.timelineController.commitLayerTimelineDrag(
+    _controllers.timelineController.commitLayerTimelineDrag(
       before: before,
       after: after,
     );

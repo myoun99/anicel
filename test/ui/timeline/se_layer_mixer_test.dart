@@ -20,7 +20,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.addLayerOfKind(LayerKind.se);
+    session.layerStack.addLayerOfKind(LayerKind.se);
     final se = session.layers.firstWhere((layer) => layer.kind == LayerKind.se);
     Layer current() =>
         requireLayerAnywhere(session.repository.requireProject(), se.id);

@@ -21,8 +21,8 @@ void main() {
     WidgetTester tester, {
     required ValueNotifier<double> dim,
   }) async {
-    final session = EditorSessionManager(initialProject: createDefaultProject())
-      ..addLayerOfKind(LayerKind.camera);
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    session.layerStack.addLayerOfKind(LayerKind.camera);
     addTearDown(session.dispose);
     await tester.pumpWidget(
       MaterialApp(

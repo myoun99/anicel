@@ -130,17 +130,17 @@ void main() {
           .length;
 
       expect(storyboardRows(), 0);
-      expect(session.canAddLayerOfKind(LayerKind.storyboard), isTrue);
+      expect(session.layerStack.canAddLayerOfKind(LayerKind.storyboard), isTrue);
 
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       expect(storyboardRows(), 1);
 
       expect(
-        session.canAddLayerOfKind(LayerKind.storyboard),
+        session.layerStack.canAddLayerOfKind(LayerKind.storyboard),
         isFalse,
         reason: 'the menu entry greys out instead of swallowing the tap',
       );
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       expect(
         storyboardRows(),
         1,
@@ -148,15 +148,15 @@ void main() {
       );
 
       // The rule is per KIND, not a general freeze.
-      expect(session.canAddLayerOfKind(LayerKind.animation), isTrue);
+      expect(session.layerStack.canAddLayerOfKind(LayerKind.animation), isTrue);
       final before = session.requireActiveCut.layers.length;
-      session.addLayerOfKind(LayerKind.animation);
+      session.layerStack.addLayerOfKind(LayerKind.animation);
       expect(session.requireActiveCut.layers.length, before + 1);
     });
 
     test('copy/paste and duplicate cannot make a second one', () {
       final session = makeSession();
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       final storyboard = session.activeLayer!;
       expect(storyboard.kind, LayerKind.storyboard);
 

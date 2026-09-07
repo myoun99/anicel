@@ -279,7 +279,7 @@ void main() {
 
       // Visit cut 2 and leave it on a SECOND layer.
       session.selectCut(const CutId('cut-2'));
-      session.addLayerOfKind(LayerKind.animation);
+      session.layerStack.addLayerOfKind(LayerKind.animation);
       final rememberedRow = session.activeLayerId;
       expect(rememberedRow, isNot(const LayerId('layer-2')));
 

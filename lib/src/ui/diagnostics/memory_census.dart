@@ -101,29 +101,29 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     MemoryCensusItem(
       id: 'drawings',
       bytes:
-          session.brushFrameStore.hotBakedBytes +
-          session.brushFrameStore.coldBakedBytes,
+          session.renderCaches.brushFrameStore.hotBakedBytes +
+          session.renderCaches.brushFrameStore.coldBakedBytes,
     ),
     MemoryCensusItem(
       id: 'sheetInk',
       bytes:
-          session.conteInkRowStore.hotBakedBytes +
-          session.conteInkRowStore.coldBakedBytes +
-          session.conteInkPageStore.hotBakedBytes +
-          session.conteInkPageStore.coldBakedBytes +
-          session.envelopeInkStore.hotBakedBytes +
-          session.envelopeInkStore.coldBakedBytes,
+          session.renderCaches.conteInkRowStore.hotBakedBytes +
+          session.renderCaches.conteInkRowStore.coldBakedBytes +
+          session.renderCaches.conteInkPageStore.hotBakedBytes +
+          session.renderCaches.conteInkPageStore.coldBakedBytes +
+          session.renderCaches.envelopeInkStore.hotBakedBytes +
+          session.renderCaches.envelopeInkStore.coldBakedBytes,
     ),
     MemoryCensusItem(id: 'undo', bytes: session.historyManager.retainedBytes),
     MemoryCensusItem(
       id: 'playbackFrames',
-      bytes: session.cutFrameCompositeCache.estimatedBytes,
-      detail: session.cutFrameCompositeCache.pinnedBytes,
+      bytes: session.renderCaches.cutFrameCompositeCache.estimatedBytes,
+      detail: session.renderCaches.cutFrameCompositeCache.pinnedBytes,
     ),
     MemoryCensusItem(
       id: 'layerImages',
-      bytes: session.layerFrameImageCache.estimatedBytes,
-      detail: session.layerFrameImageCache.pinnedBytes,
+      bytes: session.renderCaches.layerFrameImageCache.estimatedBytes,
+      detail: session.renderCaches.layerFrameImageCache.pinnedBytes,
     ),
     MemoryCensusItem(
       id: 'brushTips',
@@ -131,8 +131,11 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     ),
     MemoryCensusItem(id: 'panelRasters', bytes: StaticRaster.censusBytes),
     // Pushed by the mounted viewers rather than read off a holder the
-    // session owns — see [EditorSessionManager.viewerRasterBytesByViewer].
-    MemoryCensusItem(id: 'viewerPages', bytes: session.viewerRasterBytes),
+    // session owns — see [RenderCaches.viewerRasterBytesByViewer].
+    MemoryCensusItem(
+      id: 'viewerPages',
+      bytes: session.renderCaches.viewerRasterBytes,
+    ),
   ]..sort((a, b) => b.bytes.compareTo(a.bytes));
 
   return MemoryCensus(

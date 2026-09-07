@@ -92,7 +92,7 @@ void main() {
     }
     for (final layer in session.layers) {
       for (final frame in layer.frames) {
-        session.brushFrameStore.storeBakedSurface(
+        session.renderCaches.brushFrameStore.storeBakedSurface(
           session.brushFrameKeyForCut(cut, layer.id, frame.id),
           BitmapSurface(
             canvasSize: cut.canvasSize,
@@ -251,8 +251,8 @@ void main() {
     // alpha at zero. It cannot drop them — undo walks the tiles that EXIST
     // (see the `undo-weight` card) — so 「프레임이 있다」 went on meaning
     // 「그림이 있다」 and the buttons stayed lit over an empty block.
-    final before = session.brushFrameStore.bakedSurfaceOrNull(key)!;
-    session.brushFrameStore.storeBakedSurface(
+    final before = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(key)!;
+    session.renderCaches.brushFrameStore.storeBakedSurface(
       key,
       before.putTiles([
         for (final tile in before.tiles.values)
@@ -266,7 +266,7 @@ void main() {
     await tester.pump();
 
     expect(
-      session.brushFrameStore.celHasRenderableContent(key),
+      session.renderCaches.brushFrameStore.celHasRenderableContent(key),
       isFalse,
       reason: 'the same question the block\'s tint asks',
     );

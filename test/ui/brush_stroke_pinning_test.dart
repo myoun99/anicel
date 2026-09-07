@@ -167,12 +167,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(viewOf(tester).frameId, frameB);
     expect(
-      session.brushFrameStore.celHasRenderableContent(keyFor(frameA)),
+      session.renderCaches.brushFrameStore.celHasRenderableContent(
+        keyFor(frameA),
+      ),
       isTrue,
       reason: 'the stroke belongs to the frame it STARTED on',
     );
     expect(
-      session.brushFrameStore.celHasRenderableContent(keyFor(frameB)),
+      session.renderCaches.brushFrameStore.celHasRenderableContent(
+        keyFor(frameB),
+      ),
       isFalse,
       reason: 'nothing may leak onto the frame the seek landed on',
     );

@@ -8,6 +8,7 @@ import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
+import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
@@ -27,6 +28,7 @@ class CutVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
@@ -34,6 +36,7 @@ class CutVerbs {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut;
@@ -46,6 +49,7 @@ class CutVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   void createCut() {
@@ -163,7 +167,7 @@ class CutVerbs {
   /// playhead frame (drives the toolbar toggle's state).
   bool get isActiveCutThumbnailPinnedHere =>
       _project.activeCutOrNull?.metadata.thumbnailFrameIndex ==
-          _timeline.timelineController.currentFrameIndex &&
+          _controllers.timelineController.currentFrameIndex &&
       _project.activeCutOrNull?.metadata.thumbnailFrameIndex != null;
 
   /// Pins the active cut's storyboard thumbnail to the playhead frame, or
@@ -174,7 +178,7 @@ class CutVerbs {
     if (cut == null) {
       return;
     }
-    final frame = _timeline.timelineController.currentFrameIndex;
+    final frame = _controllers.timelineController.currentFrameIndex;
     final pinned = cut.metadata.thumbnailFrameIndex;
     _project.cutCommandCoordinator.updateCutThumbnailFrame(
       cutId: cut.id,

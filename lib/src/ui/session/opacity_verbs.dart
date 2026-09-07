@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 
@@ -22,12 +23,12 @@ class OpacityVerbs {
   OpacityVerbs({
     required ProjectAccess project,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required Transitions transitions,
   }) : _project = project,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _transitions = transitions;
 
@@ -35,7 +36,7 @@ class OpacityVerbs {
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// The display opacity the editing stack (and the interactive view's
@@ -106,7 +107,7 @@ class OpacityVerbs {
           spans: _transitions.activeTrackTransitionSpans,
           globalFrame:
               start +
-              (frameIndex ?? _timeline.timelineController.currentFrameIndex),
+              (frameIndex ?? _controllers.timelineController.currentFrameIndex),
         );
   }
 
@@ -145,7 +146,7 @@ class OpacityVerbs {
   }
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    _timeline.layerController.setLayerOpacity(
+    _controllers.layerController.setLayerOpacity(
       layerId: layerId,
       opacity: opacity,
     );
@@ -181,7 +182,7 @@ class OpacityVerbs {
     // ⛔ONE undo step for one bar drag. The drag itself never reaches here
     // — `previewLayersOpacity` holds it in a notifier and only the release
     // commits — so this is one entry per gesture, not per frame.
-    _timeline.layerController.setLayersOpacity(
+    _controllers.layerController.setLayersOpacity(
       layerIds: [
         for (final layer in _project.layers)
           if (layerIds.contains(layer.id) &&
@@ -203,7 +204,7 @@ class OpacityVerbs {
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    _timeline.layerController.setLayersOpacity(
+    _controllers.layerController.setLayersOpacity(
       layerIds: [
         for (final layer in _project.layers)
           if (layer.kind.hasPictureOpacity && layer.opacity != clamped)

@@ -20,7 +20,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final layerA = s.activeLayer!;
-    s.addLayer();
+    s.layerStack.addLayer();
     final layerB = s.activeLayer!;
     expect(layerB.id, isNot(layerA.id));
     s.selectFrameIndex(6);
@@ -73,7 +73,7 @@ void main() {
     final fromKey = s.brushFrameKeyForCut(cut, a.id, frameId);
     final toKey = s.brushFrameKeyForCut(cut, b.id, frameId);
     // Seed a stored drawing under the source key.
-    s.brushFrameStore.getOrCreateFrame(fromKey);
+    s.renderCaches.brushFrameStore.getOrCreateFrame(fromKey);
 
     expect(
       s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
@@ -94,9 +94,9 @@ void main() {
     expect(movedA.frames.any((f) => f.id == frameId), isFalse);
     expect(movedB.timeline[1]!.frameId, frameId);
     expect(movedB.frames.any((f) => f.id == frameId), isTrue);
-    expect(s.brushFrameStore.frameOrNull(fromKey), isNull);
-    expect(s.brushFrameStore.frameOrNull(toKey), isNotNull);
-    expect(s.brushFrameStore.frameOrNull(toKey)!.key, toKey);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(fromKey), isNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(toKey), isNotNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(toKey)!.key, toKey);
     // The canvas targets the moved drawing where it landed (R12-⑪): the
     // brush editor selection resolves the cel on the NEW layer.
     s.selectFrameIndex(1);
@@ -113,8 +113,8 @@ void main() {
     expect(backA.frames.any((f) => f.id == frameId), isTrue);
     expect(backB.timeline[1], isNull);
     expect(backB.frames.any((f) => f.id == frameId), isFalse);
-    expect(s.brushFrameStore.frameOrNull(fromKey), isNotNull);
-    expect(s.brushFrameStore.frameOrNull(toKey), isNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(fromKey), isNotNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(toKey), isNull);
   });
 
   test('an occupied landing PUSHES the block in the way (R12-②)', () {

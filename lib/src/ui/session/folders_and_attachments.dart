@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
+import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
@@ -23,23 +24,22 @@ class FoldersAndAttachments {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _activeCut = activeCut;
-
-  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final ActiveCutEdits _activeCut;
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
@@ -105,7 +105,7 @@ class FoldersAndAttachments {
     // always-mirror reconciliation fills one own cel + base link per base
     // cel in the same write (and keeps doing so live as the base gains
     // cels later), so every mirror cell is editable from the first frame.
-    _timeline.layerController.addLayer(
+    _controllers.layerController.addLayer(
       layer: Layer(
         id: layerId,
         name: nextAttachedLayerName(base, cut.layers, placement),

@@ -188,11 +188,11 @@ void main() {
       ]);
 
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       final reopened = session();
-      await reopened.openProjectFromFile(projectPath);
+      await reopened.projectDoor.openProjectFromFile(projectPath);
       // What the FILE kept — the round trip this test is named for.
       expect(reopened.mediaGrants.debugStoredGrants, hasLength(1));
       expect(reopened.mediaGrants.debugStoredGrants.single.path, path);
@@ -210,8 +210,8 @@ void main() {
       // made, and a "save your changes?" they cannot account for.
       final s = session();
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
-      expect(s.hasUnsavedChanges, isFalse);
+      await s.projectDoor.saveProjectToFile(projectPath);
+      expect(s.projectFile.hasUnsavedChanges, isFalse);
 
       s.mediaGrants.rememberMediaGrants([
         const FolderGrant.granted(
@@ -221,7 +221,7 @@ void main() {
         ),
       ]);
 
-      expect(s.hasUnsavedChanges, isFalse);
+      expect(s.projectFile.hasUnsavedChanges, isFalse);
       s.dispose();
     });
 
@@ -239,11 +239,11 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       final reopened = session();
-      await reopened.openProjectFromFile(projectPath);
+      await reopened.projectDoor.openProjectFromFile(projectPath);
       // The FILE list: nothing was written, so nothing comes back. (The
       // usable list would also be empty here, but for a reason that
       // varies by host OS — see the pinning note above.)
@@ -317,12 +317,12 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       // The launch where it will not resolve.
       final refused = session();
-      await refused.openProjectFromFile(projectPath);
+      await refused.projectDoor.openProjectFromFile(projectPath);
       expect(
         refused.mediaGrants.debugMediaGrants,
         isEmpty,
@@ -333,13 +333,13 @@ void main() {
         hasLength(1),
         reason: 'but not forgotten',
       );
-      await refused.saveProjectToFile(projectPath);
+      await refused.projectDoor.saveProjectToFile(projectPath);
       refused.dispose();
 
       // The launch after the drive comes back.
       FolderPicker.debugBookmarkResolver = null;
       final restored = session();
-      await restored.openProjectFromFile(projectPath);
+      await restored.projectDoor.openProjectFromFile(projectPath);
       expect(
         restored.mediaGrants.debugStoredGrants,
         hasLength(1),
@@ -372,7 +372,7 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       // The file was renamed while the project was closed.
@@ -388,7 +388,7 @@ void main() {
       addTearDown(() => FolderPicker.debugBookmarkResolver = null);
 
       final reopened = session();
-      await reopened.openProjectFromFile(projectPath);
+      await reopened.projectDoor.openProjectFromFile(projectPath);
 
       expect(
         reopened.mediaAssets.single.path,
@@ -403,11 +403,11 @@ void main() {
       );
 
       // And the grant still covers something, so a save keeps it.
-      await reopened.saveProjectToFile(projectPath);
+      await reopened.projectDoor.saveProjectToFile(projectPath);
       reopened.dispose();
 
       final again = session();
-      await again.openProjectFromFile(projectPath);
+      await again.projectDoor.openProjectFromFile(projectPath);
       expect(again.mediaGrants.debugStoredGrants, hasLength(1));
       again.dispose();
     });
@@ -434,14 +434,14 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
 
       final overlayPath = '${directory.path}/scene.overlay';
-      await s.writeAutosaveSnapshot(overlayPath);
+      await s.projectDoor.writeAutosaveSnapshot(overlayPath);
       s.dispose();
 
       final recovered = session();
-      await recovered.openProjectFromFile(
+      await recovered.projectDoor.openProjectFromFile(
         projectPath,
         overlayPath: overlayPath,
       );
@@ -453,11 +453,11 @@ void main() {
       );
 
       // The save a recovered session always makes.
-      await recovered.saveProjectToFile(projectPath);
+      await recovered.projectDoor.saveProjectToFile(projectPath);
       recovered.dispose();
 
       final after = session();
-      await after.openProjectFromFile(projectPath);
+      await after.projectDoor.openProjectFromFile(projectPath);
       expect(
         after.mediaGrants.debugStoredGrants,
         hasLength(1),
@@ -483,34 +483,34 @@ void main() {
         ..writeAsBytesSync(List<int>.filled(512, 7));
       s.importMediaFiles([wav.path], copyIntoProject: true);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
-      expect(s.mediaEntryNames, isNotEmpty, reason: 'it went inside');
+      await s.projectDoor.saveProjectToFile(projectPath);
+      expect(s.projectFile.mediaEntryNames, isNotEmpty, reason: 'it went inside');
 
       final overlayPath = '${directory.path}/scene.overlay';
-      await s.writeAutosaveSnapshot(overlayPath);
+      await s.projectDoor.writeAutosaveSnapshot(overlayPath);
       s.dispose();
 
       // The original is deleted — which carrying it in is what permits.
       wav.deleteSync();
 
       final recovered = session();
-      await recovered.openProjectFromFile(
+      await recovered.projectDoor.openProjectFromFile(
         projectPath,
         overlayPath: overlayPath,
       );
       expect(
-        recovered.mediaEntryNames,
+        recovered.projectFile.mediaEntryNames,
         isNotEmpty,
         reason: 'the snapshot has to say what the base file already holds',
       );
 
-      await recovered.saveProjectToFile(projectPath);
+      await recovered.projectDoor.saveProjectToFile(projectPath);
       recovered.dispose();
 
       final after = session();
-      await after.openProjectFromFile(projectPath);
+      await after.projectDoor.openProjectFromFile(projectPath);
       expect(
-        after.mediaEntryNames.keys,
+        after.projectFile.mediaEntryNames.keys,
         contains(wav.path.replaceAll('\\', '/')),
         reason: 'and that save must not have dropped it',
       );
@@ -535,11 +535,11 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath);
       s.dispose();
 
       final reopened = session();
-      await reopened.openProjectFromFile(projectPath);
+      await reopened.projectDoor.openProjectFromFile(projectPath);
       // ⚠️ What the FILE kept, not what this launch can use — the latter
       // depends on the host OS (see the pinning note above) and this test
       // is about the kind rule, not about resolving.

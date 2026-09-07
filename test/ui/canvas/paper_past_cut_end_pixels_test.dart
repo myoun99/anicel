@@ -62,7 +62,7 @@ void main() {
         layer.id,
         frame.id,
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
       ),

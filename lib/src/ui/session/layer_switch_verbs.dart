@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'storyboard_cursor.dart';
 
@@ -22,13 +23,13 @@ class LayerSwitchVerbs {
     required ProjectAccess project,
     required ChangeSink changes,
     required FrameIds frameIds,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required StoryboardCursor storyboardCursor,
   }) : _project = project,
        _changes = changes,
        _frameIds = frameIds,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _storyboardCursor = storyboardCursor;
 
@@ -37,11 +38,11 @@ class LayerSwitchVerbs {
   final ProjectAccess _project;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   void toggleLayerVisibility(LayerId layerId) {
-    _timeline.layerController.toggleLayerVisibility(layerId);
+    _controllers.layerController.toggleLayerVisibility(layerId);
     _changes.notifyChanged();
   }
 
@@ -49,14 +50,14 @@ class LayerSwitchVerbs {
   /// like visibility, not undoable): playback and export skip muted
   /// layers' clips, waveforms keep displaying.
   void toggleLayerMuted(LayerId layerId) {
-    _timeline.layerController.toggleLayerMuted(layerId);
+    _controllers.layerController.toggleLayerMuted(layerId);
     _changes.refreshLiveAudioSchedule();
     _changes.notifyChanged();
   }
 
   /// The SE row's track fader + pan (mix state like mute, repo-direct).
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _timeline.layerController.setLayerAudio(
+    _controllers.layerController.setLayerAudio(
       layerId: layerId,
       gain: gain,
       pan: pan,
@@ -68,7 +69,7 @@ class LayerSwitchVerbs {
   /// R26 #30: the layer's composite blend — display state alongside the
   /// eye/static opacity (repo-direct, link-group mirrored).
   void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {
-    _timeline.layerController.setLayerBlendMode(
+    _controllers.layerController.setLayerBlendMode(
       layerId: layerId,
       blendMode: blendMode,
     );
@@ -89,7 +90,7 @@ class LayerSwitchVerbs {
           layer.id,
     ];
     if (targets.isNotEmpty) {
-      _timeline.layerController.setLayersBlendMode(
+      _controllers.layerController.setLayersBlendMode(
         layerIds: targets,
         blendMode: mode,
       );
@@ -102,7 +103,7 @@ class LayerSwitchVerbs {
     // ⛔ONE undo step for one legend press — the loop used to make one per
     // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
     // 다 한번에 언두되야하는데 안됨」 in the place it is easiest to hit.
-    _timeline.layerController.setLayersVisible(
+    _controllers.layerController.setLayersVisible(
       layerIds: [
         for (final layer in _project.layers)
           if (layer.isVisible != visible) layer.id,
@@ -114,7 +115,7 @@ class LayerSwitchVerbs {
 
   /// Mutes/unmutes every SE layer of the active cut.
   void setAllSeLayersMuted(bool muted) {
-    _timeline.layerController.setLayersMuted(
+    _controllers.layerController.setLayersMuted(
       layerIds: [
         for (final layer in _project.layers)
           if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
@@ -138,7 +139,7 @@ class LayerSwitchVerbs {
       return true;
     }
 
-    return !_timeline.layerController.layers.any(
+    return !_controllers.layerController.layers.any(
       (layer) =>
           layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
     );
@@ -173,7 +174,7 @@ class LayerSwitchVerbs {
             ).copyWith(name: targetLayer.name)
           : targetLayer.copyWith(timeline: filled);
       if (covered != targetLayer) {
-        _timeline.timelineController.commitLayerTimelineDrag(
+        _controllers.timelineController.commitLayerTimelineDrag(
           before: targetLayer,
           after: covered,
         );

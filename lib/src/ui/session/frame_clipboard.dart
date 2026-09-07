@@ -5,6 +5,8 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_splice.dart';
+import 'render_caches.dart';
+import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart';
 import 'session_roles.dart';
 
@@ -25,21 +27,24 @@ class FrameClipboard {
     required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _timeline = timeline,
-       _internals = internals;
+       _controllers = controllers,
+       _internals = internals,
+       _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
 
   _CopiedFrameReference? _copiedFrame;
 
@@ -114,12 +119,12 @@ class FrameClipboard {
     // still has it" would have made cut-then-paste-back impossible while
     // the button sat lit.
     if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
-      return _timeline.timelineController.currentFrameIndex >= 0;
+      return _controllers.timelineController.currentFrameIndex >= 0;
     }
 
-    return _timeline.timelineController.canPasteLinkedFrameAt(
+    return _controllers.timelineController.canPasteLinkedFrameAt(
       layer: layer,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
       copiedFrameId: copiedFrame.frameId,
     );
   }
@@ -143,7 +148,7 @@ class FrameClipboard {
       return 'Links: -';
     }
 
-    final uses = _timeline.timelineController.linkedUseCountForLayerFrame(
+    final uses = _controllers.timelineController.linkedUseCountForLayerFrame(
       layer: layer,
       frameId: frame.id,
     );
@@ -166,7 +171,7 @@ class FrameClipboard {
     }
     final entries = <_CopiedRow>[];
     for (final row in _pasteTargetRowsBesides(anchor)) {
-      final clip = _timeline.timelineController.copyRunForLayer(
+      final clip = _controllers.timelineController.copyRunForLayer(
         layerId: row.id,
         index: _internals.commitBlockStart(row.id, selection.startIndex),
         count: selection.lengthFrames,
@@ -208,7 +213,7 @@ class FrameClipboard {
     // then decides a length for.
     final clip = run == null
         ? null
-        : _timeline.timelineController.copyRunForLayer(
+        : _controllers.timelineController.copyRunForLayer(
             layerId: layer.id,
             index: run.index,
             count: run.count,
@@ -271,7 +276,7 @@ class FrameClipboard {
         layer.kind.holdsSingleCel) {
       return false;
     }
-    return _timeline.timelineController.currentFrameIndex >= 0;
+    return _controllers.timelineController.currentFrameIndex >= 0;
   }
 
   void pasteIndependentFrameAtCurrentFrame() {
@@ -402,7 +407,7 @@ class FrameClipboard {
     final replacing = selection != null && selection.coversLayer(layer.id);
     final index = replacing
         ? run!.index
-        : _timeline.timelineController.currentFrameIndex;
+        : _controllers.timelineController.currentFrameIndex;
     final liftCount = replacing ? run!.count : 0;
 
     // 🚨결정 14 ③ⓐ (유저 확정 2026-08-22) — **THE CLIP LANDS ON EVERY SWEPT
@@ -483,7 +488,7 @@ class FrameClipboard {
         bornFrames: placed.born,
       ));
     }
-    _timeline.timelineController.spliceRunsForLayers(
+    _controllers.timelineController.spliceRunsForLayers(
       runs: runs,
       description: independent ? 'Paste frames' : 'Paste linked frames',
     );
@@ -494,6 +499,7 @@ class FrameClipboard {
       }
       carryBakedPictures(
         internals: _internals,
+        store: _renderCaches.brushFrameStore,
         cut: cut,
         between: (from: copied.layerId, to: targetId),
         minted: minted,

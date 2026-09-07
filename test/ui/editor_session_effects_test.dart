@@ -238,7 +238,7 @@ void main() {
 
     test('Add Layer creates one, named FX1, above the active row', () {
       final base = session.activeLayer!;
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final created = session.activeLayer!;
       expect(created.kind, LayerKind.adjustment);
       expect(created.name, 'FX1');
@@ -264,7 +264,7 @@ void main() {
       // below the adjustment an actual cel — a scope with nothing in it is
       // correctly no scope at all.
       session.createDrawingAtCurrentFrame();
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
       expect(scopeIn(session.editingCanvasStack.nodes), isNull);
 
       session.addEffectToActiveLayer(EffectKind.brightnessContrast);
@@ -291,7 +291,7 @@ void main() {
     });
 
     test('it takes effects but no transform lanes', () {
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final row = session.activeLayer!;
       expect(session.canAddEffectToActiveLayer, isTrue);
       expect(row.kind.hasLayerTransform, isFalse);
@@ -310,7 +310,7 @@ void main() {
       final base = session.activeLayer!;
       session.addAttachedLayer(AttachedPlacement.above);
       session.selectLayer(base.id);
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
 
       final layers = session.requireActiveCut.layers;
       final baseIndex = layers.indexWhere((layer) => layer.id == base.id);
@@ -332,7 +332,7 @@ void main() {
       final member = session.activeLayer!;
       session.groupActiveLayerIntoFolder();
       session.selectLayer(member.id);
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
 
       final row = session.activeLayer!;
       expect(row.kind, LayerKind.adjustment);
@@ -363,7 +363,7 @@ void main() {
     });
 
     test('the row survives a save/load round trip as an adjustment', () {
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
       session.addEffectToActiveLayer(EffectKind.blur);
       final row = session.activeLayer!;
 

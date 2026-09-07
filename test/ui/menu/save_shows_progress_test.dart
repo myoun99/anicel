@@ -154,7 +154,7 @@ void main() {
     final blocker = File('${directory.path}/blocker2')..createSync();
     final s = session();
     s.createCut();
-    expect(s.hasUnsavedChanges, isTrue);
+    expect(s.projectFile.hasUnsavedChanges, isTrue);
 
     await runSave(
       tester,
@@ -166,7 +166,7 @@ void main() {
     );
 
     expect(
-      s.hasUnsavedChanges,
+      s.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'the work is not in a file, so the close must be called off',
     );

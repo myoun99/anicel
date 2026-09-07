@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_splice.dart';
+import '../../services/brush_frame_store.dart';
 import '../../services/editing/cut_duplicate_helpers.dart'
     show duplicateFrameContent;
 import 'session_roles.dart';
@@ -97,18 +98,19 @@ mintIndependentClip({
 /// for the key to name something the app will read back.
 void carryBakedPictures({
   required SessionInternals internals,
+  required BrushFrameStore store,
   required Cut cut,
   required ({LayerId from, LayerId to}) between,
   required Map<FrameId, FrameId> minted,
 }) {
   for (final entry in minted.entries) {
-    final surface = internals.brushFrameStore.bakedSurfaceOrNull(
+    final surface = store.bakedSurfaceOrNull(
       internals.brushFrameKeyForCut(cut, between.from, entry.key),
     );
     if (surface == null) {
       continue;
     }
-    internals.brushFrameStore.storeBakedSurface(
+    store.storeBakedSurface(
       internals.brushFrameKeyForCut(cut, between.to, entry.value),
       surface,
     );

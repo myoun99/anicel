@@ -26,7 +26,7 @@ void main() {
       find.byKey(const ValueKey<String>('playback-play-button')),
     );
     await tester.pump(const Duration(milliseconds: 16));
-    expect(session.playback.isPlaying, isTrue);
+    expect(session.playbackRig.playback.isPlaying, isTrue);
 
     // A point on the canvas panel clear of the floating regions: the
     // upper third of the panel's own rect.
@@ -37,7 +37,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
 
     expect(
-      session.playback.isPlaying,
+      session.playbackRig.playback.isPlaying,
       isFalse,
       reason: 'the hole passed the press to the canvas, and the canvas\'s '
           'tap-to-stop answered — a tap navigates nothing, so it stops',
@@ -62,7 +62,7 @@ void main() {
       find.byKey(const ValueKey<String>('playback-play-button')),
     );
     await tester.pump(const Duration(milliseconds: 16));
-    expect(session.playback.isPlaying, isTrue);
+    expect(session.playbackRig.playback.isPlaying, isTrue);
 
     final panel = tester.getRect(
       find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
@@ -76,7 +76,7 @@ void main() {
     final gesture = await tester.startGesture(start);
     await tester.pump(const Duration(milliseconds: 16));
     expect(
-      session.playback.isPlaying,
+      session.playbackRig.playback.isPlaying,
       isTrue,
       reason: 'the canvas press navigates — it must not stop on DOWN',
     );
@@ -86,12 +86,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
 
     expect(
-      session.playback.isPlaying,
+      session.playbackRig.playback.isPlaying,
       isTrue,
       reason: 'a drag is navigation, not a tap — playback keeps running',
     );
 
-    session.playback.stop();
+    session.playbackRig.playback.stop();
     await tester.pumpAndSettle();
   });
 }

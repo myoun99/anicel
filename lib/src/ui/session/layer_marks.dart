@@ -3,6 +3,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../services/commands/update_layer_mark_command.dart';
+import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'row_sweep.dart';
 import 'session_roles.dart';
@@ -17,20 +18,19 @@ class LayerMarks {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _activeCut = activeCut;
-
-  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
+  final ActiveCutEdits _activeCut;
 
   /// Sets [layerId]'s organizational color mark. One undo step.
   void setLayerMark(LayerId layerId, LayerMark mark) =>
@@ -87,11 +87,12 @@ class LayerMarks {
   Map<LayerId, List<int>> _markableFramesForSelection() =>
       _selection.bandRowsForSelection(
         _markable,
-        (ids, selection) => _timeline.timelineController.markableFramesInBand(
-          layerIds: ids,
-          startIndex: selection.startIndex,
-          endIndexExclusive: selection.endIndexExclusive,
-        ),
+        (ids, selection) =>
+            _controllers.timelineController.markableFramesInBand(
+              layerIds: ids,
+              startIndex: selection.startIndex,
+              endIndexExclusive: selection.endIndexExclusive,
+            ),
       );
 
   /// Whether [layer] carries cell marks of its own.
@@ -110,9 +111,9 @@ class LayerMarks {
   bool get canToggleMarkAtCurrentFrame => _selection.bandOrActiveRow(
     canToggleMarkForSelection,
     _markable,
-    (layer) => _timeline.timelineController.canToggleMarkAt(
+    (layer) => _controllers.timelineController.canToggleMarkAt(
       layer: layer,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
     ),
   );
 
@@ -122,9 +123,9 @@ class LayerMarks {
       // SET the whole band one way, never toggle each frame: a mixed band
       // would invert under the hand and hand back the complement of what
       // was there. All marked → clear; anything unmarked → mark them all.
-      _timeline.timelineController.setMarksForFrames(
+      _controllers.timelineController.setMarksForFrames(
         banded,
-        marked: !_timeline.timelineController.bandFramesAreAllMarked(banded),
+        marked: !_controllers.timelineController.bandFramesAreAllMarked(banded),
       );
       _changes.notifyChanged();
       return;
@@ -134,7 +135,7 @@ class LayerMarks {
       return;
     }
 
-    _timeline.timelineController.toggleMarkForLayer(layerId: layer.id);
+    _controllers.timelineController.toggleMarkForLayer(layerId: layer.id);
     _changes.notifyChanged();
   }
 
@@ -142,7 +143,7 @@ class LayerMarks {
     if (!layer.kind.holdsDrawings) {
       return false;
     }
-    return _timeline.timelineController.hasMarkAt(
+    return _controllers.timelineController.hasMarkAt(
       layer: layer,
       frameIndex: frameIndex,
     );

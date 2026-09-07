@@ -2,6 +2,7 @@ import 'drags/drawing_block_move_drag.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/drawing_block_move.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'folders_and_attachments.dart';
 
@@ -15,18 +16,18 @@ class DrawingBlockMoveDragVerbs {
   DrawingBlockMoveDragVerbs({
     required ProjectAccess project,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required FoldersAndAttachments folders,
   }) : _project = project,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _folders = folders;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final FoldersAndAttachments _folders;
 
@@ -70,7 +71,7 @@ class DrawingBlockMoveDragVerbs {
     // The selection follows the block onto its new layer (R12-④): the
     // user grabbed THAT drawing — keep working on it where it landed.
     if (plan.isCrossLayer) {
-      _timeline.layerController.selectLayer(plan.targetAfter!.id);
+      _controllers.layerController.selectLayer(plan.targetAfter!.id);
     }
     _changes.warmActiveCut();
     _changes.notifyChanged();

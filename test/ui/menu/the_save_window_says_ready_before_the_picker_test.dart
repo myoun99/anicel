@@ -155,7 +155,7 @@ void main() {
       reason: 'and SAVED is what the other half of the order says, after',
     );
     expect(
-      session.projectFilePath,
+      session.projectFile.path,
       placed,
       reason:
           'the session adopted what the picker placed, without a second write',

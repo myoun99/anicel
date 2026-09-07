@@ -174,7 +174,7 @@ class EditorTopStrip extends StatelessWidget {
     // it — that flow's semantics (recovery re-offer, sidecar kept as the
     // one way back) are documented below and a gate in front of them
     // would retire the very sidecar the reopen exists to reach.
-    if (session.projectFilePath != path) {
+    if (session.projectFile.path != path) {
       if (!await ensureUnsavedWorkSettled(context, session) ||
           !context.mounted) {
         return;
@@ -188,7 +188,8 @@ class EditorTopStrip extends StatelessWidget {
     // Recover). Captured before the open, because the open rewrites both
     // of these.
     final reopeningDirtySelf =
-        session.projectFilePath == path && session.hasUnsavedChanges;
+        session.projectFile.path == path &&
+        session.projectFile.hasUnsavedChanges;
 
     var plan = await _recoveryChoice(context, path);
     if (plan == null || !context.mounted) {
@@ -440,7 +441,7 @@ class EditorTopStrip extends StatelessWidget {
   }) async {
     final path = pick.path;
     try {
-      await session.openProjectFromFile(
+      await session.projectDoor.openProjectFromFile(
         plan.openPath,
         recoverAs: plan.recoverAs,
         overlayPath: plan.overlayPath,
@@ -487,7 +488,7 @@ class EditorTopStrip extends StatelessWidget {
       promptSaveProjectAs(context, session);
 
   Future<void> _saveProject(BuildContext context) async {
-    final path = session.projectFilePath;
+    final path = session.projectFile.path;
     if (path == null) {
       await _saveProjectAs(context);
       return;
@@ -923,7 +924,7 @@ class EditorTopStrip extends StatelessWidget {
   /// the empty middle is honest, and it is where the project SWITCHER goes
   /// once more than one project can be open at a time.
   String get _projectLabel {
-    final path = session.projectFilePath;
+    final path = session.projectFile.path;
     if (path == null) {
       return '';
     }
@@ -1662,7 +1663,7 @@ Future<bool> ensureUnsavedWorkSettled(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  if (!session.hasUnsavedChanges) {
+  if (!session.projectFile.hasUnsavedChanges) {
     return true;
   }
   final strings = AppText.strings;
@@ -1707,7 +1708,7 @@ Future<bool> ensureUnsavedWorkSettled(
       // restore precisely what the user just chose to throw away — with
       // recovery reading a surviving sidecar as "the app crashed",
       // keeping one here makes that signal lie.
-      session.discardAutosaveSidecar();
+      session.projectFile.discardAutosaveSidecar();
       return true;
     case UnsavedWorkChoice.save:
     case UnsavedWorkChoice.saveAs:
@@ -1717,13 +1718,13 @@ Future<bool> ensureUnsavedWorkSettled(
       // The existing File-menu flows do the work (one writer, one
       // picker); a save that fails or a cancelled picker leaves the
       // project dirty, so the tear-down is called off.
-      final path = session.projectFilePath;
+      final path = session.projectFile.path;
       if (choice == UnsavedWorkChoice.saveAs || path == null) {
         await promptSaveProjectAs(context, session);
       } else {
         await saveProjectShowingProgress(context, session, path);
       }
-      return !session.hasUnsavedChanges;
+      return !session.projectFile.hasUnsavedChanges;
   }
 }
 
@@ -1751,7 +1752,8 @@ Future<bool> saveProjectShowingProgress(
       runningLabel: AppText.strings.saveProgressRunning,
       doneLabel: AppText.strings.saveProgressDone,
       windowKey: const ValueKey<String>('save-progress-dialog'),
-      task: (report) => session.saveProjectToFile(path, onProgress: report),
+      task: (report) =>
+          session.projectDoor.saveProjectToFile(path, onProgress: report),
     );
     // 🚨★★★**A SAVE THAT WROTE FEWER CELS THAN IT HOLDS MUST SAY SO.**
     //
@@ -1765,7 +1767,7 @@ Future<bool> saveProjectShowingProgress(
     // ⛔Through [showAppNotice] because F-10 says every refusal does, and
     // HERE because this function is the one gate every save entrance goes
     // through — the menu, the shortcut, and the unsaved-work prompt.
-    final lost = session.celsLostToAMissingFile;
+    final lost = session.projectDoor.celsLostToAMissingFile;
     if (lost.isNotEmpty && context.mounted) {
       unawaited(
         showAppNotice(
@@ -1789,7 +1791,7 @@ Future<bool> saveProjectShowingProgress(
 }
 
 /// Writes the whole live session to [stagingPath] and answers what media it
-/// stored — [EditorSessionManager.writeArchiveCopy] in production.
+/// stored — [ProjectFileDoor.writeArchiveCopy] in production.
 ///
 /// 🚨★★★**A SEAM BECAUSE THE WRITER CANNOT RUN UNDER A FAKE CLOCK**, not
 /// because anyone wanted a choice about who writes the archive.
@@ -1817,7 +1819,7 @@ Future<void> promptSaveProjectAs(
   final suggested =
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
       '$anicelProjectSuffix';
-  final currentPath = session.projectFilePath?.replaceAll('\\', '/');
+  final currentPath = session.projectFile.path?.replaceAll('\\', '/');
   // 🚨THE SYNC TWIN, like [pickProjectToOpen] twenty lines up — one file
   // asking one question one way. The async spelling stood here and it is
   // documented as unusable from a widget test: 「sync dart:io works under
@@ -1834,7 +1836,7 @@ Future<void> promptSaveProjectAs(
   final write =
       writeArchive ??
       (String path, void Function(double) report) =>
-          session.writeArchiveCopy(path, onProgress: report);
+          session.projectDoor.writeArchiveCopy(path, onProgress: report);
   // 🪦ONE CALL, not two. An injected picker used to get its own branch
   // here, and that branch re-answered the suffix question the pick already
   // answers (F-14) — a second spelling of one law, kept alive by a seam
@@ -1887,7 +1889,7 @@ Future<void> promptSaveProjectAs(
     // write to afterwards, and Save As died with 「the location refused
     // both a direct write and a coordinated replace」 on a path it had
     // just successfully filled (실기 08-27, iPhone).
-    session.adoptArchiveAt(path, mediaEntryNames: written);
+    session.projectDoor.adoptPlacedArchive(path, mediaEntryNames: written);
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );

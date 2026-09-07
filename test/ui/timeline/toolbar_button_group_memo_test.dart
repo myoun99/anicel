@@ -75,6 +75,6 @@ void main() {
       reason: 'nor the mark button',
     );
 
-    session.prerenderScheduler.cancel();
+    session.playbackRig.prerenderScheduler.cancel();
   });
 }

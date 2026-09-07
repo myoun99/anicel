@@ -390,15 +390,16 @@ class _HomePageState extends State<HomePage> {
       // saved and closed cleanly, and the next open then offers to recover
       // it — which is the exact signal this round exists to keep honest.
       isDirty: () =>
-          _session.hasUnsavedChanges && !_session.autosaveShouldStandDown,
-      writeSnapshot: _session.writeAutosaveSnapshot,
+          _session.projectFile.hasUnsavedChanges &&
+          !_session.projectFile.autosaveShouldStandDown,
+      writeSnapshot: _session.projectDoor.writeAutosaveSnapshot,
       // Only called once needsProjectFile says a real file exists.
-      autosavePath: () => _session.autosaveSidecarPath!,
+      autosavePath: () => _session.projectFile.autosaveSidecarPath!,
       // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of
       // piling files into hidden app-data dirs for a document with no
       // identity yet, the first dirty pass asks the user to pick a real
       // file (OpenToonz-style).
-      needsProjectFile: () => _session.projectFilePath == null,
+      needsProjectFile: () => _session.projectFile.path == null,
       onUnsavedProject: _promptUnsavedAutosave,
     );
   }
@@ -462,10 +463,10 @@ class _HomePageState extends State<HomePage> {
   /// key was going to do anyway, so being consumed and being obeyed look the
   /// same from the outside.
   bool _consumedByPlayback() {
-    if (!_session.playback.isPlaying) {
+    if (!_session.playbackRig.playback.isPlaying) {
       return false;
     }
-    _session.playback.stop();
+    _session.playbackRig.playback.stop();
     return true;
   }
 
@@ -688,7 +689,7 @@ class _HomePageState extends State<HomePage> {
   /// is already stopped by the time this key arrives, so here it only
   /// ever plays — the mutation campaign found the stop arm unreachable.
   void _togglePlayback() {
-    _session.playback.play(
+    _session.playbackRig.playback.play(
       scope: PlaybackScope.activeCut,
       startGlobalFrame: _session.currentFrameIndex,
     );
@@ -788,7 +789,7 @@ class _HomePageState extends State<HomePage> {
                   // ⛔Inside `Shortcuts` deliberately, so a key is eaten
                   // rather than followed; see the widget's own note.
                   child: PlaybackActuationGate(
-                    controller: _session.playback,
+                    controller: _session.playbackRig.playback,
                     navigationRegionKey: _canvasNavigationRegionKey,
                     // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
                     // action funnel as key bindings; the layer only observes raw

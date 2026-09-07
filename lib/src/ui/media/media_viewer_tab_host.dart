@@ -338,9 +338,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       dropped.image.dispose();
     }
     // The census cannot reach into this State, so the total goes to it —
-    // see [EditorSessionManager.viewerRasterBytesByViewer]. Every path
+    // see [RenderCaches.viewerRasterBytesByViewer]. Every path
     // that changes the cache ends here or in [_disposeContent].
-    widget.session.viewerRasterBytesByViewer[widget.viewerId] = total;
+    widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] =
+        total;
   }
 
   /// The OS said memory is tight. The session already stood its own caches
@@ -436,7 +437,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     _disposeContent();
     // ⛔REMOVE, not zero: a viewer that is gone is not a viewer holding
     // nothing, and an entry per closed tab would grow for the session.
-    widget.session.viewerRasterBytesByViewer.remove(widget.viewerId);
+    widget.session.renderCaches.viewerRasterBytesByViewer.remove(
+      widget.viewerId,
+    );
     super.dispose();
   }
 
@@ -451,7 +454,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     _pageCache.clear();
     _buffering = false;
     _renderScale = null;
-    widget.session.viewerRasterBytesByViewer[widget.viewerId] = 0;
+    widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] = 0;
     _rendersInFlight.clear();
     final document = _document;
     _document = null;
@@ -528,7 +531,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   ///
   /// 🚨★★★**CARRYING WAS ONLY HALF TRUE FOR MOVIES.** The project keeps the
   /// bytes, and every other medium reads them back through
-  /// [EditorSessionManager.mediaByteSourceFor]; a movie could not, because
+  /// [ProjectFile.mediaByteSourceFor]; a movie could not, because
   /// the OS decoders take a PATH and the bytes are a stretch of the
   /// `.anicel`. Deleting the import original — the exact act carrying exists
   /// to survive — left a video the project plainly contains unviewable
@@ -539,7 +542,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// for the case where there is no file to open.
   ///
   /// ⚠️A FRAMED entry answers null, and that is not a gap being papered
-  /// over: [EditorSessionManager.mediaByteSourceFor] wraps those in a
+  /// over: [ProjectFile.mediaByteSourceFor] wraps those in a
   /// decoder, so what comes back is not a plain range and no OS reader can
   /// be pointed at it. The archive side is what keeps a movie addressable.
   ///
@@ -552,7 +555,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     if (File(path).existsSync()) {
       return null;
     }
-    return widget.session.mediaByteSourceFor(path).range;
+    return widget.session.projectFile.mediaByteSourceFor(path).range;
   }
 
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {

@@ -48,7 +48,7 @@ void main() {
       final centerY = canvasSize.height / 2;
       BrushFrameEditingCoordinator(
         initialFrameKey: frameKey,
-        frameStore: session.brushFrameStore,
+        frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(
           canvasSize: session.requireActiveCut.canvasSize,
         ),

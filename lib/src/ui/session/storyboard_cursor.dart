@@ -10,6 +10,7 @@ import '../../models/timeline_row_address.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
 import '../../services/command.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'range_selections.dart';
 import 'cell_verbs.dart';
@@ -24,7 +25,7 @@ import 'transitions.dart';
 /// 2026-09-02). Measured before cutting: nothing of its own and seventeen
 /// session members touched. It names the roles it needs in its constructor.
 class StoryboardCursor {
-  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required TimelineAccess timeline, required SessionInternals internals, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _timeline = timeline, _internals = internals, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
+  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required SessionInternals internals, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _controllers = controllers, _internals = internals, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
 
   final CellVerbs _cells;
   final CutVerbs _cutVerbs;
@@ -34,7 +35,7 @@ class StoryboardCursor {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final RangeSelections _rangeSelections;
 
@@ -148,7 +149,7 @@ class StoryboardCursor {
         if (row != null) {
           final panel = coveringDrawingBlockAt(
             row.timeline,
-            _timeline.timelineController.currentFrameIndex,
+            _controllers.timelineController.currentFrameIndex,
           );
           if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
             return StoryboardCursorStoryboardPanel(
@@ -222,7 +223,7 @@ class StoryboardCursor {
         // gap; the lookup below finds the track row without a cut; the verb
         // was the one still refusing. Found by the adversarial check on the
         // 2026-09-02 cut — the verb had no test of its own.
-        _timeline.timelineController.deleteBlocksForLayers({
+        _controllers.timelineController.deleteBlocksForLayers({
           layerId: [blockStartIndex],
         });
         _changes.notifyChanged();
@@ -267,7 +268,7 @@ class StoryboardCursor {
     // (the active cut's global start) — pre-subtract the SAME expression,
     // exactly as [_createTrackSeEntriesForRange] does, or the entry lands
     // double-shifted.
-    final commands = _timeline.timelineController
+    final commands = _controllers.timelineController
         .drawingFramesCommandsForLayers({
           layerId: [
             (
@@ -302,7 +303,7 @@ class StoryboardCursor {
     if (storyboardCursorBlockOrNull() case StoryboardCursorStoryboardPanel(
       :final panelStartIndex,
     )) {
-      return _timeline.timelineController.currentFrameIndex != panelStartIndex;
+      return _controllers.timelineController.currentFrameIndex != panelStartIndex;
     }
     return false;
   }
@@ -315,10 +316,10 @@ class StoryboardCursor {
       :final row,
       :final panelStartIndex,
     )) {
-      if (_timeline.timelineController.currentFrameIndex == panelStartIndex) {
+      if (_controllers.timelineController.currentFrameIndex == panelStartIndex) {
         return;
       }
-      _timeline.timelineController.createDrawingFrameForLayer(
+      _controllers.timelineController.createDrawingFrameForLayer(
         layerId: row.id,
         frameId: _frameIds.mintFrameId(row.id),
       );

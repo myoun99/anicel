@@ -49,8 +49,8 @@ int _indexOf(EditorSessionManager session, LayerId id) =>
 void main() {
   test('one drag is one undo', () {
     final session = _session();
-    session.addLayerOfKind(LayerKind.animation);
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final before = _drawingIds(session);
     expect(before.length, greaterThanOrEqualTo(3));
 
@@ -86,7 +86,7 @@ void main() {
 
   test('a folder travels whole, and its members stay directly below it', () {
     final session = _session();
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final member = session.requireActiveCut.layers
         .lastWhere((layer) => layer.kind == LayerKind.animation)
         .id;
@@ -109,7 +109,7 @@ void main() {
 
   test('a move reaches the 겸용 sibling cut — order is shared structure', () {
     final session = _session();
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final sourceCutId = session.requireActiveCut.id;
     final sourceOrder = _drawingIds(session);
     session.createLinkedCutFromActiveCut();

@@ -34,7 +34,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     final layer = s.requireActiveCut.layers.firstWhere(
       (layer) => layer.kind == LayerKind.text,
     );
@@ -48,7 +48,7 @@ void main() {
       (l) => l.id == layer.id,
     );
     expect(refreshed.frames, hasLength(1));
-    expect(s.celHasContentForLayer(refreshed, 0), isFalse);
+    expect(s.layerStack.celHasContentForLayer(refreshed, 0), isFalse);
 
     // Typing bakes the projection.
     s.setTextCelContentForSelectedFrame(
@@ -60,7 +60,7 @@ void main() {
     );
     await settle(tester, () {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layer.id);
-      return s.celHasContentForLayer(l, 0);
+      return s.layerStack.celHasContentForLayer(l, 0);
     });
     expect(s.selectedTextCelContent?.text, 'カット 12');
 
@@ -68,7 +68,7 @@ void main() {
     s.undo();
     await settle(tester, () {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layer.id);
-      return !s.celHasContentForLayer(l, 0);
+      return !s.layerStack.celHasContentForLayer(l, 0);
     });
     expect(s.selectedTextCelContent, isNull);
 
@@ -76,7 +76,7 @@ void main() {
     s.redo();
     await settle(tester, () {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layer.id);
-      return s.celHasContentForLayer(l, 0);
+      return s.layerStack.celHasContentForLayer(l, 0);
     });
     expect(s.selectedTextCelContent?.text, 'カット 12');
     await tester.pumpAndSettle();
@@ -88,7 +88,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
     s.setTextCelContentForSelectedFrame(
@@ -96,7 +96,7 @@ void main() {
     );
     await settle(tester, () {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
-      return s.celHasContentForLayer(l, 0);
+      return s.layerStack.celHasContentForLayer(l, 0);
     });
 
     expect(s.canRasterizeActiveLayer, isTrue);
@@ -111,7 +111,7 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 60)),
     );
     await tester.pump();
-    expect(s.celHasContentForLayer(after, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(after, 0), isTrue);
 
     s.undo();
     after = s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
@@ -122,7 +122,7 @@ void main() {
     );
     await tester.pump();
     expect(
-      s.celHasContentForLayer(after, 0),
+      s.layerStack.celHasContentForLayer(after, 0),
       isTrue,
       reason: 'params match the stored projection — no wasteful re-bake',
     );
@@ -136,7 +136,7 @@ void main() {
     addTearDown(s.dispose);
 
     final originCutId = s.requireActiveCut.id;
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
     s.setTextCelContentForSelectedFrame(
@@ -144,7 +144,7 @@ void main() {
     );
     await settle(tester, () {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
-      return s.celHasContentForLayer(l, 0);
+      return s.layerStack.celHasContentForLayer(l, 0);
     });
     s.createLinkedCutFromActiveCut();
     s.selectCut(originCutId);
@@ -176,7 +176,7 @@ void main() {
       );
       expect(member.frames.single.textContent, isNull);
       expect(
-        s.celHasContentForLayer(member, 0),
+        s.layerStack.celHasContentForLayer(member, 0),
         isTrue,
         reason: 'parameters go, PIXELS STAY — in every linked cut',
       );
@@ -202,7 +202,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
     await tester.runAsync(
@@ -230,16 +230,16 @@ void main() {
       );
       image.dispose();
       bakeCelSurface(
-        s.brushFrameStore,
+        s.renderCaches.brushFrameStore,
         s.brushFrameKeyForCut(cut, layer.id, layer.frames.single.id),
         surface,
       );
     });
     final layer = s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
-    expect(s.celHasContentForLayer(layer, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
 
     // Any history change triggers the sweep — the pixels must survive it.
-    s.addLayerOfKind(LayerKind.animation);
+    s.layerStack.addLayerOfKind(LayerKind.animation);
     for (var i = 0; i < 5; i += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 30)),
@@ -247,7 +247,7 @@ void main() {
       await tester.pump();
     }
     expect(
-      s.celHasContentForLayer(layer, 0),
+      s.layerStack.celHasContentForLayer(layer, 0),
       isTrue,
       reason: 'the clear-bake only touches cels the sweep itself recorded',
     );
@@ -259,7 +259,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     expect(s.canAddAttachedLayerToActive, isTrue);
     s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
     final cut = s.requireActiveCut;
@@ -277,7 +277,7 @@ void main() {
     addTearDown(s.dispose);
 
     final originCutId = s.requireActiveCut.id;
-    s.addLayerOfKind(LayerKind.text);
+    s.layerStack.addLayerOfKind(LayerKind.text);
     final originLayerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
     s.setTextCelContentForSelectedFrame(
@@ -287,7 +287,7 @@ void main() {
       final l = s.requireActiveCut.layers.firstWhere(
         (l) => l.id == originLayerId,
       );
-      return s.celHasContentForLayer(l, 0);
+      return s.layerStack.celHasContentForLayer(l, 0);
     });
 
     s.createLinkedCutFromActiveCut();
@@ -304,7 +304,7 @@ void main() {
     );
     // The linked copy reads the SAME projection (canonical bank).
     s.selectCut(linkedCut.id);
-    expect(s.celHasContentForLayer(linkedText, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(linkedText, 0), isTrue);
     expect(linkedText.frames.single.textContent?.text, 'C-12');
     await tester.pumpAndSettle();
   });

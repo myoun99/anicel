@@ -189,7 +189,7 @@ void main() {
     final session = EditorSessionManager(initialProject: _project());
     addTearDown(session.dispose);
     expect(session.canUndo, isFalse);
-    expect(session.hasUnsavedChanges, isFalse);
+    expect(session.projectFile.hasUnsavedChanges, isFalse);
 
     session.repository.updateMediaViewerBookmarks(
       (_) => const {
@@ -212,7 +212,7 @@ void main() {
       reason: 'turning a reference page must never be undoable',
     );
     expect(
-      session.hasUnsavedChanges,
+      session.projectFile.hasUnsavedChanges,
       isFalse,
       reason: 'and must never be the reason a save prompt appears',
     );

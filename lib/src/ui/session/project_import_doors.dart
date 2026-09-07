@@ -20,6 +20,7 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import 'import_landing.dart';
 import 'media_fingerprint_ledger.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// The image / PSD / PDF import doors.
@@ -28,17 +29,20 @@ class ProjectImportDoors {
     required ProjectAccess project,
     required ChangeSink changes,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
     required ImportLanding landing,
     required MediaFingerprintLedger fingerprints,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
+       _renderCaches = renderCaches,
        _landing = landing,
        _fingerprints = fingerprints;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
 
@@ -179,7 +183,7 @@ class ProjectImportDoors {
             fit: bake.fit,
           );
           bakeCelSurface(
-            _internals.brushFrameStore,
+            _renderCaches.brushFrameStore,
             _internals.brushFrameKeyForCut(
               bakedCut,
               bake.layerId,
@@ -261,7 +265,7 @@ class ProjectImportDoors {
     if (bakedCut != null) {
       for (final cel in expansion.cels) {
         bakeCelSurface(
-          _internals.brushFrameStore,
+          _renderCaches.brushFrameStore,
           _internals.brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
           cel.surface,
         );
@@ -422,7 +426,7 @@ class ProjectImportDoors {
                 fit: bake.fit,
               );
               bakeCelSurface(
-                _internals.brushFrameStore,
+                _renderCaches.brushFrameStore,
                 _internals.brushFrameKeyForCut(
                   bakedCut,
                   bake.layerId,

@@ -131,8 +131,8 @@ void main() {
     s.updateActiveCutNote('note');
     s.duplicateActiveCut();
     s.deleteActiveCut();
-    s.addLayer();
-    s.addLayerOfKind(LayerKind.se);
+    s.layerStack.addLayer();
+    s.layerStack.addLayerOfKind(LayerKind.se);
     s.setCameraKeyframeAtCurrentFrame(pose);
     s.toggleActiveCutThumbnailFrame();
     s.selectNextFrame();
@@ -173,12 +173,12 @@ void main() {
     addTearDown(s.dispose);
     s.selectCut(first);
 
-    s.playback.play(scope: PlaybackScope.allCuts);
-    s.playback.seekToGlobalFrame(aEnd + 2);
-    expect(s.playback.position, isNull, reason: 'a gap frame');
+    s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
+    s.playbackRig.playback.seekToGlobalFrame(aEnd + 2);
+    expect(s.playbackRig.playback.position, isNull, reason: 'a gap frame');
     expect(s.activeCutId, first, reason: 'follow keeps the last cut');
 
-    s.playback.stop();
+    s.playbackRig.playback.stop();
     expect(s.activeCutId, isNull, reason: 'stop in the gap deselects');
     expect(s.gapParkedGlobalFrame, aEnd + 2);
     await tester.pumpAndSettle();
@@ -193,8 +193,12 @@ void main() {
     s.selectGlobalFrame(aEnd + 1);
     expect(s.activeCutId, isNull);
 
-    s.playback.play(scope: PlaybackScope.activeCut);
-    expect(s.playback.isActive, isFalse, reason: 'empty playlist — no-op');
+    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+    expect(
+      s.playbackRig.playback.isActive,
+      isFalse,
+      reason: 'empty playlist — no-op',
+    );
     await tester.pumpAndSettle();
   });
 

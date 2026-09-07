@@ -33,7 +33,7 @@ void main() {
     final session =
         existing ??
         (EditorSessionManager(initialProject: createDefaultProject())
-          ..addLayerOfKind(LayerKind.animation));
+          ..layerStack.addLayerOfKind(LayerKind.animation));
     if (existing == null) {
       addTearDown(session.dispose);
     }
@@ -306,7 +306,7 @@ void main() {
       addTearDown(session.dispose);
       // A folder around the new layer, then stand OUTSIDE it: the twirl is
       // pressed on a row that is neither active nor holding the active.
-      session.addLayerOfKind(LayerKind.animation);
+      session.layerStack.addLayerOfKind(LayerKind.animation);
       session.groupActiveLayerIntoFolder();
       final folder = session.layers
           .firstWhere((l) => l.kind == LayerKind.folder)

@@ -59,8 +59,8 @@ void main() {
       ),
     );
     final projectPath = '${folder.path.replaceAll('\\', '/')}/p.anicel';
-    await session.saveProjectToFile(projectPath);
-    expect(session.mediaEntryNames.containsKey(audioPath), isTrue);
+    await session.projectDoor.saveProjectToFile(projectPath);
+    expect(session.projectFile.mediaEntryNames.containsKey(audioPath), isTrue);
 
     File(audioPath).deleteSync();
     session.refreshMediaExistence();
@@ -72,7 +72,7 @@ void main() {
           'the banner and the relink hunt are for bytes that exist NOWHERE',
     );
     expect(
-      session.mediaByteSourceFor(audioPath),
+      session.projectFile.mediaByteSourceFor(audioPath),
       isA<MediaArchiveBytes>(),
       reason: 'and the read side answers with the archive range',
     );

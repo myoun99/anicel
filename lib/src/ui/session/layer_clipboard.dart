@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../services/clipboard/layer_copy_payload.dart';
+import 'layer_stack.dart';
 import 'session_roles.dart';
 
 /// The LAYER CLIPBOARD — the layer the user copied, and pasting it into a
@@ -15,16 +16,17 @@ class LayerClipboard {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required LayerStack layerStack,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _internals = internals;
+
+       _layerStack = layerStack;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final LayerStack _layerStack;
 
   LayerCopyPayload? _layerClipboard;
 
@@ -63,7 +65,7 @@ class LayerClipboard {
     if (cut == null) {
       return;
     }
-    if (!_internals.canAddLayerOfKind(payload.kind)) {
+    if (!_layerStack.canAddLayerOfKind(payload.kind)) {
       // R9 #7: this cut already holds its one row of that kind.
       // ⚠️NEVER APPLIED by any test (mutation, 2026-09-06): nothing copies a
       // single-instance row and pastes it into a cut that already has one.

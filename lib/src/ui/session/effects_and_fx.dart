@@ -557,7 +557,7 @@ class EffectsAndFx {
         edit: (fx) => effectsWithGroupReset(
           fx,
           laneId: headerLaneId,
-          frameIndexes: [_timeline.timelineController.currentFrameIndex],
+          frameIndexes: [_selection.currentFrameIndex],
         ),
       );
 

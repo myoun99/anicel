@@ -1027,7 +1027,7 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    session.brushFrameStore.hotCelByteBudget = 1024 * 1024 * 1024;
+    session.renderCaches.brushFrameStore.hotCelByteBudget = 1024 * 1024 * 1024;
 
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
@@ -1039,7 +1039,7 @@ void main() {
         );
 
     expect(
-      session.brushFrameStore.hotCelByteBudget,
+      session.renderCaches.brushFrameStore.hotCelByteBudget,
       512 * 1024 * 1024,
       reason:
           'addObserver + didHaveMemoryPressure + the session forward '

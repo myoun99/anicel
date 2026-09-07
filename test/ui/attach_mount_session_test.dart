@@ -168,7 +168,7 @@ void main() {
     final s = _session();
     final base = s.activeLayer!;
     s.addAttachedLayer(AttachedPlacement.above);
-    s.addLayerOfKind(LayerKind.animation);
+    s.layerStack.addLayerOfKind(LayerKind.animation);
     final loose = s.activeLayer!.id;
     // Stack: base, attach, loose. One step DOWN puts it between them.
     expect(_animationOrder(s).last, loose.value);

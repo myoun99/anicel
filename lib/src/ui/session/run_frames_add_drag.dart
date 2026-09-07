@@ -1,5 +1,6 @@
 import 'drags/run_frames_add_drag.dart';
 import '../../models/layer_id.dart';
+import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The RUN FRAMES ADD DRAG — dragging the end of a run to add frames to
@@ -12,16 +13,16 @@ class RunFramesAddDragVerbs {
   RunFramesAddDragVerbs({
     required ProjectAccess project,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
   }) : _project = project,
        _changes = changes,
-       _timeline = timeline,
+       _controllers = controllers,
        _internals = internals;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
@@ -46,7 +47,7 @@ class RunFramesAddDragVerbs {
       activeCutFrameCount: () => _project.activeCutFrameCount,
       preview: _internals.dragPreview,
       commitLayerDrag: ({required before, required after}) {
-        _timeline.timelineController.commitLayerTimelineDrag(
+        _controllers.timelineController.commitLayerTimelineDrag(
           before: before,
           after: after,
         );

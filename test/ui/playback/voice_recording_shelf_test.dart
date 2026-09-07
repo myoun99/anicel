@@ -120,7 +120,7 @@ void main() {
         manager.activeTrack.seLayers.first.audioClips.single.filePath;
     expect(shelfPath, startsWith('$shelf/'));
 
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
 
     expect(
       manager.activeTrack.seLayers.first.audioClips.single.filePath,
@@ -135,7 +135,7 @@ void main() {
       reason: 'and the project packs it — a take is its own recording',
     );
     expect(
-      manager.mediaEntryNames.keys,
+      manager.projectFile.mediaEntryNames.keys,
       contains(shelfPath),
       reason: 'the save put it inside the .anicel',
     );
@@ -177,7 +177,7 @@ void main() {
         manager.activeTrack.seLayers.first.audioClips.single.filePath;
     manager.undo();
 
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
 
     expect(
       File(shelfPath).existsSync(),

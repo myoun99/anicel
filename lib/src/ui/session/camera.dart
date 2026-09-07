@@ -13,6 +13,7 @@ import '../../services/command.dart';
 import '../../services/commands/update_cut_camera_command.dart';
 import '../../services/commands/update_project_camera_size_command.dart';
 import '../brush/brush_editor_selection.dart';
+import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'lane_range_move_drag.dart';
@@ -31,6 +32,7 @@ class Camera {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutControllers controllers,
     required SessionInternals internals,
     required LaneRangeMoveDragVerbs laneMove,
     required ActiveCutEdits activeCut,
@@ -38,6 +40,7 @@ class Camera {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
+       _controllers = controllers,
        _internals = internals,
        _laneMove = laneMove,
        _activeCut = activeCut;
@@ -48,6 +51,7 @@ class Camera {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
+  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final LaneRangeMoveDragVerbs _laneMove;
 
@@ -113,7 +117,7 @@ class Camera {
   CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
     camera: _project.requireActiveCut.camera,
     canvasSize: _project.requireActiveCut.canvasSize,
-    frameIndex: _timeline.timelineController.currentFrameIndex,
+    frameIndex: _controllers.timelineController.currentFrameIndex,
   );
 
   /// The camera pose the canvas should FRAME right now — not always the
@@ -156,7 +160,7 @@ class Camera {
 
   bool get hasCameraKeyframeAtCurrentFrame =>
       _project.activeCutOrNull?.camera.keyframeAt(
-        _timeline.timelineController.currentFrameIndex,
+        _controllers.timelineController.currentFrameIndex,
       ) !=
       null;
 
@@ -164,7 +168,7 @@ class Camera {
       _activeCut.onActiveCut(
         (cutId) => _project.cutCommandCoordinator.setCutCameraKeyframe(
           cutId: cutId,
-          frameIndex: _timeline.timelineController.currentFrameIndex,
+          frameIndex: _controllers.timelineController.currentFrameIndex,
           pose: pose,
         ),
       );
@@ -172,7 +176,7 @@ class Camera {
   void removeCameraKeyframeAtCurrentFrame() => _activeCut.onActiveCut(
     (cutId) => _project.cutCommandCoordinator.removeCutCameraKeyframe(
       cutId: cutId,
-      frameIndex: _timeline.timelineController.currentFrameIndex,
+      frameIndex: _controllers.timelineController.currentFrameIndex,
     ),
   );
 
@@ -217,12 +221,12 @@ class Camera {
     if (cut == null) {
       return null;
     }
-    final frameIndex = _timeline.timelineController.currentFrameIndex;
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
       if (!layer.kind.paintsArtwork || !layer.isVisible) {
         continue;
       }
-      final frame = _timeline.timelineController.resolveFrameForLayer(
+      final frame = _controllers.timelineController.resolveFrameForLayer(
         layer: layer,
         frameIndex: frameIndex,
       );

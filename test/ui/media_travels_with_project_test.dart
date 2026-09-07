@@ -54,24 +54,24 @@ void main() {
   test('a sound survives its original being deleted', () async {
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
 
     final source = writeMedia('bgm.wav', 40 * 1024);
     final expected = File(source).readAsBytesSync();
     editor.importMediaFiles([source], copyIntoProject: true);
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
     editor.dispose();
 
     // The whole point: the file the project was imported from is gone.
     File(source).deleteSync();
 
     final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
+    await reopened.projectDoor.openProjectFromFile(projectPath);
     final asset = reopened.mediaAssets.single;
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: projectPath,
-      mediaEntryNames: reopened.mediaEntryNames,
+      mediaEntryNames: reopened.projectFile.mediaEntryNames,
     );
     expect(sources[asset.path], isA<MediaArchiveBytes>());
     expect(sources[asset.path]!.readSync(), expected);
@@ -86,18 +86,18 @@ void main() {
     // answer, and here the answer is no.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
 
     final movie = writeMedia('reference.mp4', 2048);
     editor.importMediaFiles([movie], copyIntoProject: false);
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
     editor.dispose();
 
     final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
+    await reopened.projectDoor.openProjectFromFile(projectPath);
     expect(reopened.mediaAssets.single.kind, MediaAssetKind.video);
     expect(
-      reopened.mediaEntryNames,
+      reopened.projectFile.mediaEntryNames,
       isEmpty,
       reason: 'nothing about a movie is carried',
     );
@@ -110,12 +110,12 @@ void main() {
     // that quietly makes copies with no sound.
     final editor = session();
     final first = '${directory.path}/first.anicel';
-    await editor.saveProjectToFile(first);
+    await editor.projectDoor.saveProjectToFile(first);
 
     final source = writeMedia('voice.wav', 12 * 1024);
     final expected = File(source).readAsBytesSync();
     editor.importMediaFiles([source], copyIntoProject: true);
-    await editor.saveProjectToFile(first);
+    await editor.projectDoor.saveProjectToFile(first);
 
     // Deleted BEFORE the save-as, deliberately. With the original still
     // sitting there the copy could be fed from it and the test would pass
@@ -125,7 +125,7 @@ void main() {
     File(source).deleteSync();
 
     final second = '${directory.path}/second.anicel';
-    await editor.saveProjectToFile(second);
+    await editor.projectDoor.saveProjectToFile(second);
     editor.dispose();
 
     // And now the file it was copied from is gone too; only the copy
@@ -133,12 +133,12 @@ void main() {
     File(first).deleteSync();
 
     final reopened = session();
-    await reopened.openProjectFromFile(second);
+    await reopened.projectDoor.openProjectFromFile(second);
     final asset = reopened.mediaAssets.single;
     final sources = projectMediaSources(
       project: reopened.repository.requireProject(),
       projectFilePath: second,
-      mediaEntryNames: reopened.mediaEntryNames,
+      mediaEntryNames: reopened.projectFile.mediaEntryNames,
     );
     expect(sources[asset.path]!.readSync(), expected);
     reopened.dispose();
@@ -150,13 +150,13 @@ void main() {
     // would rewrite the project's whole media area to change one drawing.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
     final source = writeMedia('bgm.wav', 64 * 1024);
     editor.importMediaFiles([source], copyIntoProject: true);
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
 
     final afterFirst = File(projectPath).lengthSync();
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
     final afterSecond = File(projectPath).lengthSync();
     editor.dispose();
 
@@ -173,15 +173,15 @@ void main() {
     // anyway would be answering a question nobody posed.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
     final source = writeMedia('shared.wav', 8 * 1024);
     editor.importMediaFiles([source], copyIntoProject: false);
-    await editor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath);
     editor.dispose();
 
     final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
-    expect(reopened.mediaEntryNames, isEmpty);
+    await reopened.projectDoor.openProjectFromFile(projectPath);
+    expect(reopened.projectFile.mediaEntryNames, isEmpty);
     // And it still resolves, by path, exactly as it always did.
     expect(reopened.mediaAssets.single.path, source.replaceAll('\\', '/'));
     reopened.dispose();

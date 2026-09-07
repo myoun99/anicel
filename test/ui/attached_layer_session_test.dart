@@ -170,7 +170,7 @@ void main() {
     expect(mirrorDisplayKeys(), [0, 3]);
 
     // A cel arriving on the base via a CROSS-ROW MOVE mirrors too.
-    s.addLayer();
+    s.layerStack.addLayer();
     final otherId = s.activeLayer!.id;
     s.selectLayer(otherId);
     s.selectFrameIndex(6);
@@ -383,7 +383,7 @@ void main() {
     final syncedId = s.activeLayer!.id;
 
     s.selectLayer(base.id);
-    s.addLayer(); // second standalone drawing layer = base deletable
+    s.layerStack.addLayer(); // second standalone drawing layer = base deletable
     s.selectLayer(base.id);
     s.deleteActiveLayer();
     final after = cutLayers(s).map((l) => l.id).toList();
@@ -446,7 +446,7 @@ void main() {
     // The cascade itself: deleting the base takes its attach rows with
     // it, restored whole by ONE undo.
     s.selectLayer(base.id);
-    s.addLayer(); // regular layer above the group
+    s.layerStack.addLayer(); // regular layer above the group
     s.selectLayer(base.id);
     expect(s.canDeleteActiveLayer, isTrue);
     s.deleteActiveLayer();
@@ -472,7 +472,7 @@ void main() {
     s.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
-    s.addLayer();
+    s.layerStack.addLayer();
     final added = s.activeLayer!;
     expect(isAttachedLayer(added), isFalse);
 
@@ -789,7 +789,7 @@ void main() {
           .folderId!;
 
       s.selectLayer(base.id);
-      s.addLayer(); // keep a second drawing layer so the base can delete
+      s.layerStack.addLayer(); // keep a second drawing layer so the base can delete
       s.selectLayer(base.id);
       s.deleteActiveLayer();
 

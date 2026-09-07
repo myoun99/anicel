@@ -74,7 +74,7 @@ void main() {
       leadingGapFrames: 4,
     );
     session.selectCut(first);
-    session.addLayerOfKind(LayerKind.folder);
+    session.layerStack.addLayerOfKind(LayerKind.folder);
     // Captured while a cut is live: in the gap there are no rows at all,
     // and the row-scoped verbs still have to stand down on a real id.
     final verbs = verbsOn(session);
@@ -137,7 +137,7 @@ void main() {
   test('every active-cut verb NOTIFIES once it has a cut to act on', () {
     final probe = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(probe.dispose);
-    probe.addLayerOfKind(LayerKind.folder);
+    probe.layerStack.addLayerOfKind(LayerKind.folder);
     final names = verbsOn(probe).keys.toList();
     expect(names, hasLength(13));
     for (final name in names) {
@@ -145,7 +145,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      session.addLayerOfKind(LayerKind.folder);
+      session.layerStack.addLayerOfKind(LayerKind.folder);
       expect(session.activeCutId, isNotNull, reason: '$name needs a live cut');
       var notified = false;
       void listener() => notified = true;

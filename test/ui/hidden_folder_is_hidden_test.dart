@@ -180,7 +180,7 @@ void main() {
       // A row with NO cel at this frame is the one that takes the hand-built
       // fallback path instead of the composite tree — the path that skipped
       // the folder walk.
-      s.addLayer();
+      s.layerStack.addLayer();
       s.groupActiveLayerIntoFolder();
       final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
 

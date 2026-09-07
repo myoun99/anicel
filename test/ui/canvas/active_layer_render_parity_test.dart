@@ -250,7 +250,7 @@ void main() {
       s.createDrawingAtCurrentFrame();
       final target = s.activeLayer!.id;
       s.setLayerBlendMode(target, blend);
-      s.addLayer();
+      s.layerStack.addLayer();
       s.createDrawingAtCurrentFrame();
       final other = s.activeLayer!.id;
       expect(other, isNot(target), reason: 'the fixture needs two real rows');

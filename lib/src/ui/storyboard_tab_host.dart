@@ -130,8 +130,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// event of its own). The ruler's green bar repaints off this; the
   /// timeline host carries the identical signal.
   late final Listenable _frameReadySignal = Listenable.merge([
-    _session.prerenderScheduler.progress,
-    _session.brushFrameStore.celPixelRevision,
+    _session.playbackRig.prerenderScheduler.progress,
+    _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
 
   /// Identity-memoized active-track layout (R12-⑥): the playhead refresh
@@ -171,7 +171,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     // Gap scrubs park per move (UI-R7 #9); the leading gap pins the
     // cut-local cursor at 0, so the parking is the only move signal there.
     _session.gapParkingListenable.addListener(_refreshPlayheadGlobalFrame);
-    _session.playback.globalFrameIndexListenable.addListener(
+    _session.playbackRig.playback.globalFrameIndexListenable.addListener(
       _refreshPlayheadGlobalFrame,
     );
   }
@@ -182,7 +182,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.editingFrameCursor.removeListener(_refreshPlayheadGlobalFrame);
     _session.frameSeekCommitted.removeListener(_refreshPlayheadGlobalFrame);
     _session.gapParkingListenable.removeListener(_refreshPlayheadGlobalFrame);
-    _session.playback.globalFrameIndexListenable.removeListener(
+    _session.playbackRig.playback.globalFrameIndexListenable.removeListener(
       _refreshPlayheadGlobalFrame,
     );
     _playheadGlobalFrame.dispose();
@@ -421,7 +421,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // shared/fx verb acts against the storyboard's standing row
               // and global cursor, or greys out honestly.
               panelContext: _toolbarPanel,
-              onAddLayer: _session.addLayer,
+              onAddLayer: _session.layerStack.addLayer,
               onRenameLayer: () =>
                   unawaited(renameActiveLayerWithDialog(context, _session)),
               onDeleteLayer: () =>
@@ -516,8 +516,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     dragPreview: _session.dragPreview,
                     // While playing, the highlight follows the PLAYING cut
                     // (onStopped syncs the real active cut).
-                    activeCutId: _session.playback.isActive
-                        ? _session.playback.position?.cutId ??
+                    activeCutId: _session.playbackRig.playback.isActive
+                        ? _session.playbackRig.playback.position?.cutId ??
                               _session.activeCutId
                         : _session.activeCutId,
                     // THE cells' press (the timeline's cell contract): pick the
@@ -663,8 +663,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // aimed at the cut the press just activated.
                     onCreateStoryboardLayer: (cutId) {
                       if (_session.activeCutOrNull?.id == cutId &&
-                          _session.canAddLayerOfKind(LayerKind.storyboard)) {
-                        _session.addLayerOfKind(LayerKind.storyboard);
+                          _session.layerStack.canAddLayerOfKind(LayerKind.storyboard)) {
+                        _session.layerStack.addLayerOfKind(LayerKind.storyboard);
                       }
                     },
                     // The end line edits the MOVIE length (UI-R20 #3): the

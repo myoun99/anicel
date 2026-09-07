@@ -26,7 +26,7 @@ void main() {
     final celId = session.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
-    session.addLayerOfKind(LayerKind.storyboard);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
     session.selectFrameIndex(5);
     session.createDrawingAtCurrentFrame();
     final storyboardId = storyboardLayerForCut(session.requireActiveCut)!.id;
@@ -119,7 +119,7 @@ void main() {
       // bulk map meets it FIRST — before the fix it was elected as the
       // covers-without-gaps sync row and hijacked the cut resize.
       session.selectLayer(celId);
-      session.addLayerOfKind(LayerKind.image);
+      session.layerStack.addLayerOfKind(LayerKind.image);
       final imageId = session.activeLayer!.id;
 
       session.selectLayer(celId);
@@ -242,7 +242,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       session.selectFrameIndex(20);

@@ -592,8 +592,8 @@ class _WorkspaceTabs {
               // 유저 2026-08-30: 「아무튼 실제크기」 — what a carried asset
               // occupies compressed, rather than the length its file had
               // when it was registered.
-              storedBytes: _state.widget.session.mediaStoredBytes,
-              conformBytes: _state.widget.session.conformStoredBytes,
+              storedBytes: _state.widget.session.projectFile.mediaStoredBytes,
+              conformBytes: _state.widget.session.projectFile.conformStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, _state.widget.session),
               onRemoveAsset: _state.widget.session.removeMediaAsset,

@@ -67,7 +67,7 @@ void main() {
         selection.layerId,
         selection.frameId,
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -102,12 +102,12 @@ void main() {
     drawOnCurrentFrame(s);
     s.createCut();
     drawOnCurrentFrame(s);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     expect(celEntriesOf(projectPath), hasLength(2));
 
     s.createCut();
     drawOnCurrentFrame(s);
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     expect(
       celEntriesOf(overlayPath),
@@ -132,22 +132,22 @@ void main() {
     );
     s.createCut();
     drawOnCurrentFrame(s);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     expect(celEntriesOf(projectPath), hasLength(2));
 
     // The cel loses its last tile: the store drops it from every tier and
     // still counts it dirty. The overlay has to SAY it is gone, because
     // the base it lays over still holds it.
-    s.brushFrameStore.storeBakedSurface(
+    s.renderCaches.brushFrameStore.storeBakedSurface(
       deletedKey,
       BitmapSurface(canvasSize: s.requireActiveCut.canvasSize),
     );
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     final restored = session();
-    await restored.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
     expect(
-      restored.brushFrameStore.celHasRenderableContent(deletedKey),
+      restored.renderCaches.brushFrameStore.celHasRenderableContent(deletedKey),
       isFalse,
       reason: 'a merge that merely did not mention it would keep the base '
           'copy, and the deleted drawing would come back',
@@ -156,24 +156,24 @@ void main() {
 
   test('opening the project WITH the overlay restores the unsaved work', () async {
     final s = session();
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     final savedCuts = s.activeTrack.cuts.length;
     s.createCut();
     final unsavedCuts = s.activeTrack.cuts.length;
     expect(unsavedCuts, savedCuts + 1);
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     // The project file on disk never learned about that cut…
     final plain = session();
-    await plain.openProjectFromFile(projectPath);
+    await plain.projectDoor.openProjectFromFile(projectPath);
     expect(plain.activeTrack.cuts.length, savedCuts);
 
     // …and the overlay puts it back.
     final restored = session();
-    await restored.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
     expect(restored.activeTrack.cuts.length, unsavedCuts);
     expect(
-      restored.hasUnsavedChanges,
+      restored.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'restored work differs from the file until it is saved',
     );
@@ -185,16 +185,16 @@ void main() {
     // project that opens and looks fine while holding cels from a version
     // that no longer exists.
     final s = session();
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.createCut();
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     // The base moves on underneath it.
     s.createCut();
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
 
     await expectLater(
-      session().openProjectFromFile(projectPath, overlayPath: overlayPath),
+      session().projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath),
       throwsA(isA<FormatException>()),
     );
   });
@@ -215,7 +215,7 @@ void main() {
     // found and offered, so the two shapes have to be told apart before
     // deciding whether to lay one over anything.
     final s = session();
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     expect(
       anicelSnapshotIsOverlay(projectPath),
       isFalse,
@@ -223,13 +223,13 @@ void main() {
     );
 
     s.createCut();
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     expect(anicelSnapshotIsOverlay(overlayPath), isTrue);
 
     // And laying a whole archive over a project is refused rather than
     // half-applied.
     await expectLater(
-      session().openProjectFromFile(projectPath, overlayPath: projectPath),
+      session().projectDoor.openProjectFromFile(projectPath, overlayPath: projectPath),
       throwsA(isA<FormatException>()),
     );
 
@@ -238,7 +238,7 @@ void main() {
     // and look right while every base cel reads as empty — and the next
     // full rewrite makes that loss permanent. Same law, both directions.
     await expectLater(
-      session().openProjectFromFile(overlayPath, recoverAs: projectPath),
+      session().projectDoor.openProjectFromFile(overlayPath, recoverAs: projectPath),
       throwsA(isA<FormatException>()),
     );
   });
@@ -254,17 +254,17 @@ void main() {
     // arrives dirty, so one alt-tab is enough.
     final s = session();
     drawOnCurrentFrame(s);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.createCut();
     drawOnCurrentFrame(s);
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     final overlayCels = celEntriesOf(overlayPath);
     expect(overlayCels, hasLength(1));
 
     final restored = session();
-    await restored.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
     // The lifecycle fires with no edits at all.
-    await restored.writeAutosaveSnapshot(overlayPath);
+    await restored.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     expect(
       celEntriesOf(overlayPath),
@@ -281,13 +281,13 @@ void main() {
     // the decline path.
     final s = session();
     drawOnCurrentFrame(s);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.createCut();
 
     File(projectPath).writeAsStringSync('not an archive any more');
     expect(anicelBaseStamp(projectPath), isNull);
 
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     expect(File(overlayPath).existsSync(), isFalse);
   });
@@ -300,13 +300,13 @@ void main() {
     // BEFORE the save, so the next open offers a recovery that then throws.
     final s = session();
     drawOnCurrentFrame(s);
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.createCut();
     drawOnCurrentFrame(s);
 
     await const AnicelFileService().writeRecoveryOverlay(
       project: s.repository.requireProject(),
-      brushFrameStore: s.brushFrameStore,
+      brushFrameStore: s.renderCaches.brushFrameStore,
       filePath: overlayPath,
       baseFilePath: projectPath,
       // Spelled out because they are required, and required because
@@ -340,12 +340,12 @@ void main() {
     for (var i = 0; i < 4; i += 1) {
       s.createCut();
     }
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
     s.createCut();
-    await s.writeAutosaveSnapshot(overlayPath);
+    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     final before = File(projectPath).lengthSync();
 
-    await s.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath);
 
     expect(
       File(projectPath).lengthSync(),
