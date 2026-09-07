@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'brush_drawing_binary_codec.dart';
+import 'scratch_file.dart';
 import 'session_scratch.dart';
 
 /// Where a cooled cel's bytes live while they wait for the save that
@@ -23,6 +23,10 @@ import 'session_scratch.dart';
 /// the staged media and the conform follow ("under a name derived by rule
 /// … nothing recorded, nothing to fall out of sync"). A file that nothing
 /// remembers cannot be remembered wrongly.
+///
+/// ⚠️The file mechanics are [ScratchFile]'s, shared with the volatile
+/// room: what makes this store different is the ROOM and the type, not
+/// how a byte reaches disk.
 class ScratchCelFiles {
   const ScratchCelFiles._();
 
@@ -36,46 +40,17 @@ class ScratchCelFiles {
   /// 🚨A refusal is not an error to throw: the caller is the cooling pass,
   /// and a cel that cannot be parked has to STAY HOT rather than be
   /// dropped. Every other outcome here loses a drawing.
-  static String? write(String entryName, Uint8List bytes) {
-    try {
-      final path = pathFor(entryName);
-      // ⚠️The PARENT of the file, not the room. [anicelCelEntryName] is
-      // `cels/<base64url>.celz` — it carries the archive's own folder — so
-      // creating the room alone left the write with nowhere to land and
-      // every cooled cel silently refused to park.
-      File(path).parent.createSync(recursive: true);
-      // Through a neighbour and a rename: a kill mid-write would otherwise
-      // leave a short file under the real name, and the reader has no way
-      // to tell a short cel from a small one.
-      final part = File('$path.part')..writeAsBytesSync(bytes, flush: true);
-      part.renameSync(path);
-      return path;
-    } on Object {
-      return null;
-    }
-  }
+  static String? write(String entryName, Uint8List bytes) =>
+      ScratchFile.write(pathFor(entryName), bytes);
 
   /// The blob at [path], or null when it will not read — a torn write, a
   /// file somebody removed under us.
   static AnicelCelBlob? read(String path) {
-    try {
-      return AnicelCelBlob(File(path).readAsBytesSync());
-    } on Object {
-      return null;
-    }
+    final bytes = ScratchFile.read(path);
+    return bytes == null ? null : AnicelCelBlob(bytes);
   }
 
   /// Removes the file at [path]. Silent: the room goes with the run
   /// anyway, so a leftover costs nothing but space until then.
-  static void remove(String path) {
-    try {
-      final file = File(path);
-      if (file.existsSync()) {
-        file.deleteSync();
-      }
-    } on Object {
-      // Locked by a sync client or an open handle; the room's own ending
-      // takes it.
-    }
-  }
+  static void remove(String path) => ScratchFile.remove(path);
 }
