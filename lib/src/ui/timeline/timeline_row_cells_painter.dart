@@ -32,45 +32,8 @@ import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
+import 'timeline_tile_raster_source.dart';
 
-/// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
-/// hybrid painterization): the dense, mostly-static cell strip — paper
-/// blocks, borders, glyphs, ghost dim, band tints — is pure canvas work,
-/// so the per-cell widget pipeline (Element + RenderObject + InkWell +
-/// Material ink + Semantics per cell) disappears for the rows that carry
-/// hundreds of cells. Sparse interactive chrome (edge grips, run handles,
-/// the range gesture layer, the cursor layer) stays widgets ON TOP.
-///
-/// The visual contract mirrors [TimelineFrameCell] exactly — that widget
-/// remains the renderer for the sparse row kinds (SE / instruction /
-/// camera).
-class TimelineRowCellModel {
-  const TimelineRowCellModel({
-    required this.frameIndex,
-    required this.exposureState,
-    required this.segment,
-    required this.ghost,
-    required this.dimmed,
-    required this.glyph,
-    required this.semanticsLabel,
-  });
-
-  final int frameIndex;
-  final TimelineCellExposureState exposureState;
-  final TimelineExposureBlockVisualSegment segment;
-  final bool ghost;
-  final bool dimmed;
-
-  /// The text drawn in the cell ('' when none / too narrow).
-  final String glyph;
-  final String? semanticsLabel;
-}
-
-/// The hold ghost's dash glyph — the probe VALUE tests read from
-/// [TimelineRowCellsPainter.cellModelAt]. paint() renders it as an
-/// axis-aligned line (UI-R12 #18), never as text; the tile emitter (T3)
-/// keys the same value to bake it as a capsule.
-const String timelineHoldDashGlyph = 'ㅡ';
 const String _holdDashGlyph = timelineHoldDashGlyph;
 
 /// Glyph TextPainters come from the shared timeline cache (UI-R16):
@@ -78,7 +41,9 @@ const String _holdDashGlyph = timelineHoldDashGlyph;
 TextPainter _glyphPainter(String text, TextStyle style) =>
     timelineGlyphPainter(text, style);
 
-class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
+class TimelineRowCellsPainter extends CustomPainter
+    with RepaintOnProps
+    implements TimelineTileRasterSource {
   TimelineRowCellsPainter({
     required this.layer,
     required this.geometry,
@@ -110,6 +75,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// The counting fps, for the seam law's beat strengths (D32/D38): a 6f
   /// or second boundary crossing a block keeps its stronger line, so the
   /// grid reads as ONE line running through paper and dark ground alike.
+  @override
   final int framesPerSecond;
 
   /// What this row's COVERAGE follows, when that is not the layer itself.
@@ -127,6 +93,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// following. The rails already knew this value — it is the row memo's
   /// auxiliary identity ([TimelineRowMemoAux]) — so nothing new is invented
   /// here; it just had to reach the painter as well as the memo.
+  @override
   final Object? coverageIdentity;
 
   /// #29: the (project, cut) world this painter's RESOLVERS answer from —
@@ -141,11 +108,13 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// frame — R9 #16 is what a fresh-identity value here regresses to.
   /// Empty means "no generation": correct-but-uncached hosts (tests, the
   /// chromeless workspace row) simply behave as one world.
+  @override
   final String substrateGeneration;
 
   /// R26 #44: the unworked-block tint's fact AND its event. Null = no tint.
   final TimelineCelContentSource? celContent;
 
+  @override
   bool Function(Layer layer, int frameIndex)? get celHasContentForLayer =>
       celContent?.hasContent;
 
@@ -153,8 +122,10 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// rebuild when a cel gains pixels — it repaints — so a value frozen at
   /// construction would hand the tile store yesterday's answer forever and
   /// the baked tile would keep serving the old tint.
+  @override
   int get celContentRevision => celContent?.revision.value ?? 0;
 
+  @override
   final Layer layer;
 
   /// The LIVE frame-axis geometry (R28 #4): read through, never copied, so a
@@ -165,18 +136,25 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   int get frameStartIndex => geometry.value.frameStartIndex;
   int get frameEndIndexExclusive => geometry.value.frameEndIndexExclusive;
   double get leadingFrameSpacerWidth => geometry.value.leadingFrameSpacerWidth;
+  @override
   double get frameCellExtent => geometry.value.frameCellExtent;
 
+  @override
   final double crossAxisExtent;
+  @override
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
+  @override
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
 
+  @override
   final ColorScheme colorScheme;
 
   /// The ambient text style the widget cells inherited (DefaultTextStyle);
   /// glyphs merge color/weight onto it so painted text matches exactly.
+  @override
   final TextStyle baseTextStyle;
+  @override
   final Axis axis;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set, the painter
@@ -276,6 +254,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
 
   /// The cell's rect in the ROW's local coordinates — the probe geometry
   /// tests and the row's hit-testing share (single source of truth).
+  @override
   Rect cellRectFor(int frameIndex) {
     final main =
         leadingFrameSpacerWidth +
@@ -317,6 +296,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
 
   /// The resolved per-cell model — THE probe surface for tests (glyphs,
   /// dim/ghost flags, exposure states live here, not in widget trees).
+  @override
   TimelineRowCellModel cellModelAt(int frameIndex) {
     final pass = _passModels;
     if (pass == null) {
@@ -411,6 +391,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// The cell's RESOLVED paint style (dim blends, band tint, block
   /// radius) — what paint() draws and what tests assert against (the
   /// successor of reading the widget cell's BoxDecoration).
+  @override
   ({Color background, Color border, BorderRadius? radius}) resolvedCellStyleFor(
     int frameIndex,
   ) {
@@ -471,6 +452,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// PUBLIC contract shared by paint() and the tile emitter (the
   /// probe-the-painter rule): both draw exactly this rect in this colour,
   /// so the baked and classic passes cannot drift.
+  @override
   ({Rect rect, Color color})? heldSeamLineFor(int frameIndex) {
     final model = cellModelAt(frameIndex);
     // 🚨D43-2 재개 b (유저 2026-08-22): 「**카메라레이어는 그리드 안보이고**」.
@@ -593,6 +575,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   ///
   /// ⚠️Chromeless rows answer null: a row lying ON the artwork has no seam
   /// to draw, exactly as it has no ground.
+  @override
   ({Rect rect, Color color})? rowSeamLineFor(int frameIndex) {
     if (chromeless) {
       return null;
@@ -850,6 +833,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// drawing cels use the paper ink, X marks and dim variants mute
   /// (UI-R11 #5). PUBLIC: the tile emitter (T3) tints glyph blits with
   /// exactly this, so tiles cannot drift from the classic pass.
+  @override
   Color foregroundInkFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
     // Camera key-summary markers read like the lane key diamonds (UI-R24
@@ -881,6 +865,7 @@ class TimelineRowCellsPainter extends CustomPainter with RepaintOnProps {
   /// carries one flat color and no blend, and special-casing only the
   /// classic pass would break the classic↔tile swap parity. These glyphs
   /// sit INSIDE the paper blocks, where this ink already reads.
+  @override
   TextStyle glyphStyleFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
     return baseTextStyle.copyWith(

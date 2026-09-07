@@ -19,6 +19,21 @@
 // — the same law, configured-folder-wins-else-a-default — and
 // `app_documents.dart` is the leaf it always described itself as.
 //
+// 2026-09-07 (audit, Round 8): the timeline raster loop is gone too, and its
+// entry was the argument to beat — "splitting them means a third file that
+// both read, which is the same loop wearing a hat". A third file is only the
+// loop again if it RE-EXPORTS the two halves. This one exports neither: it
+// is `timeline_tile_raster_source.dart`, the raster contract — what a tile's
+// cell is, and the twenty geometry/look/ink answers the emitter must
+// reproduce, each of which already said "PUBLIC contract shared by paint()
+// and the tile emitter" in its own doc. The store rasters through the
+// contract and the painter implements it, so neither imports the other and
+// the compiler now checks the surface the doc comments were describing.
+//
+// SO THE LEDGER IS EMPTY. What it holds now is the bar for adding one back:
+// a reason a reader can CHECK against the code, never a note about whose job
+// it is — both entries that stood here failed on exactly that.
+//
 // Nothing here forbids a new loop — it forbids a SILENT one. Put its files
 // in `_ledger` with the reason it could not be broken, and the next reader
 // gets your argument instead of a mystery. A ledger entry that stops
@@ -35,19 +50,7 @@ import '../../tool/import_graph.dart';
 typedef _Loop = ({Set<String> files, String why});
 
 /// The loops that may exist today, and why each one is still here.
-final _ledger = <_Loop>[
-  (
-    files: {
-      'lib/src/ui/timeline/timeline_grid_tile_store.dart',
-      'lib/src/ui/timeline/timeline_row_cells_painter.dart',
-    },
-    why:
-        'Two halves of one raster path (UI-R18 T2): the store rasterizes a '
-        'tile through the painter\'s emitter and the painter draws through '
-        'the store\'s tiles. Splitting them means a third file that both '
-        'read, which is the same loop wearing a hat.',
-  ),
-];
+final _ledger = <_Loop>[];
 
 bool _same(Set<String> files, List<String> loop) =>
     files.length == loop.length && files.containsAll(loop);

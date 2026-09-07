@@ -11,7 +11,7 @@ import '../../native/qa_native_engine.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_ops.dart';
-import 'timeline_row_cells_painter.dart';
+import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
@@ -83,7 +83,7 @@ class TimelineGridTileStore {
   bool get debugBusy => _draining || _pending.isNotEmpty;
 
   /// The substrate generation the LIVE paints carry — the newest
-  /// [TimelineRowCellsPainter.substrateGeneration] a [tileFor] call has
+  /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
   /// seen. Paints only happen for the live state, so the last generation
   /// a paint carried IS the live one; no host wiring, no setter to race.
   ///
@@ -113,7 +113,7 @@ class TimelineGridTileStore {
   /// [spanStartIndex], or null (cold/stale — the classic paint covers
   /// this frame, and a raster is scheduled off the paint phase).
   ui.Image? tileFor({
-    required TimelineRowCellsPainter painter,
+    required TimelineTileRasterSource painter,
     required int spanStartIndex,
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
@@ -481,7 +481,7 @@ class TimelineGridTileStore {
   /// transient atlas the GLYPH ops reference, or null (no glyphs).
   Future<_TileAtlas?> _emitForeground(
     TimelineGridTileOpWriter writer, {
-    required TimelineRowCellsPainter painter,
+    required TimelineTileRasterSource painter,
     required int spanStartIndex,
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
@@ -630,7 +630,7 @@ class _TileRequest {
     required this.devicePixelRatio,
   });
 
-  final TimelineRowCellsPainter painter;
+  final TimelineTileRasterSource painter;
   final int spanStartIndex;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
@@ -700,7 +700,7 @@ class _TileEntry {
   /// re-rasters (glyphs live in the tiles too — T3 — so the glyph
   /// sources join the key).
   bool matches(
-    TimelineRowCellsPainter painter,
+    TimelineTileRasterSource painter,
     int spanEndIndexExclusive,
     double devicePixelRatio,
   ) {
@@ -769,13 +769,13 @@ class _TileAtlas {
 /// Emits the SUBSTRATE op stream for [painter]'s cells in
 /// [spanStartIndex, spanEndIndexExclusive): the background fill and the
 /// block border per cell — geometry probed from the painter itself
-/// ([TimelineRowCellsPainter.cellRectFor] / `resolvedCellStyleFor`), so
+/// ([TimelineTileRasterSource.cellRectFor] / `resolvedCellStyleFor`), so
 /// the tile look can never drift from the classic paint's. Coordinates
 /// are tile-local physical pixels (row coords minus the span origin,
 /// times DPR). Foreground ink (glyphs, dashes) stays the painter's Dart
 /// pass.
 Int32List timelineGridSubstrateOps({
-  required TimelineRowCellsPainter painter,
+  required TimelineTileRasterSource painter,
   required int spanStartIndex,
   required int spanEndIndexExclusive,
   required double devicePixelRatio,
@@ -795,7 +795,7 @@ Int32List timelineGridSubstrateOps({
 /// appends the foreground pass (T3) to the same stream.
 void timelineGridEmitSubstrate(
   TimelineGridTileOpWriter writer, {
-  required TimelineRowCellsPainter painter,
+  required TimelineTileRasterSource painter,
   required int spanStartIndex,
   required int spanEndIndexExclusive,
   required double devicePixelRatio,
@@ -913,7 +913,7 @@ void timelineGridEmitSubstrate(
     }
 
     // D32/D38: the block-interior seam — the painter's own contract
-    // ([TimelineRowCellsPainter.heldSeamLineFor]) probed and mirrored, an
+    // ([TimelineTileRasterSource.heldSeamLineFor]) probed and mirrored, an
     // opaque plain-rect fill (the multiply was computed in Dart, so no
     // blend op is needed here).
     emitLine(painter.heldSeamLineFor(frameIndex));
