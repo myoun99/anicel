@@ -807,13 +807,22 @@ Iterable<String> _deadAcks(List<BoardCard> cards, Set<String> acks) sync* {
 }
 /// Drawn on the board as a card at all.
 ///
-/// ⚠️Three ways to not be one: an ENDING (`archived` · `deleted`), a record
+/// ⚠️Four ways to not be one: an ENDING (`archived` · `deleted`), a record
 /// folded INTO another card — reachable through the entry that holds it, and
 /// asking 「어느 칸이냐」 of it asks about something that no longer has one —
-/// and a `law`, which is not work and never appears as a card.
+/// a `law`, which is not work and never appears as a card, and a `record`,
+/// which is a line in a card's story rather than work of its own.
+///
+/// ⛔A `record` NEVER answers 「어느 칸이냐」, and asking cost this gate its
+/// voice: 104 of them stood in the complaint at once (2026-09-07), which is
+/// the 「아무도 안 읽는 게이트」 this file warns about. The board server has
+/// always known — `_records` is filtered out of the cards before anything
+/// renders — and this is the same law, said in the second place that needed
+/// to know it.
 bool _live(BoardCard c) =>
     c.kind != 'law' &&
     c.kind != 'meta' &&
+    c.kind != 'record' &&
     c.state != 'archived' &&
     c.state != 'deleted' &&
     c.foldedInto == null;
