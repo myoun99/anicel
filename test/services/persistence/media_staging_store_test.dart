@@ -173,54 +173,13 @@ void main() {
       expect(store.list(), isEmpty);
     });
 
-    test('a launch sweep takes what is old enough to be unreachable', () async {
-      final old = sourceFile('abandoned.wav');
-      final fresh = sourceFile('just-imported.wav');
-      await store.stage(old);
-      await store.stage(fresh);
-      expect(store.list(), hasLength(2));
-      // The old one was staged 40 days ago, as far as the clock is
-      // concerned.
-      File(
-        store.find(old)!.path,
-      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 40)));
-
-      final removed = store.sweepAbandoned();
-
-      expect(removed, 1);
-      expect(store.find(old), isNull);
-      expect(
-        store.find(fresh),
-        isNotNull,
-        reason: 'today\'s import is not abandoned',
-      );
-    });
-
-    test('🚨and nothing at all when everything is recent — the sweep cannot '
-        'be the thing that empties a live session', () async {
-      await store.stage(sourceFile('a.wav'));
-      await store.stage(sourceFile('b.wav'));
-      // ⛔The liveness-based sweep this replaced would have taken both:
-      // at launch no project is open yet, so "claimed by an open project"
-      // is empty and means nothing. Age is the question that can be asked
-      // at the only moment it is safe to ask it.
-      expect(store.sweepAbandoned(), 0);
-      expect(store.list(), hasLength(2));
-    });
-
-    test('the window is the recovery snapshots\' 30 days, not a second '
-        'number to keep in step', () async {
-      final path = sourceFile('take.wav');
-      await store.stage(path);
-      File(
-        store.find(path)!.path,
-      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 29)));
-      expect(store.sweepAbandoned(), 0, reason: '29 days is inside it');
-      File(
-        store.find(path)!.path,
-      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 31)));
-      expect(store.sweepAbandoned(), 1);
-    });
+    // 🪦**THE THREE SWEEP TESTS MOVED WITH THE SWEEP.** They pinned
+    // `sweepAbandoned` — 30 days, nothing taken while everything is
+    // recent, the window shared with recovery snapshots. The lifetime is
+    // the RUN'S ROOM now, so the same three claims are pinned in
+    // `a_run_that_ended_leaves_its_room_test` where the thing that answers
+    // them lives. ⛔They are not gone; a claim with no test is what this
+    // note exists to prevent someone concluding.
 
     test('a half-written file is never mistaken for a staged one', () async {
       final path = sourceFile('take.wav');

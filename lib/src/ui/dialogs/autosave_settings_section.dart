@@ -6,7 +6,7 @@ import '../../services/audio/conform_cache_maintenance.dart'
     show clearConformCache, conformCacheBytes;
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/app_support_path.dart';
-import '../../services/persistence/media_staging_store.dart';
+import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../../services/persistence/recent_projects.dart' show AppRecent;
 import '../editor_session_manager.dart';
@@ -655,10 +655,15 @@ class _AppContainerBlockState extends State<_AppContainerBlock> {
         strings.containerAreaConformed,
         appSupportFilePath('Conformed'),
       ),
+      // 🚨The WHOLE `Sessions/` tree, not this run's staged folder. Staged
+      // media moved into a room per run, and the rooms of runs that
+      // crashed are still holding bytes — pointing this row at our own
+      // room would show a person 0 while the container held a gigabyte of
+      // leftovers, which is the one question this panel exists to answer.
       _ContainerArea.folder(
-        'staged',
-        strings.containerAreaStaged,
-        MediaStagingStore.defaultDirectory(),
+        'session-scratch',
+        strings.containerAreaSessionScratch,
+        SessionScratch.rootFolder(),
       ),
     ];
   }

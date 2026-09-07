@@ -50,7 +50,7 @@ void main() {
       'brush-tips',
       'recovery',
       'conformed',
-      'staged',
+      'session-scratch',
     ]) {
       expect(
         find.byKey(ValueKey<String>('settings-container-$id')),
@@ -79,14 +79,14 @@ void main() {
     // and a person could not tell「nothing there」from「not shown」.
     await pumpSection(tester);
     expect(
-      find.byKey(const ValueKey<String>('settings-container-staged')),
+      find.byKey(const ValueKey<String>('settings-container-session-scratch')),
       findsOneWidget,
       reason:
-          'staging may well be empty on a fresh install — that is a state '
-          'to show, not a reason to hide the row',
+          'the session room may well be empty on a fresh install — that is '
+          'a state to show, not a reason to hide the row',
     );
     expect(
-      find.text(AppText.strings.containerAreaStaged),
+      find.text(AppText.strings.containerAreaSessionScratch),
       findsOneWidget,
       reason: 'and it is named in the reader\'s language',
     );

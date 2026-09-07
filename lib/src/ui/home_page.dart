@@ -24,7 +24,7 @@ import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import '../services/persistence/autosave_clock.dart';
-import '../services/persistence/media_staging_store.dart';
+import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
@@ -310,11 +310,16 @@ class _HomePageState extends State<HomePage> {
     // and would otherwise pile up in the app container for ever. Once per
     // launch, here, because this page is what makes snapshots exist at all.
     ProjectAutosaveService.sweepAbandonedRecovery();
-    // The same moment and the same window for media a 품기'd import staged
-    // and no save ever absorbed. ⛔At launch ONLY: a session open longer
-    // than the window must not have its own staged bytes taken out from
-    // under it, and at launch there is no session to take them from.
-    MediaStagingStore().sweepAbandoned();
+    // This run's room in the app container, and the two answers a launch
+    // owes the rooms of runs that ended: their VOLATILE payloads go now
+    // (an undo history that died with its isolate has no second life),
+    // their STAGED media stays — a run that ended without deleting its own
+    // room crashed, and what it was carrying is what recovery offers back.
+    // The 30-day rule moved onto the room itself: one that has sat there a
+    // month crashed and was never come back for.
+    SessionScratch.ensureThisRunsFolder();
+    SessionScratch.deleteVolatileFilesOfRunsThatEnded();
+    SessionScratch.deleteFoldersOfEndedRunsOlderThan();
     // Q-scoped-folder-settings: reopen the folder settings' scopes for
     // this run (macOS forgets them at relaunch); stored only when a
     // folder actually moved, through the one settings write path.
@@ -914,10 +919,29 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// The gate, and then the ONE thing that has to happen between 「yes」 and
+  /// the process going away.
+  ///
+  /// 🚨★★★**BOTH DOORS, ONE ANSWER.** The back button and the window's
+  /// close button are two entrances to the same departure, and the room
+  /// this run keeps in the app container has to go through whichever one
+  /// is used. Hanging it off only the desktop path is how a folder per
+  /// launch accumulates on the platform nobody was watching.
+  ///
+  /// ⛔It is NOT hung inside [_showExitDialog]: that one is「ask」, and a
+  /// question that also deletes things is a question no caller can reuse.
+  Future<bool> _mayLeaveForGood() async {
+    if (!await _showExitDialog()) {
+      return false;
+    }
+    SessionScratch.deleteThisRunsFolder();
+    return true;
+  }
+
   /// PEN-11: the back-button exit gate. Dirty sessions call out the
   /// unsaved work; Close is the only way out.
   Future<void> _confirmSystemExit() async {
-    if (await _showExitDialog()) {
+    if (await _mayLeaveForGood()) {
       await SystemNavigator.pop();
     }
   }
@@ -925,7 +949,7 @@ class _HomePageState extends State<HomePage> {
   /// PEN-12 #5: the desktop window-close request routes through the SAME
   /// gate — Cancel keeps the window open.
   Future<AppExitResponse> _handleExitRequested() async =>
-      await _showExitDialog() ? AppExitResponse.exit : AppExitResponse.cancel;
+      await _mayLeaveForGood() ? AppExitResponse.exit : AppExitResponse.cancel;
 
   bool _exitDialogOpen = false;
 

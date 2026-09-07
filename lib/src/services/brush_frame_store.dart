@@ -148,8 +148,17 @@ class BrushFrameStore {
   // Baked raster truth (R19 bake-only / R20-A1 / R22-C three-tier).
   //
   // A cel's picture IS its baked tile raster. The truth lives in THREE
-  // forms (sized for 400-cut TV / 1500-cut theatrical projects with NO
-  // temp files — the user's project file is the only disk artifact):
+  // forms, sized for 400-cut TV / 1500-cut theatrical projects.
+  //
+  // 🪦**THE 「NO TEMP FILES」 HALF OF THIS IS RETRACTED; THE OTHER HALF IS
+  // NOT.** `fdd328ba` (#493) deleted the R20-A2 spill machinery citing a
+  // user rule with TWO reasons — 「**no temp files, no drive-sync
+  // pollution**」 — and only the first is being taken back (유저
+  // 2026-09-07, who asked for an app-container room with three kinds of
+  // tenant). ⛔The second stands and is now the reason the room is in the
+  // app container: scratch written BESIDE a `.anicel` lands in the user's
+  // Drive or Dropbox folder and gets uploaded, byte for byte, every time.
+  // See [SessionScratch].
   //
   //  - HOT: a BitmapSurface, insertion-ordered as an LRU (access
   //    re-inserts). Byte-budgeted by [hotCelByteBudget].

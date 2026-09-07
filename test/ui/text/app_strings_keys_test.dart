@@ -303,7 +303,7 @@ void main() {
     'containerAreaBrushTips': (s) => s.containerAreaBrushTips,
     'containerAreaRecovery': (s) => s.containerAreaRecovery,
     'containerAreaConformed': (s) => s.containerAreaConformed,
-    'containerAreaStaged': (s) => s.containerAreaStaged,
+    'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,
     'containerTotal': (s) => s.containerTotal,
     'saveCelsLostTemplate': (s) => s.saveCelsLostTemplate,
     // R11: the interface scale, in the Display section.

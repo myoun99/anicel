@@ -5,9 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import '../../core/path_names.dart';
-import 'app_support_path.dart';
 import 'media_blob_codec.dart';
-import '../persistence/sweep_old_files.dart';
+import 'session_scratch.dart';
 
 /// 🚨★★★**WHAT「품기」MEANS BETWEEN THE IMPORT AND THE FIRST SAVE.**
 ///
@@ -25,13 +24,16 @@ import '../persistence/sweep_old_files.dart';
 /// ⛔**This is not a second copy of the asset.** It is the only copy the
 /// project controls until the first save, and it stops being anything the
 /// moment the save absorbs it. 유저 08-27: 「사본 남으면 진짜 용서안할게」 —
-/// which is what [retire] and [sweepAbandoned] are for.
+/// which is what [retire] and the room's own lifetime are for.
 ///
 /// ⚠️**It is also not a new category in the container.** `Recovery/`
 /// already holds project snapshots and `Conformed/` already holds audio
 /// derived from project media; see [appSupportFilePath]. What a new tenant
-/// owes is a LIFETIME, and this one's is: retired by the save that
-/// absorbs it, swept at launch when its project never came back.
+/// owes is a LIFETIME, and this one's is now written in its PATH: it lives
+/// in [SessionScratch]'s room for this run, retired by the save that
+/// absorbs it, and gone with the room when the run ends. A room still
+/// standing at the next launch is a crash, and what it holds is offered
+/// back rather than swept.
 ///
 /// 🚨**The name is DERIVED, never recorded** — the same rule the conform
 /// store follows ("under a name derived by rule from the source path —
@@ -44,8 +46,16 @@ class MediaStagingStore {
         '/',
       );
 
-  /// `<container>/Staged`, beside `Recovery` and `Conformed`.
-  static String defaultDirectory() => appSupportFilePath('Staged');
+  /// `<container>/Sessions/<this run>/Staged`.
+  ///
+  /// 🚨It moved out of the flat `<container>/Staged` and into THIS RUN'S
+  /// room ([SessionScratch]) so that a file's lifetime is written in its
+  /// path: the room goes when the run ends normally, and a room still
+  /// standing at the next launch is a crash whose staged media recovery
+  /// can offer back. ⛔The container gained no new KIND of tenant by this —
+  /// staged media is what it always was; it gained a place where 「until
+  /// this run is over」 is expressible.
+  static String defaultDirectory() => SessionScratch.stagedFolder();
 
   /// Test seam: do the staging work HERE instead of in an isolate.
   ///
@@ -74,9 +84,9 @@ class MediaStagingStore {
   /// filesystem LISTED, and on Windows those disagree the moment a caller
   /// hands in a `\`-flavoured directory — `Directory.systemTemp` does. An
   /// earlier keep-set sweep failed to match a single live file that way
-  /// and deleted the lot; the sweep is age-based now, but [find] and
-  /// [list] still stand on the same comparison, so the normalisation stays
-  /// where it cannot be forgotten.
+  /// and deleted the lot; that sweep is gone — the room's lifetime replaced
+  /// it — but [find] and [list] still stand on the same comparison, so the
+  /// normalisation stays where it cannot be forgotten.
   final String directoryPath;
 
   /// Where [poolPath]'s staged bytes live, framed or not.
@@ -143,9 +153,10 @@ class MediaStagingStore {
   /// of them did.
   ///
   /// ⛔Called BEFORE the pool records the asset. A staged copy with no
-  /// asset is an orphan the sweep takes; an asset the pool holds whose
-  /// bytes were never staged is the old behaviour back, silently — and
-  /// silently is how it survived two rounds of this work.
+  /// asset is an orphan the run's room takes when the run ends; an asset
+  /// the pool holds whose bytes were never staged is the old behaviour
+  /// back, silently — and silently is how it survived two rounds of this
+  /// work.
   /// 🚨★★★**AWAIT IT. A DROPPED FUTURE HERE IS THE OLD BUG, SILENTLY.**
   ///
   /// The compression moved into an isolate so a carried movie stops
@@ -253,35 +264,23 @@ class MediaStagingStore {
     }
   }
 
-  /// Drops staged files old enough that nothing can still absorb them.
-  ///
-  /// 🚨★★★**AGE, NOT LIVENESS, AND ONLY AT LAUNCH.** The obvious sweep —
-  /// "delete anything no open project claims" — cannot be written safely:
-  /// at launch nothing is open yet, so the live set is empty and the sweep
-  /// would take everything, including the import a person made a minute
-  /// before the app crashed. Being handed a PARTIAL live set is the one
-  /// mistake this class cannot make, so it is not asked for one.
-  ///
-  /// What makes age sound here: a staged file is written once, at import,
-  /// and never touched again, and the save that absorbs it retires it on
-  /// the spot. So one that is still here after [olderThan] belongs to a
-  /// project that was never saved — and an unsaved project is not
-  /// reachable again, because the import it holds was never written down
-  /// anywhere. There is nothing to offer back.
-  ///
-  /// ⚠️Called ONCE PER LAUNCH, beside the recovery sweep, and for the same
-  /// reason: a session that has been open for longer than the window must
-  /// not have its own staged bytes taken out from under it. The default is
-  /// the recovery snapshots' 30 days (유저 확정 2026-08-26: 「30일좋고」)
-  /// rather than a second number to keep in step.
-  int sweepAbandoned({
-    Duration olderThan = const Duration(days: 30),
-    DateTime? now,
-  }) => sweepFilesOlderThan(
-    Directory(directoryPath),
-    olderThan: olderThan,
-    now: now,
-  );
+  // 🪦**THE AGE SWEEP MOVED ONTO THE ROOM** — see
+  // [SessionScratch.deleteFoldersOfEndedRunsOlderThan]. It used to live
+  // here as `sweepAbandoned`, and its own doc said why it had to use age:
+  // 「the obvious sweep — delete anything no open project claims — cannot
+  // be written safely: at launch nothing is open yet, so the live set is
+  // empty and the sweep would take everything」, and 「being handed a
+  // PARTIAL live set is the one mistake this class cannot make, so it is
+  // not asked for one」.
+  //
+  // ⛔**Both halves of that still hold and neither is being taken back.**
+  // What changed is that a staged file now sits in the room of the RUN
+  // that staged it, and a room can be asked whether its owner is still
+  // here without anybody handing over a list. So the sweep still refuses
+  // a live set, and it no longer has to wait a month to tell a crash from
+  // an abandonment: a crashed run's staged media is offered back, and only
+  // a room nobody came back to for 30 days (유저 2026-08-26: 「30일좋고」)
+  // goes.
 
   /// Every staged file, for the settings list that shows what the app
   /// container holds.

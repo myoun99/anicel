@@ -22,11 +22,21 @@ import 'dart:io';
 ///   so a crash on an older build is still offered.
 /// • `Conformed/` — **audio conformed from project media**, also project
 ///   data, and the one entry the user can point somewhere else.
+/// • `Sessions/<pid>/` — **one room per RUN of the app**, holding staged
+///   media on its way into the next save and volatile payloads that die
+///   with the run. See [SessionScratch].
 ///
 /// ⚠️So a proposal to stage something project-shaped here is not asking
-/// for a new category — two of these already are. What it IS asking for is
-/// a lifetime: settings live forever, `Recovery` is swept, `Conformed` is
-/// a cache. Anything new has to say which it is.
+/// for a new category — three of these already are. What it IS asking for
+/// is a lifetime: settings live forever, `Recovery` is swept, `Conformed`
+/// is a cache, and `Sessions/` is the shortest of the four — one run.
+/// Anything new has to say which it is.
+///
+/// 🚨유저 2026-09-07 named the tenants this container should have: **이사
+/// 대기**(waiting to move into the project file), **휘발성**(gone when the
+/// session closes) and **유저설정**. The first two are `Sessions/`; the
+/// third is everything else listed above bar the two project-data
+/// entries, which D and E are moving out.
 String appSupportFilePath(String fileName) {
   final environment = Platform.environment;
   final base =

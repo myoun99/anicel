@@ -4041,9 +4041,10 @@ class EditorSessionManager extends ChangeNotifier
   /// is UNDOABLE — the description above makes an undo entry — so throwing
   /// the bytes away here would mean an undo brings the asset back empty
   /// whenever the original file is also gone, which is precisely the case
-  /// 품기 exists for. The 30-day sweep owns them instead
-  /// ([MediaStagingStore.sweepAbandoned]): waiting costs a file in the
-  /// container, and not waiting costs the picture.
+  /// 품기 exists for. The RUN'S ROOM owns them instead
+  /// ([SessionScratch]): they go when this run ends normally, which is
+  /// after every undo that could have wanted them. Waiting costs a file in
+  /// the container until then, and not waiting costs the picture.
   bool removeMediaAsset(String path) {
     if (isMediaAssetReferenced(path)) {
       return false;
