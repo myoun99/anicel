@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_test/flutter_test.dart';
+
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -73,6 +76,31 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // `media_staging_store_test` has it. Deleting that test would leave the
   // road production takes with no coverage at all.
   MediaStagingStore.debugStageInline = true;
+  // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
+  // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
+  // [OpenProjectFile], which keeps the `.anicel` open for the next read;
+  // on Windows that also stops the folder holding it from being deleted.
+  // In the app that IS the feature — the project cannot be pulled out
+  // from under the session drawing into it — and the release point is the
+  // whole-store swap that opening the next project performs. A test drops
+  // its store on the floor instead, and Dart has no destructor.
+  //
+  // 🚨**REGISTERED AS AN `addTearDown` FROM A `setUp`, AND THE ORDERING IS
+  // THE WHOLE POINT.** package:test runs every `addTearDown` callback
+  // before any `tearDown`. Written as a plain `tearDown` here this is the
+  // OUTERMOST one, so it ran dead last — after each suite's own
+  // `tearDown(() => directory.delete(recursive: true))`, which is the
+  // exact line it exists to unblock (five suites failed that way with
+  // errno 32). Registered from `setUp` it lands in the earlier phase and
+  // gets there first.
+  //
+  // ⛔**What it still cannot reach**: a suite that registers its delete
+  // with `addTearDown` INSIDE the test. Those run in reverse registration
+  // order, so a later registration runs earlier, and ours — registered in
+  // `setUp`, before the body — is last again. That shape needs the release
+  // in the same callback: `deleteAfterSessionEnds` in
+  // `test/helpers/project_scratch_folder.dart`.
+  setUp(() => addTearDown(OpenProjectFile.instance.release));
   try {
     await testMain();
   } finally {

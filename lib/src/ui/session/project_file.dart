@@ -383,9 +383,11 @@ class ProjectFile {
   /// Whether this project HAS a file on disk and that file is gone.
   ///
   /// 🚨A clean cel lives as a ref into the project file — the store drops
-  /// its cold blob on adoption — so the file disappearing takes those
-  /// pixels with it. Nothing here can bring them back; the point of asking
-  /// is to say so while the FILE can still be restored from a trash.
+  /// its cold blob on adoption — so the file disappearing puts those
+  /// pixels out of reach of every future read. Two doors ask: the notice
+  /// on resume, while the FILE can still be restored from a trash, and
+  /// [ensureUnsavedWorkSettled], because closing the app is the last
+  /// moment a session that is still holding the file can write them out.
   ///
   /// ⛔False for a never-saved project. There is no file to have lost, and
   /// a session with nothing on disk is the ordinary state.

@@ -1659,11 +1659,30 @@ enum UnsavedWorkChoice { cancel, saveAs, save, discard }
 /// Returns whether the tear-down may proceed: the save landed, or the
 /// user discarded (which retires the sidecar — 「저장 안 하고 닫기 =
 /// 버리기」 stays literal). False calls the whole thing off.
+///
+/// ⚠️It is no longer only a DIRTY session that gets asked — see the first
+/// statement.
 Future<bool> ensureUnsavedWorkSettled(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  if (!session.projectFile.hasUnsavedChanges) {
+  // 🚨★★★**THE QUESTION IS 「WILL THE WORK SURVIVE THIS TEAR-DOWN」, NOT
+  // 「ARE THERE UNSAVED EDITS」.**
+  //
+  // After a save a clean cel keeps only `{path, offset, length}` — the
+  // `.anicel` IS the cold tier. So a session with NOTHING unsaved still
+  // loses drawings when its file is gone: [OpenProjectFile] holds the file
+  // open, and on POSIX that is precisely why the session kept working
+  // after an `unlink` — and precisely why **closing the app is the moment
+  // those bytes really go**. Asking only about the dirty flag let that
+  // session walk out the door in silence.
+  //
+  // The disappearance already had a NOTICE (`_warnIfProjectFileVanished`,
+  // said once when the user comes back from their file manager) and no
+  // gate. One fact, two doors: the notice opens the window to restore the
+  // file, this closes the one where it is thrown away.
+  final vanished = session.projectFile.hasVanished();
+  if (!session.projectFile.hasUnsavedChanges && !vanished) {
     return true;
   }
   final strings = AppText.strings;
@@ -1673,7 +1692,12 @@ Future<bool> ensureUnsavedWorkSettled(
       windowKey: const ValueKey<String>('system-exit-dialog'),
       title: strings.closeProjectTitle,
       titleIcon: Icons.logout_outlined,
-      message: strings.closeProjectBody,
+      // A vanished file wins the wording even when there are unsaved
+      // edits too: 「your changes are not saved」 describes a loss the four
+      // buttons can undo, and this one they mostly cannot.
+      message: vanished
+          ? strings.closeProjectVanishedBody
+          : strings.closeProjectBody,
       actions: [
         AppWindowAction(
           label: strings.commonCancel,

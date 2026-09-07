@@ -17,6 +17,8 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
+import '../helpers/project_scratch_folder.dart';
+
 /// R20-A1 two-tier baked truth: cold cels are encoded+compressed blobs
 /// (the same bytes the archive stores), materialize byte-exactly on
 /// first access, and over-budget hot cels cool back down in LRU order.
@@ -203,7 +205,7 @@ void main() {
       'keeps its ref through the clean promotion, and re-cools for FREE '
       '(no encode, no cold blob) — R22-C', () async {
     final directory = await Directory.systemTemp.createTemp('qa-fileref');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = BrushFrameStore();
     final k = key(frame: 'f1');
     final s = inkSurface(seed: 19);
@@ -355,7 +357,7 @@ void main() {
   test('FULL save adopts file refs and OPEN lands every cel file-backed, '
       'byte-exact on first access', () async {
     final directory = await Directory.systemTemp.createTemp('qa-full-save');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = BrushFrameStore();
     final k = key();
     final s = inkSurface(seed: 17);
@@ -389,7 +391,7 @@ void main() {
   test('INCREMENTAL save appends ONLY the dirty cel: the clean cel keeps '
       'its exact data offset and the file grows (garbage retained)', () async {
     final directory = await Directory.systemTemp.createTemp('qa-incr-save');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     const service = AnicelFileService();
     final store = BrushFrameStore();
     final k1 = key(frame: 'f1');
@@ -452,7 +454,7 @@ void main() {
   test('a removed cel vanishes from the file on the next incremental '
       'save', () async {
     final directory = await Directory.systemTemp.createTemp('qa-remove-save');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     const service = AnicelFileService();
     final store = BrushFrameStore();
     final k1 = key(frame: 'f1');
@@ -485,7 +487,7 @@ void main() {
   test('a REKEYED cel re-labels in the file across an incremental save '
       'with its pixels intact', () async {
     final directory = await Directory.systemTemp.createTemp('qa-rekey-save');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     const service = AnicelFileService();
     final store = BrushFrameStore();
     final from = key(layer: 'a');
@@ -521,7 +523,7 @@ void main() {
   test('garbage past the threshold forces COMPACTION: the file shrinks '
       'and every ref stays valid', () async {
     final directory = await Directory.systemTemp.createTemp('qa-compact');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     const service = AnicelFileService();
     final store = BrushFrameStore();
     final k = key();
@@ -691,7 +693,7 @@ void main() {
 
     // FILE arm.
     final directory = await Directory.systemTemp.createTemp('qa-empty-arm');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final fileStore = BrushFrameStore();
     final fk = key(frame: 'file-victim');
     final blob = blobOf(fk, inkSurface(seed: 7));

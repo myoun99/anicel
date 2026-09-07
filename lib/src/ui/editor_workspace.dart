@@ -492,9 +492,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// been emptied and the person had done an hour of work on a project
   /// that could no longer be written whole.
   ///
-  /// ⛔The bytes cannot be recovered from here; nothing can. What CAN be
-  /// recovered is the FILE, and only while it is still in a trash somewhere
-  /// — which is exactly the window this notice exists to open.
+  /// What CAN be recovered is the FILE, and only while it is still in a
+  /// trash somewhere — which is exactly the window this notice exists to
+  /// open. ⚠️It no longer says the bytes are unrecoverable, because since
+  /// the session started holding the file open that depends on the
+  /// platform: on POSIX an `unlink` leaves our handle readable and a save
+  /// carries those cels into a new file, on Windows the file can only
+  /// vanish while nothing is held and then it does lose them. The app
+  /// reports the MEASURED answer after a save instead, by count.
+  ///
+  /// 🚨This notice is HALF the answer. It opens the restore window; the
+  /// other half is [ensureUnsavedWorkSettled] refusing to let the session
+  /// close in silence, because closing the app is when a POSIX session's
+  /// last descriptor on those bytes goes.
   ///
   /// The observer was already here for memory pressure; resuming is the
   /// moment a person comes back from the file manager they just used.

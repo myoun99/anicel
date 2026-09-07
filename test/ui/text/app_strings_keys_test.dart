@@ -173,6 +173,7 @@ void main() {
     'recoverAction': (s) => s.recoverAction,
     'closeProjectTitle': (s) => s.closeProjectTitle,
     'closeProjectBody': (s) => s.closeProjectBody,
+    'closeProjectVanishedBody': (s) => s.closeProjectVanishedBody,
     'commonSaveAs': (s) => s.commonSaveAs,
     'saveProgressRunning': (s) => s.saveProgressRunning,
     'saveProgressDone': (s) => s.saveProgressDone,

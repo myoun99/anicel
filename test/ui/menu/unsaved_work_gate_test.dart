@@ -8,8 +8,10 @@ import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
-/// The one question both doors ask before a dirty session is torn down.
+/// The one question both doors ask before a session is torn down:
+/// **will the work survive it?**
 ///
 /// The window's close button had this gate; Open and the Recents rows —
 /// which close the current project just as surely — did not, so one tap
@@ -17,6 +19,11 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 /// loss window is the whole autosave interval.) The gate is one shared
 /// function now, with the exit tests' own `system-exit-*` keys, so the
 /// matrix cell cannot re-open by one door forgetting.
+///
+/// 🚨And the question is no longer 「are there unsaved edits」: a saved
+/// cel is a ref into the `.anicel`, so a session with nothing unsaved
+/// still has drawings that only exist while it holds that file open.
+/// The last two tests are that half.
 void main() {
   late Directory folder;
 
@@ -262,5 +269,69 @@ void main() {
       findsNothing,
       reason: 'cancel stops the open before it starts',
     );
+  });
+
+  testWidgets('🚨 a CLEAN session whose FILE has vanished is caught too — '
+      'closing is when those pixels really go', (tester) async {
+    // The gate used to ask only「are there unsaved edits」, and a saved
+    // project answers no. But a clean cel keeps only {path, offset,
+    // length} — the .anicel IS the cold tier — so this session has
+    // drawings that exist nowhere else in the process. It kept working
+    // after the file went because the session holds it open; on POSIX
+    // that handle is also the ONLY thing keeping the unlinked bytes
+    // alive, and closing the app is what finally drops it.
+    final fixture = await mounted(tester);
+    final path = '${folder.path.replaceAll('\\', '/')}/vanishing.anicel';
+    await tester.runAsync(
+      () => fixture.session.projectDoor.saveProjectToFile(path),
+    );
+    expect(
+      fixture.session.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'the point of this test is a session with NOTHING unsaved',
+    );
+
+    File(path).deleteSync();
+    expect(fixture.session.projectFile.hasVanished(), isTrue);
+
+    final settled = fixture.ask();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsOneWidget,
+      reason: 'letting this one out in silence is the loss itself',
+    );
+    expect(
+      find.text(AppText.strings.closeProjectVanishedBody),
+      findsOneWidget,
+      reason: '「your changes are not saved」 is false here — there are '
+          'none — and it names a loss the buttons could undo',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('system-exit-cancel')));
+    await tester.pumpAndSettle();
+    expect(await settled, isFalse);
+  });
+
+  testWidgets('an ordinary dirty session still gets the unsaved-changes '
+      'wording, not the vanished one', (tester) async {
+    // The other half of the pick: a message chooser that always answered
+    // "vanished" would pass the test above and tell every closing user
+    // their file is gone.
+    final fixture = await mounted(tester);
+    final path = '${folder.path.replaceAll('\\', '/')}/present.anicel';
+    await tester.runAsync(
+      () => fixture.session.projectDoor.saveProjectToFile(path),
+    );
+    fixture.session.createCut();
+
+    final settled = fixture.ask();
+    await tester.pumpAndSettle();
+    expect(find.text(AppText.strings.closeProjectBody), findsOneWidget);
+    expect(find.text(AppText.strings.closeProjectVanishedBody), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey<String>('system-exit-cancel')));
+    await tester.pumpAndSettle();
+    expect(await settled, isFalse);
   });
 }

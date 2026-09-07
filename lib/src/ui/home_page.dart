@@ -933,9 +933,11 @@ class _HomePageState extends State<HomePage> {
     if (_exitDialogOpen) {
       return false;
     }
-    // R26 #43: an UNEDITED project just closes — the prompt exists to
-    // protect work, and there is none. "Edited" is the dirty flag the
-    // history manager raises on every executed command.
+    // R26 #43: a project with nothing to lose just closes — the prompt
+    // exists to protect work. ⚠️"Nothing to lose" is no longer only the
+    // dirty flag: a saved cel lives as a ref into the `.anicel`, so a
+    // clean session whose file has gone is asked too. The predicate is
+    // [ensureUnsavedWorkSettled]'s first statement, not this one.
     //
     // The question itself lives in [ensureUnsavedWorkSettled] now, shared
     // with the OPEN flow — which closes the current project just as surely

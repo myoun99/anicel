@@ -17,6 +17,8 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
+import '../helpers/project_scratch_folder.dart';
+
 /// R22-C verdict lab (400-cut scenario): a TV-scale project — 400 HD
 /// cels — must full-save fast, open at archive speed (zero pixel decode,
 /// every cel FILE-BACKED with near-zero RAM), and above all INCREMENTAL-
@@ -39,7 +41,7 @@ void main() {
       const cels = 400;
       const canvasSize = CanvasSize(width: 1920, height: 1080);
       final directory = await Directory.systemTemp.createTemp('qa-400cut');
-      addTearDown(() => directory.delete(recursive: true));
+      deleteAfterSessionEnds(directory);
 
       BrushFrameKey key(int i) => BrushFrameKey(
         projectId: const ProjectId('p'),

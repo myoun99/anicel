@@ -356,6 +356,7 @@ enum AppStrings {
   String get recoverAction => _s('recoverAction');
   String get closeProjectTitle => _s('closeProjectTitle');
   String get closeProjectBody => _s('closeProjectBody');
+  String get closeProjectVanishedBody => _s('closeProjectVanishedBody');
   String get commonSaveAs => _s('commonSaveAs');
 
   /// The window a manual save puts in front of itself, running and finished.
@@ -1346,6 +1347,10 @@ enum AppStrings {
     'recoverAction': 'Recover',
     'closeProjectTitle': 'Close project?',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
+    'closeProjectVanishedBody':
+        "This project's file is gone. Closing now takes the drawings that "
+        'live only inside it. Save As writes what is still open to a new '
+        'file.',
     'commonSaveAs': 'Save as…',
     'saveProgressRunning': 'Saving…',
     'saveProgressDone': 'Saved',
@@ -1516,9 +1521,19 @@ enum AppStrings {
         'Saved, but {count} drawing(s) could not be included: the project '
         'file they were stored in was removed while the project was open.',
     'projectFileVanished':
+        // 🚨The old wording ended 「…and saving would lose them」. That was a
+        // PREDICTION, and it stopped being true on one of the two platforms
+        // the moment the session started holding the file open: on POSIX an
+        // `unlink` leaves our handle readable, a save reads every cel into
+        // its temp file before it renames, so saving RESCUES those drawings.
+        // On Windows the file can only vanish while nothing is held, and
+        // there it does lose them. No sentence is true both ways — and the
+        // app already reports the MEASURED answer after the save, by count,
+        // in [saveCelsLostTemplate]. The prediction goes; the measurement
+        // stays.
         "This project's file is no longer there — deleted or moved. Restore "
         'it now if it is still in a trash: the drawings already saved live '
-        'only inside that file, and saving would lose them.',
+        'only inside that file.',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -2187,6 +2202,10 @@ enum AppStrings {
     'recoverAction': '復元',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
+    'closeProjectVanishedBody':
+        'このプロジェクトのファイルがなくなっています。このまま閉じると、その中にしか'
+        'ない絵も一緒に失われます。「名前を付けて保存」なら、今開いているものを新しい'
+        'ファイルに書き出せます。',
     'commonSaveAs': '名前を付けて保存…',
     'saveProgressRunning': '保存中…',
     'saveProgressDone': '保存しました',
@@ -2401,7 +2420,7 @@ enum AppStrings {
     'saveCelsLostTemplate':
         '保存しましたが、{count} 枚の絵を含められませんでした。それらが入っていたプロジェクトファイルが、開いている間に削除されました。',
     'projectFileVanished':
-        'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかなく、このまま保存すると失われます。',
+        'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -3138,6 +3157,10 @@ enum AppStrings {
     'recoverAction': '복구',
     'closeProjectTitle': '프로젝트를 닫을까요?',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
+    'closeProjectVanishedBody':
+        '이 프로젝트의 파일이 사라졌습니다. 지금 닫으면 그 안에만 있던 그림도 함께 '
+        '사라집니다. 「다른 이름으로 저장」하면 지금 열려 있는 것을 새 파일로 '
+        '옮길 수 있습니다.',
     'commonSaveAs': '다른 이름으로 저장…',
     'saveProgressRunning': '저장 중…',
     'saveProgressDone': '저장 완료',
@@ -3350,7 +3373,7 @@ enum AppStrings {
     'saveCelsLostTemplate':
         '저장했지만 그림 {count}장을 담지 못했습니다. 그 그림들이 들어 있던 프로젝트 파일이 열려 있는 동안 삭제되었습니다.',
     'projectFileVanished':
-        '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있어서, 이대로 저장하면 잃습니다.',
+        '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -4097,6 +4120,10 @@ enum AppStrings {
     'closeProjectTitle': 'Fermer le projet ?',
     'closeProjectBody':
         'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
+    'closeProjectVanishedBody':
+        'Le fichier de ce projet a disparu. Fermer maintenant emporte les '
+        "dessins qui n'existent que dedans. « Enregistrer sous » écrit dans "
+        'un nouveau fichier ce qui est encore ouvert.',
     'commonSaveAs': 'Enregistrer sous…',
     'saveProgressRunning': 'Enregistrement…',
     'saveProgressDone': 'Enregistré',
@@ -4320,8 +4347,7 @@ enum AppStrings {
     'projectFileVanished':
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
-        'dessins déjà enregistrés ne vivent que dans ce fichier, et un '
-        'enregistrement les perdrait.',
+        'dessins déjà enregistrés ne vivent que dans ce fichier.',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -5054,6 +5080,9 @@ enum AppStrings {
     'recoverAction': '恢复',
     'closeProjectTitle': '关闭项目？',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
+    'closeProjectVanishedBody':
+        '此项目的文件已不在。现在关闭会一并失去只存在于该文件中的画稿。'
+        '使用「另存为」可将当前仍打开的内容写入新文件。',
     'commonSaveAs': '另存为…',
     'saveProgressRunning': '正在保存…',
     'saveProgressDone': '已保存',
@@ -5246,7 +5275,7 @@ enum AppStrings {
     'containerTotal': '合计',
     'saveCelsLostTemplate': '已保存，但有 {count} 张画面未能包含：存放它们的项目文件在项目打开期间被删除了。',
     'projectFileVanished':
-        '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中，此后保存会丢失它们。',
+        '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:isolate';
 
@@ -15,6 +14,7 @@ import '../models/dirty_tile_set.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
+import 'persistence/open_project_file.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
 /// clamped to [384MB, 1536MB]. Null/zero RAM (the platform refused, or
@@ -281,15 +281,19 @@ class BrushFrameStore {
     return surface;
   }
 
-  static Uint8List _readFileRefBytes(AnicelCelFileRef ref) {
-    final raf = File(ref.filePath).openSync();
-    try {
-      raf.setPositionSync(ref.dataOffset);
-      return raf.readSync(ref.length);
-    } finally {
-      raf.closeSync();
-    }
-  }
+  /// 🚨Through the SESSION'S handle, not a fresh open per cel.
+  ///
+  /// This used to `openSync`/`closeSync` around every read, which is why
+  /// deleting the `.anicel` mid-session took the work with it: between two
+  /// reads the app held nothing, so there was nothing to stop the delete
+  /// and nothing left to read after it. See [OpenProjectFile] — including
+  /// the measurement that says a full save has to make it let go first.
+  static Uint8List _readFileRefBytes(AnicelCelFileRef ref) =>
+      OpenProjectFile.instance.readAt(
+        ref.filePath,
+        ref.dataOffset,
+        ref.length,
+      );
 
   void _storeCold(BrushFrameKey key, AnicelCelBlob blob) {
     _coldCels[key] = blob;
@@ -381,6 +385,25 @@ class BrushFrameStore {
   }
 
   void _clearAllTiers() {
+    // 🚨★★★**THE FILE REFS GO, SO THE FILE GOES.** A handle nobody can read
+    // through still keeps the OS from letting the file be deleted or moved.
+    // Holding it past this point is not protection, it is a lock on a file
+    // this session has closed.
+    //
+    // 🧪Found by a test, not by reasoning: `load_heals_mismatched_cels_test`
+    // could not delete its own temp folder afterwards. That is exactly what
+    // a user closing a project and then tidying the folder would hit.
+    //
+    // ⚠️**FOUR stores share the one handle** — the main cel store plus the
+    // conté row, conté page and envelope ink stores, all holding refs into
+    // the SAME `.anicel` (one `open` fills all four:
+    // `project_file_door.dart`). So this is not「nothing can name the file
+    // any more」, it is「this store cannot」, and it is only the whole truth
+    // because the product always swaps the four together (project open, and
+    // `_resetSessionForImportedProject`). ⛔Nothing rests on that: letting
+    // go early costs one re-open on the next sibling's read, which is why
+    // the release is unconditional rather than counted.
+    OpenProjectFile.instance.release();
     _frames.clear();
     clearDisplayCaches();
     _bakedSurfaces.clear();

@@ -13,6 +13,7 @@ import '../media/media_fingerprints.dart';
 import '../media/project_media_sources.dart' show ProjectConforms;
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
+import 'open_project_file.dart';
 import 'anicel_project_archive.dart';
 
 /// A loaded .anicel: the project with media paths already RESOLVED (relative
@@ -1185,6 +1186,15 @@ class AnicelFileService {
   /// the UI isolate on purpose (the swap must stay microtask-tight), so
   /// the worst case is a beat, not a hang.
   static void _renameWithRetry(File temp, String filePath) {
+    // 🚨★★★**OUR OWN HANDLE FIRST, OR THE RETRY BELOW IS RETRYING US.**
+    // The session holds the project file open so the user cannot delete the
+    // cold tier out from under it ([OpenProjectFile]) — and renaming ONTO a
+    // file this process holds open is blocked on Windows exactly like a
+    // scanner's lock. Measured 2026-09-07: `PathAccessException`. Without
+    // this line every full save and every compaction would spend the three
+    // attempts and then throw, and the message would blame a sync client.
+    // ⚠️Nothing to restore afterwards: the next cel read opens it again.
+    OpenProjectFile.instance.releaseFor(filePath);
     for (var attempt = 0; ; attempt += 1) {
       try {
         temp.renameSync(filePath);
