@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conform_file_path.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
@@ -109,7 +110,7 @@ void main() {
     );
     expect(built.outcome, ConformOutcome.built);
     expect(first.decodes, hasLength(1), reason: 'fixture: it was built');
-    final carried = carriedFrom(built.conformPath!);
+    final carried = carriedFrom(conformFilePathOrNull(built.conformBytes)!);
 
     // Another machine: same project, same sound, EMPTY cache.
     final secondCache = '${root.path}/cache-b/대사.wav.aaaa1111.wav'.replaceAll(
@@ -132,9 +133,18 @@ void main() {
           'hundreds of megabytes and bought nothing.',
     );
     expect(
-      opened.conformPath,
-      built.conformPath!.replaceFirst('cache-a', 'cache-b'),
-      reason: 'restored under the name its framedness calls for',
+      identical(opened.conformBytes, carried),
+      isTrue,
+      reason: '⛔NOTHING IS COPIED OUT ANY MORE. The carried bytes ARE what '
+          'playback reads; the conform used to be restored into the cache '
+          'under the name its framedness called for, and that file was the '
+          'same PCM a second time (유저 2026-09-07: 「진짜 그냥 사본파일인거'
+          '아니야?」).',
+    );
+    expect(
+      Directory('${root.path}/cache-b').existsSync(),
+      isFalse,
+      reason: 'and the folder it used to be restored into is never made',
     );
     expect(opened.samples, isNotNull);
     expect(opened.frames, built.frames);
@@ -149,7 +159,7 @@ void main() {
     final built = pipelineAt(
       48000,
     ).pipeline.ensureConform(sourcePath: source, conformPath: firstCache);
-    final carried = carriedFrom(built.conformPath!);
+    final carried = carriedFrom(conformFilePathOrNull(built.conformBytes)!);
 
     // The user replaced the recording between the two machines.
     File(source).writeAsBytesSync(
@@ -198,7 +208,7 @@ void main() {
         r'\',
         '/',
       ),
-      carriedConform: carriedFrom(built.conformPath!),
+      carriedConform: carriedFrom(conformFilePathOrNull(built.conformBytes)!),
     );
     expect(opened.outcome, ConformOutcome.built);
     expect(opened.sampleRate, 48000);
@@ -220,11 +230,13 @@ void main() {
       ),
     );
     expect(
-      built.conformPath,
+      conformFilePathOrNull(built.conformBytes),
       endsWith(mediaFramedEntrySuffix),
       reason: 'fixture: PCM compresses, so the cache write framed it',
     );
-    final carriedBytes = File(built.conformPath!).readAsBytesSync();
+    final carriedBytes = File(
+      conformFilePathOrNull(built.conformBytes)!,
+    ).readAsBytesSync();
 
     final second = pipelineAt(48000);
     final opened = second.pipeline.ensureConform(
@@ -233,20 +245,30 @@ void main() {
         r'\',
         '/',
       ),
-      carriedConform: carriedFrom(built.conformPath!),
+      carriedConform: carriedFrom(conformFilePathOrNull(built.conformBytes)!),
     );
     expect(second.decodes, isEmpty);
-    expect(opened.conformPath, endsWith(mediaFramedEntrySuffix));
     expect(
-      File(opened.conformPath!).readAsBytesSync(),
+      conformFilePathOrNull(opened.conformBytes),
+      endsWith(mediaFramedEntrySuffix),
+      reason: 'the framed bytes are what it reads — the source un-frames on '
+          'the way through, so nothing above ever learns compression '
+          'happened',
+    );
+    expect(
+      File(conformFilePathOrNull(opened.conformBytes)!).readAsBytesSync(),
       carriedBytes,
       reason:
-          '⛔byte for byte. Decompressing a carried conform only to '
-          'compress it again would burn the reason it was compressed.',
+          '⛔byte for byte, and now WITHOUT a copy: this used to assert '
+          'that the restored file matched, which meant the same framed '
+          'bytes existed twice. Decompressing a carried conform only to '
+          'compress it again would burn the reason it was compressed; '
+          'writing it out again burns the reason it was carried.',
     );
   });
 
-  test('a restore that cannot be written costs a decode, never the sound', () {
+  test('🚨a scratch location that cannot be written costs NOTHING — the '
+      'carried conform is read where it lies', () {
     final source = writeSource('대사.wav');
     final built = pipelineAt(48000).pipeline.ensureConform(
       sourcePath: source,
@@ -255,7 +277,7 @@ void main() {
         '/',
       ),
     );
-    // A file where the cache directory should be: nothing can be created
+    // A file where the scratch directory should be: nothing can be created
     // under it, which is the shape of an unplugged drive or a revoked
     // sandbox scope.
     final blocker = '${root.path}/blocked'.replaceAll(r'\', '/');
@@ -265,13 +287,42 @@ void main() {
     final opened = second.pipeline.ensureConform(
       sourcePath: source,
       conformPath: '$blocker/nested/대사.wav.aaaa1111.wav',
-      carriedConform: carriedFrom(built.conformPath!),
+      carriedConform: carriedFrom(conformFilePathOrNull(built.conformBytes)!),
     );
+    expect(opened.isUsable, isTrue);
     expect(
-      opened.isUsable,
-      isTrue,
-      reason: 'the restore is an optimisation; the decode is the fallback',
+      second.decodes,
+      isEmpty,
+      reason: '🪦This used to assert ONE decode: the carried conform had to '
+          'be written into the cache before anything could read it, so a '
+          'cache that refused the write cost a full decode. Reading it '
+          'where it lies has no such price — nowhere to write is no longer '
+          'a reason to redo the work.',
     );
+    expect(opened.samples, isNotNull);
+  });
+
+  test('⛔but carried bytes that will not READ still fall back to the '
+      'decode — the sound is never what is lost', () {
+    final source = writeSource('대사.wav');
+    // A carried entry pointing at something that is not a conform: the
+    // shape of a torn archive, or a build with no engine facing framed
+    // bytes. The decode is the fallback and it always works.
+    final junk = '${root.path}/junk.bin'.replaceAll(r'\', '/');
+    File(junk).writeAsBytesSync(Uint8List.fromList(List<int>.filled(64, 7)));
+
+    final second = pipelineAt(48000);
+    final opened = second.pipeline.ensureConform(
+      sourcePath: source,
+      conformPath: '${root.path}/cache-b/대사.wav.aaaa1111.wav'.replaceAll(
+        r'\',
+        '/',
+      ),
+      carriedConform: MediaAppFileBytes(path: junk, framed: false),
+    );
+
+    expect(opened.isUsable, isTrue);
+    expect(opened.outcome, ConformOutcome.built);
     expect(second.decodes, hasLength(1));
     expect(opened.samples, isNotNull);
   });

@@ -126,22 +126,27 @@ class AudioConformStore extends ChangeNotifier {
     return entry != null &&
         entry.isUsable &&
         entry.samples == null &&
-        entry.conformPath != null;
+        entry.conformBytes != null;
   }
 
-  /// The windowed reader over [sourcePath]'s conform WAV, cached across
-  /// reads; null when the entry is not streaming or the file will not
-  /// parse (the caller stands down exactly as for missing PCM).
+  /// The windowed reader over [sourcePath]'s conform, cached across reads;
+  /// null when the entry is not streaming or the bytes will not parse (the
+  /// caller stands down exactly as for missing PCM).
+  ///
+  /// ⚠️「The conform」 is wherever its bytes are — a file in the run's
+  /// scratch before the project has been saved, a range inside the
+  /// `.anicel` after. The reader takes a [MediaByteSource] for exactly
+  /// that reason, so nothing here has to know which.
   ConformPcmStreamReader? streamReaderFor(String sourcePath) {
     final entry = _entries[sourcePath];
-    if (entry == null || !entry.isUsable || entry.conformPath == null) {
+    if (entry == null || !entry.isUsable || entry.conformBytes == null) {
       return null;
     }
     final cached = _streamReaders[sourcePath];
     if (cached != null) {
       return cached;
     }
-    final reader = ConformPcmStreamReader.open(entry.conformPath!);
+    final reader = ConformPcmStreamReader.over(entry.conformBytes!);
     if (reader != null) {
       _streamReaders[sourcePath] = reader;
     }
@@ -186,7 +191,7 @@ class AudioConformStore extends ChangeNotifier {
       for (final entry in _entries.entries)
         if (entry.value.isUsable &&
             entry.value.samples == null &&
-            entry.value.conformPath != null)
+            entry.value.conformBytes != null)
           entry.key,
     ];
     if (dropped.isEmpty) {
@@ -391,17 +396,19 @@ class AudioConformStore extends ChangeNotifier {
       // next time.
       _failures.remove(sourcePath);
       // Past the streaming threshold the PCM is DROPPED here (AUDIO-PRO
-      // R6): the conform WAV on disk is the copy of record and playback
-      // reads windows of it. Memory-only conforms (unsaved project) have
-      // no disk copy to stream from and stay resident.
+      // R6): the conform on disk is the copy of record and playback reads
+      // windows of it — out of the run's scratch, or out of the project
+      // file once a save has absorbed it. Memory-only conforms (a project
+      // with nowhere to write yet) have nothing to stream from and stay
+      // resident.
       var kept = result;
       if (result.isUsable &&
-          result.conformPath != null &&
+          result.conformBytes != null &&
           result.sampleRate > 0 &&
           result.frames > result.sampleRate * streamingThresholdSeconds) {
         kept = ConformResult(
           outcome: result.outcome,
-          conformPath: result.conformPath,
+          conformBytes: result.conformBytes,
           peaks: result.peaks,
           samples: null,
           channels: result.channels,

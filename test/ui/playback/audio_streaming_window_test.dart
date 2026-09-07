@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
@@ -71,7 +72,7 @@ void main() {
       runner: (request) async => request.sourcePath == 'long'
           ? ConformResult(
               outcome: ConformOutcome.built,
-              conformPath: conformPath,
+              conformBytes: mediaAppFileSource(conformPath),
               samples: longSamples,
               channels: 1,
               sampleRate: sampleRate,

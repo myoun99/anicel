@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/conform_file_path.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_cache_maintenance.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
@@ -213,14 +214,14 @@ void main() {
 
     expect(result.outcome, ConformOutcome.built);
     expect(
-      result.conformPath,
+      conformFilePathOrNull(result.conformBytes),
       endsWith(mediaFramedEntrySuffix),
       reason: 'fixture: this audio compresses, so the write framed it',
     );
     final entries = conformCacheEntries();
     expect(
       entries.map((entry) => entry.path),
-      contains(result.conformPath),
+      contains(conformFilePathOrNull(result.conformBytes)),
       reason: 'the collector has to recognise what the pipeline wrote',
     );
     expect(
@@ -231,7 +232,10 @@ void main() {
           'is not empty',
     );
     expect(clearConformCache(), greaterThan(0));
-    expect(File(result.conformPath!).existsSync(), isFalse);
+    expect(
+      File(conformFilePathOrNull(result.conformBytes)!).existsSync(),
+      isFalse,
+    );
   });
 
   test('the SHIPPED budget is 2GB', () {

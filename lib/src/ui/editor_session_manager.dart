@@ -12,6 +12,7 @@ import '../services/import/media_identity_reader.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
+import '../services/media/media_byte_source.dart';
 import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/project_lookup.dart'
@@ -3713,12 +3714,12 @@ class EditorSessionManager extends ChangeNotifier
   /// conform, swapping the header and placing the file are three different
   /// jobs living in three different places already; what was missing was
   /// only the session saying WHICH file.
-  Future<String?> conformPathForExport(String path) async {
+  Future<MediaByteSource?> conformBytesForExport(String path) async {
     final result = await audioConformStore.ensureFor(path);
     if (result == null || !result.isUsable) {
       return null;
     }
-    return result.conformPath;
+    return result.conformBytes;
   }
 
   /// Marks the [path] asset as one the project CARRIES — the per-asset

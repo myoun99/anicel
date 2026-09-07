@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_wav_export.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 /// 🚨★★★**WHAT COMPRESSION TOOK AWAY, HANDED BACK ON DEMAND.**
@@ -82,7 +83,10 @@ void main() {
 
     final out = at('exported.wav');
     expect(
-      await writeConformAsWav(conformPath: source, destinationPath: out),
+      await writeConformAsWav(
+        conform: mediaAppFileSource(source),
+        destinationPath: out,
+      ),
       isTrue,
     );
 
@@ -120,9 +124,13 @@ void main() {
 
     final out = at('exported.wav');
     expect(
-      await writeConformAsWav(conformPath: base, destinationPath: out),
+      await writeConformAsWav(
+        conform: mediaAppFileSource(written.path),
+        destinationPath: out,
+      ),
       isTrue,
-      reason: 'the exporter asks for the BASE name and the source un-frames',
+      reason: 'the source un-frames on the way through, so the exporter '
+          'never learns that compression happened',
     );
 
     final header = ConformHeader.parse(conform);
@@ -140,7 +148,10 @@ void main() {
 
     final out = at('exported.wav');
     expect(
-      await writeConformAsWav(conformPath: source, destinationPath: out),
+      await writeConformAsWav(
+        conform: mediaAppFileSource(source),
+        destinationPath: out,
+      ),
       isFalse,
       reason: 'a truncated or foreign file must not be presented as audio',
     );
@@ -160,7 +171,10 @@ void main() {
 
     final out = at('exported.wav');
     expect(
-      await writeConformAsWav(conformPath: source, destinationPath: out),
+      await writeConformAsWav(
+        conform: mediaAppFileSource(source),
+        destinationPath: out,
+      ),
       isTrue,
     );
     expect(File(out).lengthSync(), 44 + ConformHeader.parse(conform).dataBytes);

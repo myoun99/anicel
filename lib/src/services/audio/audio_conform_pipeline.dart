@@ -11,14 +11,14 @@
 /// convert on import, Premiere writes a `.cfa`, Avid transcodes to MXF —
 /// all the same move.
 ///
-/// Layout. Both live in the project now, and the conform ALSO has a cache.
+/// Layout. ONE copy, and its address says how far along it is.
 ///
 /// ```
 /// 프로젝트.anicel
 ///   media/<hash>-대사.m4a[.z]                    the sound itself
 ///   conform/<hash>-대사.m4a[.z]                  its decoded PCM
-/// <app container>/Conformed/
-///   대사.m4a.<hash>.wav[.z]                      what playback reads
+/// <app container>/Sessions/<run>/Staged/
+///   대사.m4a.<hash>.wav[.z]                      built, not yet absorbed
 /// ```
 ///
 /// 🚨★★★**THE CONFORM RIDES IN THE PROJECT** (유저 2026-08-30,
@@ -29,27 +29,30 @@
 /// weighs gigabytes is under a tenth, and what it buys is that opening it
 /// somewhere else PLAYS instead of decoding every sound first.
 ///
-/// ⛔Do not read the cache as redundant with the carried copy. The cache is
-/// what playback reads and what the collector bounds; the carried copy is
-/// what a machine with an empty cache restores FROM. An asset with both
-/// genuinely costs both, and only the cache half is ever reclaimed.
+/// 🪦**AND THE 「CACHE vs CARRIED COPY」 DUALISM IS GONE.** This file used
+/// to insist the two were not redundant — 「the cache is what playback
+/// reads, the carried copy is what a machine with an empty cache restores
+/// FROM」— and an asset with both「genuinely costs both」. 유저 2026-09-07
+/// looked at that and asked the obvious question: 「디코드된 PCM이 그럼
+/// 두벌 존재하는거지? 진짜 그냥 사본파일인거아니야?」. It was. Playback
+/// now reads a [MediaByteSource], so the copy inside the project IS what
+/// it reads and nothing is restored out of the archive to make a file for
+/// it. What is left in the container is only what has not been saved yet,
+/// in the run's own scratch room ([SessionScratch]) — the same lifetime
+/// carried media has, for the same reason.
 ///
-/// ⚠️The two are kept honest by the CACHE PATH, which keys on the sample
-/// rate and audio speed. Change either and the conform for the new
-/// settings is at a different address, nothing is found there, and the
-/// save carries none — which is how the entry for the old one gets
-/// removed rather than accumulating (유저: 「레이트 변경 등 죽은파일만
-/// 깔끔하게 잘 걷어낼것」).
+/// ⚠️The address keys on the sample rate and audio speed. Change either
+/// and the conform for the new settings is at a different address, nothing
+/// is found there, and the save carries none — which is how the entry for
+/// the old one gets removed rather than accumulating (유저: 「레이트 변경
+/// 등 죽은파일만 깔끔하게 잘 걷어낼것」).
 ///
-/// 🔑 The cache is keyed by the SOURCE and the settings it was rendered
-/// under — never by the project, which is what an earlier layout did back
-/// when the cache was a folder beside the `.anicel`. Keying by the project
-/// meant a Save As abandoned every conform it had built, two projects
-/// using one sound each paid for their own copy, and a project with no
-/// name yet got no cache at all. See [ConformCacheLayout].
-///
-/// The root moves with a Preferences setting, and the cache has a size
-/// bound and a collector — see `conform_cache_maintenance.dart`.
+/// 🔑 It is keyed by the SOURCE and the settings it was rendered under —
+/// never by the project, which is what an earlier layout did back when
+/// this was a folder beside the `.anicel`. Keying by the project meant a
+/// Save As abandoned every conform it had built, two projects using one
+/// sound each paid for their own copy, and a project with no name yet got
+/// nowhere to put one. See [ConformCacheLayout].
 library;
 
 import 'dart:io';
@@ -112,18 +115,19 @@ enum ConformOutcome {
 
   /// The attempt failed in a way nothing anticipated.
   ///
-  /// NOT the ordinary "could not write the cache" case any more: permissions,
-  /// a full disk or a cloud folder mid-sync leave the decoded audio intact,
-  /// so [AudioConformPipeline.ensureConform] returns [built] with a null
-  /// `conformPath` and the reason in `error`. Losing the sound over a cache
-  /// was the bug. What is left here is the store's catch-all wrapper.
+  /// NOT the ordinary "nowhere to write it" case any more: permissions, a
+  /// full disk or a cloud folder mid-sync leave the decoded audio intact,
+  /// so [AudioConformPipeline.ensureConform] returns [built] with null
+  /// [ConformResult.conformBytes] and the reason in `error`. Losing the
+  /// sound over a place to put it was the bug. What is left here is the
+  /// store's catch-all wrapper.
   writeFailed,
 }
 
 class ConformResult {
   const ConformResult({
     required this.outcome,
-    this.conformPath,
+    this.conformBytes,
     this.peaks,
     this.samples,
     this.channels = 0,
@@ -135,7 +139,23 @@ class ConformResult {
   });
 
   final ConformOutcome outcome;
-  final String? conformPath;
+
+  /// WHERE THIS CONFORM'S BYTES ARE — a file in the run's scratch before
+  /// the project has been saved, a range inside the `.anicel` after.
+  ///
+  /// 🚨★★★**ONE FIELD, BECAUSE IT IS ONE QUESTION.** This used to be a
+  /// `conformPath` string, which could only name a file — so a conform the
+  /// project already carried had to be COPIED OUT of the archive into the
+  /// container before anything could read it. That copy was the second
+  /// copy of the same PCM (유저 2026-09-07: 「디코드된 PCM이 그럼 두벌
+  /// 존재하는거지? 진짜 그냥 사본파일인거아니야?」), and there is no such
+  /// thing as a file that is「in the project」and「in the cache」without
+  /// somebody deciding which one is the truth.
+  ///
+  /// [MediaByteSource] already says 「wherever these bytes are」 for media;
+  /// saying it for conforms too is what lets playback read straight out of
+  /// the project file — [ConformPcmStreamReader.over] takes exactly this.
+  final MediaByteSource? conformBytes;
 
   /// Computed from the conformed PCM, so waveforms no longer need ffmpeg —
   /// which is why they have never appeared on a tablet.
@@ -442,22 +462,18 @@ class AudioConformPipeline {
   /// last wanted, and without it the eviction order would be "oldest
   /// built" — which throws out the sound someone uses in every cut and
   /// keeps the one they imported once by mistake.
-  /// [cachedAt] is the file the conform was actually READ from — the `.z`
-  /// spelling or the plain one — never the base name the request carried.
-  /// Touching the wrong one would leave the real entry looking cold and
-  /// evict the sound someone uses in every cut.
-  ConformResult _reuse(ConformAudio existing, String? cachedAt) {
-    if (cachedAt != null) {
-      try {
-        File(cachedAt).setLastModifiedSync(DateTime.now());
-      } on Object {
-        // A read-only cache still reuses; it just evicts in a worse
-        // order. Never worth failing a conform over.
-      }
-    }
+  /// [readFrom] is where the conform was actually read — the scratch file
+  /// in the `.z` spelling or the plain one, or a range inside the project
+  /// file — never the base name the request carried.
+  ///
+  /// 🪦It used to TOUCH that file's mtime, because eviction order was
+  /// 「least recently used」 and the mtime was the only record of wanting.
+  /// There is no eviction any more: a conform lives in the run's scratch
+  /// until the save absorbs it, and the room goes when the run does.
+  ConformResult _reuse(ConformAudio existing, MediaByteSource? readFrom) {
     return ConformResult(
       outcome: ConformOutcome.reused,
-      conformPath: cachedAt,
+      conformBytes: readFrom,
       peaks: peaksFromSamples(
         samples: existing.samples,
         channels: existing.channels,
@@ -498,27 +514,26 @@ class AudioConformPipeline {
     // happens to hold for free: ZIP wrote the CRC in the entry header).
     final stat = src.statSync();
 
-    // 🚨★★★**THE PROJECT'S OWN COPY, BROUGHT IN BEFORE ANYTHING IS
-    // DECIDED.** 유저 2026-08-30 chose to carry conforms inside the
-    // `.anicel` (`conform-in-project` = always), and this is what that buys
-    // on the other machine: the cache is empty, the project holds the
-    // conform, so it is copied out VERBATIM — framed bytes stay framed, no
-    // decode, no re-encode — and every path below is then the ordinary one.
+    // 🚨★★★**THE PROJECT'S OWN COPY IS READ WHERE IT LIES.** 유저
+    // 2026-08-30 chose to carry conforms inside the `.anicel`
+    // (`conform-in-project` = always), and on another machine — where the
+    // scratch is empty and the project holds the conform — that is now
+    // simply the place the bytes are read from.
     //
-    // ⛔It is restored, not trusted. What comes back is read by
-    // [_readConform] and judged by the same settings and fingerprint checks
-    // a locally built conform faces; a carried one that no longer matches
-    // its source is simply rebuilt over. Deciding staleness twice is how
-    // two answers drift apart.
-    var cached = conformPath == null ? null : _readConform(conformPath);
-    if (cached == null && carriedConform != null && conformPath != null) {
-      _restoreCarriedConform(carriedConform, conformPath);
-      cached = _readConform(conformPath);
-    }
+    // 🪦It used to be COPIED OUT of the archive into the container first,
+    // so that「the ordinary path」could find a file. That copy was a second
+    // copy of the same PCM, which is what the user objected to (2026-09-07:
+    // 「디코드된 PCM이 그럼 두벌 존재하는거지? 진짜 그냥 사본파일인거
+    // 아니야?」), and it also meant an hour of dialogue was written twice
+    // on every open. ⛔The scratch is asked FIRST all the same: a conform
+    // built since the last save is newer than the carried one.
+    final cached =
+        (conformPath == null ? null : _readConform(conformPath)) ??
+        (carriedConform == null ? null : _readConformFrom(carriedConform));
     final existing = cached?.audio;
-    // The file the conform was READ from — `.z` or plain. Every reuse
-    // below touches THIS, never the base name it was looked up under.
-    final reusableAt = cached?.path;
+    // Where the conform was READ from — the scratch file in either
+    // spelling, or the range inside the project file.
+    final reusableAt = cached?.bytes;
     // A conform at another rate is stale even with a matching source: the
     // project's audio rate is a setting now (EXPORT-AUDIO ③), and playing
     // 44.1k PCM on a 48k schedule would shift every clip. The same goes for
@@ -739,7 +754,7 @@ class AudioConformPipeline {
 
     return ConformResult(
       outcome: ConformOutcome.built,
-      conformPath: cachedAt,
+      conformBytes: cachedAt == null ? null : mediaAppFileSource(cachedAt),
       error: cacheError,
       peaks: peaksFromSamples(
         samples: converted,
@@ -756,66 +771,6 @@ class AudioConformPipeline {
     );
   }
 
-  /// Writes the project's carried conform into the cache at [basePath], so
-  /// the ordinary reuse path can pick it up.
-  ///
-  /// The bytes go across AS THEY ARE, which is why [carried] is a stored
-  /// source rather than a decoded one: a carried conform was framed when
-  /// it went in, and decompressing it here only to compress it again would
-  /// burn the whole reason it was compressed. [MediaByteSource.storedIsFramed]
-  /// is what names the file, exactly as it names an archive entry.
-  ///
-  /// Failure is silent on purpose. This is an optimisation — the source is
-  /// still there and still decodes — so an unwritable cache costs a
-  /// re-decode, never the sound. Same reasoning as the cache write below.
-  void _restoreCarriedConform(MediaByteSource carried, String basePath) {
-    try {
-      final path = mediaPathFramed(basePath, framed: carried.storedIsFramed);
-      final directory = path.substring(
-        0,
-        path.replaceAll('\\', '/').lastIndexOf('/'),
-      );
-      Directory(directory).createSync(recursive: true);
-      // ⛔Written STRAIGHT to the final name, not through a `.part`
-      // neighbour like the staging store uses. Staging can afford one
-      // because its sweep is age-based over every file in its folder; the
-      // conform collector only ever deletes files it can PROVE are
-      // conforms, so a `.part` here would be invisible to it and sit in
-      // the user's cache folder for ever.
-      //
-      // A kill mid-write is safe without one: a conform's length is
-      // declared in its own fixed header, so [decodeConform] refuses a
-      // file that is「short of the PCM it claims」and it is rebuilt like
-      // any other unreadable one. (This used to say「breaks its chunk walk
-      // … missing data chunk」— true while a conform was a WAV, and #1397
-      // replaced the chunk walk with the header.)
-      //
-      // 🚨**A BLOCK AT A TIME.** This read the whole thing to write the
-      // whole thing — bytes in, the same bytes out, with an hour of
-      // dialogue (~428MB compressed) resident in between to achieve
-      // nothing. That is the shape the carry and staging rounds removed
-      // everywhere else; it was still here.
-      if (!copyMediaBytesToFile(
-        destinationPath: path,
-        length: carried.lengthSync(),
-        readInto: carried.readIntoSync,
-      )) {
-        throw const FileSystemException('the carried conform ran short');
-      }
-    } on Object {
-      // Leave nothing half-written behind under a name the collector will
-      // later believe. The decode below is the fallback, and it always
-      // works.
-      try {
-        final path = mediaPathFramed(basePath, framed: carried.storedIsFramed);
-        if (File(path).existsSync()) {
-          File(path).deleteSync();
-        }
-      } on Object {
-        // Nothing more to try; a leftover is rejected on read anyway.
-      }
-    }
-  }
 
   /// The conform cached under [basePath], and WHICH of its two names it is
   /// actually under.
@@ -824,20 +779,35 @@ class AudioConformPipeline {
   /// `.z` or it does not — [mediaFramedOrPlainPaths] is the one place that
   /// knows the order to ask in, and [mediaAppFileSource] the one place that
   /// knows the name decides how to read it.
-  ({ConformAudio audio, String path})? _readConform(String basePath) {
+  /// The conform sitting beside [basePath] in either spelling, or null.
+  ({ConformAudio audio, MediaByteSource bytes})? _readConform(
+    String basePath,
+  ) {
     for (final candidate in mediaFramedOrPlainPaths(basePath)) {
       if (!File(candidate).existsSync()) {
         continue;
       }
-      try {
-        final audio = decodeConform(mediaAppFileSource(candidate).readSync());
-        return (audio: audio, path: candidate);
-      } on Object {
-        // Unreadable, foreign, or framed with no engine on this build:
-        // rebuilt, exactly as a missing one would be.
-        return null;
-      }
+      return _readConformFrom(mediaAppFileSource(candidate));
     }
     return null;
+  }
+
+  /// The same read, from wherever the bytes are.
+  ///
+  /// 🚨This is what lets a conform the project CARRIES be played without
+  /// being copied out first: an archive range answers `readSync` like a
+  /// file does, and everything below judges it by the same settings and
+  /// fingerprint checks a locally built one faces. ⛔It is read, not
+  /// trusted — deciding staleness twice is how two answers drift apart.
+  ({ConformAudio audio, MediaByteSource bytes})? _readConformFrom(
+    MediaByteSource source,
+  ) {
+    try {
+      return (audio: decodeConform(source.readSync()), bytes: source);
+    } on Object {
+      // Unreadable, foreign, or framed with no engine on this build:
+      // rebuilt, exactly as a missing one would be.
+      return null;
+    }
   }
 }

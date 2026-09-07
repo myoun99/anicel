@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../media/media_byte_source.dart';
-import '../persistence/media_blob_codec.dart';
 import 'conform_pcm_codec.dart';
 import 'wav16_header.dart';
 
@@ -10,12 +9,12 @@ import 'wav16_header.dart';
 /// the cost, small enough that an hour of dialogue never lands in memory.
 const int _copyBytes = 512 * 1024;
 
-/// Writes the conform at [conformPath] to [destinationPath] as a plain
+/// Writes the conform in [conform] to [destinationPath] as a plain
 /// 16-bit WAV — the file any audio tool opens.
 ///
 /// 🚨★★★**THIS IS WHAT COMPRESSION TOOK AWAY, HANDED BACK ON DEMAND.** A
 /// conform used to BE a WAV, so「open it in anything」was a property of the
-/// cache file. 유저 2026-08-30 gave that up knowingly and named the
+/// conform itself. 유저 2026-08-30 gave that up knowingly and named the
 /// replacement in the same breath: 「다른 앱으로 들을 필요성을 못느끼겟고
 /// 그럴거면 **압축해제시켜서 내보내기 기능 만들면 되는거아닌가?**」.
 ///
@@ -34,23 +33,20 @@ const int _copyBytes = 512 * 1024;
 /// place, and an exporter that could disagree with it is how two spellings
 /// of a format begin.
 ///
-/// Answers false when [conformPath] does not hold a conform this build can
+/// Answers false when [conform] does not hold a conform this build can
 /// read — the caller says so on screen rather than leaving a broken file.
+///
+/// ⚠️It takes the SOURCE, not a path: a conform's bytes live in the run's
+/// scratch until a save absorbs them and inside the `.anicel` afterwards,
+/// and「export the sound I can hear」must work in both. Resolving which of
+/// the two spellings a scratch file wears is the finder's job (the store
+/// already did it) — doing it again here is how two readers of one format
+/// come to disagree.
 Future<bool> writeConformAsWav({
-  required String conformPath,
+  required MediaByteSource conform,
   required String destinationPath,
 }) async {
-  // ⛔Framed-first, through the ONE function that knows a file this app
-  // wrote may wear either name. Deciding it here — or asking the caller to
-  // hand over the right spelling — is how the conform reader and this one
-  // would come to disagree about the same file.
-  final resolved = mediaFramedOrPlainPaths(
-    conformPath,
-  ).where((candidate) => File(candidate).existsSync()).firstOrNull;
-  if (resolved == null) {
-    return false;
-  }
-  final source = mediaAppFileSource(resolved);
+  final source = conform;
   final head = Uint8List(ConformHeader.length);
   final ConformHeader header;
   try {

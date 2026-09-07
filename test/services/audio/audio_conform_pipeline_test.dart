@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/conform_file_path.dart';
 
 void main() {
   late Directory temp;
@@ -318,7 +319,7 @@ void main() {
       expect(result.outcome, ConformOutcome.built);
       expect(result.sampleRate, 48000);
       expect(log, isEmpty, reason: 'no filter should run at equal rates');
-      expect(File(result.conformPath!).existsSync(), isTrue);
+      expect(File(conformFilePathOrNull(result.conformBytes)!).existsSync(), isTrue);
       expect(result.peaks!.peaks, isNotEmpty);
     });
 
@@ -348,7 +349,7 @@ void main() {
       expect(result.sampleRate, 48000);
       // Cached NOWHERE, and says why — a caller must not go looking for a
       // file that was never written.
-      expect(result.conformPath, isNull);
+      expect(result.conformBytes, isNull);
       expect(result.error, contains('could not cache'));
     });
 
@@ -378,9 +379,9 @@ void main() {
       // The name gains `.z` when the write compressed, so the assertion is
       // that it landed AT this address — not that it wears the plain
       // spelling of it.
-      expect(second.conformPath, startsWith(conformPath));
+      expect(conformFilePathOrNull(second.conformBytes), startsWith(conformPath));
       expect(second.error, isNull);
-      expect(File(second.conformPath!).existsSync(), isTrue);
+      expect(File(conformFilePathOrNull(second.conformBytes)!).existsSync(), isTrue);
     });
 
     test('a 44.1k source is resampled to the project rate', () {
@@ -397,7 +398,7 @@ void main() {
 
       // And the file on disk really is at the project rate.
       final written = decodeConform(
-        mediaAppFileSource(result.conformPath!).readSync(),
+        result.conformBytes!.readSync(),
       );
       expect(written.sampleRate, 48000);
     });
@@ -409,7 +410,7 @@ void main() {
         conformPath: '${temp.path}/Conformed/fp.wav.wav',
       );
       final written = decodeConform(
-        mediaAppFileSource(result.conformPath!).readSync(),
+        result.conformBytes!.readSync(),
       );
       expect(written.fingerprint, isNotNull);
       expect(
@@ -418,14 +419,15 @@ void main() {
       );
     });
 
-    test('🚨 a REUSE touches the conform — the cache\'s only record of '
-        'when an entry was last wanted', () {
-      // The eviction order is the conform's own mtime, and nothing else
-      // writes it. Without this the order would be "oldest BUILT", which
-      // throws out the sound used in every cut — built once, long ago —
-      // and keeps the one imported by mistake and never played again.
-      //
-      // Untested, it is one line nobody would miss removing.
+    test('⛔ a REUSE writes NOTHING — it reports the file it read and '
+        'leaves it alone', () {
+      // 🪦This used to assert the opposite half: a reuse TOUCHED the
+      // conform's mtime, because eviction order was「least recently
+      // wanted」and the mtime was the only record of wanting. There is no
+      // eviction any more — a conform lives in the run's scratch until the
+      // save absorbs it and the room goes when the run does — so a write
+      // on the read path would be a write for nobody, on a file that in
+      // the other half of its life is a range inside a read-only archive.
       final source = writeSource('warm.wav');
       final conformPath = '${temp.path}/Conformed/warm.wav.wav';
       final built = pipelineFor().ensureConform(
@@ -437,7 +439,7 @@ void main() {
       // compressed. Touching the base name instead would leave the real
       // entry looking cold — and it would look like this test passed,
       // because the base name would not exist to contradict it.
-      final onDisk = built.conformPath!;
+      final onDisk = conformFilePathOrNull(built.conformBytes)!;
       final cold = DateTime.now().subtract(const Duration(days: 30));
       File(onDisk).setLastModifiedSync(cold);
 
@@ -447,17 +449,23 @@ void main() {
       );
       expect(reused.outcome, ConformOutcome.reused);
       expect(
-        reused.conformPath,
+        conformFilePathOrNull(reused.conformBytes),
         onDisk,
         reason: 'a reuse reports the file it actually read',
       );
 
       expect(
-        File(onDisk).lastModifiedSync().isAfter(cold),
+        // ⚠️Still cold, not「exactly the stamp we set」: the filesystem
+        // stores this truncated to the second, so an equality here fails
+        // on the microseconds and says nothing about the behaviour.
+        File(
+          onDisk,
+        ).lastModifiedSync().isBefore(DateTime.now().subtract(const Duration(days: 29))),
         isTrue,
-        reason:
-            'wanted just now, so it must not look like the coldest '
-            'thing in the cache',
+        reason: 'reading is not writing. A conform that is a range inside '
+            'the project file has no mtime to keep warm, so a read path '
+            'that moved one would be doing it for exactly half its homes '
+            'and for nobody at all.',
       );
     });
 
@@ -617,7 +625,7 @@ void main() {
         conformPath: '${temp.path}/a/b/c/deep.wav.wav',
       );
       expect(result.outcome, ConformOutcome.built);
-      expect(File(result.conformPath!).existsSync(), isTrue);
+      expect(File(conformFilePathOrNull(result.conformBytes)!).existsSync(), isTrue);
     });
 
     test('peaks come from the conform, so no ffmpeg is involved', () {

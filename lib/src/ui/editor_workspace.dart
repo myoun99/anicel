@@ -1174,7 +1174,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// than the item refusing on a file that simply has not been played. That
   /// is the same `ensureFor` playback would have called.
   Future<bool> _exportAssetWav(BuildContext context, MediaAsset asset) async {
-    final conform = await widget.session.conformPathForExport(asset.path);
+    final conform = await widget.session.conformBytesForExport(asset.path);
     if (conform == null || !context.mounted) {
       return conform != null;
     }
@@ -1183,7 +1183,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       suggestedName: '${asset.name}.wav',
       acceptedTypeGroups: const [FileTypeGroups.wav],
       write: (path) =>
-          writeConformAsWav(conformPath: conform, destinationPath: path),
+          writeConformAsWav(conform: conform, destinationPath: path),
     );
     return true;
   }

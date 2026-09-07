@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
@@ -10,7 +11,7 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 
 ConformResult _usableResult() => ConformResult(
   outcome: ConformOutcome.built,
-  conformPath: '/tmp/conformed/a.wav.wav',
+  conformBytes: mediaAppFileSource('/tmp/conformed/a.wav.wav'),
   peaks: AudioPeaks(bucketsPerSecond: 80, peaks: Float32List.fromList([1.0])),
   samples: Float32List.fromList([0.1, 0.2, 0.3, 0.4]),
   channels: 2,
@@ -234,7 +235,7 @@ void main() {
         conformPath,
         ConformResult(
           outcome: ConformOutcome.built,
-          conformPath: conformPath,
+          conformBytes: mediaAppFileSource(conformPath),
           peaks: AudioPeaks(
             bucketsPerSecond: 80,
             peaks: Float32List.fromList([1.0]),
