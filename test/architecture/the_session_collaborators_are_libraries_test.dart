@@ -65,11 +65,13 @@ const _mayNameTheSession = <String, String>{
 /// what belonged to another collaborator.
 ///
 /// ⛔This number only falls. It started at 117 when the interface was first
-/// generated (G0-2, 2026-09-06) and stands at 82 after the sibling
-/// promotion; every member left is either a host verb with no owner yet
-/// (G1's clusters) or one of the nine edges that would close a construction
-/// CYCLE if injected — those are named in the tool's REFUSED list.
-const _sessionInternalsMembers = 72;
+/// generated (G0-2, 2026-09-06), stood at 82 after the sibling promotion,
+/// and reached 56 when G3's four clusters landed (the rows and their drags,
+/// the cut/track surface, the media pool, the audio and SE rows); every
+/// member left is either a host verb with no owner yet or one of the nine
+/// edges that would close a construction CYCLE if injected — those are
+/// named in the tool's REFUSED list.
+const _sessionInternalsMembers = 56;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())
