@@ -73,7 +73,6 @@ void main() {
       // claiming the fitted side reads only the first rows, so it would
       // answer "all transparent" here rather than pass by accident.
       const side = maxBrushTipMaskSide * 2;
-      const bottom = maxBrushTipMaskSide - 1;
       final alpha = Uint8List(side * side);
       for (var y = side ~/ 2; y < side; y += 1) {
         alpha.fillRange(y * side, (y + 1) * side, 255);
@@ -85,12 +84,11 @@ void main() {
       final decoded = await decodeBrushTipImage(png, id: 'big');
 
       expect(decoded.size, maxBrushTipMaskSide);
-      // Rows away from the seam the resample blends: the bottom is still
-      // opaque and the top is still empty.
+      // Inside the opaque half and away from every border: still solid.
       expect(
         decoded.alpha.sublist(
-          bottom * maxBrushTipMaskSide,
-          (bottom + 1) * maxBrushTipMaskSide,
+          240 * maxBrushTipMaskSide + 4,
+          240 * maxBrushTipMaskSide + maxBrushTipMaskSide - 4,
         ),
         everyElement(255),
       );
@@ -98,6 +96,62 @@ void main() {
         decoded.alpha.sublist(0, maxBrushTipMaskSide),
         everyElement(0),
       );
+    });
+
+    test('⚠️the picture ENDS at the edge of the file — the last row is a '
+        'ramp, not a cliff', () async {
+      // ARCH-audit-Q7, 2026-09-07. The two filters this replaced clamped
+      // the border, so a destination pixel half off the image claimed to
+      // be as covered as the source pixel beside it. The shared resampler
+      // reads outside as empty (`kResampleOutsideToken`), which for
+      // COVERAGE is the true answer: past the edge of the registered image
+      // there is no ink. The user's criterion for this change was "the
+      // tip's appearance changing is fine".
+      const side = maxBrushTipMaskSide * 2;
+      const last = maxBrushTipMaskSide - 1;
+      final png = await encodeBrushTipImage(
+        BrushTipMask(
+          id: 'solid',
+          size: side,
+          alpha: Uint8List(side * side)..fillRange(0, side * side, 255),
+        ),
+      );
+
+      final decoded = await decodeBrushTipImage(png, id: 'solid');
+
+      expect(decoded.alpha[128 * maxBrushTipMaskSide + 128], 255);
+      expect(
+        decoded.alpha[last * maxBrushTipMaskSide + 128],
+        inExclusiveRange(0, 255),
+      );
+    });
+
+    test('🚨a stroke that a 4-tap bilinear would drop comes down with its '
+        'share of the coverage', () async {
+      // The heart of ARCH-audit-Q7. Ink on every fourth row, halved: the
+      // fixed 4-tap bilinear this replaced sampled rows 2y and 2y+1, which
+      // hold ink only when y is even, so HALF THE LINES came back as zero
+      // — the drawing thinned to a comb. A filter whose support tracks the
+      // reduction reads all four rows and every destination row keeps a
+      // share.
+      const side = maxBrushTipMaskSide * 2;
+      final alpha = Uint8List(side * side);
+      for (var y = 0; y < side; y += 4) {
+        alpha.fillRange(y * side, (y + 1) * side, 255);
+      }
+      final png = await encodeBrushTipImage(
+        BrushTipMask(id: 'comb', size: side, alpha: alpha),
+      );
+
+      final decoded = await decodeBrushTipImage(png, id: 'comb');
+
+      for (var y = 2; y < maxBrushTipMaskSide - 2; y += 1) {
+        expect(
+          decoded.alpha[y * maxBrushTipMaskSide + 128],
+          greaterThan(0),
+          reason: 'row $y lost its share of the lines it covers',
+        );
+      }
     });
   });
 
@@ -110,7 +164,9 @@ void main() {
       expect(thumbnail.length, 16 * 16);
       // The source ramps left to right, so the thumbnail has to as well.
       expect(thumbnail[0], lessThan(thumbnail[15]));
-      expect(thumbnail[15], greaterThan(200));
+      // Cell 15 straddles the edge of the mask, where the coverage really
+      // does run out; cell 14 is the last one wholly inside it.
+      expect(thumbnail[14], greaterThan(200));
     });
 
     test('a mask smaller than the thumbnail still fills every cell', () async {
@@ -126,7 +182,12 @@ void main() {
       );
 
       expect(thumbnail.length, 16 * 16);
-      expect(thumbnail.every((value) => value == 255), isTrue);
+      expect(thumbnail, everyElement(greaterThan(0)));
+      // Enlarging RECONSTRUCTS now rather than nearest-neighbouring, which
+      // is what the predecessor did and said it should not (ARCH-audit-Q7,
+      // 2026-09-07): the middle of a solid tip is solid, and only the rim
+      // — where the mask itself ends — softens.
+      expect(thumbnail[8 * 16 + 8], 255);
     });
   });
 }

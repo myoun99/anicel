@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../models/brush_tip_mask.dart';
+import '../brush_tip_coverage.dart';
 import '../photoshop/photoshop_byte_reader.dart';
 
 /// A pattern lifted from an ABR `patt` section — Photoshop's paper textures.
@@ -168,49 +169,30 @@ PsPattern? _readPatternRecord(PhotoshopByteReader record) {
 /// dark means paint — so a Photoshop paper and a Clip Studio one behave
 /// alike. Inverting, brightening and contrast are `brushTipMaskWithLevels`'
 /// job, shared with the Clip Studio importer. Patterns larger than
-/// [maxBrushTipMaskSide] are box-downscaled; paper tiles at that size, and a
-/// 2048px pattern would otherwise cost megabytes in every saved preset.
+/// [maxBrushTipMaskSide] come down through the app's one resampler; paper
+/// tiles at that size, and a 2048px pattern would otherwise cost megabytes
+/// in every saved preset.
+///
+/// 🚨THE SAME TAIL EVERY COVERAGE SOURCE ENDS WITH. This used to fuse its
+/// own box downscale and its own centred-square padding into one loop —
+/// two laws written a third time, and drifting from the two shared ones
+/// the moment either changed. ARCH-audit-Q7 (2026-09-07) settled which
+/// filter minifies a coverage map, and there is one of it: this hands
+/// coverage to [brushTipMaskFromCoverage] like the image decoder and the
+/// cut-piece tip do.
 BrushTipMask brushTipMaskFromPattern(
   PsPattern pattern, {
   required String id,
 }) {
-  final side = pattern.width > pattern.height ? pattern.width : pattern.height;
-  final scale = side > maxBrushTipMaskSide ? side / maxBrushTipMaskSide : 1.0;
-  final maskSide = (side / scale).round().clamp(1, maxBrushTipMaskSide);
-  final alpha = Uint8List(maskSide * maskSide);
-  final offsetX = ((maskSide - pattern.width / scale) / 2).round();
-  final offsetY = ((maskSide - pattern.height / scale) / 2).round();
-
-  for (var y = 0; y < maskSide; y += 1) {
-    final sourceTop = ((y - offsetY) * scale).floor();
-    final sourceBottom = (((y - offsetY) + 1) * scale).ceil();
-    if (sourceBottom <= 0 || sourceTop >= pattern.height) {
-      continue;
-    }
-    for (var x = 0; x < maskSide; x += 1) {
-      final sourceLeft = ((x - offsetX) * scale).floor();
-      final sourceRight = (((x - offsetX) + 1) * scale).ceil();
-      if (sourceRight <= 0 || sourceLeft >= pattern.width) {
-        continue;
-      }
-      var total = 0;
-      var count = 0;
-      for (var sy = sourceTop < 0 ? 0 : sourceTop;
-          sy < sourceBottom && sy < pattern.height;
-          sy += 1) {
-        for (var sx = sourceLeft < 0 ? 0 : sourceLeft;
-            sx < sourceRight && sx < pattern.width;
-            sx += 1) {
-          total += pattern.luminance[sy * pattern.width + sx];
-          count += 1;
-        }
-      }
-      if (count == 0) {
-        continue;
-      }
-      final mean = total ~/ count;
-      alpha[y * maskSide + x] = 255 - mean;
-    }
+  // Dark means paint, which is the same reading the shared tip codec gives
+  // an opaque image.
+  final coverage = Uint8List(pattern.luminance.length);
+  for (var index = 0; index < coverage.length; index += 1) {
+    coverage[index] = 255 - pattern.luminance[index];
   }
-  return BrushTipMask(id: id, size: maskSide, alpha: alpha);
+  return brushTipMaskFromCoverage(
+    coverage,
+    size: (width: pattern.width, height: pattern.height),
+    id: id,
+  );
 }

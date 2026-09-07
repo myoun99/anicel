@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import '../core/gray_downscale.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/cut_piece.dart';
+import 'brush_tip_coverage.dart';
 
 /// Turns a held cut piece into a brush tip mask.
 ///
@@ -39,6 +39,5 @@ BrushTipMask cutPieceToTipMask(CutPiece piece, {required String id}) {
     coverage,
     size: (width: width, height: height),
     id: id,
-    downscale: areaAveragedGray,
   );
 }

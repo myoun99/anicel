@@ -8,68 +8,6 @@ import 'dart:typed_data';
 /// pure-Dart importers can honour it without dragging in `dart:ui`.
 const int maxBrushTipMaskSide = 256;
 
-/// [width] × [height] shrunk to fit [maxBrushTipMaskSide] on the long side,
-/// aspect kept, never below 1; unchanged when it already fits.
-///
-/// 🚨ONE fit for the image decoder and the cut-piece tip (the audit's clone
-/// scan, 2026-09-03); the resampler is the caller's value until
-/// ARCH-audit-Q7 answers.
-({int width, int height}) brushTipMaskFitted(int width, int height) {
-  final longSide = math.max(width, height);
-  if (longSide <= maxBrushTipMaskSide) {
-    return (width: width, height: height);
-  }
-  final scale = maxBrushTipMaskSide / longSide;
-  return (
-    width: math.max(1, (width * scale).round()),
-    height: math.max(1, (height * scale).round()),
-  );
-}
-
-/// A grayscale downscaler: [source] of [width]×[height] read down to
-/// [newWidth]×[newHeight]. The one signature both tip resamplers already
-/// had.
-typedef GrayDownscale =
-    Uint8List Function(
-      Uint8List source, {
-      required int width,
-      required int height,
-      required int newWidth,
-      required int newHeight,
-    });
-
-/// [coverage] of [size] as a tip mask: fitted to [maxBrushTipMaskSide],
-/// read down through [downscale] when the fit shrank it, then squared and
-/// centred.
-///
-/// The tail every coverage source ends with — the image decoder's inverted
-/// luminance and the cut piece's alpha plane alike. Which resampler runs
-/// is the caller's, a value with one signature, until ARCH-audit-Q7 says
-/// they should be the same one; then this parameter goes.
-BrushTipMask brushTipMaskFromCoverage(
-  Uint8List coverage, {
-  required ({int width, int height}) size,
-  required String id,
-  required GrayDownscale downscale,
-}) {
-  final fit = brushTipMaskFitted(size.width, size.height);
-  if (fit.width != size.width || fit.height != size.height) {
-    coverage = downscale(
-      coverage,
-      width: size.width,
-      height: size.height,
-      newWidth: fit.width,
-      newHeight: fit.height,
-    );
-  }
-  return BrushTipMask.square(
-    id: id,
-    pixels: coverage,
-    width: fit.width,
-    height: fit.height,
-  );
-}
-
 /// Applies a paper texture's invert, brightness and contrast to [mask].
 ///
 /// A mask holds COVERAGE — "how much paint" — which is the texture image

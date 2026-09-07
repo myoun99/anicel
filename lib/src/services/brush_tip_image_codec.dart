@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../core/gray_downscale.dart';
 import '../models/brush_tip_mask.dart';
+import 'brush_tip_coverage.dart';
 import 'photoshop/psd_image.dart';
 import 'photoshop/psd_reader.dart';
+import 'resample/coverage_resample.dart';
 
 // `maxBrushTipMaskSide` moved to the mask model so the pure-Dart importers
 // can honour the same cap without pulling `dart:ui` in behind it.
@@ -65,7 +66,6 @@ Future<BrushTipMask> decodeBrushTipImage(
       gray,
       size: (width: width, height: height),
       id: id,
-      downscale: _resizeGray,
     );
   } finally {
     image.dispose();
@@ -109,41 +109,6 @@ Future<Uint8List> encodeBrushTipImage(BrushTipMask mask) async {
   }
 }
 
-/// Bilinear grayscale resize.
-///
-/// ⛔The odd one out, and it STAYS bilinear for now while the cut-piece tip
-/// and the thumbnail area-average: changing it changes how
-/// already-registered image tips look, which is ARCH-audit-Q7. When that
-/// is answered "area average", this goes and
-/// [brushTipMaskFromCoverage]'s `downscale` parameter goes with it.
-Uint8List _resizeGray(
-  Uint8List source, {
-  required int width,
-  required int height,
-  required int newWidth,
-  required int newHeight,
-}) {
-  final output = Uint8List(newWidth * newHeight);
-  for (var y = 0; y < newHeight; y += 1) {
-    final sourceY = (y + 0.5) * height / newHeight - 0.5;
-    final y0 = sourceY.floor().clamp(0, height - 1);
-    final y1 = (y0 + 1).clamp(0, height - 1);
-    final fy = (sourceY - y0).clamp(0.0, 1.0);
-    for (var x = 0; x < newWidth; x += 1) {
-      final sourceX = (x + 0.5) * width / newWidth - 0.5;
-      final x0 = sourceX.floor().clamp(0, width - 1);
-      final x1 = (x0 + 1).clamp(0, width - 1);
-      final fx = (sourceX - x0).clamp(0.0, 1.0);
-      final top =
-          source[y0 * width + x0] * (1 - fx) + source[y0 * width + x1] * fx;
-      final bottom =
-          source[y1 * width + x0] * (1 - fx) + source[y1 * width + x1] * fx;
-      output[y * newWidth + x] = (top * (1 - fy) + bottom * fy).round();
-    }
-  }
-  return output;
-}
-
 /// A tiny preview of [mask], [side]x[side] alpha bytes, averaged from the
 /// full-resolution mask.
 ///
@@ -151,8 +116,13 @@ Uint8List _resizeGray(
 /// grid can paint on the first frame — decoding a folder of PNGs is
 /// asynchronous, and a grid of empty squares that fills in later is exactly
 /// the kind of UI that moves under the user's hand.
+///
+/// 🚨THROUGH THE SAME FILTER THE MASK ITSELF CAME DOWN THROUGH. A preview
+/// is a minification of a coverage map, which is the one question
+/// [resampleCoverage] answers, so it is not a second question and does not
+/// get a second filter (ARCH-audit-Q7, 2026-09-07).
 Uint8List brushTipThumbnailAlpha(BrushTipMask mask, {int side = 16}) =>
-    areaAveragedGray(
+    resampleCoverage(
       mask.alpha,
       width: mask.size,
       height: mask.size,

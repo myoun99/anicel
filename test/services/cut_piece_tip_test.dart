@@ -78,8 +78,18 @@ void main() {
     );
     expect(mask.size, maxBrushTipMaskSide);
     // The reduction averages rather than point-samples, so the opaque half
-    // is still there rather than sampled away.
-    expect(mask.alpha.take(maxBrushTipMaskSide ~/ 2), everyElement(255));
+    // is still there rather than sampled away. Read a row and a span that
+    // are wholly INSIDE that half: the shared resampler reads outside the
+    // image as empty, so the two edges of the piece and the seam down the
+    // middle are ramps rather than cliffs (ARCH-audit-Q7, 2026-09-07).
+    const inside = 8;
+    expect(
+      mask.alpha.sublist(
+        inside * maxBrushTipMaskSide + inside,
+        inside * maxBrushTipMaskSide + maxBrushTipMaskSide ~/ 2 - inside,
+      ),
+      everyElement(255),
+    );
   });
 
   test('the pose is honoured — registering takes what you are looking at', () {
