@@ -28,6 +28,7 @@ import '../playback/playback_prerender_scheduler.dart';
 import 'editor_voice_recording.dart';
 import 'playback_cache_budget.dart';
 import 'project_settings.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// Playback's own machinery: the transport, its audio paths, the
@@ -39,6 +40,7 @@ class PlaybackRig implements PlaybackRun {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
     required ProjectSettings settings,
     required EditorVoiceRecording voiceRecording,
     required AudioConformStore audioConformStore,
@@ -55,6 +57,7 @@ class PlaybackRig implements PlaybackRun {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _renderCaches = renderCaches,
        _settings = settings,
        _voiceRecording = voiceRecording,
        _audioConformStore = audioConformStore,
@@ -67,6 +70,7 @@ class PlaybackRig implements PlaybackRun {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final ProjectSettings _settings;
   final EditorVoiceRecording _voiceRecording;
   final AudioConformStore _audioConformStore;
@@ -86,13 +90,13 @@ class PlaybackRig implements PlaybackRun {
   // it rather than being handed one.
   late final PlaybackCacheBudget playbackCache = PlaybackCacheBudget(
     project: _project,
-    internals: _internals,
+    renderCaches: _renderCaches,
     run: this,
   );
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
-        composites: _internals.cutFrameCompositeCache,
+        composites: _renderCaches.cutFrameCompositeCache,
         resolveCut: _project.cutById,
         // Widget tests: zero idle delay, like before R13-3 — the
         // quiet-window polls otherwise leave a pending gate timer at

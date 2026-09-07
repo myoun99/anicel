@@ -66,7 +66,7 @@ void main() {
         selection.layerId,
         selection.frameId,
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -271,7 +271,7 @@ void main() {
 
     await const AnicelFileService().writeRecoveryOverlay(
       project: s.repository.requireProject(),
-      brushFrameStore: s.brushFrameStore,
+      brushFrameStore: s.renderCaches.brushFrameStore,
       filePath: overlayPath,
       baseFilePath: projectPath,
       // Spelled out because they are required, and required because

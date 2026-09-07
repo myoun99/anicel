@@ -483,7 +483,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return CanvasTrackStackView(
       globalFrame: globalFrame ?? session.gapParkingListenable,
       positionsOf: session.trackStackContributionsAt,
-      compositeCache: session.cutFrameCompositeCache,
+      compositeCache: session.renderCaches.cutFrameCompositeCache,
       qualityOf: () => session.playbackRig.playbackQuality,
       cameraFrameSize: session.cameraFrameSize,
       cameraViewEnabled: cameraView,
@@ -586,7 +586,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       children: [
         CanvasPlaybackView(
           controller: session.playbackRig.playback,
-          compositeCache: session.cutFrameCompositeCache,
+          compositeCache: session.renderCaches.cutFrameCompositeCache,
           qualityOf: () => session.playbackRig.playbackQuality,
           prerenderProgress:
               session.playbackRig.prerenderScheduler.progress,

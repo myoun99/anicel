@@ -230,7 +230,7 @@ void main() {
       );
       image.dispose();
       bakeCelSurface(
-        s.brushFrameStore,
+        s.renderCaches.brushFrameStore,
         s.brushFrameKeyForCut(cut, layer.id, layer.frames.single.id),
         surface,
       );

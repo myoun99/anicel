@@ -50,7 +50,7 @@ void main() {
       // store (a replay of the commands can only ever produce black).
       BrushFrameEditingCoordinator(
         initialFrameKey: frameKey,
-        frameStore: session.brushFrameStore,
+        frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
         historyPolicy: const BrushHistoryPolicy(
           userUndoLimit: 8,
@@ -76,7 +76,7 @@ void main() {
       final sentinelPixels = Uint8List(256 * 256 * 4);
       sentinelPixels[0] = 255;
       sentinelPixels[3] = 255;
-      session.brushFrameStore.storeRebuiltDisplayCache(
+      session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
         key: frameKey,
         previewSurface: BitmapSurface(canvasSize: cut.canvasSize).putTile(
           BitmapTile(
@@ -111,9 +111,11 @@ void main() {
       // A store-level edit mark dirties the cache WITHOUT donating — the
       // renderer must then fall back to the BAKED truth (R19 P3b: no
       // replay exists): the black stroke reappears, the sentinel is gone.
-      session.brushFrameStore.markCelEdited(frameKey);
+      session.renderCaches.brushFrameStore.markCelEdited(frameKey);
       expect(
-        session.brushFrameStore.displayCacheOrNull(frameKey)!.dirty,
+        session.renderCaches.brushFrameStore
+            .displayCacheOrNull(frameKey)!
+            .dirty,
         isTrue,
       );
 
@@ -146,7 +148,7 @@ void main() {
       final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
       BrushFrameEditingCoordinator(
         initialFrameKey: frameKey,
-        frameStore: session.brushFrameStore,
+        frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
         historyPolicy: const BrushHistoryPolicy(
           userUndoLimit: 8,
@@ -228,7 +230,7 @@ void main() {
       pixels[tileOffset + 1] = 0x80;
       pixels[tileOffset + 2] = 0x80;
       pixels[tileOffset + 3] = 255;
-      session.brushFrameStore.storeRebuiltDisplayCache(
+      session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
         key: session.brushFrameKeyForCut(cut, layer.id, frame.id),
         previewSurface: BitmapSurface(canvasSize: cut.canvasSize).putTile(
           BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),

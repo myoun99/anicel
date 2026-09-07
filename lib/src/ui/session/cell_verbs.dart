@@ -8,6 +8,7 @@ import '../../services/cel_pixel_region.dart';
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../models/layer_kind.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 import 'lane_verbs.dart';
 import 'range_selections.dart';
@@ -26,6 +27,7 @@ class CellVerbs {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
     required LaneVerbs laneVerbs,
     required RangeSelections rangeSelections,
     required FrameClipboard clipboard,
@@ -34,6 +36,7 @@ class CellVerbs {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _renderCaches = renderCaches,
        _laneVerbs = laneVerbs,
        _rangeSelections = rangeSelections,
        _clipboard = clipboard;
@@ -45,6 +48,7 @@ class CellVerbs {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final LaneVerbs _laneVerbs;
   final RangeSelections _rangeSelections;
 
@@ -100,7 +104,7 @@ class CellVerbs {
       // it and the buttons stayed lit over an empty block. This is the same
       // question the block's tint asks, which is why it is that call and not
       // a second rule of its own.
-      if (!_internals.brushFrameStore.celHasRenderableContent(key)) {
+      if (!_renderCaches.brushFrameStore.celHasRenderableContent(key)) {
         return;
       }
       keys.add(key);
@@ -194,7 +198,7 @@ class CellVerbs {
         // coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데 캔버스쪽에서
         // 라이브로 갱신안되서 다른 프레임 갔다가 와야 반영되있어. 이런 캔버스
         // 조작은 바로바로 반영되야지」.
-        cacheInvalidationSink: _internals.cacheInvalidationHub,
+        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
         // Read at the MOMENT OF THE PRESS — the bar does not hold the brush
         // colour, it asks for it. ⛔The fallback is the brush's own default,
         // not white or transparent: a press with no publisher wired must

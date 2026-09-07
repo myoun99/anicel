@@ -280,8 +280,8 @@ class _InteractiveCanvasBuild {
       // the panel maps them into the active layer's artwork space
       // before the view sees them.
       guides: session.activeCutGuides,
-      frameStore: session.brushFrameStore,
-      cacheInvalidationSink: session.cacheInvalidationHub,
+      frameStore: session.renderCaches.brushFrameStore,
+      cacheInvalidationSink: session.renderCaches.cacheInvalidationHub,
       // The pixel verbs are pressed on the timeline and write cel
       // surfaces; every surface write goes through this coordinator.
       onCoordinatorChanged: (coordinator) =>
@@ -526,7 +526,7 @@ class _InteractiveCanvasBuild {
       // layer's slot, so the rows above it occlude the live
       // preview the way they occlude the landed pixels.
       floatOverlay: floatOverlay,
-      imageCache: frame.session.layerFrameImageCache,
+      imageCache: frame.session.renderCaches.layerFrameImageCache,
       canvasSize: _canvasSize,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers

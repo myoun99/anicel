@@ -973,7 +973,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     unawaited(ensureConteFontsLoaded());
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
-      invalidationHub: widget.session.cacheInvalidationHub,
+      invalidationHub: widget.session.renderCaches.cacheInvalidationHub,
     );
     _layoutPersistence._layoutStore =
         widget.layoutStore ??

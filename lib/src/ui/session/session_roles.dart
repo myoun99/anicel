@@ -37,10 +37,6 @@ import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_window.dart';
-import '../../services/brush_frame_store.dart';
-import '../../services/playback/editor_cache_invalidation_hub.dart';
-import '../playback/cut_frame_composite_cache.dart';
-import '../playback/layer_frame_image_cache.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/drawing_block_move.dart';
 import '../../services/command.dart';
@@ -186,8 +182,6 @@ abstract interface class SessionInternals {
   );
   AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  BrushFrameStore get brushFrameStore;
-  EditorCacheInvalidationHub get cacheInvalidationHub;
   bool canAddLayerOfKind(LayerKind kind);
   bool get canCreateInstance;
   bool Function()? get canvasHasSelection;
@@ -196,7 +190,6 @@ abstract interface class SessionInternals {
   ValueNotifier<TimelineRowAddress?> get currentRowListenable;
   ({TrackId trackId, int? index, int leadingGapFrames, int? duration})?
   get cutCreationPlan;
-  CutFrameCompositeCache get cutFrameCompositeCache;
   void cutRunAtCurrentFrame();
   List<LayerId> deletableSelectedLayerIds();
   DeleteSubject get deleteSubject;
@@ -209,7 +202,6 @@ abstract interface class SessionInternals {
   double get lastMasterOpacity;
   set lastMasterOpacity(double value);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
-  LayerFrameImageCache get layerFrameImageCache;
   double layerOpacityAtFrame(Layer layer, int frameIndex);
   ValueNotifier<LayerRowDragState?> get layerRowDrag;
   ValueNotifier<Set<LayerId>> get onionSkinLayerIds;

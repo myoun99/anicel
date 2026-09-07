@@ -131,7 +131,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// timeline host carries the identical signal.
   late final Listenable _frameReadySignal = Listenable.merge([
     _session.playbackRig.prerenderScheduler.progress,
-    _session.brushFrameStore.celPixelRevision,
+    _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
 
   /// Identity-memoized active-track layout (R12-⑥): the playhead refresh

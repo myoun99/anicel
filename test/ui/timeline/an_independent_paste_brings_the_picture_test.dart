@@ -50,7 +50,7 @@ void main() {
     session.createDrawingAtCurrentFrame();
     // Put a real picture on it — the whole point of the card.
     final layer = session.layers.firstWhere((l) => l.id == from);
-    session.brushFrameStore.storeBakedSurface(
+    session.renderCaches.brushFrameStore.storeBakedSurface(
       session.brushFrameKeyForCut(
         session.activeCutOrNull!,
         from,

@@ -337,9 +337,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       dropped.image.dispose();
     }
     // The census cannot reach into this State, so the total goes to it —
-    // see [EditorSessionManager.viewerRasterBytesByViewer]. Every path
+    // see [RenderCaches.viewerRasterBytesByViewer]. Every path
     // that changes the cache ends here or in [_disposeContent].
-    widget.session.viewerRasterBytesByViewer[widget.viewerId] = total;
+    widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] =
+        total;
   }
 
   /// The OS said memory is tight. The session already stood its own caches
@@ -435,7 +436,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     _disposeContent();
     // ⛔REMOVE, not zero: a viewer that is gone is not a viewer holding
     // nothing, and an entry per closed tab would grow for the session.
-    widget.session.viewerRasterBytesByViewer.remove(widget.viewerId);
+    widget.session.renderCaches.viewerRasterBytesByViewer.remove(
+      widget.viewerId,
+    );
     super.dispose();
   }
 
@@ -450,7 +453,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     _pageCache.clear();
     _buffering = false;
     _renderScale = null;
-    widget.session.viewerRasterBytesByViewer[widget.viewerId] = 0;
+    widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] = 0;
     _rendersInFlight.clear();
     final document = _document;
     _document = null;

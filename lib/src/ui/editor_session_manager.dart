@@ -1,4 +1,4 @@
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -109,21 +109,15 @@ import '../models/track_se_window.dart';
 import '../models/transition_geometry.dart';
 import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
-import '../services/brush_frame_store.dart';
 import '../services/commands/convert_to_linked_cut_plan.dart';
-import '../models/brush_frame_cache_invalidation.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../services/se_name_tag_plan.dart';
-import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
 import 'playback/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
-import 'playback/cut_frame_composite_cache.dart';
-import 'playback/layer_frame_image_cache.dart';
-import 'playback/playback_prerender_scheduler.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -140,7 +134,6 @@ import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
-import '../native/qa_native_engine.dart' show QaNativeEngine;
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../services/persistence/folder_grant.dart'
@@ -178,6 +171,7 @@ import 'session/cut_folder_import_door.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
 import 'session/playback_rig.dart';
+import 'session/render_caches.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -261,10 +255,10 @@ class EditorSessionManager extends ChangeNotifier
       repository: repository,
       editingSession: editingSession,
       historyManager: historyManager,
-      brushFrameStore: brushFrameStore,
+      brushFrameStore: renderCaches.brushFrameStore,
     );
     rebuildActiveCutControllers();
-    cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+    renderCaches.attach();
     playbackRig.attach();
     playbackRig.playback.globalFrameIndexListenable.addListener(
       followPlaybackCut,
@@ -284,7 +278,9 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.addListener(refreshLiveAudioSchedule);
     // The unworked-block tint's two events (see [celTintRevision]): the
     // store's empty↔drawn crossing, and the pen going down on a cel.
-    brushFrameStore.celContentRevision.addListener(_bumpCelTintRevision);
+    renderCaches.brushFrameStore.celContentRevision.addListener(
+      _bumpCelTintRevision,
+    );
     brushInputActive.addListener(_bumpCelTintRevision);
     // 🚨And the THIRD: any pixel edit at all. The crossing detector above
     // asks whether the store HOLDS a surface for the cel, not whether that
@@ -298,7 +294,9 @@ class EditorSessionManager extends ChangeNotifier
     // merges `celPixelRevision` into its frame-ready signal, so the rebuild
     // it costs is one that was already happening; what changes is that the
     // tint re-reads inside it instead of serving a stale answer.
-    brushFrameStore.celPixelRevision.addListener(_bumpCelTintRevision);
+    renderCaches.brushFrameStore.celPixelRevision.addListener(
+      _bumpCelTintRevision,
+    );
     // Text cel projections follow the model through EVERY mutation path
     // (edit/undo/redo/paste/duplicate/link) — one history listener, the
     // sweep re-renders whatever went stale (R5).
@@ -395,30 +393,31 @@ class EditorSessionManager extends ChangeNotifier
   /// it. Not a listenable: only the release path reads it.
   CanvasTool? heldOriginalTool;
 
-  /// App-level brush stroke store shared with the canvas host, so commands
-  /// (e.g. anchored canvas resize) can transform stroke data.
-  ///
-  /// The link resolver reads the CURRENT project's registry on every
-  /// resolve (L1) — link edits need no event plumbing to reach the store.
-  @override
-  late final BrushFrameStore brushFrameStore = BrushFrameStore()
-    // 유저 확정 (2026-08-16): the hot budget scales to the MACHINE —
-    // RAM/4 clamped — instead of assuming a desktop. Unknown RAM (no
-    // engine: tests, host) keeps the old 1536MB, byte-for-byte.
-    ..hotCelByteBudget = deviceScaledHotCelBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    )
-    ..setLinkResolver(
-      (key) =>
-          repository.currentProject?.linkRegistry.canonicalCelKey(key) ?? key,
-    );
+  // ── every pixel this session is holding: its own object ─────────────
+  //
+  // A collaborator (session/render_caches.dart): the cel stores the
+  // archive persists, the two playback render caches built over them,
+  // the invalidation hub the commands publish on, and the debounce that
+  // restarts warming once per edit burst.
+  //
+  // ⛔The session keeps [warmActiveCut] — which cut, around which frame,
+  // at which quality reads the standing row, the timeline controller and
+  // the storyboard order. A cache stack that reached back out for it
+  // could not be built at all: the playback rig reaches IN here for the
+  // composite cache.
+  late final RenderCaches renderCaches = RenderCaches(
+    project: this,
+    changes: this,
+    internals: this,
+    onEditActivity: () => playbackRig.prerenderScheduler.notifyEditActivity(),
+  );
 
   /// The OS memory-pressure signal, forwarded by the workspace's binding
   /// observer: the hot cel tier halves and cools, and the playback caches
   /// re-run their budget against the shrunken world. Standing down is
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
-    brushFrameStore.respondToMemoryPressure();
+    renderCaches.brushFrameStore.respondToMemoryPressure();
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();
@@ -441,67 +440,6 @@ class EditorSessionManager extends ChangeNotifier
   /// bool would coalesce the second one into silence).
   final ValueNotifier<int> memoryPressureTicks = ValueNotifier<int>(0);
 
-  /// Page-raster bytes each mounted media viewer is holding, by viewer id.
-  ///
-  /// 🚨**PUSHED, where every other census number is PULLED.** The census
-  /// is deliberately addition rather than measurement — it reads counters
-  /// the holder already keeps — and it can do that because the session
-  /// owns those holders. It does not own these: the viewer's pages live in
-  /// a widget State that mounts and unmounts as tabs open and rails fold,
-  /// and there are two of them. So the viewers write here instead, and
-  /// clear their entry when they go.
-  ///
-  /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
-  /// about a cache that can hold a quarter of a gigabyte per viewer — the
-  /// gap would land in `untrackedBytes` and read as engine overhead.
-  final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
-
-  /// What the media viewers hold between them.
-  int get viewerRasterBytes {
-    var total = 0;
-    for (final bytes in viewerRasterBytesByViewer.values) {
-      total += bytes;
-    }
-    return total;
-  }
-
-  /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
-  /// archive can persist them (the second cel namespace), while the ink
-  /// controller (workspace UI) keeps the coordinators. The ROW store's
-  /// keys carry storyboard block [FrameId]s: entries whose block no longer
-  /// exists are pruned at LOAD (never at save — a deleted block's ink must
-  /// survive its own undo), so "ink dies with the drawing" lands at the
-  /// session boundary.
-  final BrushFrameStore conteInkRowStore = BrushFrameStore();
-  final BrushFrameStore conteInkPageStore = BrushFrameStore();
-
-  /// The cut envelope's ink store — SESSION-owned for the same reason: the
-  /// archive persists it, the workspace's controller owns the coordinator.
-  /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
-  /// pruned at LOAD exactly like a conte row's.
-  final BrushFrameStore envelopeInkStore = BrushFrameStore();
-
-  /// Production sink for brush edit invalidations; playback caches and the
-  /// prerender scheduler listen here.
-  @override
-  final EditorCacheInvalidationHub cacheInvalidationHub =
-      EditorCacheInvalidationHub();
-
-  // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
-
-  @override
-  late final LayerFrameImageCache layerFrameImageCache = LayerFrameImageCache(
-    frameStore: brushFrameStore,
-  );
-
-  @override
-  late final CutFrameCompositeCache cutFrameCompositeCache =
-      CutFrameCompositeCache(
-        layerImages: layerFrameImageCache,
-        frameStore: brushFrameStore,
-        frameKeyOf: brushFrameKeyForCut,
-      );
-
   // ── playback's own machinery: its own object ────────────────────────
   //
   // A collaborator (session/playback_rig.dart): the transport, its three
@@ -519,6 +457,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     internals: this,
+    renderCaches: renderCaches,
     settings: _projectSettings,
     voiceRecording: _voiceRecording,
     audioConformStore: audioConformStore,
@@ -655,7 +594,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, timeline: this, internals: this);
+  late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, timeline: this, internals: this, renderCaches: renderCaches);
   late final LayerClipboard _layerClipboard = LayerClipboard(project: this, selection: this, changes: this, internals: this);
 
   // ── the layer verbs: their own object, in their own file ────────────
@@ -1095,7 +1034,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, laneVerbs: _laneVerbs, rangeSelections: _rangeSelections, clipboard: _clipboard, internals: this);
+  late final CellVerbs _cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, laneVerbs: _laneVerbs, rangeSelections: _rangeSelections, clipboard: _clipboard, internals: this, renderCaches: renderCaches);
 
   bool get canDeleteCellForSelection => _cells.canDeleteCellForSelection;
   bool get cellSelectionClaimsSubject => _cells.cellSelectionClaimsSubject;
@@ -1316,43 +1255,6 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// A5 — the trailing edge of an edit burst, so the warming queue
-  /// restarts ONCE per burst instead of once per dab commit. Only the
-  /// RESTART is deferred: the cache invalidations and the yield signal
-  /// stay synchronous, because a stale composite must be unservable the
-  /// instant the stroke lands. The window costs nothing in production —
-  /// warming cannot start until [PlaybackPrerenderScheduler.idleDelay]
-  /// (1200ms) of quiet anyway, so any window under that only merges
-  /// restarts it never delays.
-  Timer? _warmDebounce;
-
-  static final Duration _warmDebounceWindow =
-      Platform.environment['FLUTTER_TEST'] == 'true'
-      // Tests: next-turn, mirroring the scheduler's zero idleDelay — a
-      // pending 200ms timer at teardown trips the binding's timer
-      // invariant before the session's tearDown dispose runs. Zero still
-      // debounces: a synchronous burst re-arms one timer and fires once.
-      ? Duration.zero
-      : const Duration(milliseconds: 200);
-
-  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
-    layerFrameImageCache.invalidateFrame(invalidation.frameKey);
-    cutFrameCompositeCache.invalidateWhereLayerFrame(
-      layerId: invalidation.frameKey.layerId,
-      frameId: invalidation.frameKey.frameId,
-    );
-    // Warming yields to the edit and then re-renders the dirty frames.
-    playbackRig.prerenderScheduler.notifyEditActivity();
-    _warmDebounce?.cancel();
-    _warmDebounce = Timer(_warmDebounceWindow, () {
-      _warmDebounce = null;
-      if (disposed) {
-        return;
-      }
-      warmActiveCut();
-    });
-  }
-
   /// Warms the active cut's composites around the playhead ("navigate away
   /// from a frame and it gets pre-rendered") — and the NEXT cut behind it
   /// (#31, 유저 확정: 스토리보드 프로의 룩어헤드를 따른다). The next cut
@@ -1380,8 +1282,12 @@ class EditorSessionManager extends ChangeNotifier
     // notifies a disposed ChangeNotifier.
     disposed = true;
     _textCelBakes.dispose();
-    brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
-    brushFrameStore.celPixelRevision.removeListener(_bumpCelTintRevision);
+    renderCaches.brushFrameStore.celContentRevision.removeListener(
+      _bumpCelTintRevision,
+    );
+    renderCaches.brushFrameStore.celPixelRevision.removeListener(
+      _bumpCelTintRevision,
+    );
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
     currentRowListenable.dispose();
@@ -1390,8 +1296,6 @@ class EditorSessionManager extends ChangeNotifier
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
     memoryPressureTicks.dispose();
-    _warmDebounce?.cancel();
-    cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playbackRig.playback.globalFrameIndexListenable.removeListener(
       followPlaybackCut,
     );
@@ -1400,8 +1304,7 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
     _voiceRecording.dispose();
     playbackRig.dispose();
-    cutFrameCompositeCache.dispose();
-    layerFrameImageCache.dispose();
+    renderCaches.dispose();
     audioConformStore.dispose();
     appSettings.dispose();
     soloedSeLayerIds.dispose();
@@ -2199,7 +2102,7 @@ class EditorSessionManager extends ChangeNotifier
     // R19 P3b: the baked raster is the truth — the resolver is a plain
     // reference read (valid display cache first, else baked). No replay
     // exists anymore.
-    return brushFrameStore.currentSurfaceWithoutReplay(
+    return renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
       frameKey,
       canvasSize: cut.canvasSize,
     );
@@ -3414,6 +3317,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     internals: this,
+    renderCaches: renderCaches,
     landing: importLanding,
     fingerprints: mediaFingerprints,
   );
@@ -3423,6 +3327,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     internals: this,
+    renderCaches: renderCaches,
     timeline: this,
     landing: importLanding,
     staging: mediaStagingStore,
@@ -3505,7 +3410,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     bakeCelSurface(
-      brushFrameStore,
+      renderCaches.brushFrameStore,
       brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       BitmapSurface(canvasSize: cut.canvasSize).putTiles([
         for (final tile in tiles)
@@ -3569,10 +3474,10 @@ class EditorSessionManager extends ChangeNotifier
   /// The whole-state reset an .anicel open performs, minus the parts that
   /// only exist for saved files (recovery, cel restore, healing).
   void _resetSessionForImportedProject(CutId firstCutId) {
-    brushFrameStore.restoreFromFile(const {});
-    conteInkRowStore.restoreFromFile(const {});
-    conteInkPageStore.restoreFromFile(const {});
-    envelopeInkStore.restoreFromFile(const {});
+    renderCaches.brushFrameStore.restoreFromFile(const {});
+    renderCaches.conteInkRowStore.restoreFromFile(const {});
+    renderCaches.conteInkPageStore.restoreFromFile(const {});
+    renderCaches.envelopeInkStore.restoreFromFile(const {});
     historyManager.clear();
     _clipboard.clear();
     _layerClipboard.clear();
@@ -3858,7 +3763,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/text_cel_bakes.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final TextCelBakes _textCelBakes = TextCelBakes(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final TextCelBakes _textCelBakes = TextCelBakes(project: this, selection: this, changes: this, timeline: this, internals: this, renderCaches: renderCaches);
 
   TextCelContent? get selectedTextCelContent =>
       _textCelBakes.selectedTextCelContent;
@@ -5597,7 +5502,7 @@ class EditorSessionManager extends ChangeNotifier
       final cut = requireActiveCut;
       commands.add(
         RekeyBrushFramesCommand(
-          store: brushFrameStore,
+          store: renderCaches.brushFrameStore,
           pairs: [
             for (final frameId in plan.movedFrameIds)
               (
@@ -5622,7 +5527,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, timeline: this, camera: _camera, folders: _folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, timeline: this, camera: _camera, folders: _folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -6367,9 +6272,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     internals: this,
     playbackRig: playbackRig,
-    conteInkRowStore: conteInkRowStore,
-    conteInkPageStore: conteInkPageStore,
-    envelopeInkStore: envelopeInkStore,
+    renderCaches: renderCaches,
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
@@ -6606,7 +6509,7 @@ class EditorSessionManager extends ChangeNotifier
         frame.id == selectedFrame?.id) {
       return true;
     }
-    return brushFrameStore.celHasRenderableContent(
+    return renderCaches.brushFrameStore.celHasRenderableContent(
       brushFrameKeyForCut(cut, layer.id, frame.id),
     );
   }

@@ -85,7 +85,7 @@ void main() {
     }
     for (final layer in session.layers) {
       for (final frame in layer.frames) {
-        session.brushFrameStore.storeBakedSurface(
+        session.renderCaches.brushFrameStore.storeBakedSurface(
           session.brushFrameKeyForCut(cut, layer.id, frame.id),
           BitmapSurface(
             canvasSize: cut.canvasSize,
@@ -164,7 +164,7 @@ void main() {
       // cel with nothing in it. `celPixelRevision` is the signal that does
       // fire on every surface write.
       final before = session.celTintRevision.value;
-      session.brushFrameStore.celPixelRevision.value += 1;
+      session.renderCaches.brushFrameStore.celPixelRevision.value += 1;
       await tester.pump();
 
       expect(

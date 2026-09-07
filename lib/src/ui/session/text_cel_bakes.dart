@@ -11,6 +11,7 @@ import '../../models/layer_link_registry.dart';
 import '../../models/media_asset.dart';
 import '../../models/text_cel_style.dart';
 import '../text/text_cel_render.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// The TEXT-CEL BAKES — text cels are baked to pixels in a background sweep
@@ -27,17 +28,20 @@ class TextCelBakes {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
 
   /// Canonical cel key → the exact inputs its stored raster was rendered
   /// from. The CONTENT itself, not a hash — equality gates skipping a
@@ -163,7 +167,7 @@ class TextCelBakes {
     if (known == null &&
         content != null &&
         content.text.isNotEmpty &&
-        _internals.brushFrameStore.celHasRenderableContent(raw)) {
+        _renderCaches.brushFrameStore.celHasRenderableContent(raw)) {
       // First sight of a cel that already carries pixels (a loaded
       // project): trust the stored projection instead of paying a
       // full re-render on open (saves flush in-flight bakes, so an
@@ -183,7 +187,7 @@ class TextCelBakes {
       // undo cannot restore.
       if (known != null) {
         bakeCelSurface(
-          _internals.brushFrameStore,
+          _renderCaches.brushFrameStore,
           raw,
           BitmapSurface(canvasSize: cut.canvasSize),
         );
@@ -210,7 +214,7 @@ class TextCelBakes {
         if (_internals.disposed) {
           return null;
         }
-        bakeCelSurface(_internals.brushFrameStore, raw, surface);
+        bakeCelSurface(_renderCaches.brushFrameStore, raw, surface);
         changed = true;
       } finally {
         rendered.image.dispose();

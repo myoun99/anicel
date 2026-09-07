@@ -53,7 +53,7 @@ void main() {
     );
     BrushFrameEditingCoordinator(
       initialFrameKey: drawnKey,
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -81,7 +81,10 @@ void main() {
     await s.projectDoor.saveProjectToFile(path);
     await s.projectDoor.openProjectFromFile(path);
     // Sanity: the open restored the baked raster truth.
-    expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
+    expect(
+      s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
+      isNotEmpty,
+    );
     return (s, drawnKey);
   }
 
@@ -99,7 +102,10 @@ void main() {
     expect(surface, isNotNull, reason: 'a loaded cel is NOT empty');
     expect(surface!.tiles, isNotEmpty);
     expect(
-      identical(surface, s.brushFrameStore.bakedSurfaceOrNull(drawnKey)),
+      identical(
+        surface,
+        s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey),
+      ),
       isTrue,
       reason: 'served from the baked truth, no replay and no copy',
     );
@@ -111,7 +117,9 @@ void main() {
       final (s, drawnKey) = await reopenedSession();
       addTearDown(s.dispose);
 
-      final cache = LayerFrameImageCache(frameStore: s.brushFrameStore);
+      final cache = LayerFrameImageCache(
+        frameStore: s.renderCaches.brushFrameStore,
+      );
       addTearDown(cache.dispose);
       final image = await cache.prepare(
         key: drawnKey,

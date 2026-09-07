@@ -383,7 +383,7 @@ void main() {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       final inkBox = CutEnvelopePresets.analog.inkBoxes.first;
-      session.envelopeInkStore.storeBakedSurface(
+      session.renderCaches.envelopeInkStore.storeBakedSurface(
         envelopeInkBoxKey(const CutId('39'), inkBox.id),
         _inkSurface(),
       );

@@ -176,7 +176,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   late final Listenable _frameReadySignal = Listenable.merge([
     _session.playbackRig.prerenderScheduler.progress,
-    _session.brushFrameStore.celPixelRevision,
+    _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
 
   void _syncFrameCursor() {
@@ -642,7 +642,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // the ordinary notify path told this panel to look again — the
           // tint sat until an unrelated rebuild. Only EMPTY↔drawn crossings
           // bump this, so ordinary strokes cost nothing.
-          _session.brushFrameStore.celContentRevision,
+          _session.renderCaches.brushFrameStore.celContentRevision,
           // ⑨: the row selection grows PER POINTER MOVE inside a gesture,
           // which is exactly the contract the session's own notify does not
           // have (a drag is silent until release). Its notifier is the

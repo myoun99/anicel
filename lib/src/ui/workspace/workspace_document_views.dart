@@ -102,12 +102,12 @@ class _WorkspaceDocumentViews {
   /// The cel stores are the SESSION's (R5): the archive saves and loads
   /// them with the project; this controller owns only the edit sessions.
   late final ConteInkController _conteInk = ConteInkController(
-    rowStore: _state.widget.session.conteInkRowStore,
-    pageStore: _state.widget.session.conteInkPageStore,
+    rowStore: _state.widget.session.renderCaches.conteInkRowStore,
+    pageStore: _state.widget.session.renderCaches.conteInkPageStore,
   );
 
   late final CutEnvelopeInkController _envelopeInk = CutEnvelopeInkController(
-    store: _state.widget.session.envelopeInkStore,
+    store: _state.widget.session.renderCaches.envelopeInkStore,
   );
 
   /// Disposes every notifier and controller the views own; the workspace's

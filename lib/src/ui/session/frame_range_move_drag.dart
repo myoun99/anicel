@@ -23,6 +23,7 @@ import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/commands/track_transition_commands.dart';
 import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_section_policy.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 import 'camera.dart';
@@ -121,6 +122,7 @@ class FrameRangeMoveDrag {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
     required Camera camera,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
@@ -131,6 +133,7 @@ class FrameRangeMoveDrag {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _renderCaches = renderCaches,
        _camera = camera,
        _folders = folders,
        _rangeSelections = rangeSelections,
@@ -144,6 +147,7 @@ class FrameRangeMoveDrag {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final Camera _camera;
   final FoldersAndAttachments _folders;
   final RangeSelections _rangeSelections;
@@ -1770,7 +1774,7 @@ class FrameRangeMoveDrag {
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
       commands.add(
         RekeyBrushFramesCommand(
-          store: _internals.brushFrameStore,
+          store: _renderCaches.brushFrameStore,
           pairs: [
             for (final rekey in multiRowPlan!.rekeys)
               (

@@ -39,7 +39,7 @@ void main() {
     );
     final pixels = Uint8List(256 * 256 * 4);
     pixels[3] = 255;
-    s.brushFrameStore.storeBakedSurface(
+    s.renderCaches.brushFrameStore.storeBakedSurface(
       key,
       BitmapSurface(canvasSize: originalSize).putTile(
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 256, pixels: pixels),
@@ -59,7 +59,7 @@ void main() {
     addTearDown(loaded.dispose);
     await loaded.projectDoor.openProjectFromFile(path);
 
-    final healed = loaded.brushFrameStore.bakedSurfaceOrNull(key)!;
+    final healed = loaded.renderCaches.brushFrameStore.bakedSurfaceOrNull(key)!;
     expect(
       healed.canvasSize,
       const CanvasSize(width: 640, height: 360),

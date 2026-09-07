@@ -689,11 +689,11 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
           '${Directory.systemTemp.path}/r27_repro_'
           '${DateTime.now().microsecondsSinceEpoch}$anicelProjectSuffix';
       await session.projectDoor.saveProjectToFile(savePath);
-      session.brushFrameStore.hotCelByteBudget = 0;
+      session.renderCaches.brushFrameStore.hotCelByteBudget = 0;
       _log('fill-roundtrip B: saved + hot budget 0');
       session.duplicateActiveCut(); // Jumps to the copy = walk away.
       await _settleFrames(10);
-      await session.brushFrameStore.drainTiering();
+      await session.renderCaches.brushFrameStore.drainTiering();
       session.selectCut(originalCutId);
       await _settleFrames(6);
       session.selectFrameIndex(7);

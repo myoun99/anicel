@@ -195,7 +195,7 @@ void main() {
       for (final id in frameIds) s.brushFrameKeyForCut(cut, b.id, id),
     ];
     for (final key in fromKeys) {
-      s.brushFrameStore.getOrCreateFrame(key);
+      s.renderCaches.brushFrameStore.getOrCreateFrame(key);
     }
 
     s.updateFrameRangeSelectionDrag(
@@ -214,8 +214,8 @@ void main() {
     expect(movedB.timeline[0], isNotNull);
     expect(movedB.timeline[3], isNotNull);
     for (var i = 0; i < frameIds.length; i += 1) {
-      expect(s.brushFrameStore.frameOrNull(fromKeys[i]), isNull);
-      expect(s.brushFrameStore.frameOrNull(toKeys[i]), isNotNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(fromKeys[i]), isNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(toKeys[i]), isNotNull);
     }
 
     s.undo();
@@ -225,8 +225,8 @@ void main() {
     expect(backA.timeline[3], isNotNull);
     expect(backB.timeline, isEmpty);
     for (var i = 0; i < frameIds.length; i += 1) {
-      expect(s.brushFrameStore.frameOrNull(fromKeys[i]), isNotNull);
-      expect(s.brushFrameStore.frameOrNull(toKeys[i]), isNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(fromKeys[i]), isNotNull);
+      expect(s.renderCaches.brushFrameStore.frameOrNull(toKeys[i]), isNull);
     }
   });
 

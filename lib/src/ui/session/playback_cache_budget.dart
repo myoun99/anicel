@@ -7,6 +7,7 @@ import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
 import '../../models/playback_quality.dart';
 import '../playback/canvas_playback_controller.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// The RUN this budget is trimming for — declared on the CONSUMER's
@@ -32,20 +33,20 @@ abstract interface class PlaybackRun {
 class PlaybackCacheBudget {
   PlaybackCacheBudget({
     required ProjectAccess project,
-    required SessionInternals internals,
+    required RenderCaches renderCaches,
     required PlaybackRun run,
   }) : _project = project,
-       _internals = internals,
+       _renderCaches = renderCaches,
        _run = run;
 
   final ProjectAccess _project;
-  final SessionInternals _internals;
+  final RenderCaches _renderCaches;
   final PlaybackRun _run;
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
       PlaybackCacheBudgetEnforcer(
-        layerImages: _internals.layerFrameImageCache,
-        composites: _internals.cutFrameCompositeCache,
+        layerImages: _renderCaches.layerFrameImageCache,
+        composites: _renderCaches.cutFrameCompositeCache,
         maxBytes: _debugMaxBytes ?? playbackCacheBudgetBytes,
       );
 
@@ -80,7 +81,7 @@ class PlaybackCacheBudget {
 
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),
-    reservedForDisplayBytes: _internals.layerFrameImageCache.pinnedBytes,
+    reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
   );
 
   /// The OS memory warning, the playback caches' share: the enforcer
@@ -161,7 +162,7 @@ class PlaybackCacheBudget {
   /// The empty answer reads the same shared visit the signature rides, so
   /// it cannot disagree with what the compose loop would actually paint.
   bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
-    if (_internals.cutFrameCompositeCache.validCompositeOrNull(
+    if (_renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: cut,
           frameIndex: frameIndex,
           quality: _run.playbackQuality,

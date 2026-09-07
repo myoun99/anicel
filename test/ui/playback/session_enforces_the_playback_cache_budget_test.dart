@@ -88,7 +88,7 @@ void main() {
         LayerId(layerId),
         FrameId(frameId),
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
         tileSize: 4,
@@ -133,14 +133,14 @@ void main() {
       ]) {
         final cut = s.cutById(CutId(id))!;
         draw(s, cut, '$id-layer', frameId);
-        await s.cutFrameCompositeCache.prepareComposite(
+        await s.renderCaches.cutFrameCompositeCache.prepareComposite(
           cut: cut,
           frameIndex: 0,
           quality: PlaybackQuality.full,
         );
       }
       expect(
-        s.cutFrameCompositeCache.estimatedBytes,
+        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
         2 * fullImageBytes,
         reason: 'two composites of inactive cuts — twice the budget',
       );
@@ -148,7 +148,7 @@ void main() {
       s.playbackRig.playbackCache.enforcePlaybackCacheBudget();
 
       expect(
-        s.cutFrameCompositeCache.estimatedBytes,
+        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
         lessThanOrEqualTo(fullImageBytes),
         reason:
             'the session handed the enforcer its budget; cut-2 is not '

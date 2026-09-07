@@ -119,7 +119,7 @@ void main() {
     // The pixels are in the store, which is what makes an imported cel
     // indistinguishable from a drawn one everywhere downstream.
     expect(
-      s.brushFrameStore.bakedSurfaceOrNull(
+      s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
         s.brushFrameKeyForCut(after, under.id, under.frames.single.id),
       ),
       isNotNull,

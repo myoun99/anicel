@@ -55,12 +55,18 @@ void main() {
         const CutId('deleted-cut'),
         'cel-row-3',
       );
-      session.envelopeInkStore.storeBakedSurface(liveKey, inkSurface(seed: 3));
-      session.envelopeInkStore.storeBakedSurface(
+      session.renderCaches.envelopeInkStore.storeBakedSurface(
+        liveKey,
+        inkSurface(seed: 3),
+      );
+      session.renderCaches.envelopeInkStore.storeBakedSurface(
         otherBoxKey,
         inkSurface(seed: 4),
       );
-      session.envelopeInkStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
+      session.renderCaches.envelopeInkStore.storeBakedSurface(
+        deadKey,
+        inkSurface(seed: 5),
+      );
       await session.projectDoor.saveProjectToFile(path);
 
       final loaded = EditorSessionManager(
@@ -70,22 +76,24 @@ void main() {
       await loaded.projectDoor.openProjectFromFile(path);
 
       expect(
-        loaded.envelopeInkStore.celHasRenderableContent(liveKey),
+        loaded.renderCaches.envelopeInkStore.celHasRenderableContent(liveKey),
         isTrue,
         reason: 'what was written on the sheet reopens with the project',
       );
       expect(
-        loaded.envelopeInkStore.celHasRenderableContent(otherBoxKey),
+        loaded.renderCaches.envelopeInkStore.celHasRenderableContent(
+          otherBoxKey,
+        ),
         isTrue,
         reason: 'every box of the sheet, not just the first',
       );
       expect(
-        loaded.envelopeInkStore.celHasRenderableContent(deadKey),
+        loaded.renderCaches.envelopeInkStore.celHasRenderableContent(deadKey),
         isFalse,
         reason: 'a deleted cut takes its envelope with it',
       );
       expect(
-        loaded.brushFrameStore.fileCelKeys.where(isEnvelopeInkKey),
+        loaded.renderCaches.brushFrameStore.fileCelKeys.where(isEnvelopeInkKey),
         isEmpty,
         reason: 'sheet ink can never leak into a cel',
       );

@@ -60,7 +60,7 @@ void main() {
         selection.layerId,
         selection.frameId,
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,

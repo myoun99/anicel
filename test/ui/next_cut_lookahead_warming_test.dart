@@ -85,8 +85,8 @@ void main() {
       const LayerId('layer-1'),
       const FrameId('frame-1'),
     );
-    session.brushFrameStore.storeBakedSurface(firstKey, inkedSurface(3));
-    session.brushFrameStore.storeBakedSurface(
+    session.renderCaches.brushFrameStore.storeBakedSurface(firstKey, inkedSurface(3));
+    session.renderCaches.brushFrameStore.storeBakedSurface(
       session.brushFrameKeyForCut(
         second,
         const LayerId('layer-2'),
@@ -97,7 +97,7 @@ void main() {
 
     // One edit-burst invalidation: the debounced restart rebuilds the warm
     // order — which must now carry cut-2 behind cut-1.
-    session.cacheInvalidationHub.invalidateBrushFrame(
+    session.renderCaches.cacheInvalidationHub.invalidateBrushFrame(
       BrushFrameCacheInvalidation(frameKey: firstKey, wholeFrame: true),
     );
     // Debounce trailing edge, then the run itself.
@@ -106,7 +106,7 @@ void main() {
     await session.playbackRig.prerenderScheduler.idle;
 
     expect(
-      session.cutFrameCompositeCache.validCompositeOrNull(
+      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: first,
         frameIndex: 0,
         quality: session.playbackRig.playbackQuality,
@@ -115,7 +115,7 @@ void main() {
       reason: 'the active cut warms first, as before',
     );
     expect(
-      session.cutFrameCompositeCache.validCompositeOrNull(
+      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: second,
         frameIndex: 0,
         quality: session.playbackRig.playbackQuality,

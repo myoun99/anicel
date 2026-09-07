@@ -77,7 +77,7 @@ void main() {
       expect(range.endFrame, cutWarmFrameCount(activeCut) - 1);
       expect(range.endFrame, 6, reason: 'the runway reaches frame 6');
 
-      await s.cutFrameCompositeCache.prepareComposite(
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
         quality: quality,
@@ -88,19 +88,19 @@ void main() {
       final other = quality == PlaybackQuality.full
           ? PlaybackQuality.half
           : PlaybackQuality.full;
-      await s.cutFrameCompositeCache.prepareComposite(
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
         quality: other,
       );
 
-      s.cutFrameCompositeCache.enforceBudget(
+      s.renderCaches.cutFrameCompositeCache.enforceBudget(
         maxBytes: 0,
         protect: s.playbackRig.playbackCache.debugPlaybackProtectedRanges(),
       );
 
       expect(
-        s.cutFrameCompositeCache.validCompositeOrNull(
+        s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: activeCut,
           frameIndex: 5,
           quality: quality,
@@ -110,7 +110,7 @@ void main() {
             'the one-law derivation exists to end',
       );
       expect(
-        s.cutFrameCompositeCache.validCompositeOrNull(
+        s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: activeCut,
           frameIndex: 5,
           quality: other,
@@ -175,7 +175,7 @@ void main() {
             'bake, or the bar claims readiness playback cannot deliver',
       );
 
-      await s.cutFrameCompositeCache.prepareComposite(
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
         quality: s.playbackRig.playbackQuality,

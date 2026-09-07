@@ -44,7 +44,7 @@ void main() {
 
       BrushFrameEditingCoordinator(
         initialFrameKey: frameKey,
-        frameStore: session.brushFrameStore,
+        frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
         historyPolicy: const BrushHistoryPolicy(
           userUndoLimit: 8,

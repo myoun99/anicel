@@ -220,7 +220,7 @@ void main() {
       expect(s.celHasContentForLayer(layer, 0), isFalse);
       final before = s.celTintRevision.value;
 
-      s.brushFrameStore.storeBakedSurface(
+      s.renderCaches.brushFrameStore.storeBakedSurface(
         s.brushFrameKeyForCut(s.activeCutOrNull!, layer.id, frameId),
         surfaceWithInk(),
       );
@@ -355,17 +355,19 @@ void main() {
       );
 
       var bumps = 0;
-      s.brushFrameStore.celContentRevision.addListener(() => bumps += 1);
+      s.renderCaches.brushFrameStore.celContentRevision.addListener(
+        () => bumps += 1,
+      );
 
-      s.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
+      s.renderCaches.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
       expect(bumps, 1, reason: 'empty → drawn');
 
       // A second stroke on an already-drawn cel changes no emptiness.
-      s.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
+      s.renderCaches.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
       expect(bumps, 1);
 
       // Back to blank (an undo to an empty surface).
-      s.brushFrameStore.storeBakedSurface(
+      s.renderCaches.brushFrameStore.storeBakedSurface(
         key,
         BitmapSurface(
           canvasSize: const CanvasSize(width: 4, height: 4),

@@ -252,9 +252,9 @@ void main() {
     final rowKey = conteInkRowKey(cutId, const FrameId('sb-f1'));
     final pageKey = conteInkPageKey(0);
     final envelopeKey = envelopeInkBoxKey(cutId, 'cel-row-3');
-    s.conteInkRowStore.storeBakedSurface(rowKey, inkSurface(seed: 3));
-    s.conteInkPageStore.storeBakedSurface(pageKey, inkSurface(seed: 4));
-    s.envelopeInkStore.storeBakedSurface(envelopeKey, inkSurface(seed: 5));
+    s.renderCaches.conteInkRowStore.storeBakedSurface(rowKey, inkSurface(seed: 3));
+    s.renderCaches.conteInkPageStore.storeBakedSurface(pageKey, inkSurface(seed: 4));
+    s.renderCaches.envelopeInkStore.storeBakedSurface(envelopeKey, inkSurface(seed: 5));
     final overlayPath = '${directory.path.replaceAll('\\', '/')}/ink.overlay';
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     s.dispose();
@@ -263,17 +263,17 @@ void main() {
     addTearDown(restored.dispose);
     await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
     expect(
-      restored.conteInkRowStore.celHasRenderableContent(rowKey),
+      restored.renderCaches.conteInkRowStore.celHasRenderableContent(rowKey),
       isTrue,
       reason: 'the conte row plane rides the overlay',
     );
     expect(
-      restored.conteInkPageStore.celHasRenderableContent(pageKey),
+      restored.renderCaches.conteInkPageStore.celHasRenderableContent(pageKey),
       isTrue,
       reason: 'the conte page plane rides the overlay',
     );
     expect(
-      restored.envelopeInkStore.celHasRenderableContent(envelopeKey),
+      restored.renderCaches.envelopeInkStore.celHasRenderableContent(envelopeKey),
       isTrue,
       reason: 'the envelope sheet rides the overlay',
     );

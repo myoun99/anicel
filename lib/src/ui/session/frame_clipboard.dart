@@ -8,6 +8,7 @@ import '../../models/timeline_exposure.dart';
 import '../../services/editing/cut_duplicate_helpers.dart'
     show duplicateFrameContent;
 import '../../models/timeline_splice.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
 /// The FRAME CLIPBOARD — the frame the user copied, and pasting it back
@@ -29,12 +30,14 @@ class FrameClipboard {
     required FrameIds frameIds,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _timeline = timeline,
-       _internals = internals;
+       _internals = internals,
+       _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -42,6 +45,7 @@ class FrameClipboard {
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final RenderCaches _renderCaches;
 
   _CopiedFrameReference? _copiedFrame;
 
@@ -567,13 +571,13 @@ class FrameClipboard {
         break; // Gap state: no cut, so no key to store a picture under.
       }
       for (final entry in minted.entries) {
-        final surface = _internals.brushFrameStore.bakedSurfaceOrNull(
+        final surface = _renderCaches.brushFrameStore.bakedSurfaceOrNull(
           _internals.brushFrameKeyForCut(cut, copied.layerId, entry.key),
         );
         if (surface == null) {
           continue;
         }
-        _internals.brushFrameStore.storeBakedSurface(
+        _renderCaches.brushFrameStore.storeBakedSurface(
           _internals.brushFrameKeyForCut(cut, targetId, entry.value),
           surface,
         );

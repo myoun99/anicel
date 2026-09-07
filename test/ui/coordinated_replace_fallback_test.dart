@@ -58,7 +58,7 @@ void main() {
         selection.layerId,
         selection.frameId,
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -135,7 +135,7 @@ void main() {
     expect(s.projectFile.hasUnsavedChanges, isFalse);
     expect(s.projectFile.path, path);
 
-    final refPaths = s.brushFrameStore
+    final refPaths = s.renderCaches.brushFrameStore
         .bakedSnapshotForSave()
         .fileRefs
         .values

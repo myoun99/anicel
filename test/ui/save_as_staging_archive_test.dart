@@ -45,7 +45,7 @@ void main() {
         selection.layerId,
         selection.frameId,
       ),
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -105,7 +105,7 @@ void main() {
     // read survives a wrong adoption and measures nothing (a mutation
     // proved it). What adoption changes is where the refs POINT.
     expect(
-      s.brushFrameStore
+      s.renderCaches.brushFrameStore
           .bakedSnapshotForSave()
           .fileRefs
           .values
@@ -115,7 +115,7 @@ void main() {
           'to move that file, and refs into it would be every cel dying',
     );
     File(copy).deleteSync();
-    expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
+    expect(s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
   });
 
   test('a SAVED session can stage a copy elsewhere without its own refs '
@@ -139,7 +139,7 @@ void main() {
 
     expect(s.projectFile.path, home);
     // Same instrument as above: the refs' PATHS are what adoption moves.
-    final refPaths = s.brushFrameStore
+    final refPaths = s.renderCaches.brushFrameStore
         .bakedSnapshotForSave()
         .fileRefs
         .values
@@ -152,7 +152,7 @@ void main() {
       reason: 'the saved session still reads from ITS file, not the copy',
     );
     File(copy).deleteSync();
-    expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
+    expect(s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
   });
 
   test('🚨 adopting what the picker PLACED costs no write — that second '
@@ -194,7 +194,7 @@ void main() {
     // back on demand.
     expect(File(placed).deleteSync, returnsNormally);
     expect(
-      s.brushFrameStore
+      s.renderCaches.brushFrameStore
           .bakedSnapshotForSave()
           .fileRefs
           .values

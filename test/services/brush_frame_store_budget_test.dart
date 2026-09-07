@@ -152,12 +152,12 @@ void main() {
     // No engine in a host test run → unknown RAM → the desktop default.
     // (On CI the engine may load; then the seed is machine-scaled but
     // still within the clamp.)
-    expect(session.brushFrameStore.hotCelByteBudget, inInclusiveRange(384 * mb, 1536 * mb));
+    expect(session.renderCaches.brushFrameStore.hotCelByteBudget, inInclusiveRange(384 * mb, 1536 * mb));
 
-    session.brushFrameStore.hotCelByteBudget = 1024 * mb;
+    session.renderCaches.brushFrameStore.hotCelByteBudget = 1024 * mb;
     session.respondToMemoryPressure();
     expect(
-      session.brushFrameStore.hotCelByteBudget,
+      session.renderCaches.brushFrameStore.hotCelByteBudget,
       512 * mb,
       reason: 'the session forwards the OS signal to the store',
     );

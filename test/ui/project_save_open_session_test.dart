@@ -37,7 +37,7 @@ void main() {
     );
     BrushFrameEditingCoordinator(
       initialFrameKey: drawnKey,
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -89,7 +89,7 @@ void main() {
 
     // The saved drawing survived the round-trip as BAKED raster truth
     // (R19 bake-only: opens carry no commands — the picture is the file).
-    expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
+    expect(s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
 
     // New edits after the load are undoable and undo cleanly.
     s.selectCut(s.repository.requireProject().tracks.first.cuts.first.id);
@@ -207,7 +207,7 @@ void main() {
     );
     BrushFrameEditingCoordinator(
       initialFrameKey: drawnKey,
-      frameStore: s.brushFrameStore,
+      frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
@@ -254,7 +254,7 @@ void main() {
     expect(fresh.projectFile.path, path, reason: 'saves go to the real file');
     expect(fresh.projectFile.hasUnsavedChanges, isTrue);
     expect(
-      fresh.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
+      fresh.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
       isNotEmpty,
       reason: 'the overlay holds only the delta — the base cel must come '
           'from the project file underneath it',

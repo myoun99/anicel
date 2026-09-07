@@ -41,6 +41,7 @@ import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'project_file.dart';
 import 'playback_rig.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 import 'text_cel_bakes.dart';
 
@@ -55,9 +56,7 @@ class ProjectFileDoor {
     required TimelineAccess timeline,
     required SessionInternals internals,
     required PlaybackRig playbackRig,
-    required BrushFrameStore conteInkRowStore,
-    required BrushFrameStore conteInkPageStore,
-    required BrushFrameStore envelopeInkStore,
+    required RenderCaches renderCaches,
     required MediaStagingStore staging,
     required MediaGrantLedger grants,
     required MediaFingerprintLedger fingerprints,
@@ -75,9 +74,7 @@ class ProjectFileDoor {
        _timeline = timeline,
        _internals = internals,
        _playbackRig = playbackRig,
-       _conteInkRowStore = conteInkRowStore,
-       _conteInkPageStore = conteInkPageStore,
-       _envelopeInkStore = envelopeInkStore,
+       _renderCaches = renderCaches,
        _staging = staging,
        _grants = grants,
        _fingerprints = fingerprints,
@@ -96,9 +93,7 @@ class ProjectFileDoor {
   final TimelineAccess _timeline;
   final SessionInternals _internals;
   final PlaybackRig _playbackRig;
-  final BrushFrameStore _conteInkRowStore;
-  final BrushFrameStore _conteInkPageStore;
-  final BrushFrameStore _envelopeInkStore;
+  final RenderCaches _renderCaches;
   final MediaStagingStore _staging;
   final MediaGrantLedger _grants;
   final MediaFingerprintLedger _fingerprints;
@@ -116,9 +111,9 @@ class ProjectFileDoor {
   /// lists them: the drawings, then the two conte ink namespaces, then
   /// the cut envelope's.
   List<BrushFrameStore> get _auxCelStores => [
-    _conteInkRowStore,
-    _conteInkPageStore,
-    _envelopeInkStore,
+    _renderCaches.conteInkRowStore,
+    _renderCaches.conteInkPageStore,
+    _renderCaches.envelopeInkStore,
   ];
 
   /// Cels the last save could not write because the file their only copy
@@ -172,7 +167,7 @@ class ProjectFileDoor {
     await _textCelBakes.flushTextCelBakes();
     await _anicelFileService.writeRecoveryOverlay(
       project: _project.repository.requireProject(),
-      brushFrameStore: _internals.brushFrameStore,
+      brushFrameStore: _renderCaches.brushFrameStore,
       auxCelStores: _auxCelStores,
       filePath: path,
       baseFilePath: base,
@@ -262,7 +257,7 @@ class ProjectFileDoor {
     final conforms = _file.conformsToStore();
     await _anicelFileService.save(
       project: _project.repository.requireProject(),
-      brushFrameStore: _internals.brushFrameStore,
+      brushFrameStore: _renderCaches.brushFrameStore,
       auxCelStores: _auxCelStores,
       filePath: path,
       mediaToStore: mediaToStore,
@@ -331,7 +326,7 @@ class ProjectFileDoor {
         '/replace.tmp-${DateTime.now().microsecondsSinceEpoch}';
     await _anicelFileService.save(
       project: _project.repository.requireProject(),
-      brushFrameStore: _internals.brushFrameStore,
+      brushFrameStore: _renderCaches.brushFrameStore,
       auxCelStores: _auxCelStores,
       filePath: staging,
       mediaToStore: mediaToStore,
@@ -351,7 +346,7 @@ class ProjectFileDoor {
         filePath,
       );
     }
-    for (final store in [_internals.brushFrameStore, ..._auxCelStores]) {
+    for (final store in [_renderCaches.brushFrameStore, ..._auxCelStores]) {
       final snapshot = store.bakedSnapshotForSave();
       final dirtyAgain = store.dirtyCelKeysSinceSave;
       final moved = <BrushFrameKey, AnicelCelFileRef>{
@@ -397,7 +392,7 @@ class ProjectFileDoor {
     try {
       celsLostToAMissingFile = await _anicelFileService.save(
         project: _project.repository.requireProject(),
-        brushFrameStore: _internals.brushFrameStore,
+        brushFrameStore: _renderCaches.brushFrameStore,
         auxCelStores: _auxCelStores,
         filePath: filePath,
         mediaToStore: mediaToStore,
@@ -541,15 +536,15 @@ class ProjectFileDoor {
     // drawing" becomes permanent (saving never prunes, so an undone
     // delete keeps its ink within the session).
     final cels = _sortLoadedCels(result);
-    _internals.brushFrameStore.restoreFromFile(cels.main);
+    _renderCaches.brushFrameStore.restoreFromFile(cels.main);
     final healed = _healStaleCelSizes(
       cels.main,
       project: result.project,
-      store: _internals.brushFrameStore,
+      store: _renderCaches.brushFrameStore,
     );
-    _conteInkRowStore.restoreFromFile(cels.inkRow);
-    _conteInkPageStore.restoreFromFile(cels.inkPage);
-    _envelopeInkStore.restoreFromFile(cels.envelope);
+    _renderCaches.conteInkRowStore.restoreFromFile(cels.inkRow);
+    _renderCaches.conteInkPageStore.restoreFromFile(cels.inkPage);
+    _renderCaches.envelopeInkStore.restoreFromFile(cels.envelope);
     _project.historyManager.clear();
     _clipboard.clear();
     _layerClipboard.clear();

@@ -75,7 +75,7 @@ void main() {
     // no hub wired, so nothing here counts as an edit burst yet.
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey,
-      frameStore: session.brushFrameStore,
+      frameStore: session.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
         tileSize: 4,
@@ -100,13 +100,13 @@ void main() {
       ],
     );
 
-    await session.cutFrameCompositeCache.prepareComposite(
+    await session.renderCaches.cutFrameCompositeCache.prepareComposite(
       cut: activeCut,
       frameIndex: 0,
       quality: session.playbackRig.playbackQuality,
     );
     expect(
-      session.cutFrameCompositeCache.validCompositeOrNull(
+      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
         quality: session.playbackRig.playbackQuality,
@@ -133,13 +133,13 @@ void main() {
 
     // The burst: five dab commits' worth of invalidations, synchronously.
     for (var i = 0; i < 5; i += 1) {
-      session.cacheInvalidationHub.invalidateBrushFrame(
+      session.renderCaches.cacheInvalidationHub.invalidateBrushFrame(
         BrushFrameCacheInvalidation(frameKey: frameKey, wholeFrame: true),
       );
     }
 
     expect(
-      session.cutFrameCompositeCache.validCompositeOrNull(
+      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
         quality: session.playbackRig.playbackQuality,
