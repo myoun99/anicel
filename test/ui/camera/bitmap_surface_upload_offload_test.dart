@@ -33,13 +33,13 @@ void main() {
           // Cycles through 0, mid values and 255.
           pixels[index + 3] = (pixel * 5) % 256;
         }
-        surface = surface.putTile(
+        surface = surface.putTiles([
           BitmapTile(
             coord: TileCoord(x: tileX, y: tileY),
             size: 256,
             pixels: pixels,
           ),
-        );
+        ]);
       }
     }
     return surface;

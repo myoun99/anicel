@@ -12,6 +12,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/layer_pose_paint.dart' show cameraProjectionMatrix;
+import '../repaint_props.dart';
 
 /// The camera pose's center in viewport (screen) coordinates.
 Offset cameraCenterInViewport({
@@ -423,7 +424,7 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   }
 }
 
-class CameraFramePainter extends CustomPainter {
+class CameraFramePainter extends CustomPainter with RepaintOnProps {
   const CameraFramePainter({
     required this.pose,
     required this.cameraFrameSize,
@@ -522,13 +523,8 @@ class CameraFramePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CameraFramePainter oldDelegate) =>
-      oldDelegate.pose != pose ||
-      oldDelegate.cameraFrameSize != cameraFrameSize ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.dimOpacity != dimOpacity ||
-      oldDelegate.outlineColor != outlineColor ||
-      oldDelegate.showHandles != showHandles;
+  Object get props =>
+      (pose, cameraFrameSize, viewport, dimOpacity, outlineColor, showHandles);
 }
 
 /// PEN-13: the camera pan that never hands its drag to a late finger —

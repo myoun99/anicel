@@ -295,6 +295,10 @@ void main() {
                 layers: [
                   layer('one', name: 'A', frames: [frame('f1')]),
                   layer('two', name: 'A', frames: [frame('f2')]),
+                  // A THIRD collision, so the bump has to keep counting:
+                  // with two the loop exits on `_2` without ever
+                  // advancing, and a bump stuck at 2 would look correct.
+                  layer('three', name: 'A', frames: [frame('f3')]),
                 ],
               ),
             ],
@@ -304,7 +308,11 @@ void main() {
         range: ExportRange.activeCut,
       );
 
-      expect(plan.map((task) => task.fileName), ['A1.png', 'A1_2.png']);
+      expect(plan.map((task) => task.fileName), [
+        'A1.png',
+        'A1_2.png',
+        'A1_3.png',
+      ]);
     });
 
     test('naming options assemble project/cut prefixes, digits, suffix and '

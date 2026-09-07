@@ -39,10 +39,7 @@ CutLeadEdgePlan planCutLeadEdge({
   int minDuration = 1,
 }) {
   final layout = planBlockRunLeadEdge(
-    slots: [
-      for (final slot in slots)
-        (leadingGap: slot.leadingGapFrames, length: slot.duration),
-    ],
+    slots: blockMoveSlotsOf(slots),
     targetIndex: targetIndex,
     frameDelta: frameDelta,
     minLength: minDuration,
@@ -51,12 +48,13 @@ CutLeadEdgePlan planCutLeadEdge({
   final target = slots[targetIndex];
   return CutLeadEdgePlan(
     durations: {target.id: layout.lengths[targetIndex]},
-    // Only the gaps that actually changed: a full map would make every
-    // step of the drag look like it re-timed the whole track.
-    gaps: {
-      for (var i = 0; i < slots.length; i += 1)
-        if (layout.leadingGaps[i] != slots[i].leadingGapFrames)
-          slots[i].id: layout.leadingGaps[i],
-    },
+    // A lead-edge drag cannot permute, so the order it reads the layout
+    // through is the IDENTITY — the same sparse-gap law, on an axis with
+    // one fewer degree of freedom.
+    gaps: changedLeadingGapsByCut(
+      slots: slots,
+      order: [for (var i = 0; i < slots.length; i += 1) i],
+      leadingGaps: layout.leadingGaps,
+    ),
   );
 }

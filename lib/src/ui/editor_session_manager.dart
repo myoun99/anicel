@@ -228,6 +228,8 @@ import 'session/se_entries.dart';
 import 'session/drawing_block_move_drag.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
+import 'session/active_cut_edits.dart';
+import 'session/row_sweep.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
@@ -1868,11 +1870,18 @@ class EditorSessionManager extends ChangeNotifier
   /// The pill button reads THIS — the same sentence the verb runs on.
   bool get canCreateCut => cutCreationPlan != null;
 
+  // The envelope thirteen active-cut verbs share, in five collaborators
+  // (session/active_cut_edits.dart).
+  late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    timeline: this,
+    changes: this,
+  );
+
   // ── the cut verbs: their own object, in their own file ──────────────
   //
   // A collaborator (session/cut_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, internals: this);
+  late final CutVerbs _cutVerbs = CutVerbs(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, internals: this, activeCut: _activeCutEdits);
 
   void deleteActiveCut() => _cutVerbs.deleteActiveCut();
   bool get canDeleteSelectedCuts => _cutVerbs.canDeleteSelectedCuts;
@@ -2029,7 +2038,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/camera.dart, a part of this library). The session
   // keeps the public queries and commands as forwarders.
-  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, laneMove: _laneMove, internals: this);
+  late final Camera _camera = Camera(project: this, selection: this, changes: this, timeline: this, laneMove: _laneMove, internals: this, activeCut: _activeCutEdits);
 
   CutCamera get activeCutCamera => _camera.activeCutCamera;
   CanvasSize get cameraFrameSize => _camera.cameraFrameSize;
@@ -2229,7 +2238,7 @@ class EditorSessionManager extends ChangeNotifier
   ) => [
     for (final layer in source)
       preview.layerIds.contains(layer.id) &&
-              layerKindHasPictureOpacity(layer.kind)
+              layer.kind.hasPictureOpacity
           ? layer.copyWith(opacity: preview.opacity)
           : layer,
   ];
@@ -2342,7 +2351,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/effects_and_fx.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final EffectsAndFx _effectsAndFx = EffectsAndFx(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
 
   List<LayerEffect> trackEffectsForCut(CutId cutId) =>
       _effectsAndFx.trackEffectsForCut(cutId);
@@ -2805,8 +2814,8 @@ class EditorSessionManager extends ChangeNotifier
   @override
   List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
     (layer) =>
-        layerKindIsClipboardCopyable(layer.kind) &&
-        !layerKindIsSingletonPerCut(layer.kind) &&
+        layer.kind.isClipboardCopyable &&
+        !layer.kind.isSingletonPerCut &&
         !isAttachedLayer(layer),
   );
 
@@ -2841,7 +2850,7 @@ class EditorSessionManager extends ChangeNotifier
   /// inside a cut is not this cut's to edit.
   @override
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layerKindIsReadOnlyInCut(layer.kind));
+      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
 
   /// Renames any row by id — folders included, because a folder is a row.
   @override
@@ -2871,7 +2880,7 @@ class EditorSessionManager extends ChangeNotifier
     if (cut == null) {
       return false;
     }
-    return !layerKindIsSingletonPerCut(kind) ||
+    return !kind.isSingletonPerCut ||
         !cut.layers.any((layer) => layer.kind == kind);
   }
 
@@ -2933,7 +2942,7 @@ class EditorSessionManager extends ChangeNotifier
         // The COVERING kinds (storyboard, image) are born covering their
         // cut — one cell, edge to edge. There is no "X" in their world,
         // so they never start empty and then have to be filled.
-        Layer newLayerFor(Cut cut) => layerKindCoversWithoutGaps(kind)
+        Layer newLayerFor(Cut cut) => kind.coversWithoutGaps
             ? createCoveringLayer(
                 layerId: layerId,
                 frameId: FrameId(nextFrameId(layerId)),
@@ -2990,7 +2999,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/folders_and_attachments.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, timeline: this, internals: this, activeCut: _activeCutEdits);
 
   bool get canAddAttachedLayerToActive => _folders.canAddAttachedLayerToActive;
   void addAttachedLayer(
@@ -3359,7 +3368,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_marks.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this);
+  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, timeline: this, activeCut: _activeCutEdits);
 
   void setLayerMark(LayerId layerId, LayerMark mark) =>
       _marks.setLayerMark(layerId, mark);
@@ -3388,32 +3397,29 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in [
+    final swept = sweepRows(
+      history: historyManager,
+      rows: [
         ...cut.layers,
         ...activeTrack.seLayers,
         activeTrack.transitionLayer,
-      ])
-        if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
-          UpdateLayerTimesheetCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layer.id,
-            onTimesheet: onTimesheet,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: onTimesheet
-            ? 'Add all layers to timesheet'
-            : 'Remove all layers from timesheet',
-        commands: commands,
-      ),
+      ],
+      description: onTimesheet
+          ? 'Add all layers to timesheet'
+          : 'Remove all layers from timesheet',
+      commandFor: (layer) =>
+          layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet
+          ? UpdateLayerTimesheetCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layer.id,
+              onTimesheet: onTimesheet,
+            )
+          : null,
     );
-    notifyListeners();
+    if (swept) {
+      notifyListeners();
+    }
   }
 
   /// Drops the fill-reference flag from every layer — one undo (cut-owned
@@ -3424,26 +3430,22 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in cut.layers)
-        if (layer.isFillReference)
-          UpdateLayerFillReferenceCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layer.id,
-            isFillReference: false,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: 'Clear all fill references',
-        commands: commands,
-      ),
+    final swept = sweepRows(
+      history: historyManager,
+      rows: cut.layers,
+      description: 'Clear all fill references',
+      commandFor: (layer) => layer.isFillReference
+          ? UpdateLayerFillReferenceCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layer.id,
+              isFillReference: false,
+            )
+          : null,
     );
-    notifyListeners();
+    if (swept) {
+      notifyListeners();
+    }
   }
 
   // ── the instructions: their own object, in their own file ───────────
@@ -5011,7 +5013,7 @@ class EditorSessionManager extends ChangeNotifier
       return false;
     }
     final layer = activeLayer;
-    if (layer != null && layerKindHoldsSingleCel(layer.kind)) {
+    if (layer != null && layer.kind.holdsSingleCel) {
       return false;
     }
     return canCopyFrameAtCurrentFrame;
@@ -5334,7 +5336,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     final layer = layerById(layerId);
     return layer != null &&
-        layerKindHoldsDrawings(layer.kind) &&
+        layer.kind.holdsDrawings &&
         layer.kind != LayerKind.se;
   }
 
@@ -5748,7 +5750,7 @@ class EditorSessionManager extends ChangeNotifier
   /// every row that owns its own blocks.
   @override
   List<({int start, int endExclusive})> aggregateRunsForRow(Layer layer) {
-    if (!layerKindGroupsLayers(layer.kind)) {
+    if (!layer.kind.groupsLayers) {
       return const [];
     }
     // R10: the band cache's runs, so the snap and the painted band are one
@@ -6045,7 +6047,7 @@ class EditorSessionManager extends ChangeNotifier
   @override
   bool isSingleCelLayerId(LayerId layerId) {
     final layer = layerById(layerId);
-    return layer != null && layerKindHoldsSingleCel(layer.kind);
+    return layer != null && layer.kind.holdsSingleCel;
   }
 
   /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
@@ -6239,7 +6241,7 @@ class EditorSessionManager extends ChangeNotifier
     // single-cel rows are pinned by the covering normalization.
     if (layer == null ||
         isSyncedAttachedLayer(layer) ||
-        layerKindHoldsSingleCel(layer.kind)) {
+        layer.kind.holdsSingleCel) {
       return;
     }
     final block = coveringDrawingBlockAt(
@@ -7045,7 +7047,7 @@ class EditorSessionManager extends ChangeNotifier
   /// their project. A complete archive staged up front costs the same
   /// move and can never strand a husk.
   /// Returns the media entry names the archive was written with, which is
-  /// what [adoptPlacedArchive] needs if this copy becomes the project.
+  /// what [adoptArchiveAt] needs if this copy becomes the project.
   Future<Map<String, String>> writeArchiveCopy(
     String path, {
     void Function(double)? onProgress,
@@ -7092,13 +7094,30 @@ class EditorSessionManager extends ChangeNotifier
   /// MOVED cannot back a ref, and the destination may be somewhere the app
   /// cannot read back on demand either. The pixels stay where they were —
   /// in RAM — which is what a never-saved session was already doing.
-  void adoptPlacedArchive(
-    String placedPath, {
+  /// THE "the session now lives at [path]" transition, for the placed
+  /// archive above AND for an ordinary save's tail — nine steps that were
+  /// written out twice, once here and once at the end of
+  /// [_writeProjectToFile], because the placed variant was carved out for
+  /// iOS as a copy of the save's tail rather than by extracting it.
+  ///
+  /// The recovered work now lives in the project file, so the snapshot is
+  /// ordinary again and the retirement below is free to take it.
+  ///
+  /// A save is the session saying it is worth keeping after all; whatever
+  /// was discarded before it is not this session's state any more.
+  ///
+  /// No conform refresh here any more. It existed because a take MOVED
+  /// into the project on first save, which changed the path a conform is
+  /// keyed by; takes stay put now, and the cache is keyed by source
+  /// rather than by anything the project owns, so a save moves nothing a
+  /// conform depends on.
+  void adoptArchiveAt(
+    String path, {
     required Map<String, String> mediaEntryNames,
   }) {
     final previousPath = _projectFilePath;
     _mediaEntryNames = mediaEntryNames;
-    _projectFilePath = placedPath;
+    _projectFilePath = path;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;
     _invalidateConformStoredBytes();
@@ -7107,7 +7126,7 @@ class EditorSessionManager extends ChangeNotifier
     if (previousPath != null) {
       ProjectAutosaveService.retireSidecarsFor(previousPath);
     }
-    ProjectAutosaveService.retireSidecarsFor(placedPath);
+    ProjectAutosaveService.retireSidecarsFor(path);
     notifyListeners();
   }
 
@@ -7247,34 +7266,15 @@ class EditorSessionManager extends ChangeNotifier
         onProgress: onProgress,
       );
     }
-    _mediaEntryNames = mediaEntryNamesFor(mediaToStore);
     // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
     // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE
     // rather than on close or on import-undo, because this is the one
-    // moment the bytes provably live somewhere else.
+    // moment the bytes provably live somewhere else. The save's own step,
+    // so it stays here rather than joining the adoption below.
     for (final path in mediaToStore.keys) {
       mediaStagingStore.retire(path);
     }
-    _projectFilePath = filePath;
-    _hasUnsavedChanges = false;
-    _completedSaveGeneration += 1;
-    _invalidateConformStoredBytes();
-    // The recovered work now lives in the project file, so the snapshot is
-    // ordinary again and the retirement below is free to take it.
-    _recoveredFromSidecar = null;
-    // A save is the session saying it is worth keeping after all; whatever
-    // was discarded before it is not this session's state any more.
-    _discardedUnsavedWork = false;
-    // No conform refresh here any more. It existed because a take MOVED
-    // into the project on first save, which changed the path a conform is
-    // keyed by; takes stay put now, and the cache is keyed by source
-    // rather than by anything the project owns, so a save moves nothing a
-    // conform depends on.
-    if (previousPath != null) {
-      ProjectAutosaveService.retireSidecarsFor(previousPath);
-    }
-    ProjectAutosaveService.retireSidecarsFor(filePath);
-    notifyListeners();
+    adoptArchiveAt(filePath, mediaEntryNames: mediaEntryNamesFor(mediaToStore));
   }
 
   /// The sidecar this session was RECOVERED from, while its contents still
@@ -7712,7 +7712,7 @@ class EditorSessionManager extends ChangeNotifier
   /// reads this. Non-drawing sections (SE / camera / instruction) and
   /// uncovered cells always answer true (no tint).
   bool celHasContentForLayer(Layer layer, int frameIndex) {
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       // R28 #11 carried onto the shared painter: a folder frame is grey
       // only when NO member drew there ("다른곳에서 해당위치에 그림그려진
       // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
@@ -7730,8 +7730,8 @@ class EditorSessionManager extends ChangeNotifier
     //
     // ⛔The two only looked like one question while every cel-holding row
     // happened to sit in the drawing section, which is the same trap R27
-    // #16 found in `layerKindCarriesInstructions`.
-    if (!layerKindIsDrawingCel(layer.kind)) {
+    // #16 found in `LayerKind.carriesInstructions`.
+    if (!layer.kind.isDrawingCel) {
       return true;
     }
     final cut = activeCutOrNull;
@@ -7752,7 +7752,7 @@ class EditorSessionManager extends ChangeNotifier
       // ⛔It asks the span ADAPTER rather than reading `layer.instructions`
       // again — 「is this frame under a span」 has one home, and the band
       // that draws the block reads the same one ([[no-copy-to-share]]).
-      if (!layerKindCarriesInstructions(layer.kind)) {
+      if (!layer.kind.carriesInstructions) {
         return true;
       }
       return instructionCellExposureState(layer, frameIndex) ==

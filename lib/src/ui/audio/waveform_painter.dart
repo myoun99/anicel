@@ -5,13 +5,15 @@ import 'package:flutter/material.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../timeline/axis_turn.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// Paints a clip's |peak| envelope as a filled band mirrored around the
 /// row's center line, along [axis] (horizontal timeline rows, vertical
 /// X-sheet columns). The widget's main-axis extent is expected to be
 /// `durationFrames(frameRate) * pixelsPerFrame` — each bucket maps to
 /// `pixelsPerFrame * fps / bucketsPerSecond` pixels.
-class WaveformPainter extends CustomPainter {
+class WaveformPainter extends CustomPainter with RepaintOnProps {
   const WaveformPainter({
     required this.peaks,
     required this.frameRate,
@@ -127,15 +129,15 @@ class WaveformPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant WaveformPainter oldDelegate) {
-    return !identical(oldDelegate.peaks, peaks) ||
-        oldDelegate.frameRate != frameRate ||
-        oldDelegate.pixelsPerFrame != pixelsPerFrame ||
-        oldDelegate.color != color ||
-        oldDelegate.axis != axis ||
-        oldDelegate.leadingFrames != leadingFrames ||
-        oldDelegate.gain != gain ||
-        oldDelegate.fadeInFrames != fadeInFrames ||
-        oldDelegate.fadeOutFrames != fadeOutFrames;
-  }
+  Object get props => (
+    ByIdentity(peaks),
+    frameRate,
+    pixelsPerFrame,
+    color,
+    axis,
+    leadingFrames,
+    gain,
+    fadeInFrames,
+    fadeOutFrames,
+  );
 }

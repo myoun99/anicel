@@ -37,7 +37,7 @@ void main() {
   test('the EFFECT CHAIN write keeps the range and still notifies', () {
     final s = session();
     final layer = s.requireActiveCut.layers.firstWhere(
-      (row) => layerKindHasLayerEffects(row.kind),
+      (row) => row.kind.hasLayerEffects,
     );
     holdARange(s);
     var notified = 0;

@@ -117,55 +117,6 @@ Frame? celGroupMemberFrame({
   return byId(member, exposedFrameIdAt(member.timeline, firstExposure));
 }
 
-/// Builds the label-group cel plan for the Cels tab (EX5): rules → delta
-/// per cut (the EX1 resolver), labels = included un-attached drawing
-/// rows, members = the included attach rows around each base, one task
-/// per authored base cel. Instruction layers become per-event tasks.
-/// Names the files a cel-group export writes, and keeps them UNIQUE.
-///
-/// 🚨Uniqueness is per RUN, not per cut or per label: two labels can hold
-/// a cel of the same name and a flat naming puts them in one folder, so
-/// the second write would silently replace the first. The bump (`_2`,
-/// `_3`, …) is what the user sees instead of a missing file.
-class _CelGroupNamer {
-  _CelGroupNamer({
-    required this.project,
-    required this.spec,
-    required this.fileExtension,
-  });
-
-  final Project project;
-  final CelsExportSpec spec;
-  final String fileExtension;
-  final Set<String> _used = <String>{};
-
-  String fileNameFor({
-    required Cut cut,
-    required String labelName,
-    required String celName,
-  }) {
-    final folder = [
-      if (spec.naming.cutFolder) sanitizeExportFileComponent(cut.name),
-      if (spec.naming.layerFolder) sanitizeExportFileComponent(labelName),
-    ].join('/');
-    final prefix = folder.isEmpty ? '' : '$folder/';
-    final base = celGroupFileBase(
-      projectName: project.name,
-      cut: cut,
-      labelName: labelName,
-      celName: celName,
-      naming: spec.naming,
-    );
-    var fileName = '$prefix$base.$fileExtension';
-    var bump = 2;
-    while (!_used.add(fileName)) {
-      fileName = '$prefix${base}_$bump.$fileExtension';
-      bump += 1;
-    }
-    return fileName;
-  }
-}
-
 /// The layers that ride [base]'s label, in CUT order — [below…, base,
 /// above…] — so the stack order survives the selection's filtering.
 ///
@@ -201,7 +152,7 @@ List<Layer>? _celGroupMembers(
 Iterable<ExportCelGroupTask> _celGroupTasksFor(
   Cut cut, {
   required ExportCelsSelection selection,
-  required _CelGroupNamer namer,
+  required _NamingRun run,
 }) sync* {
   final includedIds = {for (final layer in selection.celLayers) layer.id};
   for (final base in selection.celLayers) {
@@ -229,7 +180,7 @@ Iterable<ExportCelGroupTask> _celGroupTasksFor(
         ],
         baseFrame: baseFrame,
         celName: celName,
-        fileName: namer.fileNameFor(
+        fileName: run.fileNameFor(
           cut: cut,
           labelName: base.name,
           celName: celName,
@@ -239,18 +190,46 @@ Iterable<ExportCelGroupTask> _celGroupTasksFor(
   }
 }
 
+/// One export RUN's naming: the shared [ExportCelFileNamer] plus the two
+/// things a label's base name is derived from. A record rather than a
+/// class of its own — the uniqueness law lives in the namer, and this is
+/// only what the group planner has to carry alongside it.
+typedef _NamingRun = ({
+  Project project,
+  CelsExportSpec spec,
+  ExportCelFileNamer namer,
+});
+
+extension _NamingRunFiles on _NamingRun {
+  String fileNameFor({
+    required Cut cut,
+    required String labelName,
+    required String celName,
+  }) => namer.uniqueFileName(
+    cut: cut,
+    layerName: labelName,
+    base: celGroupFileBase(
+      projectName: project.name,
+      cut: cut,
+      labelName: labelName,
+      celName: celName,
+      naming: spec.naming,
+    ),
+  );
+}
+
 /// One task per EVENT on every instruction row in [selection]. The cel
 /// name is the event's position in its row, counted from one.
 Iterable<ExportInstructionTask> _instructionTasksFor(
   Cut cut, {
   required ExportCelsSelection selection,
-  required _CelGroupNamer namer,
+  required _NamingRun run,
 }) sync* {
   for (final layer in selection.instructionLayers) {
     var eventIndex = 0;
     for (final entry in layer.instructions.entries) {
       eventIndex += 1;
-      final def = namer.project.cameraInstructions.defById(
+      final def = run.project.cameraInstructions.defById(
         entry.value.instructionId,
       );
       yield ExportInstructionTask(
@@ -259,7 +238,7 @@ Iterable<ExportInstructionTask> _instructionTasksFor(
         startFrame: entry.key,
         length: entry.value.length,
         label: entry.value.displayLabel(def),
-        fileName: namer.fileNameFor(
+        fileName: run.fileNameFor(
           cut: cut,
           labelName: layer.name,
           celName: '$eventIndex',
@@ -269,6 +248,10 @@ Iterable<ExportInstructionTask> _instructionTasksFor(
   }
 }
 
+/// Builds the label-group cel plan for the Cels tab (EX5): rules → delta
+/// per cut (the EX1 resolver), labels = included un-attached drawing
+/// rows, members = the included attach rows around each base, one task
+/// per authored base cel. Instruction layers become per-event tasks.
 ExportCelGroupPlan buildExportCelGroupPlan({
   required Project project,
   required CutId activeCutId,
@@ -276,10 +259,13 @@ ExportCelGroupPlan buildExportCelGroupPlan({
   ExportProjectOverrides? overrides,
   String fileExtension = 'png',
 }) {
-  final namer = _CelGroupNamer(
+  final run = (
     project: project,
     spec: spec,
-    fileExtension: fileExtension,
+    namer: ExportCelFileNamer(
+      naming: spec.naming,
+      fileExtension: fileExtension,
+    ),
   );
   final cels = <ExportCelGroupTask>[];
   final instructions = <ExportInstructionTask>[];
@@ -300,9 +286,9 @@ ExportCelGroupPlan buildExportCelGroupPlan({
       spec: spec,
       delta: overrides?.deltaFor(cut.id),
     );
-    cels.addAll(_celGroupTasksFor(cut, selection: selection, namer: namer));
+    cels.addAll(_celGroupTasksFor(cut, selection: selection, run: run));
     instructions.addAll(
-      _instructionTasksFor(cut, selection: selection, namer: namer),
+      _instructionTasksFor(cut, selection: selection, run: run),
     );
   }
   return ExportCelGroupPlan(cels: cels, instructions: instructions);

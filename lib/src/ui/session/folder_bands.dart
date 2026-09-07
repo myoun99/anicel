@@ -3,7 +3,6 @@ import '../../models/layer_folder.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/timeline_exposure.dart';
 import '../timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'session_roles.dart';
@@ -68,7 +67,7 @@ class FolderBands {
     _folderBandMembers.clear();
     final index = LayerFolderIndex(stack);
     for (final layer in stack) {
-      if (!layerKindGroupsLayers(layer.kind)) {
+      if (!layer.kind.groupsLayers) {
         continue;
       }
       final members = index.subtreeMembersOf(layer.id);
@@ -108,7 +107,7 @@ class FolderBands {
   /// [folder]'s row as the grids should render it — the union band. Never
   /// leaves the display path: commands re-read the real layer by id.
   Layer folderBandLayerFor(Layer folder) {
-    if (!layerKindGroupsLayers(folder.kind)) {
+    if (!folder.kind.groupsLayers) {
       return folder;
     }
     _fillFolderBandCache();

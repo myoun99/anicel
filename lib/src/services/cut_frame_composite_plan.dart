@@ -10,7 +10,6 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
-import '../models/layer_kind.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_paint.dart';
@@ -474,8 +473,8 @@ CutFrameCompositeRow? _resolveLayerNode(
   final frameIndex = at.frameIndex;
   // Folder rows composite their MEMBERS, not a surface of their own —
   // their eye/opacity/blend/FX reach the picture through
-  // [resolveFolderChainAt] (flat) or [CompositeGroup] (tree).
-  if (!layerKindPaintsArtwork(layer.kind)) {
+  // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
+  if (!layer.kind.paintsArtwork) {
     return null;
   }
   final base = isAttachedLayer(layer)
@@ -708,7 +707,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
           .add(node);
 
   for (final layer in cut.layers) {
-    if (layerKindFiltersBelow(layer.kind)) {
+    if (layer.kind.filtersBelow) {
       final wrapped = _adjustmentScopeNode(
         adjustment: layer,
         cut: cut,
@@ -720,7 +719,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       }
       continue;
     }
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       final children = childrenOf.remove(layer.id);
       if (children == null || children.isEmpty) {
         continue;

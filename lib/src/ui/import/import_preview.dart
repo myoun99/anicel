@@ -13,6 +13,7 @@ import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/transport_bar.dart';
+import '../repaint_props.dart';
 
 /// The import window's right-hand zone: the selected file, and the bar that
 /// walks through it.
@@ -337,7 +338,7 @@ class _ImportPreviewState extends State<ImportPreview> {
   }
 }
 
-class _FramePainter extends CustomPainter {
+class _FramePainter extends CustomPainter with RepaintOnProps {
   const _FramePainter(this.image);
 
   final ui.Image image;
@@ -348,5 +349,5 @@ class _FramePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => old.image != image;
+  Object get props => (image,);
 }

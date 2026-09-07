@@ -40,6 +40,47 @@ class ScheduledAudioClip {
     this.volumeKeys = const [],
   });
 
+  /// ONE SPAN, LAID ON AN OUTPUT AXIS — the mapping the playback walk and
+  /// the export walk both need, so neither can drift from the other (the
+  /// export plan's own header says the mix must be "the SAME schedule
+  /// shape playback consumes", which was a promise kept by hand twice).
+  ///
+  /// Envelope keys anchor to the SPAN start; a clipped lead shifts them
+  /// (possibly negative — before the window).
+  ///
+  /// The layer fader multiplies in HERE (one gain per entry) so no
+  /// consumer ever re-consults the layer.
+  ///
+  /// The fades are NUMBERS the caller computes: playback passes the
+  /// clip's own, and the export bakes its anchoring into them. That
+  /// difference is a value, not a mode.
+  factory ScheduledAudioClip.ofSpan(
+    SeAudioSpan span, {
+    required int startFrame,
+    required int endFrameExclusive,
+    required int clippedLead,
+    required double layerGain,
+    required double layerPan,
+    required int fadeInFrames,
+    required int fadeOutFrames,
+  }) => ScheduledAudioClip(
+    filePath: span.clip.filePath,
+    startFrame: startFrame,
+    endFrameExclusive: endFrameExclusive,
+    offsetFrames: clippedLead + span.clip.offsetFrames,
+    gain: layerGain * span.clip.gain,
+    fadeInFrames: fadeInFrames,
+    fadeOutFrames: fadeOutFrames,
+    pan: layerPan,
+    fadeCurve: span.clip.fadeCurve,
+    volumeKeys: clippedLead == 0
+        ? span.clip.volumeKeys
+        : [
+            for (final key in span.clip.volumeKeys)
+              AudioVolumeKey(frame: key.frame - clippedLead, gain: key.gain),
+          ],
+  );
+
   final String filePath;
   final int startFrame;
   final int endFrameExclusive;
@@ -305,26 +346,17 @@ class _ScheduleRun {
     if (endFrameExclusive <= startFrame) {
       return null;
     }
-    return ScheduledAudioClip(
-      filePath: span.clip.filePath,
+    return ScheduledAudioClip.ofSpan(
+      span,
       startFrame: startFrame,
       endFrameExclusive: endFrameExclusive,
-      offsetFrames: offsetFrames,
-      // The layer fader multiplies in HERE (one gain per entry) so no
-      // consumer ever re-consults the layer.
-      gain: layer.audioGain * span.clip.gain,
+      clippedLead: clippedLead,
+      layerGain: layer.audioGain,
+      layerPan: layer.audioPan,
+      // Playback plays the clip's own ramps: nothing is trimmed off the
+      // front here, so there is nothing to re-anchor.
       fadeInFrames: span.clip.fadeInFrames,
       fadeOutFrames: span.clip.fadeOutFrames,
-      pan: layer.audioPan,
-      fadeCurve: span.clip.fadeCurve,
-      // Envelope keys anchor to the SPAN start; a clipped lead shifts
-      // them (possibly negative — before the window).
-      volumeKeys: clippedLead == 0
-          ? span.clip.volumeKeys
-          : [
-              for (final key in span.clip.volumeKeys)
-                AudioVolumeKey(frame: key.frame - clippedLead, gain: key.gain),
-            ],
     );
   }
 }

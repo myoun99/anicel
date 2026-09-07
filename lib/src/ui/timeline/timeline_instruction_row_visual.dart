@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart'
-    show layerKindBandIsInstructionsOnly, layerKindCarriesInstructions;
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../text/vertical_writing_text.dart';
@@ -14,6 +12,7 @@ import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
 import 'timeline_se_row_visual.dart' show timelineBlockCornerWarning;
+import '../repaint_props.dart';
 
 /// Instruction rows render like the paper sheet's CAM column on white
 /// frame blocks: the cells paint the paper (via
@@ -62,7 +61,7 @@ TimelineCellExposureState instructionCellExposureState(
 ///
 /// 🚨R27 #16 LEFT THE BAND EMPTY (유저 2026-08-27: 「지금 스샷보면 **블록의
 /// 배경색 흰색이 사라졌는데?**」). Giving the direction row cels flipped
-/// `layerKindBandIsInstructionsOnly` to false, so the band stopped reading
+/// `LayerKind.bandIsInstructionsOnly` to false, so the band stopped reading
 /// the span adapter — and started reading cels the row did not have yet.
 /// Nothing was drawn at all. The row did not gain a feature; it lost its
 /// blocks.
@@ -80,10 +79,10 @@ TimelineCellExposureState bandExposureState(
   int frameIndex, {
   required TimelineCellExposureState Function(Layer, int) ownCels,
 }) {
-  if (!layerKindCarriesInstructions(layer.kind)) {
+  if (!layer.kind.carriesInstructions) {
     return ownCels(layer, frameIndex);
   }
-  if (layerKindBandIsInstructionsOnly(layer.kind)) {
+  if (layer.kind.bandIsInstructionsOnly) {
     return instructionCellExposureState(layer, frameIndex);
   }
   final own = ownCels(layer, frameIndex);
@@ -427,7 +426,7 @@ class _InstructionSpan extends StatelessWidget {
 /// instead — R7-①), FI/FO the light-gray fade wedges (wide where the
 /// screen is covered), O.L the translucent bowtie (two triangles meeting
 /// at the span's center).
-class _InstructionMarkPainter extends CustomPainter {
+class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
   _InstructionMarkPainter({
     required this.axis,
     required this.markType,
@@ -614,12 +613,6 @@ class _InstructionMarkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_InstructionMarkPainter oldDelegate) {
-    return axis != oldDelegate.axis ||
-        markType != oldDelegate.markType ||
-        eventLength != oldDelegate.eventLength ||
-        color != oldDelegate.color ||
-        hasStartName != oldDelegate.hasStartName ||
-        hasEndName != oldDelegate.hasEndName;
-  }
+  Object get props =>
+      (axis, markType, eventLength, color, hasStartName, hasEndName);
 }

@@ -1,11 +1,10 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
-import '../../services/command.dart';
 import '../../services/commands/update_layer_mark_command.dart';
 import 'active_cut_edits.dart';
+import 'row_sweep.dart';
 import 'session_roles.dart';
 
 /// The LAYER MARKS — the mark a layer carries, the frames a selection can
@@ -19,17 +18,19 @@ class LayerMarks {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
+    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _activeCut = ActiveCutEdits(timeline: timeline, changes: changes);
+       _activeCut = activeCut;
+
+  final ActiveCutEdits _activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final ActiveCutEdits _activeCut;
 
   /// Sets [layerId]'s organizational color mark. One undo step.
   void setLayerMark(LayerId layerId, LayerMark mark) =>
@@ -49,26 +50,22 @@ class LayerMarks {
       return;
     }
     final cutId = cut.id;
-    final commands = <Command>[
-      for (final layer in [...cut.layers, ..._selection.activeTrack.seLayers])
-        if (layer.mark != LayerMark.none)
-          UpdateLayerMarkCommand(
-            repository: _project.repository,
-            cutId: cutId,
-            layerId: layer.id,
-            mark: LayerMark.none,
-          ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    _project.historyManager.execute(
-      CompositeCommand(
-        description: 'Clear all layer marks',
-        commands: commands,
-      ),
+    final swept = sweepRows(
+      history: _project.historyManager,
+      rows: [...cut.layers, ..._selection.activeTrack.seLayers],
+      description: 'Clear all layer marks',
+      commandFor: (layer) => layer.mark == LayerMark.none
+          ? null
+          : UpdateLayerMarkCommand(
+              repository: _project.repository,
+              cutId: cutId,
+              layerId: layer.id,
+              mark: LayerMark.none,
+            ),
     );
-    _changes.notifyChanged();
+    if (swept) {
+      _changes.notifyChanged();
+    }
   }
 
   /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE MARK LEARNED THE BAND.**
@@ -105,7 +102,7 @@ class LayerMarks {
   /// SINGLE-CEL row IS markable: a mark is a flag on the cell, not a
   /// change to the covering block.
   static bool _markable(Layer layer) =>
-      layerKindHoldsDrawings(layer.kind) && !isSyncedAttachedLayer(layer);
+      layer.kind.holdsDrawings && !isSyncedAttachedLayer(layer);
 
   bool get canToggleMarkForSelection =>
       _markableFramesForSelection().isNotEmpty;
@@ -142,7 +139,7 @@ class LayerMarks {
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
-    if (!layerKindHoldsDrawings(layer.kind)) {
+    if (!layer.kind.holdsDrawings) {
       return false;
     }
     return _timeline.timelineController.hasMarkAt(

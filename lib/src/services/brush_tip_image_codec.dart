@@ -43,7 +43,7 @@ Future<BrushTipMask> decodeBrushTipImage(
     final width = image.width;
     final height = image.height;
 
-    var gray = Uint8List(width * height);
+    final gray = Uint8List(width * height);
     var sum = 0;
     for (var index = 0; index < gray.length; index += 1) {
       final r = rgba[index * 4];
@@ -61,22 +61,11 @@ Future<BrushTipMask> decodeBrushTipImage(
       }
     }
 
-    final fit = brushTipMaskFitted(width, height);
-    if (fit.width != width || fit.height != height) {
-      gray = _resizeGray(
-        gray,
-        width: width,
-        height: height,
-        newWidth: fit.width,
-        newHeight: fit.height,
-      );
-    }
-
-    return BrushTipMask.square(
+    return brushTipMaskFromCoverage(
+      gray,
+      size: (width: width, height: height),
       id: id,
-      pixels: gray,
-      width: fit.width,
-      height: fit.height,
+      downscale: _resizeGray,
     );
   } finally {
     image.dispose();
@@ -121,6 +110,12 @@ Future<Uint8List> encodeBrushTipImage(BrushTipMask mask) async {
 }
 
 /// Bilinear grayscale resize.
+///
+/// ⛔The odd one out, and it STAYS bilinear for now while the cut-piece tip
+/// and the thumbnail area-average: changing it changes how
+/// already-registered image tips look, which is ARCH-audit-Q7. When that
+/// is answered "area average", this goes and
+/// [brushTipMaskFromCoverage]'s `downscale` parameter goes with it.
 Uint8List _resizeGray(
   Uint8List source, {
   required int width,

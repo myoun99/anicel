@@ -332,6 +332,63 @@ void main() {
       expect(blitPaint.filterQuality, FilterQuality.low);
     });
 
+    // The uniform shrink itself, named. Both cap sites — this file's
+    // sub-tree plan and the display buffer's knee scale one level up —
+    // apply THIS, and differ only in the cap they hand in.
+    group('scaleFittingSide', () {
+      test('a scale that already fits is handed straight back', () {
+        expect(
+          scaleFittingSide(
+            scale: 0.5,
+            bounds: const Size(100, 40),
+            maxSide: 8192,
+          ),
+          0.5,
+        );
+      });
+
+      test('the LONG side decides, whichever axis it is', () {
+        expect(
+          scaleFittingSide(
+            scale: 4,
+            bounds: const Size(100, 10),
+            maxSide: 200,
+          ),
+          2,
+        );
+        expect(
+          scaleFittingSide(
+            scale: 4,
+            bounds: const Size(10, 100),
+            maxSide: 200,
+          ),
+          2,
+        );
+      });
+
+      test('landing exactly ON the cap is not over it', () {
+        expect(
+          scaleFittingSide(
+            scale: 2,
+            bounds: const Size(100, 100),
+            maxSide: 200,
+          ),
+          2,
+        );
+      });
+
+      test('the shrink is uniform: the clamped scale puts the long side '
+          'exactly on the cap', () {
+        final clamped = scaleFittingSide(
+          scale: 10,
+          bounds: const Size(46, 42),
+          maxSide: 16,
+        );
+        expect(46 * clamped, closeTo(16, 1e-9));
+        expect(42 * clamped, lessThan(16));
+      });
+    });
+
     test('children rasterise at the scale the parent SETTLED on', () {
       // A clamped group whose children still drew at the unclamped scale
       // would paint at 3x into a 1x image — the children would land off the

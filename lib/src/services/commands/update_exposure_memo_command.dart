@@ -1,10 +1,8 @@
-import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/exposure_memo.dart';
-import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/timeline_exposure.dart';
 import '../command.dart';
+import '../project_lookup.dart' show requireLayer, requireMemoBlockAt;
 import '../project_repository.dart';
 
 /// Writes one exposure BLOCK's memo, undoably.
@@ -36,7 +34,19 @@ class UpdateExposureMemoCommand implements Command {
   @override
   void execute() {
     if (!_hasExecuted) {
-      _previousMemo = _requireBlock().memo;
+      // THE ONE WALK, and the one block rule: `project_lookup` owns both,
+      // and the repository's write asks it again a line later. This used
+      // to be a private re-implementation carrying the same two refusal
+      // strings word for word — and missing the ghost ruling, which only
+      // meant the refusal arrived from the write instead of from here.
+      _previousMemo = requireMemoBlockAt(
+        requireLayer(
+          repository.requireProject(),
+          cutId: cutId,
+          layerId: layerId,
+        ),
+        blockStartIndex,
+      ).memo;
     }
 
     repository.updateExposureMemo(
@@ -60,43 +70,5 @@ class UpdateExposureMemoCommand implements Command {
       blockStartIndex: blockStartIndex,
       memo: _previousMemo,
     );
-  }
-
-  TimelineExposure _requireBlock() {
-    final project = repository.requireProject();
-    Cut? targetCut;
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          targetCut = cut;
-          break;
-        }
-      }
-      if (targetCut != null) {
-        break;
-      }
-    }
-    if (targetCut == null) {
-      throw StateError('Cut not found: $cutId');
-    }
-
-    Layer? targetLayer;
-    for (final layer in targetCut.layers) {
-      if (layer.id == layerId) {
-        targetLayer = layer;
-        break;
-      }
-    }
-    if (targetLayer == null) {
-      throw StateError('Layer not found in cut $cutId: $layerId');
-    }
-
-    final entry = targetLayer.timeline[blockStartIndex];
-    if (entry == null || !entry.isDrawing) {
-      throw StateError(
-        'No exposure block starts at $blockStartIndex on $layerId.',
-      );
-    }
-    return entry;
   }
 }

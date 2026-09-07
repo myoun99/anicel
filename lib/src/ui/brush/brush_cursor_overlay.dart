@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
 import 'brush_cursor_geometry.dart';
+import '../repaint_props.dart';
 
 /// The brush/eraser cursor: an outline of the tip footprint following the
 /// pointer, Clip-Studio style — size, roundness and angle, and nothing else.
@@ -82,7 +83,7 @@ class BrushCursorOverlay extends StatelessWidget {
 /// It paints at the CENTRE of whatever box it is given — the pointer's
 /// position is the box's position now, which is what keeps this painter
 /// from having to repaint on every move.
-class BrushCursorPainter extends CustomPainter {
+class BrushCursorPainter extends CustomPainter with RepaintOnProps {
   const BrushCursorPainter({required this.shape});
 
   /// `null` means the footprint is too small to read; a crosshair stands in.
@@ -136,7 +137,5 @@ class BrushCursorPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(BrushCursorPainter oldDelegate) =>
-      oldDelegate.shape?.majorAxis != shape?.majorAxis ||
-      oldDelegate.shape?.minorAxis != shape?.minorAxis;
+  Object get props => (shape?.majorAxis, shape?.minorAxis);
 }

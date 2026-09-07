@@ -196,7 +196,7 @@ void main() {
       isEmpty,
       reason:
           'a grip here would drag a PROJECTION — authoring lives on the global '
-          'axis (layerKindIsReadOnlyInCut)',
+          'axis (LayerKind.isReadOnlyInCut)',
     );
   });
 
@@ -404,20 +404,20 @@ void main() {
 
   test('the predicate names the two kinds that carry instruction events, and '
       'only those', () {
-    expect(layerKindCarriesInstructions(LayerKind.instruction), isTrue);
-    expect(layerKindCarriesInstructions(LayerKind.transition), isTrue);
+    expect(LayerKind.instruction.carriesInstructions, isTrue);
+    expect(LayerKind.transition.carriesInstructions, isTrue);
     for (final kind in LayerKind.values) {
       if (kind == LayerKind.instruction || kind == LayerKind.transition) {
         continue;
       }
       expect(
-        layerKindCarriesInstructions(kind),
+        kind.carriesInstructions,
         isFalse,
         reason: '$kind holds cels or nothing, never instruction spans',
       );
     }
     // The two answers differ on EDITING, which is why the grips ask both.
-    expect(layerKindIsReadOnlyInCut(LayerKind.transition), isTrue);
-    expect(layerKindIsReadOnlyInCut(LayerKind.instruction), isFalse);
+    expect(LayerKind.transition.isReadOnlyInCut, isTrue);
+    expect(LayerKind.instruction.isReadOnlyInCut, isFalse);
   });
 }

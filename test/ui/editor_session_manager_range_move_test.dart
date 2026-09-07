@@ -1314,4 +1314,128 @@ void main() {
       reason: 'the block never left frame 0',
     );
   });
+
+  test('R27 #8: a MULTI-ROW rigid move carries the camera keys inside its '
+      'span in the SAME undo step — the rider arm is the multi-row '
+      'branch\'s too, not just the plain slide\'s', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A at frame 0
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id; // empty drawing row below A
+
+    final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
+    s.selectLayer(camera.id);
+    s.selectFrameIndex(0);
+    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame);
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final aFrameId = layer(aId).frames.single.id;
+
+    // Span A .. the camera row, then hop A -> B while sliding +2.
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: camera.id,
+    );
+    expect(
+      s.frameRangeSelection.value!.spanLayerIds,
+      containsAll(<LayerId>[aId, camera.id]),
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: bId);
+    expect(
+      s.activeCutOrNull!.camera.keyframeAt(0),
+      isNotNull,
+      reason: 'the repository stays put while the drag previews',
+    );
+    final undoDepthBefore = s.canUndo;
+    s.endFrameRangeMoveDrag();
+
+    expect(layer(aId).timeline, isEmpty);
+    expect(layer(bId).timeline[2]!.frameId, aFrameId);
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
+    expect(s.activeCutOrNull!.camera.keyframeAt(0), isNull);
+
+    // ONE undo takes the row hop AND the camera key back together.
+    expect(s.canUndo, isTrue);
+    expect(undoDepthBefore, isNotNull);
+    s.undo();
+    expect(layer(aId).timeline[0]!.frameId, aFrameId);
+    expect(layer(bId).timeline, isEmpty);
+    expect(s.activeCutOrNull!.camera.keyframeAt(0), isNotNull);
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNull);
+  });
+
+  test('a multi-source drag that never moved commits NOTHING and leaves '
+      'the selection where it started — an empty command list is not an '
+      'undo step', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A at frame 0
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on B at frame 0
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.endFrameRangeMoveDrag();
+
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+    expect(
+      s.frameRangeSelection.value!.spanLayerIds,
+      containsAll(<LayerId>[aId, bId]),
+    );
+    // The NEXT undo is the drawing that was made before the drag — the
+    // drag itself put no step on the stack.
+    s.undo();
+    expect(
+      s.layers.firstWhere((l) => l.id == bId).timeline,
+      isEmpty,
+      reason: 'an empty command list must not become an undo step',
+    );
+  });
+
+  test('the outline never slides past frame 0: a selection whose empty '
+      'head reaches further left than the block can travel keeps the '
+      'outline it had', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame(); // the row's only block, at 3
+    final aId = s.activeLayer!.id;
+
+    // Sweep from the empty frame 0 through the block: [0, 4).
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 4);
+
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    // The block can only travel 3 frames left; the outline would need to
+    // start at -3.
+    s.updateFrameRangeMoveDrag(frameDelta: -3);
+    expect(
+      s.frameRangeSelection.value!.startIndex,
+      0,
+      reason: 'a negative start is not a selection',
+    );
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 4);
+    s.endFrameRangeMoveDrag();
+    expect(s.layers.firstWhere((l) => l.id == aId).timeline[0], isNotNull);
+  });
 }

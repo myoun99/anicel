@@ -1,28 +1,41 @@
 import '../../models/cut_id.dart';
 import 'session_roles.dart';
 
-/// The envelope an edit against the ACTIVE cut runs inside.
+/// THE ACTIVE-CUT ENVELOPE — "the cut you are standing on, or nothing".
 ///
-/// One method today, and it is deliberately named for the QUIET half rather
-/// than taking a `refresh: bool`: a per-layer PROPERTY write and a
-/// structural cut edit are two laws, and a flag answering both is how they
-/// drift into one.
+/// Thirteen verbs across five collaborators read the active cut id, stand
+/// down when it is null (the gap state, UI-R9 #3), run one coordinator
+/// call and then tell the session. Only the coordinator call differed, so
+/// only the coordinator call is passed in.
+///
+/// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
+/// and command and refresh each, so a step that stopped refreshing after
+/// the reorder would have done it in one direction only.
+/// (`CutVerbs._moveActiveCut`'s own argument, and the reason this object
+/// exists: thirteen hand-written envelopes are thirteen chances to lose
+/// the tail in one of them.)
 class ActiveCutEdits {
-  ActiveCutEdits({required TimelineAccess timeline, required ChangeSink changes})
-    : _timeline = timeline,
-      _changes = changes;
+  ActiveCutEdits({
+    required TimelineAccess timeline,
+    required ChangeSink changes,
+  }) : _timeline = timeline,
+       _changes = changes;
 
   final TimelineAccess _timeline;
   final ChangeSink _changes;
 
-  /// Runs [command] against the active cut, then does a BARE notify.
-  ///
-  /// Nothing happens without an active cut. The bare notify is the law,
-  /// stated where the fx switches state it: "a bare notify, like every
-  /// sibling row write (opacity, blend, the transform track, the effect
-  /// chain): a switch flip is not a structural cut edit, and refreshing as
-  /// one threw away the frame-range selection the user keeps while A/B-ing
-  /// the switch."
+  /// Runs [command] on the active cut and rebuilds after it: the cut's
+  /// STRUCTURE may have moved (rows, frames, canvas), so the controllers
+  /// have to be re-read before anyone paints.
+  void onActiveCut(void Function(CutId cutId) command) =>
+      onActiveCutQuietly((cutId) {
+        command(cutId);
+        _changes.refreshAfterCutCommand();
+      });
+
+  /// The same envelope for an edit that changes a row's ATTRIBUTES and
+  /// not the shape of the cut — a mark, an effect chain. Nothing to
+  /// rebuild; the repaint is the whole of the reaction.
   void onActiveCutQuietly(void Function(CutId cutId) command) {
     final cutId = _timeline.editingSession.activeCutId;
     if (cutId == null) {

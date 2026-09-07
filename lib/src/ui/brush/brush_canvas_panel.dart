@@ -84,6 +84,7 @@ import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 import '../listenable_rebind.dart';
+import '../repaint_props.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
@@ -2715,7 +2716,7 @@ class _StagePlanes extends StatelessWidget {
 /// Fills with the backdrop, then lays the pasteboard over the region it
 /// occupies — a canvas-space rectangle, so it rides zoom, pan, rotation
 /// and both flips like everything else on the stage.
-class _StagePlanesPainter extends CustomPainter {
+class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   const _StagePlanesPainter({
     required this.backdrop,
     required this.pasteboard,
@@ -2797,12 +2798,7 @@ class _StagePlanesPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _StagePlanesPainter oldDelegate) =>
-      oldDelegate.backdrop != backdrop ||
-      oldDelegate.pasteboard != pasteboard ||
-      oldDelegate.margin != margin ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.viewport != viewport;
+  Object get props => (backdrop, pasteboard, margin, canvasSize, viewport);
 }
 
 /// Which of the pill's foldable groups are OUT at a given width — the fold

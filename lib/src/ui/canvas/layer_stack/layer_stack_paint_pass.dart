@@ -945,16 +945,26 @@ class _LayerStackPaintPass {
     return _composeMiss(rect, cache, key);
   }
 
-  /// The display buffer for [image] over [rect] — whole-pixel by
-  /// construction, so the pixel size is the rect's. [owned] says whether the
+  /// The display buffer for [image] over [rect]. [owned] says whether the
   /// caller disposes the image after drawing it (false while the cache
   /// keeps it for the next paint).
+  ///
+  /// ⛔THE PIXEL SIZE IS THE IMAGE'S, NEVER THE RECT'S. Below the knee the
+  /// two differ — the image is `ceil(rect · s)` a side — and that is what
+  /// the blit's source rect must say or the picture lands shrunk in the
+  /// corner. This used to be two constructors, one reading the rect for the
+  /// s=1 path and one reading the image for the knee path, and 2026-09-04
+  /// the knee path was routed through the rect one by mistake: one wrong
+  /// frame on every miss below the knee. Reading the image answers both,
+  /// because at s=1 the rect is floor/ceil-snapped and the raster is
+  /// `toImageSync(rect.width.round(), …)` — the same number, by
+  /// construction.
   _DisplayBuffer _bufferOf(ui.Image image, Rect rect, {required bool owned}) =>
       _DisplayBuffer(
         image: image,
         rect: rect,
-        pixelWidth: rect.width,
-        pixelHeight: rect.height,
+        pixelWidth: image.width.toDouble(),
+        pixelHeight: image.height.toDouble(),
         owned: owned,
       );
 
@@ -1179,24 +1189,6 @@ class _LayerStackPaintPass {
     return area;
   }
 
-  /// The display buffer for a SCALED [image] over [rect] — below the knee
-  /// the pixels are the image's, not the rect's: `ceil(rect · s)` a side,
-  /// which is what the blit's source rect must say or the picture lands
-  /// shrunk in the corner. ⛔Not [_bufferOf]: that one is the whole-pixel
-  /// law of the s=1 path, and 2026-09-04 the knee path was routed through
-  /// it by mistake — one wrong frame on every miss below the knee.
-  _DisplayBuffer _scaledBufferOf(
-    ui.Image image,
-    Rect rect, {
-    required bool owned,
-  }) => _DisplayBuffer(
-    image: image,
-    rect: rect,
-    pixelWidth: image.width.toDouble(),
-    pixelHeight: image.height.toDouble(),
-    owned: owned,
-  );
-
   /// ⓔ 5단계 — the buffer BELOW the knee: [rect] rendered at
   /// `s = min(1, zoom·dpr)` instead of canvas resolution, every layer one
   /// image under one uniform filter.
@@ -1237,13 +1229,13 @@ class _LayerStackPaintPass {
     if (s >= 1) {
       s = 1;
     }
-    final longSide = rect.width > rect.height ? rect.width : rect.height;
-    if (longSide * s > _LayerStackPainter._maxBufferSide) {
-      // A screen so large even zoom·dpr overflows the cap: shrink further.
-      // Still one uniform resample — softer, never seamed.
-      s = _LayerStackPainter._maxBufferSide / longSide;
-    }
-    return s;
+    // A screen so large even zoom·dpr overflows the cap: shrink further.
+    // Still one uniform resample — softer, never seamed.
+    return scaleFittingSide(
+      scale: s,
+      bounds: rect.size,
+      maxSide: _LayerStackPainter._maxBufferSide.toDouble(),
+    );
   }
 
   /// [rect] recorded at scale [s] into a [size] image — the PICTURE route
@@ -1297,11 +1289,9 @@ class _LayerStackPaintPass {
     // ② `s` is in the key: zoom already rides [compositeKey], but dpr does
     // not exist anywhere else — fold the resolved scale itself.
     final key = baseKey == null ? null : Object.hash(baseKey, s);
-    if (cache != null && key != null) {
-      final kept = cache.imageFor(key, rect);
-      if (kept != null) {
-        return _scaledBufferOf(kept, rect, owned: false);
-      }
+    final kept = _keptBuffer(cache, key, rect);
+    if (kept != null) {
+      return kept;
     }
     ActiveLayerFlatImage? flat;
     if (_painter.activeSurfacePainter != null) {
@@ -1328,8 +1318,8 @@ class _LayerStackPaintPass {
     }
     if (cache != null && key != null) {
       cache.store(key, _painter.compositeKey, rect, image, patched: false);
-      return _scaledBufferOf(image, rect, owned: false);
+      return _bufferOf(image, rect, owned: false);
     }
-    return _scaledBufferOf(image, rect, owned: true);
+    return _bufferOf(image, rect, owned: true);
   }
 }

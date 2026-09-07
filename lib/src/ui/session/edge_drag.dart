@@ -403,11 +403,11 @@ class EdgeDrag {
         layer.kind == LayerKind.instruction &&
         layer.instructions.containsKey(blockStartIndex);
     final isDrawingBlock =
-        layerKindHoldsDrawings(layer.kind) &&
+        layer.kind.holdsDrawings &&
         // D22: the image row is edge-less (1 cell + fixed hold) — the
         // grips are gone from its chrome, and the session refuses too so
         // the gate and the dispatch stay one answer (T25).
-        !layerKindHoldsSingleCel(layer.kind) &&
+        !layer.kind.holdsSingleCel &&
         (layer.timeline[blockStartIndex]?.isDrawing ?? false);
     if (!isInstructionSpan && !isDrawingBlock) {
       return false;
@@ -438,7 +438,7 @@ class EdgeDrag {
     // (otherwise a bulk drag spanning an image row would silently switch
     // which row drives the cut resize).
     bool ridesCutLength(LayerKind kind) =>
-        layerKindCoversWithoutGaps(kind) && !layerKindHoldsSingleCel(kind);
+        kind.coversWithoutGaps && !kind.holdsSingleCel;
     if (bulkBefore != null) {
       for (final candidate in bulkBefore.values) {
         if (ridesCutLength(candidate.kind)) {
@@ -477,29 +477,19 @@ class EdgeDrag {
     }
     final startsByLayer = <LayerId, List<int>>{};
     final beforeByLayer = <LayerId, Layer>{};
-    for (final id in selection.spanLayerIds) {
-      // Rows whose timing is not their own stand down — see
-      // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
-        continue;
-      }
-      final display = _project.rangeLayerById(id);
-      final commit = _project.commitLayerById(id);
-      if (display == null || commit == null) {
-        continue;
-      }
+    for (final row in _rangeSelections.retimableSpanRows(selection)) {
       final starts = _rangeSelections.selectionBlockStarts(
-        display,
+        row.display,
         selection.startIndex,
         selection.endIndexExclusive,
       );
       if (starts.isEmpty) {
         continue;
       }
-      startsByLayer[id] = [
-        for (final start in starts) _internals.commitBlockStart(id, start),
+      startsByLayer[row.id] = [
+        for (final start in starts) _internals.commitBlockStart(row.id, start),
       ];
-      beforeByLayer[id] = commit;
+      beforeByLayer[row.id] = row.commit;
     }
     final multiBlock =
         startsByLayer.length > 1 || (startsByLayer[layerId]?.length ?? 0) > 1;

@@ -54,18 +54,21 @@ void main() {
       }
     });
 
-    test('it agrees with layerKindHasLayerTransform — one source, not two', () {
-      for (final kind in LayerKind.values) {
-        expect(
-          timelineRowOwnsTransform(
-            subject: TimelineTransformSubject.layer,
-            layerKind: kind,
-          ),
-          layerKindHasLayerTransform(kind),
-          reason: '$kind',
-        );
-      }
-    });
+    test(
+      'it agrees with LayerKind.hasLayerTransform — one source, not two',
+      () {
+        for (final kind in LayerKind.values) {
+          expect(
+            timelineRowOwnsTransform(
+              subject: TimelineTransformSubject.layer,
+              layerKind: kind,
+            ),
+            kind.hasLayerTransform,
+            reason: '$kind',
+          );
+        }
+      },
+    );
 
     test('a layer row with no kind to ask about owns nothing', () {
       expect(

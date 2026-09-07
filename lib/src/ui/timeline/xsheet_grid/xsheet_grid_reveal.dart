@@ -21,32 +21,25 @@ class _XSheetGridReveal {
     });
   }
 
-  void _revealSelection() {
-    final cell = _state._metrics.frameCellWidth;
-    if (_state._frameScrollController.hasClients && cell > 0) {
-      jumpToReveal(_state._frameScrollController, (
-        start: _state.widget.hooks.frameCursor.value * cell,
-        extent: cell,
-        margin: cell,
-      ));
-    }
-    final columnWidth = _state._metrics.layerRowHeight;
-    final activeId = _state.widget.hooks.activeLayerId;
-    if (!_state._layerScrollController.hasClients ||
-        activeId == null ||
-        columnWidth <= 0) {
-      return;
-    }
-    final at = _state._dragRows.indexWhere(
-      (row) => !row.isLane && row.layer.id == activeId,
-    );
-    if (at < 0) {
-      return;
-    }
-    jumpToReveal(_state._layerScrollController, (
-      start: at * columnWidth,
-      extent: columnWidth,
-      margin: columnWidth,
-    ));
-  }
+  /// ★And it asks the SAME row walk the rail does now
+  /// ([indexOfDisplayRow], round 8's grid unification). The sheet used to
+  /// look for the active layer's own column and nothing else, so a
+  /// selection standing on a LANE column scrolled to the layer beside it —
+  /// the rail had honoured the current-row address since R10 #19.
+  void _revealSelection() => revealSelectionOnBothAxes(
+    (
+      controller: _state._frameScrollController,
+      extent: _state._metrics.frameCellWidth,
+      at: _state.widget.hooks.frameCursor.value,
+    ),
+    (
+      controller: _state._layerScrollController,
+      extent: _state._metrics.layerRowHeight,
+      at: indexOfDisplayRow(
+        _state._dragRows,
+        current: _state.widget.hooks.currentRowHooks?.currentRow.value,
+        activeLayerId: _state.widget.hooks.activeLayerId,
+      ),
+    ),
+  );
 }

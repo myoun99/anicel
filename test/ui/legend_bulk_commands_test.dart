@@ -210,11 +210,11 @@ void main() {
     final s = session();
     final targets = {
       for (final layer in s.layers)
-        if (layerKindHasPictureOpacity(layer.kind)) layer.id,
+        if (layer.kind.hasPictureOpacity) layer.id,
     };
     s.commitLayersOpacity(targets, 0.3);
     for (final layer in s.layers) {
-      if (layerKindHasPictureOpacity(layer.kind)) {
+      if (layer.kind.hasPictureOpacity) {
         expect(layer.opacity, closeTo(0.3, 1e-9));
       } else {
         // The camera's slider is the view dim, and the TRANSITION row is
@@ -230,7 +230,7 @@ void main() {
     expect(s.lastMasterOpacity, 1.0);
     final targets = {
       for (final layer in s.layers)
-        if (layerKindHasPictureOpacity(layer.kind)) layer.id,
+        if (layer.kind.hasPictureOpacity) layer.id,
     };
 
     s.previewLayersOpacity(targets, 0.42);
@@ -287,7 +287,7 @@ void main() {
     // as an un-bypassed row the sweep missed.
     expect(
       s.layers
-          .where((layer) => layerKindHasTransformFxSwitch(layer.kind))
+          .where((layer) => layer.kind.hasTransformFxSwitch)
           .every((layer) => !s.isLayerFxEnabled(layer.id)),
       isTrue,
     );

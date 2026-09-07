@@ -836,27 +836,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!mounted || !_movePending) {
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        // Read at call time: this layer holds no session, so the program
-        // language arrives through AppText — the wording was hardcoded
-        // Korean before and ignored the language setting entirely.
-        final strings = AppText.strings;
-        return AppConfirmDialog(
-          windowKey: const ValueKey<String>('selection-move-confirm-dialog'),
-          title: strings.selectionMoveConfirmTitle,
-          titleIcon: Icons.open_with_outlined,
-          message: strings.selectionMoveConfirmBody,
-          actions: confirmActions(
-            context,
-            declineLabel: strings.selectionMoveRevert,
-            declineKey: const ValueKey<String>('selection-move-revert-button'),
-            acceptLabel: strings.selectionMoveApply,
-            acceptKey: const ValueKey<String>('selection-move-apply-button'),
-          ),
-        );
-      },
+    // Read at call time: this layer holds no session, so the program
+    // language arrives through AppText — the wording was hardcoded
+    // Korean before and ignored the language setting entirely.
+    final strings = AppText.strings;
+    final confirmed = await askConfirm(
+      context,
+      ConfirmQuestion(
+        // ⚠️Hand-built keys, not `confirmDialogKeys`: the buttons here are
+        // named for what they DO (revert / apply), not cancel / confirm.
+        keys: (
+          window: const ValueKey<String>('selection-move-confirm-dialog'),
+          decline: const ValueKey<String>('selection-move-revert-button'),
+          accept: const ValueKey<String>('selection-move-apply-button'),
+        ),
+        title: strings.selectionMoveConfirmTitle,
+        titleIcon: Icons.open_with_outlined,
+        message: strings.selectionMoveConfirmBody,
+      ),
+      decline: ConfirmChoice(strings.selectionMoveRevert),
+      accept: ConfirmChoice(strings.selectionMoveApply),
     );
     if (!mounted || !_movePending) {
       return;

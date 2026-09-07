@@ -132,8 +132,6 @@ class _ImportDialogState extends State<ImportDialog> {
     });
   }
 
-  bool _rasterize = false;
-
   /// Whether the project CARRIES these files or points at them where they
   /// are. Carrying is the default now, on every platform.
   ///
@@ -194,9 +192,6 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     final dropped = _folder;
     if (dropped != null) {
-      // §6-z22: folder imports always BAKE (cels are for drawing on) —
-      // the toggle is not offered in folder mode.
-      _rasterize = true;
       // A folder came with loose files: the folder is the import, the
       // files are listed as ignored (one window, one source shape).
       _ignoredSources.addAll(_files);
@@ -272,7 +267,6 @@ class _ImportDialogState extends State<ImportDialog> {
     setState(() {
       _files.clear();
       _folder = path;
-      _rasterize = true;
       _reparseFolder();
     });
   }
@@ -1233,11 +1227,12 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
+  /// The FOLDER column. A cut folder lands a whole CUT rather than
+  /// placing a file, and a loose file answers per ROW in the file table
+  /// (2026-08-14, 「answers per file, not per batch」) — so this pane is
+  /// built only when there is a folder, and every question in it is one a
+  /// whole delivery answers at once.
   Widget _settingsColumn(BuildContext context) {
-    final isFolder = _folder != null;
-    // A cut folder lands a whole CUT rather than placing a file, so the
-    // destination and rasterize knobs have nothing to decide.
-    final landsWholeCut = isFolder;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(8),
       child: Column(
@@ -1250,25 +1245,14 @@ class _ImportDialogState extends State<ImportDialog> {
           // Two chips rather than a switch: this is one-of-two named
           // states, and in this app a choice is shown by colour while a
           // checkbox means on/off.
-          ExportModuleRow(
+          ExportChoiceRow<bool>(
             label: 'Files',
-            child: Wrap(
-              spacing: 4,
-              children: [
-                ExportChip(
-                  key: const ValueKey<String>('import-media-reference'),
-                  label: 'Reference',
-                  selected: !_copyIntoProject,
-                  onTap: () => setState(() => _copyIntoProject = false),
-                ),
-                ExportChip(
-                  key: const ValueKey<String>('import-media-copy'),
-                  label: 'Keep inside',
-                  selected: _copyIntoProject,
-                  onTap: () => setState(() => _copyIntoProject = true),
-                ),
-              ],
-            ),
+            keyPrefix: 'import-media',
+            values: const [false, true],
+            selected: _copyIntoProject,
+            keyOf: (copy) => copy ? 'copy' : 'reference',
+            labelOf: (copy) => copy ? 'Keep inside' : 'Reference',
+            onSelect: (copy) => setState(() => _copyIntoProject = copy),
           ),
           // ⛔Not a new caption — this line already existed and already
           // switched with the choice. 유저 2026-08-30 asked for the
@@ -1291,156 +1275,66 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
           _largeCarriedNote(context),
           const SizedBox(height: 6),
-          if (!landsWholeCut) ...[
-            ExportModuleRow(
-              label: 'Place as',
-              child: Wrap(
-                spacing: 4,
-                children: [
-                  // The media pool's own entrance, promoted into the
-                  // window that every other import already came through.
-                  // It is a destination like the others because from here
-                  // the user can change their mind — which is the whole
-                  // reason the browser stopped opening a bare OS picker.
-                  ExportChip(
-                    key: const ValueKey<String>('import-destination-pool'),
-                    label: 'Media pool',
-                    selected: _destination == null,
-                    onTap: () => setState(() => _destination = null),
-                  ),
-                  ExportChip(
-                    key: const ValueKey<String>('import-destination-layer'),
-                    label: 'Layer in cut',
-                    selected: _destination == ImportDestination.activeCutLayer,
-                    // A gap has no cut to place into (UI-R9 #3).
-                    onTap: widget.session.activeCutOrNull == null
-                        ? null
-                        : () => setState(
-                            () =>
-                                _destination = ImportDestination.activeCutLayer,
-                          ),
-                  ),
-                  ExportChip(
-                    key: const ValueKey<String>('import-destination-cut'),
-                    label: 'New cut',
-                    selected: _destination == ImportDestination.newCut,
-                    onTap: () =>
-                        setState(() => _destination = ImportDestination.newCut),
-                  ),
-                ],
-              ),
+          // §6-z22: a cut folder's cels are what you draw on next, so
+          // the folder import always bakes — no toggle to mislead.
+          Text(
+            'Cut folders always bake their cels; scans and movies '
+            'stay references.',
+            style: Theme.of(context).textTheme.labelSmall!.copyWith(
+              color: Theme.of(context).colorScheme.outline,
             ),
-            const SizedBox(height: 6),
-            // Rasterize is a question about a PLACED layer — bake the
-            // pixels into cels, or read the file. A pool registration
-            // places nothing, so the row would be a control with no
-            // effect, which is worse than an absent one.
-            if (_destination != null) ...[
-              ExportToggleRow(
-                key: const ValueKey<String>('import-rasterize-toggle'),
-                label: 'Rasterize (bake pixels)',
-                value: _rasterize,
-                onChanged: (value) => setState(() => _rasterize = value),
-              ),
-              Text(
-                _rasterize
-                    ? 'Pixels absorb into cels; nothing registers.'
-                    // This used to read "keeps the source linked", which
-                    // was the one thing this branch did NOT do — it copied
-                    // the file in. Whether the source stays linked is the
-                    // Files row's question now, and this one answers its
-                    // own.
-                    : 'Places a layer that reads the file, and registers it '
-                          'in the media pool.',
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-              const SizedBox(height: 6),
-            ],
-          ] else ...[
-            // §6-z22: a cut folder's cels are what you draw on next, so
-            // the folder import always bakes — no toggle to mislead.
-            Text(
-              'Cut folders always bake their cels; scans and movies '
-              'stay references.',
-              style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
-          // A pool registration has no rect at all — fit is a placement
-          // default the asset picks up when it is later placed.
-          if (landsWholeCut || _destination != null)
-            ExportModuleRow(
-              label: 'Fit',
-              child: Wrap(
-                spacing: 4,
-                children: [
-                  for (final fit in MediaFitMode.values)
-                    ExportChip(
-                      key: ValueKey<String>('import-fit-${fit.jsonValue}'),
-                      label: switch (fit) {
-                        MediaFitMode.stretch => 'Stretch',
-                        MediaFitMode.contain => 'Keep aspect',
-                        MediaFitMode.none => '1:1',
-                      },
-                      selected: _fit == fit,
-                      onTap: () => setState(() => _fit = fit),
-                    ),
-                ],
-              ),
-            ),
-          if (isFolder) ...[
-            const SizedBox(height: 10),
-            ExportToggleRow(
-              key: const ValueKey<String>('import-subfolders-toggle'),
-              label: 'Archived processes (LO/, GEN/…)',
-              value: _parseConfig.includeProcessSubfolders,
-              onChanged: (value) => setState(() {
-                _parseConfig = _parseConfig.copyWith(
-                  includeProcessSubfolders: value,
-                );
-                _reparseFolder(rescan: false);
-              }),
-            ),
-            ExportToggleRow(
-              key: const ValueKey<String>('import-multicut-toggle'),
-              label: 'Multi-cut folders (겸용)',
-              value: _parseConfig.multiCutFolders,
-              onChanged: (value) => setState(() {
-                _parseConfig = _parseConfig.copyWith(multiCutFolders: value);
-                _reparseFolder(rescan: false);
-              }),
-            ),
-            ExportModuleRow(
-              label: 'Revisions',
-              child: Wrap(
-                spacing: 4,
-                children: [
-                  for (final policy in CelRevisionPolicy.values)
-                    ExportChip(
-                      key: ValueKey<String>(
-                        'import-revision-${policy.jsonValue}',
-                      ),
-                      label: switch (policy) {
-                        CelRevisionPolicy.latestOnly => 'Latest',
-                        CelRevisionPolicy.all => 'All',
-                        CelRevisionPolicy.originalOnly => 'Originals',
-                      },
-                      selected: _parseConfig.revisionPolicy == policy,
-                      onTap: () => setState(() {
-                        _parseConfig = _parseConfig.copyWith(
-                          revisionPolicy: policy,
-                        );
-                        _reparseFolder(rescan: false);
-                      }),
-                    ),
-                ],
-              ),
-            ),
-          ],
+          ),
+          const SizedBox(height: 6),
+          ExportChoiceRow<MediaFitMode>(
+            label: 'Fit',
+            keyPrefix: 'import-fit',
+            values: MediaFitMode.values,
+            selected: _fit,
+            keyOf: (fit) => fit.jsonValue,
+            labelOf: (fit) => switch (fit) {
+              MediaFitMode.stretch => 'Stretch',
+              MediaFitMode.contain => 'Keep aspect',
+              MediaFitMode.none => '1:1',
+            },
+            onSelect: (fit) => setState(() => _fit = fit),
+          ),
+          const SizedBox(height: 10),
+          ExportToggleRow(
+            key: const ValueKey<String>('import-subfolders-toggle'),
+            label: 'Archived processes (LO/, GEN/…)',
+            value: _parseConfig.includeProcessSubfolders,
+            onChanged: (value) => setState(() {
+              _parseConfig = _parseConfig.copyWith(
+                includeProcessSubfolders: value,
+              );
+              _reparseFolder(rescan: false);
+            }),
+          ),
+          ExportToggleRow(
+            key: const ValueKey<String>('import-multicut-toggle'),
+            label: 'Multi-cut folders (겸용)',
+            value: _parseConfig.multiCutFolders,
+            onChanged: (value) => setState(() {
+              _parseConfig = _parseConfig.copyWith(multiCutFolders: value);
+              _reparseFolder(rescan: false);
+            }),
+          ),
+          ExportChoiceRow<CelRevisionPolicy>(
+            label: 'Revisions',
+            keyPrefix: 'import-revision',
+            values: CelRevisionPolicy.values,
+            selected: _parseConfig.revisionPolicy,
+            keyOf: (policy) => policy.jsonValue,
+            labelOf: (policy) => switch (policy) {
+              CelRevisionPolicy.latestOnly => 'Latest',
+              CelRevisionPolicy.all => 'All',
+              CelRevisionPolicy.originalOnly => 'Originals',
+            },
+            onSelect: (policy) => setState(() {
+              _parseConfig = _parseConfig.copyWith(revisionPolicy: policy);
+              _reparseFolder(rescan: false);
+            }),
+          ),
         ],
       ),
     );

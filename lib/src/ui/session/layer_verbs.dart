@@ -49,7 +49,7 @@ class LayerVerbs {
   bool canDeleteLayer(Layer activeLayer) {
     // Read-only where a cut can see it: the transition row is deleted (and
     // moved) on the global axis, never from inside a cut.
-    if (layerKindIsReadOnlyInCut(activeLayer.kind)) {
+    if (activeLayer.kind.isReadOnlyInCut) {
       return false;
     }
     // Attach rows are accessories: always deletable, never counted toward
@@ -123,9 +123,9 @@ class LayerVerbs {
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
     // double-link the same base cels).
     if (activeLayer == null ||
-        !layerKindIsClipboardCopyable(activeLayer.kind) ||
+        !activeLayer.kind.isClipboardCopyable ||
         // R9 #7: the copy lands in the same cut — always the second one.
-        layerKindIsSingletonPerCut(activeLayer.kind) ||
+        activeLayer.kind.isSingletonPerCut ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -159,10 +159,10 @@ class LayerVerbs {
     // Same stand-downs as plain duplication; an attach row's LINK
     // duplicate is reached through its base (the group goes whole).
     return activeLayer != null &&
-        layerKindIsClipboardCopyable(activeLayer.kind) &&
+        activeLayer.kind.isClipboardCopyable &&
         // R9 #7: a duplicate lands in the SAME cut, so a singleton kind's
         // copy would always be the second one.
-        !layerKindIsSingletonPerCut(activeLayer.kind) &&
+        !activeLayer.kind.isSingletonPerCut &&
         !isAttachedLayer(activeLayer);
   }
 

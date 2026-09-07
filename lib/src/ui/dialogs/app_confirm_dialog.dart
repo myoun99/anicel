@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../input/control_press_claim.dart';
+import 'dialog_verb.dart';
 
 /// The "answer a question" window: a sentence and the ways out of it.
 ///
@@ -185,32 +188,147 @@ Future<void> showAppNotice(
   );
 }
 
+/// A caught file error, reported the way every file error in this app is:
+/// a [showAppNotice] under the common notice title, carrying the error's
+/// own text.
+///
+/// 🚨ONE law for reporting a caught file error. It was written out three
+/// times in the top strip alone — a private method on the strip's State,
+/// which the two module-level save/export functions in the same file could
+/// not call, so they re-typed its body.
+///
+/// ⚠️The `context.mounted` check stays at the CALLER, not in here: a
+/// caught error always arrives after an await, and `use_build_context_
+/// synchronously` proves that gap at the call site or nowhere. A guard in
+/// here would be a second, invisible one that the analyzer cannot read.
+///
+/// Fire-and-forget on purpose: the caller is on its way out of a failed
+/// operation and does not wait for the notice to be dismissed.
+void showFileError(BuildContext context, Object error) => unawaited(
+  showAppNotice(
+    context,
+    title: AppText.strings.commonNotice,
+    message: '$error',
+  ),
+);
+
+/// One of the two answers a yes/no window offers: what the button SAYS
+/// and how loudly it says it.
+///
+/// ⚠️The key it wears and the value it pops are NOT here. Those belong to
+/// the window — [confirmActions] puts them on — so no caller can hand the
+/// accept button the decline's key, or pop the wrong answer.
+class ConfirmChoice {
+  const ConfirmChoice(this.label, {this.emphasis, this.tooltip});
+
+  final String label;
+
+  /// Null wears the ink the ROLE gives it: accent for the accept, quiet
+  /// for the decline. Spelled out only where the confirm is destructive
+  /// (the recovery gate's "open the saved one" throws work away).
+  final AppWindowActionEmphasis? emphasis;
+
+  /// The consequence the label cannot hold — see [AppWindowAction.tooltip]
+  /// for why it is never the only line of defence.
+  final String? tooltip;
+}
+
+/// What a yes/no window ASKS: the name it wears and the sentence it puts
+/// to the user.
+class ConfirmQuestion {
+  const ConfirmQuestion({
+    required this.keys,
+    required this.title,
+    required this.message,
+    this.titleIcon,
+  });
+
+  /// ⛔THE THREE KEYS ARE ONE NAME (see [confirmDialogKeys]), so they ride
+  /// with the question rather than with the two answers: the prefix that
+  /// spells all three IS the question's name.
+  final ConfirmDialogKeys keys;
+
+  final String title;
+  final String message;
+  final IconData? titleIcon;
+}
+
+/// Asks a yes/no question in the app's own window and answers what the
+/// user did: `true` accepted, `false` declined, **null** dismissed — the
+/// barrier or escape.
+///
+/// 🚨THE DOOR into the two-button confirm, the way [showAppNotice] is the
+/// door into the one-button one. Eight sites opened it by hand
+/// (`showDialog<bool>` → `AppConfirmDialog` → [confirmActions]), varying
+/// only in labels, keys, icon, emphasis and tooltip — all values.
+///
+/// ⚠️The RAW `bool?` comes back on purpose. The three answers are not the
+/// same everywhere: most sites read `!= true`, the selection move reads
+/// `== false` (dismissing keeps the move rather than reverting it), and
+/// the autosave-recovery gate treats null as "close the whole flow". A
+/// helper that folded null into false would have quietly changed all
+/// three.
+///
+/// ⛔Not for a dialog that is its OWN widget — `delete_layer_dialog.dart`
+/// and `frame_name_conflict_dialog.dart` are built on [AppConfirmDialog]
+/// as widgets, which is a different thing from this recipe.
+Future<bool?> askConfirm(
+  BuildContext context,
+  ConfirmQuestion question, {
+  required ConfirmChoice accept,
+  ConfirmChoice? decline,
+}) => showDialogVerb<bool>(
+  context,
+  (context) =>
+      confirmWindow(context, question, accept: accept, decline: decline),
+);
+
+/// The two-button confirm window itself, so a verb that wants the window
+/// inside a dialog flow of its own builds it without asking — the delete
+/// and reset verbs do, through `confirmThenCommit`.
+Widget confirmWindow(
+  BuildContext context,
+  ConfirmQuestion question, {
+  required ConfirmChoice accept,
+  ConfirmChoice? decline,
+}) => AppConfirmDialog(
+  windowKey: question.keys.window,
+  title: question.title,
+  titleIcon: question.titleIcon,
+  message: question.message,
+  actions: confirmActions(
+    context,
+    keys: question.keys,
+    decline: decline ?? ConfirmChoice(AppText.strings.commonCancel),
+    accept: accept,
+  ),
+);
+
 /// The two ways out of a yes/no window: the decline action pops `false`,
 /// the accept action pops `true`.
 ///
 /// 🚨ONE law for every two-button confirm (the audit's clone scan,
-/// 2026-09-03) — ten sites used to type both pops themselves.
+/// 2026-09-03) — ten sites used to type both pops themselves. [askConfirm]
+/// is the door: it is what a caller asking a yes/no question reaches for,
+/// and this is the pair of actions inside it.
 List<AppWindowAction> confirmActions(
   BuildContext context, {
-  required String declineLabel,
-  required Key declineKey,
-  AppWindowActionEmphasis declineEmphasis = AppWindowActionEmphasis.quiet,
-  String? declineTooltip,
-  required String acceptLabel,
-  required Key acceptKey,
-  AppWindowActionEmphasis acceptEmphasis = AppWindowActionEmphasis.primary,
+  required ConfirmDialogKeys keys,
+  required ConfirmChoice decline,
+  required ConfirmChoice accept,
 }) => [
   AppWindowAction(
-    label: declineLabel,
-    actionKey: declineKey,
-    emphasis: declineEmphasis,
-    tooltip: declineTooltip,
+    label: decline.label,
+    actionKey: keys.decline,
+    emphasis: decline.emphasis ?? AppWindowActionEmphasis.quiet,
+    tooltip: decline.tooltip,
     onPressed: () => Navigator.of(context).pop(false),
   ),
   AppWindowAction(
-    label: acceptLabel,
-    actionKey: acceptKey,
-    emphasis: acceptEmphasis,
+    label: accept.label,
+    actionKey: keys.accept,
+    emphasis: accept.emphasis ?? AppWindowActionEmphasis.primary,
+    tooltip: accept.tooltip,
     onPressed: () => Navigator.of(context).pop(true),
   ),
 ];

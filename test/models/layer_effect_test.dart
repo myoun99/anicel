@@ -305,7 +305,7 @@ void main() {
       const chainless = {LayerKind.camera, LayerKind.transition};
       for (final kind in LayerKind.values) {
         expect(
-          layerKindHasLayerEffects(kind),
+          kind.hasLayerEffects,
           !chainless.contains(kind),
           reason: kind.name,
         );

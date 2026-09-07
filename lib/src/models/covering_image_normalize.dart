@@ -1,7 +1,6 @@
 import '../core/mapped_or_same.dart';
 import 'cut.dart';
 import 'layer.dart';
-import 'layer_kind.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 
@@ -43,7 +42,7 @@ Cut cutWithCoveringImageRows(Cut cut) {
 /// [layer] itself. Identity-preserving through [rederiveRunBehaviors],
 /// which answers the same instance when the row already has its shape.
 Layer _coveringImageRow(Layer layer, int duration) {
-  if (!layerKindHoldsSingleCel(layer.kind) || layer.frames.isEmpty) {
+  if (!layer.kind.holdsSingleCel || layer.frames.isEmpty) {
     return layer;
   }
   // The cel the row holds: the first NON-GHOST drawing the timeline

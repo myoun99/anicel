@@ -1259,7 +1259,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   Set<LayerId> _legendDisplayedLayerIds() => {
     for (final layer in _legendLayers())
-      if (layerKindHasPictureOpacity(layer.kind)) layer.id,
+      if (layer.kind.hasPictureOpacity) layer.id,
   };
 
   /// The DISPLAY form of a track SE lane: the in-flight take preview
@@ -3006,7 +3006,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // grips go in LAST below.
     //
     // 🚨C1 (2026-08-17): the MOVE half too — the SE row's, verbatim. It used
-    // to refuse (`onMoveBegin: false`) on [layerKindIsReadOnlyInCut]'s
+    // to refuse (`onMoveBegin: false`) on [LayerKind.isReadOnlyInCut]'s
     // reasoning, but that law is about the CUT timeline's projection; THIS
     // rail is the global axis the spans really live on — their one authoring
     // surface, where the edge grips already edit. The row list handed to the

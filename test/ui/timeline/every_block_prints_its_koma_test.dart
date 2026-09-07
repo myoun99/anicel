@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 /// > 「se블록에 코마표시가 없음. **블록이면 뭐든 반드시 코마블록이 있어야함**」
 ///
 /// ⚠️se 는 눈에 띈 하나였을 뿐이므로 **블록을 가진 모든 종류**를 돈다.
-/// 「블록을 가졌나」의 정의는 [layerKindHoldsDrawings] 다 — 그게 이 앱에서
+/// 「블록을 가졌나」의 정의는 [LayerKind.holdsDrawings] 다 — 그게 이 앱에서
 /// 「이 행에 노출 블록·X칸·코마 드래그가 있나」를 답하는 술어다.
 Layer _layer(String id, LayerKind kind) => Layer(
   id: LayerId(id),
@@ -81,7 +81,7 @@ void main() {
   testWidgets('블록을 가진 종류는 하나도 빠지지 않는다', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    for (final kind in LayerKind.values.where(layerKindHoldsDrawings)) {
+    for (final kind in LayerKind.values.where((kind) => kind.holdsDrawings)) {
       await tester.pumpWidget(_panel([_layer('k-${kind.name}', kind)]));
       await tester.pumpAndSettle();
       expect(

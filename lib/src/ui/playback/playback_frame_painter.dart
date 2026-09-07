@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
@@ -18,6 +17,8 @@ import '../../services/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/se_name_tag_paint.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// Paints one cached composite frame inside the canvas panel viewport.
 ///
@@ -33,7 +34,7 @@ import '../text/se_name_tag_paint.dart';
 /// canvas-space composite is projected with the transform the export
 /// renderer uses — no re-render, camera moves are pure GPU transforms over
 /// the cached image.
-class PlaybackFramePainter extends CustomPainter {
+class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   const PlaybackFramePainter({
     required this.image,
     required this.canvasSize,
@@ -350,24 +351,24 @@ class PlaybackFramePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant PlaybackFramePainter oldDelegate) =>
-      !identical(oldDelegate.image, image) ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.cameraPose != cameraPose ||
-      oldDelegate.cameraFrameSize != cameraFrameSize ||
-      oldDelegate.cutPose != cutPose ||
-      !listEquals(oldDelegate.cutEffects, cutEffects) ||
-      oldDelegate.fadeOpacity != fadeOpacity ||
-      oldDelegate.imageOpacity != imageOpacity ||
-      oldDelegate.paperColor != paperColor ||
-      oldDelegate.paperBackground != paperBackground ||
-      oldDelegate.pasteboardColor != pasteboardColor ||
-      oldDelegate.paintPaper != paintPaper ||
-      oldDelegate.paintLetterbox != paintLetterbox ||
-      // The pan-phase snap reads it — a monitor move must repaint, not
-      // keep the old phase.
-      oldDelegate.devicePixelRatio != devicePixelRatio ||
-      seNameTagSignature(oldDelegate.seNameTags) !=
-          seNameTagSignature(seNameTags);
+  Object get props => (
+    ByIdentity(image),
+    canvasSize,
+    viewport,
+    cameraPose,
+    cameraFrameSize,
+    cutPose,
+    ByList(cutEffects),
+    fadeOpacity,
+    imageOpacity,
+    paperColor,
+    paperBackground,
+    pasteboardColor,
+    paintPaper,
+    paintLetterbox,
+    // The pan-phase snap reads it — a monitor move must repaint, not
+    // keep the old phase.
+    devicePixelRatio,
+    seNameTagSignature(seNameTags),
+  );
 }

@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -10,6 +9,8 @@ import '../../models/transform_track.dart';
 import '../../models/app_input_settings.dart';
 import '../theme/app_theme.dart';
 import '../../services/layer_pose_paint.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// Which member of the Transform group a box drag drives (R5 #10, the
 /// user's rule: "그 관련된 동작을 하면 관련된 멤버가 키찍고 값 바꾸도록").
@@ -289,7 +290,7 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
   }
 }
 
-class _TransformBoxPainter extends CustomPainter {
+class _TransformBoxPainter extends CustomPainter with RepaintOnProps {
   const _TransformBoxPainter({
     required this.corners,
     required this.rotateHandle,
@@ -324,9 +325,5 @@ class _TransformBoxPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TransformBoxPainter oldDelegate) =>
-      oldDelegate.color != color ||
-      oldDelegate.rotateHandle != rotateHandle ||
-      !listEquals(oldDelegate.corners, corners);
-
+  Object get props => (color, rotateHandle, ByList(corners));
 }

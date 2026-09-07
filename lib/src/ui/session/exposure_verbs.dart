@@ -59,8 +59,8 @@ class ExposureVerbs {
   /// hold one covering block by definition — an X-here would be reverted
   /// by the covering normalization.
   static bool _blankable(Layer layer) =>
-      layerKindHoldsDrawings(layer.kind) &&
-      !layerKindHoldsSingleCel(layer.kind) &&
+      layer.kind.holdsDrawings &&
+      !layer.kind.holdsSingleCel &&
       !isSyncedAttachedLayer(layer);
 
   bool get canBlankExposureForSelection =>
@@ -125,7 +125,7 @@ class ExposureVerbs {
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       // R10: a folder row is a CELLS row whose coverage is the subtree
       // union, carried by its band clone's own timeline. HELD, never
       // drawingStart — a held cell prints no glyph, so the band stays

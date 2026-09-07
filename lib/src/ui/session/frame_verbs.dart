@@ -104,10 +104,10 @@ class FrameVerbs {
 
   bool get canCreateDrawingAtCurrentFrame {
     final layer = _selection.activeLayer;
-    // ⛔[layerKindTakesAuthoredCels], not `holdsDrawings`: the direction row
+    // ⛔[LayerKind.takesAuthoredCels], not `holdsDrawings`: the direction row
     // holds cels since R27 #16 and could not be given one (유저: 「프레임이
     // 없다고 뜨거든」).
-    if (layer == null || !layerKindTakesAuthoredCels(layer.kind)) {
+    if (layer == null || !layer.kind.takesAuthoredCels) {
       return false;
     }
     // SYNCED attach rows (UI-R23 #7 v2): the ALWAYS-MIRROR invariant keeps
@@ -125,7 +125,7 @@ class FrameVerbs {
     if (layer.mediaReference != null) {
       return false;
     }
-    if (layerKindHoldsSingleCel(layer.kind) && layer.frames.isNotEmpty) {
+    if (layer.kind.holdsSingleCel && layer.frames.isNotEmpty) {
       return false;
     }
 
@@ -167,7 +167,7 @@ class FrameVerbs {
       return false;
     }
     final layer = _selection.activeLayer;
-    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+    if (layer == null || !layer.kind.holdsDrawings) {
       return false;
     }
     // D22: a SINGLE-CEL (image) row's one block is pinned by the covering
@@ -175,7 +175,7 @@ class FrameVerbs {
     // half MINTS a cel first, leaving a drawing no exposure references
     // and nothing on screen shows. A second cel is the one thing this
     // row's definition rules out.
-    if (layerKindHoldsSingleCel(layer.kind)) {
+    if (layer.kind.holdsSingleCel) {
       return false;
     }
     return coveringDrawingBlockAt(

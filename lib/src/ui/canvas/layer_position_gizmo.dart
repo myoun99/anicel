@@ -5,6 +5,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
 import '../../models/app_input_settings.dart';
 import '../theme/app_theme.dart';
+import '../repaint_props.dart';
 
 /// The on-canvas Position drag gizmo: a crosshair handle at the active
 /// layer's posed center. Dragging it moves the layer's Position — the
@@ -200,7 +201,7 @@ Widget _gizmoHandle({
   );
 }
 
-class _AnchorHandlePainter extends CustomPainter {
+class _AnchorHandlePainter extends CustomPainter with RepaintOnProps {
   const _AnchorHandlePainter({required this.color, required this.active});
 
   final Color color;
@@ -230,11 +231,10 @@ class _AnchorHandlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _AnchorHandlePainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.active != active;
+  Object get props => (color, active);
 }
 
-class _GizmoHandlePainter extends CustomPainter {
+class _GizmoHandlePainter extends CustomPainter with RepaintOnProps {
   const _GizmoHandlePainter({required this.color, required this.active});
 
   final Color color;
@@ -264,6 +264,5 @@ class _GizmoHandlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GizmoHandlePainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.active != active;
+  Object get props => (color, active);
 }

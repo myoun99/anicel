@@ -16,4 +16,4 @@ import '../../models/layer_kind.dart';
 /// said at the entrance instead of left to the host to no-op. It also
 /// buys those rows their single tap back, since no double-tap is armed.
 bool layerKindOpensCellEditorOnDoubleTap(LayerKind kind) =>
-    !layerKindGroupsLayers(kind) && kind != LayerKind.adjustment;
+    !kind.groupsLayers && kind != LayerKind.adjustment;
