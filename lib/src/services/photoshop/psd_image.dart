@@ -3,7 +3,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../core/straight_rgba_image.dart';
+import '../straight_rgba_image.dart';
 import 'psd_reader.dart';
 
 /// The bridge between the document reader and everything in the app that

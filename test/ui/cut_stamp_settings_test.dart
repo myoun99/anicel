@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/core/straight_rgba_image.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';

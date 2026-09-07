@@ -1,4 +1,4 @@
-import '../../core/straight_rgba_image.dart';
+import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data' show Uint8List;

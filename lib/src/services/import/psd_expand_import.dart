@@ -3,7 +3,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../core/straight_rgba_image.dart';
+import '../straight_rgba_image.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';

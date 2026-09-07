@@ -6,7 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/straight_rgba_image.dart' show premultipliedStraightRgba;
+import '../../services/straight_rgba_image.dart' show premultipliedStraightRgba;
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';

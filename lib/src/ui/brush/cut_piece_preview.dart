@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../core/straight_rgba_image.dart';
+import '../../services/straight_rgba_image.dart';
 import '../../models/cut_piece.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';

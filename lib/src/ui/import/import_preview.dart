@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
-import '../../core/straight_rgba_image.dart';
+import '../../services/straight_rgba_image.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_video_decoder.dart';
 import '../../services/media/video_decode_worker.dart';

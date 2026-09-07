@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import '../../core/straight_rgba_image.dart';
+import '../straight_rgba_image.dart';
 import '../../native/qa_video_decoder.dart';
 import 'video_decode_worker.dart';
 import 'viewer_document.dart';
