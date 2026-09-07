@@ -9,6 +9,46 @@ import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/scratch_file.dart';
 import 'persistence/volatile_scratch_files.dart';
 
+/// The two pictures one undo entry holds — before the edit and after it.
+///
+/// 🚨★★★**THE BILL NAMES THE BEFORE; THE PARK MOVES BOTH.** That reads
+/// like an inconsistency and is the opposite: entry n's [after] IS entry
+/// n+1's [before], the same object by structural sharing, so charging
+/// both would count a neighbour's bytes twice — and by that very sharing
+/// a [before] let go on its own frees nothing, because the tiles stay
+/// alive through the previous entry's [after].
+///
+/// ⚠️Two commands hold exactly this shape (a stroke and a confirmed
+/// move), and they held it as two identical bodies until the clone scan
+/// said so. The asymmetry above is the reason it is a TYPE rather than a
+/// helper: written twice, one of the two copies eventually starts
+/// charging for [after].
+class UndoSurfacePair {
+  UndoSurfacePair({
+    required BrushFrameKey key,
+    required BitmapSurface before,
+    required BitmapSurface after,
+  }) : before = UndoSurfaceSnapshot(
+         key: key,
+         snapshot: before,
+         sharedWith: after,
+       ),
+       after = UndoSurfaceSnapshot(
+         key: key,
+         snapshot: after,
+         sharedWith: before,
+       );
+
+  final UndoSurfaceSnapshot before;
+  final UndoSurfaceSnapshot after;
+
+  int get residentBytes => before.residentBytes;
+
+  Future<bool> park() => UndoSurfaceSnapshot.parkAll([before, after]);
+
+  void drop() => UndoSurfaceSnapshot.dropAll([before, after]);
+}
+
 /// ONE surface an undo entry is holding, and its residence: in memory, or
 /// parked in the run's 휘발성 room.
 ///

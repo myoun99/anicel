@@ -51,17 +51,12 @@ class BitmapSurface {
   /// shared ones referenced. Two answers derived from one walk rather
   /// than two walks that could disagree about what "shared" means.
   Map<TileCoord, BitmapTile> tilesNotSharedWith(BitmapSurface? other) {
-    final live = Set<Object>.identity();
-    if (other != null) {
-      live.addAll(other._tiles.values);
-    }
-    final owed = <TileCoord, BitmapTile>{};
-    for (final entry in _tiles.entries) {
-      if (!live.contains(entry.value)) {
-        owed[entry.key] = entry.value;
-      }
-    }
-    return owed;
+    final live = Set<Object>.identity()
+      ..addAll(other?._tiles.values ?? const <BitmapTile>[]);
+    return {
+      for (final entry in _tiles.entries)
+        if (!live.contains(entry.value)) entry.key: entry.value,
+    };
   }
 
   /// Bytes THIS surface holds that [other] does not — [tilesNotSharedWith]

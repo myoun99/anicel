@@ -73,8 +73,7 @@ class BrushLiftMoveHistoryCommand
   /// and redo restores the post SURFACE instead (same retention
   /// discipline as BrushStrokeHistoryCommand).
   BrushDab? _stampDab;
-  UndoSurfaceSnapshot? _pre;
-  UndoSurfaceSnapshot? _post;
+  UndoSurfacePair? _surfaces;
   bool _landed = false;
 
   /// Zero until the landing, and then the pre-lift tiles the confirm left
@@ -86,26 +85,14 @@ class BrushLiftMoveHistoryCommand
   /// ZERO while holding a full-canvas surface — so the byte budget never
   /// fired on the very entries that killed the app.
   @override
-  int get estimatedRetainedBytes => _pre?.residentBytes ?? 0;
+  int get estimatedRetainedBytes => _surfaces?.residentBytes ?? 0;
+
+  /// Not landed yet: nothing of its own to move.
+  @override
+  Future<bool> parkPayload() => _surfaces?.park() ?? Future.value(true);
 
   @override
-  Future<bool> parkPayload() {
-    final pre = _pre;
-    final post = _post;
-    if (pre == null || post == null) {
-      return Future.value(true); // Not landed: nothing of its own yet.
-    }
-    return UndoSurfaceSnapshot.parkAll([pre, post]);
-  }
-
-  @override
-  void dropPayload() {
-    final pre = _pre;
-    final post = _post;
-    if (pre != null && post != null) {
-      UndoSurfaceSnapshot.dropAll([pre, post]);
-    }
-  }
+  void dropPayload() => _surfaces?.drop();
 
   @override
   String get description => 'Move selection';
@@ -113,7 +100,7 @@ class BrushLiftMoveHistoryCommand
   @override
   void execute() {
     if (_landed) {
-      _restore(_post);
+      _restore(_surfaces?.after);
       restoreRegion?.call(_regionAfter);
       return;
     }
@@ -123,16 +110,10 @@ class BrushLiftMoveHistoryCommand
       sourceDabs: [_stampDab!],
       cacheInvalidationSink: cacheInvalidationSink,
     );
-    final postSurface = coordinator.currentSurfaceOf(frameKey);
-    _pre = UndoSurfaceSnapshot(
+    _surfaces = UndoSurfacePair(
       key: frameKey,
-      snapshot: _preLiftSurface,
-      sharedWith: postSurface,
-    );
-    _post = UndoSurfaceSnapshot(
-      key: frameKey,
-      snapshot: postSurface,
-      sharedWith: _preLiftSurface,
+      before: _preLiftSurface,
+      after: coordinator.currentSurfaceOf(frameKey),
     );
     _stampDab = null;
     _landed = true;
@@ -143,7 +124,7 @@ class BrushLiftMoveHistoryCommand
 
   @override
   void undo() {
-    _restore(_pre);
+    _restore(_surfaces?.before);
     restoreRegion?.call(regionBefore);
   }
 

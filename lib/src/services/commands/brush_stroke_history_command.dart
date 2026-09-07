@@ -36,44 +36,25 @@ class BrushStrokeHistoryCommand
   bool _committedChanges = false;
 
   late BrushFrameKey _frameKey;
-  UndoSurfaceSnapshot? _pre;
-  UndoSurfaceSnapshot? _post;
+  UndoSurfacePair? _surfaces;
 
   /// Diagnostic for the accumulation regression guard.
   bool get retainsCommitPayload => _strokeData != null;
 
   /// ONE image of the changed tiles is ours; the other end of every link
-  /// is somebody else's. post(n) IS pre(n+1) — the same object, by
-  /// structural sharing — and the newest post IS the live surface, so
-  /// charging both counted a neighbour's bytes as ours. There is no
-  /// "worst case" where both ends are unshared: an entry with nothing
-  /// after it is the newest one, and its post is what the canvas is
-  /// showing.
-  ///
-  /// ⚠️THE BILL NAMES THE PRE; [parkPayload] MOVES BOTH. Not an
-  /// inconsistency — the very sharing that makes the post free to hold is
-  /// what makes it impossible to free alone.
+  /// is somebody else's. There is no "worst case" where both ends are
+  /// unshared: an entry with nothing after it is the newest one, and its
+  /// post is what the canvas is showing. See [UndoSurfacePair] for why
+  /// the bill and the park name different things.
   @override
-  int get estimatedRetainedBytes => _pre?.residentBytes ?? 0;
+  int get estimatedRetainedBytes => _surfaces?.residentBytes ?? 0;
+
+  /// A stroke that changed nothing has nothing to move.
+  @override
+  Future<bool> parkPayload() => _surfaces?.park() ?? Future.value(true);
 
   @override
-  Future<bool> parkPayload() {
-    final pre = _pre;
-    final post = _post;
-    if (pre == null || post == null) {
-      return Future.value(true); // A stroke that changed nothing.
-    }
-    return UndoSurfaceSnapshot.parkAll([pre, post]);
-  }
-
-  @override
-  void dropPayload() {
-    final pre = _pre;
-    final post = _post;
-    if (pre != null && post != null) {
-      UndoSurfaceSnapshot.dropAll([pre, post]);
-    }
-  }
+  void dropPayload() => _surfaces?.drop();
 
   @override
   String get description => 'Brush stroke';
@@ -82,7 +63,7 @@ class BrushStrokeHistoryCommand
   void execute() {
     if (_hasCommitted) {
       if (_committedChanges) {
-        _restore(_post);
+        _restore(_surfaces?.after);
       }
       return;
     }
@@ -105,15 +86,10 @@ class BrushStrokeHistoryCommand
     _committedChanges = outcome != null;
     if (outcome != null) {
       _frameKey = frameKey;
-      _pre = UndoSurfaceSnapshot(
+      _surfaces = UndoSurfacePair(
         key: frameKey,
-        snapshot: outcome.preSurface,
-        sharedWith: outcome.postSurface,
-      );
-      _post = UndoSurfaceSnapshot(
-        key: frameKey,
-        snapshot: outcome.postSurface,
-        sharedWith: outcome.preSurface,
+        before: outcome.preSurface,
+        after: outcome.postSurface,
       );
     }
   }
@@ -123,7 +99,7 @@ class BrushStrokeHistoryCommand
     if (!_committedChanges) {
       return;
     }
-    _restore(_pre);
+    _restore(_surfaces?.before);
   }
 
   /// ⛔A payload that will not come back leaves the picture ALONE. The
