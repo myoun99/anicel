@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
+import '../repaint_props.dart';
 
 /// The ADR streamer (REC1-E): a vertical line sweeping the picture that
 /// reaches the right edge exactly at the punch-in — the eye's half of
@@ -49,7 +50,7 @@ class RecordingStreamerOverlay extends StatelessWidget {
   }
 }
 
-class _StreamerPainter extends CustomPainter {
+class _StreamerPainter extends CustomPainter with RepaintOnProps {
   const _StreamerPainter(this.progress);
 
   final double progress;
@@ -66,6 +67,5 @@ class _StreamerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _StreamerPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+  Object get props => (progress,);
 }

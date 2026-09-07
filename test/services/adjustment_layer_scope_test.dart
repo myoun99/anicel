@@ -15,6 +15,7 @@ import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// R6b — WHAT an adjustment layer filters.
 ///
@@ -71,55 +72,51 @@ void main() {
     canvasSize: canvasSize,
   );
 
-  List<CutFrameCompositeEntryNode> treeOf(Cut source) =>
+  List<CompositeNode<CutFrameCompositeRow>> treeOf(Cut source) =>
       resolveCutFrameCompositeTree(cut: source, frameIndex: 0);
 
   /// The layer ids under a node, depth-first bottom → top.
-  List<String> idsUnder(CutFrameCompositeEntryNode node) {
+  List<String> idsUnder(CompositeNode<CutFrameCompositeRow> node) {
     switch (node) {
-      case CutFrameCompositeEntryLeaf(:final entry):
+      case CompositeLeaf(payload: final CutFrameCompositeEntry entry):
         return [entry.layer.id.value];
-      case CutFrameCompositeEntryLive(:final layer):
+      case CompositeLeaf(payload: CutFrameCompositeLiveRow(:final layer)):
         // The tree here is asked with NO live row, so this is unreachable —
         // it is named so a live row showing up in a plain resolve reads as
         // a wrong id rather than as a silent skip.
         return [layer.id.value];
-      case CutFrameCompositeEntryGroup(:final children):
-      case CutFrameCompositeEntryAdjustment(:final children):
+      case CompositeGroup<CutFrameCompositeRow>(:final children):
+      case CompositeAdjustment<CutFrameCompositeRow>(:final children):
         return [for (final child in children) ...idsUnder(child)];
     }
   }
 
   group('the predicates', () {
     test('an adjustment composites but paints nothing of its own', () {
-      expect(layerKindComposites(LayerKind.adjustment), isTrue);
-      expect(layerKindFiltersBelow(LayerKind.adjustment), isTrue);
-      expect(layerKindPaintsArtwork(LayerKind.adjustment), isFalse);
-      expect(layerKindGroupsLayers(LayerKind.adjustment), isFalse);
-      expect(layerKindHoldsDrawings(LayerKind.adjustment), isFalse);
-      expect(layerKindAcceptsBrushInput(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.composites, isTrue);
+      expect(LayerKind.adjustment.filtersBelow, isTrue);
+      expect(LayerKind.adjustment.paintsArtwork, isFalse);
+      expect(LayerKind.adjustment.groupsLayers, isFalse);
+      expect(LayerKind.adjustment.holdsDrawings, isFalse);
+      expect(LayerKind.adjustment.acceptsBrushInput, isFalse);
     });
 
     test('it carries EFFECTS and no transform — the one kind that splits', () {
-      expect(layerKindHasLayerEffects(LayerKind.adjustment), isTrue);
-      expect(layerKindHasLayerTransform(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.hasLayerEffects, isTrue);
+      expect(LayerKind.adjustment.hasLayerTransform, isFalse);
       // …and every other kind still answers both the same way.
       for (final kind in LayerKind.values) {
         if (kind == LayerKind.adjustment) {
           continue;
         }
-        expect(
-          layerKindHasLayerEffects(kind),
-          layerKindHasLayerTransform(kind),
-          reason: kind.name,
-        );
+        expect(kind.hasLayerEffects, kind.hasLayerTransform, reason: kind.name);
       }
     });
 
     test('no cel export, and the kind is fixed', () {
-      expect(layerKindExportsCels(LayerKind.adjustment), isFalse);
-      expect(layerKindIsFixed(LayerKind.adjustment), isTrue);
-      expect(layerKindIsClipboardCopyable(LayerKind.adjustment), isFalse);
+      expect(LayerKind.adjustment.exportsCels, isFalse);
+      expect(LayerKind.adjustment.isFixed, isTrue);
+      expect(LayerKind.adjustment.isClipboardCopyable, isFalse);
     });
   });
 
@@ -129,14 +126,14 @@ void main() {
         cut([drawing('a'), drawing('b'), adjustment('fx'), drawing('c')]),
       );
       expect(tree, hasLength(2));
-      final scope = tree.first as CutFrameCompositeEntryAdjustment;
+      final scope = tree.first as CompositeAdjustment<CutFrameCompositeRow>;
       expect(idsUnder(scope), ['a', 'b']);
       expect(idsUnder(tree.last), ['c']);
     });
 
     test('an adjustment at the BOTTOM filters nothing and leaves no node', () {
       final tree = treeOf(cut([adjustment('fx'), drawing('a')]));
-      expect(tree.single, isA<CutFrameCompositeEntryLeaf>());
+      expect(tree.single, isA<CompositeLeaf<CutFrameCompositeRow>>());
     });
 
     test('two adjustments nest: the upper one includes the lower scope', () {
@@ -148,10 +145,11 @@ void main() {
           adjustment('fx2', amount: 40),
         ]),
       );
-      final outer = tree.single as CutFrameCompositeEntryAdjustment;
+      final outer = tree.single as CompositeAdjustment<CutFrameCompositeRow>;
       expect(outer.effects.single.parameter('brightness'), 40);
       expect(idsUnder(outer), ['a', 'b']);
-      final inner = outer.children.first as CutFrameCompositeEntryAdjustment;
+      final inner =
+          outer.children.first as CompositeAdjustment<CutFrameCompositeRow>;
       expect(inner.effects.single.parameter('brightness'), 20);
       expect(idsUnder(inner), ['a']);
     });
@@ -171,7 +169,7 @@ void main() {
         ]),
       );
       expect(tree, hasLength(2));
-      final scope = tree.first as CutFrameCompositeEntryAdjustment;
+      final scope = tree.first as CompositeAdjustment<CutFrameCompositeRow>;
       expect(idsUnder(scope), [
         'a',
         'm1',
@@ -191,9 +189,10 @@ void main() {
       );
       // [A, group(F)] — the adjustment lives INSIDE the group.
       expect(tree, hasLength(2));
-      expect(tree.first, isA<CutFrameCompositeEntryLeaf>());
-      final group = tree.last as CutFrameCompositeEntryGroup;
-      final scope = group.children.first as CutFrameCompositeEntryAdjustment;
+      expect(tree.first, isA<CompositeLeaf<CutFrameCompositeRow>>());
+      final group = tree.last as CompositeGroup<CutFrameCompositeRow>;
+      final scope =
+          group.children.first as CompositeAdjustment<CutFrameCompositeRow>;
       expect(idsUnder(scope), [
         'm1',
       ], reason: 'A is outside the buffer and out of reach');
@@ -209,7 +208,7 @@ void main() {
           folderRow('f', opacity: 0.5),
         ]),
       );
-      final group = tree.last as CutFrameCompositeEntryGroup;
+      final group = tree.last as CompositeGroup<CutFrameCompositeRow>;
       expect(idsUnder(group.children.single), ['m1']);
     });
 
@@ -226,7 +225,7 @@ void main() {
           folderRow('f2'),
         ]),
       );
-      final scope = tree.single as CutFrameCompositeEntryAdjustment;
+      final scope = tree.single as CompositeAdjustment<CutFrameCompositeRow>;
       expect(idsUnder(scope), ['a', 'b', 'c']);
     });
 
@@ -245,8 +244,9 @@ void main() {
       );
       expect(tree, hasLength(2));
       expect(idsUnder(tree.first), ['a']);
-      final group = tree.last as CutFrameCompositeEntryGroup;
-      final scope = group.children.single as CutFrameCompositeEntryAdjustment;
+      final group = tree.last as CompositeGroup<CutFrameCompositeRow>;
+      final scope =
+          group.children.single as CompositeAdjustment<CutFrameCompositeRow>;
       expect(idsUnder(scope), ['b', 'c']);
     });
   });
@@ -256,13 +256,13 @@ void main() {
       final tree = treeOf(
         cut([drawing('a'), adjustment('fx', visible: false)]),
       );
-      expect(tree.single, isA<CutFrameCompositeEntryLeaf>());
+      expect(tree.single, isA<CompositeLeaf<CutFrameCompositeRow>>());
     });
 
     test('an empty or no-op chain leaves no node', () {
       expect(
         treeOf(cut([drawing('a'), adjustment('fx', amount: 0)])).single,
-        isA<CutFrameCompositeEntryLeaf>(),
+        isA<CompositeLeaf<CutFrameCompositeRow>>(),
       );
     });
 
@@ -281,17 +281,17 @@ void main() {
           ),
         ]),
       );
-      expect(tree.single, isA<CutFrameCompositeEntryLeaf>());
+      expect(tree.single, isA<CompositeLeaf<CutFrameCompositeRow>>());
     });
 
     test('opacity 0 filters nothing; below 1 it is the MIX', () {
       expect(
         treeOf(cut([drawing('a'), adjustment('fx', opacity: 0)])).single,
-        isA<CutFrameCompositeEntryLeaf>(),
+        isA<CompositeLeaf<CutFrameCompositeRow>>(),
       );
       final scope =
           treeOf(cut([drawing('a'), adjustment('fx', opacity: 0.5)])).single
-              as CutFrameCompositeEntryAdjustment;
+              as CompositeAdjustment<CutFrameCompositeRow>;
       expect(scope.mix, 0.5);
     });
 

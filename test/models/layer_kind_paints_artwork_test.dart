@@ -10,18 +10,18 @@ import 'package:anicel/src/models/layer_kind.dart';
 
 void main() {
   test('a drawing row paints artwork', () {
-    expect(layerKindPaintsArtwork(LayerKind.animation), isTrue);
+    expect(LayerKind.animation.paintsArtwork, isTrue);
   });
 
   test('a folder row composites its members and paints nothing itself', () {
-    expect(layerKindPaintsArtwork(LayerKind.folder), isFalse);
+    expect(LayerKind.folder.paintsArtwork, isFalse);
   });
 
   test('every kind that paints artwork also composites', () {
     for (final kind in LayerKind.values) {
-      if (layerKindPaintsArtwork(kind)) {
-        expect(layerKindComposites(kind), isTrue, reason: '$kind');
-        expect(layerKindGroupsLayers(kind), isFalse, reason: '$kind');
+      if (kind.paintsArtwork) {
+        expect(kind.composites, isTrue, reason: '$kind');
+        expect(kind.groupsLayers, isFalse, reason: '$kind');
       }
     }
   });

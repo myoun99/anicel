@@ -58,54 +58,31 @@ class _LayerGridRowDrags {
     //
     // ★A lane row cannot be RE-ORDERED unless it heads a chain, but every
     // row can be SELECTED. Those are two questions, and only the first one
-    // ever needed an answer here.
-    final parsed = parseEffectLaneId(lane.laneId);
-    if (!lane.isGroupHeader || parsed == null || parsed.parameterId != null) {
-      return _state._lanes._laneSelectOnlyTarget(
-        row,
-        lane.laneId,
-        hooks,
-        child,
-      );
-    }
-    final headers = effectHeaderRowsOf(_state._dragRows, row.layer.id);
-    final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
-    if (slot < 0) {
-      return _state._lanes._laneSelectOnlyTarget(
-        row,
-        lane.laneId,
-        hooks,
-        child,
-      );
-    }
-    return LayerRowDragTarget(
-      subject: EffectRowSubject(row.layer.id, parsed.effectId),
-      slotBefore: slot,
-      rowExtent: _state._metrics.layerRowHeight,
-      axis: Axis.horizontal,
-      hooks: hooks,
-      onGripTaken: () => _state._heldDragRow = row.address,
-      onGripReleased: () {
-        if (_state._heldDragRow == row.address) {
-          _state._heldDragRow = null;
-        }
-      },
-      isLastRow: slot == headers.length - 1,
-      // An fx chain has no "inside a row" to drop into — an effect holds
-      // nothing — so the on-row band is ignored here and the caret stays
-      // the only answer (R5 #15).
-      onCrossed: (steps, _, _) {
-        final landed = effectChainAfterCrossing(headers, slot, steps);
-        hooks.onEffectUpdate(row.layer.id, landed.effectIds, landed.slot);
-      },
-      // B4-3: the SELECT half, the same one every layer row already had.
-      onSelectCrossed: hooks.onSelectBegin == null
-          ? null
-          : (rowDelta) => _state.widget.hooks.onRowSelectionSpan?.call(
-              _state._dragRows,
-              rowDelta,
-            ),
-      child: child,
-    );
+    // ever needed an answer here — so the chain target is asked first and
+    // the select-only target answers whenever it declines.
+    return effectChainRowDragTarget(
+          (row: row, lane: lane),
+          hooks,
+          (
+            axis: Axis.horizontal,
+            rowExtent: _state._metrics.layerRowHeight,
+            dragRows: () => _state._dragRows,
+            onSelectCrossed: (rowDelta) => _state
+                .widget
+                .hooks
+                .onRowSelectionSpan
+                ?.call(_state._dragRows, rowDelta),
+            // The held row is PINNED in the row window while its grip is
+            // taken (the window would otherwise unmount it mid-drag).
+            onGripTaken: () => _state._heldDragRow = row.address,
+            onGripReleased: () {
+              if (_state._heldDragRow == row.address) {
+                _state._heldDragRow = null;
+              }
+            },
+          ),
+          child: child,
+        ) ??
+        _state._lanes._laneSelectOnlyTarget(row, lane.laneId, hooks, child);
   }
 }

@@ -1,6 +1,7 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/path_names.dart';
 import '../text/app_strings.dart';
 import 'app_confirm_dialog.dart';
 
@@ -117,12 +118,4 @@ bool fileIsSupported(String path, List<String> supported) {
     return false;
   }
   return supported.contains(name.substring(dot + 1).toLowerCase());
-}
-
-/// The last segment of [path], for either platform's separator — the same
-/// normalise-then-split this repo already uses for asset paths.
-String fileNameOfPath(String path) {
-  final normalized = path.replaceAll(r'\', '/');
-  final slash = normalized.lastIndexOf('/');
-  return slash < 0 ? normalized : normalized.substring(slash + 1);
 }

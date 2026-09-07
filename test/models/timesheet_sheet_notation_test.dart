@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 
@@ -62,6 +63,59 @@ void main() {
       (column) => column.kind == TimesheetColumnKind.action,
     );
     expect(actionColumn.cells.every((cell) => cell.seName == null), isTrue);
+  });
+
+  // UI-R14 #3 says a front repeat's lead-in prints "exactly like authored
+  // cells". The speaker name is part of what an authored SE cell prints,
+  // and the ghost copy of the block writer had been left behind when the
+  // name band landed — so the lead-in printed nameless.
+  test('a FRONT repeat\'s lead-in cels carry the speaker name too', () {
+    final document = _document(
+      layers: [
+        rederiveRunBehaviors(
+          Layer(
+            id: const LayerId('se-1'),
+            name: 'S1',
+            kind: LayerKind.se,
+            frames: [
+              Frame(
+                id: const FrameId('se-f'),
+                duration: 2,
+                strokes: const [],
+                name: 'せーの',
+                seName: '앨리스',
+              ),
+            ],
+            timeline: {
+              4: const TimelineExposure.drawing(FrameId('se-f'), length: 2),
+            },
+            runBehaviors: const [
+              TimelineRunBehavior(
+                anchorFrameId: FrameId('se-f'),
+                side: TimelineRunEdgeSide.start,
+                mode: TimelineRunEdgeMode.repeat,
+              ),
+            ],
+          ),
+          cutFrameCount: 24,
+        ),
+      ],
+    );
+
+    final seColumn = document.columns.firstWhere(
+      (column) => column.kind == TimesheetColumnKind.se,
+    );
+    expect(
+      seColumn.cells[4].seName,
+      '앨리스',
+      reason: 'LIVENESS — the authored block names its speaker',
+    );
+    // The lead-in [0,4) cycles the 2f pattern: ghost starts at 0 and 2.
+    expect(seColumn.cells[0].label, 'せーの');
+    expect(seColumn.cells[0].seName, '앨리스');
+    expect(seColumn.cells[2].seName, '앨리스');
+    // Held rows still carry no name, ghost or authored.
+    expect(seColumn.cells[1].seName, isNull);
   });
 
   test('instruction writing rides EVERY covered row so the middle-row '

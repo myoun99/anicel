@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/edit_instance_subject.dart';
 import '../../models/frame.dart' show Frame;
+import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaAssetDefaultName;
@@ -12,6 +13,7 @@ import '../../services/camera_pose_resolver.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../dialogs/camera_key_dialog.dart';
+import '../dialogs/dialog_verb.dart';
 import '../dialogs/frame_name_conflict_dialog.dart';
 import '../dialogs/instruction_event_dialog.dart';
 import '../dialogs/instruction_set_editor_dialog.dart';
@@ -226,12 +228,11 @@ Future<void> _editCameraKeys(
     ),
   );
 
-  final after = await showDialog<List<CameraKeyLaneState>>(
-    context: context,
-    builder: (context) =>
-        CameraKeyDialog(frameIndex: frameIndex, lanes: before),
+  final after = await showDialogVerb<List<CameraKeyLaneState>>(
+    context,
+    (_) => CameraKeyDialog(frameIndex: frameIndex, lanes: before),
   );
-  if (!context.mounted || after == null) {
+  if (after == null) {
     return;
   }
 
@@ -370,9 +371,9 @@ Future<void> _editSeEntryWithDialog(
   required void Function(String dialogue, String? seName) commit,
   required void Function(Iterable<int> tokens) unlink,
 }) async {
-  final result = await showDialog<SeInstanceDialogResult>(
-    context: context,
-    builder: (context) => SeInstanceDialog(
+  final result = await showDialogVerb<SeInstanceDialogResult>(
+    context,
+    (_) => SeInstanceDialog(
       creating: false,
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
@@ -380,7 +381,7 @@ Future<void> _editSeEntryWithDialog(
       linkedAudio: linkedAudio,
     ),
   );
-  if (!context.mounted || result == null) {
+  if (result == null) {
     return;
   }
 
@@ -408,20 +409,17 @@ Future<void> _editTextCel(
 
   final cut = session.activeCutOrNull;
   final content = session.selectedTextCelContent;
-  final result = await showDialog<TextCelContent>(
-    context: context,
-    builder: (context) => TextCelDialog(
+  return askThenCommit<TextCelContent>(
+    context,
+    dialog: (_) => TextCelDialog(
       creating: content == null,
       initialContent: content,
       defaultPosition: cut == null
           ? null
           : Offset(cut.canvasSize.width / 2, cut.canvasSize.height / 2),
     ),
+    commit: session.setTextCelContentForSelectedFrame,
   );
-  if (!context.mounted || result == null) {
-    return;
-  }
-  session.setTextCelContentForSelectedFrame(result);
 }
 
 /// Instruction cells: covered cells edit/delete the covering event in the
@@ -446,9 +444,9 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
   EditorSessionManager session,
   Axis previewAxis,
   ({CameraInstructionSet set, InstructionEvent covering, bool editsSet}) span,
-) => showDialog<InstructionEventDialogResult>(
-  context: context,
-  builder: (dialogContext) => InstructionEventDialog(
+) => showDialogVerb<InstructionEventDialogResult>(
+  context,
+  (dialogContext) => InstructionEventDialog(
     instructionSet: span.set,
     initialInstructionId: span.covering.instructionId,
     initialText: span.covering.text,
@@ -463,50 +461,87 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
   ),
 );
 
-Future<void> _editInstructionEvent(
+/// THE INSTRUCTION SPAN FLOW, once: an empty cell CREATES, a covered one
+/// opens the editor, and the editor's answer either deletes the span or
+/// replaces it with the six fields it hands back.
+///
+/// Every difference between the two rows that wear it — which span finder
+/// answers, which set the picker reads, whether the vocabulary editor is
+/// offered, where the length comes from, and the three session verbs — is
+/// a value or a collaborator passed in. Nothing here chooses between two
+/// behaviours: a fourth step added to this sequence lands on both rows,
+/// which is the whole point of it being one sequence.
+typedef _SpanRow = ({
+  MapEntry<int, InstructionEvent>? covering,
+  CameraInstructionSet set,
+  bool editsSet,
+  void Function() create,
+  void Function() remove,
+  int Function(InstructionEvent covering) length,
+  void Function(InstructionEvent event) commit,
+});
+
+Future<void> _editSpanInstance(
   BuildContext context,
   EditorSessionManager session,
-  LayerId layerId,
-  int frameIndex,
   Axis previewAxis,
+  _SpanRow row,
 ) async {
-  final covering = session.instructionSpanAt(layerId, frameIndex);
+  final covering = row.covering;
   if (covering == null) {
-    session.createDefaultInstructionEventAtCurrentFrame();
+    row.create();
     return;
   }
-
   final result = await _showInstructionEditor(context, session, previewAxis, (
-    set: session.cameraInstructionSet,
+    set: row.set,
     covering: covering.value,
-    editsSet: true,
+    editsSet: row.editsSet,
   ));
-  if (!context.mounted || result == null) {
+  if (result == null) {
     return;
   }
-
   if (result.delete) {
-    session.removeInstructionEventAt(layerId, frameIndex);
+    row.remove();
     return;
   }
   final instructionId = result.instructionId;
   if (instructionId == null) {
     return;
   }
-  session.upsertInstructionEventAt(
-    layerId,
-    frameIndex,
+  row.commit(
     InstructionEvent(
       instructionId: instructionId,
-      length: 1,
+      length: row.length(covering.value),
       text: result.text,
       valueA: result.valueA,
       valueB: result.valueB,
       memo: result.memo,
     ),
-    createLengthFrames: 1,
   );
 }
+
+Future<void> _editInstructionEvent(
+  BuildContext context,
+  EditorSessionManager session,
+  LayerId layerId,
+  int frameIndex,
+  Axis previewAxis,
+) => _editSpanInstance(context, session, previewAxis, (
+  covering: session.instructionSpanAt(layerId, frameIndex),
+  set: session.cameraInstructionSet,
+  editsSet: true,
+  create: session.createDefaultInstructionEventAtCurrentFrame,
+  remove: () => session.removeInstructionEventAt(layerId, frameIndex),
+  // The direction row's events are one frame each; the cell you opened
+  // is the span.
+  length: (_) => 1,
+  commit: (event) => session.upsertInstructionEventAt(
+    layerId,
+    frameIndex,
+    event,
+    createLengthFrames: 1,
+  ),
+));
 
 /// The TRANSITION row's instance: the span at the playhead on the GLOBAL axis.
 ///
@@ -530,40 +565,19 @@ Future<void> editTransitionSpanInstance(
   EditorSessionManager session, {
   int? globalFrame,
   Axis previewAxis = Axis.horizontal,
-}) async {
+}) {
   final frame = globalFrame ?? session.editingGlobalFrame;
-  final covering = session.transitionSpanAt(frame);
-  if (covering == null) {
-    session.createTransitionSpanAtPlayhead();
-    return;
-  }
-  final result = await _showInstructionEditor(context, session, previewAxis, (
+  return _editSpanInstance(context, session, previewAxis, (
+    covering: session.transitionSpanAt(frame),
     set: session.transitionInstructionSet,
-    covering: covering.value,
     editsSet: false,
+    create: session.createTransitionSpanAtPlayhead,
+    remove: () => session.removeTransitionSpanAt(frame),
+    // LENGTH is not taken from the dialog. The grips own it, so a re-pick
+    // can never resize a span out from under the boundary it fires across.
+    length: (covering) => covering.length,
+    commit: (event) => session.replaceTransitionEventAt(frame, event),
   ));
-  if (!context.mounted || result == null) {
-    return;
-  }
-  if (result.delete) {
-    session.removeTransitionSpanAt(frame);
-    return;
-  }
-  final instructionId = result.instructionId;
-  if (instructionId == null) {
-    return;
-  }
-  session.replaceTransitionEventAt(
-    frame,
-    InstructionEvent(
-      instructionId: instructionId,
-      length: covering.value.length,
-      text: result.text,
-      valueA: result.valueA,
-      valueB: result.valueB,
-      memo: result.memo,
-    ),
-  );
 }
 
 /// Opens the vocabulary editor and commits the edited set immediately (its
@@ -572,17 +586,12 @@ Future<void> editTransitionSpanInstance(
 Future<void> _editInstructionSet(
   BuildContext dialogContext,
   EditorSessionManager session,
-) async {
-  final edited = await showDialog<CameraInstructionSet>(
-    context: dialogContext,
-    builder: (context) =>
-        InstructionSetEditorDialog(initialSet: session.cameraInstructionSet),
-  );
-  if (!dialogContext.mounted || edited == null) {
-    return;
-  }
-  session.updateCameraInstructionSet(edited);
-}
+) => askThenCommit<CameraInstructionSet>(
+  dialogContext,
+  dialog: (_) =>
+      InstructionSetEditorDialog(initialSet: session.cameraInstructionSet),
+  commit: session.updateCameraInstructionSet,
+);
 
 /// A lane KEY's name — the frame-name flow said of a keyframe, down to the
 /// dialog and the confirmation: the same rename prompt, the same
@@ -592,82 +601,96 @@ Future<void> _editInstructionSet(
 ///
 /// An emptied field UN-names the key, which is the only way back to an
 /// ordinary unlinked one.
+/// THE RENAME-THEN-OFFER-TO-LINK FLOW, once: prompt for the name, attempt
+/// the rename, and when the name is already taken ask ONCE — never once per
+/// key — whether to join what holds it.
+///
+/// The two rows that wear it differ only in what the rename verb hands
+/// back when it collides ([bool] for a lane key, the conflicting
+/// [FrameId] for a frame — one nullable conflict token either way) and in
+/// which link verb takes it. Both are collaborators, not modes; this
+/// template is the ONE place holding the guard between the two dialogs.
+Future<void> _renameThenOfferLink<T extends Object>(
+  BuildContext context, {
+  required ({String initialName, String? title, String? fieldLabel}) prompt,
+  required T? Function(String nextName) rename,
+  required void Function(T conflict) link,
+}) async {
+  final nextName = await showDialogVerb<String>(
+    context,
+    (_) => RenameFrameDialog(
+      initialName: prompt.initialName,
+      title: prompt.title,
+      fieldLabel: prompt.fieldLabel,
+    ),
+  );
+  if (nextName == null) {
+    return;
+  }
+  final conflict = rename(nextName);
+  if (conflict == null || !context.mounted) {
+    return;
+  }
+  // Asked ONCE for the whole range, never once per key.
+  final shouldLink = await showDialogVerb<bool>(
+    context,
+    (_) => const FrameNameConflictDialog(),
+  );
+  if (shouldLink != true) {
+    return;
+  }
+  link(conflict);
+}
+
 Future<void> _renameLaneKey(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   if (!session.canNameLaneKeys) {
-    return;
+    return Future<void>.value();
   }
   final strings = AppText.strings;
-  final nextName = await showDialog<String>(
-    context: context,
-    builder: (context) => RenameFrameDialog(
+  return _renameThenOfferLink<String>(
+    context,
+    prompt: (
       // What the covered keys already AGREE on; blank when they disagree,
       // the same thing the group header says with its `…`.
       initialName: session.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
     ),
+    // The RANGE form is the only one called: a single key is the one-frame
+    // span at the playhead, so naming one and naming five is the same verb
+    // (user 2026-08-10, "선택범위로 통하는 조작이 모두 다른것들이랑 동일한
+    // 로직"). The covered keys of a lane land on ONE value, which is what a
+    // shared name means.
+    rename: (nextName) {
+      final trimmed = nextName.trim();
+      return session.setLaneKeyNamesForSelection(
+            trimmed.isEmpty ? null : trimmed,
+          )
+          ? trimmed
+          : null;
+    },
+    link: session.linkLaneKeyNamesForSelection,
   );
-  if (!context.mounted || nextName == null) {
-    return;
-  }
-
-  // The RANGE form is the only one called: a single key is the one-frame
-  // span at the playhead, so naming one and naming five is the same verb
-  // (user 2026-08-10, "선택범위로 통하는 조작이 모두 다른것들이랑 동일한
-  // 로직"). The covered keys of a lane land on ONE value, which is what a
-  // shared name means.
-  final trimmed = nextName.trim();
-  final taken = session.setLaneKeyNamesForSelection(
-    trimmed.isEmpty ? null : trimmed,
-  );
-  if (!taken) {
-    return;
-  }
-
-  // Asked ONCE for the whole range, never once per key.
-  final shouldLink = await showDialog<bool>(
-    context: context,
-    builder: (context) => const FrameNameConflictDialog(),
-  );
-  if (!context.mounted || shouldLink != true) {
-    return;
-  }
-
-  session.linkLaneKeyNamesForSelection(trimmed);
 }
 
 Future<void> _renameSelectedFrame(
   BuildContext context,
   EditorSessionManager session,
-) async {
+) {
   if (session.selectedFrame == null || !session.canRenameFrameAtCurrentFrame) {
-    return;
+    return Future<void>.value();
   }
-
-  final nextName = await showDialog<String>(
-    context: context,
-    builder: (context) =>
-        RenameFrameDialog(initialName: session.selectedFrameName ?? ''),
+  return _renameThenOfferLink<FrameId>(
+    context,
+    prompt: (
+      initialName: session.selectedFrameName ?? '',
+      title: null,
+      fieldLabel: null,
+    ),
+    rename: session.renameSelectedFrame,
+    link: session.linkSelectedFrame,
   );
-  if (!context.mounted || nextName == null) {
-    return;
-  }
-
-  final conflictingFrameId = session.renameSelectedFrame(nextName);
-  if (conflictingFrameId == null) {
-    return;
-  }
-
-  final shouldLink = await showDialog<bool>(
-    context: context,
-    builder: (context) => const FrameNameConflictDialog(),
-  );
-  if (!context.mounted || shouldLink != true) {
-    return;
-  }
-
-  session.linkSelectedFrame(conflictingFrameId);
 }

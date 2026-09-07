@@ -1,6 +1,8 @@
 import '../../core/collection_equality.dart';
+import '../../core/tree_nodes.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
@@ -97,7 +99,8 @@ class CompositeLayerSignature {
 /// The playback cache paints straight off these — the signature IS the
 /// compose input — so the group buffer has to live here or playback would
 /// disagree with every other route.
-sealed class CompositeNodeSignature {
+sealed class CompositeNodeSignature
+    implements TreeNode<CompositeNodeSignature> {
   const CompositeNodeSignature();
 }
 
@@ -105,6 +108,9 @@ final class CompositeLeafSignature extends CompositeNodeSignature {
   const CompositeLeafSignature(this.layer);
 
   final CompositeLayerSignature layer;
+
+  @override
+  List<CompositeNodeSignature> get children => const [];
 
   @override
   bool operator ==(Object other) =>
@@ -130,6 +136,7 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
   }) : children = List.unmodifiable(children),
        effects = List.unmodifiable(effects);
 
+  @override
   final List<CompositeNodeSignature> children;
   final double opacity;
   final LayerBlendMode blendMode;
@@ -174,6 +181,7 @@ final class CompositeAdjustmentSignature extends CompositeNodeSignature {
   }) : children = List.unmodifiable(children),
        effects = List.unmodifiable(effects);
 
+  @override
   final List<CompositeNodeSignature> children;
   final List<ResolvedLayerEffect> effects;
   final double mix;
@@ -222,22 +230,17 @@ class CutFrameCompositeSignature {
   /// Every painted layer under [nodes], depth-first bottom → top — for
   /// the readers that only need "which cels does this frame use".
   Iterable<CompositeLayerSignature> get layers sync* {
-    Iterable<CompositeLayerSignature> walk(
-      List<CompositeNodeSignature> list,
-    ) sync* {
-      for (final node in list) {
-        switch (node) {
-          case CompositeLeafSignature(:final layer):
-            yield layer;
-          case CompositeGroupSignature(:final children):
-            yield* walk(children);
-          case CompositeAdjustmentSignature(:final children):
-            yield* walk(children);
-        }
+    for (final node in preorderNodes(nodes)) {
+      // Still exhaustive: a new leaf kind fails to compile until it says
+      // whether it yields a painted layer.
+      switch (node) {
+        case CompositeLeafSignature(:final layer):
+          yield layer;
+        case CompositeGroupSignature():
+        case CompositeAdjustmentSignature():
+          break;
       }
     }
-
-    yield* walk(nodes);
   }
 
   @override
@@ -270,7 +273,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required BrushFrameRevisionResolver revisionOf,
 }) {
   List<CompositeNodeSignature> mapNodes(
-    List<CutFrameCompositeEntryNode> nodes,
+    List<CompositeNode<CutFrameCompositeRow>> nodes,
   ) => [
     for (final node in nodes)
       switch (node) {
@@ -283,22 +286,23 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
         // a cache key for something about to change under it. If this route
         // ever starts passing one, the throw says so rather than banking a
         // composite that is already wrong.
-        CutFrameCompositeEntryLive() => throw StateError(
+        CompositeLeaf(payload: CutFrameCompositeLiveRow()) => throw StateError(
           'The composite signature has no key for a live row.',
         ),
-        CutFrameCompositeEntryLeaf(:final entry) => CompositeLeafSignature(
-          CompositeLayerSignature(
-            layerId: entry.layer.id,
-            frameId: entry.frame.id,
-            opacity: entry.opacity,
-            sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
-            blendMode: entry.blendMode,
-            pose: entry.pose,
-            anchorPoint: entry.anchorPoint,
-            effects: entry.effects,
+        CompositeLeaf(payload: final CutFrameCompositeEntry entry) =>
+          CompositeLeafSignature(
+            CompositeLayerSignature(
+              layerId: entry.layer.id,
+              frameId: entry.frame.id,
+              opacity: entry.opacity,
+              sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
+              blendMode: entry.blendMode,
+              pose: entry.pose,
+              anchorPoint: entry.anchorPoint,
+              effects: entry.effects,
+            ),
           ),
-        ),
-        CutFrameCompositeEntryGroup(
+        CompositeGroup(
           :final children,
           :final opacity,
           :final blendMode,
@@ -310,11 +314,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
             blendMode: blendMode,
             effects: effects,
           ),
-        CutFrameCompositeEntryAdjustment(
-          :final children,
-          :final effects,
-          :final mix,
-        ) =>
+        CompositeAdjustment(:final children, :final effects, :final mix) =>
           CompositeAdjustmentSignature(
             children: mapNodes(children),
             effects: effects,

@@ -25,16 +25,13 @@ class RenameFrameDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    return AppPromptDialog(
-      windowKey: const ValueKey<String>('rename-frame-dialog'),
+    return AppPromptDialog.keyed(
+      keyPrefix: 'rename-frame',
       title: title ?? strings.renameFrameTitle,
       titleIcon: Icons.drive_file_rename_outline,
       fieldLabel: fieldLabel ?? strings.renameFrameField,
       initialValue: initialName,
       confirmLabel: strings.commonRename,
-      fieldKey: const ValueKey<String>('rename-frame-text-field'),
-      cancelKey: const ValueKey<String>('rename-frame-cancel-button'),
-      confirmKey: const ValueKey<String>('rename-frame-ok-button'),
     );
   }
 }

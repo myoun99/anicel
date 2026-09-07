@@ -27,7 +27,6 @@ import '../../models/attached_layer_resolve.dart'
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -3001,7 +3000,7 @@ class ExportDialogState extends State<ExportDialog> {
       for (final layer in _activeCut.layers)
         if (!includedIds.contains(layer.id) &&
             !_isAttachedRow(layer) &&
-            layerKindExportsCels(layer.kind))
+            layer.kind.exportsCels)
           layer,
     ];
 

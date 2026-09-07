@@ -14,8 +14,6 @@ class AppExportSettingsStore {
 
   final String filePath;
 
-  // Widget tests reach this through the PRODUCTION menu wiring — they
-  // must never read or write the user's real settings file.
   static String defaultFilePath() => testRedirectedAppSupportPath(
     'export_settings.json',
     sandbox: 'export_settings',

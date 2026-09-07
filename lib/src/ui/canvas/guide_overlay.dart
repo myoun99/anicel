@@ -9,6 +9,7 @@ import '../../models/drawing_guide.dart';
 import '../../models/viewport_point.dart';
 import '../../services/guide_geometry.dart';
 import '../../models/app_input_settings.dart';
+import '../repaint_props.dart';
 
 /// How far from a handle, in screen pixels, a press still grabs it.
 const double kGuideHandleGrabRadius = 14;
@@ -163,7 +164,7 @@ CanvasPoint _alongAxis(GuideAxis axis, double distance) {
 /// EDITING CANVAS ONLY. Guides are scaffolding for drawing, not part of the
 /// picture: the playback, thumbnail and export routes never see this
 /// painter, the same way a ruler never prints.
-class GuideOverlayPainter extends CustomPainter {
+class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   GuideOverlayPainter({
     required this.guides,
     required this.viewport,
@@ -194,7 +195,7 @@ class GuideOverlayPainter extends CustomPainter {
   /// user is looking at in the panel.
   ///
   /// ⚠️Passed in rather than read from `AppText` here: a painter that
-  /// reaches for a global cannot say in [shouldRepaint] that the language
+  /// reaches for a global cannot say in [props] that the language
   /// changed, and the names would sit in the old tongue until something
   /// else moved.
   final String vanishingPointLabel;
@@ -502,14 +503,15 @@ class GuideOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(GuideOverlayPainter oldDelegate) =>
-      oldDelegate.guides != guides ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.emphasized != emphasized ||
-      oldDelegate.color != color ||
-      oldDelegate.vanishingPointLabel != vanishingPointLabel ||
-      oldDelegate.selectedGuideId != selectedGuideId;
+  Object get props => (
+    guides,
+    viewport,
+    canvasSize,
+    emphasized,
+    color,
+    vanishingPointLabel,
+    selectedGuideId,
+  );
 }
 
 /// Applies a handle drag to [guides], returning the edited set.

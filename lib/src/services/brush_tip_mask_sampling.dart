@@ -2,6 +2,35 @@ import 'dart:typed_data';
 
 import '../models/brush_tip_mask.dart';
 
+/// The bilinear blend of a texel quad, clamped to unit coverage — THE lerp
+/// grouping every mask sampler in this file shares.
+///
+/// ⛔THE GROUPING IS THE CONTRACT, not a detail: the two lattice samplers
+/// are pinned byte-for-byte against the two scalar ones, and that parity
+/// holds only while all four multiply and add in exactly this order (top
+/// row, bottom row, then vertically). Four hand-written copies of it is
+/// exactly where a regrouping breaks the parity silently, so there is one.
+///
+/// The one-minus fractions are ARGUMENTS: the lattices already hold them
+/// precomputed per axis pixel, and recomputing `1 - f` here would put an
+/// arithmetic op back into the hot loop the lattices exist to empty.
+/// [vm:prefer-inline] keeps this a leaf, not a per-pixel call.
+@pragma('vm:prefer-inline')
+double bilinearMix({
+  required double topLeft,
+  required double topRight,
+  required double bottomLeft,
+  required double bottomRight,
+  required double fractionX,
+  required double oneMinusFractionX,
+  required double fractionY,
+  required double oneMinusFractionY,
+}) =>
+    ((topLeft * oneMinusFractionX + topRight * fractionX) * oneMinusFractionY +
+            (bottomLeft * oneMinusFractionX + bottomRight * fractionX) *
+                fractionY)
+        .clamp(0.0, 1.0);
+
 /// Bilinear coverage sample of a sampled brush tip at a tip-space offset.
 ///
 /// [tipU]/[tipV] are the pixel-center offset rotated onto the tip axes with
@@ -36,10 +65,16 @@ double sampleBrushTipMaskCoverage({
     return alpha[y * size + x];
   }
 
-  final top = texel(x0, y0) * (1.0 - fractionX) + texel(x0 + 1, y0) * fractionX;
-  final bottom =
-      texel(x0, y0 + 1) * (1.0 - fractionX) + texel(x0 + 1, y0 + 1) * fractionX;
-  return (top * (1.0 - fractionY) + bottom * fractionY).clamp(0.0, 1.0);
+  return bilinearMix(
+    topLeft: texel(x0, y0),
+    topRight: texel(x0 + 1, y0),
+    bottomLeft: texel(x0, y0 + 1),
+    bottomRight: texel(x0 + 1, y0 + 1),
+    fractionX: fractionX,
+    oneMinusFractionX: 1.0 - fractionX,
+    fractionY: fractionY,
+    oneMinusFractionY: 1.0 - fractionY,
+  );
 }
 
 /// Precomputed one-axis lattice of [sampleBrushTipMaskCoverage] for
@@ -124,30 +159,24 @@ double sampleBrushTipMaskCoverageLattice({
   final fractionX = uAxis.fraction[uIndex];
   final oneMinusFractionX = uAxis.oneMinusFraction[uIndex];
 
+  // Out-of-range texels read as ZERO, exactly like the scalar sampler's
+  // bounds check — and a zero texel contributes exactly 0.0 to the row
+  // lerp, so a whole out-of-range row still lands on 0.0.
+  final row0 = y0 >= 0 && y0 < size ? y0 * size : -1;
+  final row1 = y1 >= 0 && y1 < size ? y1 * size : -1;
   final x0In = x0 >= 0 && x0 < size;
   final x1In = x1 >= 0 && x1 < size;
 
-  double top;
-  if (y0 >= 0 && y0 < size) {
-    final rowOffset = y0 * size;
-    top =
-        (x0In ? alpha[rowOffset + x0] : 0.0) * oneMinusFractionX +
-        (x1In ? alpha[rowOffset + x1] : 0.0) * fractionX;
-  } else {
-    top = 0.0;
-  }
-  double bottom;
-  if (y1 >= 0 && y1 < size) {
-    final rowOffset = y1 * size;
-    bottom =
-        (x0In ? alpha[rowOffset + x0] : 0.0) * oneMinusFractionX +
-        (x1In ? alpha[rowOffset + x1] : 0.0) * fractionX;
-  } else {
-    bottom = 0.0;
-  }
-  return (top * vAxis.oneMinusFraction[vIndex] +
-          bottom * vAxis.fraction[vIndex])
-      .clamp(0.0, 1.0);
+  return bilinearMix(
+    topLeft: row0 >= 0 && x0In ? alpha[row0 + x0] : 0.0,
+    topRight: row0 >= 0 && x1In ? alpha[row0 + x1] : 0.0,
+    bottomLeft: row1 >= 0 && x0In ? alpha[row1 + x0] : 0.0,
+    bottomRight: row1 >= 0 && x1In ? alpha[row1 + x1] : 0.0,
+    fractionX: fractionX,
+    oneMinusFractionX: oneMinusFractionX,
+    fractionY: vAxis.fraction[vIndex],
+    oneMinusFractionY: vAxis.oneMinusFraction[vIndex],
+  );
 }
 
 /// Precomputed one-axis lattice of [sampleBrushTipMaskTiledCoverage]: the
@@ -220,13 +249,16 @@ double sampleBrushTipMaskTiledCoverageLattice({
   final fractionX = uAxis.fraction[uIndex];
   final oneMinusFractionX = uAxis.oneMinusFraction[uIndex];
 
-  final top =
-      alpha[row0 + x0] * oneMinusFractionX + alpha[row0 + x1] * fractionX;
-  final bottom =
-      alpha[row1 + x0] * oneMinusFractionX + alpha[row1 + x1] * fractionX;
-  return (top * vAxis.oneMinusFraction[vIndex] +
-          bottom * vAxis.fraction[vIndex])
-      .clamp(0.0, 1.0);
+  return bilinearMix(
+    topLeft: alpha[row0 + x0],
+    topRight: alpha[row0 + x1],
+    bottomLeft: alpha[row1 + x0],
+    bottomRight: alpha[row1 + x1],
+    fractionX: fractionX,
+    oneMinusFractionX: oneMinusFractionX,
+    fractionY: vAxis.fraction[vIndex],
+    oneMinusFractionY: vAxis.oneMinusFraction[vIndex],
+  );
 }
 
 /// Tiled (wrapping) bilinear coverage sample — the dual-brush texture.
@@ -263,8 +295,14 @@ double sampleBrushTipMaskTiledCoverage({
     return alpha[wrappedY * size + wrappedX];
   }
 
-  final top = texel(x0, y0) * (1.0 - fractionX) + texel(x0 + 1, y0) * fractionX;
-  final bottom =
-      texel(x0, y0 + 1) * (1.0 - fractionX) + texel(x0 + 1, y0 + 1) * fractionX;
-  return (top * (1.0 - fractionY) + bottom * fractionY).clamp(0.0, 1.0);
+  return bilinearMix(
+    topLeft: texel(x0, y0),
+    topRight: texel(x0 + 1, y0),
+    bottomLeft: texel(x0, y0 + 1),
+    bottomRight: texel(x0 + 1, y0 + 1),
+    fractionX: fractionX,
+    oneMinusFractionX: 1.0 - fractionX,
+    fractionY: fractionY,
+    oneMinusFractionY: 1.0 - fractionY,
+  );
 }

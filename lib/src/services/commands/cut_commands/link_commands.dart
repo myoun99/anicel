@@ -51,16 +51,14 @@ class _LinkCommands {
     final project = _coordinator.repository.requireProject();
     final cut = requireCut(project, cutId);
     final source = requireLayer(project, cutId: cutId, layerId: layerId);
-    final baseId = source.attachedToLayerId ?? source.id;
-    final endIndex = attachedGroupEndIndex(baseId, cut.layers);
-    final startIndex = attachedGroupStartIndex(baseId, cut.layers);
-    final anyLinked = cut.layers
-        .sublist(startIndex, endIndex)
-        .any(
-          (member) =>
-              project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) !=
-              null,
-        );
+    final anyLinked = attachedGroupSlice(
+      attachBaseIdOf(source),
+      cut.layers,
+    ).any(
+      (member) =>
+          project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) !=
+          null,
+    );
     if (!anyLinked) {
       return;
     }

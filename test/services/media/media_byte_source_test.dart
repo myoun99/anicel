@@ -80,6 +80,21 @@ void main() {
     expect(tail.sublist(0, 4), [252, 253, 254, 255]);
   });
 
+  test('the app-support file serves the SAME window — a carried conform is '
+      'read block by block like any other file', () {
+    final file = File('${temp.path}/carried.bin')
+      ..writeAsBytesSync(Uint8List.fromList(List<int>.generate(64, (i) => i)));
+    final bytes = MediaAppFileBytes(path: file.path, framed: false);
+
+    final buffer = Uint8List(3);
+    expect(bytes.readIntoSync(buffer, 8, 3), 3);
+    expect(buffer, [8, 9, 10]);
+
+    final tail = Uint8List(8);
+    expect(bytes.readIntoSync(tail, 60, 8), 4);
+    expect(tail.sublist(0, 4), [60, 61, 62, 63]);
+  });
+
   test('a file never claims to know its own checksum', () {
     // Nothing on a filesystem does. The archive variant will, because ZIP
     // writes a CRC-32 per entry anyway — which is the whole reason this

@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// PROBE (not a contract): reproduce the one-frame ~1px edge jump seen on
 /// Windows at zoom >= 100% with a fractional pan, at pen-down / pen-up /
@@ -174,7 +175,7 @@ void main() {
                 width: screen.width,
                 height: screen.height,
                 child: CanvasLayerStackView(
-                  nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                  nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                   imageCache: imageCache,
                   canvasSize: canvasSize,
                   viewport: viewport,

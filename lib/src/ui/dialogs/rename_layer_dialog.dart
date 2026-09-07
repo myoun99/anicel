@@ -13,17 +13,14 @@ class RenameLayerDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    return AppPromptDialog(
-      windowKey: const ValueKey<String>('rename-layer-dialog'),
+    return AppPromptDialog.keyed(
+      keyPrefix: 'rename-layer',
       title: strings.renameLayerTitle,
       titleIcon: Icons.drive_file_rename_outline,
       fieldLabel: strings.renameLayerField,
       initialValue: initialName,
       confirmLabel: strings.commonRename,
       emptyError: strings.renameLayerEmpty,
-      fieldKey: const ValueKey<String>('rename-layer-text-field'),
-      cancelKey: const ValueKey<String>('rename-layer-cancel-button'),
-      confirmKey: const ValueKey<String>('rename-layer-ok-button'),
     );
   }
 }

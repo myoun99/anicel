@@ -1,5 +1,4 @@
 import '../../models/attached_layer_resolve.dart';
-import '../../models/layer_kind.dart';
 import '../../services/clipboard/layer_copy_payload.dart';
 import 'session_roles.dart';
 
@@ -45,7 +44,7 @@ class LayerClipboard {
     // cut-owned SE shape; stands down for now. Attach rows stand down too
     // (their cel links point into THIS cut's base).
     if (activeLayer == null ||
-        !layerKindIsClipboardCopyable(activeLayer.kind) ||
+        !activeLayer.kind.isClipboardCopyable ||
         isAttachedLayer(activeLayer)) {
       return;
     }

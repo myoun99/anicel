@@ -237,16 +237,6 @@ class CreateLinkedCutCommandInputPlan {
   final Map<LayerId, String> newGroupIdBySource;
 }
 
-/// Whether a row of [kind] copies into a 겸용컷: the drawing layers whose
-/// pictures are shared — IMAGE rows included (the shared BG is the
-/// classic 겸용 case; the linked copy shares the cel id and the covering
-/// normalization re-covers it) and TEXT rows too (§6-z5: "레이어는 모두
-/// 겸용컷에서 공유된다" — the escape hatch for per-cut cut numbers is the
-/// ordinary 독립시키기) — plus the folder rows that hold them ("폴더
-/// 존재/멤버십은 공유 구조"). SE/instruction/camera rows are per-use
-/// fixtures.
-bool _linksIntoLinkedCut(LayerKind kind) => layerKindLinksIntoLinkedCut(kind);
-
 /// A fresh layer id and a fresh link-group id for each of [sources],
 /// minted against what [project] and [ids] already hold.
 ///
@@ -293,7 +283,7 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
 
   final minted = _mintLinkIds(project, ids, [
     for (final layer in sourceCut.layers)
-      if (_linksIntoLinkedCut(layer.kind)) layer,
+      if (layer.kind.linksIntoLinkedCut) layer,
   ]);
 
   return CreateLinkedCutCommandInputPlan(
@@ -391,11 +381,7 @@ LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
 }) {
   final ids = _ProjectIdSnapshot.fromProject(project);
   final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
-  final baseId = source.attachedToLayerId ?? source.id;
-  final members = cut.layers.sublist(
-    attachedGroupStartIndex(baseId, cut.layers),
-    attachedGroupEndIndex(baseId, cut.layers),
-  );
+  final members = attachedGroupSlice(attachBaseIdOf(source), cut.layers);
 
   final minted = _mintLinkIds(project, ids, members);
 
@@ -480,7 +466,7 @@ class AddLayerCommandInputPlan {
 ///
 /// Kinds that do not link into a 겸용 cut plan no mirrors — the per-use
 /// SE/CAM fixtures already exist in every cut, and a storyboard row
-/// belongs to its own cut ([layerKindLinksIntoLinkedCut] is the one
+/// belongs to its own cut ([LayerKind.linksIntoLinkedCut] is the one
 /// predicate for that question).
 ///
 /// A sibling whose counterpart for an anchor is missing is DROPPED rather
@@ -492,7 +478,7 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
   required CutId cutId,
   required Layer layer,
 }) {
-  if (!layerKindLinksIntoLinkedCut(layer.kind)) {
+  if (!layer.kind.linksIntoLinkedCut) {
     return AddLayerCommandInputPlan.none;
   }
   final siblings = linkedCutSiblings(project, cutId: cutId);

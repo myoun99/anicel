@@ -103,7 +103,18 @@ sealed class MediaByteSource {
   ({String path, int offset, int length})? get range => null;
 }
 
-/// Cheap facts about a source, from `stat` alone.
+/// Cheap facts about a source, from `stat` alone — the CHEAP half of "has
+/// this source changed".
+///
+/// Not an identity — that is `ConformSourceFingerprint`, which reads the
+/// bytes. This is a hint that lets the common case skip that read: if the
+/// source still has the length and timestamp it had when the conform was
+/// written, nothing has touched it on this machine and the conform stands.
+///
+/// A miss means nothing on its own. A copied, restored or re-synced file
+/// gets a fresh timestamp with identical bytes, and that is exactly the
+/// case a timestamp identity used to answer wrong — so a miss falls
+/// through to the content hash rather than deciding anything.
 class MediaSourceStamp {
   const MediaSourceStamp({
     required this.lengthBytes,
@@ -143,6 +154,22 @@ class MediaSourceStamp {
   }
 }
 
+/// [size] bytes of [path] starting at [position], into the front of
+/// [buffer]; the count actually read.
+///
+/// The one IO primitive under every source that lives in a file — the
+/// plain file, the app-support file and the archive entry (which adds its
+/// own offset to [position] and clamps [size] first).
+int _readFileWindowSync(String path, int position, Uint8List buffer, int size) {
+  final handle = File(path).openSync();
+  try {
+    handle.setPositionSync(position);
+    return handle.readIntoSync(buffer, 0, size);
+  } finally {
+    handle.closeSync();
+  }
+}
+
 /// A file on disk — every source today, and still the answer for the media
 /// that stays outside once the rest moves in (video is reference-only by
 /// kind, and the user may keep anything else linked too).
@@ -164,15 +191,8 @@ class MediaFileBytes extends MediaByteSource {
   ({String path, int offset, int length})? get range => _wholeFileRange(path);
 
   @override
-  int readIntoSync(Uint8List buffer, int position, int size) {
-    final handle = File(path).openSync();
-    try {
-      handle.setPositionSync(position);
-      return handle.readIntoSync(buffer, 0, size);
-    } finally {
-      handle.closeSync();
-    }
-  }
+  int readIntoSync(Uint8List buffer, int position, int size) =>
+      _readFileWindowSync(path, position, buffer, size);
 
   /// Asks the PATH rather than through `File`: `File(dir).existsSync()`
   /// answers false for a directory, which would report "nothing here" for a
@@ -310,13 +330,12 @@ class MediaArchiveBytes extends MediaByteSource {
     }
     final available = length - position;
     final wanted = size < available ? size : available;
-    final handle = File(archivePath).openSync();
-    try {
-      handle.setPositionSync(dataOffset + position);
-      return handle.readIntoSync(buffer, 0, wanted);
-    } finally {
-      handle.closeSync();
-    }
+    return _readFileWindowSync(
+      archivePath,
+      dataOffset + position,
+      buffer,
+      wanted,
+    );
   }
 
   @override
@@ -488,15 +507,8 @@ class MediaAppFileBytes extends MediaByteSource {
       framed ? null : _wholeFileRange(path);
 
   @override
-  int readIntoSync(Uint8List buffer, int position, int size) {
-    final handle = File(path).openSync();
-    try {
-      handle.setPositionSync(position);
-      return handle.readIntoSync(buffer, 0, size);
-    } finally {
-      handle.closeSync();
-    }
-  }
+  int readIntoSync(Uint8List buffer, int position, int size) =>
+      _readFileWindowSync(path, position, buffer, size);
 
   @override
   bool existsSync() => File(path).existsSync();

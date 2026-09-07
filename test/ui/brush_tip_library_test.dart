@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -72,6 +73,21 @@ void main() {
       final index = await service.loadIndex();
 
       expect(index.map((entry) => entry.id), ['tip-1']);
+    });
+
+    test('saveIndex makes the folder it writes into, version first', () async {
+      final nested = BrushTipLibraryService(
+        directoryPath: '${tempDirectory.path}/made/up/deep',
+      );
+
+      await nested.saveIndex(const []);
+
+      final written =
+          jsonDecode(await File(nested.indexPath).readAsString())
+              as Map<String, dynamic>;
+      expect(written.keys.first, 'version');
+      expect(written['version'], BrushTipLibraryService.indexVersion);
+      expect(written['tips'], isEmpty);
     });
 
     test('a corrupt index reads as empty', () async {

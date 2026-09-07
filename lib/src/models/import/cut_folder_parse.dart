@@ -17,6 +17,7 @@
 library;
 
 import '../../core/collection_equality.dart';
+import '../../core/path_names.dart';
 
 /// How the folder NAME is read (rule I: studios differ).
 enum CutFolderNameRule {
@@ -377,11 +378,6 @@ int _revisionRankOf(String marks) {
   return rank;
 }
 
-String _fileNameOf(String relativePath) {
-  final segments = relativePath.split(RegExp(r'[\\/]'));
-  return segments.isEmpty ? relativePath : segments.last;
-}
-
 String _stemOf(String fileName) {
   final dot = fileName.lastIndexOf('.');
   return dot <= 0 ? fileName : fileName.substring(0, dot);
@@ -464,7 +460,7 @@ List<ParsedProcessGroup> _processGroups({
     }
     final subCells = <String, List<ParsedCel>>{};
     for (final file in entry.value) {
-      final fileName = _fileNameOf(file.relativePath);
+      final fileName = fileNameOfPath(file.relativePath);
       final stem = _stemOf(fileName);
       final extension = _extensionOf(fileName);
       if (!_imageExtensions.contains(extension) || stem.startsWith('_')) {
@@ -625,7 +621,7 @@ class _EntryBins {
       return;
     }
 
-    final fileName = _fileNameOf(entry.relativePath);
+    final fileName = fileNameOfPath(entry.relativePath);
     final stem = _stemOf(fileName);
     final extension = _extensionOf(fileName);
 

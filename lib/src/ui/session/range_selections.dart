@@ -226,6 +226,35 @@ class RangeSelections {
         entry.key,
   ];
 
+  /// Which rows of a live span a retime may touch, in BOTH the forms a
+  /// retime needs — the display form it reads timing off and the COMMIT
+  /// form it writes back to (UI-R18 #1: SE rows join through the
+  /// commit-key seam). A row missing either form is not retimable.
+  ///
+  /// The comma edge and the frame-axis slide ask this one question; the
+  /// delete/comma collector does NOT (it resolves the display form only
+  /// and keeps a row whose commit form is null) — see
+  /// [cutLocalSelectionBlockStartsByLayer].
+  List<({LayerId id, Layer display, Layer commit})> retimableSpanRows(
+    TimelineFrameRangeSelection selection,
+  ) {
+    final rows = <({LayerId id, Layer display, Layer commit})>[];
+    for (final id in selection.spanLayerIds) {
+      // Rows whose timing is not their own stand down — see
+      // [EditorSessionManager.standsDownFromRetime].
+      if (_changes.standsDownFromRetime(id)) {
+        continue;
+      }
+      final display = _project.rangeLayerById(id);
+      final commit = _project.commitLayerById(id);
+      if (display == null || commit == null) {
+        continue;
+      }
+      rows.add((id: id, display: display, commit: commit));
+    }
+    return rows;
+  }
+
   /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
   /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
   /// inside one cut to anywhere inside another selects both whole, and a

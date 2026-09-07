@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 
+import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
@@ -410,14 +411,11 @@ class _ContePdfPageWriter {
     if (slot.width <= 0 || slot.height <= 0) {
       return;
     }
-    final scale = (slot.width / image.width) < (slot.height / image.height)
-        ? slot.width / image.width
-        : slot.height / image.height;
-    final width = image.width * scale;
-    final height = image.height * scale;
-    final left = slot.left + (slot.width - width) / 2;
-    final top = slot.top + (slot.height - height) / 2;
-    _g.drawImage(image, left, _y(top + height), width, height);
+    final drawn = containRect(
+      ui.Size(image.width.toDouble(), image.height.toDouble()),
+      slot,
+    );
+    _g.drawImage(image, drawn.left, _y(drawn.bottom), drawn.width, drawn.height);
   }
 
   // The big X over a page break's empty rows is gone (user, 2026-08-06),

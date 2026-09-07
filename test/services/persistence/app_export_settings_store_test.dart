@@ -23,16 +23,14 @@ void main() {
     }
   });
 
-  String pathIn(String name) =>
-      '${temp.path.replaceAll('\\', '/')}/$name.json';
+  String pathIn(String name) => '${temp.path.replaceAll('\\', '/')}/$name.json';
 
   test('missing file loads as null', () async {
     final store = AppExportSettingsStore(filePath: pathIn('missing'));
     expect(await store.load(), isNull);
   });
 
-  test('save/load round-trips presets, specs, location and drawers',
-      () async {
+  test('save/load round-trips presets, specs, location and drawers', () async {
     final store = AppExportSettingsStore(filePath: pathIn('roundtrip'));
     final settings = AppExportSettings(
       presets: [
@@ -87,5 +85,18 @@ void main() {
     raw['version'] = AppExportSettingsStore.version + 1;
     File(path).writeAsStringSync(jsonEncode(raw));
     expect(await store.load(), isNull);
+  });
+
+  test('the store redirects itself away from the real file under test', () {
+    // Widget tests reach this through the PRODUCTION menu wiring — they
+    // must never read or write the user's real settings file.
+    expect(
+      AppExportSettingsStore.defaultFilePath(),
+      contains('qa_test_export_settings_'),
+    );
+    expect(
+      AppExportSettingsStore.defaultFilePath(),
+      endsWith('/export_settings.json'),
+    );
   });
 }

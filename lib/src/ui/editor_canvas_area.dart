@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/layer_effect.dart';
 import '../models/canvas_size.dart';
+import '../models/composite_tree.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
@@ -46,7 +47,6 @@ import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
 import '../services/layer_pose_matrix.dart' show LayerPoseSample;
-import '../models/layer_kind.dart' show layerKindHasLayerTransform;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
@@ -54,6 +54,7 @@ import 'timeline/transform_lane_editing.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
     show CanvasManipulator, canvasManipulatorsForLane;
+import 'repaint_props.dart';
 
 part 'canvas_area/interactive_canvas_build.dart';
 
@@ -184,60 +185,62 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// [nodes] with the onion ghosts inserted directly UNDER the active
   /// layer — where they belong visually, and (since the merge) inside
   /// whatever folder buffer the active layer sits in.
-  static List<CanvasLayerStackNode> _stackNodesWithGhosts(
-    List<CanvasLayerStackNode> nodes,
+  static List<CompositeNode<CanvasStackRow>> _stackNodesWithGhosts(
+    List<CompositeNode<CanvasStackRow>> nodes,
     List<CanvasLayerImageRequest> ghosts,
   ) {
     if (ghosts.isEmpty) {
       return nodes;
     }
     final ghostNodes = [
-      for (final ghost in ghosts) CanvasLayerImageNode(ghost),
+      for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost),
     ];
     var placed = false;
-    List<CanvasLayerStackNode> walk(List<CanvasLayerStackNode> list) {
-      final out = <CanvasLayerStackNode>[];
+    List<CompositeNode<CanvasStackRow>> walk(
+      List<CompositeNode<CanvasStackRow>> list,
+    ) {
+      final out = <CompositeNode<CanvasStackRow>>[];
       for (final node in list) {
         switch (node) {
-          case CanvasActiveLayerNode():
+          case CompositeLeaf(payload: CanvasActiveLayerRow()):
             if (!placed) {
               out.addAll(ghostNodes);
               placed = true;
             }
             out.add(node);
-          case CanvasLayerGroupNode(
+          case CompositeGroup(
             :final children,
             :final opacity,
             :final blendMode,
             :final effects,
           ):
             out.add(
-              // Rebuilt field by field: the folder's effects (R6) have to
-              // be carried or turning onion skin on would drop them.
-              CanvasLayerGroupNode(
+              // The folder's effects (R6) travel with it — turning onion
+              // skin on must not drop them. One structural class carries
+              // every field, so only the children are replaced.
+              CompositeGroup<CanvasStackRow>(
                 children: walk(children),
                 opacity: opacity,
                 blendMode: blendMode,
                 effects: effects,
               ),
             );
-          case CanvasLayerAdjustmentNode(
+          case CompositeAdjustment(
             :final children,
             :final effects,
             :final mix,
           ):
-            // Rebuilt field by field like the group above: the ghosts have
-            // to be able to land INSIDE an adjustment's scope, or the row
-            // you are drawing on would show the grade while its onion
-            // ghosts did not.
+            // Like the group above: the ghosts have to be able to land
+            // INSIDE an adjustment's scope, or the row you are drawing on
+            // would show the grade while its onion ghosts did not.
             out.add(
-              CanvasLayerAdjustmentNode(
+              CompositeAdjustment<CanvasStackRow>(
                 children: walk(children),
                 effects: effects,
                 mix: mix,
               ),
             );
-          case CanvasLayerImageNode():
+          case CompositeLeaf(payload: CanvasLayerImageRequest()):
             out.add(node);
         }
       }
@@ -543,7 +546,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       row is! LaneRowAddress;
 
 
-  void _noteCanvasProbe(EditorSessionManager session, bool inGap, ({double activeLayerOpacity, List<ResolvedLayerEffect> activeSourceEffects, List<CanvasLayerStackNode> nodes}) layerStack) {
+  void _noteCanvasProbe(EditorSessionManager session, bool inGap, ({double activeLayerOpacity, List<ResolvedLayerEffect> activeSourceEffects, List<CompositeNode<CanvasStackRow>> nodes}) layerStack) {
     if (InputInspector.visible.value) {
       // The FRAME leads, and it is not decoration: without it "no new line"
       // reads two ways — the four answers were the same, or this build never
@@ -882,7 +885,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 /// the canvas rect at (1 − fadeOpacity), under the panel viewport — the
 /// same overlay playback paints, so an fx-on faded frame reads identically
 /// while editing.
-class _CutFadeWashPainter extends CustomPainter {
+class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
     required this.canvasSize,
@@ -920,17 +923,13 @@ class _CutFadeWashPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CutFadeWashPainter oldDelegate) =>
-      oldDelegate.viewport != viewport ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.color != color ||
-      oldDelegate.devicePixelRatio != devicePixelRatio;
+  Object get props => (viewport, canvasSize, color, devicePixelRatio);
 }
 
 /// The editing canvas's SE name tags (R5b): the same canvas-space draw
 /// the frame painter makes during playback, so what you edit against is
 /// what plays and what exports.
-class _SeNameTagOverlayPainter extends CustomPainter {
+class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
   const _SeNameTagOverlayPainter({
     required this.viewport,
     required this.canvasSize,
@@ -960,11 +959,12 @@ class _SeNameTagOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SeNameTagOverlayPainter oldDelegate) =>
-      oldDelegate.viewport != viewport ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.devicePixelRatio != devicePixelRatio ||
-      seNameTagSignature(oldDelegate.tags) != seNameTagSignature(tags);
+  Object get props => (
+    viewport,
+    canvasSize,
+    devicePixelRatio,
+    seNameTagSignature(tags),
+  );
 }
 
 /// R13-3: committed seeks retarget the editing stack ONLY when the

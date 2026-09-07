@@ -434,7 +434,7 @@ class CutCommandCoordinator {
     // Deleting a FOLDER row means dissolving it: the members are rows in
     // their own right and stay where they are. (Deleting the pictures too
     // would make one Delete key destroy work the row itself never held.)
-    if (layerKindGroupsLayers(layer.kind)) {
+    if (layer.kind.groupsLayers) {
       dissolveFolder(cutId: cutId, folderId: layerId);
       return;
     }
@@ -575,7 +575,7 @@ class CutCommandCoordinator {
   }) {
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
-    if (layerKindIsFixed(sourceLayer.kind)) {
+    if (sourceLayer.kind.isFixed) {
       throw StateError('The camera layer cannot be duplicated.');
     }
     final sourceIndex = cut.layers.indexWhere(
@@ -597,7 +597,7 @@ class CutCommandCoordinator {
     required LayerCopyPayload payload,
     required int insertionIndex,
   }) {
-    if (layerKindIsFixed(payload.kind)) {
+    if (payload.kind.isFixed) {
       throw StateError('The camera layer cannot be pasted.');
     }
 
@@ -665,28 +665,44 @@ class CutCommandCoordinator {
   void setProjectPasteboardMargin(double margin) =>
       _projectSettings.setProjectPasteboardMargin(margin);
 
-  /// Executes [command] only when the layer's field does not already hold
-  /// [value].
+  /// Executes [command] only when [read] of [subject] does not already
+  /// answer [value].
   ///
   /// ⛔THE GUARD IS WHY A TOGGLE THAT IS ALREADY ON LANDS NOTHING. Three
   /// setters wrote it out; without it, pressing a lit button banks an undo
   /// step that changes nothing, and the user then walks back through
   /// presses that did not do anything.
   ///
-  /// ⚠️Anywhere lookup: every kind carries these flags now (unified layer
-  /// controls), and track-owned SE rows are not in any cut's layer list.
-  void _setLayerFieldIfChanged<T>(
-    LayerId layerId,
-    T value,
-    T Function(Layer layer) read,
-    Command Function() command,
-  ) {
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    if (read(layer) == value) {
+  /// ⛔EVERY SETTING HERE IS "ONE UNDO STEP, NO-OP WHEN UNCHANGED", AND
+  /// FIVE WROTE IT OUT. Without the guard, a colour picker that reports
+  /// the same swatch on every pointer move banks an undo step per move,
+  /// and the user then walks back through presses that changed nothing.
+  ///
+  /// [subject] is the thing the field hangs off — a layer, a cut, the
+  /// project — and it is a VALUE the caller fetches, because how you find
+  /// the subject is the caller's question and the guard is this one. It
+  /// reaches [command] too, so a verb that builds its command out of the
+  /// subject's current state (the camera track's `withKeyframe`) needs no
+  /// second lookup.
+  ///
+  /// Private on purpose: every part of this library reaches it, and
+  /// nothing outside the library should.
+  void _executeIfChanged<S, T>({
+    required S subject,
+    required T value,
+    required T Function(S subject) read,
+    required Command Function(S subject) command,
+  }) {
+    if (read(subject) == value) {
       return;
     }
-    historyManager.execute(command());
+    historyManager.execute(command(subject));
   }
+
+  /// ⚠️Anywhere lookup: every kind carries these flags now (unified layer
+  /// controls), and track-owned SE rows are not in any cut's layer list.
+  Layer _requireLayerAnywhere(LayerId layerId) =>
+      requireLayerAnywhere(repository.requireProject(), layerId);
 
   void setLayerTimesheet({
     // Nullable (B5③): the storyboard rail flips TRACK fixtures' flags from
@@ -695,11 +711,11 @@ class CutCommandCoordinator {
     required CutId? cutId,
     required LayerId layerId,
     required bool onTimesheet,
-  }) => _setLayerFieldIfChanged(
-    layerId,
-    onTimesheet,
-    (layer) => layer.onTimesheet,
-    () => UpdateLayerTimesheetCommand(
+  }) => _executeIfChanged(
+    subject: _requireLayerAnywhere(layerId),
+    value: onTimesheet,
+    read: (layer) => layer.onTimesheet,
+    command: (_) => UpdateLayerTimesheetCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
@@ -711,11 +727,11 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerId layerId,
     required bool isFillReference,
-  }) => _setLayerFieldIfChanged(
-    layerId,
-    isFillReference,
-    (layer) => layer.isFillReference,
-    () => UpdateLayerFillReferenceCommand(
+  }) => _executeIfChanged(
+    subject: _requireLayerAnywhere(layerId),
+    value: isFillReference,
+    read: (layer) => layer.isFillReference,
+    command: (_) => UpdateLayerFillReferenceCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
@@ -727,11 +743,11 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerId layerId,
     required LayerMark mark,
-  }) => _setLayerFieldIfChanged(
-    layerId,
-    mark,
-    (layer) => layer.mark,
-    () => UpdateLayerMarkCommand(
+  }) => _executeIfChanged(
+    subject: _requireLayerAnywhere(layerId),
+    value: mark,
+    read: (layer) => layer.mark,
+    command: (_) => UpdateLayerMarkCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
@@ -853,7 +869,7 @@ class CutCommandCoordinator {
   /// ([effectChainWithSharedShape]). Sharing values across cuts is the
   /// named-union link's job.
   ///
-  /// An ADJUSTMENT row goes further ([layerKindMirrorsEffects]): its chain
+  /// An ADJUSTMENT row goes further ([LayerKind.mirrorsEffects]): its chain
   /// is its whole content, not decoration on a picture, so values mirror
   /// too.
   void updateLayerEffects({
@@ -1089,10 +1105,10 @@ class CutCommandCoordinator {
     String description = 'Edit layer effects',
   }) {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (!layerKindHasLayerEffects(layer.kind)) {
+    if (!layer.kind.hasLayerEffects) {
       throw StateError('The camera row carries no effect chain of its own.');
     }
-    final mirrorsValuesToo = layerKindMirrorsEffects(layer.kind);
+    final mirrorsValuesToo = layer.kind.mirrorsEffects;
     final targets = linkMirrorTargets(
       repository.requireProject(),
       cutId: cutId,
@@ -1241,7 +1257,7 @@ class CutCommandCoordinator {
     if (isAttachedLayer(layer)) {
       throw StateError('Attach layers keep their base\'s kind: $layerId');
     }
-    if (layerKindIsFixed(layer.kind) || layerKindIsFixed(kind)) {
+    if (layer.kind.isFixed || kind.isFixed) {
       throw StateError(
         'The camera layer kind is fixed; layers cannot become cameras.',
       );

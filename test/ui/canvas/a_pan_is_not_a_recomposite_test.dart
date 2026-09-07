@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★A PAN REPAINTS. IT MUST NOT RE-COMPOSITE.
 ///
@@ -114,11 +115,11 @@ void main() {
 
   /// ⛔ONE node list too: a fresh request object changes the tree signature,
   /// which is the key doing its job — and would hide what this test is for.
-  final nodes = <CanvasLayerStackNode>[
-    CanvasLayerImageNode(
+  final nodes = <CompositeNode<CanvasStackRow>>[
+    CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(frameKey: keyFor('under'), opacity: 1),
     ),
-    const CanvasActiveLayerNode(opacity: 1),
+    const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
   ];
 
   /// Mounts the stack at [viewport] and lets it paint ITSELF, once.

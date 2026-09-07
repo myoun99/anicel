@@ -11,6 +11,7 @@ import 'brush/sheet_canvas_panel.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
+import 'dialogs/dialog_verb.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
@@ -264,17 +265,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     widget.session.updateTimesheetInfo(next);
   }
 
-  Future<void> _editSheetInfo() async {
+  Future<void> _editSheetInfo() {
     final session = widget.session;
-    final nextInfo = await showDialog(
-      context: context,
-      builder: (context) =>
-          TimesheetInfoDialog(initialInfo: session.timesheetInfo),
+    return askThenCommit<TimesheetInfo>(
+      context,
+      dialog: (_) => TimesheetInfoDialog(initialInfo: session.timesheetInfo),
+      commit: session.updateTimesheetInfo,
     );
-    if (!mounted || nextInfo == null) {
-      return;
-    }
-    session.updateTimesheetInfo(nextInfo);
   }
 
   /// The sheet commands living IN the panel's status strip (UI-R10 #18 —

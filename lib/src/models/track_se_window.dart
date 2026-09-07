@@ -204,19 +204,7 @@ class TrackSeWindow {
           parameters: {
             for (final entry in effect.parameters.entries)
               entry.key: entry.value.copyWith(
-                track: () {
-                  final moved = <int, PropertyKey<double>>{};
-                  for (final key in entry.value.track.keys.entries) {
-                    final frame = toLocal
-                        ? toLocalFrame(key.key)
-                        : toGlobalFrame(key.key);
-                    if (toLocal && frame < 0) {
-                      continue;
-                    }
-                    moved[frame] = key.value;
-                  }
-                  return PropertyTrack<double>(keys: moved);
-                }(),
+                track: _shift(entry.value.track, toLocal: toLocal),
               ),
           },
         ),

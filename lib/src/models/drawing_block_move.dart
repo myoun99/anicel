@@ -5,7 +5,6 @@ import 'block_run_move.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
-import 'layer_kind.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart' show ghostFreeTimeline;
@@ -19,7 +18,7 @@ import 'timeline_repeat.dart' show ghostFreeTimeline;
 /// the file. Every other row may sit past the end, which is data the cut
 /// simply does not show.
 int? _axisEndFor(Layer layer, int? cutFrameCount) =>
-    layerKindCoversWithoutGaps(layer.kind) ? cutFrameCount : null;
+    layer.kind.coversWithoutGaps ? cutFrameCount : null;
 
 /// The resolved result of a whole-block move drag (R10-④b): the affected
 /// layers with the block relocated. Same-layer slides carry only

@@ -14,10 +14,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer_kind.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'dialogs/convert_to_linked_cut_dialog.dart';
+import 'dialogs/dialog_verb.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
 import 'export/ae_keyframe_data.dart';
@@ -80,24 +82,16 @@ bool canConvertActiveCutToLinked(EditorSessionManager session) =>
 Future<void> showConvertActiveCutToLinked(
   BuildContext context,
   EditorSessionManager session,
-) async {
-  final activeCut = session.activeCutOrNull;
-  if (activeCut == null) {
-    return;
-  }
-  final targetCutId = await showDialog<CutId>(
-    context: context,
-    builder: (context) => ConvertToLinkedCutDialog(
-      activeCutName: activeCut.name,
-      candidates: session.convertToLinkedCutCandidates,
-      previewOf: session.convertToLinkedCutPreviewData,
-    ),
-  );
-  if (!context.mounted || targetCutId == null) {
-    return;
-  }
-  session.convertActiveCutToLinked(targetCutId);
-}
+) => askAboutThenCommit<Cut, CutId>(
+  context,
+  session.activeCutOrNull,
+  dialog: (activeCut) => ConvertToLinkedCutDialog(
+    activeCutName: activeCut.name,
+    candidates: session.convertToLinkedCutCandidates,
+    previewOf: session.convertToLinkedCutPreviewData,
+  ),
+  commit: session.convertActiveCutToLinked,
+);
 
 /// Bakes the active cut's camera work as After Effects keyframe data on the
 /// clipboard, one sample per frame; paste onto the canvas-sequence layer in

@@ -484,24 +484,54 @@ Uint8List buildAnicelArchiveBytes({
   return ZipEncoder().encodeBytes(archive);
 }
 
+/// A `.anicel`'s `project.json`, read: the project plus every field the
+/// document carries around it.
+class AnicelProjectDocument {
+  const AnicelProjectDocument({
+    required this.project,
+    required this.mediaRelativePaths,
+    required this.mediaEntryNames,
+    required this.grants,
+    required this.mediaFingerprints,
+  });
+
+  final Project project;
+
+  /// Pool path → where that asset sits relative to the `.anicel`.
+  final Map<String, String> mediaRelativePaths;
+
+  /// Pool path → the archive entry holding that asset's bytes.
+  final Map<String, String> mediaEntryNames;
+
+  /// Security-scoped tokens as written, unresolved.
+  final List<Map<String, Object?>> grants;
+
+  final MediaFingerprints mediaFingerprints;
+}
+
 /// The project a `.anicel`'s `project.json` bytes hold, with its format
-/// version already checked, plus the raw document for the fields around it.
+/// version already checked, and the fields around it already read.
 ///
 /// ⛔BOTH READERS COME THROUGH HERE. The streaming open and the
 /// whole-archive parse each decoded, version-checked and rebuilt the
 /// project on their own; a reader that lost the check would open a file
 /// saved by a NEWER Anicel and silently drop everything it did not
 /// understand — which is a project the user then saves back, shortened.
-({Project project, Map<String, dynamic> json}) decodeAnicelProjectDocument(
-  List<int> projectBytes,
-) {
+///
+/// The raw map does not leave: the two readers were still reading the
+/// fields around the project field by field, each its own way, which is
+/// the same split one layer down.
+AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
   if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
     throw const FormatException('This project was saved by a newer Anicel.');
   }
-  return (
+  return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
-    json: decoded,
+    mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
+    mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
+    grants: anicelGrantsField(decoded['grants']),
+    mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
   );
 }
 
@@ -513,6 +543,18 @@ Map<String, String> anicelStringMapField(Object? json) => {
       if (entry.key is String && entry.value is String)
         entry.key as String: entry.value as String,
 };
+
+/// A document field read as a list of string-keyed maps, on the same terms
+/// as [anicelStringMapField]: anything that is not one is left out.
+List<Map<String, Object?>> anicelGrantsField(Object? json) => [
+  if (json is List)
+    for (final entry in json)
+      if (entry is Map)
+        {
+          for (final field in entry.entries)
+            if (field.key is String) field.key as String: field.value,
+        },
+];
 
 /// Parses .anicel bytes; throws [FormatException] on a newer format or a
 /// missing project entry.
@@ -532,9 +574,6 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
     projectEntry.readBytes()!,
   );
   final document = decodeAnicelProjectDocument(projectBytes);
-  final project = document.project;
-  final decoded = document.json;
-  final mediaRelativePaths = anicelStringMapField(decoded['mediaPaths']);
 
   // v3 truth: cold cel blobs — header parse only, pixels stay compressed
   // until the store's first access. (v1 drawings/tips and v2 cels/*.bin
@@ -545,23 +584,12 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
         AnicelCelBlob(file.readBytes()!),
   ];
 
-  final grantsJson = decoded['grants'];
-  final grants = <Map<String, Object?>>[
-    if (grantsJson is List)
-      for (final entry in grantsJson)
-        if (entry is Map)
-          {
-            for (final field in entry.entries)
-              if (field.key is String) field.key as String: field.value,
-          },
-  ];
-
   return AnicelArchiveContents(
-    project: project,
+    project: document.project,
     cels: cels,
-    mediaRelativePaths: mediaRelativePaths,
-    grants: grants,
-    mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
+    mediaRelativePaths: document.mediaRelativePaths,
+    grants: document.grants,
+    mediaFingerprints: document.mediaFingerprints,
   );
 }
 

@@ -18,7 +18,7 @@ import 'layer_folder.dart';
 
 export 'layer_folder.dart' show attachOrganizerBaseOf;
 import 'layer_id.dart';
-import 'layer_kind.dart';
+import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
@@ -36,7 +36,7 @@ bool isSyncedAttachedLayer(Layer layer) =>
 /// Whether [layer] can carry attach layers (v1: drawing kinds only, no
 /// nesting — an attach layer is never itself a base).
 bool canCarryAttachedLayers(Layer layer) =>
-    !isAttachedLayer(layer) && layerKindIsDrawingCel(layer.kind);
+    !isAttachedLayer(layer) && layer.kind.isDrawingCel;
 
 /// The base layer [attached] rides, looked up in [layers]; null when the
 /// link dangles (base deleted out from under it — display/composite skip
@@ -281,6 +281,27 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
   return end;
 }
 
+/// The attach group [member] belongs to, named by its BASE: the row it
+/// rides, or itself when it IS the base.
+LayerId attachBaseIdOf(Layer member) => member.attachedToLayerId ?? member.id;
+
+/// [baseId]'s whole attach group in stack order — the base, the
+/// below-placement rows that sit before it, the above-placement rows after
+/// it, and the organizer folder rows on either side.
+///
+/// Resolve to the group's base first ([attachBaseIdOf]), then take the
+/// contiguous run — below-side rows and organizer folder rows included (the
+/// gate scans the same slice).
+///
+/// A missing base answers `layers.length` on both ends, so the slice is
+/// EMPTY rather than silently spanning the whole stack — the contract
+/// [attachedGroupStartIndex] and [attachedGroupEndIndex] already document.
+List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
+    layers.sublist(
+      attachedGroupStartIndex(baseId, layers),
+      attachedGroupEndIndex(baseId, layers),
+    );
+
 /// A fresh attach-row name, signed by placement (UI-R20 #11, the
 /// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,
 /// rows below are `-1`, `-2`, … — each side numbers its own count.
@@ -400,18 +421,15 @@ AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
 /// Which side of [anchor] [subject] sits on in the model stack, or null
 /// when either is missing — a dangling anchor (deleting a base out from
 /// under its group is a supported state) answers -1, which must not read
-/// as "below".
+/// as "below". [layerIndexDelta]'s null IS that guarantee.
 AttachedPlacement? _stackPlacement(
   List<Layer> layers, {
   required LayerId subject,
   required LayerId anchor,
 }) {
-  final subjectIndex = layers.indexWhere((other) => other.id == subject);
-  final anchorIndex = layers.indexWhere((other) => other.id == anchor);
-  if (subjectIndex < 0 || anchorIndex < 0) {
+  final delta = layerIndexDelta(layers, anchor, subject);
+  if (delta == null) {
     return null;
   }
-  return subjectIndex > anchorIndex
-      ? AttachedPlacement.above
-      : AttachedPlacement.below;
+  return delta > 0 ? AttachedPlacement.above : AttachedPlacement.below;
 }

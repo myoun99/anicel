@@ -418,7 +418,7 @@ class _TimelineFrameRowsScrollBodyState
     if (layer.kind == LayerKind.camera) {
       return widget.memoAux.cameraTrack;
     }
-    if (layerKindCarriesInstructions(layer.kind)) {
+    if (layer.kind.carriesInstructions) {
       return widget.memoAux.instructionDefs;
     }
     return null;
@@ -558,7 +558,7 @@ class _TimelineFrameRowsScrollBodyState
         // clone's own timeline, so it takes the shared painter, the shared
         // press policy — the playhead can be put on it at last — and the
         // tile bake, while staying non-editable for free: every edit
-        // affordance below gates on `layerKindHoldsDrawings`, which a
+        // affordance below gates on `LayerKind.holdsDrawings`, which a
         // folder fails.
         rowBuilder: (context, layer) => row.isLane
             ? _buildLaneRow(row, layer)

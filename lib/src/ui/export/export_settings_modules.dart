@@ -231,6 +231,68 @@ class ExportModuleRow extends StatelessWidget {
   }
 }
 
+/// A labelled row offering one chip per VALUE of a choice.
+///
+/// 🚨ONE LAW FOR EVERY PICKER ROW (the audit's clone scan, round 8): a
+/// chip keyed `<keyPrefix>-<keyOf(value)>`, labelled from [labelOf],
+/// shown selected by comparing the value with [selected], and selecting
+/// it on tap. Seven rows across the export, import and text-cel windows
+/// spelled that out by hand, and the key naming and selection-by-colour
+/// were promises each of them kept on its own.
+///
+/// ⛔[enabledFor] refuses a VALUE, it does not hide it: the chip keeps its
+/// place and loses its tap (「없다가 생기는 UI 금지」).
+class ExportChoiceRow<T> extends StatelessWidget {
+  const ExportChoiceRow({
+    super.key,
+    required this.label,
+    required this.keyPrefix,
+    required this.values,
+    required this.selected,
+    required this.keyOf,
+    required this.labelOf,
+    required this.onSelect,
+    this.enabledFor,
+    this.spacing = 4,
+  });
+
+  final String label;
+
+  /// The chips are keyed `<keyPrefix>-<keyOf(value)>` — tests reach for
+  /// those strings, so the prefix is part of the row's contract.
+  final String keyPrefix;
+
+  final List<T> values;
+  final T selected;
+  final String Function(T value) keyOf;
+  final String Function(T value) labelOf;
+  final ValueChanged<T> onSelect;
+
+  /// Null offers every value.
+  final bool Function(T value)? enabledFor;
+
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) => ExportModuleRow(
+    label: label,
+    child: Wrap(
+      spacing: spacing,
+      children: [
+        for (final value in values)
+          ExportChip(
+            key: ValueKey<String>('$keyPrefix-${keyOf(value)}'),
+            label: labelOf(value),
+            selected: value == selected,
+            onTap: enabledFor?.call(value) == false
+                ? null
+                : () => onSelect(value),
+          ),
+      ],
+    ),
+  );
+}
+
 Widget exportModuleNote(BuildContext context, String text) => Text(
   text,
   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -473,24 +535,16 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
-  Widget _channelsRow() => ExportModuleRow(
+  Widget _channelsRow() => ExportChoiceRow<ExportChannels>(
     label: AppText.strings.exChannels,
-    child: Wrap(
-      spacing: 5,
-      children: [
-        for (final channels in ExportChannels.values)
-          ExportChip(
-            key: ValueKey<String>(
-              'export-format-channels-${channels.jsonValue}',
-            ),
-            label: channels.name.toUpperCase(),
-            selected: selection.effectiveChannels == channels,
-            onTap: enabled
-                ? () => _change(selection.copyWith(channels: channels))
-                : null,
-          ),
-      ],
-    ),
+    keyPrefix: 'export-format-channels',
+    values: ExportChannels.values,
+    selected: selection.effectiveChannels,
+    keyOf: (channels) => channels.jsonValue,
+    labelOf: (channels) => channels.name.toUpperCase(),
+    onSelect: (channels) => _change(selection.copyWith(channels: channels)),
+    enabledFor: (_) => enabled,
+    spacing: 5,
   );
 
   Widget _backgroundRow() => ExportModuleRow(

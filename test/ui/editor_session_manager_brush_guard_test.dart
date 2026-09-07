@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// R6-④: the brush only lands on drawing-section layers — SE cels are
 /// timing/dialogue data and camera rows are notation, so they never produce
@@ -16,7 +17,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// 「카메라랑 트랜지션은 지금처럼 못그리는데 **디렉션레이어는 그림 그릴수있는
 /// 행으로**」. It still carries its instruction spans; what changed is that
 /// its band is its own timeline underneath them — see
-/// [layerKindBandIsInstructionsOnly].
+/// [LayerKind.bandIsInstructionsOnly].
 void main() {
   late EditorSessionManager session;
 
@@ -26,23 +27,23 @@ void main() {
   });
 
   test('the brush-input policy bans SE, transition and camera kinds', () {
-    expect(layerKindAcceptsBrushInput(LayerKind.animation), isTrue);
-    expect(layerKindAcceptsBrushInput(LayerKind.storyboard), isTrue);
-    expect(layerKindAcceptsBrushInput(LayerKind.image), isTrue);
+    expect(LayerKind.animation.acceptsBrushInput, isTrue);
+    expect(LayerKind.storyboard.acceptsBrushInput, isTrue);
+    expect(LayerKind.image.acceptsBrushInput, isTrue);
     expect(
-      layerKindAcceptsBrushInput(LayerKind.instruction),
+      LayerKind.instruction.acceptsBrushInput,
       isTrue,
       reason: 'R27 #16 — the direction row is a row you draw on now',
     );
-    expect(layerKindAcceptsBrushInput(LayerKind.se), isFalse);
+    expect(LayerKind.se.acceptsBrushInput, isFalse);
     expect(
-      layerKindAcceptsBrushInput(LayerKind.transition),
+      LayerKind.transition.acceptsBrushInput,
       isFalse,
       reason: '「카메라랑 트랜지션은 지금처럼 못그리는데」 — and the '
           'transition row could not anyway: its placement in a cut is a '
           'projection of the global row',
     );
-    expect(layerKindAcceptsBrushInput(LayerKind.camera), isFalse);
+    expect(LayerKind.camera.acceptsBrushInput, isFalse);
   });
 
   test('a media-REFERENCE layer refuses the brush at LAYER level while '
@@ -100,7 +101,8 @@ void main() {
 
     final stackLayerIds = [
       for (final node in session.editingCanvasStack.nodes)
-        if (node is CanvasLayerImageNode) node.request.frameKey.layerId,
+        if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r))
+          r.frameKey.layerId,
     ];
     expect(
       stackLayerIds,

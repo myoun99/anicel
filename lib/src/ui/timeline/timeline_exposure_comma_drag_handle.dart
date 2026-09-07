@@ -13,6 +13,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
 import '../widgets/axis_gesture_detector.dart';
+import '../repaint_props.dart';
 
 /// How a grip reads right now. The ONLY thing a state change moves is the
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
@@ -167,7 +168,7 @@ void paintBlockEdgeGripBar(
 /// The widget grip's bar, painted rather than boxed: the sparse surfaces
 /// (storyboard cut trim, SE spans, instruction rows) still mount a widget
 /// per grip, and this keeps their pixels identical to the painted rows'.
-class BlockEdgeGripBarPainter extends CustomPainter {
+class BlockEdgeGripBarPainter extends CustomPainter with RepaintOnProps {
   const BlockEdgeGripBarPainter({
     required this.edge,
     required this.axis,
@@ -195,10 +196,7 @@ class BlockEdgeGripBarPainter extends CustomPainter {
   );
 
   @override
-  bool shouldRepaint(covariant BlockEdgeGripBarPainter oldDelegate) =>
-      oldDelegate.edge != edge ||
-      oldDelegate.axis != axis ||
-      oldDelegate.ink != ink;
+  Object get props => (edge, axis, ink);
 }
 
 /// The drag hooks a grip needs once its identity is already bound by the

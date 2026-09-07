@@ -19,6 +19,7 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectGroupLaneId;
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// The V row's EFFECT CHAIN: a layer's fx one level up, filtering the whole
@@ -304,12 +305,36 @@ void main() {
       expect(chain(s), hasLength(1));
     });
 
+    test('the group RESET puts the chain back to its defaults, once', () {
+      final s = session(effects: [_brightness(value: 0.5)]);
+      final laneId = effectGroupLaneId(const EffectId('fx-1'));
+
+      expect(s.resetTrackEffectGroup(_track, laneId), isTrue);
+      expect(chain(s).single.parameterOf('brightness').value, 0);
+      expect(
+        s.resetTrackEffectGroup(_track, laneId),
+        isFalse,
+        reason: 'a chain already at its defaults changes nothing, so there '
+            'is nothing to bank',
+      );
+
+      s.undo();
+      expect(chain(s).single.parameterOf('brightness').value, 0.5);
+    });
+
     test('an unknown track is a no-op, not a crash', () {
       final s = session();
       const missing = TrackId('nope');
       s.addEffectToTrack(missing, EffectKind.blur);
       s.removeEffectFromTrack(missing, const EffectId('fx-1'));
       s.toggleTrackEffectEnabled(missing, const EffectId('fx-1'));
+      expect(
+        s.resetTrackEffectGroup(
+          missing,
+          effectGroupLaneId(const EffectId('fx-1')),
+        ),
+        isFalse,
+      );
       expect(chain(s), isEmpty);
     });
   });

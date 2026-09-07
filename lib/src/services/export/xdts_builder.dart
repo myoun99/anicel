@@ -3,9 +3,8 @@ import 'dart:convert';
 import '../../models/camera_instruction.dart';
 import '../../models/cut.dart';
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart';
+import '../../models/sheet_sources.dart';
 import '../../models/timeline_coverage.dart';
-import '../../models/track_se_window.dart';
 
 /// Builds an XDTS (exchange digital time sheet, OpenToonz/Toei) document
 /// for one cut, straight from the unified timeline model.
@@ -43,29 +42,17 @@ String buildXdtsContent({
   List<Layer> trackSeLayers = const [],
   int cutStartFrame = 0,
 }) {
-  final duration = cut.duration < 1 ? 1 : cut.duration;
-  final celLayers = [
-    for (final layer in cut.layers)
-      // ONE gate with the sheet and the envelope (D24).
-      if (layerTakesSheetCelColumn(layer)) layer,
-  ];
-  final seWindow = TrackSeWindow(
+  // The SAME projection the print timesheet reads (the comment below the
+  // parameter list has promised this all along).
+  final sources = SheetSources.of(
+    cut: cut,
+    trackSeLayers: trackSeLayers,
     cutStartFrame: cutStartFrame,
-    cutDurationFrames: cut.duration,
   );
-  final seLayers = [
-    // Cut-owned SE layers remain for legacy fixtures (the print sheet
-    // keeps the same pair of sources).
-    for (final layer in cut.layers)
-      if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
-    for (final layer in trackSeLayers)
-      if (layer.onTimesheet)
-        clipLayerStartsBefore(seWindow.displayLayer(layer), duration),
-  ];
-  final instructionLayers = [
-    for (final layer in cut.layers)
-      if (layer.kind == LayerKind.instruction) layer,
-  ];
+  final duration = sources.playbackFrameCount;
+  final celLayers = sources.celLayers;
+  final seLayers = [for (final slot in sources.seLayers) slot.layer];
+  final instructionLayers = sources.instructionLayers;
 
   final timeTableHeaders = <Map<String, dynamic>>[
     if (celLayers.isNotEmpty)
@@ -152,6 +139,37 @@ Map<String, dynamic> _frameEntry(int frame, String value) => {
   ],
 };
 
+/// The XDTS change-only track rule, once: a track writes only the frames
+/// whose value CHANGES (readers hold values forward), so each span in
+/// [spans] emits its label at its start, a `SYMBOL_NULL_CELL` opens any gap
+/// before it, spans starting at or past [duration] are dropped, and the
+/// tail past the last span (or a track with no spans at all) closes with a
+/// null cell clamped inside the sheet.
+///
+/// [spans] must arrive in start order and is walked LAZILY: the `break`
+/// stops the producer as well, so a label nobody writes is never derived.
+List<Map<String, dynamic>> _changeTrackFrames(
+  Iterable<({int start, int endExclusive, String label})> spans,
+  int duration,
+) {
+  final frames = <Map<String, dynamic>>[];
+  var nextUncovered = 0;
+  for (final span in spans) {
+    if (span.start >= duration) {
+      break;
+    }
+    if (span.start > nextUncovered) {
+      frames.add(_frameEntry(nextUncovered, xdtsNullCell));
+    }
+    frames.add(_frameEntry(span.start, span.label));
+    nextUncovered = span.endExclusive;
+  }
+  if (nextUncovered < duration || frames.isEmpty) {
+    frames.add(_frameEntry(nextUncovered.clamp(0, duration - 1), xdtsNullCell));
+  }
+  return frames;
+}
+
 /// Value-change frames for a cel/SE layer: the sheet label at each drawing
 /// start (Frame.name, 1-based position fallback — the timesheet's naming
 /// rule) and SYMBOL_NULL_CELL where coverage ends or is missing.
@@ -161,24 +179,16 @@ List<Map<String, dynamic>> _drawingTrackFrames(Layer layer, int duration) {
       layer.frames[index].id: layer.frames[index].name ?? '${index + 1}',
   };
 
-  final frames = <Map<String, dynamic>>[];
-  var nextUncovered = 0;
-  for (final block in drawingBlocks(layer.timeline)) {
-    if (block.startIndex >= duration) {
-      break;
-    }
-    if (block.startIndex > nextUncovered) {
-      frames.add(_frameEntry(nextUncovered, xdtsNullCell));
-    }
-    frames.add(
-      _frameEntry(block.startIndex, labelsByFrameId[block.frameId] ?? '?'),
-    );
-    nextUncovered = block.endIndexExclusive;
-  }
-  if (nextUncovered < duration || frames.isEmpty) {
-    frames.add(_frameEntry(nextUncovered.clamp(0, duration - 1), xdtsNullCell));
-  }
-  return frames;
+  return _changeTrackFrames(
+    drawingBlocks(layer.timeline).map(
+      (block) => (
+        start: block.startIndex,
+        endExclusive: block.endIndexExclusive,
+        label: labelsByFrameId[block.frameId] ?? '?',
+      ),
+    ),
+    duration,
+  );
 }
 
 /// Value-change frames for an instruction row: the event's writing (free
@@ -188,29 +198,28 @@ List<Map<String, dynamic>> _instructionTrackFrames(
   Layer layer,
   int duration,
   CameraInstructionDef? Function(String instructionId)? defById,
+) => _changeTrackFrames(
+  layer.instructions.entries.map(
+    (entry) => (
+      start: entry.key,
+      endExclusive: entry.key + entry.value.length,
+      label: _instructionLabel(entry.value, defById),
+    ),
+  ),
+  duration,
+);
+
+/// An instruction event's writing: free text, vocabulary-name fallback,
+/// with `(A→B)` appended when either value is present.
+String _instructionLabel(
+  InstructionEvent event,
+  CameraInstructionDef? Function(String instructionId)? defById,
 ) {
-  final frames = <Map<String, dynamic>>[];
-  var nextUncovered = 0;
-  for (final entry in layer.instructions.entries) {
-    final start = entry.key;
-    if (start >= duration) {
-      break;
-    }
-    final event = entry.value;
-    if (start > nextUncovered) {
-      frames.add(_frameEntry(nextUncovered, xdtsNullCell));
-    }
-    var value = event.displayLabel(defById?.call(event.instructionId));
-    final valueA = event.valueA;
-    final valueB = event.valueB;
-    if (valueA != null || valueB != null) {
-      value = '$value (${valueA ?? ''}→${valueB ?? ''})';
-    }
-    frames.add(_frameEntry(start, value));
-    nextUncovered = start + event.length;
+  final label = event.displayLabel(defById?.call(event.instructionId));
+  final valueA = event.valueA;
+  final valueB = event.valueB;
+  if (valueA == null && valueB == null) {
+    return label;
   }
-  if (nextUncovered < duration || frames.isEmpty) {
-    frames.add(_frameEntry(nextUncovered.clamp(0, duration - 1), xdtsNullCell));
-  }
-  return frames;
+  return '$label (${valueA ?? ''}→${valueB ?? ''})';
 }

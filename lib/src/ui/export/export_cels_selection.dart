@@ -73,7 +73,7 @@ ExportCelsSelection resolveExportCelsSelection({
 /// Whether [layer] exports a cel before any expansion or override.
 ///
 /// WHICH KINDS can export a cel is one fact, and it lives with the kind
-/// (layerKindExportsCels): the camera has no artwork, SE cels are timing
+/// (LayerKind.exportsCels): the camera has no artwork, SE cels are timing
 /// data, and a folder holds its members' cels rather than one of its own.
 /// Spelling that set out again here was a second copy of the same
 /// decision — both exhaustive, so both would force an author to choose
@@ -81,7 +81,7 @@ ExportCelsSelection resolveExportCelsSelection({
 ///
 /// What stays here is this EXPORT's policy on top of that gate.
 bool _exportsByBaseRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
-  if (!layerKindExportsCels(layer.kind)) {
+  if (!layer.kind.exportsCels) {
     return false;
   }
   switch (layer.kind) {
@@ -121,7 +121,7 @@ bool _exportsByBaseRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
 /// Pulls in every same-folder drawing row a selected row shares a folder
 /// with.
 ///
-/// ⛔"holdsDrawings && != se" IS layerKindIsDrawingCel — re-deriving a
+/// ⛔"holdsDrawings && != se" IS LayerKind.isDrawingCel — re-deriving a
 /// predicate inline is how a kind gets missed when the next one is added,
 /// which is exactly what layer_kind.dart's predicates exist to prevent.
 void _expandFolderMembers(List<bool> included, List<Layer> layers) {
@@ -136,7 +136,7 @@ void _expandFolderMembers(List<bool> included, List<Layer> layers) {
         !includedFolders.contains(layer.folderId)) {
       continue;
     }
-    if (layerKindIsDrawingCel(layer.kind) && layers.rowVisible(layer)) {
+    if (layer.kind.isDrawingCel && layers.rowVisible(layer)) {
       included[i] = true;
     }
   }
@@ -153,7 +153,7 @@ void _applyLayerOverrides(
 ) {
   for (var i = 0; i < layers.length; i += 1) {
     final forced = overrides[layers[i].id];
-    if (forced != null && layerKindExportsCels(layers[i].kind)) {
+    if (forced != null && layers[i].kind.exportsCels) {
       included[i] = forced;
     }
   }

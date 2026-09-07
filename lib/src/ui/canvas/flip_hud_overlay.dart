@@ -7,6 +7,8 @@ import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart';
 
 /// The flip HUD's metrics. One place, because the two axes are the same
 /// window turned ninety degrees.
@@ -242,7 +244,7 @@ class FlipHudOverlay extends StatelessWidget {
   }
 }
 
-class FlipHudPainter extends CustomPainter {
+class FlipHudPainter extends CustomPainter with RepaintOnProps {
   const FlipHudPainter({
     required this.snapshot,
     required this.axis,
@@ -720,10 +722,6 @@ class FlipHudPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant FlipHudPainter oldDelegate) =>
-      !identical(oldDelegate.snapshot, snapshot) ||
-      oldDelegate.axis != axis ||
-      oldDelegate.frameStep != frameStep ||
-      oldDelegate.scrollCentre != scrollCentre ||
-      oldDelegate.colorScheme != colorScheme;
+  Object get props =>
+      (ByIdentity(snapshot), axis, frameStep, scrollCentre, colorScheme);
 }

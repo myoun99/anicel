@@ -21,6 +21,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../src/models/bitmap_surface.dart';
 import '../src/models/brush_tip_mask.dart';
 import '../src/services/persistence/anicel_project_archive.dart';
 import '../src/services/persistence/app_ui_scale_store.dart';
@@ -462,23 +463,12 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   /// brush host so the timesheet's ink plane can never be mistaken for it.
   Element? _canvasView() {
     final host = _findByKey(const ValueKey<String>('main-canvas-brush-host'));
-    if (host == null) {
-      return null;
-    }
-    Element? result;
-    void visit(Element element) {
-      if (result != null) {
-        return;
-      }
-      if (element.widget is InteractiveBrushEditCanvasView) {
-        result = element;
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    host.visitChildren(visit);
-    return result;
+    return host == null
+        ? null
+        : firstElementUnder(
+            host,
+            (widget) => widget is InteractiveBrushEditCanvasView,
+          );
   }
 
   /// The state both fill runs start from: standing on frame 7 with a cel
@@ -714,16 +704,26 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     }
   }
 
+  /// The surface the editable canvas view is showing, or null when the
+  /// view is not mounted — the one place the probes below reach through
+  /// the element tree to the model.
+  BitmapSurface? _editableSurface() {
+    final element = _findByType<BrushEditCanvasView>();
+    if (element == null) {
+      return null;
+    }
+    final view = element.widget as BrushEditCanvasView;
+    return view.sessionState.canvasState.currentSurface;
+  }
+
   /// The editable surface's geometry + how many tiles sit fully BEYOND
   /// a default-sized rect (2340x1654) — distinguishes "data truncated
   /// to the small canvas" from "display stalled" (R27 Variant C).
   String _contentSummary() {
-    final element = _findByType<BrushEditCanvasView>();
-    if (element == null) {
+    final surface = _editableSurface();
+    if (surface == null) {
       return 'no-view';
     }
-    final view = element.widget as BrushEditCanvasView;
-    final surface = view.sessionState.canvasState.currentSurface;
     var beyond = 0;
     for (final tile in surface.tiles.values) {
       if (tile.coord.x * surface.tileSize >= 2340 ||
@@ -739,12 +739,11 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   /// Tiles of the editable view's CURRENT surface without a decoded
   /// image — nonzero steady state = the display bug.
   String _undecodedCount() {
-    final element = _findByType<BrushEditCanvasView>();
-    if (element == null) {
+    final surface = _editableSurface();
+    if (surface == null) {
       return 'no-view';
     }
-    final view = element.widget as BrushEditCanvasView;
-    final tiles = view.sessionState.canvasState.currentSurface.tiles.values;
+    final tiles = surface.tiles.values;
     var undecoded = 0;
     var total = 0;
     for (final tile in tiles) {
@@ -871,37 +870,17 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   }
 
   Element? _findByKey(Key key) {
-    Element? result;
-    void visit(Element element) {
-      if (result != null) {
-        return;
-      }
-      if (element.widget.key == key) {
-        result = element;
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    WidgetsBinding.instance.rootElement?.visitChildren(visit);
-    return result;
+    final root = WidgetsBinding.instance.rootElement;
+    return root == null
+        ? null
+        : firstElementUnder(root, (widget) => widget.key == key);
   }
 
   Element? _findByType<T extends Widget>() {
-    Element? result;
-    void visit(Element element) {
-      if (result != null) {
-        return;
-      }
-      if (element.widget is T) {
-        result = element;
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    WidgetsBinding.instance.rootElement?.visitChildren(visit);
-    return result;
+    final root = WidgetsBinding.instance.rootElement;
+    return root == null
+        ? null
+        : firstElementUnder(root, (widget) => widget is T);
   }
 
   Rect _rectOf(Element element) {
@@ -911,4 +890,28 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// The first element BELOW [root] whose widget answers [test], in
+/// depth-first pre-order, stopping at the first match.
+///
+/// [root] itself is never a candidate: every probe in this file is
+/// scoped — "under the canvas host", "under the app root" — and a walker
+/// that could answer with its own scope would let a host stand in for the
+/// thing hosted.
+Element? firstElementUnder(Element root, bool Function(Widget widget) test) {
+  Element? result;
+  void visit(Element element) {
+    if (result != null) {
+      return;
+    }
+    if (test(element.widget)) {
+      result = element;
+      return;
+    }
+    element.visitChildren(visit);
+  }
+
+  root.visitChildren(visit);
+  return result;
 }

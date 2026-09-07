@@ -21,6 +21,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 유저 2026-08-27, iPhone (H27 잔여): 「**변형툴의 외곽에만** 그림이 남음 …
 /// 변형중에는 해당 그림 사라지고 … 이전에 확정했던게 존재하고 변형중이 아닌
@@ -114,11 +115,11 @@ void main() {
                 nodes: const [
                   // The one that is ALREADY there — the bake records this,
                   // and it is the ring the user sees around the live layer.
-                  CanvasLayerImageNode(
+                  CompositeLeaf<CanvasStackRow>(
                     CanvasLayerImageRequest(frameKey: settled, opacity: 1),
                   ),
                   // The one whose picture arrives later, cold.
-                  CanvasLayerImageNode(
+                  CompositeLeaf<CanvasStackRow>(
                     CanvasLayerImageRequest(frameKey: key, opacity: 1),
                   ),
                 ],

@@ -141,9 +141,10 @@ class AudioScrubber {
       return;
     }
     if (!device.isOpen) {
-      final index = audioOutputDeviceIndexByName(
+      final index = audioDeviceIndexByName(
         device,
-        resolveOutputDeviceName?.call(),
+        capture: false,
+        name: resolveOutputDeviceName?.call(),
       );
       var opened = device.open(
         sampleRate: conformStore.projectSampleRate,

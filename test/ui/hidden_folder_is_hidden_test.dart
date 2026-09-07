@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cels_selection.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// HIDING A FOLDER HIDES WHAT IS INSIDE IT — EVERYWHERE, NOT JUST WHERE THE
 /// COMPOSITE LOOKS.
@@ -183,10 +184,12 @@ void main() {
       s.groupActiveLayerIntoFolder();
       final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
 
-      bool holdsActive(List<CanvasLayerStackNode> nodes) => nodes.any(
+      bool holdsActive(List<CompositeNode<CanvasStackRow>> nodes) => nodes.any(
         (node) =>
-            node is CanvasActiveLayerNode ||
-            (node is CanvasLayerGroupNode && holdsActive(node.children)),
+            (node is CompositeLeaf<CanvasStackRow> &&
+                node.payload is CanvasActiveLayerRow) ||
+            (node is CompositeGroup<CanvasStackRow> &&
+                holdsActive(node.children)),
       );
 
       expect(

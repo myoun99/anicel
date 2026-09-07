@@ -13,6 +13,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// D10: a cel the store cannot build is ONE row's problem.
 ///
@@ -86,13 +87,13 @@ void main() {
           height: 200,
           child: CanvasLayerStackView(
             nodes: [
-              CanvasLayerImageNode(
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(frameKey: _key('good-before'), opacity: 1),
               ),
-              CanvasLayerImageNode(
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(frameKey: _key('bad'), opacity: 1),
               ),
-              CanvasLayerImageNode(
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(frameKey: _key('good-after'), opacity: 1),
               ),
             ],
@@ -151,7 +152,7 @@ void main() {
           height: 200,
           child: CanvasLayerStackView(
             nodes: [
-              CanvasLayerImageNode(
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(frameKey: _key('flaky'), opacity: 1),
               ),
             ],

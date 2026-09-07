@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 
@@ -79,7 +80,7 @@ void main() {
               viewportUnderlayBuilder:
                   (context, viewport, activeSurfacePainter, floatOverlay) =>
                       CanvasLayerStackView(
-                        nodes: const [CanvasActiveLayerNode(opacity: 1)],
+                        nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                         activeSurfacePainter: activeSurfacePainter,
                         floatOverlay: floatOverlay,
                         imageCache: imageCache,

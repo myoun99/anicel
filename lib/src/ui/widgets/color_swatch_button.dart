@@ -8,6 +8,7 @@ import '../color/color_wheel_panel.dart' show ColorWheel;
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
+import '../repaint_props.dart';
 
 /// The ONE color-picking control (R28 #9): a round swatch that opens the
 /// shared color wheel in the shared anchored sub-window.
@@ -109,7 +110,7 @@ class ColorSwatchButton extends StatelessWidget {
 /// ⛔A slash rather than an empty circle. Absence and 「a very dark colour」
 /// are one glyph apart on this app's surfaces, and the box colour's default
 /// is dark — an unfilled circle would have read as 「#202020」 to the eye.
-class _SwatchPainter extends CustomPainter {
+class _SwatchPainter extends CustomPainter with RepaintOnProps {
   const _SwatchPainter({required this.color});
 
   final int? color;
@@ -141,7 +142,7 @@ class _SwatchPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SwatchPainter oldDelegate) => oldDelegate.color != color;
+  Object get props => (color,);
 }
 
 /// Opens the shared color picker anchored to [anchorContext]'s widget.

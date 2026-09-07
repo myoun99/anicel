@@ -66,7 +66,8 @@ class AudioRecorder {
   /// the device could not open (no binary, no microphone, no permission).
   ///
   /// [deviceIndex] follows the R4 contract: -1 = system default, a bad
-  /// index fails. Resolve a saved name with [audioInputDeviceIndexByName].
+  /// index fails. Resolve a saved name with
+  /// [audioDeviceIndexByName] (`capture: true`).
   int start({
     required int sampleRate,
     bool useNullBackend = false,

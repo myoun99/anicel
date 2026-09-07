@@ -30,6 +30,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★THE LAYER RIDES THE DRAWS — and it is the same pixels the buffer made.
 ///
@@ -392,7 +393,7 @@ void main() {
                 height: 150,
                 child: CanvasLayerStackView(
                   nodes: [
-                    CanvasActiveLayerNode(opacity: opacity, effects: effects),
+                    CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: opacity, effects: effects)),
                   ],
                   imageCache: LayerFrameImageCache(
                     frameStore: BrushFrameStore(),

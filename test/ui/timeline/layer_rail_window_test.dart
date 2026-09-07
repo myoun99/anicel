@@ -43,6 +43,36 @@ void main() {
       expect(extent.windowExtent(20), layerRailMinimumWindowExtent);
     });
 
+    test('the panel is the SECOND ceiling, and the splitter obeys the same '
+        'one — a drag must not grow the window past what the clip uses', () {
+      final extent = LayerRailExtent();
+      // A LAYOUT clamp, not a stored value: the size the rail reports is
+      // cut by the panel, and the panel growing back gives it all up.
+      expect(extent.windowExtent(434, availableExtent: 300), 300);
+      expect(extent.windowExtent(434), 434);
+
+      // And the drag obeys the same ceiling: pushing outward past 300
+      // takes no travel at all.
+      expect(
+        extent.resizeBy(1000, naturalExtent: 434, availableExtent: 300),
+        0,
+      );
+      expect(extent.windowExtent(434, availableExtent: 300), 300);
+    });
+
+    test('in a panel too small even for the floor, the panel wins — on both '
+        'the size and the drag', () {
+      const tiny = layerRailMinimumWindowExtent / 2;
+      final extent = LayerRailExtent();
+      expect(extent.windowExtent(434, availableExtent: tiny), tiny);
+      extent.resizeBy(-1000, naturalExtent: 434, availableExtent: tiny);
+      expect(
+        extent.windowExtent(434, availableExtent: tiny),
+        tiny,
+        reason: 'an overflow stripe helps nobody',
+      );
+    });
+
     test('reset goes back to natural, and the push goes home with it', () {
       final extent = LayerRailExtent()..resizeBy(-200, naturalExtent: 434);
       expect(extent.value, isNotNull);

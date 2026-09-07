@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨A3 — THE BAKE'S RECORDINGS DEPEND ON THE EXTENT, AND THE KEY CANNOT
 /// SAY SO.
@@ -194,13 +195,13 @@ void main() {
                     // this test would pass with `ensureExtent` deleted.
                     // The raster is the mechanism whose extent this pins.
                     for (var i = 0; i < 7; i += 1)
-                      const CanvasLayerImageNode(
+                      const CompositeLeaf<CanvasStackRow>(
                         CanvasLayerImageRequest(
                           frameKey: frameKey,
                           opacity: 1,
                         ),
                       ),
-                    const CanvasActiveLayerNode(opacity: 1),
+                    const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
                   ],
                   imageCache: cache,
                   canvasSize: canvasSize,

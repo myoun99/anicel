@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 
 /// The R6 effect chain through the SESSION — the wiring the timeline host
 /// drives: add, edit, undo, and the editing canvas reading it back.
@@ -21,17 +22,19 @@ void main() {
     addTearDown(session.dispose);
   });
 
-  List<ResolvedLayerEffect> stackEffectsOf(List<CanvasLayerStackNode> nodes) {
+  List<ResolvedLayerEffect> stackEffectsOf(
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) {
     for (final node in nodes) {
       switch (node) {
-        case CanvasActiveLayerNode(:final effects):
+        case CompositeLeaf(payload: CanvasActiveLayerRow(:final effects)):
           return effects;
-        case CanvasLayerImageNode(:final request):
+        case CompositeLeaf(payload: final CanvasLayerImageRequest request):
           if (request.effects.isNotEmpty) {
             return request.effects;
           }
-        case CanvasLayerGroupNode(:final children):
-        case CanvasLayerAdjustmentNode(:final children):
+        case CompositeGroup<CanvasStackRow>(:final children):
+        case CompositeAdjustment<CanvasStackRow>(:final children):
           final inner = stackEffectsOf(children);
           if (inner.isNotEmpty) {
             return inner;
@@ -186,8 +189,8 @@ void main() {
     // lands in — not just "some node in the stack carries effects".
     List<ResolvedLayerEffect> activeNodeEffects() {
       for (final node in session.editingCanvasStack.nodes) {
-        if (node is CanvasActiveLayerNode) {
-          return node.effects;
+        if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
+          return row.effects;
         }
       }
       fail('the attach row with no cel must still get an active node');
@@ -216,12 +219,14 @@ void main() {
 
   group('the adjustment layer (R6b)', () {
     /// The adjustment scope node in the editing stack, or null.
-    CanvasLayerAdjustmentNode? scopeIn(List<CanvasLayerStackNode> nodes) {
+    CompositeAdjustment<CanvasStackRow>? scopeIn(
+      List<CompositeNode<CanvasStackRow>> nodes,
+    ) {
       for (final node in nodes) {
-        if (node is CanvasLayerAdjustmentNode) {
+        if (node is CompositeAdjustment<CanvasStackRow>) {
           return node;
         }
-        if (node is CanvasLayerGroupNode) {
+        if (node is CompositeGroup<CanvasStackRow>) {
           final inner = scopeIn(node.children);
           if (inner != null) {
             return inner;
@@ -289,7 +294,7 @@ void main() {
       session.addLayerOfKind(LayerKind.adjustment);
       final row = session.activeLayer!;
       expect(session.canAddEffectToActiveLayer, isTrue);
-      expect(layerKindHasLayerTransform(row.kind), isFalse);
+      expect(row.kind.hasLayerTransform, isFalse);
       // …and the coordinator refuses a transform outright — writing one is
       // a programming error, not a silently ignored edit.
       expect(

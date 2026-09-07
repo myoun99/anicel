@@ -169,6 +169,54 @@ void main() {
     ]);
   });
 
+  // 1da96c92 ("Unify layer controls across every kind") added
+  // `&& layer.onTimesheet` to the print sheet's instruction filter and did
+  // not touch this builder, which was written earlier — drift, not a
+  // decision (be4c10ca/ba0656a2 later applied the same gate to XDTS's SE
+  // rows). The two projections read the same sources now, so the one gate
+  // reaches the CAMERAWORK field too.
+  test('an instruction row toggled OFF the sheet writes no CAMERAWORK '
+      'field — the sheet toggle is ONE gate', () {
+    final cut = _cut();
+    final hidden = Cut(
+      id: cut.id,
+      name: cut.name,
+      duration: cut.duration,
+      canvasSize: cut.canvasSize,
+      layers: [
+        for (final layer in cut.layers)
+          if (layer.kind == LayerKind.instruction)
+            layer.copyWith(onTimesheet: false)
+          else
+            layer,
+      ],
+    );
+
+    final json =
+        jsonDecode(
+              buildXdtsContent(
+                cut: hidden,
+                cutLabel: '3',
+              ).split('\n').skip(1).join('\n'),
+            )
+            as Map<String, dynamic>;
+    final timeTable =
+        (json['timeTables'] as List<dynamic>).single as Map<String, dynamic>;
+    expect(
+      (timeTable['timeTableHeaders'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .where((header) => header['fieldId'] == 5),
+      isEmpty,
+    );
+    expect(
+      (timeTable['fields'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .where((field) => field['fieldId'] == 5),
+      isEmpty,
+      reason: 'a row the sheet does not print is not exported either',
+    );
+  });
+
   test('an image row stays out of the CELL field even with its sheet '
       'toggle ON — layerTakesSheetCelColumn is the ONE gate (D24)', () {
     final cut = _cut();

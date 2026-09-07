@@ -420,31 +420,6 @@ class AudioConformPipeline {
   /// reads a gigabyte just as correctly as a 16MB one.
   static const int _fingerprintChunkBytes = 64 * 1024;
 
-  /// What `stat` says about [sourcePath], or null when it is not there.
-  ///
-  /// The CHEAP half of the reuse question. A hit means "nothing on this
-  /// machine has touched it" and the conform stands without a read; a miss
-  /// means nothing on its own and falls through to [fingerprintOf].
-  /// Asks about the PATH rather than through `File`: `File(dir).existsSync()`
-  /// answers false for a directory, which would report "missing" for a path
-  /// that plainly has something at it. Null means nothing is there; anything
-  /// else is a thing we may or may not be able to read, and that difference
-  /// belongs to the caller.
-  static ConformSourceStat? statOf(String sourcePath) {
-    try {
-      final stat = FileStat.statSync(sourcePath);
-      if (stat.type == FileSystemEntityType.notFound) {
-        return null;
-      }
-      return ConformSourceStat(
-        sourceLength: stat.size,
-        sourceModifiedMicros: stat.modified.microsecondsSinceEpoch,
-      );
-    } on Object {
-      return null;
-    }
-  }
-
   /// Ensures a usable conform exists for [sourcePath] at [conformPath].
   ///
   /// Reuses the existing one when its recorded fingerprint still matches
@@ -561,14 +536,7 @@ class AudioConformPipeline {
     // open, and skipping it made every project pay a full read of every
     // original before it could discover there was nothing to do — on the
     // very devices where a big allocation gets the app killed.
-    if (settingsMatch &&
-        stat != null &&
-        (existing.sourceStat?.matches(
-              ConformSourceStat(
-                sourceLength: stat.lengthBytes,
-                sourceModifiedMicros: stat.modifiedMicros,
-              ),
-            ) ?? false)) {
+    if (settingsMatch && stat != null && existing.sourceStat == stat) {
       return _reuse(existing, reusableAt);
     }
 
@@ -741,12 +709,7 @@ class AudioConformPipeline {
           // conform of the previous contents. Null for an archive range —
           // no stat exists, and the content fingerprint above is the
           // whole identity there anyway.
-          sourceStat: stat == null
-              ? null
-              : ConformSourceStat(
-                  sourceLength: stat.lengthBytes,
-                  sourceModifiedMicros: stat.modifiedMicros,
-                ),
+          sourceStat: stat,
           speedNumerator: speedNumerator,
           speedDenominator: speedDenominator,
         );

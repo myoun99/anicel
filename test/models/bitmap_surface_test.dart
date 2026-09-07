@@ -61,12 +61,12 @@ void main() {
       () => expect(surface().tileAt(TileCoord(x: 0, y: 0)), isNull),
     );
 
-    test('putTile inserts a tile', () {
+    test('putTiles inserts a tile', () {
       final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      expect(surface().putTile(tile).tileAt(tile.coord), tile);
+      expect(surface().putTiles([tile]).tileAt(tile.coord), tile);
     });
 
-    test('putTile replaces existing tile', () {
+    test('putTiles replaces existing tile', () {
       final coord = TileCoord(x: 0, y: 0);
       final first = BitmapTile.blank(coord: coord, size: 256);
       final second = BitmapTile(
@@ -74,29 +74,66 @@ void main() {
         size: 256,
         pixels: Uint8List(256 * 256 * 4)..[0] = 9,
       );
-      final next = surface().putTile(first).putTile(second);
-      expect(next.tileAt(coord), second);
+      expect(
+        surface().putTiles([first]).putTiles([second]).tileAt(coord),
+        second,
+      );
+      // The later tile of one batch wins too — the batch is a sequence of
+      // puts, not a set of them.
+      expect(surface().putTiles([first, second]).tileAt(coord), second);
     });
 
-    test('putTile does not mutate original surface', () {
+    test('putTiles does not mutate original surface', () {
       final original = surface();
       final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      final next = original.putTile(tile);
+      final next = original.putTiles([tile]);
       expect(original.tileAt(tile.coord), isNull);
       expect(next.tileAt(tile.coord), tile);
+    });
+
+    test('putTiles rejects a coord outside the pasteboard', () {
+      expect(
+        () => surface().putTiles([
+          BitmapTile.blank(coord: TileCoord(x: 23, y: 0), size: 256),
+        ]),
+        throwsArgumentError,
+      );
+      expect(
+        () => surface().putTiles([
+          BitmapTile.blank(coord: TileCoord(x: -16, y: 0), size: 256),
+        ]),
+        throwsArgumentError,
+      );
+    });
+
+    test('putTiles rejects a tile whose size is not the surface tile size', () {
+      expect(
+        () => surface().putTiles([
+          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 128),
+        ]),
+        throwsArgumentError,
+      );
+    });
+
+    test('a rejected tile takes the whole batch with it', () {
+      final good = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
+      final bad = BitmapTile.blank(coord: TileCoord(x: 23, y: 0), size: 256);
+      final original = surface();
+      expect(() => original.putTiles([good, bad]), throwsArgumentError);
+      expect(original.tileAt(good.coord), isNull);
     });
 
     test('removeTile removes a tile', () {
       final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
       expect(
-        surface().putTile(tile).removeTile(tile.coord).tileAt(tile.coord),
+        surface().putTiles([tile]).removeTile(tile.coord).tileAt(tile.coord),
         isNull,
       );
     });
 
     test('removeTile does not mutate original surface', () {
       final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      final original = surface().putTile(tile);
+      final original = surface().putTiles([tile]);
       final next = original.removeTile(tile.coord);
       expect(original.tileAt(tile.coord), tile);
       expect(next.tileAt(tile.coord), isNull);
@@ -167,8 +204,8 @@ void main() {
           pixels: Uint8List(256 * 256 * 4)..[0] = 3,
         );
 
-        final firstSurface = surface().putTile(firstTile).putTile(secondTile);
-        final secondSurface = surface().putTile(secondTile).putTile(firstTile);
+        final firstSurface = surface().putTiles([firstTile, secondTile]);
+        final secondSurface = surface().putTiles([secondTile, firstTile]);
 
         expect(firstSurface, secondSurface);
         expect(firstSurface.hashCode, secondSurface.hashCode);
@@ -181,7 +218,7 @@ void main() {
         size: 256,
         pixels: Uint8List(256 * 256 * 4)..[0] = 7,
       );
-      final original = surface().putTile(tile);
+      final original = surface().putTiles([tile]);
       expectJsonRoundTrip(original, BitmapSurface.fromJson);
     });
 

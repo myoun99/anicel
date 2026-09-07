@@ -397,16 +397,7 @@ class AnicelFileService {
     final dirty = <BrushFrameKey>{
       for (final store in stores) ...store.dirtyCelKeysSinceSave,
     };
-    final works = <_CelWork>[];
-    final removed = <String>[];
-    for (final key in dirty) {
-      final work = _workForDirtyKey(key, baked);
-      if (work == null) {
-        removed.add(anicelCelEntryName(key));
-      } else {
-        works.add(work);
-      }
-    }
+    final (:works, :removedNames) = _dirtyCelWork(dirty, baked);
     final stamp = anicelBaseStamp(baseFilePath);
     if (stamp == null) {
       // No stamp, no overlay. A snapshot that cannot name its base is
@@ -439,7 +430,7 @@ class AnicelFileService {
                     // Cels the session DELETED since the save. The base
                     // still holds them, so the overlay has to say they are
                     // gone rather than merely not mention them.
-                    'removed': removed,
+                    'removed': removedNames,
                   }),
                 ),
               ),
@@ -666,6 +657,38 @@ class AnicelFileService {
     return lost(adopted);
   }
 
+  /// Splits the dirty set into the cels that still have content and the
+  /// entry names of the ones that no longer do.
+  ///
+  /// The overlay and the incremental save both start here; the way they
+  /// spell the removals differs (a list in the JSON, a set to subtract
+  /// from the layout) but the partition itself is one law.
+  ///
+  /// ⛔Not _saveFull's loop: that one walks ALL keys, and a clean
+  /// file-backed key there becomes a stream-through work rather than a
+  /// removal.
+  static ({List<_CelWork> works, List<String> removedNames}) _dirtyCelWork(
+    Set<BrushFrameKey> dirty,
+    ({
+      Map<BrushFrameKey, BitmapSurface> hot,
+      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
+    })
+    baked,
+  ) {
+    final works = <_CelWork>[];
+    final removedNames = <String>[];
+    for (final key in dirty) {
+      final work = _workForDirtyKey(key, baked);
+      if (work == null) {
+        removedNames.add(anicelCelEntryName(key));
+      } else {
+        works.add(work);
+      }
+    }
+    return (works: works, removedNames: removedNames);
+  }
+
   /// Resolves a dirty key's current content to a [_CelWork], or null for
   /// a removed cel (its entry name must vanish from the archive).
   static _CelWork? _workForDirtyKey(
@@ -836,16 +859,7 @@ class AnicelFileService {
     ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
   }) async {
-    final works = <_CelWork>[];
-    final removeNames = <String>{};
-    for (final key in dirty) {
-      final work = _workForDirtyKey(key, baked);
-      if (work == null) {
-        removeNames.add(anicelCelEntryName(key));
-      } else {
-        works.add(work);
-      }
-    }
+    final (:works, :removedNames) = _dirtyCelWork(dirty, baked);
     // Scalars only, resolved HERE: the isolate closure must not capture
     // [baked] — its hot surfaces are native-backed and cannot cross.
     final cleanRefsToVerify = <(String, int, int)>[
@@ -896,7 +910,7 @@ class AnicelFileService {
             for (final (_, name, blob) in blobs) name: blob.bytes,
           },
           removeNames: {
-            ...removeNames,
+            ...removedNames,
             ..._namesToDrop(
               layout,
               mediaToStore: mediaToStore,
@@ -1406,10 +1420,7 @@ class AnicelFileService {
     });
 
     final document = decodeAnicelProjectDocument(projectJsonBytes);
-    final project = document.project;
-    final decoded = document.json;
-    final mediaRelativePaths = anicelStringMapField(decoded['mediaPaths']);
-    final mediaEntryNames = anicelStringMapField(decoded['mediaEntries']);
+    final mediaEntryNames = document.mediaEntryNames;
 
     // Media resolution, INSIDE FIRST. A copy the project carries cannot be
     // moved away or renamed out from under it, so it answers before any
@@ -1422,7 +1433,7 @@ class AnicelFileService {
     // over.
     final directory = _parentDirectory(filePath);
     final remap = <String, String>{};
-    for (final entry in mediaRelativePaths.entries) {
+    for (final entry in document.mediaRelativePaths.entries) {
       if (mediaEntryNames.containsKey(entry.key)) {
         continue;
       }
@@ -1432,8 +1443,7 @@ class AnicelFileService {
       }
     }
 
-    final grantsJson = decoded['grants'];
-    final remapped = remapProjectMediaPaths(project, remap);
+    final remapped = remapProjectMediaPaths(document.project, remap);
     return AnicelOpenResult(
       project: remapped,
       cels: cels,
@@ -1443,20 +1453,11 @@ class AnicelFileService {
       // path the project no longer uses describes nothing, and the one
       // moment that happens is this one — a project opened from a folder
       // that traveled has every reference rewritten to where it landed.
-      mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs'])
-          .narrowedTo({
-            for (final path in projectMediaPaths(remapped))
-              normalizeFingerprintPath(path),
-          }, moved: remap),
-      grants: [
-        if (grantsJson is List)
-          for (final entry in grantsJson)
-            if (entry is Map)
-              {
-                for (final field in entry.entries)
-                  if (field.key is String) field.key as String: field.value,
-              },
-      ],
+      mediaFingerprints: document.mediaFingerprints.narrowedTo({
+        for (final path in projectMediaPaths(remapped))
+          normalizeFingerprintPath(path),
+      }, moved: remap),
+      grants: document.grants,
     );
   }
 

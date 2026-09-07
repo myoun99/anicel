@@ -34,6 +34,7 @@ import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../listenable_rebind.dart';
+import '../repaint_props.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -1085,7 +1086,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   }
 }
 
-class _MediaPagePainter extends CustomPainter {
+class _MediaPagePainter extends CustomPainter with RepaintOnProps {
   const _MediaPagePainter({
     required this.image,
     required this.docSize,
@@ -1133,11 +1134,5 @@ class _MediaPagePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _MediaPagePainter oldDelegate) {
-    return oldDelegate.image != image ||
-        oldDelegate.docSize != docSize ||
-        oldDelegate.paperFill != paperFill ||
-        oldDelegate.viewport != viewport ||
-        oldDelegate.effectiveRatio != effectiveRatio;
-  }
+  Object get props => (image, docSize, paperFill, viewport, effectiveRatio);
 }
