@@ -246,7 +246,7 @@ void _unmovableRowNeverMoves() {
     // 🚨드래그가 **살아 있는 동안** 본다 — 놓은 뒤에는 이동이든 선택이든
     // 상태가 지워져서 둘을 구분할 수 없다.
     expect(
-      session.layerRowDrag.value,
+      session.layerRowDragVerbs.inFlight.value,
       isNull,
       reason:
           '카메라 행은 움직일 수 없다(A5-4). 선택 안에 있다는 이유로 '

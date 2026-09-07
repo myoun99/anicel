@@ -923,7 +923,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // finger scrolls, because the rail scrolls along the very axis
             // this drag runs.
             rowDragHooks: TimelineRowDragHooks(
-              drag: _session.layerRowDrag,
+              drag: _session.layerRowDragVerbs.inFlight,
               onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
               onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
               onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,

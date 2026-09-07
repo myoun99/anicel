@@ -131,8 +131,6 @@ import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
-import 'timeline/layer_row_drag.dart'
-    show LayerRowDragState;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -710,21 +708,12 @@ class EditorSessionManager extends ChangeNotifier
   final ValueNotifier<TimelineRowAddress?> currentRowListenable =
       ValueNotifier<TimelineRowAddress?>(null);
 
-  /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
-  /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 **완전히 같은 순서**」.
-  ///
-  /// The rail's ROW selection: what the row verbs act on. Separate from
-  /// [currentRow] on purpose — standing is where the frame verbs aim, this
-  /// is a set the row verbs sweep — and separate from the frame range,
-  /// whose rows are the cells the selection covers rather than the rows
-  /// themselves.
-  ///
-  /// Addresses, not layers, so every drawn row kind can be in it (뿌리 A):
-  /// what a row IS never decides whether it can be selected, only what the
-  /// edit then does to it.
+  /// The role's face on [RowSelection.rowSelection] — the collaborator owns
+  /// the notifier, the session plays the role every other collaborator
+  /// names.
   @override
-  final ValueNotifier<List<TimelineRowAddress>> rowSelection =
-      ValueNotifier<List<TimelineRowAddress>>(const []);
+  ValueNotifier<List<TimelineRowAddress>> get rowSelection =>
+      rowSelectionVerbs.rowSelection;
 
   // ── the row selection: its own object, in its own file ──────────────
   //
@@ -736,7 +725,7 @@ class EditorSessionManager extends ChangeNotifier
   // and ends, and what a range drag over it snaps to.
   late final RowSpans rowSpans = RowSpans(project: this, timeline: this, folderBands: folderBands, trackSe: _trackSe, transitions: _transitions);
 
-  late final RowSelection rowSelectionVerbs = RowSelection(selection: this, rangeSelections: rangeSelections);
+  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections);
 
   /// ⚠️Two ROLE members, not forwarders: [SessionInternals.rowIsSelected]
   /// and [SelectionAccess.clearRowSelection] are asked of the SESSION by
@@ -1169,7 +1158,7 @@ class EditorSessionManager extends ChangeNotifier
     _textCelBakes.dispose();
     layerStack.dispose();
     currentRowListenable.dispose();
-    rowSelection.dispose();
+    rowSelectionVerbs.dispose();
     laneRangeSelection.removeListener(_publishCutLocalLaneRange);
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
@@ -2352,13 +2341,6 @@ class EditorSessionManager extends ChangeNotifier
   //
   // The caret has to SAY when a drop does something structural, because a
   // folder joined in silence is a change nobody asked for.
-
-  /// The row drag in flight, as the rails draw it. A notifier rather than a
-  /// session notify: a drag moves per pointer step, and the only things
-  /// that change are the caret and the lifted row's opacity.
-  @override
-  final ValueNotifier<LayerRowDragState?> layerRowDrag =
-      ValueNotifier<LayerRowDragState?>(null);
 
   /// A tick the rails watch to bring the SELECTION back into view (user,
   /// 2026-08-09: walking rows and frames with the arrow keys kept selecting

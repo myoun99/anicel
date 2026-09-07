@@ -580,7 +580,7 @@ void main() {
       s.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(first.id));
       s.layerRowDragVerbs.updateLayerRowDrag(s.layers, indexOf(over.id) + 1);
       expect(
-        s.layerRowDrag.value?.legal,
+        s.layerRowDragVerbs.inFlight.value?.legal,
         isTrue,
         reason: 'the landing is a plain re-order inside one section',
       );

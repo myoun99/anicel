@@ -797,7 +797,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // The S rows take the rail's row-order drag; the V rows
                     // are tracks and keep their order.
                     rowDragHooks: TimelineRowDragHooks(
-                      drag: _session.layerRowDrag,
+                      drag: _session.layerRowDragVerbs.inFlight,
                       onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
                       onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
                       onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,

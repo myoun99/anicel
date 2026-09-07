@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../models/layer_id.dart';
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_row_address.dart';
@@ -9,34 +11,49 @@ import 'range_selections.dart';
 
 /// The ROW SELECTION — the rows the user swept in the rail, the anchor the
 /// sweep started from, and what folding a group does to it — as its own
-/// object. The selection itself stays on the session: the UI reads it.
+/// object — the NOTIFIER included: it owns the selection now, and the
+/// session plays [SelectionAccess.rowSelection] by handing this one out.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and two
 /// session members touched. It names the roles it needs in its constructor.
 class RowSelection {
   RowSelection({
-    required SelectionAccess selection,
     required RangeSelections rangeSelections,
-  }) : _selection = selection,
-       _rangeSelections = rangeSelections;
+  }) : _rangeSelections = rangeSelections;
 
   final RangeSelections _rangeSelections;
 
-  final SelectionAccess _selection;
 
   /// Where the live row-select drag started; null between drags.
   TimelineRowAddress? _rowSelectionAnchor;
 
+  /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
+  /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 **완전히 같은 순서**」.
+  ///
+  /// The rail's ROW selection: what the row verbs act on. Separate from
+  /// [SessionInternals.currentRow] on purpose — standing is where the frame
+  /// verbs aim, this is a set the row verbs sweep — and separate from the
+  /// frame range, whose rows are the cells the selection covers rather than
+  /// the rows themselves.
+  ///
+  /// Addresses, not layers, so every drawn row kind can be in it (뿌리 A):
+  /// what a row IS never decides whether it can be selected, only what the
+  /// edit then does to it.
+  final ValueNotifier<List<TimelineRowAddress>> rowSelection =
+      ValueNotifier<List<TimelineRowAddress>>(const []);
+
+  void dispose() => rowSelection.dispose();
+
   bool rowIsSelected(TimelineRowAddress row) =>
-      _selection.rowSelection.value.contains(row);
+      rowSelection.value.contains(row);
 
   /// A press that lands OUTSIDE the current selection starts a fresh one —
   /// the cells' rule, transposed (their range gesture's `isInSelection`).
   void beginRowSelection(TimelineRowAddress anchor) {
     _rangeSelections.claimSelection(TimelineSelectionKind.rows);
     _rowSelectionAnchor = anchor;
-    _selection.rowSelection.value = [anchor];
+    rowSelection.value = [anchor];
   }
 
   /// Grows the live selection to [rowDelta] rows from its anchor, through
@@ -53,7 +70,7 @@ class RowSelection {
       rowDelta: rowDelta,
     );
     if (span.isNotEmpty) {
-      _selection.rowSelection.value = span;
+      rowSelection.value = span;
     }
   }
 
@@ -63,8 +80,8 @@ class RowSelection {
 
   void clearRowSelection() {
     _rowSelectionAnchor = null;
-    if (_selection.rowSelection.value.isNotEmpty) {
-      _selection.rowSelection.value = const [];
+    if (rowSelection.value.isNotEmpty) {
+      rowSelection.value = const [];
     }
   }
 
@@ -89,7 +106,7 @@ class RowSelection {
     required bool Function(TimelineRowAddress address) vanished,
     required TimelineRowAddress swallower,
   }) {
-    final selection = _selection.rowSelection.value;
+    final selection = rowSelection.value;
     if (selection.isEmpty) {
       return;
     }
@@ -100,7 +117,7 @@ class RowSelection {
     if (kept.length == selection.length) {
       return;
     }
-    _selection.rowSelection.value = kept.isEmpty
+    rowSelection.value = kept.isEmpty
         ? [swallower]
         : (kept.contains(swallower) ? kept : [...kept, swallower]);
   }
@@ -113,7 +130,7 @@ class RowSelection {
   /// lanes and headers ride their layer, they do not re-order.
   Set<LayerId> rowSelectionCarriedBy(LayerId movingId) {
     final ids = <LayerId>{
-      for (final row in _selection.rowSelection.value)
+      for (final row in rowSelection.value)
         if (row is LayerRowAddress) row.layerId,
     };
     return ids.contains(movingId) ? ids : const <LayerId>{};

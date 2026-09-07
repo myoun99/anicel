@@ -38,7 +38,6 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import '../../services/history_manager.dart';
 import '../../services/project_repository.dart';
-import '../timeline/layer_row_drag.dart' show LayerRowDragState;
 import '../timeline/timeline_cell_exposure_state.dart';
 import '../timeline/timeline_drag_preview.dart';
 
@@ -175,7 +174,6 @@ abstract interface class SessionInternals {
   set lastMasterOpacity(double value);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   double layerOpacityAtFrame(Layer layer, int frameIndex);
-  ValueNotifier<LayerRowDragState?> get layerRowDrag;
   ValueNotifier<Set<LayerId>> get onionSkinLayerIds;
   ValueNotifier<OnionSkinSettings> get onionSkinSettings;
   ValueNotifier<({Set<LayerId> layerIds, double opacity})?>

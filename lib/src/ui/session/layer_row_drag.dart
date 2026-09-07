@@ -4,7 +4,10 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
-import '../timeline/layer_row_drag.dart' show LayerRowDragSubject;
+import 'package:flutter/foundation.dart';
+
+import '../timeline/layer_row_drag.dart'
+    show LayerRowDragState, LayerRowDragSubject;
 import 'session_roles.dart';
 import 'row_selection.dart';
 import 'effects_and_fx.dart';
@@ -45,10 +48,16 @@ class LayerRowDrag {
   /// verbs are the session's unchanged face.
   RowOrderDrag? _rowOrderDrag;
 
+  /// The row drag in flight, as the rails draw it. A notifier rather than a
+  /// session notify: a drag moves per pointer step, and the only things
+  /// that change are the caret and the lifted row's opacity.
+  final ValueNotifier<LayerRowDragState?> inFlight =
+      ValueNotifier<LayerRowDragState?>(null);
+
   void beginLayerRowDrag(LayerRowDragSubject subject) {
     _rowOrderDrag = RowOrderDrag(
       subject: subject,
-      channel: _internals.layerRowDrag,
+      channel: inFlight,
       tracksNow: () => _project.repository.requireProject().tracks,
       effectChainOf: _effectsAndFx.effectChainOf,
       trackSeAnywhere: _trackSe.trackSeAnywhere,

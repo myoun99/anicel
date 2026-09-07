@@ -88,7 +88,7 @@ Future<EditorSessionManager> _pumpPanel(
             onToggleTrackEffectEnabled: (track, effectId) =>
                 session.toggleTrackEffectEnabled(track.id, effectId),
             rowDragHooks: TimelineRowDragHooks(
-              drag: session.layerRowDrag,
+              drag: session.layerRowDragVerbs.inFlight,
               onBegin: session.layerRowDragVerbs.beginLayerRowDrag,
               onUpdate: session.layerRowDragVerbs.updateLayerRowDrag,
               onRowTarget: session.layerRowDragVerbs.updateLayerRowDropOnRow,

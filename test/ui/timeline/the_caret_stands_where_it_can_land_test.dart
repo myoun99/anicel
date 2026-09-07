@@ -53,7 +53,7 @@ void main() {
 
   ({int? caret, bool legal}) caretAt(EditorSessionManager session, int slot) {
     session.layerRowDragVerbs.updateLayerRowDrag(session.layers, slot);
-    final state = session.layerRowDrag.value;
+    final state = session.layerRowDragVerbs.inFlight.value;
     return (caret: state?.caretSlot, legal: state?.legal ?? false);
   }
 
