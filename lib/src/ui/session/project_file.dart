@@ -4,9 +4,9 @@
 //
 // Its own object since round 8 (G1, 2026-09-06). It owns the state the
 // save and the open both move — the path, the carried entry names, the
-// dirty flag, the completed-save generation and the recovery standing —
-// so the two doors push facts DOWN into it and nothing has to reach
-// sideways for them. [ProjectFileDoor] is the writer; this is the record.
+// dirty flag and the completed-save generation — so the two doors push
+// facts DOWN into it and nothing has to reach sideways for them.
+// [ProjectFileDoor] is the writer; this is the record.
 
 import 'dart:io';
 
@@ -20,15 +20,13 @@ import '../../services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelConformEntryNames;
-import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/persistence/project_autosave_service.dart';
 import 'session_roles.dart';
 
 /// The project file this session is bound to, and everything derived from
 /// that binding: what the archive carries, how big those bytes are, and
-/// whether a recovery snapshot may run.
+/// whether the autosave tick may run.
 class ProjectFile {
   ProjectFile({
     required ProjectAccess project,
@@ -405,16 +403,6 @@ class ProjectFile {
     _hasUnsavedChanges = true;
   }
 
-  /// The recovery overlay for the CURRENT state — always in the app
-  /// container ([AppSave.recoveryPathFor]), never beside the file: a
-  /// sibling would need the grant the crash just took down with it.
-  /// Null while the project has never been saved (the service prompts
-  /// for a real file instead of writing into hidden app-data dirs).
-  String? get autosaveSidecarPath {
-    final path = _projectFilePath;
-    return path == null ? null : AppSave.recoveryPathFor(path);
-  }
-
   /// True while a manual save is running, so the autosave tick stands down
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
@@ -426,98 +414,45 @@ class ProjectFile {
 
   void endSave() => _saveInFlight = false;
 
-  /// Bumped each time a manual save COMPLETES. [_saveInFlight] is a
-  /// point-in-time flag: a snapshot that started BEFORE a save and came
-  /// out of its isolate AFTER it sees the flag down again — and would
-  /// rename an overlay stamped against the pre-save base onto the path
-  /// the save just retired. That is a recovery file for a cleanly saved
-  /// project, and its Accept can only fail the stamp check. A snapshot
-  /// therefore captures this at its start and refuses to land if it
-  /// moved — see [beginAutosaveStaleCheck].
+  /// Bumped each time a save COMPLETES — the cache key for anything read
+  /// out of the archive on disk ([_archivedBytes]).
+  ///
+  /// ⚠️Not a stand-in for [_saveInFlight], which is a point-in-time flag.
+  /// This one only ever goes up, so a reader that captured it can tell
+  /// whether the file it measured is still the file it measured.
   int _completedSaveGeneration = 0;
 
-  /// The staleness question a recovery snapshot carries into its isolate:
-  /// armed when the snapshot starts, it answers true the moment any
-  /// manual save has completed since (or the session stood down).
-  bool Function() beginAutosaveStaleCheck() {
-    final generationAtStart = _completedSaveGeneration;
-    return () =>
-        autosaveShouldStandDown ||
-        _completedSaveGeneration != generationAtStart;
-  }
-
-  /// Whether a snapshot should do nothing right now: a save is mid-flight
-  /// (anything written would land beside a retirement that has already
-  /// run), the session was recovered (its refs point INTO the snapshot,
-  /// see [ProjectFileDoor.writeAutosaveSnapshot]), or the user threw the
-  /// work away.
-  bool get autosaveShouldStandDown =>
-      _saveInFlight || _discardedUnsavedWork || _recoveredFromSidecar != null;
-
-  /// The sidecar this session was RECOVERED from, while its contents still
-  /// live nowhere else. Null in every ordinary session.
+  /// Whether the autosave tick should do nothing right now: a save is
+  /// already mid-flight, or the user threw this session's work away.
   ///
-  /// Recovery loads the sidecar's bytes and mints every cel ref into it,
-  /// then clears the RAM tiers — so from that moment the sidecar is the
-  /// only home those pixels have. A manual save moves them into the
-  /// project file and clears this.
-  String? _recoveredFromSidecar;
-
-  /// Whether this session's work lives ONLY in the snapshot it was
-  /// recovered from — the question [_recoveredFromSidecar] exists to
-  /// answer, for the callers that may not hold the path.
-  bool get isRecoveredSession => _recoveredFromSidecar != null;
+  /// 🪦A third term stood here — 「the session was recovered, so its refs
+  /// point INTO a sidecar」 — and went with the sidecars themselves.
+  bool get autosaveShouldStandDown => _saveInFlight || _discardedUnsavedWork;
 
   /// The user threw this session's unsaved work away (closed without
-  /// saving), and any sidecar goes with it: the discard rule is only
-  /// literal if the next open cannot offer to resurrect exactly what was
-  /// discarded.
+  /// saving), so nothing may write it back out on the way down.
   ///
-  /// 🚨**NOTHING WRITES A SIDECAR ANY MORE.** The autosave tick saves the
-  /// PROJECT FILE now (유저 2026-09-07: 「기존 결정대로 자동저장이 파일갱신
-  /// … 그게 싫으면 자동저장 off하면된다」), so the only sidecars left are
-  /// the ones an OLDER BUILD wrote before that landed — including one this
-  /// machine may be holding from a crash right now. ⛔That is why the
-  /// reader and this retirement outlive the writer by one round rather
-  /// than going with it: deleting them together would drop somebody's
-  /// crash work without a word. The round that removes them is the one
-  /// after every such sidecar has been offered once.
+  /// 🚨★★★**AND THAT IS NOW THE OFF POSITION OF A SWITCH, NOT A LAW OF THE
+  /// APP.** With autosave ON the project file has been following the work
+  /// every n minutes, so「저장 안 하고 닫기」keeps whatever the last tick
+  /// wrote; with it OFF the discard is literal (유저 2026-09-07: 「기존
+  /// 결정대로 자동저장이 파일갱신 … 그게 싫으면 자동저장 off하면된다」).
   ///
-  /// A never-saved project has no sidecar to retire (its dirty ticks ask
-  /// for a real file instead of writing one).
+  /// 🪦It used to DELETE a sidecar as well, at each of the three moments
+  /// unsaved work stopped existing, because a surviving one was the whole
+  /// signal recovery read. Nothing writes one any more.
   ///
-  /// 🚨A RECOVERED session is the exception, and the reason is that the
-  /// sidecar is not this session's discard to make. It holds the PREVIOUS
-  /// session's crash work, it is the only copy of it (recovery drops every
-  /// RAM tier and points every ref inside it), and a recovered session
-  /// arrives already dirty with zero edits — so the exit gate fires and
-  /// offers Close as the primary button before the user has touched
-  /// anything. Retiring here deletes hours of crash work at one tap on a
-  /// prompt that says nothing about it. Keeping it means the next open
-  /// offers recovery again, which is what it did before this round; the
-  /// user discards it by saving, not by closing.
-  void discardAutosaveSidecar() {
-    // Recorded even when there is nothing to delete: what this really
-    // says is "the user threw this session away", and the shutdown that
-    // follows delivers the same lifecycle callbacks as any other — which
-    // would otherwise write a fresh snapshot straight over the retirement
-    // and hand the discarded work back at the next open. Deleting without
-    // stopping the trigger is a race the trigger wins.
+  /// Recorded even though there is nothing to delete: the shutdown that
+  /// follows delivers the same lifecycle callbacks any close does, and
+  /// without this flag a tick could fire on the way down and save the very
+  /// work the user just discarded.
+  void discardUnsavedWork() {
     _discardedUnsavedWork = true;
-    final path = _projectFilePath;
-    if (path == null || _recoveredFromSidecar != null) {
-      return;
-    }
-    ProjectAutosaveService.retireSidecarsFor(path);
   }
 
   /// True once the user has closed without saving. The session is on its
-  /// way out; nothing may snapshot it again.
+  /// way out; nothing may save it again.
   bool _discardedUnsavedWork = false;
-
-  /// Asked separately from [autosaveShouldStandDown] by the snapshot
-  /// writer, which has its own reason to refuse for each of the three.
-  bool get discardedUnsavedWork => _discardedUnsavedWork;
 
   /// [filePath] IS the project now, carrying [entryNames] — the tail BOTH
   /// writers share: the direct save and the picker-placed archive that is
@@ -526,22 +461,16 @@ class ProjectFile {
   /// ⛔They used to state it twice, line for line, which is a copy by
   /// connascence even where the text drifted: one of them growing a step
   /// the other missed is a project that comes back holding the wrong
-  /// media, or a recovery snapshot for a file that was saved cleanly.
+  /// media.
   void bindToSavedFile(
     String filePath, {
     required Map<String, String> entryNames,
   }) {
-    // Captured BEFORE the binding moves: a Save As has to retire the
-    // sidecars of the file it was saved FROM as well.
-    final previousPath = _projectFilePath;
     _mediaEntryNames = entryNames;
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;
     invalidateConformStoredBytes();
-    // The recovered work now lives in the project file, so the snapshot is
-    // ordinary again and the retirement below is free to take it.
-    _recoveredFromSidecar = null;
     // A save is the session saying it is worth keeping after all; whatever
     // was discarded before it is not this session's state any more.
     _discardedUnsavedWork = false;
@@ -550,15 +479,11 @@ class ProjectFile {
     // keyed by; takes stay put now, and the cache is keyed by source
     // rather than by anything the project owns, so a save moves nothing a
     // conform depends on.
-    if (previousPath != null) {
-      ProjectAutosaveService.retireSidecarsFor(previousPath);
-    }
-    ProjectAutosaveService.retireSidecarsFor(filePath);
   }
 
   /// The session is bound to [filePath], which was just OPENED: it carries
-  /// [entryNames], the work may live only in [recoveredFrom], and
-  /// [unsaved] says whether memory already differs from the file.
+  /// [entryNames], and [unsaved] says whether memory already differs from
+  /// the file.
   ///
   /// ⚠️Called AFTER the load has cleared the history. `clear()` runs the
   /// dirty listener, so a session that set [unsaved] any earlier would
@@ -566,14 +491,12 @@ class ProjectFile {
   void bindToOpenedFile(
     String filePath, {
     required Map<String, String> entryNames,
-    required String? recoveredFrom,
     required bool unsaved,
   }) {
     _mediaEntryNames = entryNames;
     _projectFilePath = filePath;
-    _recoveredFromSidecar = recoveredFrom;
     // A different project is a different session; a discard that belonged
-    // to the last one must not silence this one's snapshots.
+    // to the last one must not silence this one's autosave.
     _discardedUnsavedWork = false;
     _hasUnsavedChanges = unsaved;
   }
@@ -582,7 +505,6 @@ class ProjectFile {
   /// it is saved for the first time.
   void unbind() {
     _projectFilePath = null;
-    _recoveredFromSidecar = null;
     _discardedUnsavedWork = false;
   }
 }

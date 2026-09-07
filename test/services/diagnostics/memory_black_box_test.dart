@@ -32,6 +32,20 @@ void main() {
     expect(MemoryBlackBox.unfinishedEntry(), isNull);
   });
 
+  test('🚨 the log is redirected out of the real app-support folder under '
+      'test', () {
+    // Every test in this file APPENDS to it and then RESETS it. Without
+    // the redirect that is the developer's own log being written and then
+    // deleted by a test run — and the borrowed path this had until
+    // 2026-09-08 (the Recovery folder's) carried the redirect for it, so
+    // moving the log is exactly when the law needs saying out loud.
+    expect(
+      MemoryBlackBox.logPath(),
+      startsWith(Directory.systemTemp.path.replaceAll('\\', '/')),
+    );
+    expect(MemoryBlackBox.logPath(), endsWith('/memory-log.txt'));
+  });
+
   test('🚨 work that never ended is what the next launch reads — with the '
       'size it had grown to', () {
     // Exactly the shape of a kill: the BEGIN was flushed, the END never

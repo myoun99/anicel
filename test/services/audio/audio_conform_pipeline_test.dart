@@ -231,15 +231,6 @@ void main() {
       }, hasLength(3));
     });
 
-    test('the recovery snapshot still derives from the project key', () {
-      // The conform cache stopped being per-project; recovery did not.
-      const project = '/work/C-045.anicel';
-      expect(
-        AppSave.encodeRecoveryFileName(project),
-        '${AppSave.encodeProjectKey(project)}.autosave',
-      );
-    });
-
     test('🚨 a conform waits in THIS RUN\'S room, and the address is built '
         'from there', () {
       // 🪦Two tests used to stand here: one drove a `conformDirectory`

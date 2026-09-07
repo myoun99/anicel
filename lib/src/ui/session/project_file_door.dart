@@ -6,7 +6,7 @@
 // session members a save and an open actually touch, and that list IS the
 // coupling this block always had. What it no longer does is own the
 // FACTS: which file, what it carries, whether anything is unsaved and
-// whether a recovery snapshot may run all live in [ProjectFile], which
+// whether the autosave tick may run all live in [ProjectFile], which
 // this pushes into.
 
 import 'dart:io';
@@ -27,9 +27,9 @@ import '../../services/media/project_media_sources.dart'
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show remapProjectMediaPaths;
-import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/persistence/session_scratch.dart';
 import '../../services/project_lookup.dart' show projectAudioSourcePaths;
 import '../audio/audio_conform_store.dart';
 import 'editor_voice_recording.dart';
@@ -45,8 +45,7 @@ import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'text_cel_bakes.dart';
 
-/// Saves the session into a `.anicel`, snapshots it for recovery, and
-/// opens one back.
+/// Saves the session into a `.anicel` and opens one back.
 class ProjectFileDoor {
   ProjectFileDoor({
     required ProjectFile file,
@@ -133,68 +132,13 @@ class ProjectFileDoor {
   /// the picture itself.
   Set<BrushFrameKey> celsLostToAMissingFile = const {};
 
-  /// Writes the current state to [path] WITHOUT touching the dirty flag or
-  /// the project path — the recovery service's snapshot writer.
-  ///
-  /// An OVERLAY on the saved project: only the cels edited since the last
-  /// manual save. This runs mid-session on the periodic tick (F-1 made the
-  /// clock the only trigger), so it has to cost what the user drew rather
-  /// than what the project weighs. Everything left out is already in the
-  /// project file, unchanged, which is also what the base stamp inside the
-  /// overlay is there to guarantee.
-  Future<void> writeAutosaveSnapshot(String path) async {
-    final base = _file.path;
-    if (base == null) {
-      return;
-    }
-    // 🚨A RECOVERED session must not write one. Recovery pointed every
-    // restored cel's ref INTO this file and cleared the RAM tiers, and it
-    // also cleared the dirty set — so a snapshot taken now would carry no
-    // cels at all and rename itself over the only copy of the work, and
-    // the live refs would then read past the end of a file holding a
-    // stamp and a project.json. The session has nothing new to snapshot
-    // until a manual save moves those pixels into the project file, which
-    // is exactly when this unblocks.
-    if (_file.isRecoveredSession) {
-      return;
-    }
-    // The user chose to throw this session's work away and the app is
-    // shutting down around that choice; the lifecycle callbacks that
-    // follow must not put it back.
-    if (_file.discardedUnsavedWork) {
-      return;
-    }
-    await _textCelBakes.flushTextCelBakes();
-    await _anicelFileService.writeRecoveryOverlay(
-      project: _project.repository.requireProject(),
-      brushFrameStore: _renderCaches.brushFrameStore,
-      auxCelStores: _auxCelStores,
-      filePath: path,
-      baseFilePath: base,
-      // The overlay's project.json replaces the base file's, so a snapshot
-      // that left these out would hand the recovered session no grants —
-      // and its first save would write that emptiness back over the file.
-      grants: _grants.grantsToStore(),
-      // What the base file already carries. Without it the recovered
-      // session forgets its media is inside the archive and its first
-      // save writes one that no longer holds it.
-      mediaInArchive: _file.mediaEntryNames.keys.toSet(),
-      // And what it knows about its media's content. A recovered session
-      // without these still opens and still looks right — it has just
-      // forgotten how to tell one `A1.png` from another.
-      mediaCrcs: _fingerprints.crcsToStore(),
-      // Asked again at the rename: a manual save can begin and finish
-      // while this one is in the isolate, and it retires the snapshot on
-      // its way out. Generation-armed, not just the in-flight flag — the
-      // flag is already down again by the time a spanning snapshot asks.
-      isStale: _file.beginAutosaveStaleCheck(),
-    );
-  }
-
   /// Saves the project + every drawn frame into ONE .anicel file (atomic
   /// temp-then-rename write; media stays external with relative paths
-  /// recorded for Drive portability). A successful save retires the
-  /// autosave sidecar.
+  /// recorded for Drive portability).
+  ///
+  /// 🚨★★★**THE ONE WRITER, AND THE AUTOSAVE TICK IS NOW ONE OF ITS
+  /// CALLERS** (유저 2026-09-07). There is no second path that writes the
+  /// user's work to disk any more — the tick calls this, minus the window.
   ///
   /// [onProgress] is called with 0..1 as the write proceeds, for the window
   /// a manual save puts in front of itself. Omitted by the autosave tick,
@@ -205,13 +149,10 @@ class ProjectFileDoor {
   }) async {
     // A text bake in flight must land before the store snapshots — the
     // archive's parameters and raster must never disagree.
-    // Raised for the WHOLE save, retirement included. An autosave tick that
-    // starts inside a save renames its own temp onto the sidecar path
-    // AFTER the retirement ran, and the session is clean by then — so the
-    // exit gate returns early, nothing retires it, and the next open offers
-    // recovery for a project that was closed cleanly. Making the delete
-    // synchronous did not close this: sync ordering settles delete-versus-
-    // write, and this is write-versus-delete, which is an isolate wide.
+    // Raised for the WHOLE save, so a tick that comes due inside one stands
+    // down instead of starting a SECOND write of the same file — an
+    // incremental append reads the tail it is about to extend, and two of
+    // them interleaving is a torn archive rather than a lost edit.
     _file.beginSave();
     // The breadcrumb a silent kill cannot erase. A save is the work this
     // app is most likely to die inside — and when iOS kills for memory
@@ -230,7 +171,7 @@ class ProjectFileDoor {
 
   /// Writes the CURRENT state to [path] as a complete, standalone archive
   /// and changes NOTHING about this session — no path adoption, no ref
-  /// adoption, no dirty-flag or sidecar movement. The Save As STAGING
+  /// adoption, no dirty-flag movement. The Save As STAGING
   /// writer on scoped platforms: the file this produces is about to be
   /// MOVED by a document picker, so anything the session learned from it
   /// would name a path that stops existing moments later.
@@ -297,12 +238,18 @@ class ProjectFileDoor {
     _changes.notifyChanged();
   }
 
-  /// The provider-refusal fallback: a complete archive written into the
-  /// app's own Recovery folder (so an orphan is swept in ≤30 days), then
-  /// swapped over [filePath] by the platform's file coordinator.
+  /// The provider-refusal fallback: a complete archive written into THIS
+  /// RUN'S 이사대기 room, then swapped over [filePath] by the platform's
+  /// file coordinator.
   ///
-  /// The staging save ADOPTS normally — its refs are valid while the
-  /// staging file exists, and it exists until the sweep. After a
+  /// 🚨**THE ROOM IS THE LIFETIME THIS NEEDS.** The refs the staging save
+  /// adopts are valid only while the staging file is there, and a session
+  /// holds them until it ends — which is exactly when the room goes. It
+  /// used to be written into the Recovery folder and left for that
+  /// folder's 30-day sweep, which outlived the need by a month and, once
+  /// the snapshots were deleted, named a folder nothing else wrote to.
+  ///
+  /// The staging save ADOPTS normally. After a
   /// successful replace the copy at [filePath] is byte-identical, so the
   /// same offsets hold there and clean keys' refs are simply repointed.
   /// ⚠️ Keys dirty AGAIN (drawn on while the save ran) keep their staging
@@ -319,7 +266,7 @@ class ProjectFileDoor {
     required ProjectConforms conforms,
     void Function(double)? onProgress,
   }) async {
-    final stagingDirectory = Directory(AppSave.recoveryDirectory())
+    final stagingDirectory = Directory(SessionScratch.stagedFolder())
       ..createSync(recursive: true);
     final staging =
         '${stagingDirectory.path.replaceAll('\\', '/')}'
@@ -477,30 +424,27 @@ class ProjectFileDoor {
   /// Opens a .anicel file, replacing the WHOLE session state: project,
   /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
   /// (loaded state has no history; the load→draw→undo path is pinned by
-  /// test). [recoverAs] opens autosave SIDECAR bytes while keeping the
-  /// real file as the project path (the recovery flow).
-  Future<void> openProjectFromFile(
-    String filePath, {
-    String? recoverAs,
-    String? overlayPath,
-  }) async {
-    // The mirror of "a whole archive is refused as an overlay" (pinned in
-    // recovery_overlay_test): an OVERLAY fed through the legacy
-    // whole-archive arm is refused too. Its project.json is the full
-    // project, so it would OPEN and look right while every base cel reads
-    // as empty — and the next full rewrite makes that loss permanent.
-    // Loud beats silently lossy; the shell's routing is the one caller and
-    // routes overlays to [overlayPath].
-    if (recoverAs != null && anicelSnapshotIsOverlay(filePath)) {
-      throw const FormatException(
-        'this snapshot is a recovery overlay — it holds only what changed '
-        'since its base was saved, and has to be opened OVER that base, '
-        'never as the project itself',
-      );
-    }
+  /// test).
+  ///
+  /// Reads [filePath]; the session is BOUND to [bindTo] when the bytes came
+  /// from somewhere other than the project's own address — a local staged
+  /// copy of a cloud file that refused a direct read, where saves still
+  /// have to go back to the real one.
+  ///
+  /// 🚨A session bound elsewhere counts as UNSAVED. The archive it is
+  /// reading its cels out of is a temp the app made, so a save is what puts
+  /// those pixels back at the address the user knows.
+  ///
+  /// 🪦Two parameters stood beside [bindTo] until 2026-09-08 — `recoverAs`,
+  /// which is what [bindTo] used to be called when the autosave recovery
+  /// flow was its main caller, and `overlayPath`, which laid a snapshot
+  /// over the base. Both are gone with the sidecars, and so is the
+  /// FormatException that refused an overlay fed through the
+  /// whole-archive arm. ⛔The rename is the point: one name was answering
+  /// 「which file do I save back to」 and 「is this a recovery」 at once.
+  Future<void> openProjectFromFile(String filePath, {String? bindTo}) async {
     final result = await _anicelFileService.open(
       filePath: filePath,
-      overlayPath: overlayPath,
     );
     _playbackRig.playback.stop();
     // BEFORE the project lands: a bookmark tracks the file rather than the
@@ -556,23 +500,15 @@ class ProjectFileDoor {
     // adopt — they stay on the shelf, findable.
     _voiceRecording.forgetShelfTakes();
     _file.bindToOpenedFile(
-      recoverAs ?? filePath,
+      bindTo ?? filePath,
       // What this project carries, as the file on disk says. Anything the
       // pool names that is NOT here is an ordinary outside reference and
       // resolves by path like it always did.
       entryNames: result.mediaEntryNames,
-      // Remembered because the recovered work lives ONLY in that file — an
-      // overlay holds the edited cels and every ref for them points inside
-      // it, and the RAM tiers were just cleared — so until a save moves
-      // those pixels into the project file, deleting it is deleting the
-      // work. (A snapshot from an older build is a whole archive opened as
-      // [filePath]; same reasoning, same field.) Reset on an ordinary open
-      // so a later session never inherits another one's exception.
-      recoveredFrom: overlayPath ?? (recoverAs == null ? null : filePath),
-      // A recovered session stays dirty: its content differs from the real
-      // file until the user saves — and so does a session whose load just
-      // HEALED mismatched cels (R7q2).
-      unsaved: recoverAs != null || overlayPath != null || healed,
+      // Dirty when the cels are being read out of a staged copy rather than
+      // the project's own address — and when the load just HEALED
+      // mismatched cels, where memory no longer matches the file (R7q2).
+      unsaved: bindTo != null || healed,
     );
     settleConformCache();
     warmAudioConforms();

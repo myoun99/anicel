@@ -26,9 +26,10 @@ import 'session_scratch.dart';
 /// moment the save absorbs it. 유저 08-27: 「사본 남으면 진짜 용서안할게」 —
 /// which is what [retire] and the room's own lifetime are for.
 ///
-/// ⚠️**It is also not a new category in the container.** `Recovery/`
-/// already holds project snapshots and `Conformed/` already holds audio
-/// derived from project media; see [appSupportFilePath]. What a new tenant
+/// ⚠️**It is also not a new category in the container.** `Recovery/` held
+/// project snapshots and `Conformed/` held audio derived from project
+/// media when this was written — both are gone now, absorbed into the room
+/// this store lives in; see [appSupportFilePath]. What a new tenant
 /// owes is a LIFETIME, and this one's is now written in its PATH: it lives
 /// in [SessionScratch]'s room for this run, retired by the save that
 /// absorbs it, and gone with the room when the run ends. A room still

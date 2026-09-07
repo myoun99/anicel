@@ -12,7 +12,8 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 /// 유념」 — and it was half true. Recovery snapshots had a list; the
 /// settings files, the brush tips, the conformed audio and the media
 /// staged by 품기 had none, so a person deciding whether to let imports
-/// live there could not see what was there already.
+/// live there could not see what was there already. The list is gone with
+/// the snapshots and this block is the whole answer now.
 void main() {
   late EditorSessionManager session;
 
@@ -41,10 +42,8 @@ void main() {
       'that had a list', (tester) async {
     await pumpSection(tester);
 
-    // ⚠️By KEY, not by text: the recovery row deliberately repeats the
-    // heading above it (the block accounts for the whole container, so
-    // leaving a tenant out would make the total wrong), and two widgets
-    // with the same words cannot be told apart by their words.
+    // ⚠️By KEY, not by text: a row's label is localized, and a test that
+    // matched words would be pinning the English rather than the row.
     for (final id in [
       // 🪦`brush-tips` was a row of its own while it was a folder sitting
       // beside the loose settings files at the container root. Both are
@@ -52,12 +51,16 @@ void main() {
       // two rows over one tree would double-count the total this block
       // exists to be trusted for.
       'settings',
-      'recovery',
-      // 🪦`conformed` was here. Nothing writes that folder any more — a
-      // conform waits in the run's room and moves into the project at the
-      // next save — so its row would report 0 for ever, which reads as
-      // 「no conforms are kept」 rather than 「that folder is retired」.
+      // 🪦`recovery` and `conformed` were here. Nothing writes either folder
+      // any more — the tick saves the project file, and a conform waits in
+      // the run's room until the next save absorbs it — so their rows would
+      // report 0 for ever, which reads as 「none are kept」 rather than
+      // 「that folder is retired」.
       'session-scratch',
+      // 🚨Kilobytes, and a row anyway: the total below claims to be the
+      // WHOLE container, and this is the last thing in it that is not one
+      // of the two rooms.
+      'diagnostics',
     ]) {
       expect(
         find.byKey(ValueKey<String>('settings-container-$id')),

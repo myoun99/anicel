@@ -1,9 +1,7 @@
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
 import 'app_documents.dart';
-import 'app_support_path.dart';
 import 'folder_grant.dart';
 import 'session_scratch.dart';
 
@@ -208,85 +206,14 @@ abstract final class AppSave {
   static final ValueNotifier<AppSaveSettings> settings =
       ValueNotifier<AppSaveSettings>(const AppSaveSettings());
 
-  /// Where [projectFilePath]'s crash-recovery snapshot lives: inside the
-  /// app's own support folder, never beside the project.
+  /// FNV-1a over [text] — the one hash a derived cache name in the app is
+  /// built from, so two of them cannot disagree about what "the same path"
+  /// means.
   ///
-  /// It used to sit next to the `.anicel`, with a setting to move it, and
-  /// both of those are gone. Beside-the-file dropped a project-sized write
-  /// into whatever cloud-synced folder the project was in; and the format
-  /// is becoming a single file, whose whole point is that the app stops
-  /// scattering siblings around it. The support folder is also the one
-  /// place the app can always write without asking an OS for permission —
-  /// which is what makes a recovery snapshot dependable on iPad.
-  /// Redirected under FLUTTER_TEST, like every other store that resolves
-  /// an app-support path: tests reach this through the production save and
-  /// open wiring, and without the redirect a test run would drop snapshots
-  /// into the real user's folder and read the ones left there.
-  static String recoveryPathFor(String projectFilePath) =>
-      '${recoveryDirectory()}/${encodeRecoveryFileName(projectFilePath)}';
-
-  /// The one folder recovery snapshots live in — what the Preferences
-  /// list enumerates and the abandoned-snapshot sweep walks.
-  static String recoveryDirectory() =>
-      testRedirectedAppSupportPath('Recovery', sandbox: 'recovery');
-
-  /// Every place a recovery snapshot for [projectFilePath] may be found.
-  ///
-  /// The second entry is where releases before this one wrote theirs, kept
-  /// so a crash that happened on the old build is still offered after the
-  /// update. A snapshot written into a CUSTOM directory by an old build is
-  /// unreachable — the setting that named it is gone, and there is nothing
-  /// left to reconstruct the path from.
-  static List<String> recoveryCandidatesFor(String projectFilePath) => [
-    recoveryPathFor(projectFilePath),
-    '$projectFilePath.autosave',
-  ];
-
-  /// The NEWEST existing recovery snapshot among the candidates, or null.
-  static String? newestExistingRecoveryFor(String projectFilePath) {
-    String? newest;
-    DateTime? newestModified;
-    for (final candidate in recoveryCandidatesFor(projectFilePath)) {
-      // ONE stat, not exists-then-mtime: the legacy beside-the-file
-      // candidate lives in the user's (possibly cloud-synced) folder, and a
-      // file a sync client prunes between the two calls would throw out of
-      // the open flow before its try. statSync never throws — a vanished or
-      // unreadable candidate simply reports notFound.
-      final stat = FileStat.statSync(candidate);
-      if (stat.type == FileSystemEntityType.notFound) {
-        continue;
-      }
-      final modified = stat.modified;
-      if (newestModified == null || modified.isAfter(newestModified)) {
-        newest = candidate;
-        newestModified = modified;
-      }
-    }
-    return newest;
-  }
-
-  /// `basename.<fnv1a32-of-full-path>.autosave` — stable across runs,
-  /// filesystem-safe, and collision-resistant across folders.
-  static String encodeRecoveryFileName(String projectFilePath) =>
-      '${encodeProjectKey(projectFilePath)}.autosave';
-
-  /// `basename.<fnv1a32-of-full-path>` — the app container's name for
-  /// [projectFilePath].
-  ///
-  /// The hash is what keeps two projects called `C-045.anicel` in different
-  /// works from sharing one anything now that per-project state lands in
-  /// common folders. Every such folder derives its name here rather than
-  /// re-deriving the hash, so a recovery snapshot and a conform cache can
-  /// never disagree about which project they belong to.
-  static String encodeProjectKey(String projectFilePath) {
-    final normalized = projectFilePath.replaceAll('\\', '/');
-    final base = normalized.split('/').last;
-    return '$base.${pathHash(normalized).toRadixString(16).padLeft(8, '0')}';
-  }
-
-  /// FNV-1a over [text] — the one hash every derived cache name in the app
-  /// is built from, so two of them cannot disagree about what "the same
-  /// path" means.
+  /// 🪦It had a sibling, `encodeProjectKey`, that turned a project path
+  /// into `basename.<hash>` for the two per-project folders. Both are gone
+  /// with the recovery snapshots; the audio conform key is the one caller
+  /// left, and it hashes what it actually varies by rather than a path.
   static int pathHash(String text) {
     var hash = 0x811c9dc5;
     for (final unit in text.codeUnits) {

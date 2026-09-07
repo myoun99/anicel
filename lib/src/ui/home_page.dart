@@ -305,11 +305,6 @@ class _HomePageState extends State<HomePage> {
     // the interval rebuild it; the settings notifier is the one source.
     _syncAutosaveService();
     AppSave.settings.addListener(_syncAutosaveService);
-    // Q-recovery-gc (유저 08-26: 「30일좋고」): snapshots whose project was
-    // deleted or moved outside the app miss all three retirement moments
-    // and would otherwise pile up in the app container for ever. Once per
-    // launch, here, because this page is what makes snapshots exist at all.
-    ProjectAutosaveService.sweepAbandonedRecovery();
     // This run's room in the app container, and the two answers a launch
     // owes the rooms of runs that ended: their VOLATILE payloads go now
     // (an undo history that died with its isolate has no second life),
@@ -386,14 +381,15 @@ class _HomePageState extends State<HomePage> {
     // ONE service for the page's life, never rebuilt: nothing below is
     // settings-derived (five closures reading live session state), and
     // this listener fires on ANY settings change — a rebuild here dropped
-    // the in-flight `_writing` guard with it, so a snapshot mid-write plus
-    // a recordings-folder pick equalled two concurrent overlay writers
-    // racing for the same rename.
+    // the in-flight `_writing` guard with it, so a tick mid-write plus
+    // a recordings-folder pick equalled two concurrent writers racing for
+    // the same archive.
     _autosave ??= ProjectAutosaveService(
-      // Stands down while a manual save runs: a snapshot that lands after
-      // the save's retirement leaves one behind for a project that was
-      // saved and closed cleanly, and the next open then offers to recover
-      // it — which is the exact signal this round exists to keep honest.
+      // Stands down while a manual save runs: a tick that started its own
+      // write inside one would be a SECOND writer appending to the same
+      // archive, which tears the tail both of them are extending — and stands
+      // down for a session the user closed WITHOUT saving, so the way down
+      // cannot put back what they just threw away.
       isDirty: () =>
           _session.projectFile.hasUnsavedChanges &&
           !_session.projectFile.autosaveShouldStandDown,

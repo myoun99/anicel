@@ -9,8 +9,8 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
-import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 실측 (08-26, iPhone + Google Drive): a File Provider can refuse plain
@@ -33,11 +33,11 @@ void main() {
     } on Object {
       // Windows handles.
     }
-    // The fallback deliberately leaves its staging file for the 30-day
-    // sweep; a test must not leave it for the NEXT test.
-    final recovery = Directory(AppSave.recoveryDirectory());
-    if (recovery.existsSync()) {
-      for (final entity in recovery.listSync()) {
+    // The fallback deliberately leaves its staging file for the run's room
+    // to take at exit; a test must not leave it for the NEXT test.
+    final staged = Directory(SessionScratch.stagedFolder());
+    if (staged.existsSync()) {
+      for (final entity in staged.listSync()) {
         if (entity.path.replaceAll('\\', '/').contains('/replace.tmp-')) {
           try {
             entity.deleteSync();

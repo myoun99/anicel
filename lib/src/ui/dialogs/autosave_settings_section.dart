@@ -1,34 +1,34 @@
-import 'dart:io' show Directory, File, Platform;
+import 'dart:io' show Directory, File, FileStat, FileSystemEntityType, Platform;
 
 import 'package:flutter/material.dart';
 
+import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/app_support_path.dart';
 import '../../services/persistence/session_scratch.dart';
-import '../../services/persistence/project_autosave_service.dart';
-import '../../services/persistence/recent_projects.dart' show AppRecent;
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
-import '../theme/app_theme.dart' show AppShapes;
-import '../widgets/app_window.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
-import 'app_confirm_dialog.dart';
 import 'folder_pick_flow.dart';
 import '../input/control_press_claim.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
-/// Autosave writes a recovery snapshot only — the project file changes on
-/// an explicit save alone. 🚨F-1 (2026-08-26) cut the policy down to what
-/// the user asked for: **a switch and a number of minutes**. The location
-/// is the app's own folder rather than somewhere the user has to keep out
-/// of a sync client's way, so there is nothing else to set.
+/// 🚨★★★**AUTOSAVE SAVES THE PROJECT FILE** (유저 2026-09-07: 「기존 결정
+/// 대로 자동저장이 파일갱신. 그게 싫으면 자동저장 off하면된다」). This doc
+/// said the opposite — 「a recovery snapshot only, the project file changes
+/// on an explicit save alone」 — for as long as a snapshot was what the
+/// tick wrote. There is no snapshot and no location to name any more; the
+/// switch and the number ARE the policy.
 ///
-/// The two folders below are here because they are the caches and shelves
-/// that used to sit beside the project and no longer do — the section is
-/// "what the app writes on its own, and where".
+/// 🚨F-1 (2026-08-26) is what cut it to those two: **a switch and a number
+/// of minutes**, nothing else to set.
+///
+/// The folders below are here because they are the shelves that used to
+/// sit beside the project and no longer do — the section is "what the app
+/// writes on its own, and where".
 class AutosaveSettingsSection extends StatelessWidget {
   const AutosaveSettingsSection({super.key, required this.session});
 
@@ -122,21 +122,20 @@ class AutosaveSettingsSection extends StatelessWidget {
               ),
             ),
             const Divider(height: 16),
-            // Q-recovery-gc (유저 08-26): the snapshots made visible —
-            // 「위치나 수정날짜같은거 다 있고 거기서 여러개 선택해서
-            // 삭제가능하게」. The 30-day sweep handles the abandoned ones
-            // on its own; this is the by-hand door for everything else.
-            SettingsSectionHeading(
-              label: AppText.strings.recoverySnapshotsTitle,
-              help: AppText.strings.recoverySnapshotsHelp,
-            ),
-            const SizedBox(height: 4),
-            const _RecoverySnapshotsBlock(),
-            const Divider(height: 16),
+            // 🪦**THE RECOVERY SNAPSHOTS BLOCK IS GONE** — a heading, a list
+            // with a size and a date per row, multi-select and a confirmed
+            // Delete. It was asked for by name (Q-recovery-gc, 유저 08-26:
+            //「위치나 수정날짜같은거 다 있고 거기서 여러개 선택해서 삭제」)
+            // and it answered honestly for as long as snapshots existed.
+            // The autosave tick saves the project file now, so there is no
+            // second copy of anybody's work to show, to age out, or to
+            // delete — and a panel listing a folder nothing writes to is a
+            // row that says 「0」 for ever.
             // 유저 2026-08-30 thought this was already here — 「설정에서
             // 어차피 앱 컨테이너 파일 볼수있게 되있으니까 안되있으면
-            // 되있도록하고 그거 유념」. Half of it was: the snapshots above
-            // had a list and the other four tenants had none.
+            // 되있도록하고 그거 유념」. Half of it was: the snapshots had a
+            // list of their own and the other tenants had none. It is the
+            // whole of it now.
             SettingsSectionHeading(
               label: AppText.strings.appContainerTitle,
               help: AppText.strings.appContainerHelp,
@@ -244,218 +243,22 @@ class AutosaveSettingsSection extends StatelessWidget {
   }
 }
 
-/// The recovery snapshots on disk: name/location, modified date and size
-/// per row, multi-select, one Delete.
-///
-/// A stateful MEASUREMENT like the conform row below — a directory scan
-/// has no business rerunning on every settings rebuild. Unlike that row's
-/// cache, a snapshot can be the ONLY copy of unsaved crash work, so this
-/// delete confirms first.
-class _RecoverySnapshotsBlock extends StatefulWidget {
-  const _RecoverySnapshotsBlock();
-
-  @override
-  State<_RecoverySnapshotsBlock> createState() =>
-      _RecoverySnapshotsBlockState();
-}
-
-class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
-  late List<RecoverySnapshotInfo> _rows = _load();
-  final Set<String> _selected = <String>{};
-  final ScrollController _scroll = ScrollController();
-
-  static List<RecoverySnapshotInfo> _load() =>
-      ProjectAutosaveService.listRecoverySnapshots(
-        knownProjectPaths: [
-          for (final entry in AppRecent.projects.value.entries) entry.path,
-        ],
-      );
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  static String _dateLabel(DateTime at) {
-    String two(int value) => value.toString().padLeft(2, '0');
-    return '${at.year}-${two(at.month)}-${two(at.day)} '
-        '${two(at.hour)}:${two(at.minute)}';
-  }
-
-  Future<void> _confirmDelete() async {
-    final strings = AppText.strings;
-    final proceed = await askConfirm(
-      context,
-      ConfirmQuestion(
-        keys: (
-          window: const ValueKey<String>('recovery-delete-dialog'),
-          decline: const ValueKey<String>('recovery-delete-cancel'),
-          accept: const ValueKey<String>('recovery-delete-confirm'),
-        ),
-        title: strings.recoveryDeleteTitle,
-        titleIcon: Icons.delete_outline,
-        message: strings.recoveryDeleteMessageTemplate.replaceAll(
-          '{n}',
-          '${_selected.length}',
-        ),
-      ),
-      accept: ConfirmChoice(
-        strings.commonDelete,
-        emphasis: AppWindowActionEmphasis.danger,
-      ),
-    );
-    if (proceed != true || !mounted) {
-      return;
-    }
-    for (final path in _selected) {
-      try {
-        File(path).deleteSync();
-      } on Object {
-        // Locked by a sync client: the row comes back on the reload below
-        // and says so more honestly than a crash would.
-      }
-    }
-    setState(() {
-      _selected.clear();
-      _rows = _load();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    var total = 0;
-    for (final row in _rows) {
-      total += row.bytes;
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _rows.isEmpty
-                    ? AppText.strings.containerEmpty
-                    : '${_rows.length} · ${byteSizeLabel(total)}',
-                key: const ValueKey<String>('settings-recovery-size'),
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            ControlPressClaim(
-              onPressed: _selected.isEmpty ? null : _confirmDelete,
-              child: TextButton(
-                key: const ValueKey<String>('settings-recovery-delete'),
-                onPressed: silentPress(
-                  _selected.isEmpty ? null : _confirmDelete,
-                ),
-                child: Text(AppText.strings.commonDelete),
-              ),
-            ),
-          ],
-        ),
-        // ⛔The well is always here, empty or not — 없다가 생기는 UI 금지.
-        Container(
-          height: 120,
-          clipBehavior: Clip.antiAlias,
-          decoration: ShapeDecoration(
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(color: colorScheme.outlineVariant),
-            ),
-          ),
-          // ⛔NO SCROLLBAR BY HAND. `AppScrollBehavior` already gives every
-          // scrollable in the app the same one, so this was a SECOND bar over
-          // it. 🧪It was also the app's one auto-hiding bar — the framework's
-          // default fades the thumb when the list stops — which is how a rule
-          // gets broken by writing nothing.
-          child: ListView.builder(
-            controller: _scroll,
-            itemCount: _rows.length,
-            itemExtent: 24,
-            itemBuilder: (context, index) {
-              final row = _rows[index];
-              final selected = _selected.contains(row.path);
-              return ControlPressClaim(
-                onPressed: () => setState(() {
-                  if (!_selected.add(row.path)) {
-                    _selected.remove(row.path);
-                  }
-                }),
-                child: InkWell(
-                  key: ValueKey<String>('settings-recovery-row-${row.path}'),
-                  onTap: silentPress(
-                    () => setState(() {
-                      if (!_selected.add(row.path)) {
-                        _selected.remove(row.path);
-                      }
-                    }),
-                  ),
-                  child: Container(
-                    // Selection is COLOR only (법): no mark, no reflow.
-                    color: selected
-                        ? colorScheme.primary.withValues(alpha: 0.16)
-                        : null,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            row.projectPath ?? row.projectName,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: selected ? colorScheme.primary : null,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _dateLabel(row.modified),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          byteSizeLabel(row.bytes),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-
 /// 🚨★★★**WHAT THE APP KEEPS OUTSIDE YOUR PROJECT FILE.**
 ///
 /// 유저 2026-08-30 believed this was already here — 「설정에서 어차피 앱
 /// 컨테이너 파일 볼수있게 되있으니까 **안되있으면 되있도록**하고 그거
-/// 유념」 — and it was half true. Recovery snapshots had a list above;
-/// the settings files, the brush tips, the conformed audio and the media
-/// an import copied in had none, so a person deciding whether to let
-/// imports live there could not see what was there already.
+/// 유념」 — and it was half true. Recovery snapshots had a list of their
+/// own; the settings files, the brush tips, the conformed audio and the
+/// media an import copied in had none, so a person deciding whether to let
+/// imports live there could not see what was there already. This block is
+/// the whole answer now that the snapshots are gone.
 ///
-/// ⛔**Read-only, deliberately.** Recovery has a delete because a snapshot
-/// is a copy of something that also exists. These are not all like that:
-/// `Staged/` holds the ONLY copy of media a carried import has not yet
-/// been saved into a project, and a delete button beside it would be a way
-/// to lose exactly what the staging exists to keep. Seeing is what was
-/// asked for.
+/// ⛔**Read-only, deliberately.** The recovery list had a delete because a
+/// snapshot was a copy of something that also existed. Nothing left here is
+/// like that: `Staged/` holds the ONLY copy of media a carried import has
+/// not yet been saved into a project, and a delete button beside it would
+/// be a way to lose exactly what the staging exists to keep. Seeing is what
+/// was asked for.
 ///
 /// ⛔The rows are FIXED, so the block never grows or shrinks as folders
 /// come and go — 없다가 생기는 UI 금지. A folder the app has never written
@@ -468,9 +271,9 @@ class _AppContainerBlock extends StatefulWidget {
 }
 
 class _AppContainerBlockState extends State<_AppContainerBlock> {
-  /// ⚠️The recovery row repeats the heading above it on purpose: this
-  /// block accounts for the WHOLE container, and a total that quietly left
-  /// one tenant out would be the least useful number on the screen.
+  /// ⚠️Every tenant of the container gets a row, down to a log measured in
+  /// kilobytes: this block accounts for the WHOLE of it, and a total that
+  /// quietly left one out would be the least useful number on the screen.
   late final List<_ContainerArea> _rows = _measure();
 
   static List<_ContainerArea> _measure() {
@@ -486,11 +289,9 @@ class _AppContainerBlockState extends State<_AppContainerBlock> {
         strings.containerAreaSettings,
         appSupportFilePath('Settings'),
       ),
-      _ContainerArea.folder(
-        'recovery',
-        strings.containerAreaRecovery,
-        AppSave.recoveryDirectory(),
-      ),
+      // 🪦**NO `Recovery/` ROW.** Same reasoning as the conform row below,
+      // and a round later: the autosave tick saves the project file, so
+      // nothing writes a snapshot and the row would report 0 for ever.
       // 🪦**NO `Conformed/` ROW.** Nothing writes there any more — a
       // conform waits in the run's room and moves into the project at the
       // next save — so the row would report 0 for ever, which reads as
@@ -505,6 +306,14 @@ class _AppContainerBlockState extends State<_AppContainerBlock> {
         'session-scratch',
         strings.containerAreaSessionScratch,
         SessionScratch.rootFolder(),
+      ),
+      // The black box's one page. It is kilobytes, and it is a row anyway:
+      // it is the last thing in the container that is not one of the two
+      // rooms, and the total above it claims to be the whole of it.
+      _ContainerArea.file(
+        'diagnostics',
+        strings.containerAreaDiagnostics,
+        MemoryBlackBox.logPath(),
       ),
     ];
   }
@@ -589,6 +398,24 @@ class _ContainerArea {
   factory _ContainerArea.folder(String id, String label, String path) =>
       _measureDirectory(id: id, label: label, path: path, recursive: true);
 
+  /// One FILE at the container root, as a row of its own.
+  ///
+  /// ⚠️It exists because the total has to stay true. The block's whole job
+  /// is「what is outside my project files, and how much」, and a tenant
+  /// left out makes that number the least useful thing on the screen — the
+  /// size being small is not the same as the row being optional.
+  factory _ContainerArea.file(String id, String label, String path) {
+    final stat = FileStat.statSync(path);
+    final found = stat.type == FileSystemEntityType.file;
+    return _ContainerArea(
+      id: id,
+      label: label,
+      count: found ? 1 : 0,
+      bytes: found ? stat.size : 0,
+      exists: found,
+    );
+  }
+
   static _ContainerArea _measureDirectory({
     required String id,
     required String label,
@@ -622,8 +449,8 @@ class _ContainerArea {
     );
   }
 
-  /// Keys the row so a test can name it — the recovery row repeats the
-  /// heading above it, and text alone cannot tell them apart.
+  /// Keys the row so a test can name it, rather than reaching for a label
+  /// that changes with the language.
   final String id;
 
   final String label;

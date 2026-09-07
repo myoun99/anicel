@@ -3,9 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
+import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -100,19 +103,24 @@ void main() {
     );
   });
 
-  testWidgets('discarding proceeds and retires the sidecar — 저장 안 하고 '
-      '닫기 = 버리기 stays literal at this door too', (tester) async {
+  testWidgets('discarding proceeds, and the session stands the autosave '
+      'tick down on the way out', (tester) async {
+    // 「저장 안 하고 닫기 = 버리기」 is the OFF position of the autosave
+    // switch now, but the moment the user answers Close it has to hold: the
+    // tear-down that follows delivers the same lifecycle callbacks any
+    // close does, and a tick coming due in there would save the very work
+    // just discarded.
+    //
+    // 🪦It asserted a deleted SIDECAR here. The retirement was the whole
+    // body of this door's discard until 2026-09-08; the stand-down was
+    // always the half that mattered, and it is all that is left.
     final fixture = await mounted(tester);
-    final path = '${folder.path.replaceAll('\\', '/')}/gate.anicel';
-    await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path));
-    fixture.session.cutVerbs.createCut();
+    final path = '${folder.path.replaceAll(r'\', '/')}/gate.anicel';
     await tester.runAsync(
-      () => fixture.session.projectDoor.writeAutosaveSnapshot(
-        fixture.session.projectFile.autosaveSidecarPath!,
-      ),
+      () => fixture.session.projectDoor.saveProjectToFile(path),
     );
-    final sidecar = File(fixture.session.projectFile.autosaveSidecarPath!);
-    expect(sidecar.existsSync(), isTrue);
+    fixture.session.cutVerbs.createCut();
+    expect(fixture.session.projectFile.autosaveShouldStandDown, isFalse);
 
     final settled = fixture.ask();
     await tester.pumpAndSettle();
@@ -121,9 +129,10 @@ void main() {
 
     expect(await settled, isTrue);
     expect(
-      sidecar.existsSync(),
-      isFalse,
-      reason: 'a surviving sidecar must keep meaning "the app crashed"',
+      fixture.session.projectFile.autosaveShouldStandDown,
+      isTrue,
+      reason: 'the exit lifecycle is still to come, and it must not save '
+          'what the user just threw away',
     );
   });
 
@@ -264,10 +273,14 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey<String>('system-exit-cancel')));
     await tester.pumpAndSettle();
+    // 🪦This used to look for the recovery prompt's absence. The stub file
+    // is the better witness and always was: it is not a `.anicel`, so an
+    // open that started at all fails loudly, and cancel means it never did.
     expect(
-      find.byKey(const ValueKey<String>('recover-autosave-dialog')),
+      find.text(AppText.strings.commonNotice),
       findsNothing,
-      reason: 'cancel stops the open before it starts',
+      reason: 'cancel stops the open before it starts — the stub at that '
+          'path would raise a read error the moment anything tried',
     );
   });
 
@@ -333,5 +346,81 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('system-exit-cancel')));
     await tester.pumpAndSettle();
     expect(await settled, isFalse);
+  });
+
+  testWidgets('🚨 REOPENING the project you are ALREADY editing asks too — '
+      'the reload discards the live edits either way', (tester) async {
+    // 🪦**THIS DOOR HAD AN EXCEPTION UNTIL 2026-09-08.** Reopening the
+    // current project skipped the gate on purpose: the reload threw the
+    // live edits away on its own, and answering Recover on that reopen was
+    // the ONE way back to them — so a gate in front of it would have
+    // retired the very sidecar the reopen existed to reach. With no sidecar
+    // to reach, the exception was a silent discard with nothing behind it.
+    // 「Reload from disk」 is still reachable: answer Discard.
+    final path = '${folder.path.replaceAll(r'\', '/')}/Cut 12.anicel';
+    File(path).writeAsBytesSync(
+      buildAnicelArchiveBytes(
+        project: createDefaultProject().copyWith(name: 'Opened From Disk'),
+        cels: const [],
+      ),
+    );
+    final seeded = const RecentProjects().withOpened(RecentProject(path: path));
+    AppRecent.projects.value = seeded;
+    RecentProjectsStore().save(seeded);
+    addTearDown(() {
+      AppRecent.projects.value = const RecentProjects();
+      RecentProjectsStore().save(const RecentProjects());
+    });
+
+    ProjectRepository? repository;
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(onRepositoryCreated: (r) => repository = r)),
+    );
+    await tester.pumpAndSettle();
+
+    Future<void> tapRecent() async {
+      final button = find.byKey(
+        const ValueKey<String>('top-strip-project-button'),
+      );
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+      await tester.pumpAndSettle();
+    }
+
+    // The open hops to a background isolate, which the fake clock never
+    // advances — lend the real loop until the repository holds the fixture.
+    await tapRecent();
+    for (var attempt = 0; attempt < 200; attempt += 1) {
+      await tester.pump();
+      if (repository?.currentProject?.name == 'Opened From Disk') {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    expect(
+      session.projectFile.path,
+      path,
+      reason: 'the rest of this test is meaningless without the first open',
+    );
+
+    session.cutVerbs.createCut();
+    expect(session.projectFile.hasUnsavedChanges, isTrue);
+
+    await tapRecent();
+
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsOneWidget,
+      reason: 'the same file is still a reload, and a reload is a discard',
+    );
   });
 }

@@ -96,8 +96,8 @@ void main() {
 
     test('a subfolder rides through', () {
       expect(
-        appSupportFilePath('Recovery/snap.anicel'),
-        endsWith('/anicel/Recovery/snap.anicel'),
+        appSupportFilePath('Sessions/snap.anicel'),
+        endsWith('/anicel/Sessions/snap.anicel'),
       );
     });
   });

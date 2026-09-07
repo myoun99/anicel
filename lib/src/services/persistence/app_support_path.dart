@@ -12,31 +12,32 @@ import 'dart:io';
 /// 🚨**IT IS NOT ONLY SETTINGS, and this doc used to claim「never project
 /// data」.** What actually lives here today:
 ///
-/// • fourteen settings files (accent, audio sync, brush hand, brush
-///   presets, colour palette, export, input, language, recent projects,
-///   save, shortcut overrides, UI scale, workspace colours, layout)
-/// • `brush_tips/` — the user's own tip images
-/// • `Recovery/` — **recovery snapshots, which are project data.** This is
-///   where the autosave sidecar went when it stopped living beside the
-///   project file as `<project>.anicel.autosave`; that path is still READ
-///   so a crash on an older build is still offered.
-/// • `Conformed/` — **audio conformed from project media**, also project
-///   data, and the one entry the user can point somewhere else.
-/// • `Sessions/<pid>/` — **one room per RUN of the app**, holding staged
-///   media on its way into the next save and volatile payloads that die
-///   with the run. See [SessionScratch].
+/// • `Settings/` — fifteen settings files and `brush_tips/`, the user's
+///   own tip images. See [appSettingsFilePath].
+/// • `Sessions/<run>/` — **one room per RUN of the app**, holding staged
+///   media and conforms on their way into the next save, and volatile
+///   payloads that die with the run. See [SessionScratch].
+/// • `memory-log.txt` — the black box's one page, written by a run and
+///   read by the next. See `MemoryBlackBox.logPath`.
+///
+/// 🪦**TWO ROOMS FULL OF PROJECT DATA ARE GONE.** `Recovery/` held autosave
+/// sidecars until the tick started saving the project file itself, and
+/// `Conformed/` held audio decoded from project media until a conform
+/// started waiting in the run's room for the save that absorbs it. Both
+/// were places the app kept the user's work OUTSIDE their file; the
+/// answer in each case was to stop keeping it, not to keep it better.
 ///
 /// ⚠️So a proposal to stage something project-shaped here is not asking
-/// for a new category — three of these already are. What it IS asking for
-/// is a lifetime: settings live forever, `Recovery` is swept, `Conformed`
-/// is a cache, and `Sessions/` is the shortest of the four — one run.
-/// Anything new has to say which it is.
+/// for a new category — the run's room already is one. What it IS asking
+/// for is a lifetime: settings live for ever, `Sessions/` lives one run,
+/// and the log lives until the next launch reads it. Anything new has to
+/// say which it is.
 ///
 /// 🚨유저 2026-09-07 named the tenants this container should have: **이사
 /// 대기**(waiting to move into the project file), **휘발성**(gone when the
 /// session closes) and **유저설정**. The first two are `Sessions/`; the
-/// third is everything else listed above bar the two project-data
-/// entries, which D and E are moving out.
+/// third is `Settings/`. Everything the user's work lived in outside those
+/// three has since been moved into the project file itself.
 String appSupportFilePath(String fileName) {
   final environment = Platform.environment;
   final base =

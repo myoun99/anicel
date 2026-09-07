@@ -174,10 +174,11 @@ class SessionScratch {
   /// run ended crashed, and one that has sat there a month crashed and was
   /// never come back for.
   ///
-  /// ⚠️Called ONCE PER LAUNCH, beside the recovery sweep. A live room is
-  /// never a candidate, so the old caveat 「a session open longer than the
-  /// window must not have its own bytes taken」 is now structural rather
-  /// than a rule about when to call.
+  /// ⚠️Called ONCE PER LAUNCH — and it is the container's ONLY sweep now
+  /// that the recovery snapshots are gone. A live room is never a
+  /// candidate, so the old caveat 「a session open longer than the window
+  /// must not have its own bytes taken」 is now structural rather than a
+  /// rule about when to call.
   static int deleteFoldersOfEndedRunsOlderThan({
     Duration olderThan = const Duration(days: 30),
     DateTime? now,
@@ -218,7 +219,8 @@ class SessionScratch {
   // 🪦**NO 「delete THAT room」 VERB YET, ON PURPOSE.** The roadmap's
   // 「복구 안 함」 answer needs one, but nothing can call it correctly until
   // a room can say WHICH project it was carrying — that is the round that
-  // makes the leftover rooms the recovery target and retires `Recovery/`.
+  // makes the leftover rooms the recovery target. (`Recovery/` itself is
+  // already gone — its snapshots were deleted in 2026-09-08.)
   // A seam nobody calls is a seam that drifts from the only caller it will
   // ever have.
 

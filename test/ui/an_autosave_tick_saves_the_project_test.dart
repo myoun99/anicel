@@ -96,6 +96,68 @@ void main() {
     );
   });
 
+  test('🚨 a tick stands down while a manual save runs', () async {
+    // 🚨Still the law, and now for a blunter reason than the one it was
+    // written for. It used to be about a tick landing after the save's
+    // sidecar retirement and leaving one behind for a project that was
+    // closed cleanly. The tick SAVES now, so a tick inside a save is two
+    // writers on one archive — the same file, the same temp-and-rename.
+    // The in-flight flag is what keeps them apart.
+    final path = '${directory.path.replaceAll(r'\', '/')}/inflight.anicel';
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    await session.projectDoor.saveProjectToFile(path);
+    session.cutVerbs.createCut();
+
+    var ticked = false;
+    final autosave = ProjectAutosaveService(
+      isDirty: () =>
+          session.projectFile.hasUnsavedChanges &&
+          !session.projectFile.autosaveShouldStandDown,
+      saveProject: (path) async {
+        ticked = true;
+        await session.projectDoor.saveProjectToFile(path);
+      },
+      projectPath: () => session.projectFile.path!,
+    );
+
+    final saving = session.projectDoor.saveProjectToFile(path);
+    await autosave.saveNow();
+    await saving;
+
+    expect(ticked, isFalse, reason: 'the tick fired inside the save');
+  });
+
+  test('🚨 closing WITHOUT saving stands the tick down, so the way out '
+      'cannot put the work back', () async {
+    // 「저장 안 하고 닫기 = 버리기」 is the OFF position of the switch now,
+    // but the moment the user says it, it has to hold: the tear-down that
+    // follows delivers the same lifecycle callbacks any close does, and a
+    // tick coming due in there would save the very work just discarded.
+    final path = '${directory.path.replaceAll(r'\', '/')}/discarded.anicel';
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    await session.projectDoor.saveProjectToFile(path);
+    final cutsAtSave = (await const AnicelFileService().open(
+      filePath: path,
+    )).project.tracks.first.cuts.length;
+
+    session.cutVerbs.createCut();
+    session.projectFile.discardUnsavedWork();
+    expect(session.projectFile.autosaveShouldStandDown, isTrue);
+
+    await autosaveFor(session).saveNow();
+
+    expect(
+      (await const AnicelFileService().open(
+        filePath: path,
+      )).project.tracks.first.cuts.length,
+      cutsAtSave,
+      reason: '⛔the discarded cut reached the file — the session is still '
+          'dirty, so only the stand-down keeps the tick off it',
+    );
+  });
+
   test('⛔ a NEVER-SAVED project still writes nowhere', () async {
     // PEN-12 #8 unchanged: there is no file to save INTO, and piling one
     // into a hidden app-data folder for a document with no identity yet is

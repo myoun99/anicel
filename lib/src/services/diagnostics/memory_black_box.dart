@@ -2,7 +2,7 @@ import 'dart:io';
 
 
 import '../../native/qa_native_engine.dart';
-import '../persistence/app_save_settings.dart';
+import '../persistence/app_support_path.dart';
 
 /// What the app was holding when it died.
 ///
@@ -29,10 +29,22 @@ import '../persistence/app_save_settings.dart';
 /// has been scaled from and is why that budget may be twice what the
 /// process is allowed.
 abstract final class MemoryBlackBox {
-  /// Where the log lives: beside the recovery snapshots, in the app's own
-  /// storage, because a file the user has to go and find is a file nobody
-  /// reads. Kept out of the project so it survives moving or deleting it.
-  static String logPath() => '${AppSave.recoveryDirectory()}/memory-log.txt';
+  /// Where the log lives: the app's own container, because a file the user
+  /// has to go and find is a file nobody reads. Kept out of the project so
+  /// it survives moving or deleting it.
+  ///
+  /// ⛔**A LOOSE FILE AT THE CONTAINER ROOT, AND THAT IS THE HONEST
+  /// ADDRESS.** The rooms beside it are named for LIFETIMES — `Settings/`
+  /// lives for ever, `Sessions/<run>/` for one run — and this is neither:
+  /// it is written by one run and read by the NEXT one, exactly once,
+  /// before [reset] turns the page. It borrowed `Recovery/` until the
+  /// snapshots that named that folder were deleted; one file does not earn
+  /// a room of its own, so it says its own name instead.
+  ///
+  /// ⚠️Test-redirected like every other container path: a test run must
+  /// not append to — or reset — the developer's own log.
+  static String logPath() =>
+      testRedirectedAppSupportPath('memory-log.txt', sandbox: 'diagnostics');
 
   /// Test seam for the platform numbers. ⚠️Reset in
   /// `test/flutter_test_config.dart`.

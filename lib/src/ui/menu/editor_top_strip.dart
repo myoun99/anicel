@@ -4,16 +4,12 @@ import 'dart:io' show File, FileSystemException;
 import 'package:flutter/material.dart';
 
 import '../widgets/app_icon_button.dart';
-import '../../services/persistence/anicel_file_service.dart'
-    show anicelSnapshotIsOverlay;
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
-import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
-import '../../services/persistence/project_autosave_service.dart';
 import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
@@ -58,17 +54,6 @@ import '../theme/app_theme.dart';
 /// The strip deliberately keeps the old `menu-<id>` keys on its items.
 /// They name commands, not menus, and a command that only moved house
 /// should not cost every test that reaches for it.
-/// What the recovery question settled: which file to READ, which file to
-/// save back to, whether a snapshot goes on top of it, and whether the
-/// user answered "open the saved one" — which retires the sidecar, but
-/// only after the open succeeds.
-typedef _OpenPlan = ({
-  String openPath,
-  String? recoverAs,
-  String? overlayPath,
-  bool declinedSidecar,
-});
-
 class EditorTopStrip extends StatelessWidget {
   const EditorTopStrip({
     super.key,
@@ -149,18 +134,22 @@ class EditorTopStrip extends StatelessWidget {
     if (pick == null || !context.mounted) {
       return;
     }
-    await _openWithRecovery(context, pick);
+    await _openPickedProject(context, pick);
   }
 
-  /// Opens [pick], offering autosave recovery first and recording the result.
+  /// Opens [pick] behind the unsaved-work gate, from a staged copy if the
+  /// file will not read in place, and records it in Recents afterwards.
   ///
-  /// Shared with the Recent-projects rows on purpose. When this lived only in
-  /// `_openProject`, opening from Recent — which PICK-4 exists to make the
-  /// ONE-TAP common case — skipped the recovery prompt entirely: after a
-  /// crash the stale file loaded, the first save overwrote it, and the newer
-  /// sidecar was never offered. The prompt would have vanished from exactly
-  /// the path this round promoted.
-  Future<void> _openWithRecovery(BuildContext context, ProjectPick pick) async {
+  /// Shared with the Recent-projects rows on purpose: opening from Recent is
+  /// the ONE-TAP common case PICK-4 exists to make, and every guard this
+  /// door has has to be on that path too.
+  ///
+  /// 🪦It offered autosave RECOVERY first until 2026-09-08, and that is the
+  /// whole of what it lost.
+  Future<void> _openPickedProject(
+    BuildContext context,
+    ProjectPick pick,
+  ) async {
     final path = pick.path;
     if (path.toLowerCase().endsWith('.tvpp')) {
       await _openTvppAsProject(context, path);
@@ -168,58 +157,34 @@ class EditorTopStrip extends StatelessWidget {
     }
     // Opening ANOTHER project closes this one as surely as the window's X,
     // and this was the one door with no gate: a single Recents tap
-    // silently discarded a dirty session (and after F-1 the loss window is
-    // the whole autosave interval). Same question, same window, same keys
-    // as the exit gate. Reopening the CURRENT project deliberately skips
-    // it — that flow's semantics (recovery re-offer, sidecar kept as the
-    // one way back) are documented below and a gate in front of them
-    // would retire the very sidecar the reopen exists to reach.
-    if (session.projectFile.path != path) {
-      if (!await ensureUnsavedWorkSettled(context, session) ||
-          !context.mounted) {
-        return;
-      }
-    }
-    // Reopening the project that is ALREADY open and dirty. There is no
-    // unsaved-changes gate on the open flow, so this reload throws the
-    // live edits away on its own — and if a tick had written the sidecar,
-    // every cold cel's ref points inside it, which makes it the only copy.
-    // Retiring it here would remove the one way back (reopen, answer
-    // Recover). Captured before the open, because the open rewrites both
-    // of these.
-    final reopeningDirtySelf =
-        session.projectFile.path == path &&
-        session.projectFile.hasUnsavedChanges;
-
-    var plan = await _recoveryChoice(context, path);
-    if (plan == null || !context.mounted) {
+    // silently discarded a dirty session. Same question, same window, same
+    // keys as the exit gate.
+    //
+    // 🪦**AND REOPENING THE CURRENT PROJECT NO LONGER SKIPS IT.** The
+    // exception was written for recovery: the reload threw the live edits
+    // away on its own, and answering Recover on a re-open was the one way
+    // back to them — so a gate that retired the sidecar first would have
+    // closed that door. With no sidecar to reach, the exception is a
+    // silent discard with nothing behind it, and「reload from disk」is
+    // still reachable by answering Discard at the gate.
+    if (!await ensureUnsavedWorkSettled(context, session) ||
+        !context.mounted) {
       return;
     }
-    if (plan.openPath == path) {
-      final staged = await _stagedCopyForOpen(context, path);
-      if (staged == null || !context.mounted) {
-        return;
-      }
-      if (staged.path != path) {
-        plan = (
-          openPath: staged.path,
-          recoverAs: path,
-          overlayPath: plan.overlayPath,
-          declinedSidecar: plan.declinedSidecar,
-        );
-      }
+    final staged = await _stagedCopyForOpen(context, path);
+    if (staged == null || !context.mounted) {
+      return;
     }
-    await _openPlanned(
+    await _openRead(
       context,
       pick,
-      plan: plan,
-      reopeningDirtySelf: reopeningDirtySelf,
+      readPath: staged.path,
     );
   }
 
   /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
   /// several cuts): everything current is replaced, so the same
-  /// unsaved-work gate as any open guards it. No recovery/recents — the
+  /// unsaved-work gate as any open guards it. No recents entry — the
   /// result is a NEW unsaved project until its first save.
   Future<void> _openTvppAsProject(BuildContext context, String path) async {
     if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
@@ -287,84 +252,13 @@ class EditorTopStrip extends StatelessWidget {
     }
   }
 
-  /// What to open and what to save back to, after the recovery question —
-  /// or null when the user closed it without answering.
-  ///
-  /// A newer autosave sidecar offers recovery (crash / sync loss). The
-  /// snapshot lives in the app-support Recovery folder now, with the
-  /// legacy beside-the-file spot kept as a read-only candidate — every
-  /// candidate location is checked, newest wins.
-  Future<_OpenPlan?> _recoveryChoice(BuildContext context, String path) async {
-    final sidecar = AppSave.newestExistingRecoveryFor(path);
-    if (sidecar == null ||
-        !ProjectAutosaveService.sidecarIsNewer(
-          filePath: path,
-          sidecarPath: sidecar,
-        )) {
-      return (
-        openPath: path,
-        recoverAs: null,
-        overlayPath: null,
-        declinedSidecar: false,
-      );
-    }
-    final recover = await askConfirm(
-      context,
-      ConfirmQuestion(
-        keys: (
-          window: const ValueKey<String>('recover-autosave-dialog'),
-          decline: const ValueKey<String>('recover-open-saved-button'),
-          accept: const ValueKey<String>('recover-autosave-button'),
-        ),
-        title: AppText.strings.recoverAutosaveTitle,
-        titleIcon: Icons.restore_outlined,
-        message: AppText.strings.recoverAutosaveBody,
-      ),
-      decline: ConfirmChoice(
-        AppText.strings.recoverOpenSaved,
-        emphasis: AppWindowActionEmphasis.danger,
-        tooltip: AppText.strings.recoverOpenSavedHint,
-      ),
-      accept: ConfirmChoice(AppText.strings.recoverAction),
-    );
-    if (recover == null) {
-      return null;
-    }
-    if (!recover) {
-      return (
-        openPath: path,
-        recoverAs: null,
-        overlayPath: null,
-        declinedSidecar: true,
-      );
-    }
-    // The snapshot holds only what changed since the last save, so the
-    // PROJECT is what gets opened and the snapshot goes on top. A build
-    // before overlays wrote a complete archive: open it directly, keeping
-    // the project as the path to save back to.
-    return anicelSnapshotIsOverlay(sidecar)
-        ? (
-            openPath: path,
-            recoverAs: null,
-            overlayPath: sidecar,
-            declinedSidecar: false,
-          )
-        : (
-            openPath: sidecar,
-            recoverAs: path,
-            overlayPath: null,
-            declinedSidecar: false,
-          );
-  }
-
   /// The path to actually read, once the file has been made readable — or
   /// null when the user stopped waiting or the read failed.
   ///
   /// The same materializer every open uses: a File Provider pick can be a
   /// placeholder a plain read refuses, and the archive reader needs random
-  /// access — so an unreadable pick opens from a staged local copy, with
-  /// `recoverAs` pointing saves back at the real file, exactly the
-  /// sidecar-open mechanism.
+  /// access — so an unreadable pick opens from a staged local copy, and the
+  /// session is bound back to the real file so saves land there.
   Future<({String path})?> _stagedCopyForOpen(
     BuildContext context,
     String path,
@@ -432,35 +326,30 @@ class EditorTopStrip extends StatelessWidget {
     }
   }
 
-  /// The open itself, and the three things that follow a SUCCESSFUL one.
-  Future<void> _openPlanned(
+  /// The open itself, and the two things that follow a SUCCESSFUL one.
+  ///
+  /// [readPath] is where the BYTES are — the project's own address, or the
+  /// staged local copy made for a file that would not read in place.
+  Future<void> _openRead(
     BuildContext context,
     ProjectPick pick, {
-    required _OpenPlan plan,
-    required bool reopeningDirtySelf,
+    required String readPath,
   }) async {
     final path = pick.path;
     try {
       await session.projectDoor.openProjectFromFile(
-        plan.openPath,
-        recoverAs: plan.recoverAs,
-        overlayPath: plan.overlayPath,
+        readPath,
+        // Only when they differ: binding is what says「saves go back
+        // THERE」, and a session reading its own file has nowhere else.
+        bindTo: readPath == path ? null : path,
       );
       // Recorded AFTER the open succeeds, not at pick time: a file that
       // fails to parse has no business sitting at the top of the menu.
-      // `path` rather than the plan's — recovering from a sidecar still
-      // means the user opened the project, not the sidecar.
+      // `path` rather than [readPath] — reading out of a staged copy still
+      // means the user opened the project, not the copy.
       recordRecentProject(
         RecentProject(path: path, folderBookmark: pick.folderBookmark),
       );
-      if (plan.declinedSidecar && !reopeningDirtySelf) {
-        // "Open the saved one" is an answer about THIS sidecar, not a
-        // deferral: leaving it alive re-asks the same question at every
-        // open until the next manual save. Retired only after the open
-        // SUCCEEDS — a file that fails to parse is exactly when the
-        // declined sidecar is the user's last copy.
-        ProjectAutosaveService.retireSidecarsFor(path);
-      }
       // A project from a build that kept its media in a sibling folder.
       // Said AFTER the open, because a file that failed to parse has no
       // media to absorb and the folder is still the only copy.
@@ -604,7 +493,7 @@ class EditorTopStrip extends StatelessWidget {
     if (!context.mounted) {
       return;
     }
-    await _openWithRecovery(context, (
+    await _openPickedProject(context, (
       path: path,
       folderBookmark: bookmark,
       placed: false,
@@ -1733,12 +1622,11 @@ Future<bool> ensureUnsavedWorkSettled(
     case null || UnsavedWorkChoice.cancel:
       return false;
     case UnsavedWorkChoice.discard:
-      // Discarding the work discards its sidecar too. Left alive it
-      // outlives the session that made it, and the next open offers to
-      // restore precisely what the user just chose to throw away — with
-      // recovery reading a surviving sidecar as "the app crashed",
-      // keeping one here makes that signal lie.
-      session.projectFile.discardAutosaveSidecar();
+      // Recorded on the session, because the tear-down that follows runs
+      // the same lifecycle callbacks any close does — without this the
+      // autosave clock could come due on the way down and save the very
+      // work the user just chose to throw away.
+      session.projectFile.discardUnsavedWork();
       return true;
     case UnsavedWorkChoice.save:
     case UnsavedWorkChoice.saveAs:

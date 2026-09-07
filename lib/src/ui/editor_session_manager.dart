@@ -2471,7 +2471,7 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   /// The whole-state reset an .anicel open performs, minus the parts that
-  /// only exist for saved files (recovery, cel restore, healing).
+  /// only exist for saved files (cel restore, healing).
   void _resetSessionForImportedProject(CutId firstCutId) {
     renderCaches.brushFrameStore.restoreFromFile(const {});
     renderCaches.conteInkRowStore.restoreFromFile(const {});
