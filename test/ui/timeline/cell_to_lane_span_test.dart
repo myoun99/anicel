@@ -148,7 +148,7 @@ void main() {
         'one layer\'s keys', () {
       final s = fixture();
       final layerId = s.activeLayer!.id;
-      s.addLayer();
+      s.layerStack.addLayer();
       final otherId = s.activeLayer!.id;
       s.selectLayer(layerId);
 

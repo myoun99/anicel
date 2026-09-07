@@ -170,8 +170,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// a fresh bundle per build would re-subscribe the row painters on every
   /// pass and defeat their repaint gating.
   late final TimelineCelContentSource _celContent = TimelineCelContentSource(
-    hasContent: _session.celHasContentForLayer,
-    revision: _session.celTintRevision,
+    hasContent: _session.layerStack.celHasContentForLayer,
+    revision: _session.layerStack.celTintRevision,
   );
 
   late final Listenable _frameReadySignal = Listenable.merge([
@@ -791,7 +791,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                     fadeOutFrames: fadeOut,
                   ),
             ),
-            onAddLayer: _session.addLayer,
+            onAddLayer: _session.layerStack.addLayer,
             isLayerSoloed: (layerId) =>
                 _session.soloedSeLayerIds.value.contains(layerId),
             onOpenLayerMixer: (anchorContext, layerId) => unawaited(
@@ -1141,7 +1141,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // verbs, verbatim (the baseline the storyboard's own context
         // diverges from).
         panelContext: TimelineToolbarPanelContext(_session),
-        onAddLayer: _session.addLayer,
+        onAddLayer: _session.layerStack.addLayer,
         onRenameLayer: () =>
             unawaited(renameActiveLayerWithDialog(context, _session)),
         onDeleteLayer: () =>

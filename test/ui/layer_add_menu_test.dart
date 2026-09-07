@@ -32,7 +32,7 @@ void main() {
   ) async {
     // ⑥ 유저: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션레이어 생성.」
     final session = await pump(tester);
-    session.addLayerOfKind(LayerKind.se);
+    session.layerStack.addLayerOfKind(LayerKind.se);
     await tester.pumpAndSettle();
     expect(session.activeLayer!.kind, LayerKind.se);
 

@@ -42,7 +42,7 @@ void main() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
     final from = session.activeLayerId!;
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final to = session.activeLayerId!;
 
     session.selectLayer(from);

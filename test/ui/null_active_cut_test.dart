@@ -131,8 +131,8 @@ void main() {
     s.updateActiveCutNote('note');
     s.duplicateActiveCut();
     s.deleteActiveCut();
-    s.addLayer();
-    s.addLayerOfKind(LayerKind.se);
+    s.layerStack.addLayer();
+    s.layerStack.addLayerOfKind(LayerKind.se);
     s.setCameraKeyframeAtCurrentFrame(pose);
     s.toggleActiveCutThumbnailFrame();
     s.selectNextFrame();

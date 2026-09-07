@@ -238,7 +238,7 @@ void main() {
 
       final session = makeSession();
       session.createDrawingAtCurrentFrame();
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final adjId = session.activeLayer!.id;
       expect(session.activeLayer!.kind, LayerKind.adjustment);
 
@@ -266,7 +266,7 @@ void main() {
       // the group and left its twin permanently `mixed`.
       final session = makeSession();
       session.createDrawingAtCurrentFrame();
-      session.addLayerOfKind(LayerKind.adjustment);
+      session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final adjId = session.activeLayer!.id;
       session.addEffectToActiveLayer(EffectKind.brightnessContrast);
       session.addEffectToActiveLayer(EffectKind.blur);

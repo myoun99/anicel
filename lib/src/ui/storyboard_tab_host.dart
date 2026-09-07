@@ -421,7 +421,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // shared/fx verb acts against the storyboard's standing row
               // and global cursor, or greys out honestly.
               panelContext: _toolbarPanel,
-              onAddLayer: _session.addLayer,
+              onAddLayer: _session.layerStack.addLayer,
               onRenameLayer: () =>
                   unawaited(renameActiveLayerWithDialog(context, _session)),
               onDeleteLayer: () =>
@@ -663,8 +663,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // aimed at the cut the press just activated.
                     onCreateStoryboardLayer: (cutId) {
                       if (_session.activeCutOrNull?.id == cutId &&
-                          _session.canAddLayerOfKind(LayerKind.storyboard)) {
-                        _session.addLayerOfKind(LayerKind.storyboard);
+                          _session.layerStack.canAddLayerOfKind(LayerKind.storyboard)) {
+                        _session.layerStack.addLayerOfKind(LayerKind.storyboard);
                       }
                     },
                     // The end line edits the MOVIE length (UI-R20 #3): the

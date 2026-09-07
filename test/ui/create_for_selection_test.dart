@@ -25,7 +25,7 @@ void main() {
     s.selectFrameIndex(2);
     s.createDrawingAtCurrentFrame(); // covered island at 2
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id; // empty second row
 
     s.updateFrameRangeSelectionDrag(
@@ -53,7 +53,7 @@ void main() {
   test('an SE row fills its selected gap with one entry; an instruction '
       'row gains a default-vocabulary event over the gap', () {
     final s = session();
-    s.addLayerOfKind(LayerKind.se);
+    s.layerStack.addLayerOfKind(LayerKind.se);
     final seId = s.activeLayer!.id;
     s.updateFrameRangeSelectionDrag(
       layerId: seId,
@@ -64,7 +64,7 @@ void main() {
     final se = layerOf(s, seId);
     expect(se.timeline[1]!.length, 4);
 
-    s.addLayerOfKind(LayerKind.instruction);
+    s.layerStack.addLayerOfKind(LayerKind.instruction);
     final instrId = s.activeLayer!.id;
     s.updateFrameRangeSelectionDrag(
       layerId: instrId,
@@ -110,7 +110,7 @@ void main() {
       'undo step - a single undo clears every created instance', () {
     final s = session();
     final cameraId = s.layers.firstWhere((l) => l.kind == LayerKind.camera).id;
-    s.addLayerOfKind(LayerKind.instruction);
+    s.layerStack.addLayerOfKind(LayerKind.instruction);
     final instrId = s.activeLayer!.id;
     final drawingId = s.layers
         .firstWhere((l) => layerKindHoldsDrawings(l.kind))
@@ -167,11 +167,11 @@ void main() {
   test('dialog-free default creation (UI-R25 #2): the playhead SE/'
       'instruction create carries defaults directly', () {
     final s = session();
-    s.addLayerOfKind(LayerKind.se);
+    s.layerStack.addLayerOfKind(LayerKind.se);
     s.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     expect(layerOf(s, s.activeLayer!.id).timeline[0], isNotNull);
 
-    s.addLayerOfKind(LayerKind.instruction);
+    s.layerStack.addLayerOfKind(LayerKind.instruction);
     final instrId = s.activeLayer!.id;
     s.createDefaultInstructionEventAtCurrentFrame();
     expect(layerOf(s, instrId).instructions[0], isNotNull);

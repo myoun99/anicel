@@ -163,12 +163,12 @@ void main() {
       // had`, and it never bumped. The block went on saying 「그려짐」 about a
       // cel with nothing in it. `celPixelRevision` is the signal that does
       // fire on every surface write.
-      final before = session.celTintRevision.value;
+      final before = session.layerStack.celTintRevision.value;
       session.renderCaches.brushFrameStore.celPixelRevision.value += 1;
       await tester.pump();
 
       expect(
-        session.celTintRevision.value,
+        session.layerStack.celTintRevision.value,
         greaterThan(before),
         reason: 'the block cannot re-ask 「이 칸에 그림이 있나」 if its own '
             'revision never moves',

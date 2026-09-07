@@ -25,11 +25,11 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final aId = s.activeLayer!.id;
-    s.addLayer();
+    s.layerStack.addLayer();
     final bId = s.activeLayer!.id;
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.addLayer();
+    s.layerStack.addLayer();
     final cId = s.activeLayer!.id;
     return (s, aId, bId, cId);
   }

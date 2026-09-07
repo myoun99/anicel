@@ -29,7 +29,7 @@ void main() {
     final before = session.activeLayerId;
     expect(before, isNotNull, reason: 'fixture premise');
 
-    session.addLayer();
+    session.layerStack.addLayer();
 
     final active = session.activeLayerId;
     expect(
@@ -47,7 +47,7 @@ void main() {
 
   test('and deleting one leaves them agreeing too', () {
     final session = sessionFor();
-    session.addLayer();
+    session.layerStack.addLayer();
 
     session.deleteActiveLayer();
 

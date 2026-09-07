@@ -20,7 +20,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final layerA = s.activeLayer!;
-    s.addLayer();
+    s.layerStack.addLayer();
     final layerB = s.activeLayer!;
     expect(layerB.id, isNot(layerA.id));
     s.selectFrameIndex(6);

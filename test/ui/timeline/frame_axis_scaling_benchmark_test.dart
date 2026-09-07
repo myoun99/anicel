@@ -65,7 +65,7 @@ void main() {
 
     final session = EditorSessionManager(initialProject: createDefaultProject());
     for (var i = 0; i < 24; i += 1) {
-      session.addLayer();
+      session.layerStack.addLayer();
     }
     // A cut LONGER than the viewport (66 cells at 24px on 1600px): below
     // that, growth is absorbed by the viewport-fill floor and costs nothing.

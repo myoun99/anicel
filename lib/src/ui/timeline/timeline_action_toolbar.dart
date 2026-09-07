@@ -819,7 +819,7 @@ class TimelineActionToolbar extends StatelessWidget {
       // scrub through the rebuild the session's own notify carries. An
       // addition whose necessity cannot be shown is the shape that put
       // 「갱신된다」 into #1269 with no guard at all.
-      session.celTintRevision,
+      session.layerStack.celTintRevision,
     ]),
     builder: (context, _) => _sharedPillBody(),
   );

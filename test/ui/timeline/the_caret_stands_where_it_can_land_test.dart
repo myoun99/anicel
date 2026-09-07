@@ -38,8 +38,8 @@ void main() {
   (EditorSessionManager, LayerId) rig() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    session.addLayerOfKind(LayerKind.animation);
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final bottom = session.layers.firstWhere(
       (layer) => layer.kind == LayerKind.animation,
     );

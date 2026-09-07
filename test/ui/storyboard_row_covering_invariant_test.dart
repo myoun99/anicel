@@ -26,7 +26,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.addLayerOfKind(LayerKind.storyboard);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
     session.selectFrameIndex(8);
     session.createDrawingAtCurrentFrame();
     session.selectFrameIndex(16);

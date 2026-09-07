@@ -95,7 +95,7 @@ void main() {
       session.createDrawingAtCurrentFrame();
       final drawing = session.activeLayer!;
 
-      session.addLayerOfKind(LayerKind.image);
+      session.layerStack.addLayerOfKind(LayerKind.image);
       final image = session.activeLayer!;
       expect(image.kind, LayerKind.image);
       expect(layerKindCoversWithoutGaps(image.kind), isTrue);

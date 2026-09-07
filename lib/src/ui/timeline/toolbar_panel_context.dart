@@ -114,13 +114,13 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
   @override
-  void addLayer() => session.addLayerOfKind(LayerKind.animation);
+  void addLayer() => session.layerStack.addLayerOfKind(LayerKind.animation);
 
   @override
-  bool canAddLayerOfKind(LayerKind kind) => session.canAddLayerOfKind(kind);
+  bool canAddLayerOfKind(LayerKind kind) => session.layerStack.canAddLayerOfKind(kind);
 
   @override
-  void addLayerOfKind(LayerKind kind) => session.addLayerOfKind(kind);
+  void addLayerOfKind(LayerKind kind) => session.layerStack.addLayerOfKind(kind);
 
   @override
   bool get canAddAttachedLayer => session.canAddAttachedLayerToActive;
@@ -256,18 +256,18 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   /// honest state B8 names), and the cut-scoped kinds belong to the
   /// timeline panel's stack, which this panel does not show.
   @override
-  void addLayer() => session.addLayerOfKind(LayerKind.se);
+  void addLayer() => session.layerStack.addLayerOfKind(LayerKind.se);
 
   @override
   bool canAddLayerOfKind(LayerKind kind) =>
-      kind == LayerKind.se && session.canAddLayerOfKind(kind);
+      kind == LayerKind.se && session.layerStack.canAddLayerOfKind(kind);
 
   @override
   void addLayerOfKind(LayerKind kind) {
     if (!canAddLayerOfKind(kind)) {
       return;
     }
-    session.addLayerOfKind(kind);
+    session.layerStack.addLayerOfKind(kind);
   }
 
   @override

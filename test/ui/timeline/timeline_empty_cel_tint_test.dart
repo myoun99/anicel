@@ -217,16 +217,16 @@ void main() {
       final layer = s.activeLayer!;
       final frameId = layer.frames.single.id;
 
-      expect(s.celHasContentForLayer(layer, 0), isFalse);
-      final before = s.celTintRevision.value;
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
+      final before = s.layerStack.celTintRevision.value;
 
       s.renderCaches.brushFrameStore.storeBakedSurface(
         s.brushFrameKeyForCut(s.activeCutOrNull!, layer.id, frameId),
         surfaceWithInk(),
       );
-      expect(s.celHasContentForLayer(layer, 0), isTrue);
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
       expect(
-        s.celTintRevision.value,
+        s.layerStack.celTintRevision.value,
         greaterThan(before),
         reason: 'the timeline has to be TOLD; that is the whole fix',
       );
@@ -234,7 +234,7 @@ void main() {
       // A row with no cels of its own never tints — the camera row mirrors
       // keyframes and has no block to grey.
       final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
-      expect(s.celHasContentForLayer(camera, 0), isTrue);
+      expect(s.layerStack.celHasContentForLayer(camera, 0), isTrue);
     });
 
     test('🚨R27 #16: the direction row can actually BE GIVEN a cel', () {
@@ -259,7 +259,7 @@ void main() {
       final after = s.layers.firstWhere((l) => l.id == row.id);
       expect(after.frames, hasLength(1));
       expect(
-        s.celHasContentForLayer(after, 0),
+        s.layerStack.celHasContentForLayer(after, 0),
         isFalse,
         reason:
             'a fresh cel holds no picture — so the block is grey until '
@@ -286,17 +286,17 @@ void main() {
       );
 
       expect(
-        s.celHasContentForLayer(withSpan, 2),
+        s.layerStack.celHasContentForLayer(withSpan, 2),
         isFalse,
         reason: 'the span start is a block, and it holds no picture',
       );
       expect(
-        s.celHasContentForLayer(withSpan, 4),
+        s.layerStack.celHasContentForLayer(withSpan, 4),
         isFalse,
         reason: 'and so is the rest of its run',
       );
       expect(
-        s.celHasContentForLayer(withSpan, 9),
+        s.layerStack.celHasContentForLayer(withSpan, 9),
         isTrue,
         reason:
             '⛔off the span there is no block, so nothing to grey — a '
@@ -314,29 +314,29 @@ void main() {
       // Nothing committed yet: the store only learns about pixels at
       // stroke commit, which is why waiting for it left the block grey
       // for the whole stroke.
-      expect(s.celHasContentForLayer(layer, 0), isFalse);
-      final before = s.celTintRevision.value;
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
+      final before = s.layerStack.celTintRevision.value;
 
       s.setBrushInputActive(true);
 
       expect(
-        s.celHasContentForLayer(layer, 0),
+        s.layerStack.celHasContentForLayer(layer, 0),
         isTrue,
         reason: 'pen down on the active cel already counts as worked',
       );
       expect(
-        s.celTintRevision.value,
+        s.layerStack.celTintRevision.value,
         greaterThan(before),
         reason: 'and it announces, so the row repaints now',
       );
 
       // A cel the pen is NOT on is unaffected.
       final other = s.layers.firstWhere((l) => l.id != layer.id);
-      expect(s.celHasContentForLayer(other, 0), isTrue);
+      expect(s.layerStack.celHasContentForLayer(other, 0), isTrue);
 
       s.setBrushInputActive(false);
       expect(
-        s.celHasContentForLayer(layer, 0),
+        s.layerStack.celHasContentForLayer(layer, 0),
         isFalse,
         reason: 'an abandoned stroke that drew nothing leaves it unworked',
       );
@@ -375,7 +375,7 @@ void main() {
         ),
       );
       expect(bumps, 2, reason: 'drawn → empty');
-      expect(s.celHasContentForLayer(layer, 0), isFalse);
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
     });
   });
 

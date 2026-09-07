@@ -27,7 +27,6 @@ import '../../models/pixel_verb_subject.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/onion_skin_settings.dart';
 import '../../models/range_snap.dart';
 import '../../models/delete_subject.dart';
@@ -182,7 +181,6 @@ abstract interface class SessionInternals {
   );
   AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  bool canAddLayerOfKind(LayerKind kind);
   bool get canCreateInstance;
   bool Function()? get canvasHasSelection;
   void Function()? get clearCanvasSelection;

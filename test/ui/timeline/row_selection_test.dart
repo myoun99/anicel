@@ -255,8 +255,8 @@ void main() {
 
     test('deleting a row selection takes them all, in ONE undo', () {
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final drawings = [
         for (final layer in s.layers)
           if (layer.kind == LayerKind.animation) layer,
@@ -285,7 +285,7 @@ void main() {
 
     test('deleting clears the selection — it named rows that are gone', () {
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final doomed = s.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
       );
@@ -299,7 +299,7 @@ void main() {
 
     test('rename gives every selected editable row the SAME name', () {
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final drawings = [
         for (final layer in s.layers)
           if (layer.kind == LayerKind.animation) layer,
@@ -323,7 +323,7 @@ void main() {
 
     test('B: duplicate takes the whole selection, in ONE undo', () {
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final drawings = [
         for (final layer in s.layers)
           if (layer.kind == LayerKind.animation) layer,
@@ -350,7 +350,7 @@ void main() {
       // ⑨ shipped `renameSelectedLayers` with no door — this is the door,
       // and the door is what a user actually presses.
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final drawings = [
         for (final layer in s.layers)
           if (layer.kind == LayerKind.animation) layer,
@@ -514,7 +514,7 @@ void main() {
   group('㊵ a drag carries the whole selection', () {
     test('the run widens to the selection SPAN', () {
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final stack = s.layers;
       final lower = stack[0];
       final upper = stack[1];
@@ -540,8 +540,8 @@ void main() {
 
     test('two selected rows land together, in order', () {
       final s = session();
-      s.addLayerOfKind(LayerKind.animation);
-      s.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      s.layerStack.addLayerOfKind(LayerKind.animation);
       final drawings = [
         for (final layer in s.layers)
           if (layer.kind == LayerKind.animation) layer,

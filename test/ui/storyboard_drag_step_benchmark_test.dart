@@ -42,9 +42,9 @@ void main() {
   }) {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    session.addLayerOfKind(LayerKind.storyboard);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
     for (var i = 0; i < layers; i += 1) {
-      session.addLayer();
+      session.layerStack.addLayer();
     }
     for (var i = 0; i < cuts; i += 1) {
       session.createCut();

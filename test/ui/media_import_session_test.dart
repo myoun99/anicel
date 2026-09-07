@@ -114,7 +114,7 @@ void main() {
       reason: 'born covering — real cell + hold ghosts tile the cut',
     );
     expect(
-      s.celHasContentForLayer(layer, 0),
+      s.layerStack.celHasContentForLayer(layer, 0),
       isTrue,
       reason: 'the baked cel reads as drawn (store content signal)',
     );
@@ -166,7 +166,7 @@ void main() {
       reason: 'the covering normalization holds it to the cut length',
     );
     expect(s.mediaAssets, isEmpty);
-    expect(s.celHasContentForLayer(layer, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });
 
@@ -199,7 +199,7 @@ void main() {
     expect(after.kind, LayerKind.image, reason: 'kind never changes');
     expect(s.mediaAssets, isEmpty, reason: 'orphaned asset unregisters');
     expect(
-      s.celHasContentForLayer(after, 0),
+      s.layerStack.celHasContentForLayer(after, 0),
       isTrue,
       reason: 'the pixels were always the cels',
     );
@@ -253,7 +253,7 @@ void main() {
     // The linked-cut follow-up moved the active cut; content checks read
     // the ACTIVE cut, so come back to the imported one first.
     s.selectCut(imported.id);
-    expect(s.celHasContentForLayer(a, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(a, 0), isTrue);
 
     final b = imported.layers.firstWhere((l) => l.name == 'B');
     expect(b.frames, hasLength(1));
@@ -368,7 +368,7 @@ void main() {
     expect(layer.frames, hasLength(3), reason: 'pages never fold');
     for (var frame = 0; frame < 3; frame += 1) {
       expect(
-        s.celHasContentForLayer(layer, frame),
+        s.layerStack.celHasContentForLayer(layer, frame),
         isTrue,
         reason: 'page ${frame + 1} baked into the store',
       );
@@ -421,7 +421,7 @@ void main() {
     );
     expect(layer.mediaReference, isNull, reason: 'rasterize = no reference');
     expect(s.mediaAssets, isEmpty, reason: 'absorbed pixels register nothing');
-    expect(s.celHasContentForLayer(layer, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });
 
@@ -485,7 +485,7 @@ void main() {
     final organizer = cut.layers.firstWhere((l) => l.id == attach.folderId);
     expect(organizer.kind, LayerKind.folder);
     expect(organizer.name, 'LO');
-    expect(s.celHasContentForLayer(attach, 0), isTrue);
+    expect(s.layerStack.celHasContentForLayer(attach, 0), isTrue);
     await tester.pumpAndSettle();
   });
 }

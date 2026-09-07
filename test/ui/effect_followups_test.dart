@@ -184,7 +184,7 @@ void main() {
         );
         addTearDown(session.dispose);
         session.createDrawingAtCurrentFrame();
-        session.addLayerOfKind(LayerKind.adjustment);
+        session.layerStack.addLayerOfKind(LayerKind.adjustment);
         final row = session.activeLayer!;
         final sourceCutId = session.activeCutId!;
         session.createLinkedCutFromActiveCut();

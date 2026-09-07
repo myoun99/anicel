@@ -65,7 +65,7 @@ void main() {
   /// left on" has somewhere to be that is not the top row.
   LayerId addSecondDrawingLayer(EditorSessionManager session) {
     final before = {for (final layer in session.layers) layer.id};
-    session.addLayer();
+    session.layerStack.addLayer();
     return session.layers
         .firstWhere((layer) => !before.contains(layer.id))
         .id;

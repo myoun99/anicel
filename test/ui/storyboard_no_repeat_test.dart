@@ -28,7 +28,7 @@ void main() {
     );
 
     // The same call on a storyboard row changes nothing.
-    s.addLayerOfKind(LayerKind.storyboard);
+    s.layerStack.addLayerOfKind(LayerKind.storyboard);
     final storyboardId = s.activeLayer!.id;
     expect(s.activeLayer!.kind, LayerKind.storyboard);
     s.selectFrameIndex(0);

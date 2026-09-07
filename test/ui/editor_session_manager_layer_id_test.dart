@@ -49,9 +49,9 @@ void main() {
     final path = '${directory.path}/scene.anicel';
 
     final first = EditorSessionManager(initialProject: createDefaultProject());
-    first.addLayer();
-    first.addLayer();
-    first.addLayer();
+    first.layerStack.addLayer();
+    first.layerStack.addLayer();
+    first.layerStack.addLayer();
     expectNoDuplicateIds(first, reason: 'precondition: one session is fine');
     final savedIds = everyLayerId(first).map((id) => id.value).toSet();
     expect(
@@ -70,7 +70,7 @@ void main() {
     await second.projectDoor.openProjectFromFile(path);
     expectNoDuplicateIds(second, reason: 'precondition: the file is sound');
 
-    second.addLayer();
+    second.layerStack.addLayer();
     expectNoDuplicateIds(second);
   });
 
@@ -78,8 +78,8 @@ void main() {
     final path = '${directory.path}/scene.anicel';
 
     final first = EditorSessionManager(initialProject: createDefaultProject());
-    first.addLayer();
-    first.addLayer();
+    first.layerStack.addLayer();
+    first.layerStack.addLayer();
     await first.projectDoor.saveProjectToFile(path);
     first.dispose();
 
@@ -88,9 +88,9 @@ void main() {
     await second.projectDoor.openProjectFromFile(path);
     // Several in a row: a fix that only skips the FIRST collision leaves the
     // second add colliding again.
-    second.addLayer();
-    second.addLayer();
-    second.addLayer();
+    second.layerStack.addLayer();
+    second.layerStack.addLayer();
+    second.layerStack.addLayer();
     expectNoDuplicateIds(second);
   });
 }

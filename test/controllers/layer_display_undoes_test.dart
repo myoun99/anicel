@@ -130,7 +130,7 @@ void main() {
     final session = newSession();
     addTearDown(session.dispose);
     for (var i = 0; i < 3; i += 1) {
-      session.addLayer();
+      session.layerStack.addLayer();
     }
     final visibleBefore = {
       for (final layer in session.layers)
@@ -167,7 +167,7 @@ void main() {
     final session = newSession();
     addTearDown(session.dispose);
     for (var i = 0; i < 3; i += 1) {
-      session.addLayer();
+      session.layerStack.addLayer();
     }
     final layerId = session.layers.first.id;
     final markerBefore = requireLayerAnywhere(
@@ -226,7 +226,7 @@ void main() {
     // membership and nothing else.
     final session = newSession();
     addTearDown(session.dispose);
-    session.addLayer();
+    session.layerStack.addLayer();
     final first = session.layers.first.id;
     final second = session.layers.last.id;
     expect(first, isNot(second), reason: 'fixture: two distinct rows');
@@ -259,7 +259,7 @@ void main() {
     final session = newSession();
     addTearDown(session.dispose);
     for (var i = 0; i < 3; i += 1) {
-      session.addLayer();
+      session.layerStack.addLayer();
     }
     final before = {
       for (final layer in session.layers)

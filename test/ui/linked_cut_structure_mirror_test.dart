@@ -41,7 +41,7 @@ void main() {
     };
     final linkedBefore = cutById(pair.linked).layers.length;
 
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
 
     expect(cutById(pair.linked).layers, hasLength(linkedBefore + 1));
 
@@ -70,7 +70,7 @@ void main() {
     final sourceBefore = cutById(pair.source).layers.length;
     final linkedBefore = cutById(pair.linked).layers.length;
 
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     session.undo();
 
     expect(cutById(pair.linked).layers, hasLength(linkedBefore));
@@ -85,7 +85,7 @@ void main() {
       'inside the command)', () {
     final pair = makeLinkedPair();
 
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final idsAfterFirst = [
       for (final layer in cutById(pair.source).layers) layer.id,
     ];
@@ -104,7 +104,7 @@ void main() {
     final pair = makeLinkedPair();
     final sourceBefore = cutById(pair.source).layers.length;
 
-    session.addLayerOfKind(LayerKind.instruction);
+    session.layerStack.addLayerOfKind(LayerKind.instruction);
 
     expect(
       cutById(pair.source).layers,
@@ -120,7 +120,7 @@ void main() {
     final soloCutId = session.requireActiveCut.id;
     final before = cutById(soloCutId).layers.length;
 
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
 
     expect(cutById(soloCutId).layers, hasLength(before + 1));
     expect(session.isLayerLinked(session.activeLayer!.id), isFalse);
@@ -139,7 +139,7 @@ void main() {
       for (final layer in cutById(pair.source).layers) layer.id,
     };
 
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
 
     final added = session.activeLayer!;
     expect(
@@ -392,9 +392,9 @@ void main() {
     final pair = makeLinkedPair();
 
     // Two rows in a row: the second must sit above the first in BOTH cuts.
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final first = session.activeLayer!;
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
     final second = session.activeLayer!;
 
     int indexIn(CutId cutId, String name) => cutById(

@@ -23,7 +23,7 @@ void main() {
     final session = sessionFor();
     final duration = session.requireActiveCut.duration;
 
-    session.addLayerOfKind(LayerKind.storyboard);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
 
     final layer = storyboardLayerForCut(session.requireActiveCut)!;
     expect(layer.timeline.keys, [0]);
@@ -42,7 +42,7 @@ void main() {
   test('the cell carries a real drawing, so the row is drawable at once', () {
     final session = sessionFor();
 
-    session.addLayerOfKind(LayerKind.storyboard);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
 
     final layer = storyboardLayerForCut(session.requireActiveCut)!;
     expect(layer.frames, hasLength(1));
@@ -53,7 +53,7 @@ void main() {
       'rule, not a new rule for everyone', () {
     final session = sessionFor();
 
-    session.addLayerOfKind(LayerKind.animation);
+    session.layerStack.addLayerOfKind(LayerKind.animation);
 
     final added = session.layers.firstWhere(
       (layer) => layer.id == session.activeLayerId,
@@ -64,7 +64,7 @@ void main() {
   test('the row can be DIVIDED from the moment it is made: add-frame '
       'inside its one cell splits it', () {
     final session = sessionFor();
-    session.addLayerOfKind(LayerKind.storyboard);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
     final duration = session.requireActiveCut.duration;
 
     session.selectFrameIndex(3);
@@ -91,7 +91,7 @@ void main() {
 
     test('the floor is the LAST division plus one', () {
       final session = sessionFor();
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
 
@@ -100,7 +100,7 @@ void main() {
 
     test('an END trim stops at that floor instead of at one frame', () {
       final session = sessionFor();
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
@@ -121,7 +121,7 @@ void main() {
     test('a LEAD drag is floored by the panel it GRABBED, not by the last '
         'one — the grabbed panel keeps one frame', () {
       final session = sessionFor();
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
@@ -159,7 +159,7 @@ void main() {
     test('R10 R4: a lead drag that GROWS the cut leaves the row still '
         'covering it — the tiling invariant survives the new verb', () {
       final session = sessionFor();
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
@@ -207,7 +207,7 @@ void main() {
     test('R10 R4: after a LEAD drag the stored row still ends where the cut '
         'ends, so the NEXT end drag does not snap the cut back', () {
       final session = sessionFor();
-      session.addLayerOfKind(LayerKind.storyboard);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
