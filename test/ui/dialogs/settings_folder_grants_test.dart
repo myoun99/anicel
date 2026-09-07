@@ -45,7 +45,6 @@ void main() {
         'settings-recordings-browse',
         () => AppSave.settings.value.recordingsDirectory,
       ),
-      ('settings-conform-browse', () => AppSave.settings.value.conformDirectory),
     ]) {
       final button = find.byKey(ValueKey<String>(key));
       await tester.ensureVisible(button);

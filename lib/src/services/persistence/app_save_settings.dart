@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'app_documents.dart';
 import 'app_support_path.dart';
 import 'folder_grant.dart';
+import 'session_scratch.dart';
 
 /// A user-chosen folder plus the token that reopens it after a relaunch
 /// on the scoped platforms (Q-scoped-folder-settings, 유저 08-26 「알아서
@@ -78,7 +79,6 @@ class AppSaveSettings {
   const AppSaveSettings({
     this.periodicSnapshotMinutes,
     this.recordingsDirectory,
-    this.conformDirectory,
   });
 
   /// What the clock offers when it is first switched on.
@@ -113,22 +113,21 @@ class AppSaveSettings {
   /// documents `Recordings` folder.
   final GrantedDirectory? recordingsDirectory;
 
-  /// Where audio conforms are cached; null = the app support folder.
-  ///
-  /// This exists to place them on a PARTICULAR DEVICE'S disk — out of a
-  /// cloud-synced folder, onto an SD card, onto a fast drive — because a
-  /// conform is around twelve times the size of its source and used to sit
-  /// beside the project, which meant it synced with it. It is NOT a way to
-  /// share a cache between machines: that trade spends gigabytes of
-  /// transfer to save minutes of CPU.
-  final GrantedDirectory? conformDirectory;
+  // 🪦**`conformDirectory` IS GONE.** It let the user place the conform
+  // cache on a PARTICULAR DEVICE'S disk — out of a cloud folder, onto an
+  // SD card — because a conform is ~12× its source and the cache was an
+  // unbounded pile that lived across runs. Both halves of that reason have
+  // been taken away: a conform now waits in the RUN'S room and moves into
+  // the project file at the next save ([AppSave.conformRootDirectory]), so
+  // there is no pile to place. ⛔A setting that outlives its feature is a
+  // value the next reader has to work out is dead — the same reason
+  // `sidecarDirectory` was read and dropped below.
 
   static const Object _unset = Object();
 
   AppSaveSettings copyWith({
     Object? periodicSnapshotMinutes = _unset,
     Object? recordingsDirectory = _unset,
-    Object? conformDirectory = _unset,
   }) => AppSaveSettings(
     periodicSnapshotMinutes: identical(periodicSnapshotMinutes, _unset)
         ? this.periodicSnapshotMinutes
@@ -136,15 +135,11 @@ class AppSaveSettings {
     recordingsDirectory: identical(recordingsDirectory, _unset)
         ? this.recordingsDirectory
         : recordingsDirectory as GrantedDirectory?,
-    conformDirectory: identical(conformDirectory, _unset)
-        ? this.conformDirectory
-        : conformDirectory as GrantedDirectory?,
   );
 
   Map<String, dynamic> toJson() => {
     'periodicSnapshotMinutes': periodicSnapshotMinutes,
     'recordingsDirectory': recordingsDirectory?.toJson(),
-    'conformDirectory': conformDirectory?.toJson(),
   };
 
   /// `sidecarDirectory` left by an older build is READ AND DROPPED — the
@@ -181,7 +176,6 @@ class AppSaveSettings {
       recordingsDirectory: GrantedDirectory.fromJson(
         json['recordingsDirectory'],
       ),
-      conformDirectory: GrantedDirectory.fromJson(json['conformDirectory']),
     );
   }
 
@@ -189,14 +183,12 @@ class AppSaveSettings {
   bool operator ==(Object other) =>
       other is AppSaveSettings &&
       other.periodicSnapshotMinutes == periodicSnapshotMinutes &&
-      other.recordingsDirectory == recordingsDirectory &&
-      other.conformDirectory == conformDirectory;
+      other.recordingsDirectory == recordingsDirectory;
 
   @override
   int get hashCode => Object.hash(
     periodicSnapshotMinutes,
     recordingsDirectory,
-    conformDirectory,
   );
 }
 
@@ -316,24 +308,37 @@ abstract final class AppSave {
     return '${appDocumentsDirectory()}/Recordings';
   }
 
-  /// The folder the conform cache sits under — what Preferences shows, and
-  /// the one place that decides where the cache root is.
+  /// Where a conform waits until a save absorbs it — **the one place that
+  /// decides**, which is what makes the decision reversible.
   ///
   /// Conforms used to live in `<project>.assets/Conformed`, which put a
-  /// twelve-times-the-source cache inside whatever folder the project was
+  /// twelve-times-the-source pile inside whatever folder the project was
   /// in, synced it to whatever cloud that folder belonged to, and made the
   /// `.anicel` grow a sibling that the single-file format exists to remove.
+  /// They then moved to a container folder of their own with a size bound,
+  /// a collector and a root the user could point anywhere.
   ///
-  /// Only the DEFAULT root is redirected under FLUTTER_TEST: a configured
-  /// root was named explicitly and is used as given, which is what a test
-  /// that sets one is asking for.
-  static String get conformRootDirectory {
-    final configured = settings.value.conformDirectory;
-    if (configured != null) {
-      return configured.path;
-    }
-    return testRedirectedAppSupportPath('Conformed', sandbox: 'conform');
-  }
+  /// 🚨★★★**NOW IT IS THE RUN'S 이사대기, AND THAT IS A LIFETIME, NOT A
+  /// LOCATION.** A conform is decoded PCM waiting to move into the project
+  /// file at the next save — the same sentence carried media already had —
+  /// so it belongs in the same room, with the same ending: the save takes
+  /// it in, and the room goes when the run does. That is what let the
+  /// collector, the 2GB bound and the root setting all go: there is
+  /// nothing left to accumulate and so nothing to reclaim.
+  ///
+  /// ⚠️**The bound was doing real work and it is worth knowing what
+  /// replaced it.** It existed because 「nobody was collecting any of it」
+  /// and on an iPad the container is neither visible nor reachable, so
+  /// 「it just grows」 meant 「until the device is full」. A run's room
+  /// cannot grow past one session, and the launch sweep takes the rooms of
+  /// runs that ended — so the unbounded pile is gone by construction
+  /// rather than by a number.
+  ///
+  /// 🔒**To put it back in the container** (유저 2026-09-07 said that may
+  /// happen: 「컨폼파일을 나중에 프로젝트파일에서 앱컨테이너로 뺄 가능성이
+  /// 존재해」): change THIS getter and nothing else. Every conform address
+  /// is derived from it through [ConformCacheLayout].
+  static String get conformRootDirectory => SessionScratch.stagedFolder();
 
   /// Re-establishes the settings folders' grants for THIS run, answering
   /// the settings value the caller should store when a folder moved — or
@@ -364,14 +369,9 @@ abstract final class AppSave {
     }
 
     final recordings = await resolve(current.recordingsDirectory);
-    final conforms = await resolve(current.conformDirectory);
-    if (recordings == current.recordingsDirectory &&
-        conforms == current.conformDirectory) {
+    if (recordings == current.recordingsDirectory) {
       return null;
     }
-    return current.copyWith(
-      recordingsDirectory: recordings,
-      conformDirectory: conforms,
-    );
+    return current.copyWith(recordingsDirectory: recordings);
   }
 }

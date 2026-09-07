@@ -2,8 +2,6 @@ import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/material.dart';
 
-import '../../services/audio/conform_cache_maintenance.dart'
-    show clearConformCache, conformCacheBytes;
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/app_support_path.dart';
 import '../../services/persistence/session_scratch.dart';
@@ -231,89 +229,14 @@ class AutosaveSettingsSection extends StatelessWidget {
                 ],
               ],
             ),
-            const Divider(height: 16),
-            // The conform cache. Movable for the same reason the recordings
-            // folder is, and desktop-only for the same reason too: on
-            // mobile the app container is the one place writable without
-            // asking an OS, and a cache in a scoped folder would need a
-            // grant held for a session that writes to it unannounced.
-            SettingsSectionHeading(
-              label: AppText.strings.conformCacheTitle,
-              help: AppText.strings.conformCacheHelp,
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    AppSave.conformRootDirectory,
-                    key: const ValueKey<String>('settings-conform-directory'),
-                    style: const TextStyle(fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (!Platform.isAndroid && !Platform.isIOS) ...[
-                  if (settings.conformDirectory != null)
-                    ControlPressClaim(
-                      onPressed: () => session.setSaveSettings(
-                        settings.copyWith(conformDirectory: null),
-                      ),
-                      child: TextButton(
-                        key: const ValueKey<String>('settings-conform-reset'),
-                        onPressed: silentPress(
-                          () => session.setSaveSettings(
-                            settings.copyWith(conformDirectory: null),
-                          ),
-                        ),
-                        child: Text(AppText.strings.autosaveDefault),
-                      ),
-                    ),
-                  ControlPressClaim(
-                    onPressed: () async {
-                      // The GRANT flavour, same reason as the recordings
-                      // folder above.
-                      final grant = await pickFolderGrantForUser(context);
-                      final path = grant?.path;
-                      if (path != null) {
-                        session.setSaveSettings(
-                          AppSave.settings.value.copyWith(
-                            conformDirectory: GrantedDirectory(
-                              path: path,
-                              bookmark: grant!.bookmark,
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: TextButton(
-                      key: const ValueKey<String>('settings-conform-browse'),
-                      onPressed: silentPress(() async {
-                        // The GRANT flavour, same reason as the recordings
-                        // folder above.
-                        final grant = await pickFolderGrantForUser(context);
-                        final path = grant?.path;
-                        if (path != null) {
-                          session.setSaveSettings(
-                            AppSave.settings.value.copyWith(
-                              conformDirectory: GrantedDirectory(
-                                path: path,
-                                bookmark: grant!.bookmark,
-                              ),
-                            ),
-                          );
-                        }
-                      }),
-                      child: Text(AppText.strings.autosaveChoose),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            _ConformCacheSizeRow(
-              directory: AppSave.conformRootDirectory,
-              releaseDiskBackedConforms:
-                  session.audioConformStore.releaseDiskBacked,
-            ),
+            // 🪦**THE CONFORM CACHE BLOCK IS GONE** — a heading, a movable
+            // root, a size and an「empty now」button. All four existed
+            // because the cache was an unbounded pile that outlived every
+            // run, invisible on the platforms where it mattered most. A
+            // conform now waits in the RUN'S room and moves into the
+            // project at the next save, so the room's own row in the
+            // container block below already counts it, and the room's own
+            // ending already empties it.
           ],
         );
       },
@@ -517,92 +440,6 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
   }
 }
 
-/// What the conform cache is holding, and the one button that empties it.
-///
-/// Its own widget because it holds a MEASUREMENT: a directory scan has no
-/// business in a build that reruns on every settings change, and after
-/// emptying, the number has to come back changed.
-///
-/// It exists at all because of the iPad. On a desktop the folder is a
-/// place someone can open and delete; inside an app container it is
-/// neither visible nor reachable, so without this the only honest thing
-/// to say about the cache would be "it is somewhere, and it is some size".
-class _ConformCacheSizeRow extends StatefulWidget {
-  const _ConformCacheSizeRow({
-    required this.directory,
-    required this.releaseDiskBackedConforms,
-  });
-
-  /// Read only to NOTICE it changed — the measurement follows the root.
-  final String directory;
-
-  /// Makes the session let go of the conforms whose PCM lives only on
-  /// disk, so that emptying the cache means what it says.
-  final VoidCallback releaseDiskBackedConforms;
-
-  @override
-  State<_ConformCacheSizeRow> createState() => _ConformCacheSizeRowState();
-}
-
-class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
-  late int _bytes = conformCacheBytes();
-
-  @override
-  void didUpdateWidget(covariant _ConformCacheSizeRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.directory != widget.directory) {
-      setState(() => _bytes = conformCacheBytes());
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            _bytes == 0
-                ? AppText.strings.containerEmpty
-                : AppText.strings.conformHoldingTemplate.replaceAll(
-                    '{size}',
-                    byteSizeLabel(_bytes),
-                  ),
-            key: const ValueKey<String>('settings-conform-size'),
-            style: const TextStyle(fontSize: 12),
-          ),
-        ),
-        if (_bytes > 0)
-          ControlPressClaim(
-            onPressed: () {
-              widget.releaseDiskBackedConforms();
-              clearConformCache();
-              setState(() => _bytes = conformCacheBytes());
-            },
-            child: TextButton(
-              key: const ValueKey<String>('settings-conform-clear'),
-              // No confirmation on purpose: a conform is derived data, so
-              // the worst this can cost is a re-decode. Asking "are you
-              // sure" about something that cannot lose anything teaches
-              // people to click through the dialogs that can.
-              //
-              // 🚨 That is only true once the SESSION has let go. A conform
-              // past the streaming threshold is held with no resident PCM
-              // and the file as the copy of record — delete it underneath
-              // and the clip is silent for the rest of the session and in
-              // the export, and on Windows the open reader blocks the
-              // delete so the biggest entries survive the emptying.
-              onPressed: silentPress(() {
-                widget.releaseDiskBackedConforms();
-                clearConformCache();
-                setState(() => _bytes = conformCacheBytes());
-              }),
-              child: Text(AppText.strings.autosaveEmptyNow),
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 /// 🚨★★★**WHAT THE APP KEEPS OUTSIDE YOUR PROJECT FILE.**
 ///
@@ -650,11 +487,11 @@ class _AppContainerBlockState extends State<_AppContainerBlock> {
         strings.containerAreaRecovery,
         AppSave.recoveryDirectory(),
       ),
-      _ContainerArea.folder(
-        'conformed',
-        strings.containerAreaConformed,
-        appSupportFilePath('Conformed'),
-      ),
+      // 🪦**NO `Conformed/` ROW.** Nothing writes there any more — a
+      // conform waits in the run's room and moves into the project at the
+      // next save — so the row would report 0 for ever, which reads as
+      // 「the app keeps no conforms」 rather than 「that folder is retired」.
+      // What the app DOES keep is counted by the session row below.
       // 🚨The WHOLE `Sessions/` tree, not this run's staged folder. Staged
       // media moved into a room per run, and the rooms of runs that
       // crashed are still holding bytes — pointing this row at our own

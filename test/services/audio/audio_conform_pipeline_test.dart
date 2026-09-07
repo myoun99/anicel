@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
@@ -239,31 +240,23 @@ void main() {
       );
     });
 
-    test('the cache is assembled from the LIVE setting', () {
-      // Resolved per call rather than held: a path captured before the
-      // user moved the root would name a folder nothing writes to.
-      AppSave.settings.value = const AppSaveSettings(
-        conformDirectory: GrantedDirectory(path: 'D:/fast/conforms'),
-      );
-      addTearDown(() => AppSave.settings.value = const AppSaveSettings());
-      expect(AppSave.conformRootDirectory, 'D:/fast/conforms');
+    test('🚨 a conform waits in THIS RUN\'S room, and the address is built '
+        'from there', () {
+      // 🪦Two tests used to stand here: one drove a `conformDirectory`
+      // setting and checked the root followed it, one checked an unset
+      // setting fell back to the container. The setting is gone — a
+      // conform is decoded PCM waiting to move into the project file at
+      // the next save, which is a LIFETIME, and the room whose lifetime
+      // that is has no reason to be somewhere the user picked.
+      expect(AppSave.conformRootDirectory, SessionScratch.stagedFolder());
       expect(
         layoutAt48k().conformPathFor('/x/a.wav'),
-        startsWith('D:/fast/conforms/'),
+        startsWith('${SessionScratch.stagedFolder()}/'),
       );
     });
 
-    test('an unset root falls back to the default', () {
-      // An empty string used to round-trip as "unset"; a granted
-      // directory cannot hold an empty path at all (fromJson reads one
-      // as absent), so unset is simply null now.
-      AppSave.settings.value = const AppSaveSettings();
-      addTearDown(() => AppSave.settings.value = const AppSaveSettings());
-      expect(AppSave.conformRootDirectory, contains('qa_test_conform_'));
-    });
-
-    test('the default root is redirected under test', () {
-      // Without this a test run caches into the real user's app folder and
+    test('the root is redirected under test', () {
+      // Without this a test run writes into the real user's app folder and
       // reads whatever a previous run left there.
       expect(
         AppSave.conformRootDirectory,

@@ -527,7 +527,6 @@ enum AppStrings {
   String get containerAreaSettings => _s('containerAreaSettings');
   String get containerAreaBrushTips => _s('containerAreaBrushTips');
   String get containerAreaRecovery => _s('containerAreaRecovery');
-  String get containerAreaConformed => _s('containerAreaConformed');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
   String get containerTotal => _s('containerTotal');
   String get saveCelsLostTemplate => _s('saveCelsLostTemplate');
@@ -915,11 +914,7 @@ enum AppStrings {
   String get appContainerHelp => _s('appContainerHelp');
   String get recordingsFolderTitle => _s('recordingsFolderTitle');
   String get recordingsFolderHelp => _s('recordingsFolderHelp');
-  String get conformCacheTitle => _s('conformCacheTitle');
-  String get conformCacheHelp => _s('conformCacheHelp');
   String get containerEmpty => _s('containerEmpty');
-  String get conformHoldingTemplate => _s('conformHoldingTemplate');
-  String get autosaveEmptyNow => _s('autosaveEmptyNow');
   String get commonMinutesShort => _s('commonMinutesShort');
 
   // --- The export window ---
@@ -1514,7 +1509,6 @@ enum AppStrings {
     'containerAreaSettings': 'Settings',
     'containerAreaBrushTips': 'Brush tips',
     'containerAreaRecovery': 'Recovery snapshots',
-    'containerAreaConformed': 'Conformed audio',
     'containerAreaSessionScratch': 'Session scratch',
     'containerTotal': 'Total',
     'saveCelsLostTemplate':
@@ -1698,12 +1692,7 @@ enum AppStrings {
     'recordingsFolderTitle': 'Recordings folder',
     'recordingsFolderHelp':
         'Where voice takes land. Saving copies the ones a project uses into the project file; every take stays here either way, so a recording is never in one place only.',
-    'conformCacheTitle': 'Conform cache',
-    'conformCacheHelp':
-        'Decoded audio, kept so a waveform and playback do not decode the same file twice. A conform is around twelve times the size of its source, so point this at a drive with room — and out of a cloud-synced folder. Deleting it costs time, never content.',
     'containerEmpty': 'Empty',
-    'conformHoldingTemplate': 'Holding {size}',
-    'autosaveEmptyNow': 'Empty now',
     'commonMinutesShort': ' min',
     'exExport': 'Export',
     'exAddToQueue': 'Add to queue',
@@ -2414,7 +2403,6 @@ enum AppStrings {
     'containerAreaSettings': '設定',
     'containerAreaBrushTips': 'ブラシ先端',
     'containerAreaRecovery': '復旧スナップショット',
-    'containerAreaConformed': 'コンフォーム済み音声',
     'containerAreaSessionScratch': 'セッション作業領域',
     'containerTotal': '合計',
     'saveCelsLostTemplate':
@@ -2627,12 +2615,7 @@ enum AppStrings {
     'recordingsFolderTitle': '録音フォルダ',
     'recordingsFolderHelp':
         'ボイステイクが置かれる場所です。保存すると、プロジェクトが使っているテイクはプロジェクトファイルに複製されます。どちらにせよテイクはここにも残るので、録音が1か所にしかない状態にはなりません。',
-    'conformCacheTitle': 'コンフォームキャッシュ',
-    'conformCacheHelp':
-        'デコード済みの音声で、波形と再生が同じファイルを二度デコードしないように残しています。コンフォームは元の約12倍の大きさになるので、空きのあるドライブを、そしてクラウド同期フォルダの外を指してください。消してもかかるのは時間だけで、中身は失われません。',
     'containerEmpty': '空',
-    'conformHoldingTemplate': '{size} 使用中',
-    'autosaveEmptyNow': '今すぐ空にする',
     'commonMinutesShort': ' 分',
     'exExport': '書き出し',
     'exAddToQueue': 'キューに追加',
@@ -3367,7 +3350,6 @@ enum AppStrings {
     'containerAreaSettings': '설정',
     'containerAreaBrushTips': '브러시 팁',
     'containerAreaRecovery': '복구 스냅샷',
-    'containerAreaConformed': '컨폼된 오디오',
     'containerAreaSessionScratch': '세션 작업 공간',
     'containerTotal': '합계',
     'saveCelsLostTemplate':
@@ -3578,12 +3560,7 @@ enum AppStrings {
     'recordingsFolderTitle': '녹음 폴더',
     'recordingsFolderHelp':
         '보이스 테이크가 놓이는 곳입니다. 저장하면 프로젝트가 쓰는 테이크가 프로젝트 파일 안으로 복사됩니다. 어느 쪽이든 테이크는 여기에도 남으므로, 녹음이 한 곳에만 있는 일은 없습니다.',
-    'conformCacheTitle': '컨폼 캐시',
-    'conformCacheHelp':
-        '디코드해 둔 오디오로, 파형과 재생이 같은 파일을 두 번 디코드하지 않게 남겨 둡니다. 컨폼은 원본의 약 12배 크기가 되므로 여유 있는 드라이브를, 그리고 클라우드 동기화 폴더 바깥을 가리키세요. 지워도 드는 것은 시간뿐이고 내용은 잃지 않습니다.',
     'containerEmpty': '비어 있음',
-    'conformHoldingTemplate': '{size} 사용 중',
-    'autosaveEmptyNow': '지금 비우기',
     'commonMinutesShort': '분',
     'exExport': '내보내기',
     'exAddToQueue': '큐에 추가',
@@ -4337,7 +4314,6 @@ enum AppStrings {
     'containerAreaSettings': 'Réglages',
     'containerAreaBrushTips': 'Pointes de brosse',
     'containerAreaRecovery': 'Instantanés de récupération',
-    'containerAreaConformed': 'Audio conformé',
     'containerAreaSessionScratch': 'Espace de session',
     'containerTotal': 'Total',
     'saveCelsLostTemplate':
@@ -4564,12 +4540,7 @@ enum AppStrings {
     'recordingsFolderTitle': 'Dossier des enregistrements',
     'recordingsFolderHelp':
         'Où atterrissent les prises voix. L\'enregistrement copie dans le fichier de projet celles que le projet utilise ; chaque prise reste ici de toute façon, si bien qu\'un enregistrement n\'est jamais à un seul endroit.',
-    'conformCacheTitle': 'Cache de conformation',
-    'conformCacheHelp':
-        'Audio décodé, conservé pour qu\'une forme d\'onde et la lecture ne décodent pas deux fois le même fichier. Une conformation pèse environ douze fois sa source : visez un disque avec de la place, et hors d\'un dossier synchronisé dans le cloud. La supprimer coûte du temps, jamais du contenu.',
     'containerEmpty': 'Vide',
-    'conformHoldingTemplate': '{size} occupés',
-    'autosaveEmptyNow': 'Vider maintenant',
     'commonMinutesShort': ' min',
     'exExport': 'Exporter',
     'exAddToQueue': 'Ajouter à la file',
@@ -5270,7 +5241,6 @@ enum AppStrings {
     'containerAreaSettings': '设置',
     'containerAreaBrushTips': '笔尖',
     'containerAreaRecovery': '恢复快照',
-    'containerAreaConformed': '已转换音频',
     'containerAreaSessionScratch': '会话暂存区',
     'containerTotal': '合计',
     'saveCelsLostTemplate': '已保存，但有 {count} 张画面未能包含：存放它们的项目文件在项目打开期间被删除了。',
@@ -5473,12 +5443,7 @@ enum AppStrings {
     'recordingsFolderTitle': '录音文件夹',
     'recordingsFolderHelp':
         '配音素材落地的位置。保存时会把项目用到的素材复制进项目文件；无论如何每条素材都会留在这里，因此录音绝不会只存在于一处。',
-    'conformCacheTitle': '转换缓存',
-    'conformCacheHelp':
-        '已解码的音频，保留下来是为了让波形和播放不必把同一个文件解码两次。一次转换约为源文件的十二倍大小，因此请指向有空间的驱动器，并避开云同步文件夹。删除它只花时间，绝不会损失内容。',
     'containerEmpty': '空',
-    'conformHoldingTemplate': '占用 {size}',
-    'autosaveEmptyNow': '立即清空',
     'commonMinutesShort': ' 分钟',
     'exExport': '导出',
     'exAddToQueue': '加入队列',

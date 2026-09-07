@@ -19,8 +19,6 @@ import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame_id.dart';
 import '../../models/project.dart';
-import '../../services/audio/conform_cache_maintenance.dart'
-    show pruneConformCache;
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
@@ -455,33 +453,25 @@ class ProjectFileDoor {
     );
   }
 
-  /// Settles the conform cache's size — ON PROJECT OPEN ONLY.
+  /// Makes the session let go of the conforms whose PCM lives only on
+  /// disk — ON PROJECT OPEN ONLY.
   ///
-  /// That is the moment a fresh batch of conforms is about to be built, so
-  /// it is where the bound is worth enforcing, and it costs one directory
-  /// scan instead of one per conform on the UI isolate. Pruning FIRST also
-  /// means the entries this project is about to touch are the newest in
-  /// the cache, so they are the last things a later prune considers.
+  /// A conform past the streaming threshold is held with no resident PCM
+  /// and the file as the copy of record, so a session that opened another
+  /// project would keep readers on bytes the new project has no business
+  /// with. See [AudioConformStore.releaseDiskBacked].
   ///
-  /// ⛔ NOT on the audio-settings knobs. Warming happens there too — a
-  /// rate or speed change re-keys every conform — but a directory walk on
-  /// the UI isolate is not something to hang off a knob somebody drags
-  /// through four values to compare them ([[old-device-support-policy]]).
+  /// 🪦It used to run the cache collector here too, and the doc explained
+  /// why open was the right moment to enforce a size bound. There is no
+  /// bound and no collector: a conform waits in the RUN'S room and the
+  /// room goes when the run does, so nothing accumulates to collect.
   ///
-  /// The store lets go BEFORE the collector runs. A conform past the
-  /// streaming threshold is held with no resident PCM and the file as the
-  /// copy of record, so pruning one out from under a live entry leaves the
-  /// clip silent for the session — see [AudioConformStore.releaseDiskBacked].
-  ///
-  /// ⚠️ Deliberately NOT switched off under `FLUTTER_TEST`. The root is
-  /// already redirected to a temp folder there, and a call site compiled
-  /// out of every test is a call site with no observer — which is how the
-  /// path assembly went unwatched before ([[verify-before-claiming-shared]]).
-  /// It costs nothing when the cache does not exist yet, which is the
-  /// state every test starts in.
+  /// ⚠️ Deliberately NOT switched off under `FLUTTER_TEST` — a call site
+  /// compiled out of every test is a call site with no observer, which is
+  /// how the path assembly went unwatched before
+  /// ([[verify-before-claiming-shared]]).
   void settleConformCache() {
     _audioConformStore.releaseDiskBacked();
-    pruneConformCache();
   }
 
   /// Opens a .anicel file, replacing the WHOLE session state: project,

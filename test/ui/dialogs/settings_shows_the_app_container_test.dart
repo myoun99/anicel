@@ -49,7 +49,10 @@ void main() {
       'settings',
       'brush-tips',
       'recovery',
-      'conformed',
+      // 🪦`conformed` was here. Nothing writes that folder any more — a
+      // conform waits in the run's room and moves into the project at the
+      // next save — so its row would report 0 for ever, which reads as
+      // 「no conforms are kept」 rather than 「that folder is retired」.
       'session-scratch',
     ]) {
       expect(

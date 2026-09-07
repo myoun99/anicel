@@ -24,12 +24,10 @@ void main() {
     expect(settings.toJson().keys, unorderedEquals(<String>[
       'periodicSnapshotMinutes',
       'recordingsDirectory',
-      'conformDirectory',
     ]));
     // Both folders default to the app's own, so a fresh install writes
     // nothing beside a project.
     expect(settings.recordingsDirectory, isNull);
-    expect(settings.conformDirectory, isNull);
   });
 
   test('the slider\'s range is the model\'s, and it is 3..60 minutes', () {
@@ -68,9 +66,8 @@ void main() {
   test('json roundtrip', () {
     const settings = AppSaveSettings(
       periodicSnapshotMinutes: 20,
-      recordingsDirectory: GrantedDirectory(path: '/tmp/takes'),
-      conformDirectory: GrantedDirectory(
-        path: '/tmp/conforms',
+      recordingsDirectory: GrantedDirectory(
+        path: '/tmp/takes',
         bookmark: 'Ym9va21hcms=',
       ),
     );
@@ -79,30 +76,21 @@ void main() {
       AppSaveSettings.fromJson(const AppSaveSettings().toJson()),
       const AppSaveSettings(),
     );
-    // copyWith can EXPLICITLY clear either directory back to the default.
+    // copyWith can EXPLICITLY clear the directory back to the default.
     expect(
       settings.copyWith(recordingsDirectory: null).recordingsDirectory,
       isNull,
     );
-    expect(settings.copyWith(conformDirectory: null).conformDirectory, isNull);
     expect(
-      settings.copyWith().recordingsDirectory,
-      const GrantedDirectory(path: '/tmp/takes'),
+      settings.copyWith().recordingsDirectory?.path,
+      '/tmp/takes',
+      reason: 'and an empty copyWith keeps what it was not given',
     );
-    expect(
-      settings.copyWith().conformDirectory?.path,
-      '/tmp/conforms',
-    );
-    // The two must not be one field wearing two names: moving the cache
-    // must not move the take shelf with it.
-    expect(
-      settings
-          .copyWith(
-            conformDirectory: const GrantedDirectory(path: '/elsewhere'),
-          )
-          .recordingsDirectory,
-      const GrantedDirectory(path: '/tmp/takes'),
-    );
+    // 🪦A conform folder used to ride here too, and three of the lines
+    // above were about the two not being one field wearing two names.
+    // There is one folder setting now: a conform waits in the run's room
+    // and moves into the project at the next save, so there is no pile to
+    // place on a particular disk.
   });
 
   test('a folder written by an older build (bare path) still reads — and '
@@ -128,7 +116,7 @@ void main() {
     FolderPicker.debugBookmarkResolver = (base64, kind) async =>
         base64 == 'MOVED=='
             ? const FolderGrant.granted(
-                path: '/mounted/conforms',
+                path: '/mounted/takes',
                 bookmark: 'FRESH==',
               )
             : const FolderGrant.unavailable();
@@ -136,36 +124,39 @@ void main() {
 
     AppSave.settings.value = const AppSaveSettings(
       recordingsDirectory: GrantedDirectory(
-        path: '/gone/takes',
-        bookmark: 'DEAD==',
-      ),
-      conformDirectory: GrantedDirectory(
-        path: '/old/conforms',
+        path: '/old/takes',
         bookmark: 'MOVED==',
       ),
     );
     addTearDown(() => AppSave.settings.value = const AppSaveSettings());
 
     final resolved = await AppSave.resolveSettingsDirectories();
-    expect(resolved, isNotNull, reason: 'one folder moved');
+    expect(resolved, isNotNull, reason: 'the folder moved');
     expect(
-      resolved!.conformDirectory,
-      const GrantedDirectory(path: '/mounted/conforms', bookmark: 'FRESH=='),
-    );
-    expect(
-      resolved.recordingsDirectory,
-      const GrantedDirectory(path: '/gone/takes', bookmark: 'DEAD=='),
-      reason: 'the provider may simply not be signed in yet — the setting '
-          'still names what the user meant',
+      resolved!.recordingsDirectory,
+      const GrantedDirectory(path: '/mounted/takes', bookmark: 'FRESH=='),
     );
 
-    // Nothing to resolve, nothing to store.
+    // …and one that cannot be reopened is LEFT ALONE rather than cleared:
+    // the provider may simply not be signed in yet, and the setting still
+    // names what the user meant.
+    AppSave.settings.value = const AppSaveSettings(
+      recordingsDirectory: GrantedDirectory(
+        path: '/gone/takes',
+        bookmark: 'DEAD==',
+      ),
+    );
+    expect(await AppSave.resolveSettingsDirectories(), isNull);
+    expect(
+      AppSave.settings.value.recordingsDirectory,
+      const GrantedDirectory(path: '/gone/takes', bookmark: 'DEAD=='),
+    );
+
+    // Nothing to resolve, nothing to store: a grant that comes back
+    // naming the folder the setting already names is not a change.
     AppSave.settings.value = resolved;
     FolderPicker.debugBookmarkResolver = (base64, kind) async =>
-        FolderGrant.granted(
-          path: base64 == 'FRESH==' ? '/mounted/conforms' : '/gone/takes',
-          bookmark: base64,
-        );
+        FolderGrant.granted(path: '/mounted/takes', bookmark: base64);
     expect(await AppSave.resolveSettingsDirectories(), isNull);
   });
 
