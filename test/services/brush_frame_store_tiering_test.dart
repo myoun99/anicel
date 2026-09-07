@@ -176,16 +176,42 @@ void main() {
     },
   );
 
-  test('bakedSnapshotForSave passes cold blobs through untouched — the '
-      'save path re-encodes nothing for unedited cels', () {
+  test('🚨 bakedSnapshotForSave hands the save a REF to the parked bytes, '
+      'not the bytes — nothing re-encodes and nothing is resident', () {
+    // 🪦This used to assert `identical(snapshot.cold[k], blob)`: the cold
+    // tier was RAM, so the save was handed the very blob object. That is
+    // the thing this round removed — a save of a project big enough to
+    // have cooled anything had every one of those blobs resident at once,
+    // on top of what the save itself needed. The claim that survives is
+    // the one that mattered: **the save re-encodes nothing**, which a ref
+    // to the already-encoded bytes says just as well.
     final store = BrushFrameStore();
     final k = key();
     final blob = blobOf(k, inkSurface());
     store.restoreBaked({k: blob});
 
     final snapshot = store.bakedSnapshotForSave();
-    expect(identical(snapshot.cold[k], blob), isTrue);
     expect(snapshot.hot, isEmpty);
+    final parked = snapshot.cold[k];
+    expect(parked, isNotNull);
+    expect(
+      parked!.length,
+      blob.bytes.length,
+      reason: 'the same encoded bytes, whole — a re-encode would land on '
+          'a different length as often as not',
+    );
+    expect(
+      File(parked.filePath).readAsBytesSync(),
+      blob.bytes,
+      reason: '⛔byte for byte. This is the only copy of that picture '
+          'outside the hot tier, so「a ref exists」is not the claim — the '
+          'bytes behind it are.',
+    );
+    expect(
+      parked.dataOffset,
+      0,
+      reason: 'one cel, one file: a scratch ref is always at the start',
+    );
   });
 
   test('rekeyFrames moves a COLD cel with its key', () {

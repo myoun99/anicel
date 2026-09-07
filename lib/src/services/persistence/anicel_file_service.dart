@@ -65,7 +65,6 @@ class _CelWork {
     required this.key,
     required this.name,
     this.hotEntry,
-    this.coldBlob,
     this.refPath,
     this.refOffset = 0,
     this.refLength = 0,
@@ -74,7 +73,11 @@ class _CelWork {
   final BrushFrameKey key;
   final String name;
   final AnicelCelEntry? hotEntry;
-  final AnicelCelBlob? coldBlob;
+
+  /// 🪦A `coldBlob` rode here while the cold tier was RAM. Cooled cels are
+  /// files in the run's 이사대기 room now, so they arrive as a ref like
+  /// any other file-backed cel — one road instead of two, and no blob
+  /// resident while the save runs.
   final String? refPath;
   final int refOffset;
   final int refLength;
@@ -106,22 +109,20 @@ class _CelWork {
     if (hotEntry != null) {
       return AnicelCelBlob.encode(hotEntry!);
     }
-    var blob = coldBlob;
-    if (blob == null) {
-      final RandomAccessFile raf;
-      try {
-        raf = File(refPath!).openSync();
-      } on FileSystemException {
-        return null;
-      }
-      try {
-        raf.setPositionSync(refOffset);
-        blob = AnicelCelBlob(raf.readSync(refLength));
-      } on FileSystemException {
-        return null;
-      } finally {
-        raf.closeSync();
-      }
+    final AnicelCelBlob blob;
+    final RandomAccessFile raf;
+    try {
+      raf = File(refPath!).openSync();
+    } on FileSystemException {
+      return null;
+    }
+    try {
+      raf.setPositionSync(refOffset);
+      blob = AnicelCelBlob(raf.readSync(refLength));
+    } on FileSystemException {
+      return null;
+    } finally {
+      raf.closeSync();
     }
     return blob.key == key ? blob : AnicelCelBlob.reKeyed(blob, key);
   }
@@ -284,7 +285,7 @@ class AnicelFileService {
     List<
       ({
         Map<BrushFrameKey, BitmapSurface> hot,
-        Map<BrushFrameKey, AnicelCelBlob> cold,
+        Map<BrushFrameKey, AnicelCelFileRef> cold,
         Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
         Map<BrushFrameKey, int> dirtyTicks,
       })
@@ -292,7 +293,7 @@ class AnicelFileService {
     snapshots,
     ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> cold,
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
@@ -672,7 +673,7 @@ class AnicelFileService {
     Set<BrushFrameKey> dirty,
     ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> cold,
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
@@ -696,7 +697,7 @@ class AnicelFileService {
     BrushFrameKey key,
     ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> cold,
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
@@ -712,7 +713,21 @@ class AnicelFileService {
     }
     final cold = baked.cold[key];
     if (cold != null) {
-      return _CelWork(key: key, name: name, coldBlob: cold);
+      // 🚨★★★**A PARKED CEL IS A REF, NOT A BLOB — and that is the whole
+      // point of the round that parked it.** Cooled cels used to arrive
+      // here as `AnicelCelBlob`s held in RAM, so a save of a project big
+      // enough to have cooled anything had every one of those blobs
+      // resident at once, on top of whatever the save itself needed. They
+      // are files in the run's 이사대기 room now, and the isolate streams
+      // them exactly the way it already streams a cel out of the saved
+      // archive: same path/offset/length, different file.
+      return _CelWork(
+        key: key,
+        name: name,
+        refPath: cold.filePath,
+        refOffset: cold.dataOffset,
+        refLength: cold.length,
+      );
     }
     final ref = baked.fileRefs[key];
     if (ref != null) {
@@ -843,7 +858,7 @@ class AnicelFileService {
     required Project project,
     required ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> cold,
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
@@ -1087,7 +1102,7 @@ class AnicelFileService {
     required Project project,
     required ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> cold,
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,

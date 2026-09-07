@@ -15,6 +15,8 @@ import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/open_project_file.dart';
+import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
+import 'persistence/scratch_cel_files.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
 /// clamped to [384MB, 1536MB]. Null/zero RAM (the platform refused, or
@@ -152,12 +154,23 @@ class BrushFrameStore {
   //
   //  - HOT: a BitmapSurface, insertion-ordered as an LRU (access
   //    re-inserts). Byte-budgeted by [hotCelByteBudget].
-  //  - COLD-RAM: a [AnicelCelBlob] — the cel encoded + COMPRESSED, the
-  //    SAME bytes the .anicel archive stores. zstd where the engine
-  //    answered, deflate as the floor, and the blob's codec byte says
-  //    which (see [compressAnicelPayload] — ONE place decides). Over-budget
-  //    hot cels cool here in a background isolate; unsaved (dirty) cels
-  //    never leave RAM.
+  //  - COLD-PARKED: one file per cel in the run's 이사대기 room, holding
+  //    the cel encoded + COMPRESSED — the SAME bytes the .anicel archive
+  //    stores. zstd where the engine answered, deflate as the floor, and
+  //    the blob's codec byte says which (see [compressAnicelPayload] — ONE
+  //    place decides). Over-budget hot cels cool here in a background
+  //    isolate.
+  //
+  //    🪦**IT WAS A RAM TIER, AND「unsaved cels never leave RAM」WAS THE
+  //    RULE.** That is what capped a session: a project big enough to
+  //    exceed the hot budget carried its overflow in memory, because the
+  //    archive did not hold those bytes and there was nowhere else to put
+  //    them. There is now — the room whose contents a CRASH LEAVES
+  //    STANDING, which is the only kind of place unsaved pixels may go.
+  //    ⛔The failure mode is new and it is the one to respect: a map put
+  //    cannot fail and a file write can, so a cel that will not park stays
+  //    HOT and a parked cel that will not read is「unavailable」, never
+  //    「empty」.
   //  - COLD-FILE: {the .anicel itself, offset, length} — cels whose bytes
   //    are ALREADY in the saved project file drop their RAM entirely
   //    after a save; opens land every cel here (near-zero RAM).
@@ -184,7 +197,7 @@ class BrushFrameStore {
   // time. See [SessionScratch].
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
-  final Map<BrushFrameKey, AnicelCelBlob> _coldCels = {};
+  final Map<BrushFrameKey, AnicelCelFileRef> _coldCels = {};
   final Map<BrushFrameKey, AnicelCelFileRef> _fileCels = {};
   final Map<BrushFrameKey, int> _hotByteEstimates = {};
   int _hotBytes = 0;
@@ -243,11 +256,11 @@ class BrushFrameStore {
   /// Bytes currently resident in the hot tier (diagnostics/tests).
   int get hotBakedBytes => _hotBytes;
 
-  /// Blob bytes currently resident in the cold RAM tier
-  /// (diagnostics/tests).
+  /// Bytes PARKED in the run's 이사대기 room (diagnostics/tests) — no
+  /// longer resident, which is the whole point of the tier moving there.
   int get coldBakedBytes => _coldBytes;
 
-  /// Keys currently in the cold RAM tier (diagnostics/tests).
+  /// Keys currently parked on disk (diagnostics/tests).
   Iterable<BrushFrameKey> get coldCelKeys => _coldCels.keys;
 
   /// Keys currently backed by the saved project file (diagnostics/tests).
@@ -268,20 +281,34 @@ class BrushFrameStore {
       _bakedSurfaces[key] = hot; // LRU touch.
       return hot;
     }
-    var cold = _coldCels[key];
-    if (cold == null) {
+    final AnicelCelBlob blob;
+    final parked = _coldCels[key];
+    if (parked == null) {
       final fileRef = _fileCels[key];
       if (fileRef == null) {
         return null;
       }
       // The ref stays: the file still holds these exact bytes, so a
       // later cooling of this (clean) cel is a free drop.
-      cold = AnicelCelBlob(_readFileRefBytes(fileRef));
+      blob = AnicelCelBlob(_readFileRefBytes(fileRef));
     } else {
-      _coldCels.remove(key);
-      _coldBytes -= cold.bytes.length;
+      final read = _readScratchBlob(parked);
+      if (read == null) {
+        // 🚨★★★**THE REF STAYS AND SO DOES THE FILE.** A cold cel is the
+        // only copy of that picture outside the hot tier, so a read that
+        // fails right now — a volume that blinked, an antivirus holding
+        // the file — must not be turned into 「this cel is empty」, which
+        // is what dropping the ref would say to every caller and to the
+        // next save. The picture is UNAVAILABLE this moment; the next
+        // access tries again.
+        return null;
+      }
+      blob = read;
+      // Read succeeded, so the bytes are in hand and the parking space is
+      // free. ⛔Dropped only AFTER the read, never before it.
+      _dropCold(key);
     }
-    final surface = cold.decode().toSurface();
+    final surface = blob.decode().toSurface();
     _storeHot(key, surface);
     // Reseed the display cache from the same object so first paint after
     // a promotion is O(1), mirroring what open used to do eagerly.
@@ -304,12 +331,74 @@ class BrushFrameStore {
         ref.length,
       );
 
-  void _storeCold(BrushFrameKey key, AnicelCelBlob blob) {
-    _coldCels[key] = blob;
+  /// Parks [blob]'s bytes in the run's 이사대기 room and keeps a ref.
+  ///
+  /// 🚨★★★**ANSWERS FALSE WHEN THE ROOM REFUSED, AND THE CALLER MUST CARE.**
+  /// A cooled cel is UNSAVED work — the archive does not hold it — so a
+  /// write that fails cannot end with the blob dropped. The cooling pass
+  /// parks first and only then lets go of the hot surface: over budget is
+  /// a number, and losing the drawing is not.
+  ///
+  /// ⛔A refusal ends the WHOLE pass, not just that cel. Nothing about the
+  /// next one is more likely to succeed (the room is full, read-only or
+  /// gone), so carrying on asks the same failing question once per cel
+  /// while the user waits.
+  ///
+  /// 🚨And the pass then DISARMS its own reschedule. `_scheduleCooling`
+  /// re-runs on completion for exactly the case where a pass could not
+  /// finish — which is this case, for ever: the budget is still exceeded,
+  /// so it fires again immediately, fails again, and spins the isolate for
+  /// as long as the room stays unwritable. A test found that as a
+  /// 30-second hang; a user would have found it as a hot device.
+  bool _storeCold(BrushFrameKey key, AnicelCelBlob blob) {
+    final name = anicelCelEntryName(key);
+    final path = ScratchCelFiles.write(name, blob.bytes);
+    if (path == null) {
+      return false;
+    }
+    final previous = _coldCels[key];
+    if (previous != null) {
+      _coldBytes -= previous.length;
+      if (previous.filePath != path) {
+        ScratchCelFiles.remove(previous.filePath);
+      }
+    }
+    _coldCels[key] = AnicelCelFileRef(
+      filePath: path,
+      dataOffset: 0,
+      length: blob.bytes.length,
+      canvasSize: blob.canvasSize,
+      tileSize: blob.tileSize,
+    );
     _coldBytes += blob.bytes.length;
+    return true;
   }
 
+  /// Drops [key]'s cold ref and the file behind it.
+  void _dropCold(BrushFrameKey key) {
+    final gone = _coldCels.remove(key);
+    if (gone == null) {
+      return;
+    }
+    _coldBytes -= gone.length;
+    ScratchCelFiles.remove(gone.filePath);
+  }
+
+  /// The blob [ref] names, read back out of the scratch room.
+  ///
+  /// ⛔A plain open, NOT [OpenProjectFile]: that handle is the session's
+  /// hold on ONE file — the project — and pointing it at a scratch cel
+  /// would drop the project's handle on every materialization and take it
+  /// again on the next cel read.
+  static AnicelCelBlob? _readScratchBlob(AnicelCelFileRef ref) =>
+      ScratchCelFiles.read(ref.filePath);
+
   void _storeHot(BrushFrameKey key, BitmapSurface surface) {
+    // A cel arriving in the hot tier is the app still working, which is
+    // the moment to let the cooling pass try the room again — a volume
+    // that was unmounted may be back, and standing down for ever would
+    // turn one bad minute into a session with no cold tier at all.
+    _coolingStoodDown = false;
     final previous = _hotByteEstimates.remove(key);
     if (previous != null) {
       _hotBytes -= previous;
@@ -327,10 +416,7 @@ class BrushFrameStore {
 
   void _removeBaked(BrushFrameKey key) {
     _bakedSurfaces.remove(key);
-    final cold = _coldCels.remove(key);
-    if (cold != null) {
-      _coldBytes -= cold.bytes.length;
-    }
+    _dropCold(key);
     _fileCels.remove(key);
     final estimate = _hotByteEstimates.remove(key);
     if (estimate != null) {
@@ -357,10 +443,7 @@ class BrushFrameStore {
       _removeBaked(key);
       return;
     }
-    final cold = _coldCels.remove(key);
-    if (cold != null) {
-      _coldBytes -= cold.bytes.length;
-    }
+    _dropCold(key);
     _fileCels.remove(key);
     _storeHot(key, surface);
     _dirtySinceSave.add(key);
@@ -376,7 +459,7 @@ class BrushFrameStore {
   /// entirely).
   ({
     Map<BrushFrameKey, BitmapSurface> hot,
-    Map<BrushFrameKey, AnicelCelBlob> cold,
+    Map<BrushFrameKey, AnicelCelFileRef> cold,
     Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     Map<BrushFrameKey, int> dirtyTicks,
   })
@@ -489,10 +572,7 @@ class BrushFrameStore {
       if (editedSinceSnapshot(entry.key)) {
         continue;
       }
-      final cold = _coldCels.remove(entry.key);
-      if (cold != null) {
-        _coldBytes -= cold.bytes.length;
-      }
+      _dropCold(entry.key);
       _fileCels[entry.key] = entry.value;
       // R27 #13: a ref landing on a key that held no tier at all is a
       // crossing (the cel emptied between the save snapshot and this
@@ -580,8 +660,17 @@ class BrushFrameStore {
     }
   }
 
+  /// Set when a pass could not park a cel, and cleared by anything that
+  /// could plausibly change the answer — a new edit, a project swap.
+  ///
+  /// ⛔Without it the completion re-schedule is an infinite loop: the pass
+  /// stands down BECAUSE the budget is still exceeded, which is the very
+  /// condition the re-schedule fires on.
+  bool _coolingStoodDown = false;
+
   void _scheduleCooling() {
     if (_activeCooling != null ||
+        _coolingStoodDown ||
         _hotBytes <= hotCelByteBudget ||
         _bakedSurfaces.length <= 1) {
       // The length guard both mirrors the loop's never-cool-the-last-hot
@@ -633,9 +722,20 @@ class BrushFrameStore {
       final entry = AnicelCelEntry.fromSurface(key, surface);
       final blob = await Isolate.run(() => AnicelCelBlob.encode(entry));
       if (identical(_bakedSurfaces[key], surface)) {
+        // 🚨★★★**PARK IT BEFORE LETTING GO OF IT.** These bytes are
+        // UNSAVED — the archive does not hold them — so the order here is
+        // the difference between over budget and a lost drawing. The old
+        // shape could not fail (the blob went into a map), and it dropped
+        // the hot surface first; a write can fail, so the drop happens
+        // only once the park has answered yes.
+        // ⛔Park BEFORE letting go — see [_storeCold] for why a refusal
+        // ends the whole pass rather than skipping one cel.
+        if (!_storeCold(key, blob)) {
+          _coolingStoodDown = true;
+          return;
+        }
         _bakedSurfaces.remove(key);
         _hotBytes -= _hotByteEstimates.remove(key)!;
-        _storeCold(key, blob);
         // Drop the derived alias too, or the surface stays resident.
         _displayCaches.remove(key);
       }
@@ -643,8 +743,13 @@ class BrushFrameStore {
   }
 
   /// Completes when no background tiering pass is running (tests).
-  /// R22-C: cooling is the only background pass left — the scratch-disk
-  /// spill is gone (the saved .anicel itself is the disk tier).
+  ///
+  /// Cooling is the only background pass. 🪦This used to add 「the
+  /// scratch-disk spill is gone — the saved .anicel itself is the disk
+  /// tier」, which was true while an unsaved cel had nowhere to go but
+  /// RAM. Cooling IS a spill again, into the run's 이사대기 room; what
+  /// stays true is the half that reason rested on — ⛔nothing is ever
+  /// written beside the project file.
   Future<void> drainTiering() => drainCooling();
 
   /// Re-homes stored drawings under new keys (a cross-layer block move,
@@ -797,44 +902,56 @@ class BrushFrameStore {
       _fileCels.remove(key);
       _dirtySinceSave.add(key);
     }
-    for (final key in _coldCels.keys.toList()) {
-      if (key.cutId != cutId) {
+    _resizeRefCels(_coldCels, canvasSize, cutId: cutId, read: _readScratchBlob);
+    _resizeRefCels(
+      _fileCels,
+      canvasSize,
+      cutId: cutId,
+      read: (ref) => AnicelCelBlob(_readFileRefBytes(ref)),
+    );
+  }
+
+  /// Re-sizes every cel of [cutId] whose bytes are in a FILE, from either
+  /// map, and re-parks the result in the run's room.
+  ///
+  /// 🚨★★★**ONE LOOP, BECAUSE THE TWO WERE THE SAME ALGORITHM.** The
+  /// parked half and the project-file half differ in exactly one thing —
+  /// how the bytes are read — and everything else (skip other cuts, skip a
+  /// cel already at this size, decode, resize, re-encode, park, mark
+  /// dirty) was written out twice. ⛔The destination is the same either
+  /// way: the `.anicel` is read-only from here, so a resized cel is
+  /// unsaved work and belongs in the room with the rest of it.
+  ///
+  /// ⛔A read that answers null leaves the cel EXACTLY as it was — ref,
+  /// file and all. A cel that will not read right now is not a cel to
+  /// resize into nothing; the size check finds it again next time.
+  void _resizeRefCels(
+    Map<BrushFrameKey, AnicelCelFileRef> from,
+    CanvasSize canvasSize, {
+    required CutId cutId,
+    required AnicelCelBlob? Function(AnicelCelFileRef ref) read,
+  }) {
+    for (final key in from.keys.toList()) {
+      final ref = from[key]!;
+      if (key.cutId != cutId || ref.canvasSize == canvasSize) {
         continue;
       }
-      final cold = _coldCels[key]!;
-      if (cold.canvasSize == canvasSize) {
+      final blob = read(ref);
+      if (blob == null) {
         continue;
       }
       final resized = AnicelCelBlob.encode(
         AnicelCelEntry.fromSurface(
           key,
-          resizeBitmapSurfaceCanvas(cold.decode().toSurface(), canvasSize),
+          resizeBitmapSurfaceCanvas(blob.decode().toSurface(), canvasSize),
         ),
       );
-      _coldBytes += resized.bytes.length - cold.bytes.length;
-      _coldCels[key] = resized;
-      _dirtySinceSave.add(key);
-    }
-    for (final key in _fileCels.keys.toList()) {
-      if (key.cutId != cutId) {
-        continue;
+      // ⚠️Out of the source map FIRST when it is not the destination: a
+      // file-backed cel that stayed in `_fileCels` would claim the saved
+      // archive still holds bytes the resize just replaced.
+      if (!identical(from, _coldCels)) {
+        from.remove(key);
       }
-      final fileRef = _fileCels[key]!;
-      if (fileRef.canvasSize == canvasSize) {
-        continue;
-      }
-      // The .anicel is read-only from here — a resized file-backed cel
-      // promotes to a COLD-RAM blob (it is now dirty anyway).
-      final resized = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(
-          key,
-          resizeBitmapSurfaceCanvas(
-            AnicelCelBlob(_readFileRefBytes(fileRef)).decode().toSurface(),
-            canvasSize,
-          ),
-        ),
-      );
-      _fileCels.remove(key);
       _storeCold(key, resized);
       _dirtySinceSave.add(key);
     }
@@ -948,12 +1065,26 @@ class BrushFrameStore {
   }
 }
 
-/// A cel backed by the SAVED PROJECT FILE itself (R22-C): the .anicel's
-/// STORE'd entry bytes ARE the [AnicelCelBlob], so {offset, length} into
-/// the file is a complete cold reference — no temp files, ever. Canvas
-/// geometry rides along so size checks never touch the disk. Offsets
-/// stay valid across incremental appends (appends never move existing
-/// entry data); a compaction rewrites the file and re-issues refs.
+/// A cel whose bytes are IN A FILE: {path, offset, length} plus the canvas
+/// geometry, so a size check never touches the disk.
+///
+/// 🚨★★★**TWO FILES USE THIS SHAPE, AND WHICH MAP HOLDS IT IS WHAT SAYS
+/// WHICH.**
+/// · `_fileCels` — the SAVED `.anicel` (R22-C). Its STORE'd entry bytes
+///   ARE the [AnicelCelBlob], the ref survives a clean promotion, and an
+///   incremental save may SKIP the cel because the file already holds it.
+/// · `_coldCels` — the run's 이사대기 room. Same shape, opposite meaning:
+///   these bytes are UNSAVED, so the next save must write them and the
+///   room's own ending is what eventually takes the file.
+///
+/// ⛔The two are not merged into one map with a flag. 「Where are the
+/// bytes」 and 「may the save skip this」 are two questions, and one field
+/// answering both is the shape this codebase treats as an invention. The
+/// second question already has an owner: `_dirtySinceSave`.
+///
+/// Offsets stay valid across incremental appends (appends never move
+/// existing entry data); a compaction rewrites the file and re-issues
+/// refs. A scratch ref is always at offset 0 — one cel, one file.
 class AnicelCelFileRef {
   const AnicelCelFileRef({
     required this.filePath,
