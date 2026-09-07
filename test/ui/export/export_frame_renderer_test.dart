@@ -236,7 +236,7 @@ void main() {
           BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
         ]),
       );
-      session.updateLayerEffects(layer.id, [
+      session.effectsAndFx.updateLayerEffects(layer.id, [
         LayerEffect(
           id: const EffectId('fx'),
           kind: EffectKind.brightnessContrast,

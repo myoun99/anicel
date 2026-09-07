@@ -36,7 +36,7 @@ void main() {
       s.layerSwitches.setLayerBlendMode(folderId, folderBlend);
     }
     if (folderOpacity != 1) {
-      s.setLayerOpacity(layerId: folderId, opacity: folderOpacity);
+      s.opacityVerbs.setLayerOpacity(layerId: folderId, opacity: folderOpacity);
     }
     return (session: s, folderId: folderId);
   }

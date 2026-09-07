@@ -110,7 +110,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
         laneGroupKey(layer.id, effectGroupLaneId(effectId)),
       ),
       valueAt: (effectId, parameterId, frameIndex) => session
-          .layerEffectParameterAtFrame(layer, effectId, parameterId, frameIndex),
+          .effectsAndFx.layerEffectParameterAtFrame(layer, effectId, parameterId, frameIndex),
     );
   }
 

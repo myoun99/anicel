@@ -131,7 +131,7 @@ void main() {
     // The V row's lanes are its EFFECT chain now: a keyed brightness gives the
     // value cell something that moves with the cursor.
     const effectId = EffectId('fx-seek');
-    manager.updateTrackEffects(trackId, [
+    manager.effectsAndFx.updateTrackEffects(trackId, [
       LayerEffect(
         id: effectId,
         kind: EffectKind.brightnessContrast,

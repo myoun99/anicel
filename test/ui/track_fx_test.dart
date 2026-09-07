@@ -270,13 +270,13 @@ void main() {
     test('add lands an effect on the V row, and the render routes see it '
         'through the cut', () {
       final s = session();
-      expect(s.trackEffectsForCut(_cut), isEmpty);
+      expect(s.effectsAndFx.trackEffectsForCut(_cut), isEmpty);
 
-      s.addEffectToTrack(_track, EffectKind.blur);
+      s.effectsAndFx.addEffectToTrack(_track, EffectKind.blur);
 
       expect(chain(s), hasLength(1));
       expect(chain(s).single.kind, EffectKind.blur);
-      expect(s.trackEffectsForCut(_cut), chain(s));
+      expect(s.effectsAndFx.trackEffectsForCut(_cut), chain(s));
       // The chain's id hangs off the TRACK, since that is what carries it.
       expect(chain(s).single.id.value, startsWith('fx-${_track.value}-'));
 
@@ -288,7 +288,7 @@ void main() {
       final s = session(effects: [_brightness()]);
       const id = EffectId('fx-1');
 
-      s.toggleTrackEffectEnabled(_track, id);
+      s.effectsAndFx.toggleTrackEffectEnabled(_track, id);
       expect(chain(s).single.enabled, isFalse);
       // Bypassed, so the cut's picture is unfiltered — the keys stay.
       expect(
@@ -296,10 +296,10 @@ void main() {
         isTrue,
       );
 
-      s.toggleTrackEffectEnabled(_track, id);
+      s.effectsAndFx.toggleTrackEffectEnabled(_track, id);
       expect(chain(s).single.enabled, isTrue);
 
-      s.removeEffectFromTrack(_track, id);
+      s.effectsAndFx.removeEffectFromTrack(_track, id);
       expect(chain(s), isEmpty);
       s.undo();
       expect(chain(s), hasLength(1));
@@ -309,10 +309,10 @@ void main() {
       final s = session(effects: [_brightness(value: 0.5)]);
       final laneId = effectGroupLaneId(const EffectId('fx-1'));
 
-      expect(s.resetTrackEffectGroup(_track, laneId), isTrue);
+      expect(s.effectsAndFx.resetTrackEffectGroup(_track, laneId), isTrue);
       expect(chain(s).single.parameterOf('brightness').value, 0);
       expect(
-        s.resetTrackEffectGroup(_track, laneId),
+        s.effectsAndFx.resetTrackEffectGroup(_track, laneId),
         isFalse,
         reason: 'a chain already at its defaults changes nothing, so there '
             'is nothing to bank',
@@ -325,11 +325,11 @@ void main() {
     test('an unknown track is a no-op, not a crash', () {
       final s = session();
       const missing = TrackId('nope');
-      s.addEffectToTrack(missing, EffectKind.blur);
-      s.removeEffectFromTrack(missing, const EffectId('fx-1'));
-      s.toggleTrackEffectEnabled(missing, const EffectId('fx-1'));
+      s.effectsAndFx.addEffectToTrack(missing, EffectKind.blur);
+      s.effectsAndFx.removeEffectFromTrack(missing, const EffectId('fx-1'));
+      s.effectsAndFx.toggleTrackEffectEnabled(missing, const EffectId('fx-1'));
       expect(
-        s.resetTrackEffectGroup(
+        s.effectsAndFx.resetTrackEffectGroup(
           missing,
           effectGroupLaneId(const EffectId('fx-1')),
         ),

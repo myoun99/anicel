@@ -49,7 +49,7 @@ void main() {
   test('an EFFECT lane selection keys the effect chain, and leaves the '
       'transform track alone', () {
     final layerId = session.activeLayer!.id;
-    session.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final effectId = layerOf(layerId).effects.single.id;
     final laneId = effectLaneId(effectId, 'blurX');
 

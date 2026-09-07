@@ -89,7 +89,7 @@ void main() {
     // moves with the layer's fx, so a mutant that restored the lane
     // exclusion survived on it. So did `layer.transformEnabled`, which the
     // master switch writes too. 「내가 지금 세는 게 X인가, X의 그림자인가」.
-    LayerFxState layerFxState() => session.layerFxState(layerId);
+    LayerFxState layerFxState() => session.effectsAndFx.layerFxState(layerId);
     final before = layerFxState();
 
     // 🚨MOUSE, not the default touch: a finger is not in

@@ -19,7 +19,7 @@ void main() {
   // asks instead of a proxy for it, and the next such row is covered too.
   test('setAllLayersOpacity sets every picture-opacity layer', () {
     final s = session();
-    s.setAllLayersOpacity(0.4);
+    s.opacityVerbs.setAllLayersOpacity(0.4);
     for (final layer in s.layers) {
       if (layer.kind.hasPictureOpacity) {
         expect(layer.opacity, moreOrLessEquals(0.4, epsilon: 1e-9));
@@ -27,7 +27,7 @@ void main() {
         expect(layer.opacity, 1.0, reason: '${layer.kind} takes no bulk set');
       }
     }
-    s.resetAllLayersOpacity();
+    s.opacityVerbs.resetAllLayersOpacity();
     for (final layer in s.layers) {
       expect(layer.opacity, 1.0);
     }

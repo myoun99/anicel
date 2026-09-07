@@ -57,7 +57,7 @@ void main() {
     final manager = session();
     final trackId = manager.activeTrack.id;
     final effect = brightness(keys: {0: 0.5});
-    manager.updateTrackEffects(trackId, [effect]);
+    manager.effectsAndFx.updateTrackEffects(trackId, [effect]);
     final celsBefore = manager.activeLayer!.timeline.length;
 
     manager.selectRow(
@@ -90,7 +90,7 @@ void main() {
     final manager = session();
     final trackId = manager.activeTrack.id;
     final effect = brightness();
-    manager.updateTrackEffects(trackId, [effect]);
+    manager.effectsAndFx.updateTrackEffects(trackId, [effect]);
     expect(
       manager.activeTrack.effects.single.parameters['brightness']!.track,
       anyOf(isNull, predicate<PropertyTrack<double>>((t) => t.isEmpty)),

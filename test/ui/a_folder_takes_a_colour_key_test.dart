@@ -34,10 +34,10 @@ void main() {
     // ⛔Prove the row under test really is the folder, or this passes on
     // whatever happened to be selected.
     expect(session.activeLayer?.id, folder.id, reason: 'fixture');
-    expect(session.canAddEffectToActiveLayer, isTrue);
+    expect(session.effectsAndFx.canAddEffectToActiveLayer, isTrue);
 
-    session.addEffectToActiveLayer(EffectKind.deleteColor);
-    session.addEffectToActiveLayer(EffectKind.keepColor);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.deleteColor);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.keepColor);
     final after = session.activeCutOrNull!.layers.folderLayers.single;
     expect(after.effects.map((e) => e.kind).toList(), [
       EffectKind.deleteColor,
@@ -54,8 +54,8 @@ void main() {
     session.selectLayer(drawing.id);
     expect(session.activeLayer?.id, drawing.id, reason: 'fixture');
 
-    session.addEffectToActiveLayer(EffectKind.blur);
-    session.addEffectToActiveLayer(EffectKind.deleteColor);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.deleteColor);
     final after = session.activeCutOrNull!.layers.firstWhere(
       (layer) => layer.id == drawing.id,
     );

@@ -111,7 +111,7 @@ class _InteractiveCanvasBuild {
     // The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
     // faded frames are worked with fx off). It is the track's static opacity
     // times the TRANSITION row's ramp now.
-    _cutFadeOpacity = session.activeCutEditingFadeOpacity();
+    _cutFadeOpacity = session.opacityVerbs.activeCutEditingFadeOpacity();
     _showFadeWash = !_isPlaybackActive && _cutFadeOpacity < 1;
     // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
     // canvas's copy of what playback and export draw. Playback renders its
@@ -146,7 +146,7 @@ class _InteractiveCanvasBuild {
         layerKindShowsFxToggle(activeLayer.kind) &&
         // R8: the TRANSFORM group's switch, not the row master — a row
         // with a colour effect off still has a pose to drag.
-        session.isLayerTransformFxEnabled(activeLayer.id);
+        session.effectsAndFx.isLayerTransformFxEnabled(activeLayer.id);
     // Camera mode retargets the Fit button at the camera frame's bounds —
     // fitting the cut canvas there framed the wrong rectangle.
     _fitFocusRect = isCameraLayerActive

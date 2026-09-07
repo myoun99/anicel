@@ -490,8 +490,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       cameraViewEnabled: cameraView,
       cameraPoseOf: session.camera.cameraPoseForCut,
       seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-      cutFxEnabledOf: session.isCutFxEnabled,
-      trackStaticOpacityOf: session.trackStaticOpacityForCut,
+      cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
+      trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
       cutPictureVisibleOf: session.isCutPictureVisible,
       onFrameCached:
           session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
@@ -500,7 +500,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       backdropArgb: project.backdropArgb,
       pasteboardArgb: project.pasteboardArgb,
       showAlphaCheckerboard: alphaPreviewEnabled.value,
-      trackEffectsOf: session.trackEffectsForCut,
+      trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
     );
   }
 
@@ -603,13 +603,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           cameraFrameSize: session.camera.cameraFrameSize,
           cameraPoseOf: session.camera.cameraPoseForCut,
           seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-          cutFxEnabledOf: session.isCutFxEnabled,
-          trackStaticOpacityOf: session.trackStaticOpacityForCut,
+          cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
+          trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
           cutPictureVisibleOf: session.isCutPictureVisible,
           viewport: viewport,
           background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,
-          trackEffectsOf: session.trackEffectsForCut,
+          trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
           trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
           // ALL-CUTS playback watches the whole stage: the
           // frame is the track stack on the clock's global

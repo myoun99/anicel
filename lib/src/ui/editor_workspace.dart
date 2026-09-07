@@ -830,7 +830,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         (layer) => filter.allowsLayerRow(
           layer,
           standing: false,
-          fxEnabled: widget.session.isLayerFxEnabled(layer.id),
+          fxEnabled: widget.session.effectsAndFx.isLayerFxEnabled(layer.id),
         ),
       );
     }
@@ -1077,7 +1077,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         session: session,
         expandedGroupKeys: _expandedLaneGroupKeys.value,
       ),
-      fxEnabledOf: session.isLayerFxEnabled,
+      fxEnabledOf: session.effectsAndFx.isLayerFxEnabled,
     );
     if (target == null || target is TrackRowAddress) {
       return;

@@ -21,15 +21,15 @@ void main() {
       var notified = 0;
       session.addListener(() => notified += 1);
 
-      expect(session.isLayerFxEnabled(layerId), isTrue);
-      expect(session.layerFxState(layerId), LayerFxState.on);
-      session.toggleLayerFx(layerId);
-      expect(session.isLayerFxEnabled(layerId), isFalse);
+      expect(session.effectsAndFx.isLayerFxEnabled(layerId), isTrue);
+      expect(session.effectsAndFx.layerFxState(layerId), LayerFxState.on);
+      session.effectsAndFx.toggleLayerFx(layerId);
+      expect(session.effectsAndFx.isLayerFxEnabled(layerId), isFalse);
       // R8: PERSISTED on the row, not a session set — and undoable.
-      expect(session.layerFxState(layerId), LayerFxState.off);
+      expect(session.effectsAndFx.layerFxState(layerId), LayerFxState.off);
       expect(session.activeLayer!.transformEnabled, isFalse);
-      session.toggleLayerFx(layerId);
-      expect(session.isLayerFxEnabled(layerId), isTrue);
+      session.effectsAndFx.toggleLayerFx(layerId);
+      expect(session.effectsAndFx.isLayerFxEnabled(layerId), isTrue);
       expect(session.activeLayer!.transformEnabled, isTrue);
       expect(notified, greaterThanOrEqualTo(2));
     });
@@ -62,16 +62,16 @@ void main() {
       expect(sample.pose.center.y, 60);
       expect(sample.anchorPoint, CanvasPoint(x: 10, y: 20));
 
-      session.toggleLayerFx(layer.id);
+      session.effectsAndFx.toggleLayerFx(layer.id);
       expect(session.layerCanvasPoseSample(layer.id), isNull);
-      session.toggleLayerFx(layer.id);
+      session.effectsAndFx.toggleLayerFx(layer.id);
       expect(session.layerCanvasPoseSample(layer.id), isNotNull);
     });
 
     test('editingCanvasStack: the active layer display opacity carries the '
         'animated Opacity sample; bypass restores the static value', () {
       final layer = session.activeLayer!;
-      session.setLayerOpacity(layerId: layer.id, opacity: 0.8);
+      session.opacityVerbs.setLayerOpacity(layerId: layer.id, opacity: 0.8);
       session.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
@@ -81,7 +81,7 @@ void main() {
 
       expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.4, 1e-9));
 
-      session.toggleLayerFx(layer.id);
+      session.effectsAndFx.toggleLayerFx(layer.id);
       expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.8, 1e-9));
     });
 
@@ -97,14 +97,14 @@ void main() {
 
       expect(session.camera.cameraPoseForCut(session.requireActiveCut, 0).zoom, 2);
 
-      session.toggleLayerFx(cameraLayer.id);
+      session.effectsAndFx.toggleLayerFx(cameraLayer.id);
       final bypassed = session.camera.cameraPoseForCut(session.requireActiveCut, 0);
       expect(bypassed.zoom, 1);
       expect(bypassed.rotationDegrees, 0);
       expect(bypassed.center.x, session.requireActiveCut.canvasSize.width / 2);
       expect(bypassed.center.y, session.requireActiveCut.canvasSize.height / 2);
 
-      session.toggleLayerFx(cameraLayer.id);
+      session.effectsAndFx.toggleLayerFx(cameraLayer.id);
       expect(session.camera.cameraPoseForCut(session.requireActiveCut, 0).zoom, 2);
     });
 

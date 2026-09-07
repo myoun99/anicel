@@ -96,7 +96,7 @@ void main() {
       rowFilter: const TimelineRowFilter(fxOnly: true),
       arrange: (manager) {
         track = manager.selectedTrackId.value;
-        manager.toggleTrackFx(manager.selectedTrackId);
+        manager.effectsAndFx.toggleTrackFx(manager.selectedTrackId);
         manager.selectRow(
           LayerRowAddress(seLayerIdForTrack(manager.selectedTrackId, 1)),
         );

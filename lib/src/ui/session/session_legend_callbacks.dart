@@ -23,7 +23,7 @@ LayerLegendCallbacks sessionLegendCallbacks(
 }) => LayerLegendCallbacks(
   onShowAllLayers: () => session.layerSwitches.setAllLayersVisibility(true),
   onHideAllLayers: () => session.layerSwitches.setAllLayersVisibility(false),
-  onToggleVisibilitySolo: session.toggleLayerVisibilitySolo,
+  onToggleVisibilitySolo: session.visibilitySolo.toggleLayerVisibilitySolo,
   onToggleOnionSkinForDisplayed: onToggleOnionSkinForDisplayed,
   onRevealOnionSkinPanel: onRevealOnionSkinPanel,
   onSheetAllOn: () => session.layerSwitches.setAllLayersOnTimesheet(true),
@@ -32,8 +32,8 @@ LayerLegendCallbacks sessionLegendCallbacks(
   onClearAllFillReferences: session.layerSwitches.clearAllFillReferences,
   onMuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(true),
   onUnmuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(false),
-  onBypassAllFx: () => session.setAllLayersFxBypassed(true),
-  onEnableAllFx: () => session.setAllLayersFxBypassed(false),
+  onBypassAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(true),
+  onEnableAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(false),
   onToggleMarkFilter: (mark) =>
       onSetRowFilter?.call(rowFilter.toggledMark(mark)),
   onToggleKindFilter: (kind) =>
@@ -46,7 +46,7 @@ LayerLegendCallbacks sessionLegendCallbacks(
   onToggleFillReferenceOnlyFilter: () => onSetRowFilter?.call(
     rowFilter.copyWith(fillReferenceOnly: !rowFilter.fillReferenceOnly),
   ),
-  onPreviewLayersOpacity: session.previewLayersOpacity,
-  onCommitLayersOpacity: session.commitLayersOpacity,
+  onPreviewLayersOpacity: session.opacityVerbs.previewLayersOpacity,
+  onCommitLayersOpacity: session.opacityVerbs.commitLayersOpacity,
   onSetBlendModeForDisplayed: onSetBlendModeForDisplayed,
 );

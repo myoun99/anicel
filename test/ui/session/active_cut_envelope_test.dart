@@ -55,7 +55,7 @@ void main() {
         'setLayerMark': (s) =>
             s.layerMarks.setLayerMark(layerId, const LayerMark(process: LayerProcess.key)),
       if (layerId != null)
-        'updateLayerEffects': (s) => s.updateLayerEffects(layerId, const []),
+        'updateLayerEffects': (s) => s.effectsAndFx.updateLayerEffects(layerId, const []),
       if (folderId != null) 'dissolveFolder': (s) => s.folders.dissolveFolder(folderId),
     };
   }

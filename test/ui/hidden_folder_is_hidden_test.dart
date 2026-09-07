@@ -117,7 +117,7 @@ void main() {
         'hides the very row it is soloing', () {
       final (s, member, folder) = sessionWithFolder();
 
-      s.toggleLayerVisibilitySolo();
+      s.visibilitySolo.toggleLayerVisibilitySolo();
 
       final stack = s.activeCutOrNull!.layers;
       expect(
@@ -142,8 +142,8 @@ void main() {
 
     test('leaving solo restores the folder too', () {
       final (s, member, folder) = sessionWithFolder();
-      s.toggleLayerVisibilitySolo();
-      s.toggleLayerVisibilitySolo();
+      s.visibilitySolo.toggleLayerVisibilitySolo();
+      s.visibilitySolo.toggleLayerVisibilitySolo();
 
       final stack = s.activeCutOrNull!.layers;
       expect(stack.byId(folder)!.isVisible, isTrue);
@@ -218,7 +218,7 @@ void main() {
   group('the standalone draw (ruler scrub)', () {
     test('the active row carries its FOLDER\'s opacity too', () {
       final (s, member, folder) = sessionWithFolder();
-      s.setLayerOpacity(layerId: folder, opacity: 0.5);
+      s.opacityVerbs.setLayerOpacity(layerId: folder, opacity: 0.5);
 
       expect(
         s.editingCanvasStack.activeLayerOpacity,
@@ -234,8 +234,8 @@ void main() {
 
     test('and still multiplies its own', () {
       final (s, member, folder) = sessionWithFolder();
-      s.setLayerOpacity(layerId: folder, opacity: 0.5);
-      s.setLayerOpacity(layerId: member, opacity: 0.4);
+      s.opacityVerbs.setLayerOpacity(layerId: folder, opacity: 0.5);
+      s.opacityVerbs.setLayerOpacity(layerId: member, opacity: 0.4);
 
       expect(s.editingCanvasStack.activeLayerOpacity, closeTo(0.2, 1e-9));
     });

@@ -120,7 +120,7 @@ void main() {
       reason: 'the other use of the same cel keeps its own eye',
     );
 
-    session.setLayerOpacity(layerId: copy.id, opacity: 0.2);
+    session.opacityVerbs.setLayerOpacity(layerId: copy.id, opacity: 0.2);
     expect(read(copy.id).opacity, closeTo(0.2, 1e-9));
     expect(read(origin.id).opacity, closeTo(origin.opacity, 1e-9));
 
@@ -150,7 +150,7 @@ void main() {
     );
     expect(session.layerVerbs.isLayerLinked(twin.id), isTrue);
 
-    session.setLayerOpacity(layerId: twin.id, opacity: 0.35);
+    session.opacityVerbs.setLayerOpacity(layerId: twin.id, opacity: 0.35);
 
     Layer inCut(CutId cutId, LayerId layerId) => session
         .cutById(cutId)!

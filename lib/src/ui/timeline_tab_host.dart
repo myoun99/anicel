@@ -331,7 +331,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (next == null) {
       return;
     }
-    _session.updateLayerEffects(
+    _session.effectsAndFx.updateLayerEffects(
       layer.id,
       _session.isTrackSeLayerId(layer.id)
           ? _session.trackSeWindow.globalEffects(next)
@@ -807,25 +807,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onLayerOpacityChanged: (layerId, opacity) => _applyLayerOpacity(
               layerId,
               opacity,
-              _session.previewLayerOpacity,
+              _session.opacityVerbs.previewLayerOpacity,
             ),
             onLayerOpacityChangeEnd: (layerId, opacity) => _applyLayerOpacity(
               layerId,
               opacity,
-              _session.commitLayerOpacity,
+              _session.opacityVerbs.commitLayerOpacity,
             ),
             onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
             onToggleLayerFillReference: _session.layerSwitches.toggleLayerFillReference,
             onLayerMarkSelected: _session.layerMarks.setLayerMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
-            layerFxStateOf: _session.layerFxState,
+            layerFxStateOf: _session.effectsAndFx.layerFxState,
             layerIsLinkedOf: _session.layerVerbs.isLayerLinked,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
             onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
-            onToggleLayerFx: _session.toggleLayerFx,
+            onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
             onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,
@@ -1014,7 +1014,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onSetRowFilter: widget.onSetRowFilter,
             collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
             onToggleAttachGroup: widget.onToggleAttachGroup,
-            visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
+            visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
             // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
             // channel live; at rest the bar shows the last committed value.
             opacityDragPreview: _session.opacityDragPreview,
@@ -1060,7 +1060,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onToggleLaneGroupEnabled: (layer, lane) {
               // R8: the Transform group's switch is the layer's own field.
               if (lane.laneId == transformGroupHeaderLane.laneId) {
-                _session.toggleLayerTransformFx(layer.id);
+                _session.effectsAndFx.toggleLayerTransformFx(layer.id);
                 return;
               }
               final effectId = parseEffectLaneId(lane.laneId)?.effectId;

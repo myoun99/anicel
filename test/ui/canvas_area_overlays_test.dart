@@ -73,7 +73,7 @@ void main() {
     expect(_fadeWashes(), findsNothing, reason: 'full opacity: no wash');
 
     final trackId = session.repository.requireProject().tracks.first.id;
-    session.commitTrackOpacity(trackId, 0.5);
+    session.opacityVerbs.commitTrackOpacity(trackId, 0.5);
     await tester.pumpAndSettle();
     expect(_fadeWashes(), findsOneWidget);
   });

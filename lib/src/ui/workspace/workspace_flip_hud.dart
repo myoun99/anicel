@@ -52,7 +52,7 @@ class _WorkspaceFlipHud {
       rowFilter: _state._timelineRowFilter.value,
       collapsedAttachBaseIds: _state._collapsedAttachBaseIds.value,
       activeLayerId: session.activeLayerId,
-      fxEnabledOf: session.isLayerFxEnabled,
+      fxEnabledOf: session.effectsAndFx.isLayerFxEnabled,
       stack: session.layers,
     );
     if (rows.isEmpty) {

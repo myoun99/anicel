@@ -273,7 +273,7 @@ class _WorkspaceCollapsedRows {
       metrics: _collapsedMetrics(),
       // The view state the rail reads, from the same places the timeline tab
       // reads it — not a second opinion, the same getters.
-      fxState: session.layerFxState(layer.id),
+      fxState: session.effectsAndFx.layerFxState(layer.id),
       onionSkinEnabled: session.isLayerOnionSkinEnabled(layer.id),
       isLayerSoloed: session.soloedSeLayerIds.value.contains(layer.id),
       isLinked: session.layerVerbs.isLayerLinked(layer.id),

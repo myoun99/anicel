@@ -209,9 +209,9 @@ void main() {
               .firstWhere((layer) => layer.kind == LayerKind.adjustment)
               .id,
         );
-        session.addEffectToActiveLayer(EffectKind.brightnessContrast);
+        session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
         final withEffect = session.activeLayer!;
-        session.updateLayerEffects(
+        session.effectsAndFx.updateLayerEffects(
           withEffect.id,
           effectsWithLaneValueEdited(
             withEffect.effects,
@@ -269,10 +269,10 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      session.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
       final layer = session.activeLayer!;
       final effectId = layer.effects.single.id;
-      session.updateLayerEffects(
+      session.effectsAndFx.updateLayerEffects(
         layer.id,
         effectsWithEnabledToggled(layer.effects, effectId)!,
       );

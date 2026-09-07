@@ -86,7 +86,7 @@ Future<EditorSessionManager> _pumpPanel(
             }),
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onToggleTrackEffectEnabled: (track, effectId) =>
-                session.toggleTrackEffectEnabled(track.id, effectId),
+                session.effectsAndFx.toggleTrackEffectEnabled(track.id, effectId),
             rowDragHooks: TimelineRowDragHooks(
               drag: session.layerRowDragVerbs.inFlight,
               onBegin: session.layerRowDragVerbs.beginLayerRowDrag,

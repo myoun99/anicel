@@ -70,7 +70,7 @@ void main() {
     );
 
     // R8: an fx toggle is a model edit — it must rebuild, not reuse.
-    session.toggleLayerFx(session.activeLayer!.id);
+    session.effectsAndFx.toggleLayerFx(session.activeLayer!.id);
     await tester.pumpAndSettle();
     expect(
       identical(documentNow(), afterEdit),

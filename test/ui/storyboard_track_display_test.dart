@@ -77,13 +77,13 @@ void main() {
           .map((cut) => cut.id)
           .toList();
       expect(cutIds, isNotEmpty);
-      expect(cutIds.every(session.isCutFxEnabled), isTrue);
+      expect(cutIds.every(session.effectsAndFx.isCutFxEnabled), isTrue);
 
-      session.toggleTrackFx(trackId);
+      session.effectsAndFx.toggleTrackFx(trackId);
 
-      expect(session.trackFxState(trackId), LayerFxState.off);
+      expect(session.effectsAndFx.trackFxState(trackId), LayerFxState.off);
       expect(
-        cutIds.every((id) => !session.isCutFxEnabled(id)),
+        cutIds.every((id) => !session.effectsAndFx.isCutFxEnabled(id)),
         isTrue,
         reason: 'every cut on the track reads bypassed without any per-cut '
             'write — the master arrives at isCutFxEnabled',
@@ -106,15 +106,15 @@ void main() {
           .first
           .id;
 
-      expect(session.trackFxState(trackId), LayerFxState.on);
+      expect(session.effectsAndFx.trackFxState(trackId), LayerFxState.on);
 
-      session.toggleTrackFx(trackId);
-      expect(session.trackFxState(trackId), LayerFxState.off);
-      expect(session.isCutFxEnabled(cutId), isFalse);
+      session.effectsAndFx.toggleTrackFx(trackId);
+      expect(session.effectsAndFx.trackFxState(trackId), LayerFxState.off);
+      expect(session.effectsAndFx.isCutFxEnabled(cutId), isFalse);
 
-      session.toggleTrackFx(trackId);
-      expect(session.trackFxState(trackId), LayerFxState.on);
-      expect(session.isCutFxEnabled(cutId), isTrue);
+      session.effectsAndFx.toggleTrackFx(trackId);
+      expect(session.effectsAndFx.trackFxState(trackId), LayerFxState.on);
+      expect(session.effectsAndFx.isCutFxEnabled(cutId), isTrue);
     });
 
     test('the flag persists — it is model state, not a session set', () {
@@ -123,7 +123,7 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      session.toggleTrackFx(session.selectedTrackId);
+      session.effectsAndFx.toggleTrackFx(session.selectedTrackId);
 
       final reopened = Project.fromJson(
         jsonDecode(jsonEncode(session.repository.requireProject().toJson()))
@@ -141,12 +141,12 @@ void main() {
       addTearDown(session.dispose);
 
       final trackId = session.selectedTrackId;
-      session.commitTrackOpacity(trackId, 0.25);
-      session.toggleTrackFx(trackId);
+      session.opacityVerbs.commitTrackOpacity(trackId, 0.25);
+      session.effectsAndFx.toggleTrackFx(trackId);
 
-      expect(session.trackStaticOpacity(trackId), 0.25);
+      expect(session.opacityVerbs.trackStaticOpacity(trackId), 0.25);
       expect(
-        session.activeCutEditingFadeOpacity(),
+        session.opacityVerbs.activeCutEditingFadeOpacity(),
         0.25,
         reason: 'a layer\'s static opacity is not gated by its fx switch '
             'either — only the animated fade stands down',
@@ -162,9 +162,9 @@ void main() {
       final trackId = session.selectedTrackId;
       final before = session.repository.requireProject();
 
-      session.previewTrackOpacity(trackId, 0.5);
+      session.opacityVerbs.previewTrackOpacity(trackId, 0.5);
       expect(
-        session.trackStaticOpacity(trackId),
+        session.opacityVerbs.trackStaticOpacity(trackId),
         0.5,
         reason: 'readers see the live value',
       );
@@ -174,7 +174,7 @@ void main() {
         reason: 'per-move writes are what commit-on-release exists to avoid',
       );
 
-      session.commitTrackOpacity(trackId, 0.5);
+      session.opacityVerbs.commitTrackOpacity(trackId, 0.5);
       expect(session.trackOpacityDragPreview.value, isNull);
       expect(
         session.repository.requireProject().tracks.first.opacity,
@@ -227,6 +227,6 @@ void main() {
 
     await tester.tap(fxSwitch);
     await tester.pumpAndSettle();
-    expect(session.trackFxState(trackId), LayerFxState.off);
+    expect(session.effectsAndFx.trackFxState(trackId), LayerFxState.off);
   });
 }

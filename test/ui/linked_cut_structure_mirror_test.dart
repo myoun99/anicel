@@ -169,7 +169,7 @@ void main() {
   test('an effect added to a 겸용 row appears in the sibling, same id', () {
     final pair = makeLinkedPair();
 
-    session.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 
     final added = session.activeLayer!;
     expect(added.effects, hasLength(1));
@@ -184,13 +184,13 @@ void main() {
   test("a sibling's OWN parameter values survive a later shape change", () {
     final radiusId = effectParametersOf(EffectKind.blur).first.id;
     final pair = makeLinkedPair();
-    session.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final linkedRow = session.activeLayer!;
 
     // Give the SIBLING its own blur radius (a per-use lane value).
     session.selectCut(pair.source);
     final sourceRow = counterpartIn(pair.source, linkedRow);
-    session.updateLayerEffects(sourceRow.id, [
+    session.effectsAndFx.updateLayerEffects(sourceRow.id, [
       sourceRow.effects.single.withParameter(
         radiusId,
         EffectParameter(value: 7),
@@ -206,7 +206,7 @@ void main() {
 
     // Change the SHAPE from the other cut.
     session.selectCut(pair.linked);
-    session.addEffectToActiveLayer(EffectKind.brightnessContrast);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
 
     final after = counterpartIn(pair.source, linkedRow);
     expect(after.effects, hasLength(2), reason: 'the new effect mirrored');
@@ -235,7 +235,7 @@ void main() {
       'mirror leaves open', () {
     final radiusId = effectParametersOf(EffectKind.blur).first.id;
     final pair = makeLinkedPair();
-    session.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final row = session.activeLayer!;
     final effectId = row.effects.single.id;
 
@@ -246,7 +246,7 @@ void main() {
       final layer = counterpartIn(cutId, row);
       final effect = layer.effects.single;
       final parameter = effect.parameters[radiusId]!;
-      session.updateLayerEffects(layer.id, [
+      session.effectsAndFx.updateLayerEffects(layer.id, [
         effect.withParameter(
           radiusId,
           EffectParameter(
@@ -259,7 +259,7 @@ void main() {
 
     bool nameKey(CutId cutId) {
       session.selectCut(cutId);
-      return session.setEffectKeyName(
+      return session.effectsAndFx.setEffectKeyName(
         layerId: counterpartIn(cutId, row).id,
         effectId: effectId,
         parameterId: radiusId,
@@ -270,7 +270,7 @@ void main() {
 
     void joinKey(CutId cutId) {
       session.selectCut(cutId);
-      session.linkEffectKeyName(
+      session.effectsAndFx.linkEffectKeyName(
         layerId: counterpartIn(cutId, row).id,
         effectId: effectId,
         parameterId: radiusId,
@@ -379,10 +379,10 @@ void main() {
 
   test('removing an effect removes it from the sibling too', () {
     final pair = makeLinkedPair();
-    session.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final added = session.activeLayer!;
 
-    session.removeEffectFromActiveLayer(added.effects.single.id);
+    session.effectsAndFx.removeEffectFromActiveLayer(added.effects.single.id);
 
     expect(counterpartIn(pair.source, added).effects, isEmpty);
   });

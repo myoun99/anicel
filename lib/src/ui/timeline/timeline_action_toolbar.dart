@@ -350,8 +350,8 @@ class TimelineActionToolbar extends StatelessWidget {
             kind.labelFor(AppText.language),
           ),
           icon: Icons.auto_fix_high_outlined,
-          enabled: serves && session.canAddEffectToActiveLayer,
-          onSelected: () => session.addEffectToActiveLayer(kind),
+          enabled: serves && session.effectsAndFx.canAddEffectToActiveLayer,
+          onSelected: () => session.effectsAndFx.addEffectToActiveLayer(kind),
         ),
       if (effects.isNotEmpty) const PanelFlyoutDivider(),
       for (final effect in effects)
@@ -364,7 +364,7 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.remove_circle_outline,
           danger: true,
           enabled: serves,
-          onSelected: () => session.removeEffectFromActiveLayer(effect.id),
+          onSelected: () => session.effectsAndFx.removeEffectFromActiveLayer(effect.id),
         ),
     ];
   }

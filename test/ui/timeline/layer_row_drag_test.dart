@@ -349,8 +349,8 @@ void main() {
     await _pump(tester);
     final session = _sessionOf(tester);
     session.selectLayer(const LayerId('b'));
-    session.addEffectToActiveLayer(EffectKind.values.first);
-    session.addEffectToActiveLayer(EffectKind.values[1]);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.values.first);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.values[1]);
     await tester.pumpAndSettle();
 
     List<EffectKind> chain() => [

@@ -44,8 +44,8 @@ void main() {
         ),
       ),
     );
-    session.addEffectToActiveLayer(EffectKind.brightnessContrast);
-    session.addEffectToActiveLayer(EffectKind.blur);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final effects = session.activeLayer!.effects;
     expect(effects, hasLength(2));
     return (id: layerId, first: effects.first.id, second: effects.last.id);
@@ -65,24 +65,24 @@ void main() {
       final session = makeSession();
       final row = armRow(session);
 
-      expect(session.layerFxState(row.id), LayerFxState.on);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.on);
 
       // One effect off is a MIX — the row still does some of its fx.
-      session.updateLayerEffects(row.id, [
+      session.effectsAndFx.updateLayerEffects(row.id, [
         for (final effect in effectsOf(session, row.id))
           effect.id == row.first ? effect.copyWith(enabled: false) : effect,
       ]);
-      expect(session.layerFxState(row.id), LayerFxState.mixed);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.mixed);
       expect(
-        session.isLayerFxEnabled(row.id),
+        session.effectsAndFx.isLayerFxEnabled(row.id),
         isTrue,
         reason: 'mixed still applies fx, so the boolean readers say yes',
       );
 
       // Tapping a MIXED row resolves it one way: everything off.
-      session.toggleLayerFx(row.id);
-      expect(session.layerFxState(row.id), LayerFxState.off);
-      expect(session.isLayerFxEnabled(row.id), isFalse);
+      session.effectsAndFx.toggleLayerFx(row.id);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.off);
+      expect(session.effectsAndFx.isLayerFxEnabled(row.id), isFalse);
       expect(transformEnabledOf(session, row.id), isFalse);
       expect(
         effectsOf(session, row.id).every((effect) => !effect.enabled),
@@ -90,8 +90,8 @@ void main() {
       );
 
       // And only a fully-off row turns back ON.
-      session.toggleLayerFx(row.id);
-      expect(session.layerFxState(row.id), LayerFxState.on);
+      session.effectsAndFx.toggleLayerFx(row.id);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.on);
       expect(transformEnabledOf(session, row.id), isTrue);
       expect(
         effectsOf(session, row.id).every((effect) => effect.enabled),
@@ -103,19 +103,19 @@ void main() {
       final session = makeSession();
       final row = armRow(session);
 
-      session.toggleLayerFx(row.id);
-      expect(session.layerFxState(row.id), LayerFxState.off);
+      session.effectsAndFx.toggleLayerFx(row.id);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.off);
 
       // One command for the transform switch AND both effects.
       session.undo();
       expect(
-        session.layerFxState(row.id),
+        session.effectsAndFx.layerFxState(row.id),
         LayerFxState.on,
         reason: 'a master tap must not take three undos to walk back',
       );
 
       session.redo();
-      expect(session.layerFxState(row.id), LayerFxState.off);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.off);
 
       // Persisted: the switches are in the layer's JSON, which is the
       // whole point of the round (the session set died on reload).
@@ -133,15 +133,15 @@ void main() {
       // its source sat at identity.
       final session = makeSession();
       final row = armRow(session);
-      session.toggleLayerFx(row.id);
-      expect(session.layerFxState(row.id), LayerFxState.off);
+      session.effectsAndFx.toggleLayerFx(row.id);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.off);
 
       session.layerClipboard.copyActiveLayer();
       session.layerClipboard.pasteLayerFromClipboard();
       final pastedId = session.activeLayer!.id;
       expect(pastedId, isNot(row.id));
       expect(
-        session.layerFxState(pastedId),
+        session.effectsAndFx.layerFxState(pastedId),
         LayerFxState.off,
         reason: 'the paste is bypassed exactly as far as its source was',
       );
@@ -149,7 +149,7 @@ void main() {
 
       session.selectLayer(row.id);
       session.layerVerbs.duplicateActiveLayer();
-      expect(session.layerFxState(session.activeLayer!.id), LayerFxState.off);
+      expect(session.effectsAndFx.layerFxState(session.activeLayer!.id), LayerFxState.off);
     });
 
     test('an OLD file with no switch keys reads as fully applied', () {
@@ -174,29 +174,29 @@ void main() {
       final session = makeSession();
       final row = armRow(session);
 
-      session.toggleLayerTransformFx(row.id);
+      session.effectsAndFx.toggleLayerTransformFx(row.id);
       expect(transformEnabledOf(session, row.id), isFalse);
       expect(
         effectsOf(session, row.id).every((effect) => effect.enabled),
         isTrue,
         reason: 'a per-group switch must not sweep the row',
       );
-      expect(session.layerFxState(row.id), LayerFxState.mixed);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.mixed);
 
       // Bypassing the transform bypasses the POSE, like the master did.
       expect(session.layerCanvasPoseSample(row.id), isNull);
 
-      session.toggleLayerTransformFx(row.id);
+      session.effectsAndFx.toggleLayerTransformFx(row.id);
       expect(transformEnabledOf(session, row.id), isTrue);
       expect(session.layerCanvasPoseSample(row.id), isNotNull);
-      expect(session.layerFxState(row.id), LayerFxState.on);
+      expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.on);
     });
 
     test('updateLayerTransformEnabled is idempotent (no empty undo steps)', () {
       final session = makeSession();
       final row = armRow(session);
 
-      session.toggleLayerTransformFx(row.id);
+      session.effectsAndFx.toggleLayerTransformFx(row.id);
       expect(transformEnabledOf(session, row.id), isFalse);
 
       // Writing the value it already has must record NOTHING, or the undo
@@ -221,10 +221,10 @@ void main() {
       expect(LayerKind.camera.hasLayerEffects, isFalse);
       expect(LayerKind.camera.hasTransformFxSwitch, isTrue);
 
-      expect(session.layerFxState(cameraId), LayerFxState.on);
-      session.toggleLayerFx(cameraId);
+      expect(session.effectsAndFx.layerFxState(cameraId), LayerFxState.on);
+      session.effectsAndFx.toggleLayerFx(cameraId);
       expect(
-        session.layerFxState(cameraId),
+        session.effectsAndFx.layerFxState(cameraId),
         LayerFxState.off,
         reason:
             'the camera row is not skipped by the master (it carries '
@@ -243,15 +243,15 @@ void main() {
       expect(session.activeLayer!.kind, LayerKind.adjustment);
 
       expect(
-        session.layerFxState(adjId),
+        session.effectsAndFx.layerFxState(adjId),
         LayerFxState.on,
         reason: 'no effects yet = nothing bypassed',
       );
 
-      session.addEffectToActiveLayer(EffectKind.brightnessContrast);
-      session.toggleLayerFx(adjId);
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      session.effectsAndFx.toggleLayerFx(adjId);
       expect(
-        session.layerFxState(adjId),
+        session.effectsAndFx.layerFxState(adjId),
         LayerFxState.off,
         reason:
             'its ONE effect is off, so the row is off — a meaningless '
@@ -268,8 +268,8 @@ void main() {
       session.createDrawingAtCurrentFrame();
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final adjId = session.activeLayer!.id;
-      session.addEffectToActiveLayer(EffectKind.brightnessContrast);
-      session.addEffectToActiveLayer(EffectKind.blur);
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 
       final sourceCutId = session.requireActiveCut.id;
       session.cutVerbs.createLinkedCutFromActiveCut();
@@ -291,7 +291,7 @@ void main() {
       session.selectLayer(
         session.layers.firstWhere((l) => l.kind == LayerKind.adjustment).id,
       );
-      session.toggleLayerFx(session.activeLayer!.id);
+      session.effectsAndFx.toggleLayerFx(session.activeLayer!.id);
 
       for (final cutId in [sourceCutId, linkedCutId]) {
         expect(
@@ -324,14 +324,14 @@ void main() {
       );
       expect(session.frameRangeSelection.value, isNotNull);
 
-      session.toggleLayerFx(row.id);
+      session.effectsAndFx.toggleLayerFx(row.id);
       expect(
         session.frameRangeSelection.value,
         isNotNull,
         reason: 'the master must not clear the selection',
       );
 
-      session.toggleLayerTransformFx(row.id);
+      session.effectsAndFx.toggleLayerTransformFx(row.id);
       expect(
         session.frameRangeSelection.value,
         isNotNull,
@@ -343,7 +343,7 @@ void main() {
       final session = makeSession();
       final row = armRow(session);
 
-      session.setAllLayersFxBypassed(true);
+      session.effectsAndFx.setAllLayersFxBypassed(true);
       expect(transformEnabledOf(session, row.id), isFalse);
       expect(
         effectsOf(session, row.id).every((effect) => !effect.enabled),
@@ -351,7 +351,7 @@ void main() {
       );
       expect(
         session.layers.every(
-          (layer) => session.layerFxState(layer.id) != LayerFxState.mixed,
+          (layer) => session.effectsAndFx.layerFxState(layer.id) != LayerFxState.mixed,
         ),
         isTrue,
         reason: 'a sweep leaves no row half-resolved',

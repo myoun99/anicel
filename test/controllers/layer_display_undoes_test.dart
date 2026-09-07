@@ -102,7 +102,7 @@ void main() {
           ? LayerBlendMode.screen
           : LayerBlendMode.multiply,
     );
-    session.setLayerOpacity(layerId: layerId, opacity: 0.25);
+    session.opacityVerbs.setLayerOpacity(layerId: layerId, opacity: 0.25);
 
     session.historyManager.undo();
     expect(
@@ -175,7 +175,7 @@ void main() {
       layerId,
     ).opacity;
 
-    session.setLayerOpacity(layerId: layerId, opacity: 0.5);
+    session.opacityVerbs.setLayerOpacity(layerId: layerId, opacity: 0.5);
     session.layerSwitches.setAllLayersVisibility(false);
 
     session.historyManager.undo(); // the whole batch

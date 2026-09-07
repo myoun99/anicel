@@ -57,7 +57,7 @@ class EditingStackMap {
   /// 똑같이). The hand-built block this replaced appended it at the top
   /// level and lost all three.
   CanvasStackRow _live(CutFrameCompositeLiveRow node) {
-    activeLayerOpacity = session._opacity.stackLayerOpacity(
+    activeLayerOpacity = session.opacityVerbs.stackLayerOpacity(
       node.layer,
       stackCut.layers,
       frameIndex,
@@ -95,7 +95,7 @@ class EditingStackMap {
     }
     activeLayerOpacity = !entry.layer.isVisible
         ? 0.0
-        : session._opacity.stackLayerOpacity(
+        : session.opacityVerbs.stackLayerOpacity(
             entry.layer,
             stackCut.layers,
             frameIndex,

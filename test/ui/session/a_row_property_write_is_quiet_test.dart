@@ -43,7 +43,7 @@ void main() {
     var notified = 0;
     s.addListener(() => notified += 1);
 
-    s.updateLayerEffects(layer.id, [
+    s.effectsAndFx.updateLayerEffects(layer.id, [
       LayerEffect.defaults(id: const EffectId('fx-q'), kind: EffectKind.blur),
     ]);
 

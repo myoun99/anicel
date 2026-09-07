@@ -210,7 +210,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       if (next == null) {
         return;
       }
-      _session.updateTrackEffects(track.id, next, description: description);
+      _session.effectsAndFx.updateTrackEffects(track.id, next, description: description);
     }
 
     return PropertyLaneEditCallbacks(
@@ -871,8 +871,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     ),
                     isLayerSoloed: (layerId) =>
                         _session.soloedSeLayerIds.value.contains(layerId),
-                    onLayerOpacityChanged: _session.previewLayerOpacity,
-                    onLayerOpacityChangeEnd: _session.commitLayerOpacity,
+                    onLayerOpacityChanged: _session.opacityVerbs.previewLayerOpacity,
+                    onLayerOpacityChangeEnd: _session.opacityVerbs.commitLayerOpacity,
                     onLayerMarkSelected: _session.layerMarks.setLayerMark,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
@@ -883,13 +883,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         .contains(StoryboardPanel.seRowKey(track, slot)),
                     trackLaneOpenOf: (track) =>
                         _expandedTransformTracks.contains(track.id.value),
-                    layerFxStateOf: _session.layerFxState,
-                    onToggleLayerFx: _session.toggleLayerFx,
+                    layerFxStateOf: _session.effectsAndFx.layerFxState,
+                    onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
                     // The timeline's rail legend on this panel too (UI-R5): the
                     // same session-backed bulk flyouts + master opacity bar; the
                     // row solos stand down (the storyboard rail is track-global,
                     // no row filter here).
-                    visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
+                    visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
                     legend: sessionLegendCallbacks(
                       _session,
                       rowFilter: widget.rowFilter,
@@ -907,22 +907,22 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         _session.toggleCutPictureVisibility,
                     // R9 #21: the TRACK's own fx master and static opacity —
                     // persisted model state, unlike the cut toggles above.
-                    trackFxStateOf: (track) => _session.trackFxState(track.id),
+                    trackFxStateOf: (track) => _session.effectsAndFx.trackFxState(track.id),
                     onToggleTrackFx: (track) =>
-                        _session.toggleTrackFx(track.id),
+                        _session.effectsAndFx.toggleTrackFx(track.id),
                     // The V row's chain: one effect's own bypass, from its lane
                     // group header.
                     onToggleTrackEffectEnabled: (track, effectId) =>
-                        _session.toggleTrackEffectEnabled(track.id, effectId),
+                        _session.effectsAndFx.toggleTrackEffectEnabled(track.id, effectId),
                     // R5: AE's group Reset on the V row's chain.
                     onResetTrackEffectGroup: (track, headerLaneId) =>
-                        _session.resetTrackEffectGroup(track.id, headerLaneId),
+                        _session.effectsAndFx.resetTrackEffectGroup(track.id, headerLaneId),
                     trackOpacityOf: (track) =>
-                        _session.trackStaticOpacity(track.id),
+                        _session.opacityVerbs.trackStaticOpacity(track.id),
                     onTrackOpacityChanged: (track, opacity) =>
-                        _session.previewTrackOpacity(track.id, opacity),
+                        _session.opacityVerbs.previewTrackOpacity(track.id, opacity),
                     onTrackOpacityChangeEnd: (track, opacity) =>
-                        _session.commitTrackOpacity(track.id, opacity),
+                        _session.opacityVerbs.commitTrackOpacity(track.id, opacity),
                     // S-row range selection: the SAME track-axis selection the
                     // cut row paints, one row up. The timeline mounts its range
                     // gesture on every layer row (UI-R20 #2) and these rows had

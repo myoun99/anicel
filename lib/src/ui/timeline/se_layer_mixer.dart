@@ -127,7 +127,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
                   icon: Icons.headphones,
                   on: soloed,
                   onPressed: () =>
-                      widget.session.toggleLayerSolo(widget.layerId),
+                      widget.session.visibilitySolo.toggleLayerSolo(widget.layerId),
                 ),
               ),
             ],

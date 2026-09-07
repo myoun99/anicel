@@ -313,7 +313,7 @@ void main() {
 
     test('so does the opacity — the ㊱ wiring, pinned at the session', () {
       final (s, target, other) = sessionWithTwoRows(LayerBlendMode.normal);
-      s.setLayerOpacity(layerId: target, opacity: 0.4);
+      s.opacityVerbs.setLayerOpacity(layerId: target, opacity: 0.4);
 
       s.selectLayer(other);
       final asImage = imageRequestsIn(s.editingCanvasStack.nodes)

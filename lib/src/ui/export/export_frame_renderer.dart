@@ -286,12 +286,12 @@ class ExportFrameRenderer {
     // survived" is exactly what R8 refused). It gates the effect chain —
     // never the STATIC opacity, which is a compositing property and not an fx
     // (R9 #21).
-    final trackFxEnabled = session.isCutFxEnabled(task.cut.id);
+    final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(task.cut.id);
     // No animated track fade any more; the transition row's ramp lands in
     // [_canvasSpaceTransitionFrame] above, on the frames it actually covers.
-    final fade = session.trackStaticOpacityForCut(task.cut.id);
+    final fade = session.opacityVerbs.trackStaticOpacityForCut(task.cut.id);
     final trackEffects = trackEffectsAt(
-      session.trackEffectsForCut(task.cut.id),
+      session.effectsAndFx.trackEffectsForCut(task.cut.id),
       trackFrame,
       enabled: trackFxEnabled,
     );
@@ -396,7 +396,7 @@ class ExportFrameRenderer {
     final unitAlphas = <double>[
       for (final contribution in contributions)
         contribution.opacity *
-            session.trackStaticOpacityForCut(contribution.cut.id),
+            session.opacityVerbs.trackStaticOpacityForCut(contribution.cut.id),
     ];
     final weights = sourceOverWeights(unitAlphas);
 
@@ -432,9 +432,9 @@ class ExportFrameRenderer {
         // dissolve weights what the chain made, not what it started from.
         final dissolvePlan = resolveCompositeEffectPlan(
           trackEffectsAt(
-            session.trackEffectsForCut(cut.id),
+            session.effectsAndFx.trackEffectsForCut(cut.id),
             globalFrame,
-            enabled: session.isCutFxEnabled(cut.id),
+            enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
           ),
         );
         dissolvePlan.finalPaint.applyTo(framePaint);
@@ -502,7 +502,7 @@ class ExportFrameRenderer {
     final unitAlphas = <double>[
       for (final position in positions)
         position.opacity *
-            session.trackStaticOpacityForCut(position.cut.id),
+            session.opacityVerbs.trackStaticOpacityForCut(position.cut.id),
     ];
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
@@ -543,7 +543,7 @@ class ExportFrameRenderer {
         // Track effects at the frame's GLOBAL position (R4) — the stack's
         // own axis — with the row's fx master gating them (R8's rule; the
         // static opacity is not an fx and stays).
-        final trackFxEnabled = session.isCutFxEnabled(cut.id);
+        final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
         final weight = weights[i];
         // The stage belongs to the bottom covered TRACK, and to every
         // contribution of it: an O.L is a 場面転換, so the arriving cut brings
@@ -564,7 +564,7 @@ class ExportFrameRenderer {
           cameraFrameSize: size,
           // No cutPose/cutAnchorPoint: the V row has no transform.
           cutEffects: trackEffectsAt(
-            session.trackEffectsForCut(cut.id),
+            session.effectsAndFx.trackEffectsForCut(cut.id),
             position.globalFrameIndex,
             enabled: trackFxEnabled,
           ),

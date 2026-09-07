@@ -575,7 +575,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
@@ -1011,7 +1011,7 @@ class EditorSessionManager extends ChangeNotifier
     );
     // Layer add/delete/undo may have moved the active row: keep the solo
     // mode following it (or exit if the command switched cuts).
-    _solo.syncVisibilitySolo();
+    visibilitySolo.syncVisibilitySolo();
     warmActiveCut();
   }
 
@@ -1410,37 +1410,13 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/opacity_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final OpacityVerbs _opacity = OpacityVerbs(
+  late final OpacityVerbs opacityVerbs = OpacityVerbs(
     project: this,
     changes: this,
     controllers: activeCutControllers,
     transitions: transitions,
     internals: this,
   );
-
-  double activeCutEditingFadeOpacity({int? frameIndex}) =>
-      _opacity.activeCutEditingFadeOpacity(frameIndex: frameIndex);
-  double trackStaticOpacity(TrackId trackId) =>
-      _opacity.trackStaticOpacity(trackId);
-  double trackStaticOpacityForCut(CutId cutId) =>
-      _opacity.trackStaticOpacityForCut(cutId);
-  void previewTrackOpacity(TrackId trackId, double opacity) =>
-      _opacity.previewTrackOpacity(trackId, opacity);
-  void commitTrackOpacity(TrackId trackId, double opacity) =>
-      _opacity.commitTrackOpacity(trackId, opacity);
-  void setLayerOpacity({required LayerId layerId, required double opacity}) =>
-      _opacity.setLayerOpacity(layerId: layerId, opacity: opacity);
-  void previewLayerOpacity(LayerId layerId, double opacity) =>
-      _opacity.previewLayerOpacity(layerId, opacity);
-  void commitLayerOpacity(LayerId layerId, double opacity) =>
-      _opacity.commitLayerOpacity(layerId, opacity);
-  void previewLayersOpacity(Set<LayerId> layerIds, double opacity) =>
-      _opacity.previewLayersOpacity(layerIds, opacity);
-  void commitLayersOpacity(Set<LayerId> layerIds, double opacity) =>
-      _opacity.commitLayersOpacity(layerIds, opacity);
-  void resetAllLayersOpacity() => _opacity.resetAllLayersOpacity();
-  void setAllLayersOpacity(double opacity) =>
-      _opacity.setAllLayersOpacity(opacity);
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
   late final FrameVerbs _frameVerbs = FrameVerbs(
@@ -1492,7 +1468,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/effects_and_fx.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final EffectsAndFx _effectsAndFx = EffectsAndFx(
+  late final EffectsAndFx effectsAndFx = EffectsAndFx(
     project: this,
     selection: this,
     changes: this,
@@ -1500,103 +1476,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     activeCut: _activeCutEdits,
   );
-
-  List<LayerEffect> trackEffectsForCut(CutId cutId) =>
-      _effectsAndFx.trackEffectsForCut(cutId);
-  void updateLayerEffects(
-    LayerId layerId,
-    List<LayerEffect> effects, {
-    String description = 'Edit layer effects',
-  }) => _effectsAndFx.updateLayerEffects(
-    layerId,
-    effects,
-    description: description,
-  );
-  bool get canAddEffectToActiveLayer => _effectsAndFx.canAddEffectToActiveLayer;
-  void addEffectToActiveLayer(EffectKind kind) =>
-      _effectsAndFx.addEffectToActiveLayer(kind);
-  bool setEffectKeyName({
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String? name,
-  }) => _effectsAndFx.setEffectKeyName(
-    layerId: layerId,
-    effectId: effectId,
-    parameterId: parameterId,
-    frameIndex: frameIndex,
-    name: name,
-  );
-  void linkEffectKeyName({
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String name,
-  }) => _effectsAndFx.linkEffectKeyName(
-    layerId: layerId,
-    effectId: effectId,
-    parameterId: parameterId,
-    frameIndex: frameIndex,
-    name: name,
-  );
-  void removeEffectFromActiveLayer(EffectId effectId) =>
-      _effectsAndFx.removeEffectFromActiveLayer(effectId);
-  double layerEffectParameterAtFrame(
-    Layer layer,
-    EffectId effectId,
-    String parameterId,
-    int frameIndex,
-  ) => _effectsAndFx.layerEffectParameterAtFrame(
-    layer,
-    effectId,
-    parameterId,
-    frameIndex,
-  );
-  void updateTrackEffects(
-    TrackId trackId,
-    List<LayerEffect> effects, {
-    String description = 'Edit track effects',
-  }) => _effectsAndFx.updateTrackEffects(
-    trackId,
-    effects,
-    description: description,
-  );
-  void addEffectToTrack(TrackId trackId, EffectKind kind) =>
-      _effectsAndFx.addEffectToTrack(trackId, kind);
-  void removeEffectFromTrack(TrackId trackId, EffectId effectId) =>
-      _effectsAndFx.removeEffectFromTrack(trackId, effectId);
-  bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) =>
-      _effectsAndFx.resetTrackEffectGroup(trackId, headerLaneId);
-  void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) =>
-      _effectsAndFx.toggleTrackEffectEnabled(trackId, effectId);
-  double trackEffectParameterAtFrame(
-    Track track,
-    EffectId effectId,
-    String parameterId,
-    int frameIndex,
-  ) => _effectsAndFx.trackEffectParameterAtFrame(
-    track,
-    effectId,
-    parameterId,
-    frameIndex,
-  );
-  LayerFxState layerFxState(LayerId layerId) =>
-      _effectsAndFx.layerFxState(layerId);
-  bool isLayerFxEnabled(LayerId layerId) =>
-      _effectsAndFx.isLayerFxEnabled(layerId);
-  bool isLayerTransformFxEnabled(LayerId layerId) =>
-      _effectsAndFx.isLayerTransformFxEnabled(layerId);
-  void toggleLayerFx(LayerId layerId) => _effectsAndFx.toggleLayerFx(layerId);
-  void toggleLayerTransformFx(LayerId layerId) =>
-      _effectsAndFx.toggleLayerTransformFx(layerId);
-  bool isCutFxEnabled(CutId cutId) => _effectsAndFx.isCutFxEnabled(cutId);
-  LayerFxState trackFxState(TrackId trackId) =>
-      _effectsAndFx.trackFxState(trackId);
-  void toggleTrackFx(TrackId trackId) => _effectsAndFx.toggleTrackFx(trackId);
-  void setAllLayersFxBypassed(bool bypassed) =>
-      _effectsAndFx.setAllLayersFxBypassed(bypassed);
 
   // `activeCutCanvasPoseSample` retired with the V row's transform: there is
   // no track pose for the editing canvas or the scrub preview to apply.
@@ -1699,7 +1578,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     timeline: this,
     controllers: activeCutControllers,
-    effectsAndFx: _effectsAndFx,
+    effectsAndFx: effectsAndFx,
     internals: this,
   );
 
@@ -1781,7 +1660,7 @@ class EditorSessionManager extends ChangeNotifier
     required bool enabled,
     String description = 'Toggle transform FX',
   }) {
-    final layer = _effectsAndFx.fxSwitchLayerById(layerId);
+    final layer = effectsAndFx.fxSwitchLayerById(layerId);
     if (layer == null || layer.transformEnabled == enabled) {
       return;
     }
@@ -1802,7 +1681,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/visibility_solo.dart, a part of this library). The
   // session keeps the public toggles as forwarders.
-  late final VisibilitySolo _solo = VisibilitySolo(
+  late final VisibilitySolo visibilitySolo = VisibilitySolo(
     project: this,
     selection: this,
     changes: this,
@@ -1810,10 +1689,6 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     internals: this,
   );
-
-  bool get layerVisibilitySoloEnabled => _solo.layerVisibilitySoloEnabled;
-  void toggleLayerVisibilitySolo() => _solo.toggleLayerVisibilitySolo();
-  void toggleLayerSolo(LayerId layerId) => _solo.toggleLayerSolo(layerId);
 
   // --- Cut display gates ---------------------------------------------------
 
@@ -2026,7 +1901,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
-  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: _effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, internals: this);
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, internals: this);
 
   /// The channel the workspace listens on when a drop wants a yes/no.
   ///
@@ -3173,7 +3048,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     laneVerbs: _laneVerbs,
-    effectsAndFx: _effectsAndFx,
+    effectsAndFx: effectsAndFx,
     internals: this,
   );
 
@@ -3725,8 +3600,8 @@ class EditorSessionManager extends ChangeNotifier
     standing.rememberActiveLayerForCut();
     // The visibility solo is cut-scoped: restore the eyes before leaving
     // (the selectCut contract).
-    if (_solo.layerVisibilitySoloEnabled) {
-      _solo.exitVisibilitySolo();
+    if (visibilitySolo.layerVisibilitySoloEnabled) {
+      visibilitySolo.exitVisibilitySolo();
     }
     editingSession.setActiveCutId(null);
     clipboard.dropCopiedFrame();

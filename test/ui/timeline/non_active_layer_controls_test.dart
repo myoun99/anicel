@@ -178,7 +178,7 @@ void main() {
       final session = await pumpRail(tester);
       final active = session.activeLayerId;
       final other = otherAnimationRow(session);
-      expect(session.layerFxState(other), LayerFxState.on);
+      expect(session.effectsAndFx.layerFxState(other), LayerFxState.on);
 
       await tester.tap(
         find.byKey(ValueKey<String>('timeline-layer-fx-$other')),
@@ -186,7 +186,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        session.layerFxState(other),
+        session.effectsAndFx.layerFxState(other),
         LayerFxState.off,
         reason: 'the fx switch did not land on its own row',
       );

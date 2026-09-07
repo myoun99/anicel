@@ -201,8 +201,8 @@ void main() {
       isFalse,
     );
 
-    s.toggleLayerVisibilitySolo();
-    expect(s.layerVisibilitySoloEnabled, isTrue);
+    s.visibilitySolo.toggleLayerVisibilitySolo();
+    expect(s.visibilitySolo.layerVisibilitySoloEnabled, isTrue);
     for (final layer in s.layers) {
       expect(layer.isVisible, layer.id == firstActive);
     }
@@ -214,8 +214,8 @@ void main() {
     }
 
     // Exit: every eye returns to its snapshot state ('other' was hidden).
-    s.toggleLayerVisibilitySolo();
-    expect(s.layerVisibilitySoloEnabled, isFalse);
+    s.visibilitySolo.toggleLayerVisibilitySolo();
+    expect(s.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
     for (final layer in s.layers) {
       expect(layer.isVisible, layer.id != other);
     }
@@ -228,7 +228,7 @@ void main() {
     s.selectCut(firstCutId);
     final activeId = s.activeLayerId!;
 
-    s.toggleLayerVisibilitySolo();
+    s.visibilitySolo.toggleLayerVisibilitySolo();
     for (final layer in s.layers) {
       expect(layer.isVisible, layer.id == activeId);
     }
@@ -237,7 +237,7 @@ void main() {
         .firstWhere((cut) => cut.id != firstCutId)
         .id;
     s.selectCut(otherCutId);
-    expect(s.layerVisibilitySoloEnabled, isFalse);
+    expect(s.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
     // The first cut's eyes are restored.
     s.selectCut(firstCutId);
     expect(s.layers.every((layer) => layer.isVisible), isTrue);
@@ -261,14 +261,14 @@ void main() {
     s.addListener(() => notifies += 1);
     final id = s.activeLayerId!;
 
-    s.previewLayerOpacity(id, 0.5);
+    s.opacityVerbs.previewLayerOpacity(id, 0.5);
     expect(notifies, 0);
     // The repo stays untouched during the drag…
     expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 1.0);
     // …while the editing canvas follows the preview.
     expect(s.editingCanvasStack.activeLayerOpacity, closeTo(0.5, 1e-9));
 
-    s.commitLayerOpacity(id, 0.5);
+    s.opacityVerbs.commitLayerOpacity(id, 0.5);
     expect(notifies, 1);
     expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 0.5);
     expect(s.opacityDragPreview.value, isNull);
@@ -281,7 +281,7 @@ void main() {
       for (final layer in s.layers)
         if (layer.kind.hasPictureOpacity) layer.id,
     };
-    s.commitLayersOpacity(targets, 0.3);
+    s.opacityVerbs.commitLayersOpacity(targets, 0.3);
     for (final layer in s.layers) {
       if (layer.kind.hasPictureOpacity) {
         expect(layer.opacity, closeTo(0.3, 1e-9));
@@ -302,10 +302,10 @@ void main() {
         if (layer.kind.hasPictureOpacity) layer.id,
     };
 
-    s.previewLayersOpacity(targets, 0.42);
+    s.opacityVerbs.previewLayersOpacity(targets, 0.42);
     expect(s.lastMasterOpacity, 1.0);
 
-    s.commitLayersOpacity(targets, 0.42);
+    s.opacityVerbs.commitLayersOpacity(targets, 0.42);
     expect(s.lastMasterOpacity, closeTo(0.42, 1e-9));
   });
 
@@ -348,21 +348,21 @@ void main() {
 
   test('fx bulk bypass/restore writes every row switch', () {
     final s = session();
-    expect(s.layers.every((layer) => s.isLayerFxEnabled(layer.id)), isTrue);
+    expect(s.layers.every((layer) => s.effectsAndFx.isLayerFxEnabled(layer.id)), isTrue);
 
-    s.setAllLayersFxBypassed(true);
+    s.effectsAndFx.setAllLayersFxBypassed(true);
     // The TRANSITION row has neither a transform nor a chain, so it owns no
     // fx switch to flip — its flag stays where it was rather than reading
     // as an un-bypassed row the sweep missed.
     expect(
       s.layers
           .where((layer) => layer.kind.hasTransformFxSwitch)
-          .every((layer) => !s.isLayerFxEnabled(layer.id)),
+          .every((layer) => !s.effectsAndFx.isLayerFxEnabled(layer.id)),
       isTrue,
     );
 
-    s.setAllLayersFxBypassed(false);
-    expect(s.layers.every((layer) => s.isLayerFxEnabled(layer.id)), isTrue);
+    s.effectsAndFx.setAllLayersFxBypassed(false);
+    expect(s.layers.every((layer) => s.effectsAndFx.isLayerFxEnabled(layer.id)), isTrue);
   });
 
   test('SE mute sweep touches only SE layers', () {
@@ -384,8 +384,8 @@ void main() {
     final target = s.layers
         .firstWhere((layer) => layer.kind != LayerKind.camera)
         .id;
-    s.setLayerOpacity(layerId: target, opacity: 0.4);
-    s.resetAllLayersOpacity();
+    s.opacityVerbs.setLayerOpacity(layerId: target, opacity: 0.4);
+    s.opacityVerbs.resetAllLayersOpacity();
     for (final layer in s.layers) {
       if (layer.kind != LayerKind.camera) {
         expect(layer.opacity, 1.0);
