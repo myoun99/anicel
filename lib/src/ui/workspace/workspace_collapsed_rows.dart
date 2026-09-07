@@ -276,7 +276,7 @@ class _WorkspaceCollapsedRows {
       fxState: session.layerFxState(layer.id),
       onionSkinEnabled: session.isLayerOnionSkinEnabled(layer.id),
       isLayerSoloed: session.soloedSeLayerIds.value.contains(layer.id),
-      isLinked: session.isLayerLinked(layer.id),
+      isLinked: session.layerVerbs.isLayerLinked(layer.id),
       // A row HAS lanes when its lanes are not empty — the same question the
       // panel asks. Hardcoding `true` gave a twirl to rows that have nothing
       // to twirl.

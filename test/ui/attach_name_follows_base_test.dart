@@ -85,7 +85,7 @@ void main() {
     final s = session();
     addTearDown(s.dispose);
 
-    s.renameLayer(const LayerId('base'), 'B');
+    s.layerVerbs.renameLayer(const LayerId('base'), 'B');
 
     expect(nameOf(s, 'base'), 'B');
     expect(nameOf(s, 'up'), 'B+1', reason: 'the suffix rides verbatim');

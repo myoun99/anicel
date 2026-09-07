@@ -221,8 +221,8 @@ void main() {
     session.selectLayer(session.layers.first.id);
     await tester.pump();
     before = toolbar();
-    while (session.canDeleteActiveLayer) {
-      session.deleteActiveLayer();
+    while (session.layerVerbs.canDeleteActiveLayer) {
+      session.layerVerbs.deleteActiveLayer();
       await tester.pump();
     }
     expect(identical(toolbar(), before), isFalse,

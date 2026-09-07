@@ -603,13 +603,13 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/frame_clipboard.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
   late final FrameClipboard _clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
-  late final LayerClipboard _layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
+  late final LayerClipboard layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
 
   // ── the layer verbs: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LayerVerbs _layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, activeCut: _activeCutEdits);
+  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -626,32 +626,15 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     controllers: activeCutControllers,
     internals: this,
-    layerVerbs: _layerVerbs,
+    layerVerbs: layerVerbs,
     standing: _standing,
     folderBands: _folderBands,
     renderCaches: renderCaches,
     brushInputActive: brushInputActive,
   );
 
-  bool get canDeleteActiveLayer => _layerVerbs.canDeleteActiveLayer;
-  bool canDeleteLayer(Layer activeLayer) =>
-      _layerVerbs.canDeleteLayer(activeLayer);
-  void deleteActiveLayer() => _layerVerbs.deleteActiveLayer();
-  void deleteSelectedLayers() => _layerVerbs.deleteSelectedLayers();
-  void duplicateSelectedLayers() => _layerVerbs.duplicateSelectedLayers();
-  void duplicateActiveLayer() => _layerVerbs.duplicateActiveLayer();
-  bool get canLinkDuplicateActiveLayer =>
-      _layerVerbs.canLinkDuplicateActiveLayer;
-  void linkDuplicateActiveLayer() => _layerVerbs.linkDuplicateActiveLayer();
-  bool get canUnlinkActiveLayer => _layerVerbs.canUnlinkActiveLayer;
-  void unlinkActiveLayer() => _layerVerbs.unlinkActiveLayer();
-  bool isLayerLinked(LayerId layerId) => _layerVerbs.isLayerLinked(layerId);
-  void renameActiveLayer(String name) => _layerVerbs.renameActiveLayer(name);
-  void copyActiveLayer() => _layerClipboard.copyActiveLayer();
-
   bool get canCopyFrameAtCurrentFrame => _clipboard.canCopyFrameAtCurrentFrame;
   void copyFrameAtCurrentFrame() => _clipboard.copyFrameAtCurrentFrame();
-  void pasteLayerFromClipboard() => _layerClipboard.pasteLayerFromClipboard();
   bool get canPasteLinkedFrameAtCurrentFrame =>
       _clipboard.canPasteLinkedFrameAtCurrentFrame;
   bool get canPasteIndependentFrameAtCurrentFrame =>
@@ -660,8 +643,6 @@ class EditorSessionManager extends ChangeNotifier
       _clipboard.pasteIndependentFrameAtCurrentFrame();
   void pasteLinkedFrameAtCurrentFrame() =>
       _clipboard.pasteLinkedFrameAtCurrentFrame();
-  String? get layerClipboardName => _layerClipboard.layerClipboardName;
-  bool get hasLayerClipboard => _layerClipboard.hasLayerClipboard;
   String get copiedFrameStatusText => _clipboard.copiedFrameStatusText;
   String get linkedFrameUsesStatusText => _clipboard.linkedFrameUsesStatusText;
 
@@ -876,38 +857,6 @@ class EditorSessionManager extends ChangeNotifier
   void beginSelectionInteraction() =>
       _rangeSelections.beginSelectionInteraction();
   void endSelectionInteraction() => _rangeSelections.endSelectionInteraction();
-
-  /// The selected rows that name a LAYER this cut may delete (⑨).
-  ///
-  /// A row's kind decides what the edit DOES, never whether the row could
-  /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
-  /// rows simply contribute nothing here instead of being kept out of the
-  /// selection.
-  @override
-  List<LayerId> deletableSelectedLayerIds() =>
-      _selectedLayerIdsWhere(canDeleteLayer);
-
-  /// The selected LAYER rows whose layer passes [keep], in selection order,
-  /// once each — the one walk behind [deletableSelectedLayerIds] and
-  /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
-  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) {
-    final selection = rowSelection.value;
-    if (selection.isEmpty) {
-      return const [];
-    }
-    final byId = {for (final layer in layers) layer.id: layer};
-    final ids = <LayerId>[];
-    for (final row in selection) {
-      if (row is! LayerRowAddress) {
-        continue;
-      }
-      final layer = byId[row.layerId];
-      if (layer != null && !ids.contains(layer.id) && keep(layer)) {
-        ids.add(layer.id);
-      }
-    }
-    return ids;
-  }
 
   /// The ladder every band verb climbs at the PLAYHEAD: the band answers
   /// first ([bandAnswers]), a band that names rows this press would miss
@@ -2401,66 +2350,6 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// The selected rows that may be DUPLICATED (⑨'s 복사).
-  ///
-  /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
-  /// predicates rather than restated: a track-owned SE row has no clipboard
-  /// shape, a per-cut singleton cannot have a second, and an attach row's
-  /// copy would double-link its base's cels.
-  @override
-  List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
-    (layer) =>
-        layer.kind.isClipboardCopyable &&
-        !layer.kind.isSingletonPerCut &&
-        !isAttachedLayer(layer),
-  );
-
-  /// ⑨: 「이름편집은 선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」.
-  ///
-  /// One undo step, and the SAME name on every row — the user's words are
-  /// "all of them to the same name", not "a numbered series", so nothing
-  /// here invents suffixes.
-  void renameSelectedLayers(String name) {
-    final cut = activeCutOrNull;
-    final ids = renameableSelectedLayerIds();
-    if (cut == null || ids.isEmpty) {
-      return;
-    }
-    historyManager.runAsOneStep('Rename rows', () {
-      for (final layerId in ids) {
-        cutCommandCoordinator.renameLayer(
-          cutId: cut.id,
-          layerId: layerId,
-          name: name,
-        );
-      }
-    });
-    refreshAfterCutCommand(preferredActiveLayerId: ids.first);
-    notifyListeners();
-  }
-
-  /// The selected rows whose NAME may be edited (⑨).
-  ///
-  /// Read-only-in-cut rows are the exception, and they are the same ones
-  /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
-  /// inside a cut is not this cut's to edit.
-  @override
-  List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
-
-  /// Renames any row by id — folders included, because a folder is a row.
-  @override
-  void renameLayer(LayerId layerId, String name) {
-    cutCommandCoordinator.renameLayer(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      name: name,
-    );
-    refreshAfterCutCommand(preferredActiveLayerId: layerId);
-    notifyListeners();
-  }
-
-
   // ── folders and attachments: their own object ───────────────────────
   //
   // A collaborator (session/folders_and_attachments.dart, a part of this library). The
@@ -3326,7 +3215,7 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches.envelopeInkStore.restoreFromFile(const {});
     historyManager.clear();
     _clipboard.clear();
-    _layerClipboard.clear();
+    layerClipboard.clear();
     clearAllSelections();
     trackFrameRangeSelection.value = null;
     editingSession.setActiveCutId(firstCutId);
@@ -4404,7 +4293,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, trackSe: _trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances _instances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: _camera, instructionVerbs: _instructions, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: _trackSe, cells: _cells, frameVerbs: _frameVerbs, internals: this);
 
   bool createInstancesForSelection() =>
       _instances.createInstancesForSelection();
@@ -5525,7 +5414,7 @@ class EditorSessionManager extends ChangeNotifier
     // ⑨: rows outrank cells. A row selection is the more specific statement
     // — you named the rows out loud — while the cell rung answers from where
     // the playhead happens to stand.
-    if (deletableSelectedLayerIds().isNotEmpty) {
+    if (layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
       return DeleteSubject.layers;
     }
     return canDeleteCellAtCurrentFrame
@@ -5540,7 +5429,7 @@ class EditorSessionManager extends ChangeNotifier
       case DeleteSubject.cuts:
         deleteActiveCut();
       case DeleteSubject.layers:
-        deleteSelectedLayers();
+        layerVerbs.deleteSelectedLayers();
       case DeleteSubject.cells:
         deleteCellAtCurrentFrame();
       case DeleteSubject.nothing:
@@ -6126,7 +6015,7 @@ class EditorSessionManager extends ChangeNotifier
     textCelBakes: _textCelBakes,
     voiceRecording: _voiceRecording,
     clipboard: _clipboard,
-    layerClipboard: _layerClipboard,
+    layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,
     refreshMediaExistence: refreshMediaExistence,

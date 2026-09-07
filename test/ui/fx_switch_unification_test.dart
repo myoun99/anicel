@@ -136,8 +136,8 @@ void main() {
       session.toggleLayerFx(row.id);
       expect(session.layerFxState(row.id), LayerFxState.off);
 
-      session.copyActiveLayer();
-      session.pasteLayerFromClipboard();
+      session.layerClipboard.copyActiveLayer();
+      session.layerClipboard.pasteLayerFromClipboard();
       final pastedId = session.activeLayer!.id;
       expect(pastedId, isNot(row.id));
       expect(
@@ -148,7 +148,7 @@ void main() {
       expect(transformEnabledOf(session, pastedId), isFalse);
 
       session.selectLayer(row.id);
-      session.duplicateActiveLayer();
+      session.layerVerbs.duplicateActiveLayer();
       expect(session.layerFxState(session.activeLayer!.id), LayerFxState.off);
     });
 

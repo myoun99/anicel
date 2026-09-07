@@ -327,7 +327,7 @@ void main() {
     s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(band().blendMode, LayerBlendMode.multiply);
 
-    s.renameLayer(folderId, 'Renamed');
+    s.layerVerbs.renameLayer(folderId, 'Renamed');
     expect(band().name, 'Renamed');
 
     s.toggleLayerVisibility(folderId);

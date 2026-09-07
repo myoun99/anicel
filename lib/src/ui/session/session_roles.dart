@@ -181,10 +181,8 @@ abstract interface class SessionInternals {
   ({TrackId trackId, int? index, int leadingGapFrames, int? duration})?
   get cutCreationPlan;
   void cutRunAtCurrentFrame();
-  List<LayerId> deletableSelectedLayerIds();
   DeleteSubject get deleteSubject;
   ValueNotifier<TimelineDragPreview?> get dragPreview;
-  List<LayerId> duplicatableSelectedLayerIds();
   ValueNotifier<int> get editingFrameCursor;
   bool get editingInteractionBusy;
   bool get editingPlayheadInGap;
@@ -202,8 +200,6 @@ abstract interface class SessionInternals {
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   CanvasSelectionRegion? Function()? get pixelSelectionRegion;
   PixelVerbSubject get pixelVerbSubject;
-  void renameLayer(LayerId layerId, String name);
-  List<LayerId> renameableSelectedLayerIds();
   bool resetLaneGroup(LayerId layerId, String headerLaneId);
   ValueNotifier<int> get revealSelectionTick;
   bool rowIsSelected(TimelineRowAddress row);

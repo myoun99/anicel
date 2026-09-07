@@ -37,7 +37,7 @@ Future<void> deleteRowSelectionWithDialog(
   BuildContext context,
   EditorSessionManager session,
 ) {
-  final ids = session.deletableSelectedLayerIds();
+  final ids = session.layerVerbs.deletableSelectedLayerIds();
   if (ids.isEmpty) {
     return Future<void>.value();
   }
@@ -58,13 +58,13 @@ Future<void> deleteActiveLayerWithDialog(
   EditorSessionManager session,
 ) {
   final activeLayer = session.activeLayer;
-  if (activeLayer == null || !session.canDeleteActiveLayer) {
+  if (activeLayer == null || !session.layerVerbs.canDeleteActiveLayer) {
     return Future<void>.value();
   }
   return confirmThenCommit(
     context,
     dialog: (_) => DeleteLayerDialog(layerName: activeLayer.name),
-    commit: session.deleteActiveLayer,
+    commit: session.layerVerbs.deleteActiveLayer,
   );
 }
 
@@ -83,7 +83,7 @@ Future<void> renameActiveLayerWithDialog(
   BuildContext context,
   EditorSessionManager session,
 ) {
-  final selected = session.renameableSelectedLayerIds();
+  final selected = session.layerVerbs.renameableSelectedLayerIds();
   final activeLayer = session.activeLayer;
   if (selected.isEmpty && activeLayer == null) {
     return Future<void>.value();
@@ -99,8 +99,8 @@ Future<void> renameActiveLayerWithDialog(
     context,
     dialog: (_) => RenameLayerDialog(initialName: initialName),
     commit: (nextName) => selected.isEmpty
-        ? session.renameActiveLayer(nextName)
-        : session.renameSelectedLayers(nextName),
+        ? session.layerVerbs.renameActiveLayer(nextName)
+        : session.layerVerbs.renameSelectedLayers(nextName),
   );
 }
 

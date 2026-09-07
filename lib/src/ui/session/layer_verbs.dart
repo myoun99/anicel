@@ -4,6 +4,7 @@ import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_row_address.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
@@ -24,24 +25,73 @@ class LayerVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals,
        _activeCutEdits = activeCut;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
 
   /// The active-row cut-command envelope — the session's one instance,
   /// handed in (see [ActiveCutEdits]).
   final ActiveCutEdits _activeCutEdits;
+
+  /// The selected rows that name a LAYER this cut may delete (⑨).
+  ///
+  /// A row's kind decides what the edit DOES, never whether the row could
+  /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
+  /// rows simply contribute nothing here instead of being kept out of the
+  /// selection.
+  List<LayerId> deletableSelectedLayerIds() =>
+      _selectedLayerIdsWhere(canDeleteLayer);
+
+  /// The selected rows that may be DUPLICATED (⑨'s 복사).
+  ///
+  /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
+  /// predicates rather than restated: a track-owned SE row has no clipboard
+  /// shape, a per-cut singleton cannot have a second, and an attach row's
+  /// copy would double-link its base's cels.
+  List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
+    (layer) =>
+        layer.kind.isClipboardCopyable &&
+        !layer.kind.isSingletonPerCut &&
+        !isAttachedLayer(layer),
+  );
+
+  /// The selected rows whose NAME may be edited (⑨).
+  ///
+  /// Read-only-in-cut rows are the exception, and they are the same ones
+  /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
+  /// inside a cut is not this cut's to edit.
+  List<LayerId> renameableSelectedLayerIds() =>
+      _selectedLayerIdsWhere((layer) => !layer.kind.isReadOnlyInCut);
+
+  /// The selected LAYER rows whose layer passes [keep], in selection order,
+  /// once each — the one walk behind [deletableSelectedLayerIds] and
+  /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
+  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) {
+    final selection = _selection.rowSelection.value;
+    if (selection.isEmpty) {
+      return const [];
+    }
+    final byId = {for (final layer in _project.layers) layer.id: layer};
+    final ids = <LayerId>[];
+    for (final row in selection) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final layer = byId[row.layerId];
+      if (layer != null && !ids.contains(layer.id) && keep(layer)) {
+        ids.add(layer.id);
+      }
+    }
+    return ids;
+  }
 
   bool get canDeleteActiveLayer {
     final activeLayer = _selection.activeLayer;
@@ -101,7 +151,7 @@ class LayerVerbs {
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin.
   void duplicateSelectedLayers() {
     final cut = _project.activeCutOrNull;
-    final ids = _internals.duplicatableSelectedLayerIds();
+    final ids = duplicatableSelectedLayerIds();
     if (cut == null || ids.isEmpty) {
       return;
     }
@@ -122,7 +172,7 @@ class LayerVerbs {
   /// falls back to the row you are standing on. Every caller — the pill
   /// button, a shortcut — inherits that without asking twice.
   void duplicateActiveLayer() {
-    if (_internals.duplicatableSelectedLayerIds().isNotEmpty) {
+    if (duplicatableSelectedLayerIds().isNotEmpty) {
       duplicateSelectedLayers();
       return;
     }
@@ -259,7 +309,7 @@ class LayerVerbs {
   /// written against: taking a lower row out first would shift the ones
   /// above it under the loop's feet.
   void deleteSelectedLayers() {
-    final ids = _internals.deletableSelectedLayerIds();
+    final ids = deletableSelectedLayerIds();
     if (ids.isEmpty) {
       return;
     }
@@ -295,7 +345,42 @@ class LayerVerbs {
     if (activeLayer == null) {
       return;
     }
-    _internals.renameLayer(activeLayer.id, name);
+    renameLayer(activeLayer.id, name);
+  }
+
+  /// ⑨: 「이름편집은 선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」.
+  ///
+  /// One undo step, and the SAME name on every row — the user's words are
+  /// "all of them to the same name", not "a numbered series", so nothing
+  /// here invents suffixes.
+  void renameSelectedLayers(String name) {
+    final cut = _project.activeCutOrNull;
+    final ids = renameableSelectedLayerIds();
+    if (cut == null || ids.isEmpty) {
+      return;
+    }
+    _project.historyManager.runAsOneStep('Rename rows', () {
+      for (final layerId in ids) {
+        _project.cutCommandCoordinator.renameLayer(
+          cutId: cut.id,
+          layerId: layerId,
+          name: name,
+        );
+      }
+    });
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: ids.first);
+    _changes.notifyChanged();
+  }
+
+  /// Renames any row by id — folders included, because a folder is a row.
+  void renameLayer(LayerId layerId, String name) {
+    _project.cutCommandCoordinator.renameLayer(
+      cutId: _project.requireActiveCut.id,
+      layerId: layerId,
+      name: name,
+    );
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: layerId);
+    _changes.notifyChanged();
   }
 
   /// Inserts a NEW ROW the way one joins the stack above the active layer.

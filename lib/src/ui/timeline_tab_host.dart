@@ -819,7 +819,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.layerFxState,
-            layerIsLinkedOf: _session.isLayerLinked,
+            layerIsLinkedOf: _session.layerVerbs.isLayerLinked,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
@@ -1268,7 +1268,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // is why this entry needs the listener in initState as well.
       session.canNameLaneKeys,
       // The layer pill's promoted verb.
-      session.canDeleteActiveLayer,
+      session.layerVerbs.canDeleteActiveLayer,
       // ⛔The two project-axis values LEFT this token with the dropdowns
       // that printed them: they are entries of the settings pill on the
       // 문턱 now, and a flyout's entries are built at open time.

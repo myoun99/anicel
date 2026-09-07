@@ -46,7 +46,7 @@ void main() {
     expect(cutById(pair.linked).layers, hasLength(linkedBefore + 1));
 
     final added = session.activeLayer!;
-    expect(session.isLayerLinked(added.id), isTrue);
+    expect(session.layerVerbs.isLayerLinked(added.id), isTrue);
 
     // The sibling's NEW row, found by id rather than by name: isLayerLinked
     // answers about the ACTIVE cut only, so a counterpart's id cannot be
@@ -113,7 +113,7 @@ void main() {
           'LayerKind.linksIntoLinkedCut is the one predicate for this — CAM '
           'rows are per-use fixtures every cut already has',
     );
-    expect(session.isLayerLinked(session.activeLayer!.id), isFalse);
+    expect(session.layerVerbs.isLayerLinked(session.activeLayer!.id), isFalse);
   });
 
   test('an UNLINKED cut is untouched by the mirror path', () {
@@ -123,7 +123,7 @@ void main() {
     session.layerStack.addLayerOfKind(LayerKind.animation);
 
     expect(cutById(soloCutId).layers, hasLength(before + 1));
-    expect(session.isLayerLinked(session.activeLayer!.id), isFalse);
+    expect(session.layerVerbs.isLayerLinked(session.activeLayer!.id), isFalse);
   });
 
   /// The sibling's row with the same identity (linked rows are created by

@@ -29,9 +29,9 @@ void main() {
     final s = session();
     final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
     s.selectLayer(layer);
-    expect(s.canLinkDuplicateActiveLayer, isTrue);
+    expect(s.layerVerbs.canLinkDuplicateActiveLayer, isTrue);
 
-    s.linkDuplicateActiveLayer();
+    s.layerVerbs.linkDuplicateActiveLayer();
 
     expect(s.activeLayerId, layer);
   });
@@ -40,11 +40,11 @@ void main() {
     final s = session();
     final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
     s.selectLayer(layer);
-    s.linkDuplicateActiveLayer();
+    s.layerVerbs.linkDuplicateActiveLayer();
     expect(s.activeLayerId, layer);
-    expect(s.canUnlinkActiveLayer, isTrue);
+    expect(s.layerVerbs.canUnlinkActiveLayer, isTrue);
 
-    s.unlinkActiveLayer();
+    s.layerVerbs.unlinkActiveLayer();
 
     expect(s.activeLayerId, layer);
   });

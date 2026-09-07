@@ -188,7 +188,7 @@ void main() {
     );
 
     // A rename does change what it shows.
-    session.renameLayer(activeId, 'renamed');
+    session.layerVerbs.renameLayer(activeId, 'renamed');
     await tester.pump();
     expect(
       identical(rowFor(activeId), before),

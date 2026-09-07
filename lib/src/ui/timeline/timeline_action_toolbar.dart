@@ -399,23 +399,23 @@ class TimelineActionToolbar extends StatelessWidget {
         label: AppText.strings.tlDuplicateLayer,
         icon: Icons.copy_outlined,
         enabled: editable,
-        onSelected: session.duplicateActiveLayer,
+        onSelected: session.layerVerbs.duplicateActiveLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'copy-layer-button',
         label: AppText.strings.tlCopyLayer,
         icon: Icons.content_copy,
         enabled: serves && active != null,
-        onSelected: session.copyActiveLayer,
+        onSelected: session.layerClipboard.copyActiveLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'paste-layer-button',
-        label: session.layerClipboardName == null
+        label: session.layerClipboard.layerClipboardName == null
             ? 'Paste layer'
-            : 'Paste layer (${session.layerClipboardName})',
+            : 'Paste layer (${session.layerClipboard.layerClipboardName})',
         icon: Icons.content_paste,
-        enabled: serves && session.hasLayerClipboard,
-        onSelected: session.pasteLayerFromClipboard,
+        enabled: serves && session.layerClipboard.hasLayerClipboard,
+        onSelected: session.layerClipboard.pasteLayerFromClipboard,
       ),
       // R5 #5: the row-order STEP verbs are gone, session methods and all
       // (user: "단축키로도 남기지마 일단"). The drag is the whole answer
@@ -464,15 +464,15 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'timeline-link-duplicate-button',
         label: AppText.strings.tlLinkDuplicateLayer,
         icon: Icons.link,
-        enabled: serves && session.canLinkDuplicateActiveLayer,
-        onSelected: session.linkDuplicateActiveLayer,
+        enabled: serves && session.layerVerbs.canLinkDuplicateActiveLayer,
+        onSelected: session.layerVerbs.linkDuplicateActiveLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'timeline-unlink-layer-button',
         label: AppText.strings.tlUnlinkLayer,
         icon: Icons.link_off,
-        enabled: serves && session.canUnlinkActiveLayer,
-        onSelected: session.unlinkActiveLayer,
+        enabled: serves && session.layerVerbs.canUnlinkActiveLayer,
+        onSelected: session.layerVerbs.unlinkActiveLayer,
       ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
@@ -692,7 +692,7 @@ class TimelineActionToolbar extends StatelessWidget {
         (mask, section) => mask | (1 << section.index),
       ),
       AppText.settings.value.programLanguage,
-      session.canDeleteActiveLayer,
+      session.layerVerbs.canDeleteActiveLayer,
       // ①: the rename button lives here now, so its gate has to be part of
       // what wakes this group up.
       _canEditActiveLayer,

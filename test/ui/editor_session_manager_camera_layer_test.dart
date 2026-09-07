@@ -48,17 +48,17 @@ void main() {
     s.selectLayer(cameraLayer.id);
 
     expect(s.isCameraLayerActive, isTrue);
-    expect(s.canDeleteActiveLayer, isFalse);
+    expect(s.layerVerbs.canDeleteActiveLayer, isFalse);
     expect(s.canToggleTargetLayerKind, isFalse);
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
     expect(s.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.canToggleMarkAtCurrentFrame, isFalse);
 
     // Copy/duplicate quietly refuse the camera layer.
-    s.copyActiveLayer();
-    expect(s.hasLayerClipboard, isFalse);
+    s.layerClipboard.copyActiveLayer();
+    expect(s.layerClipboard.hasLayerClipboard, isFalse);
     final layerCount = s.requireActiveCut.layers.length;
-    s.duplicateActiveLayer();
+    s.layerVerbs.duplicateActiveLayer();
     expect(s.requireActiveCut.layers.length, layerCount);
   });
 
@@ -95,7 +95,7 @@ void main() {
     // Active cut has 1 drawing layer + 1 camera layer.
     expect(s.activeLayer?.kind, LayerKind.animation);
     expect(
-      s.canDeleteActiveLayer,
+      s.layerVerbs.canDeleteActiveLayer,
       isTrue,
       reason: 'R28 #14: "액션 레이어가 1개도 없는상황 허용" — the drawing floor '
           'is gone',
@@ -106,7 +106,7 @@ void main() {
       (layer) => layer.kind == LayerKind.camera,
     );
     s.selectLayer(cameraLayer.id);
-    expect(s.canDeleteActiveLayer, isFalse);
+    expect(s.layerVerbs.canDeleteActiveLayer, isFalse);
   });
 
   test('camera layer id derives from the cut id', () {

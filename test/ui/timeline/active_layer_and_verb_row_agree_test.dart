@@ -56,7 +56,7 @@ void main() {
     final session = sessionFor();
     session.layerStack.addLayer();
 
-    session.deleteActiveLayer();
+    session.layerVerbs.deleteActiveLayer();
 
     final active = session.activeLayerId;
     expect(active, isNotNull);

@@ -385,7 +385,7 @@ void main() {
     s.selectLayer(base.id);
     s.layerStack.addLayer(); // second standalone drawing layer = base deletable
     s.selectLayer(base.id);
-    s.deleteActiveLayer();
+    s.layerVerbs.deleteActiveLayer();
     final after = cutLayers(s).map((l) => l.id).toList();
     expect(after.contains(freeId), isFalse);
     expect(after.contains(syncedId), isFalse);
@@ -433,7 +433,7 @@ void main() {
     // R28 #14: the base is deletable even as the ONLY standalone drawing
     // layer — the action section may empty out.
     s.selectLayer(base.id);
-    expect(s.canDeleteActiveLayer, isTrue);
+    expect(s.layerVerbs.canDeleteActiveLayer, isTrue);
 
     // Attach rows stay deletable too (accessories always were).
     final attachIds = attachedLayersOf(
@@ -441,15 +441,15 @@ void main() {
       cutLayers(s),
     ).map((layer) => layer.id).toList();
     s.selectLayer(attachIds.first);
-    expect(s.canDeleteActiveLayer, isTrue);
+    expect(s.layerVerbs.canDeleteActiveLayer, isTrue);
 
     // The cascade itself: deleting the base takes its attach rows with
     // it, restored whole by ONE undo.
     s.selectLayer(base.id);
     s.layerStack.addLayer(); // regular layer above the group
     s.selectLayer(base.id);
-    expect(s.canDeleteActiveLayer, isTrue);
-    s.deleteActiveLayer();
+    expect(s.layerVerbs.canDeleteActiveLayer, isTrue);
+    s.layerVerbs.deleteActiveLayer();
     final afterDelete = cutLayers(s).map((layer) => layer.id).toList();
     expect(afterDelete.contains(base.id), isFalse);
     for (final id in attachIds) {
@@ -614,14 +614,14 @@ void main() {
       final belowId = s.activeLayer!.id;
 
       s.selectLayer(base.id);
-      s.linkDuplicateActiveLayer();
+      s.layerVerbs.linkDuplicateActiveLayer();
       s.selectLayer(belowId);
-      expect(s.isLayerLinked(belowId), isTrue);
+      expect(s.layerVerbs.isLayerLinked(belowId), isTrue);
 
-      s.unlinkActiveLayer();
-      expect(s.isLayerLinked(base.id), isFalse);
+      s.layerVerbs.unlinkActiveLayer();
+      expect(s.layerVerbs.isLayerLinked(base.id), isFalse);
       expect(
-        s.isLayerLinked(belowId),
+        s.layerVerbs.isLayerLinked(belowId),
         isFalse,
         reason: 'the below side must not stay linked behind the user\'s '
             'back',
@@ -791,7 +791,7 @@ void main() {
       s.selectLayer(base.id);
       s.layerStack.addLayer(); // keep a second drawing layer so the base can delete
       s.selectLayer(base.id);
-      s.deleteActiveLayer();
+      s.layerVerbs.deleteActiveLayer();
 
       final after = cutLayers(s).map((l) => l.id).toSet();
       expect(after.contains(attachId), isFalse);
@@ -828,7 +828,7 @@ void main() {
       expect(innerId, isNot(outerId));
 
       s.selectLayer(attachId);
-      s.deleteActiveLayer();
+      s.layerVerbs.deleteActiveLayer();
 
       final after = cutLayers(s);
       final ids = after.map((l) => l.id).toSet();
@@ -853,7 +853,7 @@ void main() {
           .folderId!;
 
       s.selectLayer(attachId);
-      s.deleteActiveLayer();
+      s.layerVerbs.deleteActiveLayer();
 
       final after = cutLayers(s).map((l) => l.id).toSet();
       expect(after.contains(attachId), isFalse);
@@ -882,7 +882,7 @@ void main() {
           .folderId!;
 
       s.selectLayer(base.id);
-      s.linkDuplicateActiveLayer();
+      s.layerVerbs.linkDuplicateActiveLayer();
 
       final layers = cutLayers(s);
       final copiedOrganizers = [

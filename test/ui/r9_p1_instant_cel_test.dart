@@ -161,14 +161,14 @@ void main() {
       expect(storyboard.kind, LayerKind.storyboard);
 
       expect(
-        session.canLinkDuplicateActiveLayer,
+        session.layerVerbs.canLinkDuplicateActiveLayer,
         isFalse,
         reason: 'a duplicate lands in the SAME cut',
       );
 
-      session.copyActiveLayer();
-      session.duplicateActiveLayer();
-      session.pasteLayerFromClipboard();
+      session.layerClipboard.copyActiveLayer();
+      session.layerVerbs.duplicateActiveLayer();
+      session.layerClipboard.pasteLayerFromClipboard();
 
       expect(
         session.requireActiveCut.layers

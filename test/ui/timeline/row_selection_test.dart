@@ -73,7 +73,7 @@ void main() {
       s.beginRowSelection(camera.address);
       expect(s.rowIsSelected(camera.address), isTrue);
       expect(
-        s.deletableSelectedLayerIds(),
+        s.layerVerbs.deletableSelectedLayerIds(),
         isEmpty,
         reason: 'kind decides what the edit DOES, not whether it selects',
       );
@@ -309,7 +309,7 @@ void main() {
       s.rowSelection.value = [
         for (final layer in drawings) LayerRowAddress(layer.id),
       ];
-      s.renameSelectedLayers('BG');
+      s.layerVerbs.renameSelectedLayers('BG');
 
       for (final layer in drawings) {
         expect(_nameOf(s, layer.id), 'BG');
@@ -337,7 +337,7 @@ void main() {
       final before = s.layers.length;
       // The ORDINARY verb — ⑰'s law says it asks the selection first, so the
       // pill button and any shortcut inherit this without a second door.
-      s.duplicateActiveLayer();
+      s.layerVerbs.duplicateActiveLayer();
 
       expect(s.layers.length, before + chosen.length);
       s.undo();
@@ -418,7 +418,27 @@ void main() {
         for (final layer in readOnly) LayerRowAddress(layer.id),
       ];
 
-      expect(s.renameableSelectedLayerIds(), [camera.id]);
+      expect(s.layerVerbs.renameableSelectedLayerIds(), [camera.id]);
+    });
+
+    test('the DUPLICATABLE rows are the copyable non-singleton ones', () {
+      // ⑨'s 복사 stands down where [duplicateActiveLayer] does — a
+      // per-cut singleton cannot have a second — so the camera row that
+      // renames fine contributes nothing here, and the drawing row does.
+      final s = session();
+      final camera = s.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.camera,
+      );
+      final drawing = s.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+
+      s.rowSelection.value = [
+        LayerRowAddress(camera.id),
+        LayerRowAddress(drawing.id),
+      ];
+
+      expect(s.layerVerbs.duplicatableSelectedLayerIds(), [drawing.id]);
     });
   });
 

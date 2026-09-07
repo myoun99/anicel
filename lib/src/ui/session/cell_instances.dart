@@ -11,6 +11,7 @@ import 'session_roles.dart';
 import 'camera.dart';
 import 'instructions.dart';
 import 'lane_verbs.dart';
+import 'layer_verbs.dart';
 import 'track_se_display.dart';
 import 'frame_verbs.dart';
 import 'cell_verbs.dart';
@@ -32,6 +33,7 @@ class CellInstances {
     required Camera camera,
     required Instructions instructionVerbs,
     required LaneVerbs laneVerbs,
+    required LayerVerbs layerVerbs,
     required TrackSeDisplay trackSe,
     required FrameVerbs frameVerbs,
     required CellVerbs cells,
@@ -44,6 +46,7 @@ class CellInstances {
        _camera = camera,
        _instructionVerbs = instructionVerbs,
        _laneVerbs = laneVerbs,
+       _layerVerbs = layerVerbs,
        _trackSe = trackSe,
        _frameVerbs = frameVerbs,
        _cells = cells;
@@ -60,6 +63,7 @@ class CellInstances {
   final Camera _camera;
   final Instructions _instructionVerbs;
   final LaneVerbs _laneVerbs;
+  final LayerVerbs _layerVerbs;
   final TrackSeDisplay _trackSe;
 
   /// UI-R25 #3: Add with a LIVE selection fills the WHOLE selection —
@@ -359,7 +363,7 @@ class CellInstances {
         _selection.trackFrameRangeSelection.value != null) {
       return EditInstanceSubject.cuts;
     }
-    if (_internals.renameableSelectedLayerIds().isNotEmpty) {
+    if (_layerVerbs.renameableSelectedLayerIds().isNotEmpty) {
       return EditInstanceSubject.layers;
     }
     return canEditCellInstanceAtCurrentFrame
