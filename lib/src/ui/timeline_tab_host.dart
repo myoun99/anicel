@@ -635,7 +635,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // most once per FRAME while recording — this panel-scoped rebuild
           // is the notify-free channel (R12-B: ticks never notify the
           // session).
-          _session.voiceRecordPreviewLane,
+          _session.voiceRecording.voiceRecordPreviewLane,
           // R27 #13: the empty-cel tint must clear the INSTANT a stroke
           // lands. Cel pixels live outside the Layer value, so nothing in
           // the ordinary notify path told this panel to look again — the
@@ -758,7 +758,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Display resolver: the live take's sentinel path maps to the
             // growing envelope (REC1-C), everything else to the conform
             // store's peaks.
-            audioPeaksFor: _session.audioPeaksForDisplay,
+            audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
             // The tooltip string doubles as the marker switch (REC1-D):
             // null while the clipping notice is off.
             seClipMarkerTooltip: _session.audioSyncSettings.value.clippingNotice

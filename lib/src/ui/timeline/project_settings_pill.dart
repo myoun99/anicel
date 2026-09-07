@@ -71,7 +71,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     ProjectFrameRate rate,
   ) async {
     final pull = audioPullBetween(session.projectFrameRate, rate);
-    if (pull == null || !session.projectHasAnyAudio) {
+    if (pull == null || !session.projectAudio.projectHasAnyAudio) {
       session.setProjectFrameRate(rate);
       return;
     }
@@ -87,7 +87,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       case FpsAudioChoice.keep:
         session.setProjectFrameRate(rate);
       case FpsAudioChoice.pull:
-        session.setProjectFrameRateWithAudioPull(rate);
+        session.projectAudio.setProjectFrameRateWithAudioPull(rate);
     }
   }
 
@@ -102,26 +102,44 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     await _selectFrameRate(context, rate);
   }
 
-  Future<void> _editSampleRate(BuildContext context) async {
-    final rate = await _showChoiceWindow<int>(
+  /// ⛔ONE CHOICE ROW, ONE BODY (G3, 2026-09-07). The sample rate and the
+  /// playback quality asked the same question the same way — the same
+  /// window, the same preset loop, the same "null means cancelled" check,
+  /// the same apply — and differed only in the values [edit] carries.
+  Future<void> _editChoice<T>(BuildContext context, _ChoiceEdit<T> edit) async {
+    final picked = await _showChoiceWindow<T>(
       context,
-      windowKey: 'project-audio-rate-dialog',
-      title: AppText.strings.tlProjectAudioRate,
-      titleIcon: Icons.graphic_eq,
-      current: session.projectAudioSampleRate,
+      windowKey: edit.windowKey,
+      title: edit.title,
+      titleIcon: edit.titleIcon,
+      current: edit.current,
       choices: [
-        for (final preset in ProjectSettingsPill.audioSampleRatePresets)
+        for (final preset in edit.presets)
           (
-            keyValue: 'timeline-samplerate-$preset',
-            label: ProjectSettingsPill.audioSampleRateLabel(preset),
+            keyValue: edit.keyValue(preset),
+            label: edit.label(preset),
             value: preset,
           ),
       ],
     );
-    if (rate != null) {
-      session.setProjectAudioSampleRate(rate);
+    if (picked != null) {
+      edit.apply(picked);
     }
   }
+
+  Future<void> _editSampleRate(BuildContext context) => _editChoice<int>(
+    context,
+    (
+      windowKey: 'project-audio-rate-dialog',
+      title: AppText.strings.tlProjectAudioRate,
+      titleIcon: Icons.graphic_eq,
+      current: session.projectAudio.projectAudioSampleRate,
+      presets: ProjectSettingsPill.audioSampleRatePresets,
+      keyValue: (preset) => 'timeline-samplerate-$preset',
+      label: ProjectSettingsPill.audioSampleRateLabel,
+      apply: session.projectAudio.setProjectAudioSampleRate,
+    ),
+  );
 
   Future<void> _editCameraSize(BuildContext context) async {
     final size = await showCameraSizeDialog(
@@ -133,26 +151,20 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     }
   }
 
-  Future<void> _editQuality(BuildContext context) async {
-    final quality = await _showChoiceWindow<PlaybackQuality>(
-      context,
-      windowKey: 'playback-quality-dialog',
-      title: AppText.strings.playbackQuality,
-      titleIcon: Icons.high_quality_outlined,
-      current: session.playbackRig.playbackQuality,
-      choices: [
-        for (final preset in PlaybackQuality.values)
-          (
-            keyValue: 'playback-quality-${preset.name}',
-            label: PlaybackTransportControls.qualityLabel(preset),
-            value: preset,
-          ),
-      ],
-    );
-    if (quality != null) {
-      session.playbackRig.setPlaybackQuality(quality);
-    }
-  }
+  Future<void> _editQuality(BuildContext context) =>
+      _editChoice<PlaybackQuality>(
+        context,
+        (
+          windowKey: 'playback-quality-dialog',
+          title: AppText.strings.playbackQuality,
+          titleIcon: Icons.high_quality_outlined,
+          current: session.playbackRig.playbackQuality,
+          presets: PlaybackQuality.values,
+          keyValue: (preset) => 'playback-quality-${preset.name}',
+          label: PlaybackTransportControls.qualityLabel,
+          apply: session.playbackRig.setPlaybackQuality,
+        ),
+      );
 
   List<PanelFlyoutEntry> _entries(BuildContext context) {
     final strings = AppText.strings;
@@ -167,7 +179,7 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
       PanelFlyoutItem(
         keyValue: 'project-settings-audio-rate',
         label: ProjectSettingsPill.audioSampleRateLabel(
-          session.projectAudioSampleRate,
+          session.projectAudio.projectAudioSampleRate,
         ),
         icon: Icons.graphic_eq,
         onSelected: () => unawaited(_editSampleRate(context)),
@@ -207,6 +219,19 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     onPressed: () => showPanelFlyout(context, entries: _entries(context)),
   );
 }
+
+/// One value row's question: which window, what it is called, what the
+/// setting is now, what it may become, and where the answer goes.
+typedef _ChoiceEdit<T> = ({
+  String windowKey,
+  String title,
+  IconData titleIcon,
+  T current,
+  List<T> presets,
+  String Function(T preset) keyValue,
+  String Function(T preset) label,
+  void Function(T picked) apply,
+});
 
 /// One change window: the choices as rows, the CURRENT one said in colour
 /// alone (selection is colour and never a glyph — the flyout's own law).

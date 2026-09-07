@@ -62,10 +62,10 @@ class FramePanelSillControls extends StatelessWidget {
           onSkipToStart: onSkipToStart,
           resolveMeterPeaks: () =>
               session.playbackRig.audioDeviceTransport.meterPeaks,
-          isVoiceRecording: session.isVoiceRecording,
+          isVoiceRecording: session.voiceRecording.isVoiceRecording,
           onToggleVoiceRecording: () =>
               toggleVoiceRecordingWithFeedback(context, session),
-          voiceRecordClipLit: session.voiceRecordClipLit,
+          voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
           resolveStrings: () => session.uiStrings,
         ),
         CameraViewToggleButton(

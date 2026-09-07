@@ -7,6 +7,7 @@ import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/editor_voice_recording.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
@@ -47,11 +48,11 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
 
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     // The roll starts at frame 0: the frame being spoken into counts.
-    final first = manager.voiceRecordPreviewLane.value;
+    final first = manager.voiceRecording.voiceRecordPreviewLane.value;
     expect(first, isNotNull);
     expect(first!.id, laneId);
     var block = drawingBlocks(first.timeline).single;
@@ -59,19 +60,19 @@ void main() {
     expect(block.length, 1);
 
     manager.playbackRig.playback.seekToGlobalFrame(3);
-    final grown = manager.voiceRecordPreviewLane.value!;
+    final grown = manager.voiceRecording.voiceRecordPreviewLane.value!;
     block = drawingBlocks(grown.timeline).single;
     expect(block.length, 4);
     // The display clones serve the preview instance for the armed lane.
     expect(
       manager.trackSeDisplayLayers.first.audioClips.single.filePath,
-      EditorSessionManager.voiceRecordPreviewPath,
+      EditorVoiceRecording.voiceRecordPreviewPath,
     );
 
-    expect(await manager.stopVoiceRecordingAndPlace(), isNull);
-    expect(manager.voiceRecordPreviewLane.value, isNull);
+    expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+    expect(manager.voiceRecording.voiceRecordPreviewLane.value, isNull);
     expect(
-      manager.audioPeaksForDisplay(EditorSessionManager.voiceRecordPreviewPath),
+      manager.voiceRecording.audioPeaksForDisplay(EditorVoiceRecording.voiceRecordPreviewPath),
       isNull,
     );
     // The committed lane carries the REAL take now, not the sentinel.
@@ -85,21 +86,21 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     // 48 kHz at 40 buckets/s = 1200 samples per bucket: two full buckets.
     final chunk = Float32List(2400);
     for (var index = 0; index < chunk.length; index += 1) {
       chunk[index] = index < 1200 ? 0.5 : -0.75;
     }
-    manager.debugIngestVoiceRecordChunk(chunk, 1);
+    manager.voiceRecording.debugIngestVoiceRecordChunk(chunk, 1);
     manager.playbackRig.playback.seekToGlobalFrame(
       1,
     ); // A boundary publishes peaks.
 
-    final peaks = manager.audioPeaksForDisplay(
-      EditorSessionManager.voiceRecordPreviewPath,
+    final peaks = manager.voiceRecording.audioPeaksForDisplay(
+      EditorVoiceRecording.voiceRecordPreviewPath,
     );
     expect(peaks, isNotNull);
     expect(peaks!.bucketsPerSecond, 40);
@@ -107,7 +108,7 @@ void main() {
     expect(peaks.peaks[0], closeTo(0.5, 1e-6));
     expect(peaks.peaks[1], closeTo(0.75, 1e-6));
 
-    await manager.stopVoiceRecordingAndPlace();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     manager.dispose();
   });
 
@@ -128,21 +129,21 @@ void main() {
         AudioSyncSettings(inputChannelMode: mode),
       );
       manager.selectLayer(manager.activeTrack.seLayers.first.id);
-      manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
-      expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+      manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+      expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
       final chunk = Float32List(2400);
       for (var frame = 0; frame < 1200; frame += 1) {
         chunk[frame * 2] = left;
         chunk[frame * 2 + 1] = right;
       }
-      manager.debugIngestVoiceRecordChunk(chunk, 2);
+      manager.voiceRecording.debugIngestVoiceRecordChunk(chunk, 2);
       manager.playbackRig.playback.seekToGlobalFrame(1);
 
-      final peaks = manager.audioPeaksForDisplay(
-        EditorSessionManager.voiceRecordPreviewPath,
+      final peaks = manager.voiceRecording.audioPeaksForDisplay(
+        EditorVoiceRecording.voiceRecordPreviewPath,
       )!;
-      await manager.stopVoiceRecordingAndPlace();
+      await manager.voiceRecording.stopVoiceRecordingAndPlace();
       manager.dispose();
       return peaks.peaks.first;
     }
@@ -204,7 +205,7 @@ void main() {
     addTearDown(manager.dispose);
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
 
     await tester.pumpWidget(
       MaterialApp(
@@ -225,7 +226,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     await tester.pump();
 
     // The take's carrier block mounts its own SE drop target — proof the
@@ -235,7 +236,7 @@ void main() {
     );
     expect(find.byKey(dropKey), findsOneWidget);
 
-    await manager.stopVoiceRecordingAndPlace();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     await tester.pumpAndSettle();
     // The real landing keeps the block (same spot, real file now).
     expect(find.byKey(dropKey), findsOneWidget);
@@ -248,7 +249,7 @@ void main() {
     addTearDown(manager.dispose);
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
 
     await tester.pumpWidget(
       MaterialApp(
@@ -273,12 +274,12 @@ void main() {
     final paperKey = ValueKey<String>('storyboard-se-paper-${lane.id}-0');
     expect(find.byKey(paperKey), findsNothing);
 
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     await tester.pump();
     // The in-flight take paints through the REAL strip-row pipeline.
     expect(find.byKey(paperKey), findsOneWidget);
 
-    await manager.stopVoiceRecordingAndPlace();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     await tester.pumpAndSettle();
     // The real landing keeps the block (same spot, real file now).
     expect(find.byKey(paperKey), findsOneWidget);

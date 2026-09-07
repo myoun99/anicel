@@ -36,21 +36,21 @@ void main() {
   test('REC1-D2: the meter yields to the recorder and the session cleans '
       'up on detach', () async {
     final manager = session();
-    final monitor = manager.attachInputMeter();
+    final monitor = manager.voiceRecording.attachInputMeter();
     expect(
-      identical(manager.attachInputMeter(), monitor),
+      identical(manager.voiceRecording.attachInputMeter(), monitor),
       isTrue,
       reason: 'one monitor per session',
     );
     // Arming a take (fake recorder) must not fight the meter.
     manager.selectLayer(manager.activeTrack.seLayers.first.id);
-    manager.debugVoiceRecorderFactory = _FakeRecorder.new;
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = _FakeRecorder.new;
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(monitor.isRunning, isFalse, reason: 'the recorder owns the mic');
-    await manager.stopVoiceRecordingAndPlace();
-    manager.detachInputMeter();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
+    manager.voiceRecording.detachInputMeter();
     expect(
-      manager.playOutputTestTone(),
+      manager.voiceRecording.playOutputTestTone(),
       isFalse,
       reason: 'graceful absence: no device in tests',
     );

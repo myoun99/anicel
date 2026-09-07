@@ -71,9 +71,9 @@ void main() {
       reason: 'fixture: the two numbers must differ or a swap is invisible',
     );
 
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    await manager.stopVoiceRecordingAndPlace();
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
 
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.startIndex, playhead);
@@ -108,9 +108,9 @@ void main() {
       reason: 'fixture: the two numbers must differ or a swap is invisible',
     );
 
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(2.0));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    await manager.stopVoiceRecordingAndPlace();
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(2.0));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
 
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.startIndex, cutStart + 6);

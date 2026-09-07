@@ -67,7 +67,7 @@ void main() {
     final first = session();
     final lane = first.activeTrack.seLayers.first;
     expect(
-      await first.placeVoiceRecording(
+      await first.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,
@@ -85,7 +85,7 @@ void main() {
     final second = session();
     final laneB = second.activeTrack.seLayers.first;
     expect(
-      await second.placeVoiceRecording(
+      await second.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: laneB.id,
         anchorFrame: 0,
@@ -111,7 +111,7 @@ void main() {
     // cannot be made again.
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
-    await manager.placeVoiceRecording(
+    await manager.voiceRecording.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -152,7 +152,7 @@ void main() {
     expect(manager.mediaPool.mediaAssets, isEmpty);
 
     // And the take numbering keeps walking on the shelf.
-    await manager.placeVoiceRecording(
+    await manager.voiceRecording.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -168,7 +168,7 @@ void main() {
       'the project still references', () async {
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
-    await manager.placeVoiceRecording(
+    await manager.voiceRecording.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -217,7 +217,7 @@ void main() {
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,

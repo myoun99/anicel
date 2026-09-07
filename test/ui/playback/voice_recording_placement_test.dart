@@ -62,7 +62,7 @@ void main() {
     await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     final lane = manager.activeTrack.seLayers.first;
 
-    final placed = await manager.placeVoiceRecording(
+    final placed = await manager.voiceRecording.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -115,7 +115,7 @@ void main() {
       await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
       final lane = manager.activeTrack.seLayers.first;
 
-      final placed = await manager.placeVoiceRecording(
+      final placed = await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,
@@ -141,7 +141,7 @@ void main() {
       final manager = session();
       await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
       expect(
-        await manager.placeVoiceRecording(
+        await manager.voiceRecording.placeVoiceRecording(
           takeOfSeconds(0.1),
           laneId: manager.activeTrack.seLayers.first.id,
           anchorFrame: 0,
@@ -161,7 +161,7 @@ void main() {
     final rowsBefore = manager.activeTrack.seLayers.length;
 
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0), // 24 frames
         laneId: laneId,
         anchorFrame: 0,
@@ -169,7 +169,7 @@ void main() {
       isTrue,
     );
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(0.5), // 12 frames over the first take's tail
         laneId: laneId,
         anchorFrame: 12,
@@ -207,7 +207,7 @@ void main() {
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0), // would cover 24 frames
         laneId: laneId,
         anchorFrame: 0,
@@ -228,7 +228,7 @@ void main() {
   test('REC1-B: an unsaved project still records — the WAV degrades to '
       'temp, like an import', () async {
     final manager = session();
-    final placed = await manager.placeVoiceRecording(
+    final placed = await manager.voiceRecording.placeVoiceRecording(
       takeOfSeconds(0.5),
       laneId: manager.activeTrack.seLayers.first.id,
       anchorFrame: 0,
@@ -245,7 +245,7 @@ void main() {
     final manager = session();
     await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(0.5),
         laneId: null,
         anchorFrame: 0,
@@ -259,26 +259,26 @@ void main() {
       'ROLLS the transport, mutes the lane, and stop lands the take', () async {
     final manager = session();
     // The default active row is a drawing layer: no armed destination.
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.needsSeLane);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.needsSeLane);
 
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     // Record = play + capture: the transport rolls the whole track.
     expect(manager.playbackRig.playback.isPlaying, isTrue);
     expect(manager.playbackRig.playback.scope, PlaybackScope.allCuts);
     // The armed lane yields to the microphone (DAW armed-track rule).
-    expect(manager.recordingMutedLayerIds, {laneId});
+    expect(manager.voiceRecording.recordingMutedLayerIds, {laneId});
 
-    final message = await manager.stopVoiceRecordingAndPlace();
+    final message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(message, isNull);
     expect(
       manager.playbackRig.playback.isActive,
       isFalse,
       reason: 'the roll this take started stops with it',
     );
-    expect(manager.recordingMutedLayerIds, isEmpty);
+    expect(manager.voiceRecording.recordingMutedLayerIds, isEmpty);
     final lane = manager.activeTrack.seLayers.first;
     expect(lane.audioClips, hasLength(1));
     expect(drawingBlocks(lane.timeline).single.length, 12);
@@ -290,8 +290,8 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     manager.playbackRig.playback.stop();
     // ⚠️The take lands a beat later now: `_onPlaybackStopped` awaits the
@@ -301,7 +301,7 @@ void main() {
     // are still being written — so the test waits rather than the code
     // racing.
     await pumpEventQueue();
-    expect(manager.isVoiceRecording.value, isFalse);
+    expect(manager.voiceRecording.isVoiceRecording.value, isFalse);
     expect(
       manager.activeTrack.seLayers.first.audioClips,
       hasLength(1),

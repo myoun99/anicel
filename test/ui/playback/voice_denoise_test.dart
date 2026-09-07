@@ -7,6 +7,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/editor_voice_recording.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 
@@ -71,21 +72,21 @@ void main() {
     manager.selectLayer(lane.id);
 
     final recorder = _RateProbeRecorder(takeOfSeconds(0.5));
-    manager.debugVoiceRecorderFactory = () => recorder;
+    manager.voiceRecording.debugVoiceRecorderFactory = () => recorder;
 
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(recorder.requestedSampleRate, 44100);
-    await manager.stopVoiceRecordingAndPlace();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
 
     manager.setAudioSyncSettings(
       manager.audioSyncSettings.value.copyWith(denoiseVoice: true),
     );
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(
       recorder.requestedSampleRate,
-      EditorSessionManager.voiceDenoiseCaptureRate,
+      EditorVoiceRecording.voiceDenoiseCaptureRate,
     );
-    await manager.stopVoiceRecordingAndPlace();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     manager.dispose();
   });
 
@@ -98,7 +99,7 @@ void main() {
     Float32List? seenSamples;
     var seenChannels = 0;
     var seenRate = 0;
-    manager.debugVoiceDenoiser = (samples, channels, sampleRate) {
+    manager.voiceRecording.debugVoiceDenoiser = (samples, channels, sampleRate) {
       seenSamples = samples;
       seenChannels = channels;
       seenRate = sampleRate;
@@ -110,7 +111,7 @@ void main() {
     };
 
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,
@@ -139,13 +140,13 @@ void main() {
     final lane = manager.activeTrack.seLayers.first;
 
     var calls = 0;
-    manager.debugVoiceDenoiser = (samples, channels, sampleRate) {
+    manager.voiceRecording.debugVoiceDenoiser = (samples, channels, sampleRate) {
       calls += 1;
       return null; // The native engine's "declined" contract.
     };
 
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(0.5),
         laneId: lane.id,
         anchorFrame: 0,
@@ -159,7 +160,7 @@ void main() {
     expect(decoded.samples.first, closeTo(0.25, 1e-3));
 
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(0.5),
         laneId: lane.id,
         anchorFrame: 30,
@@ -180,17 +181,17 @@ void main() {
     manager.selectLayer(lane.id);
 
     var calls = 0;
-    manager.debugVoiceDenoiser = (samples, channels, sampleRate) {
+    manager.voiceRecording.debugVoiceDenoiser = (samples, channels, sampleRate) {
       calls += 1;
       return null;
     };
-    manager.debugVoiceRecorderFactory = () => _RateProbeRecorder(
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _RateProbeRecorder(
       takeOfSeconds(0.5, sampleRate: 44100),
       grantedRate: 44100,
     );
 
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    await manager.stopVoiceRecordingAndPlace();
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(calls, 0);
     manager.dispose();
   });

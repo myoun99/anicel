@@ -1,14 +1,16 @@
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../services/command.dart';
 import '../../services/commands/update_project_frame_rate_command.dart';
 import 'session_roles.dart';
 import '../../core/identity_memo.dart';
 
 /// The PROJECT SETTINGS — the project's frame rate, backdrop, background,
 /// pasteboard, and the storyboard timeline layout memo — as their own
-/// object. The audio, media and file settings stay where they are: they
-/// belong to another lane.
+/// object. The media and file settings stay where they are: they belong
+/// to another lane. The AUDIO settings landed in [ProjectAudio] (G3), and
+/// they share this class's [commitProjectSetting].
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: two memo fields of its own, and
@@ -68,13 +70,28 @@ class ProjectSettings {
         frameRate == projectFrameRate) {
       return;
     }
-    _project.historyManager.execute(
+    commitProjectSetting(
       UpdateProjectFrameRateCommand(
         repository: _project.repository,
         frameRate: frameRate,
       ),
+      _changes.warmActiveCut,
     );
-    _changes.warmActiveCut();
+  }
+
+  /// ⛔THE ONE WAY A PROJECT-WIDE SETTING LANDS (G3, 2026-09-07): the
+  /// command goes through history, then whatever this particular setting
+  /// made stale is re-warmed, then the session notifies ONCE. Three
+  /// setters had spelled this out — the frame rate, the frame rate with an
+  /// audio pull, and the audio sample rate — and a second spelling is how
+  /// one of them comes to notify while another does not.
+  ///
+  /// [invalidates] is the only difference between them, and it is a
+  /// STRATEGY, not a flag: the frame rate re-warms the active cut, the
+  /// audio settings re-warm the conforms, and the pull does both.
+  void commitProjectSetting(Command command, void Function() invalidates) {
+    _project.historyManager.execute(command);
+    invalidates();
     _changes.notifyChanged();
   }
 

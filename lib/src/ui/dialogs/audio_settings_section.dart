@@ -30,11 +30,11 @@ class AudioSettingsSection extends StatefulWidget {
 class _AudioSettingsSectionState extends State<AudioSettingsSection> {
   /// The live input meter (REC1-D2): attached for this section's
   /// lifetime; the session handles yielding to the recorder.
-  late final AudioInputMonitor _monitor = widget.session.attachInputMeter();
+  late final AudioInputMonitor _monitor = widget.session.voiceRecording.attachInputMeter();
 
   @override
   void dispose() {
-    widget.session.detachInputMeter();
+    widget.session.voiceRecording.detachInputMeter();
     super.dispose();
   }
 
@@ -199,7 +199,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   settings.copyWith(inputDeviceName: name),
                 );
                 // The live meter follows the new microphone immediately.
-                widget.session.restartInputMeter();
+                widget.session.voiceRecording.restartInputMeter();
               },
             ),
             const SizedBox(height: 4),
@@ -276,7 +276,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   tooltip: strings.audioTestSoundLabel,
                   size: AppIconButtonSize.dense,
                   icon: const Icon(Icons.volume_up),
-                  onPressed: widget.session.playOutputTestTone,
+                  onPressed: widget.session.voiceRecording.playOutputTestTone,
                 ),
               ],
             ),

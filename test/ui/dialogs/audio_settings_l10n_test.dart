@@ -61,12 +61,12 @@ void main() {
       const AppLanguageSettings(programLanguage: AppLanguage.ja),
     );
     // Stopping with nothing armed is the simplest message-producing path.
-    expect(await manager.stopVoiceRecordingAndPlace(), '録音中ではありません。');
+    expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), '録音中ではありません。');
     manager.setLanguageSettings(
       const AppLanguageSettings(programLanguage: AppLanguage.en),
     );
     expect(
-      await manager.stopVoiceRecordingAndPlace(),
+      await manager.voiceRecording.stopVoiceRecordingAndPlace(),
       'Nothing was recording.',
     );
     manager.dispose();

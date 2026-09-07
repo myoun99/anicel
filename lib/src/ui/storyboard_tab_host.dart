@@ -508,11 +508,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               child: Offstage(
                 offstage: PanelCollapsedScope.of(context),
                 child: ListenableBuilder(
-                  listenable: _session.voiceRecordPreviewLane,
+                  listenable: _session.voiceRecording.voiceRecordPreviewLane,
                   builder: (context, _) => StoryboardPanel(
                     project: _session.repository.requireProject(),
                     rowFilter: widget.rowFilter,
-                    seLanePreview: _session.voiceRecordPreviewLane.value,
+                    seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _session.dragPreview,
                     // While playing, the highlight follows the PLAYING cut
                     // (onStopped syncs the real active cut).
@@ -692,7 +692,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       layout: _activeTrackLayout(),
                     ),
                     thumbnailFor: widget.thumbnailFor,
-                    audioPeaksFor: _session.audioPeaksForDisplay,
+                    audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
                     // The tooltip string doubles as the clip-marker switch
                     // (REC1-D), matching the timeline host: null while the
                     // clipping notice setting is off.

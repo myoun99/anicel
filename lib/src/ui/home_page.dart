@@ -343,7 +343,7 @@ class _HomePageState extends State<HomePage> {
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its
     // snackbar path never runs.
-    _session.voiceRecordingNotice.addListener(_showVoiceRecordingNotice);
+    _session.voiceRecording.voiceRecordingNotice.addListener(_showVoiceRecordingNotice);
     // The shared refusal channel stays wired; nothing installs a guard
     // any more.
     //
@@ -361,7 +361,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showVoiceRecordingNotice() {
-    final message = _session.voiceRecordingNotice.value;
+    final message = _session.voiceRecording.voiceRecordingNotice.value;
     if (message == null || !mounted) {
       return;
     }
@@ -443,7 +443,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     PencilInteractionService.instance.onPencilTap = null;
     _session.historyManager.removeListener(_recordRecentColor);
-    _session.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
+    _session.voiceRecording.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
     AppSave.settings.removeListener(_syncAutosaveService);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     _autosaveClock.dispose();

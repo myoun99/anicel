@@ -155,8 +155,8 @@ void main() {
     var before = toolbar();
     final oldRate = session.projectFrameRate;
     session.setProjectFps(session.projectFps + 5);
-    session.setProjectAudioSampleRate(
-      session.projectAudioSampleRate == 48000 ? 44100 : 48000,
+    session.projectAudio.setProjectAudioSampleRate(
+      session.projectAudio.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
     session.playbackRig.setPlaybackQuality(
       session.playbackRig.playbackQuality == PlaybackQuality.full

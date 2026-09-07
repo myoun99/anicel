@@ -106,14 +106,8 @@ import '../models/storyboard_timeline_layout.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
-import '../services/commands/update_project_audio_sample_rate_command.dart';
-import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
-import 'playback/audio_input_monitor.dart';
-import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../services/persistence/folder_grant.dart' show FolderPicker;
-import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
-import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import '../services/history_manager.dart';
@@ -135,6 +129,7 @@ import 'session/cut_folder_import_door.dart';
 import 'session/audio_clips.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
+import 'session/project_audio.dart';
 import 'session/playback_rig.dart';
 import 'session/render_caches.dart';
 import 'session/frame_range_move_drag.dart';
@@ -423,7 +418,7 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     renderCaches: renderCaches,
     settings: _projectSettings,
-    voiceRecording: _voiceRecording,
+    voiceRecording: voiceRecording,
     audioConformStore: audioConformStore,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
@@ -438,8 +433,9 @@ class EditorSessionManager extends ChangeNotifier
     // Transport stop finishes a rolling take (REC1-B): record = play +
     // capture, so ending one ends the other. The result message goes out
     // on the notice channel — this path has no button to return through.
-    if (isVoiceRecording.value) {
-      voiceRecordingNotice.value = await stopVoiceRecordingAndPlace();
+    if (voiceRecording.isVoiceRecording.value) {
+      voiceRecording.voiceRecordingNotice.value =
+          await voiceRecording.stopVoiceRecordingAndPlace();
     }
     if (lastPosition.cutId != editingSession.activeCutId) {
       selectCut(lastPosition.cutId);
@@ -459,8 +455,9 @@ class EditorSessionManager extends ChangeNotifier
   Future<void> _onPlaybackStoppedInGap(int globalFrame) async {
     // The gap-stop twin of _onPlaybackStopped's take finish: a lane is
     // cut-independent, so a take may legitimately end over a gap.
-    if (isVoiceRecording.value) {
-      voiceRecordingNotice.value = await stopVoiceRecordingAndPlace();
+    if (voiceRecording.isVoiceRecording.value) {
+      voiceRecording.voiceRecordingNotice.value =
+          await voiceRecording.stopVoiceRecordingAndPlace();
     }
     gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
@@ -1043,7 +1040,7 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     controllers: activeCutControllers,
     transitions: _transitions,
-    voiceRecording: _voiceRecording,
+    voiceRecording: voiceRecording,
   );
 
   @override
@@ -1214,7 +1211,7 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.removeListener(projectFile.markDirty);
     historyManager.removeListener(refreshLiveAudioSchedule);
     historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
-    _voiceRecording.dispose();
+    voiceRecording.dispose();
     playbackRig.dispose();
     renderCaches.dispose();
     audioConformStore.dispose();
@@ -1440,74 +1437,6 @@ class EditorSessionManager extends ChangeNotifier
   set selectedGuideId(GuideId? id) {
     if (_selectedGuideId == id) return;
     _selectedGuideId = id;
-    notifyListeners();
-  }
-
-  /// Whether any SE row anywhere carries a sound — what decides if a
-  /// pulldown-pair rate change even asks the audio question.
-  bool get projectHasAnyAudio {
-    for (final track in repository.requireProject().tracks) {
-      for (final layer in track.seLayers) {
-        if (layer.audioClips.isNotEmpty) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  /// EXPORT-AUDIO ④, the "frame-exact" choice: sets the rate AND pulls
-  /// the audio by the exact pulldown rational (23.976→24 = 1001/1000) so
-  /// every sound keeps its frame span — one undo step for both, and the
-  /// conforms rebuild at the new speed in the background. Falls back to a
-  /// plain rate change when the pair carries no pull.
-  void setProjectFrameRateWithAudioPull(ProjectFrameRate frameRate) {
-    final pull = audioPullBetween(projectFrameRate, frameRate);
-    if (pull == null) {
-      setProjectFrameRate(frameRate);
-      return;
-    }
-    final project = repository.requireProject();
-    // Pulls accumulate — and cancel: 23.976→24→23.976 lands back at 1/1.
-    var numerator = project.audioSpeedNumerator * pull.numerator;
-    var denominator = project.audioSpeedDenominator * pull.denominator;
-    final divisor = numerator.gcd(denominator);
-    numerator ~/= divisor;
-    denominator ~/= divisor;
-    historyManager.execute(
-      UpdateProjectFrameRateCommand(
-        repository: repository,
-        frameRate: frameRate,
-        audioSpeedNumerator: numerator,
-        audioSpeedDenominator: denominator,
-      ),
-    );
-    projectDoor.warmAudioConforms();
-    warmActiveCut();
-    notifyListeners();
-  }
-
-  /// The project's audio rate — what every conform lands at (EXPORT-AUDIO
-  /// ③).
-  int get projectAudioSampleRate => repository.requireProject().audioSampleRate;
-
-  /// Sets the project's audio rate (one undo step, no-op when unchanged).
-  /// Existing conforms re-build at the new rate in the background — the
-  /// store treats a rate-mismatched entry as stale on its own, so undo
-  /// and redo self-heal too.
-  void setProjectAudioSampleRate(int sampleRate) {
-    if (sampleRate < 8000 ||
-        sampleRate > 192000 ||
-        sampleRate == projectAudioSampleRate) {
-      return;
-    }
-    historyManager.execute(
-      UpdateProjectAudioSampleRateCommand(
-        repository: repository,
-        audioSampleRate: sampleRate,
-      ),
-    );
-    projectDoor.warmAudioConforms();
     notifyListeners();
   }
 
@@ -2615,7 +2544,7 @@ class EditorSessionManager extends ChangeNotifier
     trackFrameRangeSelection.value = null;
     editingSession.setActiveCutId(firstCutId);
     activeCutControllers.rebuild();
-    _voiceRecording.forgetShelfTakes();
+    voiceRecording.forgetShelfTakes();
     projectFile.unbind();
   }
 
@@ -2917,13 +2846,16 @@ class EditorSessionManager extends ChangeNotifier
   // The section moved to [EditorVoiceRecording]. Unlike the settings block,
   // it did not come free: its constructor there lists the nineteen session
   // members it reads back, which is what this block's coupling actually is.
-  // Everything below is the session's unchanged face on it.
+  //
+  // ⛔The twenty-one forwarders that used to stand here are gone (G3,
+  // 2026-09-07): callers say `session.voiceRecording.x`. Two names for one
+  // verb is two names.
   //
   // `late` because the closures below read `this`; the consequence is that a
   // session nobody recorded on builds this at `dispose` just to dispose it.
   // That is deliberate and harmless — every line of its `dispose` is a
   // null-guarded no-op on an object that never ran.
-  late final EditorVoiceRecording _voiceRecording = EditorVoiceRecording(
+  late final EditorVoiceRecording voiceRecording = EditorVoiceRecording(
     playback: () => playbackRig.playback,
     audioDeviceTransport: () => playbackRig.audioDeviceTransport,
     audioConformStore: () => audioConformStore,
@@ -2945,103 +2877,6 @@ class EditorSessionManager extends ChangeNotifier
     projectFilePath: () => projectFile.path,
     notify: notifyListeners,
   );
-
-  /// True while a guide take is rolling (AUDIO-PRO R5).
-  ValueNotifier<bool> get isVoiceRecording => _voiceRecording.isVoiceRecording;
-
-  /// The take's transient message, or null when there is nothing to say.
-  ValueNotifier<String?> get voiceRecordingNotice =>
-      _voiceRecording.voiceRecordingNotice;
-
-  /// The lane the live take previews on (REC1-C), or null between takes.
-  ValueNotifier<Layer?> get voiceRecordPreviewLane =>
-      _voiceRecording.voiceRecordPreviewLane;
-
-  /// Lit while the last block of input clipped.
-  ValueNotifier<bool> get voiceRecordClipLit =>
-      _voiceRecording.voiceRecordClipLit;
-
-  /// The path a live take's preview waveform answers to (REC1-C).
-  static const String voiceRecordPreviewPath =
-      EditorVoiceRecording.voiceRecordPreviewPath;
-
-  /// The capture rate the native denoiser is built for.
-  static const int voiceDenoiseCaptureRate =
-      EditorVoiceRecording.voiceDenoiseCaptureRate;
-
-  List<ScheduledAudioClip> get voiceRecordCueClips =>
-      _voiceRecording.voiceRecordCueClips;
-
-  ({int startFrame, int punchFrame})? get voiceRecordStreamerWindow =>
-      _voiceRecording.voiceRecordStreamerWindow;
-
-  LayerId? get voiceRecordingMutedLaneId =>
-      _voiceRecording.voiceRecordingMutedLaneId;
-
-  Set<LayerId> get recordingMutedLayerIds =>
-      _voiceRecording.recordingMutedLayerIds;
-
-  AudioPeaks? audioPeaksForDisplay(String path) =>
-      _voiceRecording.audioPeaksForDisplay(path);
-
-  AudioInputMonitor attachInputMeter() => _voiceRecording.attachInputMeter();
-
-  void detachInputMeter() => _voiceRecording.detachInputMeter();
-
-  void restartInputMeter() => _voiceRecording.restartInputMeter();
-
-  bool playOutputTestTone() => _voiceRecording.playOutputTestTone();
-
-  VoiceRecordStartResult startVoiceRecording() =>
-      _voiceRecording.startVoiceRecording();
-
-  Future<String?> stopVoiceRecordingAndPlace() =>
-      _voiceRecording.stopVoiceRecordingAndPlace();
-
-  /// Test seams: assignable, so both halves of the property are forwarded.
-  @visibleForTesting
-  AudioRecorder Function()? get debugVoiceRecorderFactory =>
-      _voiceRecording.debugVoiceRecorderFactory;
-
-  @visibleForTesting
-  set debugVoiceRecorderFactory(AudioRecorder Function()? factory) =>
-      _voiceRecording.debugVoiceRecorderFactory = factory;
-
-  @visibleForTesting
-  Float32List? Function(Float32List samples, int channels, int sampleRate)?
-  get debugVoiceDenoiser => _voiceRecording.debugVoiceDenoiser;
-
-  @visibleForTesting
-  set debugVoiceDenoiser(
-    Float32List? Function(Float32List samples, int channels, int sampleRate)?
-    denoiser,
-  ) => _voiceRecording.debugVoiceDenoiser = denoiser;
-
-  @visibleForTesting
-  void debugIngestVoiceRecordChunk(Float32List interleaved, int channels) =>
-      _voiceRecording.debugIngestVoiceRecordChunk(interleaved, channels);
-
-  @visibleForTesting
-  Future<bool> placeVoiceRecording(
-    AudioRecording recording, {
-    required LayerId? laneId,
-    required int anchorFrame,
-    int? punchEndFrame,
-    int headTrimSamples = 0,
-    int gainDb = 0,
-    VoiceInputChannelMode channelMode = VoiceInputChannelMode.device,
-    bool denoise = false,
-  }) => _voiceRecording.placeVoiceRecording(
-    recording,
-    laneId: laneId,
-    anchorFrame: anchorFrame,
-    punchEndFrame: punchEndFrame,
-    headTrimSamples: headTrimSamples,
-    gainDb: gainDb,
-    channelMode: channelMode,
-    denoise: denoise,
-  );
-
   @override
   FrameId mintFrameId(LayerId layerId) {
     _frameSequence += 1;
@@ -4358,12 +4193,24 @@ class EditorSessionManager extends ChangeNotifier
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
     textCelBakes: _textCelBakes,
-    voiceRecording: _voiceRecording,
+    voiceRecording: voiceRecording,
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,
+  );
+
+  // ── the project-wide audio settings: their own object ────────────────
+  //
+  // A collaborator (session/project_audio.dart). It owns no state — the
+  // rate and the pull live in the project — but the two verbs that write
+  // them belong together and belong out of here.
+  late final ProjectAudio projectAudio = ProjectAudio(
+    project: this,
+    changes: this,
+    settings: _projectSettings,
+    door: projectDoor,
   );
 
   // --- Frame flipping (P1 shortcuts) ----------------------------------------

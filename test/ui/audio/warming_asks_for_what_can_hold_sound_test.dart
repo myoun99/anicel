@@ -46,8 +46,8 @@ void main() {
   /// the other two are a project open and a frame-rate change, and all
   /// three call the same walk.
   void warm(EditorSessionManager session) {
-    session.setProjectAudioSampleRate(
-      session.projectAudioSampleRate == 48000 ? 44100 : 48000,
+    session.projectAudio.setProjectAudioSampleRate(
+      session.projectAudio.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
   }
 

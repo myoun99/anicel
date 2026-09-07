@@ -64,11 +64,11 @@ void main() {
     manager.selectLayer(laneId);
     manager.selectFrameIndex(0);
     // No range selection at all: the take simply anchors at the roll.
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
-    expect(manager.voiceRecordCueClips, isEmpty);
-    expect(manager.voiceRecordStreamerWindow, isNull);
+    expect(manager.voiceRecording.voiceRecordCueClips, isEmpty);
+    expect(manager.voiceRecording.voiceRecordStreamerWindow, isNull);
     manager.dispose();
   });
 
@@ -85,18 +85,18 @@ void main() {
       startIndex: 2,
       endIndexExclusive: 6,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     expect(
-      manager.voiceRecordCueClips,
+      manager.voiceRecording.voiceRecordCueClips,
       isEmpty,
       reason: 'a window entirely behind the roll is not a punch window',
     );
-    expect(manager.voiceRecordStreamerWindow, isNull);
+    expect(manager.voiceRecording.voiceRecordStreamerWindow, isNull);
     // 🚨And the take still LANDS: a punch end behind the anchor would
     // trim the capture to nothing, so the sound would simply not appear.
-    expect(await manager.stopVoiceRecordingAndPlace(), isNull);
+    expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
     expect(manager.activeTrack.seLayers.first.audioClips, hasLength(1));
     manager.dispose();
   });
@@ -115,17 +115,17 @@ void main() {
       startIndex: 4,
       endIndexExclusive: 8,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(4));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(4));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     expect(
-      manager.voiceRecordCueClips,
+      manager.voiceRecording.voiceRecordCueClips,
       hasLength(1),
       reason: 'a beep before the roll is a beep nobody hears',
     );
     // 🚨And the streamer covers the RUN-UP, not a fixed three seconds:
     // the wipe has to start where the roll did, not before it.
-    final window = manager.voiceRecordStreamerWindow;
+    final window = manager.voiceRecording.voiceRecordStreamerWindow;
     expect(window, isNotNull);
     expect(window!.punchFrame - window.startFrame, 4);
     manager.dispose();
@@ -143,14 +143,14 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(
       // The take must outlast the 13-frame run-up (3.25 s at 4 fps): the
       // punch head-trim eats that much before anything lands.
       takeOfSeconds(4.0),
     );
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
-    final beeps = manager.voiceRecordCueClips;
+    final beeps = manager.voiceRecording.voiceRecordCueClips;
     expect(beeps, hasLength(3));
     expect(
       beeps.map((clip) => clip.startFrame),
@@ -160,15 +160,15 @@ void main() {
           'before it — the imaginary fourth beep IS the punch',
     );
     expect(beeps.first.filePath, endsWith('cue-beep.wav'));
-    final window = manager.voiceRecordStreamerWindow;
+    final window = manager.voiceRecording.voiceRecordStreamerWindow;
     expect(window, isNotNull);
     expect(window!.startFrame, 1);
     expect(window.punchFrame, 13);
 
-    final message = await manager.stopVoiceRecordingAndPlace();
+    final message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(message, isNull);
-    expect(manager.voiceRecordCueClips, isEmpty);
-    expect(manager.voiceRecordStreamerWindow, isNull);
+    expect(manager.voiceRecording.voiceRecordCueClips, isEmpty);
+    expect(manager.voiceRecording.voiceRecordStreamerWindow, isNull);
     manager.dispose();
   });
 
@@ -189,11 +189,11 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    expect(manager.voiceRecordCueClips, isEmpty);
-    expect(manager.voiceRecordStreamerWindow, isNull);
-    await manager.stopVoiceRecordingAndPlace();
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.voiceRecordCueClips, isEmpty);
+    expect(manager.voiceRecording.voiceRecordStreamerWindow, isNull);
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     manager.dispose();
   });
 
@@ -206,10 +206,10 @@ void main() {
     );
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(
       takeOfSeconds(2.5), // 2 s of count-in ride the head trim.
     );
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(
       manager.playbackRig.playback.isActive,
       isFalse,
@@ -222,7 +222,7 @@ void main() {
       reason: 'the count-in elapsed: the roll begins',
     );
 
-    expect(await manager.stopVoiceRecordingAndPlace(), isNull);
+    expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
     final lane = manager.activeTrack.seLayers.first;
     // 2.5 s captured - 2 s count-in = 0.5 s of take (12 frames @ 24).
     expect(lane.audioClips, hasLength(1));
@@ -243,7 +243,7 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -260,7 +260,7 @@ void main() {
         ),
       ),
     );
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     manager.playbackRig.playback.seekToGlobalFrame(5);
     await tester.pump();
     expect(
@@ -275,7 +275,7 @@ void main() {
       findsNothing,
       reason: 'past the punch the scribe is gone',
     );
-    await manager.stopVoiceRecordingAndPlace();
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
     await tester.pumpAndSettle();
   });
 }

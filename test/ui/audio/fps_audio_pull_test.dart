@@ -138,8 +138,8 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      expect(session.projectHasAnyAudio, isTrue);
-      session.setProjectFrameRateWithAudioPull(
+      expect(session.projectAudio.projectHasAnyAudio, isTrue);
+      session.projectAudio.setProjectFrameRateWithAudioPull(
         ProjectFrameRate.fps24,
       );
       final project = session.repository.requireProject();
@@ -163,10 +163,10 @@ void main() {
       );
 
       // Going the other way pulls back and CANCELS to unity.
-      session.setProjectFrameRateWithAudioPull(
+      session.projectAudio.setProjectFrameRateWithAudioPull(
         ProjectFrameRate.fps24,
       );
-      session.setProjectFrameRateWithAudioPull(const ProjectFrameRate.ntsc(24));
+      session.projectAudio.setProjectFrameRateWithAudioPull(const ProjectFrameRate.ntsc(24));
       final roundTripped = session.repository.requireProject();
       expect(roundTripped.audioSpeedNumerator, 1);
       expect(roundTripped.audioSpeedDenominator, 1);

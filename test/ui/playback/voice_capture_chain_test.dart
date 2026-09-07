@@ -63,7 +63,7 @@ void main() {
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
-      await manager.placeVoiceRecording(
+      await manager.voiceRecording.placeVoiceRecording(
         takeOf(0.25),
         laneId: laneId,
         anchorFrame: 0,
@@ -90,18 +90,18 @@ void main() {
     manager.selectLayer(laneId);
 
     // Notice OFF (default): the take clips silently — flag only.
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     // The armed snapshot reads settings at start: raise gain BEFORE.
-    var message = await manager.stopVoiceRecordingAndPlace();
+    var message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(message, isNull, reason: 'gain 0: nothing clipped');
 
     manager.setAudioSyncSettings(
       manager.audioSyncSettings.value.copyWith(micGainDb: 12),
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    message = await manager.stopVoiceRecordingAndPlace();
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(
       message,
       isNull,
@@ -114,9 +114,9 @@ void main() {
     manager.setAudioSyncSettings(
       manager.audioSyncSettings.value.copyWith(clippingNotice: true),
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    message = await manager.stopVoiceRecordingAndPlace();
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(message, manager.uiStrings.recordTakeClipped);
     manager.dispose();
   });
@@ -129,19 +129,19 @@ void main() {
     manager.setAudioSyncSettings(
       manager.audioSyncSettings.value.copyWith(micGainDb: 12),
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
-    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    expect(manager.voiceRecordClipLit.value, isFalse);
+    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
+    expect(manager.voiceRecording.voiceRecordClipLit.value, isFalse);
 
     final chunk = Float32List(1200);
     for (var index = 0; index < chunk.length; index += 1) {
       chunk[index] = 0.6; // 0.6 * +12 dB ≈ 2.4: over the ceiling.
     }
-    manager.debugIngestVoiceRecordChunk(chunk, 1);
-    expect(manager.voiceRecordClipLit.value, isTrue);
+    manager.voiceRecording.debugIngestVoiceRecordChunk(chunk, 1);
+    expect(manager.voiceRecording.voiceRecordClipLit.value, isTrue);
 
-    await manager.stopVoiceRecordingAndPlace();
-    expect(manager.voiceRecordClipLit.value, isFalse);
+    await manager.voiceRecording.stopVoiceRecordingAndPlace();
+    expect(manager.voiceRecording.voiceRecordClipLit.value, isFalse);
     manager.dispose();
   });
 

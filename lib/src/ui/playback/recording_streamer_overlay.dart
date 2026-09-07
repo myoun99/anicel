@@ -16,7 +16,7 @@ class RecordingStreamerOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: session.isVoiceRecording,
+      valueListenable: session.voiceRecording.isVoiceRecording,
       builder: (context, recording, _) {
         if (!recording) {
           return const SizedBox.shrink();
@@ -24,7 +24,7 @@ class RecordingStreamerOverlay extends StatelessWidget {
         return ValueListenableBuilder<int?>(
           valueListenable: session.playbackRig.playback.globalFrameIndexListenable,
           builder: (context, frame, _) {
-            final window = session.voiceRecordStreamerWindow;
+            final window = session.voiceRecording.voiceRecordStreamerWindow;
             if (frame == null || window == null) {
               return const SizedBox.shrink();
             }
