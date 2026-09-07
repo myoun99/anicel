@@ -1,14 +1,19 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_mode.dart';
+import '../../models/attached_layer_mount.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_row_address.dart';
+import '../timeline/layer_drop_policy.dart'
+    show detachLandingIndex, resolveLayerDrop;
 import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'row_selection.dart';
 import 'session_roles.dart';
 
 /// FOLDERS AND ATTACHMENTS — grouping the active layer or attach into a
@@ -25,12 +30,14 @@ class FoldersAndAttachments {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
+    required RowSelection rowSelectionVerbs,
     required SessionInternals internals,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
+       _rowSelectionVerbs = rowSelectionVerbs,
        _internals = internals,
        _activeCut = activeCut;
 
@@ -38,6 +45,7 @@ class FoldersAndAttachments {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
+  final RowSelection _rowSelectionVerbs;
   final SessionInternals _internals;
   final ActiveCutEdits _activeCut;
 
@@ -160,7 +168,7 @@ class FoldersAndAttachments {
 
   /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
   /// inside its group. Siblings join via [addAttachedLayer]'s sibling
-  /// rule; renaming is plain [_internals.renameLayer].
+  /// rule; renaming is plain [LayerVerbs.renameLayer].
   void groupActiveAttachIntoFolder() => _activeCut.onActiveLayer(
     when: canGroupActiveAttachIntoFolder,
     command: (cutId, layerId) => _project.cutCommandCoordinator
@@ -173,6 +181,109 @@ class FoldersAndAttachments {
       folderId: folderId,
     ),
   );
+
+  // --- 분리 by MENU (P3) --------------------------------------------------
+  //
+  // MOUNTING has no menu verb: the drag makes an attach by dropping a row
+  // strictly INSIDE a group, and R5 #15 gave the one case a gap cannot
+  // reach — the first rider on a base — its own landing, dropping ON the
+  // row ([LayerRowDrag.updateLayerRowDropOnRow]). The pair of "장착 to the
+  // neighbour" verbs that lived here were that door before it existed; R5
+  // deleted them once they became a second answer to the same question.
+  //
+  // The release keeps its menu entry: the drag must not be a one-way door.
+
+  bool get canDetachActiveLayer {
+    final active = _selection.activeLayer;
+    return active != null && isAttachedLayer(active);
+  }
+
+  /// 어태치 해제: the active row stops riding its base.
+  ///
+  /// The row also STEPS OUT of the group when it has to
+  /// ([detachLandingIndex]) — a detached row left inside the run would cut
+  /// the group in two. The move and the detach are one undo step: the menu
+  /// named one intent.
+  void detachActiveLayer() {
+    final cut = _project.activeCutOrNull;
+    final row = _selection.activeLayer;
+    if (cut == null || row == null || !isAttachedLayer(row)) {
+      return;
+    }
+    final attach = LayerAttachDrop(detachIds: {row.id});
+    final landing = detachLandingIndex(cut.layers, row.id);
+    final plan = landing == null
+        ? null
+        : resolveLayerDrop(
+            stack: cut.layers,
+            movingId: row.id,
+            insertAt: landing,
+          );
+    if (plan == null) {
+      _project.cutCommandCoordinator.setLayerAttachment(
+        cutId: cut.id,
+        attach: attach,
+        description: 'Detach layer',
+      );
+    } else {
+      // The MENU says the row is leaving; the drop policy supplies the
+      // geometry (order + membership) for the landing. Its own edge rule —
+      // where a DRAG keeps the attachment — is deliberately overridden here,
+      // because a drag's own travel is what says "still in the group" and a
+      // menu item has no travel.
+      _project.cutCommandCoordinator.setLayerPlacement(
+        cutId: cut.id,
+        order: plan.order,
+        folderIds: plan.folderIds,
+        movedIds: {row.id},
+        attach: attach,
+        description: 'Detach layer',
+      );
+    }
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: row.id);
+    _changes.notifyChanged();
+  }
+
+  /// The row's twirl. R27 #24: FOLDING a folder that holds the active
+  /// layer moves the selection to the folder row itself — otherwise the
+  /// fold simply wouldn't look folded (the member row would have to stay
+  /// on screen to keep something selected).
+  void toggleLayerCollapsed(LayerId layerId) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
+    _controllers.layerController.toggleLayerCollapsed(layerId);
+    // H6: the fold law's selection half, on the FOLDER fold too — every
+    // row inside a folder that just shut is off the screen, and the band
+    // must not go on drawing over them ([RowSelection.foldRowSelection]).
+    // The active layer's own hand-off below is the standing-row half of
+    // the same law.
+    if (!wasCollapsed) {
+      bool insideThisFolder(LayerId? id) =>
+          id != null &&
+          cut.layers.isInsideFolder(cut.layers.byId(id)?.folderId, layerId);
+      _rowSelectionVerbs.foldRowSelection(
+        vanished: (address) => switch (address) {
+          LayerRowAddress(:final layerId) => insideThisFolder(layerId),
+          LaneRowAddress(:final layerId) => insideThisFolder(layerId),
+          _ => false,
+        },
+        swallower: LayerRowAddress(layerId),
+      );
+    }
+    final activeId = _selection.activeLayerId;
+    if (!wasCollapsed &&
+        activeId != null &&
+        cut.layers.isInsideFolder(
+          cut.layers.byId(activeId)?.folderId,
+          layerId,
+        )) {
+      _controllers.layerController.selectLayer(layerId);
+    }
+    _changes.notifyChanged();
+  }
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
   /// attach row: the synced-block UI makes those rows look like ordinary

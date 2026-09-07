@@ -364,7 +364,7 @@ class Standing {
   ///
   /// Two folds already obeyed this, each in its own place and its own
   /// words — a folder taking the selection off a member
-  /// ([_internals.toggleLayerCollapsed], R27 #24) and an attach base taking it off an
+  /// ([FoldersAndAttachments.toggleLayerCollapsed], R27 #24) and an attach base taking it off an
   /// attach row (the workspace's group fold, UI-R24 #4). The fx twirl and
   /// the lane-GROUP twirl did not, so closing a Transform group left you
   /// standing on a row that was no longer on screen, and the canvas went on

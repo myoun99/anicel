@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show layerRailNameIndent;
@@ -205,15 +206,38 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     expect(s.activeLayerId, layerId);
 
-    s.toggleLayerCollapsed(folderId);
+    s.folders.toggleLayerCollapsed(folderId);
     expect(s.activeLayerId, folderId);
 
     s.selectLayer(layerId);
     expect(s.activeLayerId, layerId);
+  });
+
+  test('H6: folding a folder folds the row SELECTION too — the band must '
+      'not go on drawing over rows that left the screen', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    final layerId = s.activeLayer!.id;
+    s.folders.groupActiveLayerIntoFolder();
+    final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
+
+    s.rowSelection.value = [LayerRowAddress(layerId)];
+    s.folders.toggleLayerCollapsed(folderId);
+    expect(
+      s.rowSelection.value,
+      [LayerRowAddress(folderId)],
+      reason: 'the swallower takes the vanished rows\' place',
+    );
+
+    // Unfolding leaves the selection where the fold put it: nothing
+    // vanished, so nothing is swallowed.
+    s.folders.toggleLayerCollapsed(folderId);
+    expect(s.rowSelection.value, [LayerRowAddress(folderId)]);
   });
 
   test('R27 #29: the folder blend rides the LAYER blend commit', () {
@@ -233,7 +257,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(
@@ -306,16 +330,16 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
 
     // Exactly the read the rail hosts do (`_displayLayers`).
-    Layer band() => s.folderBandLayerFor(
+    Layer band() => s.folderBands.folderBandLayerFor(
       s.layers.firstWhere((layer) => layer.id == folderId),
     );
 
     expect(band().collapsed, isFalse);
-    s.toggleLayerCollapsed(folderId);
+    s.folders.toggleLayerCollapsed(folderId);
     expect(
       band().collapsed,
       isTrue,

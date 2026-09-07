@@ -123,13 +123,13 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void addLayerOfKind(LayerKind kind) => session.layerStack.addLayerOfKind(kind);
 
   @override
-  bool get canAddAttachedLayer => session.canAddAttachedLayerToActive;
+  bool get canAddAttachedLayer => session.folders.canAddAttachedLayerToActive;
 
   @override
   void addAttachedLayer(
     AttachedPlacement placement, {
     AttachedMode mode = AttachedMode.synced,
-  }) => session.addAttachedLayer(placement, mode: mode);
+  }) => session.folders.addAttachedLayer(placement, mode: mode);
 
   @override
   bool get servesActiveLayerVerbs => true;

@@ -110,7 +110,7 @@ void main() {
   test('the sheet sweep leaves ATTACH rows alone — they ride their base, '
       'and the sweep has skipped them since the R-toolbar round (#508)', () {
     final s = session();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.layers
         .firstWhere((layer) => layer.attachedToLayerId != null)
         .id;

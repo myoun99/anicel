@@ -216,7 +216,6 @@ abstract interface class SessionInternals {
     int? globalFrameIndex,
     bool takesLayerActive = true,
   });
-  void toggleLayerCollapsed(LayerId layerId);
   ValueNotifier<({TrackId trackId, double opacity})?>
   get trackOpacityDragPreview;
   TrackSeWindow get trackSeWindow;

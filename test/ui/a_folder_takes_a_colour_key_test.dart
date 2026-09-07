@@ -23,7 +23,7 @@ void main() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
     session.createDrawingAtCurrentFrame();
-    session.groupActiveLayerIntoFolder();
+    session.folders.groupActiveLayerIntoFolder();
     return session;
   }
 

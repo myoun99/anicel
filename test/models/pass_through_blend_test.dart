@@ -66,7 +66,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final memberId = s.activeLayer!.id;
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
 
     // Default (pass-through): the member keeps its own normal blend.

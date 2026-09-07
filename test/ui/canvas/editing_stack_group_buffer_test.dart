@@ -24,7 +24,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     if (blend != LayerBlendMode.passThrough) {
       s.layerSwitches.setLayerBlendMode(folderId, blend);

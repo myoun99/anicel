@@ -36,8 +36,8 @@ void main() {
       s,
     ).indexWhere((layer) => layer.id == base.id);
 
-    expect(s.canAddAttachedLayerToActive, isTrue);
-    s.addAttachedLayer(AttachedPlacement.above);
+    expect(s.folders.canAddAttachedLayerToActive, isTrue);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final above = s.activeLayer!;
     expect(isAttachedLayer(above), isTrue);
     expect(above.attachedToLayerId, base.id);
@@ -53,8 +53,8 @@ void main() {
 
     // Adding from the attach row targets ITS base (same group); a below
     // row lands right before the base and counts its own side (-1).
-    expect(s.canAddAttachedLayerToActive, isTrue);
-    s.addAttachedLayer(AttachedPlacement.below);
+    expect(s.folders.canAddAttachedLayerToActive, isTrue);
+    s.folders.addAttachedLayer(AttachedPlacement.below);
     final below = s.activeLayer!;
     expect(below.attachedToLayerId, base.id);
     expect(below.name, '${base.name}-1');
@@ -69,7 +69,7 @@ void main() {
       'them', () {
     final (s, _) = sessionWithBase();
     s.createDrawingAtCurrentFrame();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
     s.createDrawingAtCurrentFrame();
 
@@ -96,7 +96,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     s.selectFrameIndex(0);
 
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
     // The mirror is FULL the moment the row is created: one own cel + base
@@ -132,7 +132,7 @@ void main() {
       'base creation replays the identical mirror ids', () {
     final (s, base) = sessionWithBase();
     s.createDrawingAtCurrentFrame(); // base cel at 0
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
     expect(
       cutLayers(s).firstWhere((l) => l.id == attachId).frames,
@@ -205,7 +205,7 @@ void main() {
       mode: TimelineRunEdgeMode.hold,
     );
     s.selectLayer(base.id);
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
     // The display clone mirrors the hold ghost WITH its owner id and the
@@ -242,7 +242,7 @@ void main() {
     );
 
     s.selectLayer(base.id);
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
     // ONE own cel for the whole held region — not three restarted cels.
@@ -262,7 +262,7 @@ void main() {
       'cell links, no ghost mirror', () {
     final (s, base) = sessionWithBase();
     s.createDrawingAtCurrentFrame(); // base cel at 0 (not required, but real)
-    s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
+    s.folders.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
     final attachId = s.activeLayer!.id;
     expect(
       cutLayers(s).firstWhere((l) => l.id == attachId).attachedMode,
@@ -320,7 +320,7 @@ void main() {
     // Still an ATTACH row structurally: no nesting base, cascades with
     // the base's delete, and adding from it targets ITS base.
     expect(canCarryAttachedLayers(attached), isFalse);
-    expect(s.canAddAttachedLayerToActive, isTrue);
+    expect(s.folders.canAddAttachedLayerToActive, isTrue);
   });
 
   test('SYNCED attach mirrors join range selection (P3b-1): the mirror '
@@ -328,7 +328,7 @@ void main() {
       'as a PASSENGER, and a mirror-only move refuses', () {
     final (s, base) = sessionWithBase();
     s.createDrawingAtCurrentFrame(); // base cel at 0, length 1
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
     s.createDrawingAtCurrentFrame(); // linked attach cel riding block 0
 
@@ -377,9 +377,9 @@ void main() {
 
   test('deleting the base cascades over BOTH attach modes in one undo', () {
     final (s, base) = sessionWithBase();
-    s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
+    s.folders.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
     final freeId = s.activeLayer!.id;
-    s.addAttachedLayer(AttachedPlacement.below);
+    s.folders.addAttachedLayer(AttachedPlacement.below);
     final syncedId = s.activeLayer!.id;
 
     s.selectLayer(base.id);
@@ -404,7 +404,7 @@ void main() {
   test('attach rows own no timing: exposure/mark/cell edits and comma '
       'drags stand down; kind toggles too', () {
     final (s, _) = sessionWithBase();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     s.createDrawingAtCurrentFrame();
     final attachId = s.activeLayer!.id;
 
@@ -426,8 +426,8 @@ void main() {
   test('deleting the base cascades over its attach rows in ONE undo (R28 '
       '#14: no drawing floor stands in the way)', () {
     final (s, base) = sessionWithBase();
-    s.addAttachedLayer(AttachedPlacement.above);
-    s.addAttachedLayer(AttachedPlacement.below);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.below);
     final layersBefore = cutLayers(s).map((layer) => layer.id).toList();
 
     // R28 #14: the base is deletable even as the ONLY standalone drawing
@@ -469,7 +469,7 @@ void main() {
   test('adding a regular layer while an attach row is active lands ABOVE '
       'the whole group, never inside it', () {
     final (s, base) = sessionWithBase();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
     s.layerStack.addLayer();
@@ -485,16 +485,16 @@ void main() {
   test('attach rows are ineligible bases (no nesting) and non-drawing '
       'kinds cannot carry them', () {
     final (s, _) = sessionWithBase();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     // Active = attach row: adding again targets the BASE (allowed).
-    expect(s.canAddAttachedLayerToActive, isTrue);
+    expect(s.folders.canAddAttachedLayerToActive, isTrue);
 
     // A camera row cannot carry attach layers.
     final camera = cutLayers(
       s,
     ).firstWhere((layer) => layer.id.value.endsWith('-camera'));
     s.selectLayer(camera.id);
-    expect(s.canAddAttachedLayerToActive, isFalse);
+    expect(s.folders.canAddAttachedLayerToActive, isFalse);
   });
 
   group('synced mirrors never commit their display clone', () {
@@ -502,7 +502,7 @@ void main() {
         'mirror timeline EMPTY (the clone must never write back)', () {
       final (s, base) = sessionWithBase();
       s.createDrawingAtCurrentFrame();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
 
       s.updateFrameRangeSelectionDrag(
@@ -540,7 +540,7 @@ void main() {
         'stored mirror timeline stays empty', () {
       final (s, base) = sessionWithBase();
       s.createDrawingAtCurrentFrame();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
 
       s.updateFrameRangeSelectionDrag(
@@ -564,7 +564,7 @@ void main() {
         'the stored mirror timeline stays empty', () {
       final (s, base) = sessionWithBase();
       s.createDrawingAtCurrentFrame();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
 
       s.updateFrameRangeSelectionDrag(
@@ -595,7 +595,7 @@ void main() {
         'blocks are borrowed — pressing them would silently no-op)', () {
       final (s, _) = sessionWithBase();
       s.createDrawingAtCurrentFrame();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
 
       s.updateFrameRangeSelectionDrag(
@@ -610,7 +610,7 @@ void main() {
         '(the slice starts before the base)', () {
       final (s, base) = sessionWithBase();
       s.createDrawingAtCurrentFrame();
-      s.addAttachedLayer(AttachedPlacement.below);
+      s.folders.addAttachedLayer(AttachedPlacement.below);
       final belowId = s.activeLayer!.id;
 
       s.selectLayer(base.id);
@@ -634,11 +634,11 @@ void main() {
         'attach relation stays direct to the base, the group span swallows '
         'the folder row, and the structure validates', () {
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
 
-      expect(s.canGroupActiveAttachIntoFolder, isTrue);
-      s.groupActiveAttachIntoFolder();
+      expect(s.folders.canGroupActiveAttachIntoFolder, isTrue);
+      s.folders.groupActiveAttachIntoFolder();
 
       final layers = cutLayers(s);
       final attach = layers.firstWhere((l) => l.id == attachId);
@@ -664,25 +664,25 @@ void main() {
       // lifted it, and the same round removed the drop policy's refusal —
       // so the gate has to agree with the drag.
       s.selectLayer(attachId);
-      expect(s.canGroupActiveAttachIntoFolder, isTrue);
+      expect(s.folders.canGroupActiveAttachIntoFolder, isTrue);
       // The whole-group fold is still not fooled: a base cannot wrap.
       s.selectLayer(base.id);
-      expect(s.canGroupActiveAttachIntoFolder, isFalse);
+      expect(s.folders.canGroupActiveAttachIntoFolder, isFalse);
     });
 
     test('an organizer NESTS: wrapping a row that is already inside one '
         'makes a folder in a folder, and every derivation still holds', () {
       // 유저 2026-08-29: 「어태치 폴더 중첩도 허용하는 방향으로 가자」.
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       final outerId = cutLayers(
         s,
       ).firstWhere((l) => l.id == attachId).folderId!;
 
       s.selectLayer(attachId);
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
 
       final layers = cutLayers(s);
       final attach = layers.firstWhere((l) => l.id == attachId);
@@ -713,12 +713,12 @@ void main() {
         'organizer (same placement) joins that organizer; a different '
         'placement lands at the group edge with the base\'s folder', () {
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final firstId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       s.selectLayer(firstId);
 
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final sibling = s.activeLayer!;
       final layers = cutLayers(s);
       final organizerId = layers
@@ -730,7 +730,7 @@ void main() {
       // A BELOW attach from the same active row skips the organizer (its
       // side is different) and lands at the group edge, folder-free.
       s.selectLayer(firstId);
-      s.addAttachedLayer(AttachedPlacement.below);
+      s.folders.addAttachedLayer(AttachedPlacement.below);
       final below = s.activeLayer!;
       expect(below.folderId, isNull);
       expect(folderStructureProblem(cutLayers(s)), isNull);
@@ -739,12 +739,12 @@ void main() {
     test('the whole-group fold keeps inner organizers: organizer rows '
         'join the outer folder, their members keep the organizer', () {
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       s.selectLayer(base.id);
 
-      s.groupActiveLayerIntoFolder();
+      s.folders.groupActiveLayerIntoFolder();
 
       final layers = cutLayers(s);
       final attach = layers.firstWhere((l) => l.id == attachId);
@@ -761,11 +761,11 @@ void main() {
     test('a BELOW attach row joins the whole-group fold (the group slice '
         'starts before the base)', () {
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.below);
+      s.folders.addAttachedLayer(AttachedPlacement.below);
       final belowId = s.activeLayer!.id;
       s.selectLayer(base.id);
 
-      s.groupActiveLayerIntoFolder();
+      s.folders.groupActiveLayerIntoFolder();
 
       final layers = cutLayers(s);
       final folderId = layers.firstWhere((l) => l.id == base.id).folderId;
@@ -781,9 +781,9 @@ void main() {
     test('deleting the base cascades over organizer rows too; undo '
         'restores the whole shape', () {
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       final organizerId = cutLayers(s)
           .firstWhere((l) => l.id == attachId)
           .folderId!;
@@ -814,14 +814,14 @@ void main() {
       // question: the inner folder empties, and then the outer holds
       // nothing but a folder that is about to go.
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       final outerId = cutLayers(
         s,
       ).firstWhere((l) => l.id == attachId).folderId!;
       s.selectLayer(attachId);
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       final innerId = cutLayers(
         s,
       ).firstWhere((l) => l.id == attachId).folderId!;
@@ -845,9 +845,9 @@ void main() {
     test('deleting the LAST member of an organizer removes the empty '
         'folder row with it, in one undo', () {
       final (s, base) = sessionWithBase();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       final organizerId = cutLayers(s)
           .firstWhere((l) => l.id == attachId)
           .folderId!;
@@ -874,9 +874,9 @@ void main() {
         'onto the copied folder row', () {
       final (s, base) = sessionWithBase();
       s.createDrawingAtCurrentFrame();
-      s.addAttachedLayer(AttachedPlacement.above);
+      s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.groupActiveAttachIntoFolder();
+      s.folders.groupActiveAttachIntoFolder();
       final organizerId = cutLayers(s)
           .firstWhere((l) => l.id == attachId)
           .folderId!;

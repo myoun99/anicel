@@ -134,7 +134,7 @@ void main() {
   test('a row created inside a folder lands in the SIBLING\'s own folder, '
       'not the origin cut\'s', () {
     final pair = makeLinkedPair();
-    session.groupActiveLayerIntoFolder();
+    session.folders.groupActiveLayerIntoFolder();
     final sourceIdsBefore = {
       for (final layer in cutById(pair.source).layers) layer.id,
     };

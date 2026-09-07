@@ -279,7 +279,7 @@ void main() {
     );
 
     // An attach row's column shows the placement arrow instead.
-    session.addAttachedLayer(AttachedPlacement.above);
+    session.folders.addAttachedLayer(AttachedPlacement.above);
     await tester.pumpAndSettle();
     final attachId = session.activeLayerId!;
     expect(attachId, isNot(layerId));

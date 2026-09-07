@@ -205,7 +205,7 @@ void main() {
       layerId,
     ).collapsed;
 
-    session.toggleLayerCollapsed(layerId);
+    session.folders.toggleLayerCollapsed(layerId);
     session.historyManager.undo();
 
     expect(

@@ -53,9 +53,9 @@ void main() {
     final s = session();
     final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
     s.selectLayer(layer);
-    expect(s.canGroupActiveLayerIntoFolder, isTrue);
+    expect(s.folders.canGroupActiveLayerIntoFolder, isTrue);
 
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
 
     expect(s.activeLayerId, layer);
     expect(
@@ -68,11 +68,11 @@ void main() {
   test('공정 폴더 생성 leaves you on the ATTACH row', () {
     final s = session();
     s.createDrawingAtCurrentFrame();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attach = s.activeLayer!.id;
-    expect(s.canGroupActiveAttachIntoFolder, isTrue);
+    expect(s.folders.canGroupActiveAttachIntoFolder, isTrue);
 
-    s.groupActiveAttachIntoFolder();
+    s.folders.groupActiveAttachIntoFolder();
 
     expect(s.activeLayerId, attach);
     expect(
@@ -152,8 +152,8 @@ void main() {
     s.selectLayer(instruction);
     final before = s.requireActiveCut.layers.length;
 
-    if (!s.canGroupActiveLayerIntoFolder) {
-      s.groupActiveLayerIntoFolder();
+    if (!s.folders.canGroupActiveLayerIntoFolder) {
+      s.folders.groupActiveLayerIntoFolder();
       expect(s.requireActiveCut.layers.length, before);
       expect(s.activeLayerId, LayerId(instruction.value));
     }

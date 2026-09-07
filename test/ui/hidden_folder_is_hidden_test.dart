@@ -33,7 +33,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final member = s.activeLayer!.id;
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
     s.selectLayer(member);
     return (s, member, folder);
@@ -181,7 +181,7 @@ void main() {
       // fallback path instead of the composite tree — the path that skipped
       // the folder walk.
       s.layerStack.addLayer();
-      s.groupActiveLayerIntoFolder();
+      s.folders.groupActiveLayerIntoFolder();
       final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
 
       bool holdsActive(List<CompositeNode<CanvasStackRow>> nodes) => nodes.any(

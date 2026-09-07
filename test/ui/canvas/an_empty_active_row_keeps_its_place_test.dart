@@ -30,7 +30,7 @@ void main() {
     // A drawing row with a cel, folded into a folder — then step to a frame
     // where the row has nothing exposed, which is the whole case.
     s.createDrawingAtCurrentFrame();
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     if (folderBlend != LayerBlendMode.passThrough) {
       s.layerSwitches.setLayerBlendMode(folderId, folderBlend);

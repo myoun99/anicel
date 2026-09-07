@@ -562,7 +562,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return [
       for (final layer in _session.layers)
         if (layer.kind.groupsLayers)
-          _session.folderBandLayerFor(layer)
+          _session.folderBands.folderBandLayerFor(layer)
         else if (view != null && layer.kind == LayerKind.camera)
           _cameraDisplayLayer(layer, view.value)
         else
@@ -823,7 +823,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
-            onToggleLayerCollapsed: _session.toggleLayerCollapsed,
+            onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
             onToggleLayerFx: _session.toggleLayerFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

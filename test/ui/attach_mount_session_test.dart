@@ -53,14 +53,14 @@ void main() {
     s.selectFrameIndex(2);
     s.createDrawingAtCurrentFrame();
     s.selectFrameIndex(0);
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final firstId = s.activeLayer!.id;
     // A second attach row above it, so the first one is BURIED in the run.
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final secondId = s.activeLayer!.id;
     s.selectLayer(firstId);
 
-    expect(s.canDetachActiveLayer, isTrue);
+    expect(s.folders.canDetachActiveLayer, isTrue);
     final displayed = s.layers.firstWhere((layer) => layer.id == firstId);
     final shownBlocks = [
       for (final entry in displayed.timeline.entries)
@@ -69,7 +69,7 @@ void main() {
     ];
     expect(shownBlocks, hasLength(2), reason: 'it mirrors the base\'s two cels');
 
-    s.detachActiveLayer();
+    s.folders.detachActiveLayer();
 
     final detached = _row(s, firstId);
     expect(detached.attachedToLayerId, isNull);
@@ -106,9 +106,9 @@ void main() {
       'keeps the fx lanes off the group', () {
     final s = _session();
     s.createDrawingAtCurrentFrame();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
-    s.groupActiveAttachIntoFolder();
+    s.folders.groupActiveAttachIntoFolder();
     final organizerId = _rows(s)
         .firstWhere((layer) => layer.kind == LayerKind.folder)
         .id;
@@ -120,7 +120,7 @@ void main() {
       reason: 'the fixture is a real organizer',
     );
 
-    s.detachActiveLayer();
+    s.folders.detachActiveLayer();
 
     expect(_row(s, attachId).attachedToLayerId, isNull);
     expect(_row(s, attachId).folderId, isNot(organizerId));
@@ -134,7 +134,7 @@ void main() {
     final s = _session();
     final base = s.activeLayer!;
     s.createDrawingAtCurrentFrame();
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
     final before = _row(s, attachId);
     expect(before.attachedPlacement, AttachedPlacement.above);
@@ -167,7 +167,7 @@ void main() {
       'now', () {
     final s = _session();
     final base = s.activeLayer!;
-    s.addAttachedLayer(AttachedPlacement.above);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     s.layerStack.addLayerOfKind(LayerKind.animation);
     final loose = s.activeLayer!.id;
     // Stack: base, attach, loose. One step DOWN puts it between them.

@@ -46,10 +46,7 @@ import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
 import '../services/editing/layer_standing_after_change.dart';
 import '../controllers/timeline_controller.dart';
-import '../models/attached_layer_mount.dart';
 import '../models/attached_layer_resolve.dart';
-import '../models/attached_mode.dart';
-import '../models/attached_placement.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
@@ -142,8 +139,6 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
-import 'timeline/layer_drop_policy.dart'
-    show detachLandingIndex, resolveLayerDrop;
 import 'timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowDragSubject;
 import 'timeline/property_lane_model.dart'
@@ -624,7 +619,7 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     layerVerbs: layerVerbs,
     standing: _standing,
-    folderBands: _folderBands,
+    folderBands: folderBands,
     renderCaches: renderCaches,
     brushInputActive: brushInputActive,
   );
@@ -1124,16 +1119,10 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the folder bands: their own cache, in their own file ───────────────
   //
-  // A collaborator (session/folder_bands.dart, a part of this library). The
-  // session keeps the public queries as forwarders.
-  late final FolderBands _folderBands = FolderBands(project: this);
-
-  Layer folderBandLayerFor(Layer folder) =>
-      _folderBands.folderBandLayerFor(folder);
-  List<Layer> folderBandMembersOf(LayerId folderId) =>
-      _folderBands.folderBandMembersOf(folderId);
-  List<({int start, int endExclusive})> folderBandRunsOf(LayerId folderId) =>
-      _folderBands.folderBandRunsOf(folderId);
+  // A collaborator (session/folder_bands.dart): the folder row the rails
+  // DRAW — its members, their merged runs, and the cache that keeps the
+  // three one answer.
+  late final FolderBands folderBands = FolderBands(project: this);
 
   @override
   void refreshAfterCutCommand({
@@ -2348,82 +2337,10 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── folders and attachments: their own object ───────────────────────
   //
-  // A collaborator (session/folders_and_attachments.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final FoldersAndAttachments _folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, internals: this, activeCut: _activeCutEdits);
-
-  bool get canAddAttachedLayerToActive => _folders.canAddAttachedLayerToActive;
-  void addAttachedLayer(
-    AttachedPlacement placement, {
-    AttachedMode mode = AttachedMode.synced,
-  }) => _folders.addAttachedLayer(placement, mode: mode);
-  bool get canGroupActiveAttachIntoFolder =>
-      _folders.canGroupActiveAttachIntoFolder;
-  void groupActiveAttachIntoFolder() => _folders.groupActiveAttachIntoFolder();
-  bool get canGroupActiveLayerIntoFolder =>
-      _folders.canGroupActiveLayerIntoFolder;
-  void groupActiveLayerIntoFolder() => _folders.groupActiveLayerIntoFolder();
-  void dissolveFolder(LayerId folderId) => _folders.dissolveFolder(folderId);
-
-  // --- 분리 by MENU (P3) --------------------------------------------------
-  //
-  // MOUNTING has no menu verb: the drag makes an attach by dropping a row
-  // strictly INSIDE a group, and R5 #15 gave the one case a gap cannot
-  // reach — the first rider on a base — its own landing, dropping ON the row
-  // ([updateLayerRowDropOnRow]). The pair of "장착 to the neighbour" verbs
-  // that lived here were that door before it existed; R5 deleted them once
-  // they became a second answer to the same question.
-  //
-  // The release keeps its menu entry: the drag must not be a one-way door.
-
-  bool get canDetachActiveLayer =>
-      activeLayer != null && isAttachedLayer(activeLayer!);
-
-  /// 어태치 해제: the active row stops riding its base.
-  ///
-  /// The row also STEPS OUT of the group when it has to
-  /// ([detachLandingIndex]) — a detached row left inside the run would cut
-  /// the group in two. The move and the detach are one undo step: the menu
-  /// named one intent.
-  void detachActiveLayer() {
-    final cut = activeCutOrNull;
-    final row = activeLayer;
-    if (cut == null || row == null || !isAttachedLayer(row)) {
-      return;
-    }
-    final attach = LayerAttachDrop(detachIds: {row.id});
-    final landing = detachLandingIndex(cut.layers, row.id);
-    final plan = landing == null
-        ? null
-        : resolveLayerDrop(
-            stack: cut.layers,
-            movingId: row.id,
-            insertAt: landing,
-          );
-    if (plan == null) {
-      cutCommandCoordinator.setLayerAttachment(
-        cutId: cut.id,
-        attach: attach,
-        description: 'Detach layer',
-      );
-    } else {
-      // The MENU says the row is leaving; the drop policy supplies the
-      // geometry (order + membership) for the landing. Its own edge rule —
-      // where a DRAG keeps the attachment — is deliberately overridden here,
-      // because a drag's own travel is what says "still in the group" and a
-      // menu item has no travel.
-      cutCommandCoordinator.setLayerPlacement(
-        cutId: cut.id,
-        order: plan.order,
-        folderIds: plan.folderIds,
-        movedIds: {row.id},
-        attach: attach,
-        description: 'Detach layer',
-      );
-    }
-    refreshAfterCutCommand(preferredActiveLayerId: row.id);
-    notifyListeners();
-  }
+  // A collaborator (session/folders_and_attachments.dart): the folder and
+  // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
+  // fold twirl — with the state each one reads.
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, rowSelectionVerbs: _rowSelection, internals: this, activeCut: _activeCutEdits);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
@@ -2528,47 +2445,6 @@ class EditorSessionManager extends ChangeNotifier
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
   @override
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
-
-  /// The row's twirl. R27 #24: FOLDING a folder that holds the active
-  /// layer moves the selection to the folder row itself — otherwise the
-  /// fold simply wouldn't look folded (the member row would have to stay
-  /// on screen to keep something selected).
-  @override
-  void toggleLayerCollapsed(LayerId layerId) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
-    activeCutControllers.layerController.toggleLayerCollapsed(layerId);
-    // H6: the fold law's selection half, on the FOLDER fold too — every
-    // row inside a folder that just shut is off the screen, and the band
-    // must not go on drawing over them ([_foldRowSelection]). The active
-    // layer's own hand-off below is the standing-row half of the same law.
-    if (!wasCollapsed) {
-      bool insideThisFolder(LayerId? id) =>
-          id != null &&
-          cut.layers.isInsideFolder(cut.layers.byId(id)?.folderId, layerId);
-      _rowSelection.foldRowSelection(
-        vanished: (address) => switch (address) {
-          LayerRowAddress(:final layerId) => insideThisFolder(layerId),
-          LaneRowAddress(:final layerId) => insideThisFolder(layerId),
-          _ => false,
-        },
-        swallower: LayerRowAddress(layerId),
-      );
-    }
-    final activeId = activeLayerId;
-    if (!wasCollapsed &&
-        activeId != null &&
-        cut.layers.isInsideFolder(
-          cut.layers.byId(activeId)?.folderId,
-          layerId,
-        )) {
-      activeCutControllers.layerController.selectLayer(layerId);
-    }
-    notifyListeners();
-  }
 
   // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
 
@@ -2703,7 +2579,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart, a part of this library):
   // the exposure, cut and transition edge drags with their snapshots. The
   // session keeps the public entry points as forwarders.
-  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: _folders, rangeSelections: _rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
+  late final EdgeDrag _edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: _rangeSelections, storyboardCursor: _storyboardCursor, trackSe: _trackSe, transitions: _transitions, internals: this);
 
   bool beginExposureEdgeDrag({
     required LayerId layerId,
@@ -4946,7 +4822,7 @@ class EditorSessionManager extends ChangeNotifier
     // R10: the band cache's runs, so the snap and the painted band are one
     // answer. This used to walk the subtree fresh on every call — inside
     // the select-drag loop.
-    return folderBandRunsOf(layer.id);
+    return folderBands.folderBandRunsOf(layer.id);
   }
 
   /// D40: whether the standing row has an authored span for
@@ -5027,7 +4903,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: _folders, internals: this);
+  late final DrawingBlockMoveDragVerbs _drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, internals: this);
 
   bool beginDrawingBlockMoveDrag({
     required LayerId layerId,
@@ -5111,7 +4987,7 @@ class EditorSessionManager extends ChangeNotifier
   // (session/frame_range_move_drag.dart, a part of this library so the
   // private seams stay private). The session keeps the public entry points
   // as forwarders, so every caller is unchanged.
-  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: _folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
+  late final FrameRangeMoveDrag _rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: _camera, folders: folders, rangeSelections: _rangeSelections, transitions: _transitions, trackSe: _trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.
@@ -5227,7 +5103,7 @@ class EditorSessionManager extends ChangeNotifier
   /// ghost, so the non-ghost block scans downstream no longer exclude them.
   @override
   bool standsDownFromRetime(LayerId layerId) =>
-      _folders.isSyncedAttachedLayerId(layerId) || isSingleCelLayerId(layerId);
+      folders.isSyncedAttachedLayerId(layerId) || isSingleCelLayerId(layerId);
 
   /// Whether [layerId] names a SINGLE-CEL (image) row of the active cut:
   /// its one covering block is pinned by the write normalization, so the

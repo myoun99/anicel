@@ -28,7 +28,7 @@ void main() {
         session.layers.firstWhere((layer) => layer.id == id);
 
     final base = session.activeLayer!;
-    session.addAttachedLayer(AttachedPlacement.above);
+    session.folders.addAttachedLayer(AttachedPlacement.above);
     final mirror = session.layers.firstWhere(
       (layer) => layer.attachedToLayerId == base.id,
     );

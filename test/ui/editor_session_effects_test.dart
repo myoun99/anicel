@@ -180,7 +180,7 @@ void main() {
         input: '9',
       )!,
     );
-    session.addAttachedLayer(AttachedPlacement.above);
+    session.folders.addAttachedLayer(AttachedPlacement.above);
     final attached = session.activeLayer!;
     expect(attached.attachedToLayerId, base.id);
     expect(attached.effects, isEmpty, reason: 'the chain lives on the base');
@@ -308,7 +308,7 @@ void main() {
       // attachedGroupEndIndex shrinks and link-duplicate/독립시키기/폴더
       // 생성 all operate on a truncated slice, losing the attach row.
       final base = session.activeLayer!;
-      session.addAttachedLayer(AttachedPlacement.above);
+      session.folders.addAttachedLayer(AttachedPlacement.above);
       session.selectLayer(base.id);
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
 
@@ -330,7 +330,7 @@ void main() {
       // scope with nothing in it — a silent no-op of the whole feature.
       session.createDrawingAtCurrentFrame();
       final member = session.activeLayer!;
-      session.groupActiveLayerIntoFolder();
+      session.folders.groupActiveLayerIntoFolder();
       session.selectLayer(member.id);
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
 

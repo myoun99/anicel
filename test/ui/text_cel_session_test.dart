@@ -260,8 +260,8 @@ void main() {
     addTearDown(s.dispose);
 
     s.layerStack.addLayerOfKind(LayerKind.text);
-    expect(s.canAddAttachedLayerToActive, isTrue);
-    s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
+    expect(s.folders.canAddAttachedLayerToActive, isTrue);
+    s.folders.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
     final cut = s.requireActiveCut;
     final attach = cut.layers.firstWhere(
       (layer) => layer.attachedToLayerId != null,

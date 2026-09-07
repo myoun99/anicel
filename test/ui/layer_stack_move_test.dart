@@ -91,7 +91,7 @@ void main() {
         .lastWhere((layer) => layer.kind == LayerKind.animation)
         .id;
     session.selectLayer(member);
-    session.groupActiveLayerIntoFolder();
+    session.folders.groupActiveLayerIntoFolder();
     final folder = session.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.folder)
         .id;

@@ -582,8 +582,8 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.layerStack.addLayerOfKind(LayerKind.image);
-    expect(s.canAddAttachedLayerToActive, isTrue);
-    s.addAttachedLayer(AttachedPlacement.above);
+    expect(s.folders.canAddAttachedLayerToActive, isTrue);
+    s.folders.addAttachedLayer(AttachedPlacement.above);
     expect(s.activeLayer!.attachedToLayerId, isNotNull);
   });
 

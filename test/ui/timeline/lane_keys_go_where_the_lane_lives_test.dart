@@ -73,7 +73,7 @@ void main() {
   test('a SYNCED attach row stands down: its lane selection creates '
       'nothing', () {
     final base = session.activeLayer!;
-    session.addAttachedLayer(AttachedPlacement.above);
+    session.folders.addAttachedLayer(AttachedPlacement.above);
     final attach = session.layers.firstWhere(
       (layer) => layer.attachedToLayerId == base.id,
     );

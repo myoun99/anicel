@@ -24,7 +24,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final member = s.activeLayer!.id;
-    s.groupActiveLayerIntoFolder();
+    s.folders.groupActiveLayerIntoFolder();
     final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
     s.selectLayer(member);
     return (s, member, folder);
@@ -33,7 +33,7 @@ void main() {
   test('a folder\'s band members are its subtree', () {
     final (s, member, folder) = sessionWithFolder();
     expect(
-      s.folderBandMembersOf(folder).map((l) => l.id),
+      s.folderBands.folderBandMembersOf(folder).map((l) => l.id),
       [member],
       reason: 'the cache is filled from the layer stack; empty means it '
           'never was',
@@ -42,7 +42,7 @@ void main() {
 
   test('a folder\'s runs are the union of its members\' exposures', () {
     final (s, _, folder) = sessionWithFolder();
-    final runs = s.folderBandRunsOf(folder);
+    final runs = s.folderBands.folderBandRunsOf(folder);
     expect(runs, hasLength(1), reason: 'one cel drawn at the first frame');
     expect(runs.single.start, 0);
     expect(runs.single.endExclusive, greaterThan(0));
@@ -51,11 +51,11 @@ void main() {
   test('the band is the folder carrying the union as its timeline', () {
     final (s, _, folder) = sessionWithFolder();
     final folderLayer = s.activeCutOrNull!.layers.byId(folder)!;
-    final band = s.folderBandLayerFor(folderLayer);
+    final band = s.folderBands.folderBandLayerFor(folderLayer);
     expect(band.id, folder);
     expect(band.timeline.keys, [0], reason: 'one run, so one exposure');
     expect(
-      identical(s.folderBandLayerFor(folderLayer), band),
+      identical(s.folderBands.folderBandLayerFor(folderLayer), band),
       isTrue,
       reason: 'nothing changed, so the SAME instance — repaint, the tile '
           'bake key and the row memo all compare the Layer instance',
@@ -65,12 +65,12 @@ void main() {
   test('a member\'s own change keeps the band; the folder\'s own change '
       'renews it', () {
     final (s, member, folder) = sessionWithFolder();
-    final band = s.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!);
+    final band = s.folderBands.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!);
 
     s.layerSwitches.toggleLayerVisibility(member);
     expect(
       identical(
-        s.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!),
+        s.folderBands.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!),
         band,
       ),
       isTrue,
@@ -79,7 +79,7 @@ void main() {
     );
 
     s.layerSwitches.toggleLayerVisibility(folder);
-    final renewed = s.folderBandLayerFor(
+    final renewed = s.folderBands.folderBandLayerFor(
       s.activeCutOrNull!.layers.byId(folder)!,
     );
     expect(identical(renewed, band), isFalse);

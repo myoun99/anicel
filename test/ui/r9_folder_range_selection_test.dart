@@ -26,7 +26,7 @@ void main() {
       final session = makeSession();
       session.createDrawingAtCurrentFrame();
       final member = session.activeLayer!;
-      session.groupActiveLayerIntoFolder();
+      session.folders.groupActiveLayerIntoFolder();
 
       final folder = session.layers.firstWhere(
         (layer) => layer.kind == LayerKind.folder,

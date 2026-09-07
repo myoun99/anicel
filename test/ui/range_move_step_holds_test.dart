@@ -95,7 +95,7 @@ void main() {
       'alone', () {
     final (s, aId, bId, cId) = threeRows();
     s.selectLayer(aId);
-    s.addAttachedLayer(AttachedPlacement.below);
+    s.folders.addAttachedLayer(AttachedPlacement.below);
     final syncedId = s.activeLayer!.id;
     final bFrameId = layerOf(s, bId).frames.single.id;
     expect(
