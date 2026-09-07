@@ -400,6 +400,12 @@ bool openAudioOutput(
 }) {
   final index = audioDeviceIndexByName(
     device,
+    // 🧪MUTATION: flipping this to `capture: true` SURVIVES the suite —
+    // never applied. Every bench here passes a name that is attached on
+    // NEITHER side, so both searches answer -1 and the same default open
+    // follows; only a machine with an output-only device name could tell
+    // the two apart, and the kind axis itself is pinned on real hardware
+    // in `qa_audio_device_test` ("a name that exists only on one side").
     capture: false,
     name: preferredName,
   );
