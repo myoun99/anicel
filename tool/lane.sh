@@ -105,8 +105,14 @@ cmd_land() {
 
   echo "lane: rebasing work/$name onto $TRUNK"
   git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p
-  Resolve it there, then run land again. If the conflict is a LAW rather than a
-  line, read the rule at the top of this file before choosing a side."
+  Resolve it IN THE REBASE, commit by commit: fix the files, \`git -C $p add\`
+  them, \`git -C $p rebase --continue\`, repeat. Then run land again.
+  ⛔DO NOT abort and merge master into the lane instead. \`git rebase\` DROPS
+  merge commits, so the merge you just resolved is thrown away and the same
+  commits conflict again at the same places — 2026-09-08, 36 hunks resolved
+  and lost that way before anyone noticed.
+  If the conflict is a LAW rather than a line, read the rule at the top of
+  this file before choosing a side."
 
   echo "lane: flutter analyze (no arguments)"
   (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
