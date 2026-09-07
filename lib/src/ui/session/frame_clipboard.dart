@@ -434,51 +434,6 @@ class FrameClipboard {
     return rows;
   }
 
-  /// The clip as [layer] must receive it, with the cels that have to join
-  /// the layer in the same command.
-  ///
-  /// Split out of [_pasteRun] when the paste learned the band: the
-  /// independent branch mints PER LAYER, so the arithmetic stopped being
-  /// something one row could keep inline.
-  ({TimelineClipRow clip, List<Frame> born, Map<FrameId, FrameId> minted})
-  _placedClipFor({
-    required Layer layer,
-    required TimelineClipRow clip,
-    required _CopiedFrameReference copied,
-    required bool independent,
-  }) {
-    final born = <Frame>[
-      // A 잘라내기 orphaned the cels it lifted, so the layer no longer holds
-      // them; the clipboard does. Bringing back the SAME id is what makes
-      // cut-then-paste-back a move rather than a deletion — and re-adding
-      // only what is missing keeps a plain copy from duplicating anything.
-      if (!independent)
-        for (final cel in copied.cels)
-          if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
-    ];
-    if (!independent) {
-      return (clip: clip, born: born, minted: const {});
-    }
-    // 🚨THE CLIPBOARD IS THE SECOND PLACE TO LOOK, and after a 잘라내기
-    // it is the ONLY one (유저 #3, 2026-08-14).
-    //
-    // A cut orphans the cels it lifted, so they are gone from
-    // `layer.frames` by the time this runs. Reading only the layer found
-    // nothing, minted an id anyway, and authored an exposure pointing at a
-    // cel that does not exist: a white block, `?` where the name goes, and
-    // every verb that resolves the cel refusing — 「완전한 버그상태」.
-    //
-    // ⚠️It matters MORE now: a band paste reaches rows the clip never came
-    // from, so `layer.frames` misses the source on every one of them and
-    // the clipboard is the only place the picture lives.
-    return mintIndependentClip(
-      clip: clip,
-      sources: [...layer.frames, ...copied.cels],
-      born: born,
-      mint: () => _frameIds.mintFrameId(layer.id),
-    );
-  }
-
   void _pasteRun({
     required Layer layer,
     required _CopiedFrameReference copied,
@@ -550,17 +505,11 @@ class FrameClipboard {
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
       // the layer would carry orphans nothing points at.
-      final placed = _placedClipFor(
+      final placed = placedClipFor(
         layer: target,
-        clip: mine,
-        copied: _CopiedFrameReference(
-          layerId: copied.layerId,
-          frameId: copied.frameId,
-          frameName: copied.frameName,
-          clip: mine,
-          cels: mineCels,
-        ),
+        row: (clip: mine, cels: mineCels),
         independent: independent,
+        mint: () => _frameIds.mintFrameId(target.id),
       );
       if (placed.minted.isNotEmpty) {
         mintedByLayer.add((target.id, placed.minted));
@@ -613,7 +562,6 @@ class FrameClipboard {
   /// the session does not have — [TimelineController.spliceRunsForLayers]
   /// already takes a list so the extension is additive, but nothing here
   /// pretends to do it yet.
-
   ({int index, int count})? spliceRunOnActiveRow() {
     final layer = _selection.activeLayer;
     if (layer == null) {
