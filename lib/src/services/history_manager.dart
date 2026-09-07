@@ -242,7 +242,8 @@ class HistoryManager extends ChangeNotifier {
   /// (3의 규칙 — 중복 제거는 의도 다음이다). When a third background pass
   /// appears, these two are what it joins.
   void _scheduleSpill() {
-    if (_activeSpill != null ||
+    if (_disposed ||
+        _activeSpill != null ||
         _spillStoodDown ||
         retainedBytes <= _budget.bytes) {
       return;
@@ -254,6 +255,25 @@ class HistoryManager extends ChangeNotifier {
   }
 
   Future<void>? _activeSpill;
+
+  /// 🚨★★★**A SPILL PASS OUTLIVES THE OBJECT THAT STARTED IT.** It awaits
+  /// a background isolate, and the editor can be torn down in between —
+  /// the pass then came back to a disposed [ChangeNotifier] and threw
+  /// where nobody was catching (found by the session-level pressure pin,
+  /// 2026-09-08). Everything the pass touches on the way back asks this
+  /// first.
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    // ⛔The room gets its files back: nobody can reach this history again,
+    // so anything it parked is unreachable bytes on the user's disk until
+    // the run ends.
+    dropPayloadsOf(_undoStack);
+    dropPayloadsOf(_redoStack);
+    super.dispose();
+  }
 
   /// ⛔Set when a pass could not move the bytes — either the room refused
   /// or nothing left on the stacks can move — and cleared by a new entry.
@@ -297,7 +317,9 @@ class HistoryManager extends ChangeNotifier {
   /// press, and reading a payload back is synchronous.
   Future<bool> _parkDeepEnd(List<Command> stack) async {
     var index = 0;
-    while (retainedBytes > _budget.bytes && index < stack.length - 1) {
+    while (!_disposed &&
+        retainedBytes > _budget.bytes &&
+        index < stack.length - 1) {
       final command = stack[index];
       // ⚠️The cast is not ceremony: [Command] and [ParkableCommand] are
       // unrelated types, so an `is` check cannot promote between them.
@@ -314,7 +336,7 @@ class HistoryManager extends ChangeNotifier {
   /// have nowhere to go are dropped from the deep end.
   void _shedOverBudget() {
     var total = retainedBytes;
-    if (total <= _budget.bytes) {
+    if (_disposed || total <= _budget.bytes) {
       return;
     }
     final entriesBefore = _undoStack.length + _redoStack.length;

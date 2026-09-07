@@ -19,7 +19,7 @@ import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
 void main() {
   test(
     'session memory pressure reaches the undo stack, not just the store',
-    () {
+    () async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -35,6 +35,11 @@ void main() {
       );
 
       session.respondToMemoryPressure();
+      // ⚠️The relief is a spill pass now: an over-budget entry is WRITTEN
+      // OUT rather than deleted, so the bytes come back a pass later. The
+      // fixture's entries hold nothing that can move, so the pass stands
+      // down and sheds — but it does that from a microtask.
+      await session.historyManager.drainSpilling();
 
       expect(
         session.historyManager.retainedBytes,

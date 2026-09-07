@@ -165,6 +165,50 @@ void main() {
     });
   });
 
+  group('the pair bills one end and moves both', () {
+    UndoSurfacePair pairOf() {
+      final kept = tileOf(0, 1);
+      final gone = tileOf(1, 2); // only the BEFORE has this one
+      final made = tileOf(2, 3); // only the AFTER has this one
+      return UndoSurfacePair(
+        key: keyOf('f'),
+        before: surfaceOf([kept, gone]),
+        after: surfaceOf([kept, made]),
+      );
+    }
+
+    test('🚨the bill is the BEFORE alone — the after is the next entry\'s '
+        'before, and charging both counts a neighbour twice', () {
+      // ⛔Not "conservative": the doubled figure is what the round before
+      // this one removed, and it evicted real history with phantom bytes.
+      expect(pairOf().residentBytes, BitmapTile.bytesFor(size));
+    });
+
+    test('🚨but the park moves BOTH — a before let go on its own frees '
+        'nothing, because the previous entry\'s after holds the same tiles',
+        () async {
+      final pair = pairOf();
+      expect(await pair.park(), isTrue);
+      expect(pair.before.isParked, isTrue);
+      expect(pair.after.isParked, isTrue);
+    });
+
+    test('and both come back', () async {
+      final pair = pairOf();
+      await pair.park();
+      expect(pair.before.surface!.tiles.length, 2);
+      expect(pair.after.surface!.tiles.length, 2);
+      expect(
+        identical(
+          pair.before.surface!.tileAt(TileCoord(x: 0, y: 0)),
+          pair.after.surface!.tileAt(TileCoord(x: 0, y: 0)),
+        ),
+        isTrue,
+        reason: 'the tile neither end owns was never written',
+      );
+    });
+  });
+
   group('the stack spills instead of deleting', () {
     test('an over-budget stack keeps every entry — the bytes move, the '
         'history stays', () async {
