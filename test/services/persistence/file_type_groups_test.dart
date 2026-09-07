@@ -21,18 +21,27 @@ void main() {
   String plist(String relative) =>
       File('$repoRoot/$relative').readAsStringSync();
 
+  /// Every group this file publishes, by name.
+  ///
+  /// ⛔**ONE TABLE, because a second hand-kept list is the bug two of these
+  /// tests exist to catch.** It was local to the shape test until
+  /// 2026-09-08, when the MIME check below needed the same set — and
+  /// writing that set out again would have made a list that can fall
+  /// behind this one, which is exactly what `allPickerUtis` had done.
+  ///
+  /// ⚠️`brushesFor('ios')`: the identifiers are load bearing on Apple, and
+  /// that is the platform whose picker throws without them.
+  final groups = <String, XTypeGroup>{
+    'anicelProject': FileTypeGroups.anicelProject,
+    'brushes': FileTypeGroups.brushesFor('ios'),
+    'images': FileTypeGroups.images,
+    'viewableMedia': FileTypeGroups.viewableMedia,
+    'importableMedia': FileTypeGroups.importableMedia,
+    'poolMedia': FileTypeGroups.poolMedia,
+  };
+
   group('picker filters carry both halves', () {
     test('every group sets extensions AND uniformTypeIdentifiers', () {
-      final groups = <String, XTypeGroup>{
-        'anicelProject': FileTypeGroups.anicelProject,
-        // The iOS shape: that is the platform the identifiers are load
-        // bearing on, and the one whose picker throws without them.
-        'brushes': FileTypeGroups.brushesFor('ios'),
-        'images': FileTypeGroups.images,
-        'viewableMedia': FileTypeGroups.viewableMedia,
-        'importableMedia': FileTypeGroups.importableMedia,
-        'poolMedia': FileTypeGroups.poolMedia,
-      };
       for (final entry in groups.entries) {
         final group = entry.value;
         expect(
@@ -253,6 +262,50 @@ void main() {
       FileTypeGroups.viewableMedia.extensions,
       isNot(anyElement(isIn(audioFileExtensions))),
       reason: 'sound has no picture — the one deliberate absence',
+    );
+  });
+
+  test('🚨 every identifier a picker is handed has a MIME, or Android '
+      'silently drops that kind', () {
+    // ⛔**THIS TEST IS WHY `allPickerUtis` IS PUBLIC**, and until 2026-09-08
+    // it did not exist: the constant said 「Public so the test can assert
+    // the mapping covers all of them」 and carried `@visibleForTesting` for
+    // a caller that was never written. A declaration whose stated purpose
+    // is unmet is the same bug as one that is missing, and harder to see —
+    // found by `tool/refactor/unreferenced.dart`, which had it as the one
+    // declaration in this area nothing anywhere calls.
+    //
+    // 🚨THE HAZARD IS NOT THE EMPTY CASE. `mimeTypesFor` drops an
+    // unmapped identifier on purpose (a guessed MIME hides the very files
+    // the user came for) and falls back to `*/*` — but ONLY when the set
+    // ends up empty. A group that mixes a mapped identifier with an
+    // unmapped one keeps the fallback away and filters the unmapped kind
+    // out of the Android picker with nothing said. The pool group is
+    // exactly that shape: image + audio + movie + pdf + data.
+    for (final uti in allPickerUtis) {
+      expect(
+        mimeForUti[uti],
+        isNotNull,
+        reason:
+            '"$uti" reaches a picker with no MIME. On Android it is dropped '
+            'from the filter, and unless EVERY identifier in that group is '
+            'unmapped there is no `*/*` fallback to save it — the user opens '
+            'the picker and their file is not offered. Add it to mimeForUti.',
+      );
+    }
+  });
+
+  test('⛔and the list is the whole of what the groups hand over', () {
+    // The other half, and the half a list can get wrong: `allPickerUtis`
+    // is written by hand, so it can fall behind the groups it claims to
+    // enumerate. Asked against every group this file publishes, a new
+    // identifier that skipped the list fails HERE rather than in the test
+    // above, which would have gone on passing while covering less.
+    expect(
+      FileTypeGroups.utisFor(groups.values.toList()).toSet(),
+      everyElement(isIn(allPickerUtis)),
+      reason: 'a group hands a picker an identifier the list does not name, '
+          'so the MIME check above never sees it',
     );
   });
 }
