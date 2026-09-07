@@ -258,23 +258,30 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
 void _reportSkips(int skipped) {
   if (skipped == 0) return;
   _report('⚠️$skipped test(s) SKIPPED — a skip is not a pass.');
-  _report('  Every skip in this tree is a native-engine gate: the parity '
-      'pins become');
-  _report('  empty stubs, so the C kernel is never compared with the Dart '
-      'reference.');
-  _report('  If the engine is not built:');
+  // 🪦IT USED TO SAY 「every skip in this tree is a native-engine gate」 and
+  // hand over two cmake lines. That was true, then it was half true, and on
+  // 2026-09-08 it stopped being true at all — the last native gate that
+  // could skip on a built machine was a WIRING bug, not a missing binary
+  // (two resolvers for「where is the engine」; see
+  // `native_engine_present_test`). A hint that names the wrong cause is
+  // worse than none: it was read, followed, and the real cause sat behind
+  // it for a round.
+  //
+  // 🧪Measured after that fix, whole suite, no environment variable: 16
+  // skips, and every one of them is deliberate — 15 benchmarks tagged out
+  // of the default run, and the CI-only engine pin.
+  _report('  Name them. The reasons print beside each one (`Skip: …`), and '
+      'the two');
+  _report('  that are FINE are the benchmarks (--tags benchmark) and the '
+      'CI-only');
+  _report('  engine pin. Anything else is a pin that is not running.');
+  _report('  A native pin skipping usually means no binary:');
   _report('    cmake -S packages/qa_native/src -B build/native_standalone '
       '-DCMAKE_BUILD_TYPE=Release');
   _report('    cmake --build build/native_standalone --config Release');
-  // ⚠️Building it does not always take the count to zero, and saying so is
-  // the difference between a hint and a lie. 🧪Measured 2026-09-02: with
-  // `qa_engine.dll` present the resample parity pins ran (+77, no tilde) and
-  // five audio/conform ones still skipped — those gate on a RUNTIME
-  // capability (`QaCelCompressor.isSupported`), not on the file existing.
-  _report('  Already built? Some suites gate on a runtime capability rather '
-      'than the file,');
-  _report('  so the binary can be there and the pin still not run. Name the '
-      'skipped test.');
+  _report('  ⛔But a built binary can skip too — that is a resolver that '
+      'cannot see it,');
+  _report('  and `native_engine_present_test` is the pin that says so.');
 }
 
 class _BatchResult {

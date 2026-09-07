@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
@@ -12,6 +13,8 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+
+import 'helpers/native_engine_path.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
 ///
@@ -26,14 +29,35 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 /// baseline (`AppInputSettings.testCorpusBaseline`), not to the
 /// product default `AppInputSettings()`.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  // 🚨★★★**THE ENGINE THE PARITY PINS NEED, POINTED AT FROM ONE PLACE.**
+  //
+  // 「Where is the engine」 had two answers and they disagreed.
+  // `nativeEngineLibraryPathOrNull` looks under `build/native_standalone`,
+  // so the suites that use it ran; `openQaEngineLibrary` — which is what
+  // PRODUCTION calls, and therefore what `QaCelCompressor.instance` calls —
+  // tries `QA_ENGINE_PATH` and then the bare library name beside the
+  // executable, and `flutter test` has neither. So every suite gated on the
+  // compressor skipped SILENTLY with the DLL sitting right there: 27 pins
+  // over the zstd block frames, the carried conform and the staged blob
+  // (2026-09-08).
+  //
+  // ⛔The env var cannot be set from Dart, and that is the whole reason
+  // this seam exists. Setting it here makes the two answers one.
+  //
+  // ⚠️`??=`, so `QA_ENGINE_PATH` still wins: CI sets it, and a run that
+  // wants to measure the NO-engine world can too.
+  debugQaEngineLibraryPathOverride ??= nativeEngineLibraryPathOrNull();
   AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   // The program/notation languages live app-wide too (AppText), so a file
   // that flips them cannot leak into the next one. Tests that flip them
   // WITHIN a file reset per-test themselves.
   AppText.settings.value = const AppLanguageSettings();
-  // REC1-B2: the app documents home — and with it the Recordings take
-  // shelf — resolves through the channel override, pointed at a per-run
-  // temp sandbox so no test ever writes into the REAL user Documents.
+  // The app documents home resolves through the channel override, pointed
+  // at a per-run temp sandbox so no test ever writes into the REAL user
+  // Documents. 🪦It said 「and with it the Recordings take shelf」 until the
+  // shelf was deleted (2026-09-08); what is left here is the PICKER's
+  // starting hint, and a sandbox is still what keeps a test from creating
+  // `Documents/Anicel` on the developer's machine.
   // Tests that override the path themselves must tearDown-restore the
   // previous value, never null (null falls back to the real home).
   final sandbox = Directory.systemTemp.createTempSync('qa_test_docs_');

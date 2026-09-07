@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// section had four: `Every`, `Default` twice, and `Empty now` — and
 /// `autosaveDefault` was already sitting in the table, **translated into
 /// all five languages and read by nobody**. A key nothing uses is the same
-/// bug as a key that does not exist, and harder to see.
+/// bug as a key that does not exist, and harder to see. (🪦It became that
+/// again on 2026-09-08 when the recordings-folder row went, and was
+/// deleted in five languages with the row.)
 ///
 /// 🚨THE INSTRUMENT WAS THE HOLE (2026-08-31). This scanned `Text('…')` and
 /// nothing else, so it went green while the autosave section's six section

@@ -15,9 +15,10 @@
 // `appRecordingsDirectory` sat in `app_documents.dart` and read the save
 // settings, so the folder every other file in that folder reaches for
 // imported the settings that reach for the grant that reaches back. It is
-// now `AppSave.recordingsRootDirectory`, beside `AppSave.conformRootDirectory`
-// — the same law, configured-folder-wins-else-a-default — and
-// `app_documents.dart` is the leaf it always described itself as.
+// 🪦Both getters that ended the loop are gone: `recordingsRootDirectory`
+// with the take shelf (2026-09-08), and `conformRootDirectory` now simply
+// answers the run's room. `app_documents.dart` is the leaf it always
+// described itself as, and there is no configurable folder left to loop.
 //
 // 2026-09-07 (audit, Round 8): the timeline raster loop is gone too, and its
 // entry was the argument to beat — "splitting them means a third file that

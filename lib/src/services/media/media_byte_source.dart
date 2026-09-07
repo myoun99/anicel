@@ -370,11 +370,10 @@ class MediaArchiveBytes extends MediaByteSource {
 class MediaFramedBytes extends MediaByteSource {
   /// Over an entry that some other source hands out.
   MediaFramedBytes(MediaByteSource stored)
-    : this.reading(
-        readStored: stored.readIntoSync,
-        storedExists: stored.existsSync,
-        label: '$stored',
-      );
+    : stored = stored,
+      readStored = stored.readIntoSync,
+      storedExists = stored.existsSync,
+      label = '$stored';
 
   /// 🚨Takes a READ FUNCTION rather than a source, because that is all it
   /// needs and [MediaByteSource] is sealed — a test cannot subclass one to
@@ -384,7 +383,24 @@ class MediaFramedBytes extends MediaByteSource {
     required this.readStored,
     required this.storedExists,
     this.label = 'framed',
-  });
+  }) : stored = null;
+
+  /// The source whose compressed bytes this decodes, when it was built over
+  /// one — null for [MediaFramedBytes.reading], which is handed a function.
+  ///
+  /// 🚨★★★**A WRAPPER THAT CANNOT NAME WHAT IT WRAPS IS OPAQUE TO EVERY
+  /// READER, AND ONE OF THEM WAS A TEST HELPER.** `conformFilePathOrNull`
+  /// asks 「which file did this conform land in」 by matching the source's
+  /// kind, and it had no case for this one — so the moment the compressor
+  /// was actually available and a conform came back FRAMED, it answered
+  /// null and nine tests died on a `!`. They had never run with an engine,
+  /// so nobody saw it (2026-09-08).
+  ///
+  /// ⛔This is not「a question production does not need」that the type was
+  /// taught anyway: the class already derived [label] from this source and
+  /// then threw the source away, so it was answering the question badly
+  /// rather than not at all.
+  final MediaByteSource? stored;
 
   /// Fills a buffer from the STORED bytes — header first, then blocks.
   final int Function(Uint8List buffer, int position, int size) readStored;

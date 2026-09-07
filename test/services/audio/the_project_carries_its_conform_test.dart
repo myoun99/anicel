@@ -91,10 +91,19 @@ void main() {
 
   /// The conform bytes as the project would CARRY them — read from the
   /// cache exactly as the save streams them, framed or not.
-  MediaByteSource carriedFrom(String conformOnDisk) => MediaAppFileBytes(
-    path: conformOnDisk,
-    framed: mediaEntryIsFramed(conformOnDisk),
-  );
+  ///
+  /// 🚨★★★**THROUGH `mediaAppFileSource`, NOT ASSEMBLED HERE.** This used to
+  /// spell out `MediaAppFileBytes(path:, framed: mediaEntryIsFramed(...))`,
+  /// which is the same pair of facts — and exactly what that function's own
+  /// doc forbids: 「Spelling it at the call site is how the conform reader
+  /// and the staging reader would come to disagree.」 They did. The bare
+  /// source hands out COMPRESSED blocks, so the moment the compressor was
+  /// available the pipeline could not parse a carried conform's header and
+  /// rebuilt it instead of restoring it — the fixture proving 「restored,
+  /// not decoded again」 was handing over something no production caller
+  /// ever builds (2026-09-08).
+  MediaByteSource carriedFrom(String conformOnDisk) =>
+      mediaAppFileSource(conformOnDisk);
 
   test('🚨a carried conform is restored instead of decoded again', () {
     final source = writeSource('대사.wav');
