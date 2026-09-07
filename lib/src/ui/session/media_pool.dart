@@ -38,6 +38,10 @@ import 'session_roles.dart';
 
 /// The pool the media browser draws, and the verbs the browser, the import
 /// window and the relink hunt call on it.
+///
+/// It OWNS the existence sweep's two answers ([missingMediaPaths] and
+/// [mediaModifiedTimes]) — the only host fields the pool ever wrote, and
+/// the reason the sweep came with it rather than staying behind.
 class MediaPool {
   MediaPool({
     required ProjectAccess project,
