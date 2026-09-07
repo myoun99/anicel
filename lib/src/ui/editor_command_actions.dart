@@ -109,7 +109,7 @@ void copyCameraAeKeyframes(BuildContext context, EditorSessionManager session) {
     samples: bakeCameraAeSamples(
       camera: cut.camera,
       canvasSize: cut.canvasSize,
-      frameCount: session.activeCutPlaybackFrameCount,
+      frameCount: session.activeCutSpan.activeCutPlaybackFrameCount,
     ),
   );
   unawaited(Clipboard.setData(ClipboardData(text: text)));

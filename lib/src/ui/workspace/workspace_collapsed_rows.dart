@@ -449,7 +449,8 @@ class _WorkspaceCollapsedRows {
             // 하지 않았나?」. It had been confirmed in 2026-08-10 and the fix
             // for one half undid it for the other.
             chromeless: true,
-            playbackFrameCount: session.activeCutPlaybackFrameCount,
+            playbackFrameCount:
+                session.activeCutSpan.activeCutPlaybackFrameCount,
             geometry: geometry,
             crossAxisExtent: collapsedRowHeight(),
             exposureStateForLayer: session.exposureStateForLayer,

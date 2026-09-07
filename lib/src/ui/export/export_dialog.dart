@@ -193,7 +193,7 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   void initState() {
     super.initState();
-    _anchorCut = _session.exportAnchorCutOrNull;
+    _anchorCut = _session.activeCutSpan.exportAnchorCutOrNull;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
     _setLocation(
@@ -221,7 +221,7 @@ class ExportDialogState extends State<ExportDialog> {
       0,
       math.max(1, _anchorCut?.duration ?? 1) - 1,
     );
-    if (_session.exportAnchorIsFallback) {
+    if (_session.activeCutSpan.exportAnchorIsFallback) {
       // Standing in a gap: "active cut" would name a cut the user is not
       // on, so the window opens project-scoped.
       _specs = _specs

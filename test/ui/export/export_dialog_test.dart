@@ -223,7 +223,12 @@ void main() {
       // cut for: the session deselects the cut (UI-R9 #3 gap state).
       session.selectGlobalFrame(500);
       expect(session.activeCutOrNull, isNull);
-      expect(session.exportAnchorIsFallback, isTrue);
+      expect(session.activeCutSpan.exportAnchorIsFallback, isTrue);
+      // …and the fallback is the FIRST cut on the axis, not "no film".
+      expect(
+        session.activeCutSpan.exportAnchorCutOrNull?.id,
+        session.repository.requireProject().tracks.first.cuts.first.id,
+      );
 
       final state = await pumpDialog(tester, session);
       expect(tester.takeException(), isNull);

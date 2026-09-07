@@ -258,7 +258,7 @@ void main() {
     final covered =
         range.resolvedRange.endFrameIndexExclusive -
         range.resolvedRange.startFrameIndex;
-    expect(covered, session.activeCutPlaybackFrameCount - markStart);
+    expect(covered, session.activeCutSpan.activeCutPlaybackFrameCount - markStart);
     expect(
       covered,
       greaterThan(1),

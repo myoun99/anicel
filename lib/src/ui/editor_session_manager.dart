@@ -110,6 +110,7 @@ import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
 import '../models/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
+import 'session/active_cut_span.dart';
 import 'session/track_spans.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
@@ -533,7 +534,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     timeline: this,
     internals: this,
-    playbackFrameCount: () => activeCutPlaybackFrameCount,
+    playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
     trackSeDisplayLayers: () => trackSeDisplayLayers,
     trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
     onRebuilt: () {
@@ -1242,47 +1243,33 @@ class EditorSessionManager extends ChangeNotifier
         ..addListener(projectFile.invalidateConformStoredBytes)
         ..addListener(notifyListeners);
 
-  /// Every row the ACTIVE cut SHOWS — the cut's own layers plus the
-  /// TRACK-owned rows that join them, which is exactly what
-  /// `LayerController.layers` composes.
-  ///
-  /// 🚨H17 (유저 2026-08-22): 「**트랜지션 레이어에 서있을때 엔드라인 드래그로
-  /// 조작하면 액티브레이어가 액션레이어로 바뀜.** 또 통일안하고 멋대로 이상한
-  /// 규칙 만들어낸흔적」.
-  ///
-  /// ⛔[activeCutHasLayer] USED TO RE-DERIVE THIS MEMBERSHIP BY KIND, and
-  /// had been told about only two of the three sources: the cut's layers,
-  /// and track-SE rows (a hand-written arm added by W4). The track
-  /// TRANSITION row joined the composed list later 「on the same terms as
-  /// the SE rows」 and this predicate was never told — so standing on it and
-  /// committing ANY cut command answered "that layer is gone", the rebuilt
-  /// controller started with no preference, and `_activeLayerId ??=
-  /// layers.first.id` handed the active row to the bottom of the raw list:
-  /// the action layer.
-  ///
-  /// 🧪Measured, not reasoned: the transition row is still in `layers` the
-  /// whole time, and `currentRow` never moved — only the ACTIVE layer did,
-  /// and only for this one row kind (camera and SE both survive the same
-  /// drag). A fourth row kind must join HERE, next to the composition it
-  /// mirrors, rather than buying another arm on a predicate.
-  List<Layer> get activeCutRowLayers {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return const [];
-    }
-    return [
-      ...cut.layers,
-      ...trackSeDisplayLayers,
-      trackTransitionDisplayLayer,
-    ];
-  }
+  // ── the active cut's span: its own object, in its own file ────────────
+  //
+  // How much film the active cut IS and which rows it shows
+  // (session/active_cut_span.dart): the composed row list, the playback
+  // and drawn frame counts, the のりしろ label and the export anchor.
+  late final ActiveCutSpan activeCutSpan = ActiveCutSpan(
+    project: this,
+    selection: this,
+    appSettings: appSettings,
+    camera: _camera,
+    trackSe: _trackSe,
+    transitions: _transitions,
+  );
 
+  /// ⛔THIS USED TO RE-DERIVE THE MEMBERSHIP BY KIND and knew only two of
+  /// the three sources (see [ActiveCutSpan.activeCutRowLayers] for H17 and
+  /// what it cost). It asks the composed list instead — and it stays HERE
+  /// rather than moving into [ActiveCutSpan] because
+  /// [ActiveCutControllers] is what asks it, and the span reads the
+  /// track-owned rows those controllers build: injecting it there would
+  /// close a construction cycle.
   @override
   bool activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {
       return false;
     }
-    return activeCutRowLayers.any((layer) => layer.id == layerId);
+    return activeCutSpan.activeCutRowLayers.any((layer) => layer.id == layerId);
   }
 
   // --- Cut commands -------------------------------------------------------
@@ -1425,92 +1412,6 @@ class EditorSessionManager extends ChangeNotifier
 
     return null;
   }
-
-  int get activeCutPlaybackFrameCount =>
-      math.max(1, activeCutOrNull?.duration ?? 1);
-
-  /// How many frames the active cut is DRAWN for: its conte 尺 plus the
-  /// のりしろ every transition span crossing one of its boundaries asks for.
-  /// Equal to [activeCutPlaybackFrameCount] whenever nothing crosses.
-  ///
-  /// ★The same number the sheet pages by and prints in parentheses
-  /// (`2+0 (2+12)`), read from the same derivation — the ruler's blue line and
-  /// the sheet's row count cannot disagree about how much there is to draw.
-  int get activeCutDrawnFrameCount {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return activeCutPlaybackFrameCount;
-    }
-    final start = activeCutGlobalStartFrame;
-    return cutTransitionHandles(
-      cutStart: start,
-      cutEnd: start + cut.duration,
-      spans: activeTrackTransitionSpans,
-    ).drawnFrames(activeCutPlaybackFrameCount);
-  }
-
-  /// What the ruler writes across that margin: the TERM that asked for it, then
-  /// the word — "O.L のりしろ", "O.L 여백" (user 2026-08-10, "그럼 뭐때문에 여백
-  /// 길이가 생겼는지 아니까"). Empty when nothing crosses this cut.
-  ///
-  /// Every span that FIRES on this cut is named, not just one: head and tail
-  /// handles add up, so with a transition at each boundary no single term set
-  /// the length and claiming one would be a half-truth.
-  String get activeCutNoriShiroLabel {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return '';
-    }
-    final start = activeCutGlobalStartFrame;
-    final end = start + cut.duration;
-    final terms = <String>[];
-    for (final entry in activeTrack.transitionLayer.instructions.entries) {
-      if (!transitionSpanFires(
-        span: _transitions.transitionSpanOf(entry),
-        cutStart: start,
-        cutEnd: end,
-      )) {
-        continue;
-      }
-      final term = entry.value.displayLabel(
-        cameraInstructionSet.defById(entry.value.instructionId),
-      );
-      if (term.isNotEmpty && !terms.contains(term)) {
-        terms.add(term);
-      }
-    }
-    if (terms.isEmpty) {
-      return '';
-    }
-    return '${terms.join('/')} ${uiStrings.tlNoriShiro}';
-  }
-
-  /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
-  /// leaves no active cut, but that is a playhead position — not "no
-  /// film" — so the export window must still open (it used to throw
-  /// [requireActiveCut] straight through the dialog's build and take the
-  /// whole app down with it). Falls back to the first cut on the axis;
-  /// null only when the project genuinely has no cuts at all, which is
-  /// what disables the Export entry point.
-  Cut? get exportAnchorCutOrNull {
-    final active = activeCutOrNull;
-    if (active != null) {
-      return active;
-    }
-    for (final track in repository.requireProject().tracks) {
-      if (track.cuts.isNotEmpty) {
-        return track.cuts.first;
-      }
-    }
-    return null;
-  }
-
-  /// Whether an export would run off [exportAnchorCutOrNull]'s FALLBACK
-  /// rather than a live selection — the window then defaults its scope to
-  /// the whole project instead of silently exporting a cut the user is
-  /// not standing on.
-  bool get exportAnchorIsFallback =>
-      activeCutOrNull == null && exportAnchorCutOrNull != null;
 
   /// The active cut, THROWING when none is selected (gap state) — every
   /// caller is a conscious decision that a cut must exist here (UI-R9 #3
@@ -4475,7 +4376,7 @@ class EditorSessionManager extends ChangeNotifier
     final start = math.max(span.startIndex, offset);
     final end = math.min(
       span.endIndexExclusive,
-      offset + activeCutPlaybackFrameCount,
+      offset + activeCutSpan.activeCutPlaybackFrameCount,
     );
     cutLocalLaneRangeSelection.value = end <= start
         ? null

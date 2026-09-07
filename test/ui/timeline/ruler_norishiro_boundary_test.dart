@@ -317,14 +317,14 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      final duration = session.activeCutPlaybackFrameCount;
-      expect(session.activeCutDrawnFrameCount, duration);
+      final duration = session.activeCutSpan.activeCutPlaybackFrameCount;
+      expect(session.activeCutSpan.activeCutDrawnFrameCount, duration);
 
       // Straddling the cut's END: the cut owes a 6-frame TAIL handle.
       session.updateTransitionInstructions({
         duration - 6: const InstructionEvent(instructionId: 'ol', length: 12),
       });
-      expect(session.activeCutDrawnFrameCount, duration + 6);
+      expect(session.activeCutSpan.activeCutDrawnFrameCount, duration + 6);
       expect(
         session.activeTrack.transitionLayer.kind,
         LayerKind.transition,
@@ -342,12 +342,12 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      final duration = session.activeCutPlaybackFrameCount;
+      final duration = session.activeCutSpan.activeCutPlaybackFrameCount;
 
       session.updateTransitionInstructions({
         2: const InstructionEvent(instructionId: 'ol', length: 4),
       });
-      expect(session.activeCutDrawnFrameCount, duration);
+      expect(session.activeCutSpan.activeCutDrawnFrameCount, duration);
     });
   });
 
@@ -378,7 +378,7 @@ void main() {
       final session = tester
           .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
           .session;
-      final duration = session.activeCutPlaybackFrameCount;
+      final duration = session.activeCutSpan.activeCutPlaybackFrameCount;
       session.updateTransitionInstructions(
         SplayTreeMap<int, InstructionEvent>.from({
           duration - 4: const InstructionEvent(instructionId: 'ol', length: 8),
@@ -440,7 +440,7 @@ void main() {
         }),
       );
 
-      final label = session.activeCutNoriShiroLabel;
+      final label = session.activeCutSpan.activeCutNoriShiroLabel;
       expect(
         label,
         isNot(contains('FI')),
@@ -449,7 +449,7 @@ void main() {
       expect(label, contains('O.L'));
       expect(label, endsWith(session.uiStrings.tlNoriShiro));
       // Only the O.L's tail is drawn material now.
-      expect(session.activeCutDrawnFrameCount, second + 2);
+      expect(session.activeCutSpan.activeCutDrawnFrameCount, second + 2);
     });
 
     testWidgets('🚨the wash begins BEHIND the blue line, not at the red one: '
@@ -472,7 +472,7 @@ void main() {
       final session = tester
           .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
           .session;
-      final duration = session.activeCutPlaybackFrameCount;
+      final duration = session.activeCutSpan.activeCutPlaybackFrameCount;
 
       // Before: no handle, so the wash sits exactly where it always did.
       final cutEndX = tester

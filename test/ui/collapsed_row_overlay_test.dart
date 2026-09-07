@@ -216,7 +216,7 @@ void main() {
     expect(commaEnabled(), isTrue);
 
     // Stand on empty paper, THEN fold — the order the user reported.
-    session.selectFrameIndex(session.activeCutPlaybackFrameCount - 1);
+    session.selectFrameIndex(session.activeCutSpan.activeCutPlaybackFrameCount - 1);
     await tester.pumpAndSettle();
     expect(commaEnabled(), isFalse);
 

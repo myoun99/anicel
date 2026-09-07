@@ -138,7 +138,7 @@ void main() {
     // Step onto empty paper. Every frame of the crossing must be one of the
     // two named colours — the white the user saw was the BUTTON's live ink
     // showing through a null.
-    session.selectFrameIndex(session.activeCutPlaybackFrameCount - 1);
+    session.selectFrameIndex(session.activeCutSpan.activeCutPlaybackFrameCount - 1);
     for (var frame = 0; frame < 8; frame += 1) {
       await tester.pump(const Duration(milliseconds: 25));
       expect(

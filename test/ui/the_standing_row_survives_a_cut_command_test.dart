@@ -42,7 +42,7 @@ void main() {
     // The rail's own composition, so a row kind added later is swept here
     // by existing rather than by being remembered.
     final kinds = <String, Layer>{
-      for (final layer in probe.activeCutRowLayers) layer.name: layer,
+      for (final layer in probe.activeCutSpan.activeCutRowLayers) layer.name: layer,
     };
     expect(
       kinds.length,
@@ -90,7 +90,7 @@ void main() {
   test('the membership question asks the SAME three sources the rail '
       'composes from', () {
     final s = session();
-    final rows = s.activeCutRowLayers.map((layer) => layer.id).toSet();
+    final rows = s.activeCutSpan.activeCutRowLayers.map((layer) => layer.id).toSet();
 
     for (final layer in s.layers) {
       expect(
