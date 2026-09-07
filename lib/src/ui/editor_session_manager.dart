@@ -517,15 +517,15 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the frame clipboard: its own object, in its own file ────────────
   //
-  // A collaborator (session/frame_clipboard.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final FrameClipboard clipboard = FrameClipboard(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, internals: this, renderCaches: renderCaches);
   late final LayerClipboard layerClipboard = LayerClipboard(project: this, selection: this, changes: this, layerStack: layerStack);
 
   // ── the layer verbs: their own object, in their own file ────────────
   //
-  // A collaborator (session/layer_verbs.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
 
   // ── the cut's row stack: its own object ─────────────────────────────
@@ -705,8 +705,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the range selections: their own object, in their own file ───────
   //
-  // A collaborator (session/range_selections.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/range_selections.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final RangeSelections rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: storyboardRows, trackSe: trackSe, rowSpans: rowSpans, internals: this, playbackRig: playbackRig);
 
   void updateFrameRangeSelectionDrag({
@@ -884,8 +884,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the cell verbs: their own object, in their own file ─────────────
   //
-  // A collaborator (session/cell_verbs.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/cell_verbs.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
 
   @override
@@ -926,8 +926,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the transitions: their own object, in their own file ───────────────
   //
-  // A collaborator (session/transitions.dart, a part of this library). The
-  // session keeps the public queries and commands as forwarders.
+  // A collaborator (session/transitions.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final Transitions transitions = Transitions(
     project: this,
     selection: this,
@@ -1063,43 +1063,70 @@ class EditorSessionManager extends ChangeNotifier
     // flag set when it resumes — it stops touching the stores and never
     // notifies a disposed ChangeNotifier.
     disposed = true;
-    textCelBakes.dispose();
-    layerStack.dispose();
-    currentRowListenable.dispose();
-    rowSelectionVerbs.dispose();
-    laneRangeSelection.removeListener(_publishCutLocalLaneRange);
-    cutLocalLaneRangeSelection.dispose();
-    revealSelectionTick.dispose();
-    memoryPressureTicks.dispose();
-    playbackRig.playback.globalFrameIndexListenable.removeListener(
-      followPlaybackCut,
-    );
-    historyManager.removeListener(projectFile.markDirty);
-    historyManager.removeListener(refreshLiveAudioSchedule);
-    historyManager.removeListener(textCelBakes.scheduleTextCelBakeSweep);
-    voiceRecording.dispose();
-    playbackRig.dispose();
-    renderCaches.dispose();
-    audioConformStore.dispose();
-    appSettings.dispose();
-    soloedSeLayerIds.dispose();
-    editingFrameCursor.dispose();
-    frameScrubActive.dispose();
-    scrubOutOfTerritory.dispose();
-    frameSeekCommitted.dispose();
-    _gapGlobalFrameNotifier.dispose();
-    frameRangeSelection.dispose();
-    brushInputActive.dispose();
-    selectionInteractionActive.dispose();
-    dragPreview.dispose();
-    transitionEdgeDragPreview.dispose();
-    opacityDragPreview.dispose();
-    onionSkinSettings.dispose();
-    onionSkinLayerIds.dispose();
-    trackFrameRangeSelection.dispose();
-    historyManager.dispose();
+    for (final letGo in _teardown) {
+      letGo();
+    }
     super.dispose();
   }
+
+  /// Everything the constructor wired up or opened, in the order it must be
+  /// let go of — one list this class HOLDS, rather than a teardown it
+  /// spells out step by step.
+  ///
+  /// ⛔THE ORDER IS NOT FREE, and it is the hand-written teardown's own
+  /// order, kept entry for entry (2026-09-08, when the steps became a
+  /// list). Three constraints run through it:
+  ///   - every `removeListener` comes before the thing it was listening to
+  ///     is released: the lane range before [cutLocalLaneRangeSelection],
+  ///     the playback cursor before [playbackRig], the three history
+  ///     listeners before [historyManager] at the very end;
+  ///   - [LayerStack.dispose] removes ITS OWN listeners from [renderCaches]
+  ///     and [brushInputActive], so it runs before either of them;
+  ///   - [historyManager] goes last, after every listener it carries.
+  /// A new entry belongs at the END unless it has one of those reasons —
+  /// and then the reason is written here.
+  List<void Function()> get _teardown => [
+    textCelBakes.dispose,
+    layerStack.dispose,
+    currentRowListenable.dispose,
+    rowSelectionVerbs.dispose,
+    // ⚠️Deleting this line alone survives the teardown test: the `disposed`
+    // guard inside [_publishCutLocalLaneRange] already answers. It stays
+    // because the guard is the belt and this is the braces — a listener you
+    // added is a listener you remove (measured 2026-09-08: with BOTH gone,
+    // the test reports the write to a disposed notifier).
+    () => laneRangeSelection.removeListener(_publishCutLocalLaneRange),
+    cutLocalLaneRangeSelection.dispose,
+    revealSelectionTick.dispose,
+    memoryPressureTicks.dispose,
+    () => playbackRig.playback.globalFrameIndexListenable.removeListener(
+      followPlaybackCut,
+    ),
+    () => historyManager.removeListener(projectFile.markDirty),
+    () => historyManager.removeListener(refreshLiveAudioSchedule),
+    () => historyManager.removeListener(textCelBakes.scheduleTextCelBakeSweep),
+    voiceRecording.dispose,
+    playbackRig.dispose,
+    renderCaches.dispose,
+    audioConformStore.dispose,
+    appSettings.dispose,
+    soloedSeLayerIds.dispose,
+    editingFrameCursor.dispose,
+    frameScrubActive.dispose,
+    scrubOutOfTerritory.dispose,
+    frameSeekCommitted.dispose,
+    _gapGlobalFrameNotifier.dispose,
+    frameRangeSelection.dispose,
+    brushInputActive.dispose,
+    selectionInteractionActive.dispose,
+    dragPreview.dispose,
+    transitionEdgeDragPreview.dispose,
+    opacityDragPreview.dispose,
+    onionSkinSettings.dispose,
+    onionSkinLayerIds.dispose,
+    trackFrameRangeSelection.dispose,
+    historyManager.dispose,
+  ];
 
   /// Test seam: widget tests inject a store with a fake runner so SE rows
   /// never decode real files.
@@ -1407,8 +1434,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the opacity verbs: their own object, in their own file ──────────
   //
-  // A collaborator (session/opacity_verbs.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/opacity_verbs.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final OpacityVerbs opacityVerbs = OpacityVerbs(
     project: this,
     changes: this,
@@ -1445,8 +1472,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the effects and the fx switches: their own object ───────────────
   //
-  // A collaborator (session/effects_and_fx.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/effects_and_fx.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final EffectsAndFx effectsAndFx = EffectsAndFx(
     project: this,
     selection: this,
@@ -1550,8 +1577,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the lane verbs: their own object, in their own file ─────────────
   //
-  // A collaborator (session/lane_verbs.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/lane_verbs.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final LaneVerbs laneVerbs = LaneVerbs(
     project: this,
     selection: this,
@@ -1629,8 +1656,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── visibility solo: its own object, in its own file ───────────────────
   //
-  // A collaborator (session/visibility_solo.dart, a part of this library). The
-  // session keeps the public toggles as forwarders.
+  // A collaborator (session/visibility_solo.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final VisibilitySolo visibilitySolo = VisibilitySolo(
     project: this,
     selection: this,
@@ -1904,8 +1931,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the instructions: their own object, in their own file ───────────
   //
-  // A collaborator (session/instructions.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/instructions.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final Instructions instructionVerbs = Instructions(
     project: this,
     selection: this,
@@ -1931,9 +1958,9 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the edge drags: their own object, in their own file ─────────────────
   //
-  // The second collaborator (session/edge_drag.dart, a part of this library):
-  // the exposure, cut and transition edge drags with their snapshots. The
-  // session keeps the public entry points as forwarders.
+  // The second collaborator (session/edge_drag.dart): the exposure, cut
+  // and transition edge drags with their snapshots. Callers name it
+  // (round 8, G4).
   late final EdgeDrag edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, internals: this);
 
   /// The transition row as the in-flight edge drag would leave it — the
@@ -2407,8 +2434,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the text-cel bakes: their own sweep, in their own file ─────────────
   //
-  // A collaborator (session/text_cel_bakes.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/text_cel_bakes.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final TextCelBakes textCelBakes = TextCelBakes(
     project: this,
     selection: this,
@@ -2467,16 +2494,16 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the storyboard cursor: its own object, in its own file ──────────
   //
-  // A collaborator (session/storyboard_cursor.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/storyboard_cursor.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final StoryboardCursor storyboardCursor = StoryboardCursor(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, rangeSelections: rangeSelections, cells: cells, cutVerbs: cutVerbs, transitions: transitions, internals: this);
 
   // --- Frame / cell state / commands -------------------------------------
 
   // ── the exposure verbs: their own object, in their own file ─────────
   //
-  // A collaborator (session/exposure_verbs.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/exposure_verbs.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final ExposureVerbs exposureVerbs = ExposureVerbs(
     selection: this,
     changes: this,
@@ -2505,8 +2532,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the auto frame for a stroke: its own object ─────────────────────
   //
-  // A collaborator (session/auto_frame_for_stroke.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/auto_frame_for_stroke.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final AutoFrameForStroke autoFrame = AutoFrameForStroke(
     project: this,
     selection: this,
@@ -2518,8 +2545,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the cell instances: their own object, in their own file ─────────
   //
-  // A collaborator (session/cell_instances.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/cell_instances.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: frameVerbs, internals: this);
 
   @override
@@ -2581,8 +2608,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the movie-end drag: its own object, in its own file ────────────────
   //
-  // A collaborator (session/movie_end_drag.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/movie_end_drag.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final MovieEndDragVerbs movieEnd = MovieEndDragVerbs(
     project: this,
     changes: this,
@@ -2941,8 +2968,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the lane range move drag: its own object, in its own file ───────
   //
-  // A collaborator (session/lane_range_move_drag.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/lane_range_move_drag.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final LaneRangeMoveDragVerbs laneMove = LaneRangeMoveDragVerbs(
     project: this,
     selection: this,
@@ -2989,8 +3016,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the drawing block move drag: its own object ─────────────────────
   //
-  // A collaborator (session/drawing_block_move_drag.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/drawing_block_move_drag.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, internals: this);
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
@@ -2999,9 +3026,8 @@ class EditorSessionManager extends ChangeNotifier
   //
   // The first collaborator carved out of this class (2026-09-02, the audit's
   // SRP cut): the drag's state and steps live in `FrameRangeMoveDrag`
-  // (session/frame_range_move_drag.dart, a part of this library so the
-  // private seams stay private). The session keeps the public entry points
-  // as forwarders, so every caller is unchanged.
+  // (session/frame_range_move_drag.dart). Callers name it — a forwarder
+  // here would be a second name for the same verb (round 8, G4).
   late final FrameRangeMoveDrag rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: drawingBlockMove, transitions: transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
 
   /// The door a collaborator announces through — `notifyListeners` is
@@ -3013,8 +3039,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the run frames add drag: its own object ─────────────────────────
   //
-  // A collaborator (session/run_frames_add_drag.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/run_frames_add_drag.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final RunFramesAddDragVerbs runFramesAdd = RunFramesAddDragVerbs(
     project: this,
     changes: this,
@@ -3539,8 +3565,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the frame scrub: its own object, in its own file ───────────────────
   //
-  // A collaborator (session/frame_scrub.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/frame_scrub.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final FrameScrub frameScrub = FrameScrub(
     project: this,
     selection: this,
@@ -3568,8 +3594,8 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the onion skin: its own object, in its own file ─────────────────
   //
-  // A collaborator (session/onion_skin.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
+  // A collaborator (session/onion_skin.dart). Callers name it: a forwarder here
+  // would be a second name for the same verb (round 8, G4).
   late final OnionSkin onionSkin = OnionSkin(
     project: this,
     selection: this,
