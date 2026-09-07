@@ -100,7 +100,7 @@ void main() {
       reason: 'past the block, nothing shows',
     );
 
-    s.toggleLayerVisibility(seRow.id);
+    s.layerSwitches.toggleLayerVisibility(seRow.id);
     expect(
       s.seNameTagsForCutFrame(cut, 0),
       isEmpty,

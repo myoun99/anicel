@@ -540,7 +540,7 @@ void main() {
 
       expect(session.transitionSpansOfTrack(_trackId), hasLength(1));
 
-      session.toggleLayerVisibility(session.activeTrack.transitionLayer.id);
+      session.layerSwitches.toggleLayerVisibility(session.activeTrack.transitionLayer.id);
 
       expect(session.transitionSpansOfTrack(_trackId), isEmpty);
     });
@@ -554,7 +554,7 @@ void main() {
       seekStoryboardGlobalFrame(session, 20);
       expect(session.activeCutId, isNull);
 
-      session.toggleLayerTimesheet(_seLayerId);
+      session.layerSwitches.toggleLayerTimesheet(_seLayerId);
 
       expect(
         session.repository

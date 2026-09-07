@@ -33,7 +33,7 @@ void main() {
       layerId,
     ).isVisible;
 
-    session.toggleLayerVisibility(layerId);
+    session.layerSwitches.toggleLayerVisibility(layerId);
     expect(
       requireLayerAnywhere(
         session.repository.requireProject(),
@@ -63,7 +63,7 @@ void main() {
       layerId,
     ).isVisible;
 
-    session.toggleLayerVisibility(layerId);
+    session.layerSwitches.toggleLayerVisibility(layerId);
     session.historyManager.undo();
     session.historyManager.redo();
 
@@ -96,7 +96,7 @@ void main() {
     final beforeBlend = requireLayerAnywhere(project, layerId).blendMode;
     final beforeOpacity = requireLayerAnywhere(project, layerId).opacity;
 
-    session.setLayerBlendMode(
+    session.layerSwitches.setLayerBlendMode(
       layerId,
       beforeBlend == LayerBlendMode.multiply
           ? LayerBlendMode.screen
@@ -145,7 +145,7 @@ void main() {
       reason: 'fixture: more than one row, or the batch proves nothing',
     );
 
-    session.setAllLayersVisibility(false);
+    session.layerSwitches.setAllLayersVisibility(false);
     session.historyManager.undo();
 
     for (final entry in visibleBefore.entries) {
@@ -176,7 +176,7 @@ void main() {
     ).opacity;
 
     session.setLayerOpacity(layerId: layerId, opacity: 0.5);
-    session.setAllLayersVisibility(false);
+    session.layerSwitches.setAllLayersVisibility(false);
 
     session.historyManager.undo(); // the whole batch
     session.historyManager.undo(); // the opacity before it

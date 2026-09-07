@@ -235,7 +235,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     s.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
-    s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
+    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(
       s.activeCutOrNull!.layers.folderById(folderId)!.blendMode,
       LayerBlendMode.multiply,
@@ -324,13 +324,13 @@ void main() {
     );
 
     expect(band().blendMode, LayerBlendMode.passThrough);
-    s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
+    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(band().blendMode, LayerBlendMode.multiply);
 
     s.layerVerbs.renameLayer(folderId, 'Renamed');
     expect(band().name, 'Renamed');
 
-    s.toggleLayerVisibility(folderId);
+    s.layerSwitches.toggleLayerVisibility(folderId);
     expect(band().isVisible, isFalse);
 
     // …and the identity the cache exists for still holds: no edit, same

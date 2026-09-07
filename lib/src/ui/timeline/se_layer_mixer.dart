@@ -116,7 +116,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
                   icon: layer.muted ? Icons.volume_off : Icons.volume_up,
                   on: layer.muted,
                   onPressed: () =>
-                      widget.session.toggleLayerMuted(widget.layerId),
+                      widget.session.layerSwitches.toggleLayerMuted(widget.layerId),
                 ),
               ),
               const SizedBox(width: 6),
@@ -147,7 +147,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
             onChanged: (value) => setState(() => _gainDrag = value),
             onChangeEnd: (value) {
               setState(() => _gainDrag = null);
-              widget.session.setLayerAudio(
+              widget.session.layerSwitches.setLayerAudio(
                 layerId: widget.layerId,
                 gain: value,
               );
@@ -186,7 +186,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               onChanged: (value) => setState(() => _panDrag = value),
               onChangeEnd: (value) {
                 setState(() => _panDrag = null);
-                widget.session.setLayerAudio(
+                widget.session.layerSwitches.setLayerAudio(
                   layerId: widget.layerId,
                   pan: value,
                 );

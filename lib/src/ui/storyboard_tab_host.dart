@@ -861,7 +861,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // ("애초에 마음에 안 들었었으니까", 2026-08-10).
                     // Timeline-parity layer controls on the ACTIVE cut's SE
                     // rows — the SAME session hooks the timeline host wires.
-                    onToggleLayerVisibility: _session.toggleLayerVisibility,
+                    onToggleLayerVisibility: _session.layerSwitches.toggleLayerVisibility,
                     onOpenLayerMixer: (anchorContext, layerId) => unawaited(
                       showSeLayerMixer(
                         anchorContext,
@@ -876,9 +876,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onLayerMarkSelected: _session.setLayerMark,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
-                    onToggleLayerTimesheet: _session.toggleLayerTimesheet,
-                    layerOnTimesheetOf: _session.isLayerOnTimesheet,
-                    layerEyeOnOf: _session.isLayerEyeOn,
+                    onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
+                    layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
+                    layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
                     seRowLaneOpenOf: (track, slot) => _expandedSeAudioRows
                         .contains(StoryboardPanel.seRowKey(track, slot)),
                     trackLaneOpenOf: (track) =>

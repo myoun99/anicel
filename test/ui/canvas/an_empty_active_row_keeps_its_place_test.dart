@@ -33,7 +33,7 @@ void main() {
     s.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     if (folderBlend != LayerBlendMode.passThrough) {
-      s.setLayerBlendMode(folderId, folderBlend);
+      s.layerSwitches.setLayerBlendMode(folderId, folderBlend);
     }
     if (folderOpacity != 1) {
       s.setLayerOpacity(layerId: folderId, opacity: folderOpacity);
@@ -104,7 +104,7 @@ void main() {
           'live row at all',
     );
 
-    s.toggleLayerVisibility(made.folderId);
+    s.layerSwitches.toggleLayerVisibility(made.folderId);
 
     expect(
       activeIn(s.editingCanvasStack.nodes),

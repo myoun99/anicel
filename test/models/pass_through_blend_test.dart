@@ -79,7 +79,7 @@ void main() {
 
     // Isolating: the folder's mode reaches the member (flat-path
     // behaviour; the tree gives the group its own buffer).
-    s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
+    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(
       s.activeCutOrNull!.layers.folderById(folderId)!.blendMode,
       LayerBlendMode.multiply,

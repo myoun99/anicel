@@ -60,7 +60,7 @@ void main() {
     );
 
     // A real model edit changes the cut identity and rebuilds the sheet.
-    session.toggleLayerTimesheet(session.activeLayer!.id);
+    session.layerSwitches.toggleLayerTimesheet(session.activeLayer!.id);
     await tester.pumpAndSettle();
     final afterEdit = documentNow();
     expect(

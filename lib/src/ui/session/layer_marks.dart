@@ -45,20 +45,15 @@ class LayerMarks {
   /// Clears every layer mark of the active cut (track-owned SE rows
   /// included, like the sheet sweep) — one undo.
   void clearAllLayerMarks() {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final cutId = cut.id;
-    final swept = sweepRows(
-      history: _project.historyManager,
-      rows: [...cut.layers, ..._selection.activeTrack.seLayers],
+    final swept = sweepActiveCutRows(
+      project: _project,
       description: 'Clear all layer marks',
-      commandFor: (layer) => layer.mark == LayerMark.none
+      rows: (cut) => [...cut.layers, ..._selection.activeTrack.seLayers],
+      commandFor: (cut, layer) => layer.mark == LayerMark.none
           ? null
           : UpdateLayerMarkCommand(
               repository: _project.repository,
-              cutId: cutId,
+              cutId: cut.id,
               layerId: layer.id,
               mark: LayerMark.none,
             ),

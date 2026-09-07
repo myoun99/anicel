@@ -1,6 +1,7 @@
+import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../services/command.dart';
-import '../../services/history_manager.dart';
+import 'session_roles.dart';
 
 /// THE ROW SWEEP: one legend action over every eligible row of the active
 /// cut, landing as ONE undo entry.
@@ -12,19 +13,31 @@ import '../../services/history_manager.dart';
 /// nullable return also carries the "is this row eligible" predicate, so
 /// the filter and the command cannot disagree) and the undo description.
 ///
+/// ⛔The GAP GUARD is part of the envelope, not of each sweep. All three
+/// opened with the same four lines — read the active cut, stand down when
+/// there is none, keep its id for the commands — and a sweep that forgot
+/// them would throw from a gap instead of doing nothing (the audit's clone
+/// scan named the third copy, 2026-09-07).
+///
 /// Answers whether anything was swept: an empty sweep writes no history
 /// entry, so the caller has nothing to tell its listeners about either.
-bool sweepRows({
-  required HistoryManager history,
-  required List<Layer> rows,
+bool sweepActiveCutRows({
+  required ProjectAccess project,
   required String description,
-  required Command? Function(Layer layer) commandFor,
+  required List<Layer> Function(Cut cut) rows,
+  required Command? Function(Cut cut, Layer layer) commandFor,
 }) {
-  final commands = <Command>[for (final layer in rows) ?commandFor(layer)];
+  final cut = project.activeCutOrNull;
+  if (cut == null) {
+    return false;
+  }
+  final commands = <Command>[
+    for (final layer in rows(cut)) ?commandFor(cut, layer),
+  ];
   if (commands.isEmpty) {
     return false;
   }
-  history.execute(
+  project.historyManager.execute(
     CompositeCommand(description: description, commands: commands),
   );
   return true;

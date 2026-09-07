@@ -412,7 +412,7 @@ void main() {
     expect(s.canToggleMarkAtCurrentFrame, isFalse);
     expect(s.canDeleteCellAtCurrentFrame, isFalse);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);
-    expect(s.canToggleTargetLayerKind, isFalse);
+    expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(
       s.beginExposureEdgeDrag(
         layerId: attachId,

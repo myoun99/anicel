@@ -479,9 +479,9 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'toggle-storyboard-layer-button',
         label: AppText.strings.tlStoryboardLayer,
         icon: Icons.auto_stories_outlined,
-        enabled: serves && session.canToggleTargetLayerKind,
+        enabled: serves && session.layerSwitches.canToggleTargetLayerKind,
         checked: active?.kind == LayerKind.storyboard ? true : null,
-        onSelected: session.toggleTargetLayerKind,
+        onSelected: session.layerSwitches.toggleTargetLayerKind,
       ),
       // R5 #5: the SE and CAMERA section switches left. The legend's own
       // sections cell has shown and hidden both since UI-R7, so this pair

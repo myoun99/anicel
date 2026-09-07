@@ -1,11 +1,16 @@
 import '../../services/editing/default_layer_helpers.dart';
 import '../../models/attached_layer_resolve.dart';
+import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
+import '../../services/commands/update_layer_fill_reference_command.dart';
+import '../../services/commands/update_layer_timesheet_command.dart';
+import '../../services/project_lookup.dart' show requireLayerAnywhere;
 import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'active_cut_controllers.dart';
+import 'row_sweep.dart';
 import 'session_roles.dart';
 import 'storyboard_cursor.dart';
 
@@ -21,12 +26,14 @@ import 'storyboard_cursor.dart';
 class LayerSwitchVerbs {
   LayerSwitchVerbs({
     required ProjectAccess project,
+    required SelectionAccess selection,
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required StoryboardCursor storyboardCursor,
   }) : _project = project,
+       _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
@@ -36,6 +43,7 @@ class LayerSwitchVerbs {
   final StoryboardCursor _storyboardCursor;
 
   final ProjectAccess _project;
+  final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
@@ -123,6 +131,130 @@ class LayerSwitchVerbs {
       muted: muted,
     );
     _changes.notifyChanged();
+  }
+
+  /// The row as the project holds it THIS instant — the one lookup the
+  /// three live reads below share (cut-owned rows and track fixtures
+  /// alike).
+  Layer _rowAnywhere(LayerId layerId) =>
+      requireLayerAnywhere(_project.repository.requireProject(), layerId);
+
+  /// Whether [layerId]'s TRANSFORM group is applied right now.
+  ///
+  /// 🚨A LIVE READ, like [isLayerEyeOn] and [isLayerOnTimesheet]: a lane row
+  /// built at the last frame carries a stale `groupEnabled`, and the rail's
+  /// bulk-drag has to spread what the press just set.
+  bool isLayerTransformOn(LayerId layerId) =>
+      _rowAnywhere(layerId).transformEnabled;
+
+  /// Whether [layerId]'s own eye is on RIGHT NOW.
+  ///
+  /// 🚨A LIVE READ, for the same reason as [isLayerOnTimesheet]: a caller
+  /// holding a [Layer] captured at build time reads the value the last frame
+  /// had, and the rail's bulk-drag needs the one the press just set.
+  bool isLayerEyeOn(LayerId layerId) => _rowAnywhere(layerId).isVisible;
+
+  /// Whether [layerId] is on the timesheet RIGHT NOW.
+  ///
+  /// 🚨A LIVE READ, and that is the point. A caller holding a [Layer] it
+  /// captured at build time reads the value the LAST FRAME had, which stays
+  /// wrong for the whole length of a gesture that already toggled it. The
+  /// rail's bulk-drag needs the live one: the button under the finger fires
+  /// on the DOWN (유저 2026-08-30) and the sweep spreads what that set, so a
+  /// snapshot sends it the other way — measured, on one rail in one gesture:
+  /// the eye column read live and swept correctly, the sheet column read a
+  /// captured layer and swept backwards.
+  bool isLayerOnTimesheet(LayerId layerId) =>
+      _rowAnywhere(layerId).onTimesheet;
+
+  /// Flips whether [layerId] is recorded on the timesheet output. One undo
+  /// step; no controller rebuild — the flag never affects rendering.
+  ///
+  /// ANYWHERE lookup and a nullable cut (B5③ 2026-08-17): the storyboard
+  /// rail reaches this for TRACK fixtures — S rows and the transition row —
+  /// whose flag is the layer's own and must flip from a gap too. The cut id
+  /// is command bookkeeping the write never reads.
+  void toggleLayerTimesheet(LayerId layerId) {
+    final layer = _rowAnywhere(layerId);
+    _project.cutCommandCoordinator.setLayerTimesheet(
+      cutId: _project.activeCutOrNull?.id,
+      layerId: layerId,
+      onTimesheet: !layer.onTimesheet,
+    );
+    _changes.notifyChanged();
+  }
+
+  /// Flips the layer's FILL-reference flag (R20-C2, the CSP lighthouse):
+  /// while any visible layer of the cut carries it, fills read ONLY the
+  /// flagged layers as their source picture. One undo step; the display
+  /// composite never changes.
+  void toggleLayerFillReference(LayerId layerId) {
+    final layer = _project.layers.firstWhere((layer) => layer.id == layerId);
+    _project.cutCommandCoordinator.setLayerFillReference(
+      cutId: _project.requireActiveCut.id,
+      layerId: layerId,
+      isFillReference: !layer.isFillReference,
+    );
+    _changes.notifyChanged();
+  }
+
+  // --- Legend bulk commands (R-toolbar round) -----------------------------
+  //
+  // One legend-flyout action sweeps every eligible layer of the active cut.
+  // Semantics mirror the per-row toggles — and since 2026-08-29 that means
+  // UNDOABLE for all of them (유저: 「눈을 껏다키든 뭐든 다 언두」). Every
+  // bulk action lands as ONE entry, the way sheet/mark/fill-reference
+  // already did.
+
+  /// Turns the timesheet flag on/off for every eligible layer — one undo.
+  /// Track-owned rows join the sweep: SE rows since the SE mark/sheet fix,
+  /// and the transition row since D31 gave its flag a printed column —
+  /// the flag commands resolve through the anywhere lookup.
+  void setAllLayersOnTimesheet(bool onTimesheet) {
+    final swept = sweepActiveCutRows(
+      project: _project,
+      description: onTimesheet
+          ? 'Add all layers to timesheet'
+          : 'Remove all layers from timesheet',
+      rows: (cut) => [
+        ...cut.layers,
+        ..._selection.activeTrack.seLayers,
+        _selection.activeTrack.transitionLayer,
+      ],
+      commandFor: (cut, layer) =>
+          layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet
+          ? UpdateLayerTimesheetCommand(
+              repository: _project.repository,
+              cutId: cut.id,
+              layerId: layer.id,
+              onTimesheet: onTimesheet,
+            )
+          : null,
+    );
+    if (swept) {
+      _changes.notifyChanged();
+    }
+  }
+
+  /// Drops the fill-reference flag from every layer — one undo (cut-owned
+  /// layers, like the sheet sweep).
+  void clearAllFillReferences() {
+    final swept = sweepActiveCutRows(
+      project: _project,
+      description: 'Clear all fill references',
+      rows: (cut) => cut.layers,
+      commandFor: (cut, layer) => layer.isFillReference
+          ? UpdateLayerFillReferenceCommand(
+              repository: _project.repository,
+              cutId: cut.id,
+              layerId: layer.id,
+              isFillReference: false,
+            )
+          : null,
+    );
+    if (swept) {
+      _changes.notifyChanged();
+    }
   }
 
   bool get canToggleTargetLayerKind {

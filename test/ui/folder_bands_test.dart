@@ -67,7 +67,7 @@ void main() {
     final (s, member, folder) = sessionWithFolder();
     final band = s.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!);
 
-    s.toggleLayerVisibility(member);
+    s.layerSwitches.toggleLayerVisibility(member);
     expect(
       identical(
         s.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!),
@@ -78,7 +78,7 @@ void main() {
           'is the one the band was built from',
     );
 
-    s.toggleLayerVisibility(folder);
+    s.layerSwitches.toggleLayerVisibility(folder);
     final renewed = s.folderBandLayerFor(
       s.activeCutOrNull!.layers.byId(folder)!,
     );

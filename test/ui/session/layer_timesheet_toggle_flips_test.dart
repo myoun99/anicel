@@ -24,7 +24,7 @@ void main() {
     final before = onTimesheet();
     final undoDepthBefore = session.historyManager.canUndo;
 
-    session.toggleLayerTimesheet(layerId);
+    session.layerSwitches.toggleLayerTimesheet(layerId);
     expect(onTimesheet(), !before, reason: 'the toggle flips the flag');
     expect(session.historyManager.canUndo, isTrue, reason: 'a flip is an edit');
 

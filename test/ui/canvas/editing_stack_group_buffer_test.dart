@@ -27,7 +27,7 @@ void main() {
     s.groupActiveLayerIntoFolder();
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     if (blend != LayerBlendMode.passThrough) {
-      s.setLayerBlendMode(folderId, blend);
+      s.layerSwitches.setLayerBlendMode(folderId, blend);
     }
     if (opacity != 1) {
       s.setLayerOpacity(layerId: folderId, opacity: opacity);
@@ -112,7 +112,7 @@ void main() {
       (layer) => layer.folderId == null && layer.id != s.activeLayerId,
     );
     final folderId = cut.layers.folderLayers.single.id;
-    s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
+    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     s.selectLayer(outside.id);
 
     expect(countGroups(s.editingCanvasStack.nodes), 1);
@@ -127,7 +127,7 @@ void main() {
     // folder then has nothing to buffer.
     for (final layer in cut.layers) {
       if (layer.id != folderId && !layer.kind.groupsLayers) {
-        if (layer.isVisible) s.toggleLayerVisibility(layer.id);
+        if (layer.isVisible) s.layerSwitches.toggleLayerVisibility(layer.id);
       }
     }
 
@@ -145,7 +145,7 @@ void main() {
     final seRow = s.activeTrack.seLayers.first;
 
     final drawn = s.editingCanvasStack.nodes.length;
-    s.toggleLayerVisibility(seRow.id);
+    s.layerSwitches.toggleLayerVisibility(seRow.id);
     final hidden = s.editingCanvasStack.nodes.length;
 
     expect(

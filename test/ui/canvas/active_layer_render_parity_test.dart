@@ -249,7 +249,7 @@ void main() {
       // make a row. `addLayer` is what makes the second one.
       s.createDrawingAtCurrentFrame();
       final target = s.activeLayer!.id;
-      s.setLayerBlendMode(target, blend);
+      s.layerSwitches.setLayerBlendMode(target, blend);
       s.layerStack.addLayer();
       s.createDrawingAtCurrentFrame();
       final other = s.activeLayer!.id;

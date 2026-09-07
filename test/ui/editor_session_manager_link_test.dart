@@ -112,7 +112,7 @@ void main() {
         session.requireActiveCut.layers.firstWhere((layer) => layer.id == id);
 
     final originVisibleBefore = read(origin.id).isVisible;
-    session.toggleLayerVisibility(copy.id);
+    session.layerSwitches.toggleLayerVisibility(copy.id);
     expect(read(copy.id).isVisible, !originVisibleBefore);
     expect(
       read(origin.id).isVisible,
@@ -124,7 +124,7 @@ void main() {
     expect(read(copy.id).opacity, closeTo(0.2, 1e-9));
     expect(read(origin.id).opacity, closeTo(origin.opacity, 1e-9));
 
-    session.setLayerBlendMode(copy.id, LayerBlendMode.multiply);
+    session.layerSwitches.setLayerBlendMode(copy.id, LayerBlendMode.multiply);
     expect(read(copy.id).blendMode, LayerBlendMode.multiply);
     expect(read(origin.id).blendMode, origin.blendMode);
 

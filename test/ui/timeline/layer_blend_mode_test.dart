@@ -42,7 +42,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
 
-    s.setLayerBlendMode(layerId, LayerBlendMode.screen);
+    s.layerSwitches.setLayerBlendMode(layerId, LayerBlendMode.screen);
     expect(s.activeLayer!.blendMode, LayerBlendMode.screen);
 
     final entries = resolveCutFrameCompositeEntries(
@@ -260,7 +260,7 @@ void main() {
       (l) => l.kind == LayerKind.animation,
     );
 
-    s.setBlendModeForLayers({drawing.id, camera.id}, LayerBlendMode.screen);
+    s.layerSwitches.setBlendModeForLayers({drawing.id, camera.id}, LayerBlendMode.screen);
 
     expect(
       s.layers.firstWhere((l) => l.id == drawing.id).blendMode,

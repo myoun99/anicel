@@ -126,7 +126,7 @@ void main() {
     final other = session.layers
         .firstWhere((layer) => layer.id != session.activeLayerId)
         .id;
-    session.toggleLayerVisibility(other);
+    session.layerSwitches.toggleLayerVisibility(other);
     await tester.pump();
 
     expect(

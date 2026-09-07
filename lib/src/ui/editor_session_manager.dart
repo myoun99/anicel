@@ -75,7 +75,6 @@ import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../services/canvas_selection_region.dart';
 import '../services/cel_pixel_overwrite.dart';
-import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -125,9 +124,7 @@ import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
-import '../services/commands/update_layer_fill_reference_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
-import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -199,7 +196,6 @@ import 'session/drawing_block_move_drag.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
 import 'session/active_cut_edits.dart';
-import 'session/row_sweep.dart';
 import 'session/layer_marks.dart';
 import 'session/exposure_verbs.dart';
 import 'session/cell_instances.dart';
@@ -2430,24 +2426,7 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
-  late final LayerSwitchVerbs _layerSwitches = LayerSwitchVerbs(project: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
-
-  void toggleLayerVisibility(LayerId layerId) =>
-      _layerSwitches.toggleLayerVisibility(layerId);
-  void toggleLayerMuted(LayerId layerId) =>
-      _layerSwitches.toggleLayerMuted(layerId);
-  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) =>
-      _layerSwitches.setLayerAudio(layerId: layerId, gain: gain, pan: pan);
-  void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) =>
-      _layerSwitches.setLayerBlendMode(layerId, blendMode);
-  void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) =>
-      _layerSwitches.setBlendModeForLayers(layerIds, mode);
-  void setAllLayersVisibility(bool visible) =>
-      _layerSwitches.setAllLayersVisibility(visible);
-  void setAllSeLayersMuted(bool muted) =>
-      _layerSwitches.setAllSeLayersMuted(muted);
-  bool get canToggleTargetLayerKind => _layerSwitches.canToggleTargetLayerKind;
-  void toggleTargetLayerKind() => _layerSwitches.toggleTargetLayerKind();
+  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
   /// listener and by the repo-direct mix edits (mute/fader/pan/solo,
@@ -2647,68 +2626,6 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
-  /// Flips whether [layerId] is recorded on the timesheet output. One undo
-  /// step; no controller rebuild — the flag never affects rendering.
-  ///
-  /// Whether [layerId]'s TRANSFORM group is applied right now.
-  ///
-  /// 🚨A LIVE READ, like [isLayerEyeOn] and [isLayerOnTimesheet]: a lane row
-  /// built at the last frame carries a stale `groupEnabled`, and the rail's
-  /// bulk-drag has to spread what the press just set.
-  bool isLayerTransformOn(LayerId layerId) => requireLayerAnywhere(
-    repository.requireProject(),
-    layerId,
-  ).transformEnabled;
-
-  /// Whether [layerId]'s own eye is on RIGHT NOW.
-  ///
-  /// 🚨A LIVE READ, for the same reason as [isLayerOnTimesheet]: a caller
-  /// holding a [Layer] captured at build time reads the value the last frame
-  /// had, and the rail's bulk-drag needs the one the press just set.
-  bool isLayerEyeOn(LayerId layerId) =>
-      requireLayerAnywhere(repository.requireProject(), layerId).isVisible;
-
-  /// Whether [layerId] is on the timesheet RIGHT NOW.
-  ///
-  /// 🚨A LIVE READ, and that is the point. A caller holding a [Layer] it
-  /// captured at build time reads the value the LAST FRAME had, which stays
-  /// wrong for the whole length of a gesture that already toggled it. The
-  /// rail's bulk-drag needs the live one: the button under the finger fires
-  /// on the DOWN (유저 2026-08-30) and the sweep spreads what that set, so a
-  /// snapshot sends it the other way — measured, on one rail in one gesture:
-  /// the eye column read live and swept correctly, the sheet column read a
-  /// captured layer and swept backwards.
-  bool isLayerOnTimesheet(LayerId layerId) =>
-      requireLayerAnywhere(repository.requireProject(), layerId).onTimesheet;
-
-  /// ANYWHERE lookup and a nullable cut (B5③ 2026-08-17): the storyboard
-  /// rail reaches this for TRACK fixtures — S rows and the transition row —
-  /// whose flag is the layer's own and must flip from a gap too. The cut id
-  /// is command bookkeeping the write never reads.
-  void toggleLayerTimesheet(LayerId layerId) {
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    cutCommandCoordinator.setLayerTimesheet(
-      cutId: activeCutOrNull?.id,
-      layerId: layerId,
-      onTimesheet: !layer.onTimesheet,
-    );
-    notifyListeners();
-  }
-
-  /// Flips the layer's FILL-reference flag (R20-C2, the CSP lighthouse):
-  /// while any visible layer of the cut carries it, fills read ONLY the
-  /// flagged layers as their source picture. One undo step; the display
-  /// composite never changes.
-  void toggleLayerFillReference(LayerId layerId) {
-    final layer = layers.firstWhere((layer) => layer.id == layerId);
-    cutCommandCoordinator.setLayerFillReference(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      isFillReference: !layer.isFillReference,
-    );
-    notifyListeners();
-  }
-
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
   TimesheetInfo get timesheetInfo => repository.requireProject().timesheetInfo;
@@ -2733,75 +2650,6 @@ class EditorSessionManager extends ChangeNotifier
   void toggleMarkAtCurrentFrame() => _marks.toggleMarkAtCurrentFrame();
   bool hasMarkForLayer(Layer layer, int frameIndex) =>
       _marks.hasMarkForLayer(layer, frameIndex);
-
-  // --- Legend bulk commands (R-toolbar round) -----------------------------
-  //
-  // One legend-flyout action sweeps every eligible layer of the active cut.
-  // Semantics mirror the per-row toggles — and since 2026-08-29 that means
-  // UNDOABLE for all of them (유저: 「눈을 껏다키든 뭐든 다 언두」). Every
-  // bulk action lands as ONE entry, the way sheet/mark/fill-reference
-  // already did.
-
-  /// Turns the timesheet flag on/off for every eligible layer — one undo.
-  /// Track-owned rows join the sweep: SE rows since the SE mark/sheet fix,
-  /// and the transition row since D31 gave its flag a printed column —
-  /// the flag commands resolve through the anywhere lookup.
-  void setAllLayersOnTimesheet(bool onTimesheet) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final cutId = cut.id;
-    final swept = sweepRows(
-      history: historyManager,
-      rows: [
-        ...cut.layers,
-        ...activeTrack.seLayers,
-        activeTrack.transitionLayer,
-      ],
-      description: onTimesheet
-          ? 'Add all layers to timesheet'
-          : 'Remove all layers from timesheet',
-      commandFor: (layer) =>
-          layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet
-          ? UpdateLayerTimesheetCommand(
-              repository: repository,
-              cutId: cutId,
-              layerId: layer.id,
-              onTimesheet: onTimesheet,
-            )
-          : null,
-    );
-    if (swept) {
-      notifyListeners();
-    }
-  }
-
-  /// Drops the fill-reference flag from every layer — one undo (cut-owned
-  /// layers, like the sheet sweep).
-  void clearAllFillReferences() {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final cutId = cut.id;
-    final swept = sweepRows(
-      history: historyManager,
-      rows: cut.layers,
-      description: 'Clear all fill references',
-      commandFor: (layer) => layer.isFillReference
-          ? UpdateLayerFillReferenceCommand(
-              repository: repository,
-              cutId: cutId,
-              layerId: layer.id,
-              isFillReference: false,
-            )
-          : null,
-    );
-    if (swept) {
-      notifyListeners();
-    }
-  }
 
   // ── the instructions: their own object, in their own file ───────────
   //

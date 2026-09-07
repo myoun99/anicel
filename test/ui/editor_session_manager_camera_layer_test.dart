@@ -49,7 +49,7 @@ void main() {
 
     expect(s.isCameraLayerActive, isTrue);
     expect(s.layerVerbs.canDeleteActiveLayer, isFalse);
-    expect(s.canToggleTargetLayerKind, isFalse);
+    expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
     expect(s.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.canToggleMarkAtCurrentFrame, isFalse);

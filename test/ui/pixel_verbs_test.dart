@@ -230,7 +230,7 @@ void main() {
     final row = await drawableRow(tester, session);
     expect(session.pixelVerbSubject, PixelVerbSubject.standing);
 
-    session.toggleLayerVisibility(row.id);
+    session.layerSwitches.toggleLayerVisibility(row.id);
     await tester.pump();
     expect(
       session.pixelVerbSubject,

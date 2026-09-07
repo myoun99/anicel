@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -21,7 +22,7 @@ void main() {
     final before = [for (final layer in s.requireActiveCut.layers) layer.onTimesheet];
     expect(before, contains(true), reason: 'fixture has sheet-on layers');
 
-    s.setAllLayersOnTimesheet(false);
+    s.layerSwitches.setAllLayersOnTimesheet(false);
     expect(s.requireActiveCut.layers.every((layer) => !layer.onTimesheet), isTrue);
 
     s.undo();
@@ -37,10 +38,10 @@ void main() {
       reason: 'fixture default: the flag starts on',
     );
 
-    s.setAllLayersOnTimesheet(false);
+    s.layerSwitches.setAllLayersOnTimesheet(false);
     expect(s.activeTrack.transitionLayer.onTimesheet, isFalse);
 
-    s.setAllLayersOnTimesheet(true);
+    s.layerSwitches.setAllLayersOnTimesheet(true);
     expect(s.activeTrack.transitionLayer.onTimesheet, isTrue);
 
     // Still ONE undo per sweep.
@@ -66,7 +67,7 @@ void main() {
     );
 
     final sheetBefore = seLayer.onTimesheet;
-    s.toggleLayerTimesheet(seLayer.id);
+    s.layerSwitches.toggleLayerTimesheet(seLayer.id);
     expect(
       s.layers.firstWhere((layer) => layer.id == seLayer.id).onTimesheet,
       !sheetBefore,
@@ -106,12 +107,73 @@ void main() {
     );
   });
 
+  test('the sheet sweep leaves ATTACH rows alone — they ride their base, '
+      'and the sweep has skipped them since the R-toolbar round (#508)', () {
+    final s = session();
+    s.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.layers
+        .firstWhere((layer) => layer.attachedToLayerId != null)
+        .id;
+    final before = s.layerSwitches.isLayerOnTimesheet(attachId);
+
+    s.layerSwitches.setAllLayersOnTimesheet(!before);
+    expect(s.layerSwitches.isLayerOnTimesheet(attachId), before);
+  });
+
+  test('the fill-reference flag flips per row and the sweep clears every '
+      'one of them in ONE undo (R20-C2)', () {
+    final s = session();
+    final drawing = s.requireActiveCut.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    expect(
+      s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
+      isFalse,
+      reason: 'fixture default: nothing is a fill reference',
+    );
+
+    s.layerSwitches.toggleLayerFillReference(drawing);
+    expect(
+      s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
+      isTrue,
+    );
+
+    s.layerSwitches.clearAllFillReferences();
+    expect(s.layers.every((layer) => !layer.isFillReference), isTrue);
+    s.undo();
+    expect(
+      s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
+      isTrue,
+      reason: 'the sweep is one entry',
+    );
+  });
+
+  test('the three row flags read LIVE — the value the press just set, not '
+      'the one a captured Layer carries', () {
+    // 🚨The rail's bulk-drag depends on this: the button under the finger
+    // fires on the DOWN and the sweep spreads what THAT set.
+    final s = session();
+    final drawing = s.requireActiveCut.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    final captured = s.layers.firstWhere((layer) => layer.id == drawing);
+
+    s.layerSwitches.toggleLayerTimesheet(drawing);
+    expect(s.layerSwitches.isLayerOnTimesheet(drawing), !captured.onTimesheet);
+
+    s.layerSwitches.toggleLayerVisibility(drawing);
+    expect(s.layerSwitches.isLayerEyeOn(drawing), !captured.isVisible);
+
+    s.updateLayerTransformEnabled(drawing, enabled: !captured.transformEnabled);
+    expect(s.layerSwitches.isLayerTransformOn(drawing), !captured.transformEnabled);
+  });
+
   test('visibility sweeps: hide all, show all', () {
     final s = session();
-    s.setAllLayersVisibility(false);
+    s.layerSwitches.setAllLayersVisibility(false);
     expect(s.layers.every((layer) => !layer.isVisible), isTrue);
 
-    s.setAllLayersVisibility(true);
+    s.layerSwitches.setAllLayersVisibility(true);
     expect(s.layers.every((layer) => layer.isVisible), isTrue);
   });
 
@@ -126,7 +188,7 @@ void main() {
           (layer) => layer.id != firstActive && layer.kind != LayerKind.camera,
         )
         .id;
-    s.toggleLayerVisibility(other);
+    s.layerSwitches.toggleLayerVisibility(other);
     expect(
       s.layers.firstWhere((layer) => layer.id == other).isVisible,
       isFalse,
@@ -179,9 +241,9 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
     expect(s.activeBrushEditorSelection, isNotNull);
-    s.toggleLayerVisibility(s.activeLayerId!);
+    s.layerSwitches.toggleLayerVisibility(s.activeLayerId!);
     expect(s.activeBrushEditorSelection, isNull);
-    s.toggleLayerVisibility(s.activeLayerId!);
+    s.layerSwitches.toggleLayerVisibility(s.activeLayerId!);
     expect(s.activeBrushEditorSelection, isNotNull);
   });
 
@@ -298,7 +360,7 @@ void main() {
 
   test('SE mute sweep touches only SE layers', () {
     final s = session();
-    s.setAllSeLayersMuted(true);
+    s.layerSwitches.setAllSeLayersMuted(true);
     for (final layer in s.layers) {
       if (layer.kind == LayerKind.se) {
         expect(layer.muted, isTrue);
@@ -306,7 +368,7 @@ void main() {
         expect(layer.muted, isFalse);
       }
     }
-    s.setAllSeLayersMuted(false);
+    s.layerSwitches.setAllSeLayersMuted(false);
     expect(s.layers.every((layer) => !layer.muted), isTrue);
   });
 

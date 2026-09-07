@@ -585,7 +585,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       view.value = !view.value;
       return;
     }
-    _session.toggleLayerVisibility(layerId);
+    _session.layerSwitches.toggleLayerVisibility(layerId);
   }
 
   // Opacity drags preview per move and commit ONE write on release
@@ -813,8 +813,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               opacity,
               _session.commitLayerOpacity,
             ),
-            onToggleLayerTimesheet: _session.toggleLayerTimesheet,
-            onToggleLayerFillReference: _session.toggleLayerFillReference,
+            onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
+            onToggleLayerFillReference: _session.layerSwitches.toggleLayerFillReference,
             onLayerMarkSelected: _session.setLayerMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
@@ -1004,8 +1004,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             projectFrameRate: _session.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
             laneOpenOf: widget.expandedLaneLayerIds.contains,
-            laneGroupOnOf: _session.isLayerTransformOn,
-            layerEyeOnOf: _session.isLayerEyeOn,
+            laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
+            layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             onToggleLayerLanes: widget.onToggleLayerLanes,
             hiddenSections: widget.hiddenSections,
             onToggleSection: widget.onToggleSection,
@@ -1019,7 +1019,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             opacityDragPreview: _session.opacityDragPreview,
             masterOpacityValue: _session.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
-            onLayerBlendModeSelected: _session.setLayerBlendMode,
+            onLayerBlendModeSelected: _session.layerSwitches.setLayerBlendMode,
             blendLanguage: _session.languageSettings.value.programLanguage,
             // R27 #9: the camera row's opacity IS the camera-view dim
             // notifier — handing it to the slider keeps a drag off the host.
@@ -1038,7 +1038,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onToggleOnionSkinForDisplayed:
                   _session.toggleOnionSkinForDisplayedLayers,
               onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
-              onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
+              onSetBlendModeForDisplayed: _session.layerSwitches.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,
             // The CAMERA row's union summary (B4): the shared

@@ -41,7 +41,7 @@ void main() {
 
   void hideFolder(EditorSessionManager s, LayerId folder) {
     if (s.activeCutOrNull!.layers.byId(folder)!.isVisible) {
-      s.toggleLayerVisibility(folder);
+      s.layerSwitches.toggleLayerVisibility(folder);
     }
     expect(
       s.activeCutOrNull!.layers.byId(folder)!.isVisible,
@@ -199,7 +199,7 @@ void main() {
       );
 
       if (s.activeCutOrNull!.layers.byId(folder)!.isVisible) {
-        s.toggleLayerVisibility(folder);
+        s.layerSwitches.toggleLayerVisibility(folder);
       }
 
       expect(
