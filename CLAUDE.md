@@ -67,7 +67,15 @@
   게이트는 `.githooks/pre-push` 가 **강제**한다: 보드 밖 파일이 끼면 거부, 보드 전용이면
   analyze+보드 테스트를 돌려 빨가면 거부. 새 체크아웃에서 한 번:
   `git config core.hooksPath .githooks`.
-- **그 외에는** `bash tool/merge_check.sh <PR번호>` 가 **exit 0** 일 때만 머지한다.
+- **그 외에는 레인으로 간다** — 계정이 정지된 동안 **트렁크는 로컬 `master`**(origin은 얼어 있다).
+  `bash tool/lane.sh open <이름>` 이 master에서 워크트리를 파고, `land <이름>` 이
+  리베이스 → analyze → `test/architecture` → ff 머지 → master 전진을 **순서대로 강제**한다.
+  ⛔손으로 머지하지 말 것: 스크립트가 막는 넷은 전부 실제로 밟은 사고다(지운 워크트리에
+  `git -C` · 머지 전 삭제 · 머지 뒤 미검증 · 뒤처진 master). 규칙과 이유는 그 파일 머리에.
+  ⚠️**법 충돌은 스크립트가 못 푼다** — 판정은 「동급이면 먼저 착지한 이름, 아니면 중복을
+  더 없애는 쪽」이고 진 쪽의 고유 기여는 살아남은 쪽에 얹는다.
+  ⚠️**Flutter 명령은 한 대에서 한 번에 하나.** 열 개를 동시에 돌려 프로세스가 고갈된 적 있다.
+- 계정이 풀리면 `bash tool/merge_check.sh <PR번호>` 가 **exit 0** 일 때만 머지한다.
 
 ## UI 컨벤션
 
