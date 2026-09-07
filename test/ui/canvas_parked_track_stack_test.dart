@@ -288,12 +288,12 @@ void main() {
 
     // Space mid-drag: playback engages; the release path has no editing
     // seek to commit and must abandon the preview instead.
-    s.playback.play(scope: PlaybackScope.allCuts);
+    s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     commitStoryboardScrub(s);
     expect(s.frameScrubActive.value, isFalse);
     expect(s.scrubOutOfTerritory.value, isFalse);
 
-    s.playback.stop();
+    s.playbackRig.playback.stop();
     // The NEXT drag's exit edge fires cleanly.
     s.selectCut(first);
     s.scrubGlobalFrame(1);

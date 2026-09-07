@@ -103,13 +103,13 @@ void main() {
     // Debounce trailing edge, then the run itself.
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
-    await session.prerenderScheduler.idle;
+    await session.playbackRig.prerenderScheduler.idle;
 
     expect(
       session.cutFrameCompositeCache.validCompositeOrNull(
         cut: first,
         frameIndex: 0,
-        quality: session.playbackQuality,
+        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
       reason: 'the active cut warms first, as before',
@@ -118,7 +118,7 @@ void main() {
       session.cutFrameCompositeCache.validCompositeOrNull(
         cut: second,
         frameIndex: 0,
-        quality: session.playbackQuality,
+        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
       reason: '#31: the next cut in storyboard order warms behind the '

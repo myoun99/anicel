@@ -303,7 +303,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   final ValueNotifier<CanvasViewport?> _playbackViewport = ValueNotifier(null);
 
   void _syncPlaybackFitCut() {
-    final playback = widget.session.playback;
+    final playback = widget.session.playbackRig.playback;
     final global = playback.isActive
         ? playback.globalFrameIndexListenable.value
         : null;
@@ -349,7 +349,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// 유저 확정 08-18 (R6q2): camera view OFF never fits — the user's framing
   /// is the framing.
   Rect? _playbackFramingRect() {
-    if (!widget.cameraViewEnabled.value || !widget.session.playback.isActive) {
+    if (!widget.cameraViewEnabled.value || !widget.session.playbackRig.playback.isActive) {
       return null;
     }
     final frame = widget.session.cameraFrameSize;
@@ -359,14 +359,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   @override
   void initState() {
     super.initState();
-    final playback = widget.session.playback;
+    final playback = widget.session.playbackRig.playback;
     playback.globalFrameIndexListenable.addListener(_syncPlaybackFitCut);
     playback.isActiveListenable.addListener(_syncPlaybackFitCut);
   }
 
   @override
   void dispose() {
-    final playback = widget.session.playback;
+    final playback = widget.session.playbackRig.playback;
     playback.globalFrameIndexListenable.removeListener(_syncPlaybackFitCut);
     playback.isActiveListenable.removeListener(_syncPlaybackFitCut);
     _playbackFitCut.dispose();
@@ -416,7 +416,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // subscribing this subtree to every playback tick rebuilt the whole
         // panel at fps and caused real frame drops.
         return ValueListenableBuilder<bool>(
-          valueListenable: session.playback.isActiveListenable,
+          valueListenable: session.playbackRig.playback.isActiveListenable,
           builder: (context, _, _) {
             // #26: a scrub no longer swaps the content — but the flag still
             // decides WHAT THE GAP ANSWER IS: a parked global only reads as
@@ -484,7 +484,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       globalFrame: globalFrame ?? session.gapParkingListenable,
       positionsOf: session.trackStackContributionsAt,
       compositeCache: session.cutFrameCompositeCache,
-      qualityOf: () => session.playbackQuality,
+      qualityOf: () => session.playbackRig.playbackQuality,
       cameraFrameSize: session.cameraFrameSize,
       cameraViewEnabled: cameraView,
       cameraPoseOf: session.cameraPoseForCut,
@@ -492,7 +492,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       cutFxEnabledOf: session.isCutFxEnabled,
       trackStaticOpacityOf: session.trackStaticOpacityForCut,
       cutPictureVisibleOf: session.isCutPictureVisible,
-      onFrameCached: session.enforcePlaybackCacheBudget,
+      onFrameCached: session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
       viewport: viewport,
       background: session.projectBackground,
       backdropArgb: project.backdropArgb,
@@ -585,11 +585,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       fit: StackFit.expand,
       children: [
         CanvasPlaybackView(
-          controller: session.playback,
+          controller: session.playbackRig.playback,
           compositeCache: session.cutFrameCompositeCache,
-          qualityOf: () => session.playbackQuality,
+          qualityOf: () => session.playbackRig.playbackQuality,
           prerenderProgress:
-              session.prerenderScheduler.progress,
+              session.playbackRig.prerenderScheduler.progress,
           cameraViewEnabled: widget.cameraViewEnabled.value,
           cameraFrameSize: session.cameraFrameSize,
           cameraPoseOf: session.cameraPoseForCut,
@@ -612,12 +612,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // void. Single-cut playback keeps its
           // single-cut frame (the editing context).
           trackStack:
-              session.playback.scope == PlaybackScope.allCuts
+              session.playbackRig.playback.scope == PlaybackScope.allCuts
               ? _buildTrackStackView(
                   session,
                   viewport,
                   globalFrame: session
-                      .playback
+                      .playbackRig.playback
                       .globalFrameIndexListenable,
                   // Playback is the one place the crop
                   // belongs, and there it answers the toggle.

@@ -172,7 +172,7 @@ void main() {
     // is not the point.
     final opened = before.zoom;
 
-    session.playback.play(scope: PlaybackScope.allCuts);
+    session.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
     await tester.pump();
     expect(
@@ -192,7 +192,7 @@ void main() {
       reason: 'no fit at the crossing either — the framing is the user\'s',
     );
 
-    session.playback.stop();
+    session.playbackRig.playback.stop();
     await tester.pump();
     expect(paintedViewport(tester).panX, 40, reason: 'and none on stop');
     await drainWarming(tester);
@@ -209,7 +209,7 @@ void main() {
     await tester.pump();
     expect(paintedViewport(tester).zoom, 2.0, reason: 'presence first');
 
-    session.playback.play(scope: PlaybackScope.allCuts);
+    session.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     // ⚠️ONE pump. This is the whole point of the pin: the old shape read
     // the request in `didUpdateWidget`, deferred the reframe to a
     // post-frame callback and reframed with a `setState`, so the first
@@ -223,7 +223,7 @@ void main() {
     );
     // ⚠️Stop first: `pumpAndSettle` inside the drain cannot settle while the
     // playback ticker keeps scheduling frames.
-    session.playback.stop();
+    session.playbackRig.playback.stop();
     await tester.pump();
     await drainWarming(tester);
   });
@@ -247,7 +247,7 @@ void main() {
     document.addListener(count);
     addTearDown(() => document.removeListener(count));
 
-    session.playback.play(scope: PlaybackScope.allCuts);
+    session.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
     await tester.pump();
     final fitStart = paintedViewport(tester);
@@ -270,7 +270,7 @@ void main() {
       reason: '컷마다 fit — the crossing refits the same camera frame',
     );
 
-    session.playback.stop();
+    session.playbackRig.playback.stop();
     await tester.pump();
     final restored = paintedViewport(tester);
     expect(restored.zoom, 2.0, reason: '정지 시 유저의 프레이밍 (유저 확정 08-18)');
@@ -296,7 +296,7 @@ void main() {
     await tester.pump();
     final document = storedView(tester);
 
-    session.playback.play(scope: PlaybackScope.allCuts);
+    session.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
     await tester.pump();
     final fitStart = paintedViewport(tester);
@@ -315,7 +315,7 @@ void main() {
     );
     expect(document.value, asStored(prePlay, ratio), reason: 'and none of it reached the doc');
 
-    session.playback.stop();
+    session.playbackRig.playback.stop();
     await tester.pump();
     expect(paintedViewport(tester).zoom, 2.0);
     expect(paintedViewport(tester).panX, 123);

@@ -70,7 +70,7 @@ int? storyboardPlayheadFrame(
   EditorSessionManager session, {
   List<StoryboardTimelineLayoutEntry>? layout,
 }) {
-  final playback = session.playback;
+  final playback = session.playbackRig.playback;
   // All-cuts playback speaks TRACK-GLOBAL frames directly — including the
   // GAP frames between cuts, where there is no cut position to map
   // through (R10-⑤: the ruler must keep moving through gaps).
@@ -81,8 +81,8 @@ int? storyboardPlayheadFrame(
     }
   }
   layout ??= storyboardActiveTrackLayout(session);
-  final playbackPosition = session.playback.isActive
-      ? session.playback.position
+  final playbackPosition = session.playbackRig.playback.isActive
+      ? session.playbackRig.playback.position
       : null;
   if (playbackPosition == null) {
     // Editing playhead: a GAP PARKING reads its exact stored global
@@ -130,7 +130,7 @@ bool storyboardFrameReady(
 }) {
   for (final entry in layout ?? storyboardActiveTrackLayout(session)) {
     if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
-      return session.isPlaybackFrameReadyForCut(
+      return session.playbackRig.playbackCache.isPlaybackFrameReadyForCut(
         entry.cut,
         globalFrame - entry.startFrame,
       );
@@ -143,7 +143,7 @@ bool storyboardFrameReady(
 /// own global-axis seek ([EditorSessionManager.selectGlobalFrame]) — the
 /// storyboard adds nothing of its own (R15-①: one model, both panels).
 void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
-  final playback = session.playback;
+  final playback = session.playbackRig.playback;
   if (playback.isActive) {
     if (playback.scope == PlaybackScope.allCuts) {
       playback.seekToGlobalFrame(globalFrame);
@@ -178,7 +178,7 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
 /// else (gaps and other cuts' frames alike). Nothing commits per move;
 /// the release lands the one full seek.
 void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
-  if (session.playback.isActive) {
+  if (session.playbackRig.playback.isActive) {
     seekStoryboardGlobalFrame(session, globalFrame);
     return;
   }
@@ -188,7 +188,7 @@ void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
 /// The storyboard ruler drag's release: commits the scrubbed playhead once
 /// (playback drags have nothing to commit).
 void commitStoryboardScrub(EditorSessionManager session) {
-  if (!session.playback.isActive) {
+  if (!session.playbackRig.playback.isActive) {
     session.commitFrameScrub();
     return;
   }
@@ -207,7 +207,7 @@ void commitStoryboardScrub(EditorSessionManager session) {
 /// track's last cut keeps its endless runway — so the frame counter and
 /// the playhead line agree. Gap parkings (no active cut) need no clamp.
 void clampPlayheadForStoryboard(EditorSessionManager session) {
-  if (session.playback.isActive) {
+  if (session.playbackRig.playback.isActive) {
     return;
   }
   final cutId = session.activeCutId;

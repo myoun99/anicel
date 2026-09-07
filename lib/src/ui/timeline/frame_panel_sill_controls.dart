@@ -56,11 +56,12 @@ class FramePanelSillControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         PlaybackTransportControls(
-          controller: session.playback,
+          controller: session.playbackRig.playback,
           scope: scope,
           playbackStartFrame: playbackStartFrame,
           onSkipToStart: onSkipToStart,
-          resolveMeterPeaks: () => session.audioDeviceTransport.meterPeaks,
+          resolveMeterPeaks: () =>
+              session.playbackRig.audioDeviceTransport.meterPeaks,
           isVoiceRecording: session.isVoiceRecording,
           onToggleVoiceRecording: () =>
               toggleVoiceRecordingWithFeedback(context, session),

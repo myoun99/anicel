@@ -57,7 +57,7 @@ void main() {
     expect(block.startIndex, 0);
     expect(block.length, 1);
 
-    manager.playback.seekToGlobalFrame(3);
+    manager.playbackRig.playback.seekToGlobalFrame(3);
     final grown = manager.voiceRecordPreviewLane.value!;
     block = drawingBlocks(grown.timeline).single;
     expect(block.length, 4);
@@ -93,7 +93,9 @@ void main() {
       chunk[index] = index < 1200 ? 0.5 : -0.75;
     }
     manager.debugIngestVoiceRecordChunk(chunk, 1);
-    manager.playback.seekToGlobalFrame(1); // A boundary publishes peaks.
+    manager.playbackRig.playback.seekToGlobalFrame(
+      1,
+    ); // A boundary publishes peaks.
 
     final peaks = manager.audioPeaksForDisplay(
       EditorSessionManager.voiceRecordPreviewPath,

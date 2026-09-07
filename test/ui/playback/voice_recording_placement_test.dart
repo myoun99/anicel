@@ -266,15 +266,15 @@ void main() {
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     // Record = play + capture: the transport rolls the whole track.
-    expect(manager.playback.isPlaying, isTrue);
-    expect(manager.playback.scope, PlaybackScope.allCuts);
+    expect(manager.playbackRig.playback.isPlaying, isTrue);
+    expect(manager.playbackRig.playback.scope, PlaybackScope.allCuts);
     // The armed lane yields to the microphone (DAW armed-track rule).
     expect(manager.recordingMutedLayerIds, {laneId});
 
     final message = await manager.stopVoiceRecordingAndPlace();
     expect(message, isNull);
     expect(
-      manager.playback.isActive,
+      manager.playbackRig.playback.isActive,
       isFalse,
       reason: 'the roll this take started stops with it',
     );
@@ -293,7 +293,7 @@ void main() {
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
 
-    manager.playback.stop();
+    manager.playbackRig.playback.stop();
     // ⚠️The take lands a beat later now: `_onPlaybackStopped` awaits the
     // isolate that secures the take's bytes before the command that places
     // it runs, so the clip is not there the instant `stop()` returns. That

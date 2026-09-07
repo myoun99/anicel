@@ -175,23 +175,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   );
 
   late final Listenable _frameReadySignal = Listenable.merge([
-    _session.prerenderScheduler.progress,
+    _session.playbackRig.prerenderScheduler.progress,
     _session.brushFrameStore.celPixelRevision,
   ]);
 
   void _syncFrameCursor() {
     final playbackGlobalFrame =
-        _session.playback.globalFrameIndexListenable.value;
+        _session.playbackRig.playback.globalFrameIndexListenable.value;
     _frameCursor.value = playbackGlobalFrame == null
         ? _session.currentFrameIndex
-        : _session.playback.position?.localFrameIndex ??
+        : _session.playbackRig.playback.position?.localFrameIndex ??
               _session.currentFrameIndex;
   }
 
   @override
   void initState() {
     super.initState();
-    _session.playback.globalFrameIndexListenable.addListener(_syncFrameCursor);
+    _session.playbackRig.playback.globalFrameIndexListenable.addListener(
+      _syncFrameCursor,
+    );
     // Scrub moves fire the editing cursor WITHOUT a session notify — this
     // listener is what keeps the playhead glued to the pointer.
     _session.editingFrameCursor.addListener(_syncFrameCursor);
@@ -200,7 +202,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   @override
   void dispose() {
-    _session.playback.globalFrameIndexListenable.removeListener(
+    _session.playbackRig.playback.globalFrameIndexListenable.removeListener(
       _syncFrameCursor,
     );
     _session.editingFrameCursor.removeListener(_syncFrameCursor);
@@ -680,7 +682,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             frameCursor: _frameCursor,
             frameReadySignal: _frameReadySignal,
             revealSelectionTick: _session.revealSelectionTick,
-            isFrameReady: _session.isPlaybackFrameReady,
+            isFrameReady:
+                _session.playbackRig.playbackCache.isPlaybackFrameReady,
             playbackFrameCount: _session.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and
             // the word the ruler spells across that. Same derivation the
@@ -706,8 +709,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Ruler scrubs during playback SEEK the playback clock instead of
             // moving the (hidden) editing playhead.
             onSelectFrame: (frameIndex) {
-              if (_session.playback.isActive) {
-                _session.playback.seekToLocalFrame(frameIndex);
+              if (_session.playbackRig.playback.isActive) {
+                _session.playbackRig.playback.seekToLocalFrame(frameIndex);
               } else {
                 _session.selectFrameIndex(frameIndex);
               }
@@ -722,14 +725,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the playhead and the canvas preview follow, nothing rebuilds);
             // the release commits the selection as ONE ordinary seek.
             onScrubFrame: (frameIndex) {
-              if (_session.playback.isActive) {
-                _session.playback.seekToLocalFrame(frameIndex);
+              if (_session.playbackRig.playback.isActive) {
+                _session.playbackRig.playback.seekToLocalFrame(frameIndex);
               } else {
                 _session.scrubFrameIndex(frameIndex);
               }
             },
             onScrubEnd: () {
-              if (!_session.playback.isActive) {
+              if (!_session.playbackRig.playback.isActive) {
                 _session.commitFrameScrub();
               }
             },

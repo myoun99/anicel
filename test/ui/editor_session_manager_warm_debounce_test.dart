@@ -103,13 +103,13 @@ void main() {
     await session.cutFrameCompositeCache.prepareComposite(
       cut: activeCut,
       frameIndex: 0,
-      quality: session.playbackQuality,
+      quality: session.playbackRig.playbackQuality,
     );
     expect(
       session.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
-        quality: session.playbackQuality,
+        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
     );
@@ -120,15 +120,15 @@ void main() {
 
     var restarts = 0;
     void countRestarts() {
-      final value = session.prerenderScheduler.progress.value;
+      final value = session.playbackRig.prerenderScheduler.progress.value;
       if (value.cached == 0 && value.total > 0) {
         restarts += 1;
       }
     }
 
-    session.prerenderScheduler.progress.addListener(countRestarts);
+    session.playbackRig.prerenderScheduler.progress.addListener(countRestarts);
     addTearDown(
-      () => session.prerenderScheduler.progress.removeListener(countRestarts),
+      () => session.playbackRig.prerenderScheduler.progress.removeListener(countRestarts),
     );
 
     // The burst: five dab commits' worth of invalidations, synchronously.
@@ -142,7 +142,7 @@ void main() {
       session.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
-        quality: session.playbackQuality,
+        quality: session.playbackRig.playbackQuality,
       ),
       isNull,
       reason: 'only the RESTART is deferred — a stale composite must be '

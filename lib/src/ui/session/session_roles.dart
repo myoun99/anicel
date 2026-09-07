@@ -38,13 +38,9 @@ import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_window.dart';
 import '../../services/brush_frame_store.dart';
-import '../../models/playback_quality.dart';
 import '../../services/playback/editor_cache_invalidation_hub.dart';
-import '../playback/audio_scrubber.dart';
-import '../playback/canvas_playback_controller.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/layer_frame_image_cache.dart';
-import '../playback/playback_prerender_scheduler.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/drawing_block_move.dart';
 import '../../services/command.dart';
@@ -189,7 +185,6 @@ abstract interface class SessionInternals {
     TrackFrameAxis axis,
   );
   AttachFxConfirmController get attachFxConfirm;
-  AudioScrubber get audioScrubber;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   BrushFrameStore get brushFrameStore;
   EditorCacheInvalidationHub get cacheInvalidationHub;
@@ -225,9 +220,6 @@ abstract interface class SessionInternals {
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   CanvasSelectionRegion? Function()? get pixelSelectionRegion;
   PixelVerbSubject get pixelVerbSubject;
-  CanvasPlaybackController get playback;
-  PlaybackQuality get playbackQuality;
-  PlaybackPrerenderScheduler get prerenderScheduler;
   void renameLayer(LayerId layerId, String name);
   List<LayerId> renameableSelectedLayerIds();
   bool resetLaneGroup(LayerId layerId, String headerLaneId);

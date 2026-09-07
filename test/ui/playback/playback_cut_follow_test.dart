@@ -25,7 +25,7 @@ void main() {
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    s.playback.play(scope: PlaybackScope.allCuts);
+    s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     expect(s.activeCutId, first);
     notifies = 0;
 
@@ -33,20 +33,20 @@ void main() {
     // playhead lands on the playing local frame. NO session notify: a
     // boundary tick must not rebuild the visible panels mid-playback
     // (R12-B — that stutter was the cut-transition lag).
-    s.playback.seekToGlobalFrame(firstDuration + 2);
+    s.playbackRig.playback.seekToGlobalFrame(firstDuration + 2);
     expect(s.activeCutId, second);
     expect(s.currentFrameIndex, 2);
     expect(notifies, 0, reason: 'the mid-playback follow is quiet');
 
     // Backward across the boundary follows too (loop wrap, ruler seeks).
-    s.playback.seekToGlobalFrame(0);
+    s.playbackRig.playback.seekToGlobalFrame(0);
     expect(s.activeCutId, first);
     expect(notifies, 0);
 
     // Stopping stays on the cut playback reached (Premiere behavior) and
     // fires the ONE notify that catches every activeCut consumer up.
-    s.playback.seekToGlobalFrame(firstDuration + 3);
-    s.playback.stop();
+    s.playbackRig.playback.seekToGlobalFrame(firstDuration + 3);
+    s.playbackRig.playback.stop();
     expect(s.activeCutId, second);
     expect(s.currentFrameIndex, 3);
     expect(notifies, greaterThan(0), reason: 'stop catches the UI up');
@@ -65,11 +65,11 @@ void main() {
     final (s, first, _) = twoCutSession();
     addTearDown(s.dispose);
 
-    s.playback.play(scope: PlaybackScope.activeCut);
-    s.playback.seekToGlobalFrame(2);
+    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+    s.playbackRig.playback.seekToGlobalFrame(2);
     expect(s.activeCutId, first);
 
-    s.playback.stop();
+    s.playbackRig.playback.stop();
     expect(s.activeCutId, first);
     expect(s.currentFrameIndex, 2);
 

@@ -630,6 +630,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                       session.editingFrameCursor,
                                       session.frameSeekCommitted,
                                       session
+                                          .playbackRig
                                           .playback
                                           .globalFrameIndexListenable,
                                     ]),
@@ -696,10 +697,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 /// The current sheet playhead frame: the playing local frame during
 /// playback, the editing playhead otherwise.
 int _resolvePlayheadFrame(EditorSessionManager session) {
-  final playbackGlobalFrame = session.playback.globalFrameIndexListenable.value;
+  final playbackGlobalFrame =
+      session.playbackRig.playback.globalFrameIndexListenable.value;
   return playbackGlobalFrame == null
       ? session.currentFrameIndex
-      : session.playback.position?.localFrameIndex ?? session.currentFrameIndex;
+      : session.playbackRig.playback.position?.localFrameIndex ??
+            session.currentFrameIndex;
 }
 
 /// Token-gated host for the sheet panel's PLAYHEAD-derived facts (R13-2):
@@ -744,7 +747,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
   Object _deriveToken() {
     final session = widget.session;
     final playbackGlobalFrame =
-        session.playback.globalFrameIndexListenable.value;
+        session.playbackRig.playback.globalFrameIndexListenable.value;
     final playheadFrame = _resolvePlayheadFrame(session);
     final page = widget.pageFrameCount <= 0
         ? 0
@@ -775,7 +778,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
     final session = widget.session;
     session.editingFrameCursor.addListener(_handlePlayheadSignal);
     session.frameSeekCommitted.addListener(_handlePlayheadSignal);
-    session.playback.globalFrameIndexListenable.addListener(
+    session.playbackRig.playback.globalFrameIndexListenable.addListener(
       _handlePlayheadSignal,
     );
   }
@@ -785,7 +788,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
     final session = widget.session;
     session.editingFrameCursor.removeListener(_handlePlayheadSignal);
     session.frameSeekCommitted.removeListener(_handlePlayheadSignal);
-    session.playback.globalFrameIndexListenable.removeListener(
+    session.playbackRig.playback.globalFrameIndexListenable.removeListener(
       _handlePlayheadSignal,
     );
     super.dispose();
@@ -797,7 +800,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
     return widget.builder(
       context,
       _resolvePlayheadFrame(session),
-      session.playback.globalFrameIndexListenable.value,
+      session.playbackRig.playback.globalFrameIndexListenable.value,
     );
   }
 }

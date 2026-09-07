@@ -112,7 +112,6 @@ import '../services/bitmap_surface_geometry.dart'
 import '../services/brush_frame_store.dart';
 import '../services/commands/convert_to_linked_cut_plan.dart';
 import '../models/brush_frame_cache_invalidation.dart';
-import '../models/playback_quality.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../services/se_name_tag_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
@@ -120,15 +119,10 @@ import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
-import 'playback/audio_device_transport.dart';
-import 'playback/audio_playback_sync.dart';
-import 'playback/audio_scrubber.dart';
 import 'playback/audio_sync_settings.dart';
-import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
-import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
@@ -146,7 +140,6 @@ import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
-import '../native/qa_audio_device.dart' show QaAudioDevice;
 import '../native/qa_native_engine.dart' show QaNativeEngine;
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
@@ -184,6 +177,7 @@ import 'session/project_import_doors.dart';
 import 'session/cut_folder_import_door.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
+import 'session/playback_rig.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -206,7 +200,6 @@ import 'session/storyboard_cursor.dart';
 import 'session/storyboard_rows.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
-import 'session/playback_cache_budget.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/range_selections.dart';
@@ -272,11 +265,10 @@ class EditorSessionManager extends ChangeNotifier
     );
     rebuildActiveCutControllers();
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
-    // Transport FIRST: listener order is its contract with the fallback —
-    // carryingPlayback must be decided before the sync consults it.
-    audioDeviceTransport.attach();
-    audioPlaybackSync.attach();
-    playback.globalFrameIndexListenable.addListener(followPlaybackCut);
+    playbackRig.attach();
+    playbackRig.playback.globalFrameIndexListenable.addListener(
+      followPlaybackCut,
+    );
     // The lane span's cut-window view follows the span itself; the other
     // half of its input (which cut is open) republishes on cut switch.
     laneRangeSelection.addListener(_publishCutLocalLaneRange);
@@ -430,7 +422,7 @@ class EditorSessionManager extends ChangeNotifier
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();
-    playbackCache.respondToMemoryPressure();
+    playbackRig.playbackCache.respondToMemoryPressure();
     memoryPressureTicks.value += 1;
   }
 
@@ -510,137 +502,29 @@ class EditorSessionManager extends ChangeNotifier
         frameKeyOf: brushFrameKeyForCut,
       );
 
-  // ── the playback cache budget: its own object ───────────────────────
+  // ── playback's own machinery: its own object ────────────────────────
   //
-  // A collaborator (session/playback_cache_budget.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final PlaybackCacheBudget playbackCache = PlaybackCacheBudget(project: this, internals: this);
-
-  int get playbackCacheByteBudget => playbackCache.playbackCacheByteBudget;
-  void enforcePlaybackCacheBudget() =>
-      playbackCache.enforcePlaybackCacheBudget();
-  bool isPlaybackFrameReady(int frameIndex) =>
-      playbackCache.isPlaybackFrameReady(frameIndex);
-  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) =>
-      playbackCache.isPlaybackFrameReadyForCut(cut, frameIndex);
-
-  @override
-  late final PlaybackPrerenderScheduler prerenderScheduler =
-      PlaybackPrerenderScheduler(
-        composites: cutFrameCompositeCache,
-        resolveCut: cutById,
-        // Widget tests: zero idle delay, like before R13-3 — the
-        // quiet-window polls otherwise leave a pending gate timer at
-        // teardown (the session's tearDown dispose runs AFTER the
-        // binding's timer invariant). The debounce/hold semantics have
-        // their own scheduler unit tests with injected delays.
-        //
-        // Production: 1200ms (R13-4) — during an active work session the
-        // warmer resumes only in REAL pauses; per-tile abort granularity
-        // covers whatever still collides at the resume boundary.
-        idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
-            ? Duration.zero
-            : const Duration(milliseconds: 1200),
-        afterFrameCached: enforcePlaybackCacheBudget,
-      );
-
-  /// Playback preview quality (Premiere/AE monitor resolution analogue).
-  @override
-  PlaybackQuality playbackQuality = defaultPlaybackQuality;
-
-  void setPlaybackQuality(PlaybackQuality quality) {
-    if (playbackQuality == quality) {
-      return;
-    }
-    playbackQuality = quality;
-    warmActiveCut();
-    notifyListeners();
-  }
-
-  /// Canvas playback state machine; only the playback view and transport
-  /// controls listen (the session playhead syncs once on stop).
-  @override
-  late final CanvasPlaybackController playback = CanvasPlaybackController(
-    resolveProject: repository.requireProject,
-    resolveActiveCutId: () => editingSession.activeCutId,
-    resolveActiveTrackId: () => selectedTrackId,
-    resolveFrameRate: () => projectFrameRate,
+  // A collaborator (session/playback_rig.dart): the transport, its three
+  // audio paths, the prerender warmer and the cache budget it feeds.
+  //
+  // ⛔The session keeps the REACTIONS below — where the playhead lands
+  // when a run stops, which cut goes active while it crosses one, what a
+  // rolling take does about it. They touch the selection, the standing
+  // row and the voice recorder, and a rig that reached back out for those
+  // could not be built: `Standing` and `RangeSelections` reach IN here
+  // for the warmer.
+  late final PlaybackRig playbackRig = PlaybackRig(
+    project: this,
+    selection: this,
+    changes: this,
+    timeline: this,
+    internals: this,
+    settings: _projectSettings,
+    voiceRecording: _voiceRecording,
+    audioConformStore: audioConformStore,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
-  );
-
-  /// The native device transport (audio program wiring): when it carries a
-  /// run, playback rides the audio master clock — the picture follows the
-  /// samples handed to the device, and cumulative drift is structurally
-  /// zero. Stands down per run (no binary/device, PCM not resident) onto
-  /// [audioPlaybackSync].
-  late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
-    controller: playback,
-    resolveFrameRate: () => projectFrameRate,
-    resolveProject: () => repository.currentProject,
-    conformStore: audioConformStore,
-    // Widget tests must never open a real OS audio device.
-    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
-        ? () => null
-        : null,
-    resolveUserOffsetSamples: (sampleRate) =>
-        audioSyncSettings.value.offsetSamples(
-          sampleRate: sampleRate,
-          frameRateNumerator: projectFrameRate.numerator,
-          frameRateDenominator: projectFrameRate.denominator,
-        ),
-    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
-    resolveCueClips: () => voiceRecordCueClips,
-    resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
-  );
-
-  /// The output/input device lists for the Preferences pickers (AUDIO-PRO
-  /// R4); empty without a native binary (widget tests, engine-less runs).
-  List<({String name, bool isDefault})> audioDevicesOf({
-    required bool capture,
-  }) {
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return const [];
-    }
-    return QaAudioDevice.instance?.devicesOf(capture: capture) ?? const [];
-  }
-
-  /// Scrubbing the playhead plays each crossed frame's slice of the mix
-  /// (2D): one `play(frame, frame+1)` per crossed frame on the same
-  /// transport playback uses. Stands down silently without a device or
-  /// resident PCM — the scrub stays visual-only, as before.
-  @override
-  late final AudioScrubber audioScrubber = AudioScrubber(
-    controller: playback,
-    resolveFrameRate: () => projectFrameRate,
-    resolveProject: () => repository.currentProject,
-    conformStore: audioConformStore,
-    // Widget tests must never open a real OS audio device.
-    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
-        ? () => null
-        : null,
-    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
-    resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
-  );
-
-  /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
-  /// come from the conform store (exact sample counts, with the ffmpeg
-  /// peaks approximation as its own fallback). Fallback path — stands down
-  /// for runs the device transport carries.
-  late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
-    controller: playback,
-    resolveFrameRate: () => projectFrameRate,
-    durationSecondsFor: audioConformStore.durationSecondsFor,
-    playerFactory: AudioplayersClipPlayer.new,
-    // Track-owned SE rows schedule from the tracks' global axes.
-    resolveProject: () => repository.currentProject,
-    deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
-    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
-    resolveCueClips: () => voiceRecordCueClips,
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -689,10 +573,10 @@ class EditorSessionManager extends ChangeNotifier
   /// consumers catch up on the stop notify.
   @override
   void followPlaybackCut() {
-    if (playback.globalFrameIndexListenable.value == null) {
+    if (playbackRig.playback.globalFrameIndexListenable.value == null) {
       return;
     }
-    final position = playback.position;
+    final position = playbackRig.playback.position;
     if (position == null || position.cutId == editingSession.activeCutId) {
       return;
     }
@@ -718,9 +602,9 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final start = startGlobalFrame.clamp(0, frames.length - 1);
-    prerenderScheduler.requestWarmFrames(
+    playbackRig.prerenderScheduler.requestWarmFrames(
       frames: [...frames.sublist(start), ...frames.sublist(0, start)],
-      quality: playbackQuality,
+      quality: playbackRig.playbackQuality,
     );
   }
 
@@ -862,7 +746,7 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, clipboard: _clipboard, rowSelectionVerbs: _rowSelection, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this);
+  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, clipboard: _clipboard, rowSelectionVerbs: _rowSelection, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => _standing.selectCut(cutId);
   @override
@@ -1000,7 +884,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/range_selections.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final RangeSelections _rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, internals: this);
+  late final RangeSelections _rangeSelections = RangeSelections(project: this, selection: this, changes: this, timeline: this, storyboardRows: _storyboardRows, trackSe: _trackSe, internals: this, playbackRig: playbackRig);
 
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
@@ -1458,7 +1342,7 @@ class EditorSessionManager extends ChangeNotifier
       frameId: invalidation.frameKey.frameId,
     );
     // Warming yields to the edit and then re-renders the dirty frames.
-    prerenderScheduler.notifyEditActivity();
+    playbackRig.prerenderScheduler.notifyEditActivity();
     _warmDebounce?.cancel();
     _warmDebounce = Timer(_warmDebounceWindow, () {
       _warmDebounce = null;
@@ -1481,9 +1365,9 @@ class EditorSessionManager extends ChangeNotifier
     if (cut == null) {
       return;
     }
-    prerenderScheduler.requestWarmCut(
+    playbackRig.prerenderScheduler.requestWarmCut(
       cutId: cut.id,
-      quality: playbackQuality,
+      quality: playbackRig.playbackQuality,
       aroundFrameIndex: timelineController.currentFrameIndex,
       followedByCutId: _storyboardRows.nextCutIdInStoryboardOrder(cut.id),
     );
@@ -1508,16 +1392,14 @@ class EditorSessionManager extends ChangeNotifier
     memoryPressureTicks.dispose();
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
-    playback.globalFrameIndexListenable.removeListener(followPlaybackCut);
+    playbackRig.playback.globalFrameIndexListenable.removeListener(
+      followPlaybackCut,
+    );
     historyManager.removeListener(projectFile.markDirty);
     historyManager.removeListener(refreshLiveAudioSchedule);
     historyManager.removeListener(_textCelBakes.scheduleTextCelBakeSweep);
     _voiceRecording.dispose();
-    audioPlaybackSync.dispose();
-    audioScrubber.dispose();
-    audioDeviceTransport.dispose();
-    playback.dispose();
-    prerenderScheduler.dispose();
+    playbackRig.dispose();
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioConformStore.dispose();
@@ -2927,8 +2809,8 @@ class EditorSessionManager extends ChangeNotifier
   /// which bypass history).
   @override
   void refreshLiveAudioSchedule() {
-    if (audioDeviceTransport.carryingPlayback) {
-      audioDeviceTransport.refreshSchedule();
+    if (playbackRig.audioDeviceTransport.carryingPlayback) {
+      playbackRig.audioDeviceTransport.refreshSchedule();
     }
   }
 
@@ -3761,7 +3643,7 @@ class EditorSessionManager extends ChangeNotifier
     // whole TVPaint project holds every cel it builds.
     MemoryBlackBox.begin('tvpp-import');
 
-    playback.stop();
+    playbackRig.playback.stop();
     // The .tvpp becomes the WHOLE project, so its shooting frame does
     // too — fitting a 960×430 layout camera into our 16:9 default framed
     // wider than TVPaint did (288, hands-on).
@@ -3998,8 +3880,8 @@ class EditorSessionManager extends ChangeNotifier
   // That is deliberate and harmless — every line of its `dispose` is a
   // null-guarded no-op on an object that never ran.
   late final EditorVoiceRecording _voiceRecording = EditorVoiceRecording(
-    playback: () => playback,
-    audioDeviceTransport: () => audioDeviceTransport,
+    playback: () => playbackRig.playback,
+    audioDeviceTransport: () => playbackRig.audioDeviceTransport,
     audioConformStore: () => audioConformStore,
     audioSyncSettings: () => audioSyncSettings,
     repository: () => repository,
@@ -6108,7 +5990,7 @@ class EditorSessionManager extends ChangeNotifier
       // A seek is activity (R13-3): rapid frame flipping keeps pushing the
       // warm window, so composite warming never lands a full-canvas build
       // in the middle of a flip run.
-      prerenderScheduler.notifyEditActivity();
+      playbackRig.prerenderScheduler.notifyEditActivity();
       warmActiveCut();
       frameSeekCommitted.value += 1;
     });
@@ -6130,9 +6012,9 @@ class EditorSessionManager extends ChangeNotifier
     }
     brushInputActive.value = active;
     if (active) {
-      prerenderScheduler.beginInputHold();
+      playbackRig.prerenderScheduler.beginInputHold();
     } else {
-      prerenderScheduler.endInputHold();
+      playbackRig.prerenderScheduler.endInputHold();
     }
   }
 
@@ -6407,7 +6289,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_scrub.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FrameScrub _frameScrub = FrameScrub(project: this, selection: this, changes: this, timeline: this, internals: this);
+  late final FrameScrub _frameScrub = FrameScrub(project: this, selection: this, changes: this, timeline: this, internals: this, playbackRig: playbackRig);
 
   void scrubGlobalFrame(int globalFrame) =>
       _frameScrub.scrubGlobalFrame(globalFrame);
@@ -6484,6 +6366,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     internals: this,
+    playbackRig: playbackRig,
     conteInkRowStore: conteInkRowStore,
     conteInkPageStore: conteInkPageStore,
     envelopeInkStore: envelopeInkStore,

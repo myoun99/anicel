@@ -3,6 +3,7 @@ import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
+import 'playback_rig.dart';
 import 'session_roles.dart';
 import 'visibility_solo.dart';
 import 'row_selection.dart';
@@ -33,6 +34,7 @@ class Standing {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required PlaybackRig playbackRig,
     required FrameClipboard clipboard,
     required RowSelection rowSelectionVerbs,
     required VisibilitySolo solo,
@@ -43,6 +45,7 @@ class Standing {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _playbackRig = playbackRig,
        _clipboard = clipboard,
        _rowSelectionVerbs = rowSelectionVerbs,
        _solo = solo,
@@ -56,6 +59,7 @@ class Standing {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final PlaybackRig _playbackRig;
   final FrameClipboard _clipboard;
   final RowSelection _rowSelectionVerbs;
   final VisibilitySolo _solo;
@@ -509,7 +513,7 @@ class Standing {
     // a click — but the V row's flip switches cuts once per press, so a
     // run of them queued a full-canvas warm per step and the run stuttered
     // on work it was about to invalidate anyway.
-    _internals.prerenderScheduler.notifyEditActivity();
+    _playbackRig.prerenderScheduler.notifyEditActivity();
     _changes.warmActiveCut();
     _changes.notifyChanged();
   }

@@ -40,7 +40,7 @@ class _InteractiveCanvasBuild {
     required bool isCameraLayerActive,
     required bool showCameraOverlay,
   }) {
-    _isPlaybackActive = session.playback.isActive;
+    _isPlaybackActive = session.playbackRig.playback.isActive;
     // 🚨★★★ #26 (2026-08-15): A RULER SCRUB IS NOT A SECOND DISPLAY MODE.
     // 「그냥 액티브레이어급으로 그냥 원본 보여주게하고싶어 … 그냥 항상 full」
     //

@@ -158,8 +158,8 @@ void main() {
     session.setProjectAudioSampleRate(
       session.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
-    session.setPlaybackQuality(
-      session.playbackQuality == PlaybackQuality.full
+    session.playbackRig.setPlaybackQuality(
+      session.playbackRig.playbackQuality == PlaybackQuality.full
           ? PlaybackQuality.half
           : PlaybackQuality.full,
     );

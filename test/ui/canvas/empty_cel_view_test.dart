@@ -92,7 +92,7 @@ void main() {
     // The walk really did cross: the last frame has no cel.
     expect(hasCel(tester), isFalse);
 
-    session.prerenderScheduler.cancel();
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on an empty frame the mounted view stands down — no cel '
@@ -157,7 +157,7 @@ void main() {
       reason: 'and paints no cel',
     );
 
-    session.prerenderScheduler.cancel();
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a paint press on an empty frame is still REFUSED, and lands '
@@ -224,7 +224,7 @@ void main() {
       reason: 'the empty frame took no ink — the view refused the pointer',
     );
 
-    session.prerenderScheduler.cancel();
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🚨I-10's SECOND HALF, and the report that reopened it (F-61, 유저:
@@ -287,7 +287,7 @@ void main() {
       reason: '「그대로 스트로크 그려지기시작」 — the half that was missing',
     );
 
-    session.prerenderScheduler.cancel();
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 「답은 추천대로」 = merged: one press on an empty cel is ONE undo, and
@@ -330,7 +330,7 @@ void main() {
       reason: '⛔ONE undo takes the ink AND the block it was drawn into',
     );
 
-    session.prerenderScheduler.cancel();
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // The main canvas runs MERGED (`paintsContent: false` — the composite

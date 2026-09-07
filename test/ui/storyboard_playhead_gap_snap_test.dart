@@ -236,14 +236,18 @@ void main() {
     addTearDown(s.dispose);
     s.selectCut(first);
 
-    s.playback.play(scope: PlaybackScope.allCuts);
+    s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     seekStoryboardGlobalFrame(s, aEnd + 1);
 
-    expect(s.playback.globalFrameIndexListenable.value, aEnd + 1);
-    expect(s.playback.position, isNull, reason: 'gap frames resolve to null');
+    expect(s.playbackRig.playback.globalFrameIndexListenable.value, aEnd + 1);
+    expect(
+      s.playbackRig.playback.position,
+      isNull,
+      reason: 'gap frames resolve to null',
+    );
     // The gap belongs to no cut — the editing selection stays put.
     expect(s.activeCutId, first);
-    s.playback.stop();
+    s.playbackRig.playback.stop();
     // Drain the prerender scheduler's zero-delay warming loop.
     await tester.pumpAndSettle();
   });
@@ -255,7 +259,7 @@ void main() {
     s.selectCut(first);
     s.selectFrameIndex(0);
 
-    s.playback.play(scope: PlaybackScope.allCuts);
+    s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     // Inside cut-a: the mapped position and the global agree.
     seekStoryboardGlobalFrame(s, 1);
     expect(storyboardPlayheadFrame(s), 1);
@@ -263,10 +267,10 @@ void main() {
     // IN the gap: the ruler playhead reads the playback clock's global
     // frame instead of freezing on the stale editing playhead.
     seekStoryboardGlobalFrame(s, aEnd + 2);
-    expect(s.playback.position, isNull);
+    expect(s.playbackRig.playback.position, isNull);
     expect(storyboardPlayheadFrame(s), aEnd + 2);
 
-    s.playback.stop();
+    s.playbackRig.playback.stop();
     await tester.pumpAndSettle();
   });
 }

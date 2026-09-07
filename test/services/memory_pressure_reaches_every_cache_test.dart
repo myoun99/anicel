@@ -67,7 +67,7 @@ void main() {
     addTearDown(session.dispose);
 
     expect(
-      session.playbackCacheByteBudget,
+      session.playbackRig.playbackCache.playbackCacheByteBudget,
       playbackCacheBudgetBytes,
       reason: 'fixture premise: the full budget before any warning',
     );
@@ -75,12 +75,12 @@ void main() {
     session.respondToMemoryPressure();
 
     expect(
-      session.playbackCacheByteBudget,
+      session.playbackRig.playbackCache.playbackCacheByteBudget,
       lessThan(playbackCacheBudgetBytes),
       reason: '⛔the largest cache in the app heard the warning',
     );
     expect(
-      session.playbackCacheByteBudget,
+      session.playbackRig.playbackCache.playbackCacheByteBudget,
       greaterThanOrEqualTo(playbackCacheBudgetUnderPressureBytes),
       reason: 'and stopped at the floor rather than at zero',
     );
@@ -99,7 +99,7 @@ void main() {
     }
 
     expect(
-      session.playbackCacheByteBudget,
+      session.playbackRig.playbackCache.playbackCacheByteBudget,
       playbackCacheBudgetUnderPressureBytes,
       reason:
           'a budget that kept halving would reach zero, and a scrub would '

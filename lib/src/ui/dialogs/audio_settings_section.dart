@@ -50,7 +50,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     required String? selected,
     required ValueChanged<String?> onChanged,
   }) {
-    final devices = widget.session.audioDevicesOf(capture: capture);
+    final devices = widget.session.playbackRig.audioDevicesOf(capture: capture);
     final names = {for (final device in devices) device.name};
     return Row(
       children: [
@@ -480,7 +480,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
             // One pasteable line — a real-device report should be evidence,
             // not an impression.
             SelectableText(
-              widget.session.audioDeviceTransport.report.summary,
+              widget.session.playbackRig.audioDeviceTransport.report.summary,
               key: const ValueKey<String>('settings-audio-report'),
               style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
             ),

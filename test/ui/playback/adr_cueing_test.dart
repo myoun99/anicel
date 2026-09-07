@@ -211,13 +211,13 @@ void main() {
     );
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(
-      manager.playback.isActive,
+      manager.playbackRig.playback.isActive,
       isFalse,
       reason: 'the transport waits out the count-in',
     );
     await tester.pump(const Duration(milliseconds: 2100));
     expect(
-      manager.playback.isPlaying,
+      manager.playbackRig.playback.isPlaying,
       isTrue,
       reason: 'the count-in elapsed: the roll begins',
     );
@@ -261,14 +261,14 @@ void main() {
       ),
     );
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    manager.playback.seekToGlobalFrame(5);
+    manager.playbackRig.playback.seekToGlobalFrame(5);
     await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('recording-streamer')),
       findsOneWidget,
       reason: 'frame 5 sits inside the 1..13 approach',
     );
-    manager.playback.seekToGlobalFrame(14);
+    manager.playbackRig.playback.seekToGlobalFrame(14);
     await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('recording-streamer')),

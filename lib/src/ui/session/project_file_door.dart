@@ -40,6 +40,7 @@ import 'layer_clipboard.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'project_file.dart';
+import 'playback_rig.dart';
 import 'session_roles.dart';
 import 'text_cel_bakes.dart';
 
@@ -53,6 +54,7 @@ class ProjectFileDoor {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required SessionInternals internals,
+    required PlaybackRig playbackRig,
     required BrushFrameStore conteInkRowStore,
     required BrushFrameStore conteInkPageStore,
     required BrushFrameStore envelopeInkStore,
@@ -72,6 +74,7 @@ class ProjectFileDoor {
        _changes = changes,
        _timeline = timeline,
        _internals = internals,
+       _playbackRig = playbackRig,
        _conteInkRowStore = conteInkRowStore,
        _conteInkPageStore = conteInkPageStore,
        _envelopeInkStore = envelopeInkStore,
@@ -92,6 +95,7 @@ class ProjectFileDoor {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final SessionInternals _internals;
+  final PlaybackRig _playbackRig;
   final BrushFrameStore _conteInkRowStore;
   final BrushFrameStore _conteInkPageStore;
   final BrushFrameStore _envelopeInkStore;
@@ -510,7 +514,7 @@ class ProjectFileDoor {
       filePath: filePath,
       overlayPath: overlayPath,
     );
-    _internals.playback.stop();
+    _playbackRig.playback.stop();
     // BEFORE the project lands: a bookmark tracks the file rather than the
     // path, so resolving one is how a referenced movie that was renamed or
     // moved is found again — and the project has to be told, or the pool

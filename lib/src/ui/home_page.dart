@@ -463,10 +463,10 @@ class _HomePageState extends State<HomePage> {
   /// key was going to do anyway, so being consumed and being obeyed look the
   /// same from the outside.
   bool _consumedByPlayback() {
-    if (!_session.playback.isPlaying) {
+    if (!_session.playbackRig.playback.isPlaying) {
       return false;
     }
-    _session.playback.stop();
+    _session.playbackRig.playback.stop();
     return true;
   }
 
@@ -689,7 +689,7 @@ class _HomePageState extends State<HomePage> {
   /// is already stopped by the time this key arrives, so here it only
   /// ever plays — the mutation campaign found the stop arm unreachable.
   void _togglePlayback() {
-    _session.playback.play(
+    _session.playbackRig.playback.play(
       scope: PlaybackScope.activeCut,
       startGlobalFrame: _session.currentFrameIndex,
     );
@@ -789,7 +789,7 @@ class _HomePageState extends State<HomePage> {
                   // ⛔Inside `Shortcuts` deliberately, so a key is eaten
                   // rather than followed; see the widget's own note.
                   child: PlaybackActuationGate(
-                    controller: _session.playback,
+                    controller: _session.playbackRig.playback,
                     navigationRegionKey: _canvasNavigationRegionKey,
                     // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
                     // action funnel as key bindings; the layer only observes raw
