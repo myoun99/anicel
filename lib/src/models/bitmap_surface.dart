@@ -27,10 +27,10 @@ class BitmapSurface {
   /// undo-weight answer needs, taken from the tile rather than re-derived.
   int get tileBytes => BitmapTile.bytesFor(tileSize);
 
-  /// Bytes THIS surface holds that [other] does not — what a snapshot of
-  /// it costs while [other] is live.
+  /// The tiles THIS surface holds that [other] does not — what a snapshot
+  /// of it is actually keeping alive while [other] is live.
   ///
-  /// 🚨THE ONE ANSWER TO "WHAT DOES AN UNDO ENTRY WEIGH". Tile maps are
+  /// 🚨THE ONE ANSWER TO "WHAT DOES AN UNDO ENTRY HOLD". Tile maps are
   /// immutable and share structurally: wherever an edit did not reach,
   /// both surfaces hold the SAME object, and the live one keeps it alive
   /// on its own. Five commands used to answer this five ways and three
@@ -45,19 +45,29 @@ class BitmapSurface {
   /// ⚠️A stroke that CREATES tiles owes nothing for them — [other] has
   /// them and this snapshot does not, and undoing restores their absence.
   /// Counting changed tiles instead over-reports exactly there.
-  int bytesNotSharedWith(BitmapSurface? other) {
+  ///
+  /// ⚠️THE SET, not a count, because the byte budget was never the only
+  /// question: spilling has to WRITE exactly these tiles and leave the
+  /// shared ones referenced. Two answers derived from one walk rather
+  /// than two walks that could disagree about what "shared" means.
+  Map<TileCoord, BitmapTile> tilesNotSharedWith(BitmapSurface? other) {
     final live = Set<Object>.identity();
     if (other != null) {
       live.addAll(other._tiles.values);
     }
-    var owed = 0;
-    for (final tile in _tiles.values) {
-      if (!live.contains(tile)) {
-        owed += 1;
+    final owed = <TileCoord, BitmapTile>{};
+    for (final entry in _tiles.entries) {
+      if (!live.contains(entry.value)) {
+        owed[entry.key] = entry.value;
       }
     }
-    return owed * tileBytes;
+    return owed;
   }
+
+  /// Bytes THIS surface holds that [other] does not — [tilesNotSharedWith]
+  /// weighed.
+  int bytesNotSharedWith(BitmapSurface? other) =>
+      tilesNotSharedWith(other).length * tileBytes;
 
   /// CANVAS-grid tile columns (tiles that cover the canvas rect from the
   /// origin). Pasteboard tiles live outside this grid — see

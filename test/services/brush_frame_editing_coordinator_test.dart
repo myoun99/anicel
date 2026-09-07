@@ -76,7 +76,7 @@ void main() {
       isTrue,
     );
     expect(outcome.dirtyTiles.isNotEmpty, isTrue);
-    expect(outcome.estimatedRetainedBytes, greaterThan(0));
+    expect(outcome.preSurface.bytesNotSharedWith(outcome.postSurface), greaterThan(0));
     expect(alphaAt(c, 2, 2), greaterThan(0));
   });
 

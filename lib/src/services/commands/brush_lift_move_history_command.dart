@@ -5,6 +5,7 @@ import '../brush_frame_editing_coordinator.dart';
 import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
+import '../undo_surface_snapshot.dart';
 
 /// Adopts a CONFIRMED move session (R16-①, TVP-style) into app history
 /// as ONE undoable step (R19 P3b surface-snapshot form).
@@ -17,7 +18,8 @@ import '../command.dart';
 /// by the host before the erase — is the undo target. One Ctrl+Z
 /// restores the pre-lift picture byte-exactly, session and cache state
 /// notwithstanding (the surfaces are self-contained references).
-class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
+class BrushLiftMoveHistoryCommand
+    implements Command, RetainedBytesCommand, ParkableCommand {
   BrushLiftMoveHistoryCommand({
     required this.coordinator,
     required this.frameKey,
@@ -27,7 +29,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
     this.regionBefore,
     this.restoreRegion,
     this.readRegion,
-  }) : _preSurface = preLiftSurface,
+  }) : _preLiftSurface = preLiftSurface,
        _stampDab = stampDab;
 
   final BrushFrameEditingCoordinator coordinator;
@@ -61,28 +63,49 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
   /// The shape the confirm left behind — what a REDO has to put back.
   CanvasSelectionRegion? _regionAfter;
 
-  final BitmapSurface _preSurface;
+  /// The pre-lift picture, held plainly until the landing: there is
+  /// nothing to weigh it against yet — the erase is already committed and
+  /// this still shares every tile with the live surface — and a snapshot
+  /// that cannot name its neighbour cannot say what it owns.
+  final BitmapSurface _preLiftSurface;
 
   /// Dropped after the landing — the stamp's RGBA payload is megabytes,
   /// and redo restores the post SURFACE instead (same retention
   /// discipline as BrushStrokeHistoryCommand).
   BrushDab? _stampDab;
-  late BitmapSurface _postSurface;
+  UndoSurfaceSnapshot? _pre;
+  UndoSurfaceSnapshot? _post;
   bool _landed = false;
 
-  /// Zero until the landing, because there is nothing to weigh yet: the
-  /// erase is already committed and [_preSurface] still shares every tile
-  /// with the live surface. Set once, at the landing, by the one law.
+  /// Zero until the landing, and then the pre-lift tiles the confirm left
+  /// behind — the one law, asked of the snapshot that holds them.
   ///
   /// ⛔It used to be the STAMP rectangle, which is not a thing this
   /// command holds. Measured 2026-09-07: a 64×64 stamp reported 32 KB
   /// against 64 MiB actually retained (2048×), and a null stamp reported
   /// ZERO while holding a full-canvas surface — so the byte budget never
   /// fired on the very entries that killed the app.
-  int _retainedBytes = 0;
+  @override
+  int get estimatedRetainedBytes => _pre?.residentBytes ?? 0;
 
   @override
-  int get estimatedRetainedBytes => _retainedBytes;
+  Future<bool> parkPayload() {
+    final pre = _pre;
+    final post = _post;
+    if (pre == null || post == null) {
+      return Future.value(true); // Not landed: nothing of its own yet.
+    }
+    return UndoSurfaceSnapshot.parkAll([pre, post]);
+  }
+
+  @override
+  void dropPayload() {
+    final pre = _pre;
+    final post = _post;
+    if (pre != null && post != null) {
+      UndoSurfaceSnapshot.dropAll([pre, post]);
+    }
+  }
 
   @override
   String get description => 'Move selection';
@@ -90,11 +113,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
   @override
   void execute() {
     if (_landed) {
-      coordinator.restoreSurfaceSnapshot(
-        frameKey,
-        _postSurface,
-        cacheInvalidationSink: cacheInvalidationSink,
-      );
+      _restore(_post);
       restoreRegion?.call(_regionAfter);
       return;
     }
@@ -104,8 +123,17 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
       sourceDabs: [_stampDab!],
       cacheInvalidationSink: cacheInvalidationSink,
     );
-    _postSurface = coordinator.currentSurfaceOf(frameKey);
-    _retainedBytes = _preSurface.bytesNotSharedWith(_postSurface);
+    final postSurface = coordinator.currentSurfaceOf(frameKey);
+    _pre = UndoSurfaceSnapshot(
+      key: frameKey,
+      snapshot: _preLiftSurface,
+      sharedWith: postSurface,
+    );
+    _post = UndoSurfaceSnapshot(
+      key: frameKey,
+      snapshot: postSurface,
+      sharedWith: _preLiftSurface,
+    );
     _stampDab = null;
     _landed = true;
     // Read AFTER the landing, so a redo restores the shape the confirm
@@ -115,11 +143,22 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
 
   @override
   void undo() {
+    _restore(_pre);
+    restoreRegion?.call(regionBefore);
+  }
+
+  /// ⛔A payload that will not come back leaves the PIXELS alone — but the
+  /// selection still travels, because the outline is held in memory here
+  /// and putting it back is never the destructive half.
+  void _restore(UndoSurfaceSnapshot? snapshot) {
+    final surface = snapshot?.surface;
+    if (surface == null) {
+      return;
+    }
     coordinator.restoreSurfaceSnapshot(
       frameKey,
-      _preSurface,
+      surface,
       cacheInvalidationSink: cacheInvalidationSink,
     );
-    restoreRegion?.call(regionBefore);
   }
 }

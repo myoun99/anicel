@@ -4,7 +4,6 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../models/bitmap_surface.dart';
-import '../models/bitmap_tile.dart' show BitmapTile;
 import '../models/canvas_size.dart';
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
@@ -185,7 +184,17 @@ class BrushFrameStore {
   // surface references, budgeted separately (HistoryManager.byteBudget)
   // — and they share THESE tile objects wherever an edit did not reach,
   // which is why an undo entry's weight is only the tiles the live
-  // surface no longer holds (`BitmapSurface.bytesNotSharedWith`).
+  // surface no longer holds (`BitmapSurface.tilesNotSharedWith`).
+  //
+  // ⚠️AND THEY TIER TOO NOW, into the OTHER room. `fdd328ba` wrote the
+  // line above when RAM was the only place an undo payload could be, so
+  // 「budgeted separately」 meant 「deleted separately」. It parks
+  // separately as well (see `UndoSurfaceSnapshot`), in 휘발성 rather than
+  // this tier's 이사대기 — a cooled cel is unsaved work waiting to move
+  // INTO the project file and must survive a crash, an undo payload dies
+  // with its run. One room for both would let a save's own deletion take
+  // the history down with it, and it would not look like a bug: the save
+  // succeeds, the file is intact, and only Ctrl+Z shows what went.
   //
   // 🪦**THE 「NO TEMP FILES」 HALF OF THIS IS RETRACTED; THE OTHER HALF IS
   // NOT.** `fdd328ba` (#493) deleted the R20-A2 spill machinery citing a
@@ -404,11 +413,7 @@ class BrushFrameStore {
     if (previous != null) {
       _hotBytes -= previous;
     }
-    final estimate =
-        surface.tiles.length *
-        surface.tileSize *
-        surface.tileSize *
-        BitmapTile.bytesPerPixel;
+    final estimate = surface.tiles.length * surface.tileBytes;
     _bakedSurfaces.remove(key);
     _bakedSurfaces[key] = surface;
     _hotByteEstimates[key] = estimate;

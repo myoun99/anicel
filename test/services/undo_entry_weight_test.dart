@@ -123,7 +123,7 @@ void main() {
       expect(history.retainedBytes, 2048);
     });
 
-    test('pressure frees the bytes an undone entry still holds', () {
+    test('pressure frees the bytes an undone entry still holds', () async {
       const entry = 200 * 1024 * 1024; // two of these blow the 64MB target
       final history = HistoryManager()
         ..execute(_Weighted(entry))
@@ -132,6 +132,7 @@ void main() {
       expect(history.retainedBytes, 2 * entry);
 
       history.respondToMemoryPressure();
+      await history.drainSpilling();
 
       // 🚨Before both stacks counted, the undone 200MB was invisible: the
       // sweep saw one 200MB entry, kept it (newest survives) and reported
@@ -141,7 +142,7 @@ void main() {
       expect(history.retainedBytes, entry);
     });
 
-    test('redo sheds before undo does', () {
+    test('redo sheds before undo does', () async {
       final history = HistoryManager()..byteBudget = 8192;
       history
         ..execute(_Weighted(4096))
@@ -151,6 +152,7 @@ void main() {
       expect(history.redoCount, 1);
       history.byteBudget = 4096;
       history.execute(_Weighted(0)); // pushes, clearing redo, then trims
+      await history.drainSpilling();
       expect(history.retainedBytes, lessThanOrEqualTo(4096));
     });
 

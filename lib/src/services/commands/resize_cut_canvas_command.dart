@@ -8,6 +8,7 @@ import '../brush_frame_store.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import '../undo_surface_snapshot.dart';
 import 'link_mirror.dart';
 
 /// Resizes a cut's canvas — and every 겸용 sibling's with it.
@@ -18,7 +19,8 @@ import 'link_mirror.dart';
 /// incoherent before guides existed — guides only made it visible, because
 /// an axis stored in canvas coordinates means two different places when the
 /// canvases disagree.
-class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
+class ResizeCutCanvasCommand
+    implements Command, RetainedBytesCommand, ParkableCommand {
   ResizeCutCanvasCommand({
     required this.repository,
     required this.cutId,
@@ -48,15 +50,35 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
   /// sizes, but the pixel shift lives in the brush store and has to be
   /// reversed cut by cut.
   List<CutId> _targets = const [];
-  Map<CutId, Map<BrushFrameKey, BitmapSurface>> _previousBaked = const {};
-  int _retainedBytes = 0;
+  Map<CutId, Map<BrushFrameKey, UndoSurfaceSnapshot>> _previousBaked = const {};
 
   /// The undo payload's weight (R19 P3b): after the forward blit the
   /// pre-resize tiles live ONLY in the reference snapshot, so the
   /// history stack's byte-trim must see them — a large cut's resize
   /// used to pin its whole baked set invisibly (adversarial review).
   @override
-  int get estimatedRetainedBytes => _retainedBytes;
+  int get estimatedRetainedBytes {
+    var total = 0;
+    for (final surfaces in _previousBaked.values) {
+      for (final snapshot in surfaces.values) {
+        total += snapshot.residentBytes;
+      }
+    }
+    return total;
+  }
+
+  /// ⚠️Pre-surfaces only, and that is the whole payload: redo RE-RUNS the
+  /// resize rather than restoring a post-surface, so there is no second
+  /// end to move.
+  @override
+  Future<bool> parkPayload() => UndoSurfaceSnapshot.parkAll(_snapshots);
+
+  @override
+  void dropPayload() => UndoSurfaceSnapshot.dropAll(_snapshots);
+
+  Iterable<UndoSurfaceSnapshot> get _snapshots => [
+    for (final surfaces in _previousBaked.values) ...surfaces.values,
+  ];
 
   @override
   String get description =>
@@ -85,11 +107,10 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
     // the exact undo restores the pre-resize baked surfaces by reference
     // (immutable — the snapshot is free).
     final store = brushFrameStore;
-    if (store != null) {
-      _previousBaked = {
+    final previousSurfaces = <CutId, Map<BrushFrameKey, BitmapSurface>>{
+      if (store != null)
         for (final target in _targets) target: store.bakedSurfacesForCut(target),
-      };
-    }
+    };
 
     for (final target in _targets) {
       // ONE model write per cut: the new size plus the content follow —
@@ -119,26 +140,28 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
       );
     }
 
-    // The undo payload's HONEST weight: only tiles the live surfaces no
-    // longer hold are uniquely retained by the snapshot. The anchored
-    // blit allocates fresh buffers (full count); a top-left GROW shares
-    // every tile with the live surface (near zero); a shrink retains
-    // exactly the clipped ones. Counting the whole snapshot regardless
-    // let one large top-left grow evict the entire real undo history
-    // with phantom bytes (adversarial review).
+    // 🚨PAIRED WITH THE LIVE SURFACE ONLY NOW, after the blit — the
+    // snapshot's honest weight is the tiles the live surfaces no longer
+    // hold, and before the blit they hold all of them. The anchored blit
+    // allocates fresh buffers (full count); a top-left GROW shares every
+    // tile with the live surface (near zero); a shrink retains exactly
+    // the clipped ones. Counting the whole snapshot regardless let one
+    // large top-left grow evict the entire real undo history with
+    // phantom bytes (adversarial review).
     //
     // This command wrote that rule first and the rest of the stack now
-    // shares it — [BitmapSurface.bytesNotSharedWith] IS this loop, lifted.
-    _retainedBytes = 0;
-    if (store != null) {
-      for (final surfaces in _previousBaked.values) {
-        for (final entry in surfaces.entries) {
-          _retainedBytes += entry.value.bytesNotSharedWith(
-            store.hotBakedSurfaceOrNull(entry.key),
-          );
-        }
-      }
-    }
+    // shares it — [BitmapSurface.tilesNotSharedWith] IS this loop, lifted.
+    _previousBaked = {
+      for (final cut in previousSurfaces.entries)
+        cut.key: {
+          for (final entry in cut.value.entries)
+            entry.key: UndoSurfaceSnapshot(
+              key: entry.key,
+              snapshot: entry.value,
+              sharedWith: store!.hotBakedSurfaceOrNull(entry.key),
+            ),
+        },
+    };
   }
 
   @override
@@ -156,7 +179,15 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
         // pre-resize surfaces, old canvas size included (the model was
         // restored whole above), so pixels the forward blit clipped
         // come back exactly — a reverse blit would only be overwritten.
-        brushFrameStore?.restoreBakedForCut(target, previousBaked);
+        //
+        // ⛔A cel whose parked payload will not read back is LEFT OUT
+        // rather than restored half-made: the others come back, and the
+        // one that did not keeps the pixels it has instead of losing them
+        // to a surface with holes in it.
+        brushFrameStore?.restoreBakedForCut(target, {
+          for (final entry in previousBaked.entries)
+            entry.key: ?entry.value.surface,
+        });
       }
     }
   }

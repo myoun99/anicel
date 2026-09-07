@@ -42,8 +42,7 @@ abstract interface class CommitTileScratch {
 /// whole sequence materializes with zero pixel copies out.
 final class NativeCommitScratch implements CommitTileScratch {
   NativeCommitScratch(this.native, this._surface)
-    : _tileByteLength =
-          _surface.tileSize * _surface.tileSize * BitmapTile.bytesPerPixel;
+    : _tileByteLength = _surface.tileBytes;
 
   final QaNativeEngine native;
   final BitmapSurface _surface;
@@ -98,8 +97,7 @@ final class NativeCommitScratch implements CommitTileScratch {
 /// the constructor copy.
 final class DartCommitScratch implements CommitTileScratch {
   DartCommitScratch(this._surface)
-    : _tileByteLength =
-          _surface.tileSize * _surface.tileSize * BitmapTile.bytesPerPixel;
+    : _tileByteLength = _surface.tileBytes;
 
   final BitmapSurface _surface;
   final int _tileByteLength;

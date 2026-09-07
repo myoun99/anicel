@@ -1,9 +1,9 @@
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../brush_stroke_commit_data.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
+import '../undo_surface_snapshot.dart';
 
 /// Bridges a brush source stroke into the app-level [HistoryManager]
 /// (R19 P3b surface-snapshot undo).
@@ -15,7 +15,8 @@ import '../command.dart';
 /// byte-exactly and independent of any session/replay state (the entry
 /// is self-contained: it survives session eviction and outlives every
 /// cache).
-class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
+class BrushStrokeHistoryCommand
+    implements Command, RetainedBytesCommand, ParkableCommand {
   BrushStrokeHistoryCommand({
     required this.coordinator,
     required BrushStrokeCommitData strokeData,
@@ -35,15 +36,44 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
   bool _committedChanges = false;
 
   late BrushFrameKey _frameKey;
-  late BitmapSurface _preSurface;
-  late BitmapSurface _postSurface;
-  int _retainedBytes = 0;
+  UndoSurfaceSnapshot? _pre;
+  UndoSurfaceSnapshot? _post;
 
   /// Diagnostic for the accumulation regression guard.
   bool get retainsCommitPayload => _strokeData != null;
 
+  /// ONE image of the changed tiles is ours; the other end of every link
+  /// is somebody else's. post(n) IS pre(n+1) — the same object, by
+  /// structural sharing — and the newest post IS the live surface, so
+  /// charging both counted a neighbour's bytes as ours. There is no
+  /// "worst case" where both ends are unshared: an entry with nothing
+  /// after it is the newest one, and its post is what the canvas is
+  /// showing.
+  ///
+  /// ⚠️THE BILL NAMES THE PRE; [parkPayload] MOVES BOTH. Not an
+  /// inconsistency — the very sharing that makes the post free to hold is
+  /// what makes it impossible to free alone.
   @override
-  int get estimatedRetainedBytes => _retainedBytes;
+  int get estimatedRetainedBytes => _pre?.residentBytes ?? 0;
+
+  @override
+  Future<bool> parkPayload() {
+    final pre = _pre;
+    final post = _post;
+    if (pre == null || post == null) {
+      return Future.value(true); // A stroke that changed nothing.
+    }
+    return UndoSurfaceSnapshot.parkAll([pre, post]);
+  }
+
+  @override
+  void dropPayload() {
+    final pre = _pre;
+    final post = _post;
+    if (pre != null && post != null) {
+      UndoSurfaceSnapshot.dropAll([pre, post]);
+    }
+  }
 
   @override
   String get description => 'Brush stroke';
@@ -52,11 +82,7 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
   void execute() {
     if (_hasCommitted) {
       if (_committedChanges) {
-        coordinator.restoreSurfaceSnapshot(
-          _frameKey,
-          _postSurface,
-          cacheInvalidationSink: cacheInvalidationSink,
-        );
+        _restore(_post);
       }
       return;
     }
@@ -79,16 +105,16 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
     _committedChanges = outcome != null;
     if (outcome != null) {
       _frameKey = frameKey;
-      _preSurface = outcome.preSurface;
-      _postSurface = outcome.postSurface;
-      // ONE image of the changed tiles is ours; the other end of every
-      // link is somebody else's. post(n) IS pre(n+1) — the same object,
-      // by structural sharing — and the newest post IS the live surface,
-      // so doubling counted a neighbour's bytes as ours. There is no
-      // "worst case" where both ends are unshared: an entry with nothing
-      // after it is the newest one, and its post is what the canvas is
-      // showing.
-      _retainedBytes = outcome.estimatedRetainedBytes;
+      _pre = UndoSurfaceSnapshot(
+        key: frameKey,
+        snapshot: outcome.preSurface,
+        sharedWith: outcome.postSurface,
+      );
+      _post = UndoSurfaceSnapshot(
+        key: frameKey,
+        snapshot: outcome.postSurface,
+        sharedWith: outcome.preSurface,
+      );
     }
   }
 
@@ -97,9 +123,21 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
     if (!_committedChanges) {
       return;
     }
+    _restore(_pre);
+  }
+
+  /// ⛔A payload that will not come back leaves the picture ALONE. The
+  /// snapshot holds only the tiles the stroke did not touch when its own
+  /// are unreadable, so painting that over the cel would erase the very
+  /// drawing this step exists to protect.
+  void _restore(UndoSurfaceSnapshot? snapshot) {
+    final surface = snapshot?.surface;
+    if (surface == null) {
+      return;
+    }
     coordinator.restoreSurfaceSnapshot(
       _frameKey,
-      _preSurface,
+      surface,
       cacheInvalidationSink: cacheInvalidationSink,
     );
   }

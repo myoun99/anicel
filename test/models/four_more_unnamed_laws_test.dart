@@ -145,7 +145,7 @@ void main() {
         ]),
       );
 
-      expect(outcome.estimatedRetainedBytes, 2 * 8 * 8 * 4);
+      expect(outcome.preSurface.bytesNotSharedWith(outcome.postSurface), 2 * 8 * 8 * 4);
     });
 
     test('a stroke that changed nothing retains nothing', () {
@@ -156,7 +156,7 @@ void main() {
         dirtyTiles: DirtyTileSet(),
       );
 
-      expect(outcome.estimatedRetainedBytes, 0);
+      expect(outcome.preSurface.bytesNotSharedWith(outcome.postSurface), 0);
     });
 
     test('the bill follows the PRE surface\'s tile size — those are the '
@@ -170,7 +170,7 @@ void main() {
         dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
       );
 
-      expect(outcome.estimatedRetainedBytes, 16 * 16 * 4);
+      expect(outcome.preSurface.bytesNotSharedWith(outcome.postSurface), 16 * 16 * 4);
     });
 
     test('🚨a stroke that CREATED its tiles bills nothing for them — the '
@@ -183,7 +183,7 @@ void main() {
 
       // The old arithmetic billed 256 bytes here for a tile nothing on the
       // undo stack was keeping alive.
-      expect(outcome.estimatedRetainedBytes, 0);
+      expect(outcome.preSurface.bytesNotSharedWith(outcome.postSurface), 0);
     });
   });
 }

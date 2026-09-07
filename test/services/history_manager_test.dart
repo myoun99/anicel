@@ -129,7 +129,8 @@ void main() {
 /// snapshots — a MOVE retains a PRE and a POST per confirm — and heard
 /// nothing. On iOS that warning is the last thing before the kill.
 void _pressureTests() {
-  test('pressure drops retained snapshots, and the newest always survives', () {
+  test('pressure drops retained snapshots, and the newest always survives',
+      () async {
     final history = HistoryManager();
     for (var i = 0; i < 6; i++) {
       history.execute(_HeavyCommand(bytes: 40 * 1024 * 1024)); // 240 MB
@@ -137,6 +138,10 @@ void _pressureTests() {
     expect(history.undoCount, 6, reason: 'under the 512 MB budget, all stay');
 
     history.respondToMemoryPressure();
+    // ⚠️The relief is a spill pass now, not this line: these entries hold
+    // nothing that can move, so the pass stands down and sheds — but it
+    // does it from a microtask.
+    await history.drainSpilling();
 
     expect(
       history.retainedBytes,
@@ -150,12 +155,15 @@ void _pressureTests() {
     );
   });
 
-  test('pressure only ever LOWERS — a second warning drops nothing more', () {
+  test('pressure only ever LOWERS — a second warning drops nothing more',
+      () async {
     final history = HistoryManager();
     history.execute(_HeavyCommand(bytes: 10 * 1024 * 1024));
     history.respondToMemoryPressure();
+    await history.drainSpilling();
     final after = history.undoCount;
     history.respondToMemoryPressure();
+    await history.drainSpilling();
     expect(history.undoCount, after);
   });
 }

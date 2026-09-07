@@ -17,9 +17,9 @@ class BrushStrokeCommitOutcome {
   final BitmapSurface postSurface;
   final DirtyTileSet dirtyTiles;
 
-  /// The approximate bytes this outcome UNIQUELY retains on an undo
-  /// stack: the changed tiles' pre-images (everything else is shared
-  /// with neighbouring entries or the live surface).
-  int get estimatedRetainedBytes =>
-      preSurface.bytesNotSharedWith(postSurface);
+  /// 🪦An `estimatedRetainedBytes` used to sit here forwarding to
+  /// [BitmapSurface.bytesNotSharedWith]. It was a SECOND statement of the
+  /// undo-weight law — the pair it passed was the only thing it added,
+  /// and the entry that holds this outcome now names that pair itself
+  /// (`UndoSurfaceSnapshot`, which has to know it anyway to spill).
 }

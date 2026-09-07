@@ -172,11 +172,23 @@ class HistoryManager extends ChangeNotifier {
   void _push(Command command) {
     _undoStack.add(command);
     if (_undoStack.length > maxEntries) {
-      // The oldest commands fall off the deep end, PS-style.
-      _undoStack.removeRange(0, _undoStack.length - maxEntries);
+      // The oldest commands fall off the deep end, PS-style — and take
+      // whatever they parked with them.
+      final fallen = _undoStack.length - maxEntries;
+      dropPayloadsOf(_undoStack.getRange(0, fallen));
+      _undoStack.removeRange(0, fallen);
     }
-    _trimRetainedBytes();
+    // ⚠️REDO GOES FIRST, and the order is not cosmetic any more: a new
+    // edit throws the redo stack away, so trimming before the clear
+    // measured bytes that were about to leave on their own — and now
+    // that the trim SPILLS rather than deletes, it would have written
+    // those bytes to disk on the way out.
+    dropPayloadsOf(_redoStack);
     _redoStack.clear();
+    // A fresh entry is fresh evidence that the room may be writable
+    // again — the same re-arming `BrushFrameStore` does on a new edit.
+    _spillStoodDown = false;
+    _trimRetainedBytes();
     notifyListeners();
   }
 
@@ -193,47 +205,169 @@ class HistoryManager extends ChangeNotifier {
     if (!_budget.respondToMemoryPressure()) {
       return; // Pressure only ever lowers.
     }
-    final before = _undoStack.length;
+    // ⚠️THE RELIEF IS NO LONGER INSTANT, and that is the trade the room
+    // buys: an over-budget entry is now WRITTEN OUT rather than deleted,
+    // so the bytes come back a spill pass later instead of on this line.
+    // `BrushFrameStore` already answers pressure that way for cels, and
+    // the alternative here is to keep the one behaviour this round
+    // exists to remove — losing the user's history at the exact moment
+    // the app is most likely to die with their drawing in it.
     _trimRetainedBytes();
-    if (_undoStack.length != before) {
-      notifyListeners();
+  }
+
+  /// 🚨★★★**OVER BUDGET NOW MEANS "MOVE IT", NOT "LOSE IT".** The
+  /// over-budget end of the stack used to be DELETED and the user's older
+  /// edits simply stopped being undoable. Of the tools the audit read,
+  /// none answers a byte ceiling that way — they all page the payload out
+  /// (유저 확정 2026-09-07, `cold-tier`). Deleting is what happens when
+  /// the room refuses, and only then.
+  void _trimRetainedBytes() {
+    if (retainedBytes <= _budget.bytes) {
+      return;
+    }
+    if (_spillStoodDown) {
+      // The room already refused during this run, so there is nowhere to
+      // put these bytes and the old answer is the only one left.
+      _shedOverBudget();
+      return;
+    }
+    _scheduleSpill();
+  }
+
+  /// Runs one spill pass at a time and re-runs when it finishes with the
+  /// budget still exceeded.
+  ///
+  /// ⚠️`BrushFrameStore._scheduleCooling` is this same shape and they are
+  /// deliberately NOT one thing yet: two occurrences merge on the third
+  /// (3의 규칙 — 중복 제거는 의도 다음이다). When a third background pass
+  /// appears, these two are what it joins.
+  void _scheduleSpill() {
+    if (_activeSpill != null ||
+        _spillStoodDown ||
+        retainedBytes <= _budget.bytes) {
+      return;
+    }
+    _activeSpill = _spillLoop().whenComplete(() {
+      _activeSpill = null;
+      _scheduleSpill();
+    });
+  }
+
+  Future<void>? _activeSpill;
+
+  /// ⛔Set when a pass could not move the bytes — either the room refused
+  /// or nothing left on the stacks can move — and cleared by a new entry.
+  /// Without it the completion re-schedule is an infinite loop: the pass
+  /// gives up BECAUSE the budget is still exceeded, which is the very
+  /// condition the re-schedule fires on.
+  bool _spillStoodDown = false;
+
+  /// Completes when no spill pass is running (tests).
+  Future<void> drainSpilling() async {
+    while (_activeSpill != null) {
+      await _activeSpill;
     }
   }
 
-  void _trimRetainedBytes() {
+  Future<void> _spillLoop() async {
+    final before = retainedBytes;
+    // REDO PARKS FIRST. A redo entry is work the user already stepped
+    // back from, and the next execute() throws the whole stack away in
+    // any case — spending RAM on it while a real undo goes to disk is the
+    // wrong trade.
+    final moved =
+        await _parkDeepEnd(_redoStack) && await _parkDeepEnd(_undoStack);
+    if (moved && retainedBytes < before) {
+      return; // Progress; the reschedule decides whether more is needed.
+    }
+    _spillStoodDown = true;
+    _shedOverBudget();
+  }
+
+  /// Parks [stack] from its DEEP end while the budget is exceeded,
+  /// leaving the top entry resident. False = the room refused.
+  ///
+  /// 🚨★★★**A CONTIGUOUS PREFIX, NOT THE HEAVIEST ENTRY.** Entry n's
+  /// post-surface IS entry n+1's pre-surface, so an entry that lets go on
+  /// its own frees nothing at all — the tiles stay alive through its
+  /// neighbour. Parking from one end means every shared tile has both of
+  /// its holders inside the parked run.
+  ///
+  /// ⛔The top entry stays in RAM: it is the one the user is about to
+  /// press, and reading a payload back is synchronous.
+  Future<bool> _parkDeepEnd(List<Command> stack) async {
+    var index = 0;
+    while (retainedBytes > _budget.bytes && index < stack.length - 1) {
+      final command = stack[index];
+      // ⚠️The cast is not ceremony: [Command] and [ParkableCommand] are
+      // unrelated types, so an `is` check cannot promote between them.
+      if (command is ParkableCommand &&
+          !await (command as ParkableCommand).parkPayload()) {
+        return false;
+      }
+      index += 1;
+    }
+    return true;
+  }
+
+  /// ⛔THE LAST RESORT, and it used to be the first: entries whose bytes
+  /// have nowhere to go are dropped from the deep end.
+  void _shedOverBudget() {
     var total = retainedBytes;
     if (total <= _budget.bytes) {
       return;
     }
-    // REDO SHEDS FIRST. A redo entry is work the user already stepped
-    // back from, and the next execute() throws the whole stack away in
-    // any case — spending the budget on it while a real undo falls off
-    // the deep end is the wrong trade.
+    final entriesBefore = _undoStack.length + _redoStack.length;
+    // REDO SHEDS FIRST, for the same reason it parks first.
     total -= _shed(_redoStack, total - _budget.bytes, keep: 0);
-    if (total <= _budget.bytes) {
-      return;
+    if (total > _budget.bytes) {
+      // ⛔The newest entry always survives: pressure must not cost you the
+      // undo you are about to press.
+      _shed(_undoStack, total - _budget.bytes, keep: 1);
     }
-    // ⛔The newest entry always survives: pressure must not cost you the
-    // undo you are about to press.
-    _shed(_undoStack, total - _budget.bytes, keep: 1);
+    // 🚨HERE, not at each caller: this is the only place an entry leaves
+    // the stacks without the user asking, and a spill pass that ends in a
+    // shed reaches it from a microtask nobody else is watching.
+    if (_undoStack.length + _redoStack.length != entriesBefore) {
+      notifyListeners();
+    }
   }
 
   /// Drops entries from [stack]'s deep end until [excess] bytes are gone,
   /// never leaving fewer than [keep]. Returns the bytes released.
+  ///
+  /// 🚨★★★**A DROP THAT FREES NOTHING DOES NOT HAPPEN.** The walk stops
+  /// at the last entry that actually gave bytes back, so a deep end made
+  /// of PARKED entries — which report zero because their bytes are a file
+  /// now — is never deleted. Without that, a stack the spill had done its
+  /// job on was exactly the stack this would erase: it would walk the
+  /// whole parked run collecting nothing, reach the bottom, and take the
+  /// user's entire history with it to free not one byte.
+  ///
+  /// Entries BELOW one that pays are still dropped — a stack cannot lose
+  /// its middle, or an undo would skip a step and restore a picture that
+  /// was never on screen.
   static int _shed(List<Command> stack, int excess, {required int keep}) {
     var released = 0;
     var dropCount = 0;
+    var worthDropping = 0;
+    var worthReleasing = 0;
     while (released < excess && stack.length - dropCount > keep) {
       final command = stack[dropCount];
       if (command is RetainedBytesCommand) {
         released += (command as RetainedBytesCommand).estimatedRetainedBytes;
       }
       dropCount += 1;
+      if (released > worthReleasing) {
+        worthReleasing = released;
+        worthDropping = dropCount;
+      }
     }
-    if (dropCount > 0) {
-      stack.removeRange(0, dropCount);
+    if (worthDropping > 0) {
+      dropPayloadsOf(stack.getRange(0, worthDropping));
+      stack.removeRange(0, worthDropping);
     }
-    return released;
+    return worthReleasing;
   }
 
   /// Called before undo/redo touches the stacks (R16-①): the selection
@@ -293,8 +427,11 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void clear() {
+    dropPayloadsOf(_undoStack);
+    dropPayloadsOf(_redoStack);
     _undoStack.clear();
     _redoStack.clear();
+    _spillStoodDown = false;
     notifyListeners();
   }
 }
