@@ -5,7 +5,6 @@ import '../brush_frame_editing_coordinator.dart';
 import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
-import '../undo_retained_bytes.dart';
 
 /// Adopts a CONFIRMED move session (R16-①, TVP-style) into app history
 /// as ONE undoable step (R19 P3b surface-snapshot form).
@@ -106,7 +105,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
       cacheInvalidationSink: cacheInvalidationSink,
     );
     _postSurface = coordinator.currentSurfaceOf(frameKey);
-    _retainedBytes = uniquelyRetainedTileBytes(_preSurface, _postSurface);
+    _retainedBytes = _preSurface.bytesNotSharedWith(_postSurface);
     _stampDab = null;
     _landed = true;
     // Read AFTER the landing, so a redo restores the shape the confirm

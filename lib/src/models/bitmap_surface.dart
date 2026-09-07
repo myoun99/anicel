@@ -27,6 +27,38 @@ class BitmapSurface {
   /// undo-weight answer needs, taken from the tile rather than re-derived.
   int get tileBytes => BitmapTile.bytesFor(tileSize);
 
+  /// Bytes THIS surface holds that [other] does not — what a snapshot of
+  /// it costs while [other] is live.
+  ///
+  /// 🚨THE ONE ANSWER TO "WHAT DOES AN UNDO ENTRY WEIGH". Tile maps are
+  /// immutable and share structurally: wherever an edit did not reach,
+  /// both surfaces hold the SAME object, and the live one keeps it alive
+  /// on its own. Five commands used to answer this five ways and three
+  /// answered wrong — one reported the STAMP rectangle (2048× out on a
+  /// 64×64 stamp, zero when the stamp was null), so the byte budget never
+  /// fired at all.
+  ///
+  /// ⛔Counting every tile instead is not conservative, it is wrong in the
+  /// expensive direction: a top-left grow shares all of them, and billing
+  /// it evicted the real history with phantom bytes.
+  ///
+  /// ⚠️A stroke that CREATES tiles owes nothing for them — [other] has
+  /// them and this snapshot does not, and undoing restores their absence.
+  /// Counting changed tiles instead over-reports exactly there.
+  int bytesNotSharedWith(BitmapSurface? other) {
+    final live = Set<Object>.identity();
+    if (other != null) {
+      live.addAll(other._tiles.values);
+    }
+    var owed = 0;
+    for (final tile in _tiles.values) {
+      if (!live.contains(tile)) {
+        owed += 1;
+      }
+    }
+    return owed * tileBytes;
+  }
+
   /// CANVAS-grid tile columns (tiles that cover the canvas rect from the
   /// origin). Pasteboard tiles live outside this grid — see
   /// [containsTileCoord] for the storable range.

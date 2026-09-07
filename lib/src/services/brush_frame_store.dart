@@ -172,7 +172,7 @@ class BrushFrameStore {
   // surface references, budgeted separately (HistoryManager.byteBudget)
   // — and they share THESE tile objects wherever an edit did not reach,
   // which is why an undo entry's weight is only the tiles the live
-  // surface no longer holds (`uniquelyRetainedTileBytes`).
+  // surface no longer holds (`BitmapSurface.bytesNotSharedWith`).
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
   final Map<BrushFrameKey, AnicelCelBlob> _coldCels = {};

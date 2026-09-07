@@ -21,5 +21,5 @@ class BrushStrokeCommitOutcome {
   /// stack: the changed tiles' pre-images (everything else is shared
   /// with neighbouring entries or the live surface).
   int get estimatedRetainedBytes =>
-      dirtyTiles.length * preSurface.tileBytes;
+      preSurface.bytesNotSharedWith(postSurface);
 }

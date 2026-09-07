@@ -118,6 +118,38 @@ void main() {
     );
   });
 
+  test('the entry weighs the tiles it holds, never the stamp', () {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final pre = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final command = BrushLiftMoveHistoryCommand(
+      coordinator: coordinator,
+      frameKey: coordinator.activeFrameKey,
+      preLiftSurface: pre,
+      stampDab: stampAt(20),
+    );
+
+    // Nothing landed yet, so nothing is uniquely held: the erase was
+    // committed before this command existed and `pre` still shares every
+    // tile with the live surface.
+    expect(command.estimatedRetainedBytes, 0);
+
+    command.execute();
+
+    // 🚨THE STAMP IS NOT WHAT THIS HOLDS. Until 2026-09-07 the weight was
+    // `2 * 4 * stamp.width * stamp.height` — a 64×64 stamp reported 32 KB
+    // while the command held a full-canvas surface (2048× out), and a
+    // null stamp reported ZERO. The budget therefore never fired on the
+    // entries that killed the app.
+    final post = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    expect(
+      command.estimatedRetainedBytes,
+      pre.bytesNotSharedWith(post),
+    );
+  });
+
   test('the anchored region is the one the session FOUND, not a later one', () {
     // ⚠️`regionBefore` is captured at the lift, beside the pixel anchor. A
     // command that read it at undo time would read whatever the transform

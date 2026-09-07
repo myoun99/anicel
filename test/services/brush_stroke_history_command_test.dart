@@ -91,9 +91,20 @@ void main() {
   test('the command drops its one-shot payload after the first execute '
       'and reports its retained snapshot bytes', () {
     final coordinator = _coordinator();
-    final command = BrushStrokeHistoryCommand(
+
+    // ⚠️The FIRST stroke on an empty surface owes nothing: it CREATED the
+    // tile, so the pre-image has none and undoing restores their absence.
+    // Materialise the tile first, or this measures the wrong thing.
+    final seeding = BrushStrokeHistoryCommand(
       coordinator: coordinator,
       strokeData: BrushStrokeCommitData(sourceDabs: [_dab(0)]),
+    )..execute();
+    expect(seeding.estimatedRetainedBytes, 0);
+
+    final before = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final command = BrushStrokeHistoryCommand(
+      coordinator: coordinator,
+      strokeData: BrushStrokeCommitData(sourceDabs: [_dab(1)]),
     );
     expect(command.retainsCommitPayload, isTrue);
 
@@ -101,6 +112,14 @@ void main() {
 
     expect(command.retainsCommitPayload, isFalse);
     expect(command.estimatedRetainedBytes, greaterThan(0));
+
+    // 🚨EXACTLY what the entry owns — the tiles the live surface no
+    // longer holds — and not twice them. `greaterThan(0)` alone passed
+    // through the whole round where this reported DOUBLE: post(n) IS
+    // pre(n+1) by structural sharing, and the newest post is the live
+    // surface, so the second copy was never ours to bill.
+    final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    expect(command.estimatedRetainedBytes, before.bytesNotSharedWith(after));
   });
 
   test('the HistoryManager byte budget drops the DEEPEST snapshot '

@@ -8,7 +8,6 @@ import '../brush_frame_store.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
-import '../undo_retained_bytes.dart';
 import 'link_mirror.dart';
 
 /// Resizes a cut's canvas — and every 겸용 sibling's with it.
@@ -129,13 +128,12 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
     // with phantom bytes (adversarial review).
     //
     // This command wrote that rule first and the rest of the stack now
-    // shares it — [uniquelyRetainedTileBytes] IS this loop, lifted.
+    // shares it — [BitmapSurface.bytesNotSharedWith] IS this loop, lifted.
     _retainedBytes = 0;
     if (store != null) {
       for (final surfaces in _previousBaked.values) {
         for (final entry in surfaces.entries) {
-          _retainedBytes += uniquelyRetainedTileBytes(
-            entry.value,
+          _retainedBytes += entry.value.bytesNotSharedWith(
             store.hotBakedSurfaceOrNull(entry.key),
           );
         }

@@ -6,7 +6,6 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
-import 'package:anicel/src/services/undo_retained_bytes.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 🚨WHAT AN UNDO ENTRY WEIGHS — the law five commands used to answer
@@ -62,14 +61,14 @@ void main() {
       final snapshot = _surface(tiles: 4, reuse: live.tiles);
       // ⛔Not "conservative": counting the whole snapshot here is what let
       // one top-left grow evict the real history with phantom bytes.
-      expect(uniquelyRetainedTileBytes(snapshot, live), 0);
+      expect(snapshot.bytesNotSharedWith(live), 0);
     });
 
     test('only the unshared tiles are counted', () {
       final live = _surface(tiles: 4);
       final snapshot = _surface(tiles: 4); // all fresh objects
       expect(
-        uniquelyRetainedTileBytes(snapshot, live),
+        snapshot.bytesNotSharedWith(live),
         4 * BitmapTile.bytesFor(256),
       );
     });
@@ -77,7 +76,7 @@ void main() {
     test('a null live surface leaves the whole snapshot ours', () {
       final snapshot = _surface(tiles: 3);
       expect(
-        uniquelyRetainedTileBytes(snapshot, null),
+        snapshot.bytesNotSharedWith(null),
         3 * BitmapTile.bytesFor(256),
       );
     });
