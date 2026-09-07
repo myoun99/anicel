@@ -14,7 +14,7 @@ import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart'
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
-import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;

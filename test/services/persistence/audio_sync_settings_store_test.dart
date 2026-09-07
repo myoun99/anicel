@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
-import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 
 void main() {
   late Directory temp;

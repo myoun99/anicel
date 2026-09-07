@@ -115,7 +115,7 @@ import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
-import 'playback/audio_sync_settings.dart';
+import '../models/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';

@@ -1,6 +1,6 @@
 import 'versioned_settings_file.dart';
 
-import '../../ui/playback/audio_sync_settings.dart';
+import '../../models/audio_sync_settings.dart';
 import 'app_support_path.dart';
 
 /// Loads and saves the A/V offset (audio program 2D).

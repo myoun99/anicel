@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'audio_sync_settings.dart' show VoiceInputChannelMode;
+import '../../models/audio_sync_settings.dart' show VoiceInputChannelMode;
 
 /// A take after the capture chain (REC1-D): channel fold + baked gain,
 /// plus whether anything hit the ceiling on the way.

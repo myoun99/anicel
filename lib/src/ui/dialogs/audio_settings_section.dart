@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../playback/audio_input_monitor.dart';
-import '../playback/audio_sync_settings.dart';
+import '../../models/audio_sync_settings.dart';
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
 import '../text/app_strings.dart';

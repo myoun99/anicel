@@ -27,7 +27,7 @@ import '../../native/qa_audio_device.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
-import 'audio_sync_settings.dart';
+import '../../models/audio_sync_settings.dart';
 import 'audio_windowed_upload.dart';
 import 'canvas_playback_controller.dart';
 

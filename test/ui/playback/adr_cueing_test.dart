@@ -8,7 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
-import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/ui/playback/recording_streamer_overlay.dart';
 
 /// ADR cueing (REC1-E): the 3-beep countdown into a punch, the streamer

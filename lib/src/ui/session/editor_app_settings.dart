@@ -13,7 +13,7 @@ import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
 import '../../models/app_input_settings.dart';
-import '../playback/audio_sync_settings.dart';
+import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
 import '../../models/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors;

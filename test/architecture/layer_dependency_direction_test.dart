@@ -12,13 +12,12 @@
 // the ledger below is short, and a ledger nobody checks grows by one file at
 // a time with nobody noticing.
 //
-// WHAT THIS IS NOT: it does not say the entries below are wrong. Most of them
-// are a TYPE IN THE WRONG FOLDER rather than a layer reaching for a widget —
-// `app_input_settings`, `app_accents`, `ui_scale` and friends are settings the
-// app has opinions about, and their persistence lives in services, so services
-// must reach up to name them. Moving those files inward is audit work, and the
-// ledger is what makes that work finite and checkable. Until then this holds
-// the line where it currently stands.
+// WHAT THIS IS NOT: it never said the ledgered entries were wrong. Every one
+// of them was a TYPE IN THE WRONG FOLDER rather than a layer reaching for a
+// widget — settings the app has opinions about, whose persistence lives in
+// services, so services had to reach up to name them. The ledger is what made
+// that work finite and checkable, and on 2026-09-07 it was finished: the
+// ledger is EMPTY. What it holds now is the bar for adding one back.
 //
 // It is an instrument, so here is what it looks like when it lies:
 //   - it reads import LINES textually, so an import written inside a block
@@ -67,26 +66,25 @@ const _widgetFrameworkImports = <String>[
   'package:flutter/cupertino.dart',
 ];
 
-const _settingsStore =
-    'The store persists a settings VALUE whose type is declared under ui/. '
-    'Moving the value type inward would take this edge with it.';
-
 /// Every outward dependency that exists TODAY, with the reason it exists.
 ///
 /// Keyed by the importing file, valued by the import target exactly as it is
 /// written. An entry that no longer matches anything FAILS: a ledger that
 /// keeps paid debts on it stops being read.
 ///
-/// 2026-09-07 (audit, Round 8): `brush_group_icon.dart` came off. Its excuse
-/// was that `IconData` must be a const literal or the icon font ships whole —
-/// true, and it never required the LITERAL to sit in the enum. The faces moved
-/// to a const switch in `ui/brush/brush_group_icon_glyph.dart`, still const,
-/// still tree-shaken, and the enum went back to being data.
-const _ledger = <String, List<_Debt>>{
-  'lib/src/services/persistence/audio_sync_settings_store.dart': [
-    _Debt('../../ui/playback/audio_sync_settings.dart', _settingsStore),
-  ],
-};
+/// IT IS EMPTY, and that is the state to defend. Both entries were paid on
+/// 2026-09-07 (audit, Round 8):
+///
+///   - `models/brush_group_icon.dart` -> `material`. Its excuse was that
+///     `IconData` must be a const literal or the icon font ships whole —
+///     true, and it never required the LITERAL to sit in the enum. The faces
+///     moved to a const switch in `ui/brush/brush_group_icon_glyph.dart`,
+///     still const, still tree-shaken, and the enum went back to being data.
+///   - `services/persistence/audio_sync_settings_store.dart` -> the settings
+///     value it stores, which was declared under `ui/playback`. The value
+///     imported nothing at all, so it moved to `models/` — the remedy the
+///     class doc above already names, applied instead of excused.
+const _ledger = <String, List<_Debt>>{};
 
 class _Debt {
   const _Debt(this.target, this.reason);
@@ -189,7 +187,7 @@ void main() {
       final edges = _ledger.values.fold<int>(0, (sum, l) => sum + l.length);
       expect(
         edges,
-        1,
+        0,
         reason:
             'The outward-edge count changed. Going DOWN is the point — update '
             'this number and say so in the commit. Going UP needs an argument.',

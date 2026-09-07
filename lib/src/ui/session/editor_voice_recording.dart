@@ -14,7 +14,7 @@ import '../../models/media_asset.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_frame_range.dart';
 import '../playback/audio_device_transport.dart';
-import '../playback/audio_sync_settings.dart';
+import '../../models/audio_sync_settings.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../text/app_strings.dart';
 import '../../services/command.dart';
