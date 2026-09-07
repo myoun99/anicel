@@ -2,8 +2,6 @@ import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/material.dart';
 
-import '../../services/persistence/app_documents.dart'
-    show appRecordingsDirectory;
 import '../../services/audio/conform_cache_maintenance.dart'
     show clearConformCache, conformCacheBytes;
 import '../../services/persistence/app_save_settings.dart';
@@ -160,7 +158,7 @@ class AutosaveSettingsSection extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    appRecordingsDirectory(),
+                    AppSave.recordingsRootDirectory,
                     key: const ValueKey<String>(
                       'settings-recordings-directory',
                     ),

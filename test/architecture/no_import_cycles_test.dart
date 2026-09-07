@@ -9,6 +9,16 @@
 // read, and the selection shape and affine left `canvas_selection`. The two
 // loops in `_ledger` stayed, each for a reason a reader can check.
 //
+// 2026-09-07 (audit, Round 8): the save lane's loop is gone. Its entry said
+// breaking it was that lane's work, which is a note about who does it and
+// not a reason it could not be done. The whole loop was ONE function:
+// `appRecordingsDirectory` sat in `app_documents.dart` and read the save
+// settings, so the folder every other file in that folder reaches for
+// imported the settings that reach for the grant that reaches back. It is
+// now `AppSave.recordingsRootDirectory`, beside `AppSave.conformRootDirectory`
+// — the same law, configured-folder-wins-else-a-default — and
+// `app_documents.dart` is the leaf it always described itself as.
+//
 // Nothing here forbids a new loop — it forbids a SILENT one. Put its files
 // in `_ledger` with the reason it could not be broken, and the next reader
 // gets your argument instead of a mystery. A ledger entry that stops
@@ -36,17 +46,6 @@ final _ledger = <_Loop>[
         'tile through the painter\'s emitter and the painter draws through '
         'the store\'s tiles. Splitting them means a third file that both '
         'read, which is the same loop wearing a hat.',
-  ),
-  (
-    files: {
-      'lib/src/services/persistence/app_documents.dart',
-      'lib/src/services/persistence/app_save_settings.dart',
-      'lib/src/services/persistence/folder_grant.dart',
-    },
-    why:
-        'The save lane\'s. Documents read the save settings, the settings '
-        'read the folder grant, the grant reads the documents. Breaking it '
-        'is that lane\'s work, not the audit\'s (2026-09-03).',
   ),
 ];
 

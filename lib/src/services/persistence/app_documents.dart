@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/services.dart' show MethodChannel;
 
-import 'app_save_settings.dart';
-
 /// SAVE-1: the app's USER-VISIBLE project home — the default location
 /// every save/open surface starts in (the initial-save window, Save As,
 /// Open). Deliberately a folder ordinary file managers show:
@@ -27,21 +25,6 @@ String appDocumentsDirectory() {
   // Environment-less platforms before the channel answers: the system
   // temp keeps dev/test harmless.
   return '${Directory.systemTemp.path.replaceAll('\\', '/')}/Anicel';
-}
-
-/// REC1-B2: the take shelf — where a never-saved project's voice takes
-/// land. A folder ordinary file managers show (`Recordings` under the
-/// app documents home, the DAW convention), NOT the hidden OS temp: a
-/// discarded session leaves its takes findable. Nothing ever moves off
-/// the shelf — takes are carried, so the save absorbs their bytes into
-/// the archive from wherever they sit. A custom shelf is a desktop-only
-/// setting.
-String appRecordingsDirectory() {
-  final custom = AppSave.settings.value.recordingsDirectory;
-  if (custom != null) {
-    return custom.path;
-  }
-  return '${appDocumentsDirectory()}/Recordings';
 }
 
 /// [appDocumentsDirectory], created if missing.

@@ -27,7 +27,7 @@ void main() {
     previousDocumentsPath = AppStorage.channelDocumentsPath;
     AppStorage.channelDocumentsPath =
         '${directory.path.replaceAll('\\', '/')}/docs';
-    shelf = appRecordingsDirectory();
+    shelf = AppSave.recordingsRootDirectory;
   });
 
   tearDown(() {

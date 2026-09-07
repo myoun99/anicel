@@ -5,8 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../../services/import/media_identity_reader.dart';
-import '../../services/persistence/app_documents.dart'
-    show appRecordingsDirectory;
+import '../../services/persistence/app_save_settings.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -1155,7 +1154,8 @@ class EditorVoiceRecording {
       // The shelf is also somewhere a person can look: on desktop it is a
       // folder they chose, and losing a take to a `.assets` directory
       // nobody opens is not a thing to keep.
-      final directory = _voiceRecordShelfDirectory ??= appRecordingsDirectory();
+      final directory = _voiceRecordShelfDirectory ??=
+          AppSave.recordingsRootDirectory;
       Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
         final file = File(

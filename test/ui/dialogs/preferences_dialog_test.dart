@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/services/persistence/app_documents.dart'
-    show appRecordingsDirectory;
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
@@ -209,7 +207,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<Text>(recordingsPath).data,
-      appRecordingsDirectory(),
+      AppSave.recordingsRootDirectory,
     );
     expect(
       find.byKey(const ValueKey<String>('settings-recordings-reset')),
@@ -234,7 +232,7 @@ void main() {
     expect(AppSave.settings.value.recordingsDirectory, isNull);
     expect(
       tester.widget<Text>(recordingsPath).data,
-      appRecordingsDirectory(),
+      AppSave.recordingsRootDirectory,
     );
   });
 

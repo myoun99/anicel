@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'app_documents.dart';
 import 'app_support_path.dart';
 import 'folder_grant.dart';
 
@@ -291,6 +292,28 @@ abstract final class AppSave {
       hash = (hash * 0x01000193) & 0xFFFFFFFF;
     }
     return hash;
+  }
+
+  /// REC1-B2: the take shelf — where a never-saved project's voice takes
+  /// land. A folder ordinary file managers show (`Recordings` under the
+  /// app documents home, the DAW convention), NOT the hidden OS temp: a
+  /// discarded session leaves its takes findable. Nothing ever moves off
+  /// the shelf — takes are carried, so the save absorbs their bytes into
+  /// the archive from wherever they sit. A custom shelf is a desktop-only
+  /// setting.
+  ///
+  /// It sits HERE, beside [conformRootDirectory], because it is the same
+  /// law: a configured folder wins, otherwise a default under a root this
+  /// class already knows. It used to live in `app_documents.dart`, which
+  /// made that file — the leaf everything else in this folder reaches for —
+  /// import these settings, and that was the whole of an import loop
+  /// (documents -> settings -> grant -> documents).
+  static String get recordingsRootDirectory {
+    final configured = settings.value.recordingsDirectory;
+    if (configured != null) {
+      return configured.path;
+    }
+    return '${appDocumentsDirectory()}/Recordings';
   }
 
   /// The folder the conform cache sits under — what Preferences shows, and
