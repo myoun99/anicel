@@ -115,6 +115,12 @@ class AudioClips {
       return;
     }
     final next = change(layer.audioClips);
+    // ⚠️MUTANT SURVIVES HERE — an inner guard already answers (2026-09-07).
+    // Deleting any edit's `== value ? null :` still spends no undo step,
+    // because `updateLayerAudioClips` returns early on `listEquals`. What
+    // these guards still buy is the `notifyChanged()` below, which the
+    // coordinator's guard cannot suppress; a test that watches undo steps
+    // can never see the difference.
     if (next == null) {
       return;
     }

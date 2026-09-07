@@ -352,6 +352,14 @@ void main() {
     expect(seLayer().audioClips.single.gain, 1.0);
     expect(session.canUndo, isFalse);
 
+    // 🚨AND THE INDEX EXACTLY AT THE END — the boundary the guard is
+    // written for. `7` is refused by any upper bound at all; only
+    // `clipIndex == clips.length` tells `>=` apart from `>`, and past
+    // that guard the edit reaches `clips[clipIndex]` and throws.
+    session.audioClips.setAudioClipGain(_seLayerId, 1, 0.5);
+    expect(seLayer().audioClips.single.gain, 1.0);
+    expect(session.canUndo, isFalse);
+
     // Negative numbers clamp to zero rather than reaching the model.
     session.audioClips.setAudioClipOffset(_seLayerId, 0, -4);
     expect(
@@ -427,6 +435,132 @@ void main() {
       celLayer().audioClips.single.gain,
       0.75,
       reason: 'the row is a drawing row, so its clips are not editable here',
+    );
+    expect(session.canUndo, isFalse);
+  });
+
+  /// R5 #19: the instance editor's unlink can drop SEVERAL sounds off one
+  /// block, and it must be ONE undo with them. The removal walks the
+  /// indexes DESCENDING because every index is into the list as it stands
+  /// NOW — taking a low one out first shifts every index above it, so an
+  /// ascending walk deletes the wrong clips.
+  test('unlinking several clips at once removes exactly those, in one undo', () {
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('sea-project'),
+        name: 'SEA Project',
+        createdAt: DateTime.utc(2026, 7, 10),
+        tracks: [
+          Track(
+            id: const TrackId('sea-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('sea-cut'),
+                name: 'SEA Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: _seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: [
+                      Frame(
+                        id: const FrameId('sea-f1'),
+                        duration: 3,
+                        name: 'Steps',
+                        strokes: const [],
+                      ),
+                    ],
+                    timeline: const {
+                      1: TimelineExposure.drawing(FrameId('sea-f1'), length: 3),
+                    },
+                    audioClips: const [
+                      AudioClip(filePath: 'a.wav', frameId: FrameId('sea-f1')),
+                      AudioClip(filePath: 'b.wav', frameId: FrameId('sea-f1')),
+                      AudioClip(filePath: 'c.wav', frameId: FrameId('sea-f1')),
+                      AudioClip(filePath: 'd.wav', frameId: FrameId('sea-f1')),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+
+    Layer seLayer() => session.repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .single
+        .layers
+        .single;
+
+    // Deliberately UNSORTED and straddling: an ascending removal would
+    // take 0 out, slide everything down, and then take what is now index 2
+    // (`d.wav`) instead of `c.wav`.
+    session.audioClips.unlinkAudioClipsFromLayer(_seLayerId, [0, 2]);
+
+    expect(
+      seLayer().audioClips.map((clip) => clip.filePath),
+      ['b.wav', 'd.wav'],
+    );
+    expect(session.canUndo, isTrue);
+    session.undo();
+    expect(
+      seLayer().audioClips.map((clip) => clip.filePath),
+      ['a.wav', 'b.wav', 'c.wav', 'd.wav'],
+      reason: 'several unlinks are ONE undo step, not one per clip',
+    );
+
+    // An unlink that removes nothing is not an undo step.
+    session.redo();
+    session.audioClips.unlinkAudioClipsFromLayer(_seLayerId, [9]);
+    expect(
+      seLayer().audioClips.map((clip) => clip.filePath),
+      ['b.wav', 'd.wav'],
+    );
+  });
+
+  /// ⛔"no-op when unchanged" is a LAW, not a comment: an edit that sets a
+  /// clip to the value it already has must not spend an undo step. Without
+  /// it the value field's every keystroke-commit stacks another entry and
+  /// one undo takes the user nowhere.
+  test('setting a clip to the value it already has spends no undo step', () {
+    final session = EditorSessionManager(initialProject: _project());
+    addTearDown(session.dispose);
+
+    Layer seLayer() => _seLayer(session.repository);
+
+    session.audioClips.setAudioClipGain(_seLayerId, 0, 0.25);
+    expect(seLayer().audioClips.single.gain, 0.25);
+
+    session.audioClips.setAudioClipGain(_seLayerId, 0, 0.25);
+    session.audioClips.setAudioClipOffset(_seLayerId, 0, 0);
+    session.audioClips.setAudioClipFades(
+      _seLayerId,
+      0,
+      fadeInFrames: 0,
+      fadeOutFrames: 0,
+    );
+    session.audioClips.setAudioClipFadeCurve(
+      _seLayerId,
+      0,
+      AudioFadeCurve.linear,
+    );
+
+    session.undo();
+    expect(
+      seLayer().audioClips.single.gain,
+      1.0,
+      reason:
+          'the four repeat edits added nothing, so ONE undo reaches the '
+          'gain the clip started with',
     );
     expect(session.canUndo, isFalse);
   });
