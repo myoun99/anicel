@@ -3920,8 +3920,8 @@ class EditorSessionManager extends ChangeNotifier
   /// ids — which is what made "cut axis" a second domain next to the frame
   /// axis. It is one axis: a cut is a long block on the cut row, the snap
   /// expands a dragged range to whole blocks, and "these cuts" is what
-  /// falls out ([StoryboardRows.storyboardSelectedCutIds]). Value-only view state; a plain
-  /// tap clears it.
+  /// falls out ([StoryboardRows.storyboardSelectedCutIds]). Value-only view
+  /// state; a plain tap clears it.
   @override
   final ValueNotifier<TrackFrameRangeSelection?> trackFrameRangeSelection =
       ValueNotifier<TrackFrameRangeSelection?>(null);
