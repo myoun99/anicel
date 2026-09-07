@@ -608,8 +608,8 @@ class _HomePageState extends State<HomePage> {
           _session.blankExposureAtCurrentFrame();
         }
       case EditorActionIds.frameToggleMark:
-        if (_session.canToggleMarkAtCurrentFrame) {
-          _session.toggleMarkAtCurrentFrame();
+        if (_session.layerMarks.canToggleMarkAtCurrentFrame) {
+          _session.layerMarks.toggleMarkAtCurrentFrame();
         }
       case EditorActionIds.timelinePushBlocks:
         if (_session.canPushBlocks()) {

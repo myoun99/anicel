@@ -45,10 +45,10 @@ void main() {
       final rows = railRows(s);
       expect(rows.length, greaterThan(2), reason: 'fixture has rows to span');
 
-      s.beginRowSelection(rows.first.address);
+      s.rowSelectionVerbs.beginRowSelection(rows.first.address);
       expect(s.rowSelection.value, [rows.first.address]);
 
-      s.updateRowSelection(rows, 2);
+      s.rowSelectionVerbs.updateRowSelection(rows, 2);
       expect(s.rowSelection.value, [
         rows[0].address,
         rows[1].address,
@@ -57,7 +57,7 @@ void main() {
 
       // Coming back shrinks it — the span is anchor-to-head, not a
       // high-water mark.
-      s.updateRowSelection(rows, 1);
+      s.rowSelectionVerbs.updateRowSelection(rows, 1);
       expect(s.rowSelection.value, [rows[0].address, rows[1].address]);
     });
 
@@ -70,7 +70,7 @@ void main() {
         (row) => row.layer.kind == LayerKind.camera,
       );
 
-      s.beginRowSelection(camera.address);
+      s.rowSelectionVerbs.beginRowSelection(camera.address);
       expect(s.rowIsSelected(camera.address), isTrue);
       expect(
         s.layerVerbs.deletableSelectedLayerIds(),
@@ -97,7 +97,7 @@ void main() {
       );
       expect(s.frameRangeSelection.value, isNotNull);
 
-      s.beginRowSelection(LayerRowAddress(drawing.id));
+      s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
       expect(s.frameRangeSelection.value, isNull);
       expect(s.rowSelection.value, isNotEmpty);
     });
@@ -108,7 +108,7 @@ void main() {
         (layer) => layer.kind == LayerKind.animation,
       );
 
-      s.beginRowSelection(LayerRowAddress(drawing.id));
+      s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
       expect(s.rowSelection.value, isNotEmpty);
 
       s.updateFrameRangeSelectionDrag(
@@ -140,7 +140,7 @@ void main() {
       s.clearAllSelections();
       expect(s.frameRangeSelection.value, isNull);
 
-      s.beginRowSelection(LayerRowAddress(drawing.id));
+      s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
       expect(s.rowSelection.value, isNotEmpty);
       s.clearAllSelections();
       expect(s.rowSelection.value, isEmpty);
@@ -249,7 +249,7 @@ void main() {
       );
 
       expect(s.deleteSubject, isNot(DeleteSubject.layers));
-      s.beginRowSelection(LayerRowAddress(drawing.id));
+      s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
       expect(s.deleteSubject, DeleteSubject.layers);
     });
 
@@ -264,7 +264,7 @@ void main() {
       expect(drawings.length, greaterThanOrEqualTo(3));
 
       final doomed = drawings.take(2).map((layer) => layer.id).toList();
-      s.beginRowSelection(LayerRowAddress(doomed.first));
+      s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(doomed.first));
       s.rowSelection.value = [
         for (final id in doomed) LayerRowAddress(id),
       ];
@@ -290,7 +290,7 @@ void main() {
         (layer) => layer.kind == LayerKind.animation,
       );
 
-      s.beginRowSelection(LayerRowAddress(doomed.id));
+      s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(doomed.id));
       s.deleteSelectionSubject();
 
       expect(s.rowSelection.value, isEmpty);
@@ -577,14 +577,14 @@ void main() {
         LayerRowAddress(first.id),
         LayerRowAddress(second.id),
       ];
-      s.beginLayerRowDrag(LayerRowSubject(first.id));
-      s.updateLayerRowDrag(s.layers, indexOf(over.id) + 1);
+      s.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(first.id));
+      s.layerRowDragVerbs.updateLayerRowDrag(s.layers, indexOf(over.id) + 1);
       expect(
         s.layerRowDrag.value?.legal,
         isTrue,
         reason: 'the landing is a plain re-order inside one section',
       );
-      s.endLayerRowDrag();
+      s.layerRowDragVerbs.endLayerRowDrag();
 
       expect(
         indexOf(first.id),

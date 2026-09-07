@@ -75,7 +75,6 @@ import '../services/cel_pixel_overwrite.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
-import '../models/layer_mark.dart';
 import '../models/media_asset.dart';
 import '../models/onion_skin_settings.dart';
 import '../models/project_background.dart';
@@ -140,9 +139,7 @@ import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
 import 'timeline/layer_row_drag.dart'
-    show LayerRowDragState, LayerRowDragSubject;
-import 'timeline/property_lane_model.dart'
-    show TimelineDisplayRow;
+    show LayerRowDragState;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -647,7 +644,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: _rowSelection, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing _standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: _clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: _solo, trackSe: _trackSe, rangeSelections: _rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => _standing.selectCut(cutId);
   @override
@@ -761,20 +758,19 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the row selection: its own object, in its own file ──────────────
   //
-  // A collaborator (session/row_selection.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final RowSelection _rowSelection = RowSelection(selection: this, rangeSelections: _rangeSelections);
+  // A collaborator (session/row_selection.dart): the ⑨ row sweep — its
+  // anchor, its span and the fold that swallows what left the screen.
+  late final RowSelection rowSelectionVerbs = RowSelection(selection: this, rangeSelections: _rangeSelections);
 
+  /// ⚠️Two ROLE members, not forwarders: [SessionInternals.rowIsSelected]
+  /// and [SelectionAccess.clearRowSelection] are asked of the SESSION by
+  /// collaborators that must not name this one (RowSelection already holds
+  /// RangeSelections, so the edge back would close a construction cycle).
   @override
   bool rowIsSelected(TimelineRowAddress row) =>
-      _rowSelection.rowIsSelected(row);
-  void beginRowSelection(TimelineRowAddress anchor) =>
-      _rowSelection.beginRowSelection(anchor);
-  void updateRowSelection(List<TimelineDisplayRow> rows, int rowDelta) =>
-      _rowSelection.updateRowSelection(rows, rowDelta);
-  void endRowSelection() => _rowSelection.endRowSelection();
+      rowSelectionVerbs.rowIsSelected(row);
   @override
-  void clearRowSelection() => _rowSelection.clearRowSelection();
+  void clearRowSelection() => rowSelectionVerbs.clearRowSelection();
 
   // ── the range selections: their own object, in their own file ───────
   //
@@ -2340,7 +2336,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/folders_and_attachments.dart): the folder and
   // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
   // fold twirl — with the state each one reads.
-  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, rowSelectionVerbs: _rowSelection, internals: this, activeCut: _activeCutEdits);
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, internals: this, activeCut: _activeCutEdits);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: _storyboardCursor, internals: this);
@@ -2409,34 +2405,9 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the layer row drag: its own object, in its own file ─────────────
   //
-  // A collaborator (session/layer_row_drag.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final LayerRowDrag _layerRowDrag = LayerRowDrag(project: this, changes: this, effectsAndFx: _effectsAndFx, rowSelectionVerbs: _rowSelection, trackSe: _trackSe, internals: this);
-
-  void beginLayerRowDrag(LayerRowDragSubject subject) =>
-      _layerRowDrag.beginLayerRowDrag(subject);
-  void updateTrackRowDrag(int slot) => _layerRowDrag.updateTrackRowDrag(slot);
-  void updateEffectRowDrag(
-    LayerId layerId,
-    List<EffectId> displayEffects,
-    int slot,
-  ) => _layerRowDrag.updateEffectRowDrag(layerId, displayEffects, slot);
-  void updateLayerRowDrag(
-    List<Layer> displayLayers,
-    int slot, {
-    LayerId? pointerInRow,
-  }) => _layerRowDrag.updateLayerRowDrag(
-    displayLayers,
-    slot,
-    pointerInRow: pointerInRow,
-  );
-  void updateLayerRowDropOnRow(
-    List<Layer> displayLayers,
-    int slot,
-    LayerId targetId,
-  ) => _layerRowDrag.updateLayerRowDropOnRow(displayLayers, slot, targetId);
-  void endLayerRowDrag() => _layerRowDrag.endLayerRowDrag();
-  void cancelLayerRowDrag() => _layerRowDrag.cancelLayerRowDrag();
+  // A collaborator (session/layer_row_drag.dart): the row picked up in the
+  // rail and where it may land — on a row, a track or an effect lane.
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: _effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: _trackSe, internals: this);
 
   /// The channel the workspace listens on when a drop wants a yes/no.
   ///
@@ -2514,18 +2485,9 @@ class EditorSessionManager extends ChangeNotifier
 
   // ── the layer marks: their own object, in their own file ────────────
   //
-  // A collaborator (session/layer_marks.dart, a part of this library). The
-  // session keeps the public entry points as forwarders.
-  late final LayerMarks _marks = LayerMarks(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
-
-  void setLayerMark(LayerId layerId, LayerMark mark) =>
-      _marks.setLayerMark(layerId, mark);
-  void clearAllLayerMarks() => _marks.clearAllLayerMarks();
-  bool get canToggleMarkForSelection => _marks.canToggleMarkForSelection;
-  bool get canToggleMarkAtCurrentFrame => _marks.canToggleMarkAtCurrentFrame;
-  void toggleMarkAtCurrentFrame() => _marks.toggleMarkAtCurrentFrame();
-  bool hasMarkForLayer(Layer layer, int frameIndex) =>
-      _marks.hasMarkForLayer(layer, frameIndex);
+  // A collaborator (session/layer_marks.dart): the ● a row wears at a
+  // frame — one row or every swept one.
+  late final LayerMarks layerMarks = LayerMarks(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
 
   // ── the instructions: their own object, in their own file ───────────
   //

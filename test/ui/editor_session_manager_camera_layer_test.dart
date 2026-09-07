@@ -52,7 +52,7 @@ void main() {
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
     expect(s.canBlankExposureAtCurrentFrame, isFalse);
-    expect(s.canToggleMarkAtCurrentFrame, isFalse);
+    expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
 
     // Copy/duplicate quietly refuse the camera layer.
     s.layerClipboard.copyActiveLayer();
@@ -78,7 +78,7 @@ void main() {
       s.exposureStateForLayer(cameraLayer, 4),
       TimelineCellExposureState.uncovered,
     );
-    expect(s.hasMarkForLayer(cameraLayer, 3), isFalse);
+    expect(s.layerMarks.hasMarkForLayer(cameraLayer, 3), isFalse);
     expect(s.hasCameraKeyframeAtCurrentFrame, isTrue);
 
     s.removeCameraKeyframeAtCurrentFrame();

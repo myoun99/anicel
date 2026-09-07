@@ -52,7 +52,7 @@ void main() {
           s.updateActiveCutCameraTrack(TransformTrack.empty()),
       if (layerId != null)
         'setLayerMark': (s) =>
-            s.setLayerMark(layerId, const LayerMark(process: LayerProcess.key)),
+            s.layerMarks.setLayerMark(layerId, const LayerMark(process: LayerProcess.key)),
       if (layerId != null)
         'updateLayerEffects': (s) => s.updateLayerEffects(layerId, const []),
       if (folderId != null) 'dissolveFolder': (s) => s.folders.dissolveFolder(folderId),
@@ -126,7 +126,7 @@ void main() {
     addTearDown(quiet.dispose);
     final layerId = quiet.layers.first.id;
     quiet.frameRangeSelection.value = bandOn(quiet);
-    quiet.setLayerMark(layerId, const LayerMark(process: LayerProcess.key));
+    quiet.layerMarks.setLayerMark(layerId, const LayerMark(process: LayerProcess.key));
     expect(
       quiet.frameRangeSelection.value,
       isNotNull,

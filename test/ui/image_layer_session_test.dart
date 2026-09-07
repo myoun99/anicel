@@ -494,7 +494,7 @@ void main() {
     );
 
     for (final (name, gate) in [
-      ('mark', s.canToggleMarkAtCurrentFrame),
+      ('mark', s.layerMarks.canToggleMarkAtCurrentFrame),
       ('잘라내기', s.canCutRunAtCurrentFrame),
       ('rename', s.canEditCellInstanceAtCurrentFrame),
       ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
@@ -513,7 +513,7 @@ void main() {
     }
 
     s.blankExposureAtCurrentFrame();
-    s.toggleMarkAtCurrentFrame();
+    s.layerMarks.toggleMarkAtCurrentFrame();
     s.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();
     s.pasteLinkedFrameAtCurrentFrame();

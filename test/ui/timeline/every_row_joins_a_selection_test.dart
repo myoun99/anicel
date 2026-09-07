@@ -119,8 +119,8 @@ void main() {
     final from = lanes[0];
     final to = lanes[1];
 
-    s.beginRowSelection(rows[from].address);
-    s.updateRowSelection(rows, to - from);
+    s.rowSelectionVerbs.beginRowSelection(rows[from].address);
+    s.rowSelectionVerbs.updateRowSelection(rows, to - from);
 
     expect(
       s.rowSelection.value,
@@ -139,8 +139,8 @@ void main() {
     final from = lanes[1];
     final to = lanes[0];
 
-    s.beginRowSelection(rows[from].address);
-    s.updateRowSelection(rows, to - from);
+    s.rowSelectionVerbs.beginRowSelection(rows[from].address);
+    s.rowSelectionVerbs.updateRowSelection(rows, to - from);
 
     expect(s.rowSelection.value, [
       for (var i = to; i <= from; i += 1) rows[i].address,
@@ -154,8 +154,8 @@ void main() {
       final rows = railRows(s);
       final lane = laneIndices(rows).first;
 
-      s.beginRowSelection(rows[lane - 1].address);
-      s.updateRowSelection(rows, 1);
+      s.rowSelectionVerbs.beginRowSelection(rows[lane - 1].address);
+      s.rowSelectionVerbs.updateRowSelection(rows, 1);
 
       expect(
         s.rowSelection.value,

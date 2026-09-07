@@ -101,9 +101,9 @@ void main() {
     final session = sessionWithHeldBlock();
     // Dots at offsets 1 and 4 of the [0,6) block.
     session.selectFrameIndex(1);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     session.selectFrameIndex(4);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     expect(timelineOf(session)[0]!.breakdownOffsets, [1, 4]);
 
     session.selectFrameIndex(2);

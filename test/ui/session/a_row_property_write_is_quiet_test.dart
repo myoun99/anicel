@@ -90,7 +90,7 @@ void main() {
     var notified = 0;
     s.addListener(() => notified += 1);
 
-    s.setLayerMark(layer.id, const LayerMark(process: LayerProcess.layout));
+    s.layerMarks.setLayerMark(layer.id, const LayerMark(process: LayerProcess.layout));
 
     expect(
       s.layers.firstWhere((row) => row.id == layer.id).mark,

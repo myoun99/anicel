@@ -116,8 +116,8 @@ void main() {
     session.selectLayer(ids.first);
     sweep(session, ids, from: 1, toExclusive: 3);
 
-    expect(session.canToggleMarkForSelection, isTrue);
-    session.toggleMarkAtCurrentFrame();
+    expect(session.layerMarks.canToggleMarkForSelection, isTrue);
+    session.layerMarks.toggleMarkAtCurrentFrame();
 
     for (final id in ids) {
       expect(
@@ -132,7 +132,7 @@ void main() {
   test('several swept frames in ONE block all survive the same press', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 4);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     expect(
       marksOf(session, ids.first),
       [1, 2, 3],
@@ -146,12 +146,12 @@ void main() {
     final (session, ids) = rig();
     // Mark frame 1 of the first row alone, through the band.
     sweep(session, [ids.first], from: 1, toExclusive: 2);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     expect(marksOf(session, ids.first), [1]);
 
     // Now sweep 1..3 across both rows: the band is MIXED.
     sweep(session, ids, from: 1, toExclusive: 3);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     for (final id in ids) {
       expect(
         marksOf(session, id),
@@ -165,10 +165,10 @@ void main() {
   test('an all-marked band clears', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 3);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     expect(marksOf(session, ids.first), [1, 2]);
 
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     for (final id in ids) {
       expect(marksOf(session, id), isEmpty, reason: 'the second press clears');
     }
@@ -177,7 +177,7 @@ void main() {
   test('one press is ONE undo', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 3);
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     expect(marksOf(session, ids.first), [1, 2]);
     expect(marksOf(session, ids[1]), [1, 2]);
 
@@ -200,15 +200,15 @@ void main() {
     // row and holds nothing this verb may touch.
     sweep(session, [ids[1]], from: 0, toExclusive: 1);
 
-    expect(session.canToggleMarkForSelection, isFalse);
+    expect(session.layerMarks.canToggleMarkForSelection, isFalse);
     expect(
-      session.canToggleMarkAtCurrentFrame,
+      session.layerMarks.canToggleMarkAtCurrentFrame,
       isFalse,
       reason: '⛔the press must NOT fall through onto the active row — a cell '
           'drag never moves the active layer, so the swept row and the '
           'active row are routinely different ones',
     );
-    session.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame();
     for (final id in ids) {
       expect(marksOf(session, id), isEmpty);
     }
@@ -220,8 +220,8 @@ void main() {
     session.selectFrameIndex(2);
     session.clearFrameRangeSelection();
 
-    expect(session.canToggleMarkAtCurrentFrame, isTrue);
-    session.toggleMarkAtCurrentFrame();
+    expect(session.layerMarks.canToggleMarkAtCurrentFrame, isTrue);
+    session.layerMarks.toggleMarkAtCurrentFrame();
     expect(marksOf(session, ids.first), [2]);
     expect(
       marksOf(session, ids[1]),

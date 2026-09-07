@@ -30,8 +30,8 @@ void main() {
   /// `rowSelection.value` skips `claimSelection` and leaves the rest of the
   /// session behind.
   void selectARow() {
-    session.beginRowSelection(LayerRowAddress(session.activeLayer!.id));
-    session.endRowSelection();
+    session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayer!.id));
+    session.rowSelectionVerbs.endRowSelection();
     expect(session.rowSelection.value, isNotEmpty);
   }
 

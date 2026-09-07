@@ -144,10 +144,10 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void blankExposure() => session.blankExposureAtCurrentFrame();
 
   @override
-  bool get canToggleMark => session.canToggleMarkAtCurrentFrame;
+  bool get canToggleMark => session.layerMarks.canToggleMarkAtCurrentFrame;
 
   @override
-  void toggleMark() => session.toggleMarkAtCurrentFrame();
+  void toggleMark() => session.layerMarks.toggleMarkAtCurrentFrame();
 
   @override
   bool get canSetComma => session.canSetCommaForSelectionOrCurrent;

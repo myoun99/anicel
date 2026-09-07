@@ -152,8 +152,8 @@ void main() {
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    expect(s.canToggleMarkAtCurrentFrame, isFalse);
-    s.toggleMarkAtCurrentFrame();
+    expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
+    s.layerMarks.toggleMarkAtCurrentFrame();
 
     expect(
       s.layers.firstWhere((l) => l.id == a.id).timeline.containsKey(4),

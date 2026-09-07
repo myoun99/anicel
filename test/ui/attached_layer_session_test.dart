@@ -302,7 +302,7 @@ void main() {
     // Breakdown marks live INSIDE a block (normal rule) and the covering
     // cel deletes from anywhere on it — both gates open now.
     s.selectFrameIndex(1);
-    expect(s.canToggleMarkAtCurrentFrame, isTrue);
+    expect(s.layerMarks.canToggleMarkAtCurrentFrame, isTrue);
     expect(s.canDeleteCellAtCurrentFrame, isTrue);
     s.selectFrameIndex(0);
 
@@ -409,7 +409,7 @@ void main() {
     final attachId = s.activeLayer!.id;
 
     expect(s.canBlankExposureAtCurrentFrame, isFalse);
-    expect(s.canToggleMarkAtCurrentFrame, isFalse);
+    expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
     expect(s.canDeleteCellAtCurrentFrame, isFalse);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);

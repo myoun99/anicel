@@ -29,9 +29,9 @@ List<Layer> _rows(EditorSessionManager s) => s.requireActiveCut.layers;
 /// Handing the MODEL order over as the display list makes the slot the
 /// model insertion index, which is the term these tests already use.
 void _dragTo(EditorSessionManager s, LayerId id, int insertAt) {
-  s.beginLayerRowDrag(LayerRowSubject(id));
-  s.updateLayerRowDrag(s.layers, insertAt);
-  s.endLayerRowDrag();
+  s.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(id));
+  s.layerRowDragVerbs.updateLayerRowDrag(s.layers, insertAt);
+  s.layerRowDragVerbs.endLayerRowDrag();
 }
 
 Layer _row(EditorSessionManager s, LayerId id) =>

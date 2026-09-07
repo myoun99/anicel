@@ -90,7 +90,7 @@ void main() {
 
   test('folding a layer\'s lanes drops its LANE rows from the band', () {
     final s = session();
-    s.beginRowSelection(layerA);
+    s.rowSelectionVerbs.beginRowSelection(layerA);
     s.rowSelection.value = [layerA, laneOfA, layerB];
 
     s.handOffCurrentRowOnFold(const LayerId('a'));
@@ -106,7 +106,7 @@ void main() {
 
   test('a band of ONLY vanished rows becomes the swallower, never empty', () {
     final s = session();
-    s.beginRowSelection(laneOfA);
+    s.rowSelectionVerbs.beginRowSelection(laneOfA);
     s.rowSelection.value = [laneOfA];
 
     s.handOffCurrentRowOnFold(const LayerId('a'));
@@ -122,7 +122,7 @@ void main() {
 
   test('a fold that hides nothing selected leaves the band alone', () {
     final s = session();
-    s.beginRowSelection(layerB);
+    s.rowSelectionVerbs.beginRowSelection(layerB);
     s.rowSelection.value = [layerB];
     final before = s.rowSelection.value;
 
@@ -140,7 +140,7 @@ void main() {
   test('folding ONE GROUP takes its members and leaves the header', () {
     final s = session();
     const member = LaneRowAddress(LayerId('a'), 'scale');
-    s.beginRowSelection(layerA);
+    s.rowSelectionVerbs.beginRowSelection(layerA);
     s.rowSelection.value = [layerA, member];
 
     s.handOffCurrentRowOnFold(

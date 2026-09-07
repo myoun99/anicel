@@ -97,7 +97,7 @@ void main() {
     s.canCreateDrawingAtCurrentFrame,
     s.canRenameFrameAtCurrentFrame,
     s.canBlankExposureAtCurrentFrame,
-    s.canToggleMarkAtCurrentFrame,
+    s.layerMarks.canToggleMarkAtCurrentFrame,
     s.canCopyFrameAtCurrentFrame,
     s.canPasteLinkedFrameAtCurrentFrame,
     s.canCutRunAtCurrentFrame,

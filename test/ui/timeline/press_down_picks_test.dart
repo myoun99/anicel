@@ -95,7 +95,7 @@ void main() {
     // row reaches this verb through a callback that carries none, which is
     // why the frame argument has a playhead fallback rather than a null.
     final row = drawingRow();
-    session.beginRowSelection(row);
+    session.rowSelectionVerbs.beginRowSelection(row);
     expect(session.rowSelection.value, [row]);
 
     session.standOnRow(row);

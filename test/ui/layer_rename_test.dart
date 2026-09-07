@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -195,7 +195,7 @@ Future<void> _selectActiveRow(WidgetTester tester) async {
   final session = tester
       .widget<EditorWorkspace>(find.byType(EditorWorkspace))
       .session;
-  session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+  session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
   await tester.pumpAndSettle();
 }
 

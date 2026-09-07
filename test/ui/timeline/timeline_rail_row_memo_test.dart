@@ -124,7 +124,7 @@ void main() {
 
     // ⑨'s select drag, at its first step. The wash is SESSION state — the
     // Layer never changes — so only the memo's own record can carry it.
-    session.beginRowSelection(LayerRowAddress(activeId));
+    session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(activeId));
     await tester.pump();
 
     expect(

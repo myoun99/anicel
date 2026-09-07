@@ -90,9 +90,9 @@ void main() {
 
     // Track B's rail draws its slots top-down = the model list reversed.
     final displayRows = [se('b-s3'), se('b-s2'), se('b-s1')];
-    manager.beginLayerRowDrag(const LayerRowSubject(LayerId('b-s3')));
-    manager.updateLayerRowDrag(displayRows, 3);
-    manager.endLayerRowDrag();
+    manager.layerRowDragVerbs.beginLayerRowDrag(const LayerRowSubject(LayerId('b-s3')));
+    manager.layerRowDragVerbs.updateLayerRowDrag(displayRows, 3);
+    manager.layerRowDragVerbs.endLayerRowDrag();
 
     expect(seOrderOf(manager, trackB), [
       'b-s3',

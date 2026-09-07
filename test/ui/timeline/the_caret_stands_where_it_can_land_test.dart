@@ -52,15 +52,15 @@ void main() {
   }
 
   ({int? caret, bool legal}) caretAt(EditorSessionManager session, int slot) {
-    session.updateLayerRowDrag(session.layers, slot);
+    session.layerRowDragVerbs.updateLayerRowDrag(session.layers, slot);
     final state = session.layerRowDrag.value;
     return (caret: state?.caretSlot, legal: state?.legal ?? false);
   }
 
   test('past the last landing the caret STAYS on it instead of vanishing', () {
     final (session, bottom) = rig();
-    session.beginLayerRowDrag(LayerRowSubject(bottom));
-    addTearDown(session.cancelLayerRowDrag);
+    session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(bottom));
+    addTearDown(session.layerRowDragVerbs.cancelLayerRowDrag);
 
     // The two landings the drawing section actually offers this row.
     expect(caretAt(session, 2), (caret: 2, legal: true));
@@ -82,8 +82,8 @@ void main() {
 
   test('between the cursor and the row own place there is nothing to draw', () {
     final (session, bottom) = rig();
-    session.beginLayerRowDrag(LayerRowSubject(bottom));
-    addTearDown(session.cancelLayerRowDrag);
+    session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(bottom));
+    addTearDown(session.layerRowDragVerbs.cancelLayerRowDrag);
 
     // The bottom row sits at index 0, so slots 0 and 1 are the gaps it
     // already occupies. ④ removed the caret there deliberately — a drag
@@ -96,12 +96,12 @@ void main() {
   test('the clamped caret is what RELEASING commits', () {
     final (session, bottom) = rig();
     final before = [for (final layer in session.layers) layer.id.value];
-    session.beginLayerRowDrag(LayerRowSubject(bottom));
+    session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(bottom));
     // Dropped far past the section — the caret says slot 3, so slot 3 is
     // what has to happen. A caret that pinned for the eye only would be a
     // second answer to a question this drag already answered once.
     caretAt(session, session.layers.length);
-    session.endLayerRowDrag();
+    session.layerRowDragVerbs.endLayerRowDrag();
 
     final after = [for (final layer in session.layers) layer.id.value];
     expect(after, isNot(before), reason: 'the release really moved it');

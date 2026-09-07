@@ -28,7 +28,7 @@ LayerLegendCallbacks sessionLegendCallbacks(
   onRevealOnionSkinPanel: onRevealOnionSkinPanel,
   onSheetAllOn: () => session.layerSwitches.setAllLayersOnTimesheet(true),
   onSheetAllOff: () => session.layerSwitches.setAllLayersOnTimesheet(false),
-  onClearAllMarks: session.clearAllLayerMarks,
+  onClearAllMarks: session.layerMarks.clearAllLayerMarks,
   onClearAllFillReferences: session.layerSwitches.clearAllFillReferences,
   onMuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(true),
   onUnmuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(false),

@@ -29,9 +29,9 @@ EditorSessionManager _session() {
 /// the model insertion index, so these tests state landings in the terms
 /// the stack itself uses rather than in a rail's reversed ones.
 void _dragTo(EditorSessionManager session, LayerId id, int insertAt) {
-  session.beginLayerRowDrag(LayerRowSubject(id));
-  session.updateLayerRowDrag(session.layers, insertAt);
-  session.endLayerRowDrag();
+  session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(id));
+  session.layerRowDragVerbs.updateLayerRowDrag(session.layers, insertAt);
+  session.layerRowDragVerbs.endLayerRowDrag();
 }
 
 List<String> _drawingIds(EditorSessionManager session) => [
@@ -140,9 +140,9 @@ void main() {
 
     // The SE arm reads the track's list as both the model and the display,
     // so slot 2 is "after the second row".
-    session.beginLayerRowDrag(LayerRowSubject(rows.first));
-    session.updateLayerRowDrag(session.activeTrack.seLayers, 2);
-    session.endLayerRowDrag();
+    session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(rows.first));
+    session.layerRowDragVerbs.updateLayerRowDrag(session.activeTrack.seLayers, 2);
+    session.layerRowDragVerbs.endLayerRowDrag();
 
     expect(
       [for (final row in session.activeTrack.seLayers) row.id],

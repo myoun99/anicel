@@ -55,7 +55,7 @@ void main() {
     final seLayer = s.activeTrack.seLayers.first;
     expect(seLayer.mark, LayerMark.none);
 
-    s.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.layout));
+    s.layerMarks.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.layout));
     expect(
       s.layers.firstWhere((layer) => layer.id == seLayer.id).mark,
       const LayerMark(process: LayerProcess.layout),
@@ -74,8 +74,8 @@ void main() {
     );
 
     // The bulk sweeps include the track SE rows now too.
-    s.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.conte));
-    s.clearAllLayerMarks();
+    s.layerMarks.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.conte));
+    s.layerMarks.clearAllLayerMarks();
     expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
   });
 
@@ -84,11 +84,11 @@ void main() {
     final markedId = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
-    s.setLayerMark(markedId, const LayerMark(process: LayerProcess.layout));
+    s.layerMarks.setLayerMark(markedId, const LayerMark(process: LayerProcess.layout));
     final undosAfterMark = s.canUndo;
     expect(undosAfterMark, isTrue);
 
-    s.clearAllLayerMarks();
+    s.layerMarks.clearAllLayerMarks();
     expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
     s.undo();
     expect(
@@ -98,8 +98,8 @@ void main() {
 
     // A markless sweep adds no history: clearing twice then undoing ONCE
     // returns to the marked state (the second clear was a no-op).
-    s.clearAllLayerMarks();
-    s.clearAllLayerMarks();
+    s.layerMarks.clearAllLayerMarks();
+    s.layerMarks.clearAllLayerMarks();
     s.undo();
     expect(
       s.layers.firstWhere((layer) => layer.id == markedId).mark,

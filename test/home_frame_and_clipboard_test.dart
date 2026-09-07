@@ -304,7 +304,7 @@ void main() {
       final session = tester
           .widget<EditorWorkspace>(find.byType(EditorWorkspace))
           .session;
-      session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+      session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
       await tester.pumpAndSettle();
     }
     await tapToolbarButton(
@@ -327,7 +327,7 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+    session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
     await tester.pumpAndSettle();
     await tapToolbarButton(
       tester,
@@ -389,7 +389,7 @@ void main() {
       final session = tester
           .widget<EditorWorkspace>(find.byType(EditorWorkspace))
           .session;
-      session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+      session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
       await tester.pumpAndSettle();
     }
     await tapToolbarButton(
@@ -411,7 +411,7 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+    session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
     await tester.pumpAndSettle();
     await tapToolbarButton(
       tester,

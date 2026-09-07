@@ -270,7 +270,7 @@ Future<void> _selectActiveRow(WidgetTester tester) async {
   // The real verb, not the notifier: `beginRowSelection` is what the rail's
   // select drag calls, and it claims the selection domain as well as filling
   // it — poking the notifier alone leaves the rest of the session behind.
-  session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+  session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
   await tester.pumpAndSettle();
 }
 

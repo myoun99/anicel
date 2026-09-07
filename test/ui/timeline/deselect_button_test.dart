@@ -93,7 +93,7 @@ void main() {
   ) async {
     final session = await pump(tester);
 
-    session.beginRowSelection(session.currentRow);
+    session.rowSelectionVerbs.beginRowSelection(session.currentRow);
     await tester.pumpAndSettle();
     expect(session.rowSelection.value, isNotEmpty, reason: 'fixture premise');
 

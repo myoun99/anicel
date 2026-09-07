@@ -815,7 +815,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             ),
             onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
             onToggleLayerFillReference: _session.layerSwitches.toggleLayerFillReference,
-            onLayerMarkSelected: _session.setLayerMark,
+            onLayerMarkSelected: _session.layerMarks.setLayerMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.layerFxState,
@@ -924,12 +924,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // this drag runs.
             rowDragHooks: TimelineRowDragHooks(
               drag: _session.layerRowDrag,
-              onBegin: _session.beginLayerRowDrag,
-              onUpdate: _session.updateLayerRowDrag,
-              onRowTarget: _session.updateLayerRowDropOnRow,
-              onEffectUpdate: _session.updateEffectRowDrag,
-              onEnd: _session.endLayerRowDrag,
-              onCancel: _session.cancelLayerRowDrag,
+              onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
+              onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
+              onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
+              onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
+              onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
+              onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
               // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
               // selection moves it — the cells' grammar, transposed.
               //
@@ -951,12 +951,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               isInRowSelection: (subject) => _session.rowIsSelected(
                 timelineRowAddressOfDragSubject(subject),
               ),
-              onSelectBegin: (subject) => _session.beginRowSelection(
+              onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
                 timelineRowAddressOfDragSubject(subject),
               ),
-              onSelectEnd: _session.endRowSelection,
+              onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
             ),
-            onRowSelectionSpan: _session.updateRowSelection,
+            onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
             // drawings onto a run; the property tag sets the edge's
             // None/Hold/Repeat mode (ghosts fill to the cut boundary).
@@ -1240,7 +1240,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.canCreateDrawingAtCurrentFrame,
       session.canRenameFrameAtCurrentFrame,
       session.canBlankExposureAtCurrentFrame,
-      session.canToggleMarkAtCurrentFrame,
+      session.layerMarks.canToggleMarkAtCurrentFrame,
       session.canCopyFrameAtCurrentFrame,
       session.canPasteLinkedFrameAtCurrentFrame,
       // The shared pill's other three gates. They used to ride that pill's

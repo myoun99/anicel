@@ -82,10 +82,10 @@ void main() {
       final session = threeTracks();
       addTearDown(session.dispose);
 
-      session.beginLayerRowDrag(const TrackRowSubject(TrackId('t1')));
+      session.layerRowDragVerbs.beginLayerRowDrag(const TrackRowSubject(TrackId('t1')));
       // Caret past 'Two': slot 2 of the row list.
-      session.updateTrackRowDrag(2);
-      session.endLayerRowDrag();
+      session.layerRowDragVerbs.updateTrackRowDrag(2);
+      session.layerRowDragVerbs.endLayerRowDrag();
 
       expect(namesOf(session), ['Two', 'One', 'Three']);
     });
@@ -94,9 +94,9 @@ void main() {
       final session = threeTracks();
       addTearDown(session.dispose);
 
-      session.beginLayerRowDrag(const TrackRowSubject(TrackId('t3')));
-      session.updateTrackRowDrag(0);
-      session.endLayerRowDrag();
+      session.layerRowDragVerbs.beginLayerRowDrag(const TrackRowSubject(TrackId('t3')));
+      session.layerRowDragVerbs.updateTrackRowDrag(0);
+      session.layerRowDragVerbs.endLayerRowDrag();
 
       expect(namesOf(session), ['Three', 'One', 'Two']);
     });
@@ -107,9 +107,9 @@ void main() {
       addTearDown(session.dispose);
       final before = session.canUndo;
 
-      session.beginLayerRowDrag(const TrackRowSubject(TrackId('t2')));
-      session.updateTrackRowDrag(1); // the gap above itself
-      session.endLayerRowDrag();
+      session.layerRowDragVerbs.beginLayerRowDrag(const TrackRowSubject(TrackId('t2')));
+      session.layerRowDragVerbs.updateTrackRowDrag(1); // the gap above itself
+      session.layerRowDragVerbs.endLayerRowDrag();
 
       expect(namesOf(session), ['One', 'Two', 'Three']);
       expect(session.canUndo, before);
@@ -119,9 +119,9 @@ void main() {
       final session = threeTracks();
       addTearDown(session.dispose);
 
-      session.beginLayerRowDrag(const TrackRowSubject(TrackId('t1')));
-      session.updateTrackRowDrag(3);
-      session.endLayerRowDrag();
+      session.layerRowDragVerbs.beginLayerRowDrag(const TrackRowSubject(TrackId('t1')));
+      session.layerRowDragVerbs.updateTrackRowDrag(3);
+      session.layerRowDragVerbs.endLayerRowDrag();
       expect(namesOf(session), ['Two', 'Three', 'One']);
 
       session.undo();
@@ -131,11 +131,11 @@ void main() {
     test('a LAYER drag is untouched by the track arm', () {
       final session = threeTracks();
       addTearDown(session.dispose);
-      session.beginLayerRowDrag(const TrackRowSubject(TrackId('t1')));
+      session.layerRowDragVerbs.beginLayerRowDrag(const TrackRowSubject(TrackId('t1')));
       // A track caret must not be accepted while a layer subject is held.
-      session.beginLayerRowDrag(const TrackRowSubject(TrackId('t2')));
-      session.updateTrackRowDrag(0);
-      session.endLayerRowDrag();
+      session.layerRowDragVerbs.beginLayerRowDrag(const TrackRowSubject(TrackId('t2')));
+      session.layerRowDragVerbs.updateTrackRowDrag(0);
+      session.layerRowDragVerbs.endLayerRowDrag();
       expect(namesOf(session), ['Two', 'One', 'Three']);
     });
   });

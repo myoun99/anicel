@@ -798,16 +798,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // are tracks and keep their order.
                     rowDragHooks: TimelineRowDragHooks(
                       drag: _session.layerRowDrag,
-                      onBegin: _session.beginLayerRowDrag,
-                      onUpdate: _session.updateLayerRowDrag,
-                      onRowTarget: _session.updateLayerRowDropOnRow,
+                      onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
+                      onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
+                      onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
                       // R5 #9: the V row re-orders TRACKS, and the track list
                       // is the composite order (user, 2026-08-09) — so this
                       // is only offered where tracks are on screen.
-                      onTrackUpdate: _session.updateTrackRowDrag,
-                      onEffectUpdate: _session.updateEffectRowDrag,
-                      onEnd: _session.endLayerRowDrag,
-                      onCancel: _session.cancelLayerRowDrag,
+                      onTrackUpdate: _session.layerRowDragVerbs.updateTrackRowDrag,
+                      onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
+                      onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
+                      onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
                       // 🚨A5-3② (유저 2026-08-22): 「스토리보드패널에서는 되긴
                       // 하는데 **통일이 안 돼 있다** — 선택범위로 선택하고
                       // 이동하는 게 규칙인데 **그냥 바로 드래그 작동**해버림」.
@@ -841,15 +841,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       isInRowSelection: (subject) => _session.rowIsSelected(
                         timelineRowAddressOfDragSubject(subject),
                       ),
-                      onSelectBegin: (subject) => _session.beginRowSelection(
+                      onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
                         timelineRowAddressOfDragSubject(subject),
                       ),
-                      onSelectEnd: _session.endRowSelection,
+                      onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
                     ),
                     // The span half — the three hooks above only ARM the
                     // selection; without this the press would select one row
                     // and then refuse to grow.
-                    onSeRowSelectionSpan: _session.updateRowSelection,
+                    onSeRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
                     layerLaneEdit: _layerLaneEdit,
                     activeCutFrameCursor: _activeCutFrameCursor,
                     onSelectFrameIndex: _session.selectFrameIndex,
@@ -873,7 +873,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         _session.soloedSeLayerIds.value.contains(layerId),
                     onLayerOpacityChanged: _session.previewLayerOpacity,
                     onLayerOpacityChangeEnd: _session.commitLayerOpacity,
-                    onLayerMarkSelected: _session.setLayerMark,
+                    onLayerMarkSelected: _session.layerMarks.setLayerMark,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
                     onToggleLayerTimesheet: _session.layerSwitches.toggleLayerTimesheet,
