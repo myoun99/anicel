@@ -142,7 +142,7 @@ void main() {
     final session = await pump(tester);
     await selectARange(tester, session);
 
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     await tester.pumpAndSettle();
 
     expect(session.rowSelection.value, isEmpty);
@@ -158,7 +158,7 @@ void main() {
     // the ruler goes through that one too (유저 2026-08-24: 「룰러쪽 조작은
     // 지금처럼 그대로 취소안되도록」). A fix that moved the law down into the
     // seek would take this with it.
-    session.scrubFrameIndex(2);
+    session.frameScrub.scrubFrameIndex(2);
     await tester.pumpAndSettle();
 
     expect(

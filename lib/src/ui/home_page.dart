@@ -507,14 +507,14 @@ class _HomePageState extends State<HomePage> {
       // Along the frame axis: one DRAWING, which is the plain arrow's step.
       if (byFrame) {
         if (forward) {
-          _session.selectNextFrame();
+          _session.frameVerbs.selectNextFrame();
         } else {
-          _session.selectPreviousFrame();
+          _session.frameVerbs.selectPreviousFrame();
         }
       } else if (forward) {
-        _session.selectNextDrawing();
+        _session.frameVerbs.flipRow(forward: true);
       } else {
-        _session.selectPreviousDrawing();
+        _session.frameVerbs.flipRow(forward: false);
       }
     } else {
       // Across it: the row stack.
@@ -553,10 +553,10 @@ class _HomePageState extends State<HomePage> {
         // R5: and the rails bring it back into view. These are the moves
         // that happen WITHOUT a pointer, so they are the ones that could
         // walk the selection off screen (user, 2026-08-09).
-        _session.selectPreviousFrame();
+        _session.frameVerbs.selectPreviousFrame();
         _session.revealSelection();
       case EditorActionIds.frameNext:
-        _session.selectNextFrame();
+        _session.frameVerbs.selectNextFrame();
         _session.revealSelection();
       // F-28 (유저 2026-08-28, Q2=2): Ctrl+arrows read the SHEET, exactly
       // as the plain arrows already do — along the frame axis one frame,
@@ -592,7 +592,7 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.toolFill:
         _armToolGroup(CanvasTool.fill);
       case EditorActionIds.onionSkinToggle:
-        _session.toggleOnionSkin();
+        _session.onionSkin.toggleOnionSkin();
       // The film verbs. Each one guards itself the way the toolbar button
       // above it does — a key that fires on a row with nothing to do is a
       // no-op, not an error.

@@ -251,7 +251,7 @@ void main() {
       s.selectFrameIndex(0);
 
       expect(
-        s.canCreateDrawingAtCurrentFrame,
+        s.frameVerbs.canCreateDrawingAtCurrentFrame,
         isTrue,
         reason: 'the row takes a brush, so it has to be able to hold a cel',
       );

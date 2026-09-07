@@ -57,8 +57,8 @@ void main() {
   /// A drag takes TWO out-of-territory moves to engage the preview (the
   /// no-flash rule: a plain tap over another cut must not flash it).
   void dragTo(EditorSessionManager s, int from, int to) {
-    s.scrubGlobalFrame(from);
-    s.scrubGlobalFrame(to);
+    s.frameScrub.scrubGlobalFrame(from);
+    s.frameScrub.scrubGlobalFrame(to);
   }
 
   Future<void> drainWarming(WidgetTester tester) async {
@@ -128,7 +128,7 @@ void main() {
 
     dragTo(s, secondStart, secondStart + 5);
     final shownDuringDrag = s.camera.displayedCameraPose!.zoom;
-    s.commitFrameScrub();
+    s.frameScrub.commitFrameScrub();
 
     expect(s.frameScrubActive.value, isFalse);
     expect(s.currentFrameIndex, 5);
@@ -168,7 +168,7 @@ void main() {
     await tester.pump();
     expect(overlayZoom(), lessThan(2), reason: 'cut two starts at 1×');
 
-    s.scrubGlobalFrame(secondStart + 5);
+    s.frameScrub.scrubGlobalFrame(secondStart + 5);
     await tester.pump();
     expect(
       overlayZoom(),
@@ -193,7 +193,7 @@ void main() {
     await tester.pump();
     expect(find.byType(CameraFrameOverlay), findsNothing);
 
-    s.scrubGlobalFrame(secondStart + 5);
+    s.frameScrub.scrubGlobalFrame(secondStart + 5);
     await tester.pump();
     expect(find.byType(CameraFrameOverlay), findsOneWidget);
 

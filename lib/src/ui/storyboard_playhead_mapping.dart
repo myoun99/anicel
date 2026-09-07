@@ -182,14 +182,14 @@ void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
     seekStoryboardGlobalFrame(session, globalFrame);
     return;
   }
-  session.scrubGlobalFrame(globalFrame);
+  session.frameScrub.scrubGlobalFrame(globalFrame);
 }
 
 /// The storyboard ruler drag's release: commits the scrubbed playhead once
 /// (playback drags have nothing to commit).
 void commitStoryboardScrub(EditorSessionManager session) {
   if (!session.playbackRig.playback.isActive) {
-    session.commitFrameScrub();
+    session.frameScrub.commitFrameScrub();
     return;
   }
   // Playback took the transport mid-drag: there is no editing seek to
@@ -198,7 +198,7 @@ void commitStoryboardScrub(EditorSessionManager session) {
   // a stuck territory flag would swallow the NEXT drag's exit edge
   // (the D6 stale picture, resurrected one drag per leak). One session
   // verb clears the whole preview state.
-  session.abandonFrameScrubPreview();
+  session.frameScrub.abandonFrameScrubPreview();
 }
 
 /// Switching into the storyboard clamps an over-end playhead back onto the

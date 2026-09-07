@@ -338,7 +338,7 @@ void main() {
 
     bool nameRotation(CutId cutId) {
       session.selectCut(cutId);
-      return session.setTransformKeyName(
+      return session.laneVerbs.setTransformKeyName(
         layerId: counterpartIn(cutId, row).id,
         property: TransformPropertyId.rotation,
         frameIndex: 0,
@@ -362,7 +362,7 @@ void main() {
     expect(rotationAt(pair.linked), 10, reason: 'a collision writes nothing');
 
     session.selectCut(pair.linked);
-    session.linkTransformKeyName(
+    session.laneVerbs.linkTransformKeyName(
       layerId: counterpartIn(pair.linked, row).id,
       property: TransformPropertyId.rotation,
       frameIndex: 0,

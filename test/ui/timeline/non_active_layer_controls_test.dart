@@ -201,7 +201,7 @@ void main() {
       final session = await pumpRail(tester);
       final active = session.activeLayerId;
       final other = otherAnimationRow(session);
-      expect(session.isLayerOnionSkinEnabled(other), isFalse);
+      expect(session.onionSkin.isLayerOnionSkinEnabled(other), isFalse);
 
       await tester.tap(
         find.byKey(ValueKey<String>('timeline-layer-onion-$other')),
@@ -209,7 +209,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        session.isLayerOnionSkinEnabled(other),
+        session.onionSkin.isLayerOnionSkinEnabled(other),
         isTrue,
         reason: 'the onion toggle did not land on its own row',
       );

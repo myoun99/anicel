@@ -42,8 +42,8 @@ void main() {
       'deliberate resolve-through)', () {
     final (s, _) = sessionWithGhostTail();
     s.selectFrameIndex(2);
-    expect(s.canRenameFrameAtCurrentFrame, isTrue);
-    expect(s.renameSelectedFrame('7'), isNull, reason: 'applies cleanly');
+    expect(s.frameVerbs.canRenameFrameAtCurrentFrame, isTrue);
+    expect(s.frameVerbs.renameSelectedFrame('7'), isNull, reason: 'applies cleanly');
     final layer = s.activeLayer!;
     expect(
       layer.frames.single.name,

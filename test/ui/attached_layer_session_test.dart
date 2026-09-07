@@ -108,9 +108,9 @@ void main() {
     expect(attached.timeline, isEmpty);
 
     // Every base cel is already mirrored — nothing left to lazily create.
-    expect(s.canCreateDrawingAtCurrentFrame, isFalse);
+    expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
     s.selectFrameIndex(2);
-    expect(s.canCreateDrawingAtCurrentFrame, isFalse);
+    expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
     s.selectFrameIndex(0);
 
     // The mirror cel at the playhead resolves as the brush target (its own
@@ -197,7 +197,7 @@ void main() {
     final (s, base) = sessionWithBase();
     s.createDrawingAtCurrentFrame();
     // Name the base cel '1' and author a HOLD run edge after it.
-    expect(s.renameSelectedFrame('1'), isNull);
+    expect(s.frameVerbs.renameSelectedFrame('1'), isNull);
     s.setRunEdgeBehavior(
       layerId: base.id,
       blockStartIndex: 0,
@@ -219,8 +219,8 @@ void main() {
     );
 
     // The mirror prints the BASE's name — never its own unnamed cel's ○.
-    expect(s.frameNameForLayer(clone, 0), '1');
-    expect(s.frameNameForLayer(clone, 1), '1');
+    expect(s.frameVerbs.frameNameForLayer(clone, 0), '1');
+    expect(s.frameVerbs.frameNameForLayer(clone, 1), '1');
   });
 
   test('the eager mirror preserves the base HOLD notation (UI-R23 #8): a '
@@ -270,7 +270,7 @@ void main() {
     );
 
     // Normal authoring path: a cel with a plain timeline entry, NO link.
-    expect(s.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     s.createDrawingAtCurrentFrame();
     final attached = cutLayers(s).firstWhere((l) => l.id == attachId);
     expect(attached.frames, hasLength(1));

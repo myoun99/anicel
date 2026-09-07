@@ -44,7 +44,7 @@ void main() {
     session.claimStoryboardRow();
 
     expect(session.currentRow, isA<TrackRowAddress>());
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     expect(
       session.activeCutId,
       const CutId('cut-2'),

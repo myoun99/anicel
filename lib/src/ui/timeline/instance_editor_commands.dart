@@ -62,7 +62,7 @@ Future<void> activateCellEditor(
   // layer owns it" — a drawing row standing on its Rotation lane would
   // otherwise rename the frame, which is the row's cell and not the thing
   // under the cursor at all.
-  if (session.canNameLaneKeys) {
+  if (session.laneVerbs.canNameLaneKeys) {
     await _renameLaneKey(context, session);
     return;
   }
@@ -134,7 +134,7 @@ Future<void> activateCellOnDoubleTap(
   // branch: a drawing row standing on its Rotation lane is asking about the
   // LANE, and a lane's key creation is not this fork's business — so the
   // fork stands down and the editor's own lane branch answers.
-  if (!session.canNameLaneKeys && !session.cellInstances.activeCellHoldsAnInstance) {
+  if (!session.laneVerbs.canNameLaneKeys && !session.cellInstances.activeCellHoldsAnInstance) {
     createActiveInstance(session);
     return;
   }
@@ -265,7 +265,7 @@ Future<void> _editSeLabel(
 ) async {
   final creating = session.selectedFrame == null;
   if (creating) {
-    if (session.canCreateDrawingAtCurrentFrame) {
+    if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
       session.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
     }
     return;
@@ -401,7 +401,7 @@ Future<void> _editTextCel(
   EditorSessionManager session,
 ) async {
   if (session.selectedFrame == null) {
-    if (session.canCreateDrawingAtCurrentFrame) {
+    if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
       session.createDrawingAtCurrentFrame();
     }
     return;
@@ -646,7 +646,7 @@ Future<void> _renameLaneKey(
   BuildContext context,
   EditorSessionManager session,
 ) {
-  if (!session.canNameLaneKeys) {
+  if (!session.laneVerbs.canNameLaneKeys) {
     return Future<void>.value();
   }
   final strings = AppText.strings;
@@ -655,7 +655,7 @@ Future<void> _renameLaneKey(
     prompt: (
       // What the covered keys already AGREE on; blank when they disagree,
       // the same thing the group header says with its `…`.
-      initialName: session.laneKeyNameForSelection ?? '',
+      initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
     ),
@@ -666,13 +666,13 @@ Future<void> _renameLaneKey(
     // shared name means.
     rename: (nextName) {
       final trimmed = nextName.trim();
-      return session.setLaneKeyNamesForSelection(
+      return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
           )
           ? trimmed
           : null;
     },
-    link: session.linkLaneKeyNamesForSelection,
+    link: session.laneVerbs.linkLaneKeyNamesForSelection,
   );
 }
 
@@ -680,7 +680,7 @@ Future<void> _renameSelectedFrame(
   BuildContext context,
   EditorSessionManager session,
 ) {
-  if (session.selectedFrame == null || !session.canRenameFrameAtCurrentFrame) {
+  if (session.selectedFrame == null || !session.frameVerbs.canRenameFrameAtCurrentFrame) {
     return Future<void>.value();
   }
   return _renameThenOfferLink<FrameId>(
@@ -690,7 +690,7 @@ Future<void> _renameSelectedFrame(
       title: null,
       fieldLabel: null,
     ),
-    rename: session.renameSelectedFrame,
-    link: session.linkSelectedFrame,
+    rename: session.frameVerbs.renameSelectedFrame,
+    link: session.frameVerbs.linkSelectedFrame,
   );
 }

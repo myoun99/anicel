@@ -94,8 +94,8 @@ void main() {
   /// stand-in for it. A new directly-rendered gate belongs in both places.
   Object gates(EditorSessionManager s) => (
     s.selectedFrame != null,
-    s.canCreateDrawingAtCurrentFrame,
-    s.canRenameFrameAtCurrentFrame,
+    s.frameVerbs.canCreateDrawingAtCurrentFrame,
+    s.frameVerbs.canRenameFrameAtCurrentFrame,
     s.exposureVerbs.canBlankExposureAtCurrentFrame,
     s.layerMarks.canToggleMarkAtCurrentFrame,
     s.canCopyFrameAtCurrentFrame,
@@ -114,7 +114,7 @@ void main() {
     var ticks = 0;
     manager.playheadMoved.addListener(() => ticks += 1);
 
-    manager.scrubFrameIndex(5);
+    manager.frameScrub.scrubFrameIndex(5);
     expect(
       ticks,
       greaterThan(0),
@@ -136,30 +136,30 @@ void main() {
 
   test('the ANSWER flips as the ruler crosses the block', () {
     final manager = session();
-    manager.scrubFrameIndex(0);
+    manager.frameScrub.scrubFrameIndex(0);
     final outside = gates(manager);
 
-    manager.scrubFrameIndex(11);
+    manager.frameScrub.scrubFrameIndex(11);
     expect(
       gates(manager),
       isNot(outside),
       reason: 'the toolbar had no way to learn this during a drag',
     );
 
-    manager.scrubFrameIndex(20);
+    manager.frameScrub.scrubFrameIndex(20);
     expect(gates(manager), outside, reason: 'and back out is back to before');
   });
 
   test('⛔and it changes ONCE per crossing, not once per frame', () {
     final manager = session();
-    manager.scrubFrameIndex(0);
+    manager.frameScrub.scrubFrameIndex(0);
 
     final changedAt = <int>[];
     var previous = gates(manager);
 
     // A twenty-frame drag over one block: in at 10, out at 14.
     for (var frame = 1; frame <= 20; frame += 1) {
-      manager.scrubFrameIndex(frame);
+      manager.frameScrub.scrubFrameIndex(frame);
       final next = gates(manager);
       if (next != previous) {
         changedAt.add(frame);

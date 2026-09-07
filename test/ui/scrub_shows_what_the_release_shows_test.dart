@@ -89,7 +89,7 @@ void main() {
     await pumpCanvas(tester, session);
 
     // The drag engages on the artwork and runs out onto the runway.
-    session.scrubFrameIndex(3);
+    session.frameScrub.scrubFrameIndex(3);
     await tester.pump();
     final engaged = shown(tester);
     expect(
@@ -98,7 +98,7 @@ void main() {
       reason: 'the anchor: the gesture engaged on a frame that holds a cel',
     );
 
-    session.scrubFrameIndex(runwayFrame);
+    session.frameScrub.scrubFrameIndex(runwayFrame);
     await tester.pump();
     expect(session.frameScrubActive.value, isTrue, reason: 'mid-gesture');
     final duringDrag = shown(tester);
@@ -113,7 +113,7 @@ void main() {
       reason: 'the canvas actually moved off the artwork it started on',
     );
 
-    session.commitFrameScrub();
+    session.frameScrub.commitFrameScrub();
     await tester.pump();
     expect(
       shown(tester),
@@ -144,9 +144,9 @@ void main() {
     await tester.pump();
     final atZero = shown(tester);
 
-    session.scrubFrameIndex(1);
+    session.frameScrub.scrubFrameIndex(1);
     await tester.pump();
-    session.scrubFrameIndex(runwayFrame);
+    session.frameScrub.scrubFrameIndex(runwayFrame);
     await tester.pump();
     expect(session.frameScrubActive.value, isTrue, reason: 'mid-gesture');
     final duringDrag = shown(tester);
@@ -157,7 +157,7 @@ void main() {
     );
     expect(duringDrag, isNot(atZero), reason: 'and not where it came from');
 
-    session.commitFrameScrub();
+    session.frameScrub.commitFrameScrub();
     await tester.pump();
     expect(shown(tester), duringDrag, reason: 'letting go changes nothing');
 

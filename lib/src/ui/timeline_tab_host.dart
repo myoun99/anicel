@@ -691,7 +691,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             drawnFrameCount: _session.activeCutSpan.activeCutDrawnFrameCount,
             noriShiroLabel: _session.activeCutSpan.activeCutNoriShiroLabel,
             exposureStateForLayer: _session.exposureStateForLayer,
-            frameNameForLayer: _session.frameNameForLayer,
+            frameNameForLayer: _session.frameVerbs.frameNameForLayer,
             // R26 #44: ACTION-section blocks whose cel is still blank gray
             // their paper; the token keys the row memo (cel pixels live
             // outside the Layer value).
@@ -728,12 +728,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               if (_session.playbackRig.playback.isActive) {
                 _session.playbackRig.playback.seekToLocalFrame(frameIndex);
               } else {
-                _session.scrubFrameIndex(frameIndex);
+                _session.frameScrub.scrubFrameIndex(frameIndex);
               }
             },
             onScrubEnd: () {
               if (!_session.playbackRig.playback.isActive) {
-                _session.commitFrameScrub();
+                _session.frameScrub.commitFrameScrub();
               }
             },
             // End-line drag = cut length (UI-R18 #14): the boundary grip
@@ -827,9 +827,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
             onToggleLayerFx: _session.effectsAndFx.toggleLayerFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
-            layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
-            onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,
-            displayedOnionSkinOn: _session.displayedLayersOnionSkinEnabled,
+            layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
+            onToggleLayerOnionSkin: _session.onionSkin.toggleLayerOnionSkin,
+            displayedOnionSkinOn: _session.onionSkin.displayedLayersOnionSkinEnabled,
             // Comma edge drags preview live from the session's drag-start
             // snapshot and commit as ONE undo entry on release.
             commaDrag: TimelineCommaDragCallbacks(
@@ -1037,7 +1037,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               rowFilter: widget.rowFilter,
               onSetRowFilter: widget.onSetRowFilter,
               onToggleOnionSkinForDisplayed:
-                  _session.toggleOnionSkinForDisplayedLayers,
+                  _session.onionSkin.toggleOnionSkinForDisplayedLayers,
               onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
               onSetBlendModeForDisplayed: _session.layerSwitches.setBlendModeForLayers,
             ),
@@ -1238,8 +1238,8 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     return (
       // Frame-group icons + comma buttons (playhead-sensitive enablement).
       session.selectedFrame != null,
-      session.canCreateDrawingAtCurrentFrame,
-      session.canRenameFrameAtCurrentFrame,
+      session.frameVerbs.canCreateDrawingAtCurrentFrame,
+      session.frameVerbs.canRenameFrameAtCurrentFrame,
       session.exposureVerbs.canBlankExposureAtCurrentFrame,
       session.layerMarks.canToggleMarkAtCurrentFrame,
       session.canCopyFrameAtCurrentFrame,
@@ -1267,7 +1267,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // an enablement no layer kind can answer. The row you stand on
       // publishes through its OWN notifier without a session notify, which
       // is why this entry needs the listener in initState as well.
-      session.canNameLaneKeys,
+      session.laneVerbs.canNameLaneKeys,
       // The layer pill's promoted verb.
       session.layerVerbs.canDeleteActiveLayer,
       // ⛔The two project-axis values LEFT this token with the dropdowns

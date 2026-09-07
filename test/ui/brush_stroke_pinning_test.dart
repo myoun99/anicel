@@ -105,7 +105,7 @@ void main() {
     session.beginSelectionInteraction();
     session.selectFrameIndex(1);
     expect(session.currentFrameIndex, 0, reason: 'seek refused mid-drag');
-    session.scrubFrameIndex(1);
+    session.frameScrub.scrubFrameIndex(1);
     expect(session.editingFrameCursor.value, 0, reason: 'scrub refused too');
 
     session.endSelectionInteraction();

@@ -48,7 +48,7 @@ void main() {
           'no frame name by default — the layer name addresses the '
           'picture',
     );
-    expect(s.canCreateDrawingAtCurrentFrame, isFalse);
+    expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
   });
 
   test('the image row is EDGE-LESS: the session refuses a comma/edge drag '
@@ -341,7 +341,7 @@ void main() {
     s.selectLayer(celId);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.renameSelectedFrame('KEEP');
+    s.frameVerbs.renameSelectedFrame('KEEP');
 
     s.layerStack.addLayerOfKind(LayerKind.image);
     final imageId = s.activeLayer!.id;
@@ -510,7 +510,7 @@ void main() {
       ('rename', s.cellInstances.canEditCellInstanceAtCurrentFrame),
       ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
       ('링크 붙여넣기', s.canPasteLinkedFrameAtCurrentFrame),
-      ('복제', s.canDuplicateActiveBlock),
+      ('복제', s.frameVerbs.canDuplicateActiveBlock),
       // 복사 too: it writes the CLIPBOARD, which is user state, and a
       // wrong subject banked there is laid down by the next paste.
       ('복사', s.canCopyFrameAtCurrentFrame),
@@ -529,8 +529,8 @@ void main() {
     s.clipboard.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();
     s.pasteLinkedFrameAtCurrentFrame();
-    s.duplicateActiveBlock(linked: false);
-    s.duplicateActiveBlock(linked: true);
+    s.frameVerbs.duplicateActiveBlock(linked: false);
+    s.frameVerbs.duplicateActiveBlock(linked: true);
     expect(
       rowATimeline(),
       before,
@@ -559,7 +559,7 @@ void main() {
     expect(s.clipboard.canCutRunAtCurrentFrame, isTrue);
     expect(s.canPasteIndependentFrameAtCurrentFrame, isTrue);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isTrue);
-    expect(s.canDuplicateActiveBlock, isTrue);
+    expect(s.frameVerbs.canDuplicateActiveBlock, isTrue);
   });
 
   test('the image row refuses every verb that would mint or re-expose a '
@@ -571,7 +571,7 @@ void main() {
     for (final frameIndex in [0, 5]) {
       s.selectFrameIndex(frameIndex);
       expect(
-        s.canDuplicateActiveBlock,
+        s.frameVerbs.canDuplicateActiveBlock,
         isFalse,
         reason:
             'at $frameIndex: the independent half MINTS a cel the '

@@ -56,7 +56,7 @@ void main() {
       session.selectLayer(layer.id);
       for (var frame = 0; frame < framesPerLayer; frame += 1) {
         session.selectFrameIndex(frame);
-        if (session.canCreateDrawingAtCurrentFrame) {
+        if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
           session.createDrawingAtCurrentFrame();
         }
       }
@@ -567,7 +567,7 @@ void main() {
         session.selectLayer(layer.id);
         for (var frame = 0; frame < frames; frame += every) {
           session.selectFrameIndex(frame);
-          if (session.canCreateDrawingAtCurrentFrame) {
+          if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
             session.createDrawingAtCurrentFrame();
           }
         }

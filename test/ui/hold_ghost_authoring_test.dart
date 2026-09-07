@@ -41,7 +41,7 @@ void main() {
 
     s.selectFrameIndex(1);
     expect(
-      s.canCreateDrawingAtCurrentFrame,
+      s.frameVerbs.canCreateDrawingAtCurrentFrame,
       isTrue,
       reason: 'D21: 「인덱스1 홀드 + 인덱스2 생성 불가」 was this gate',
     );
@@ -58,7 +58,7 @@ void main() {
     addTearDown(s.dispose);
 
     s.selectFrameIndex(3);
-    expect(s.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     s.createDrawingAtCurrentFrame();
 
     final layer = layerOf(s, layerId);
@@ -90,7 +90,7 @@ void main() {
 
     s.selectFrameIndex(2);
     expect(
-      s.canCreateDrawingAtCurrentFrame,
+      s.frameVerbs.canCreateDrawingAtCurrentFrame,
       isTrue,
       reason: 'D20: a ghost block START used to refuse like a real one',
     );

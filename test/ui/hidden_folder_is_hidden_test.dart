@@ -54,14 +54,14 @@ void main() {
     test('a ghost stops when its FOLDER is hidden, not only when its own eye '
         'is', () {
       final (s, member, folder) = sessionWithFolder();
-      s.toggleLayerOnionSkin(member);
+      s.onionSkin.toggleLayerOnionSkin(member);
       // Something to ghost: a second drawing so the plan has a neighbour.
       s.selectFrameIndex(1);
       s.createDrawingAtCurrentFrame();
       s.selectFrameIndex(2);
 
       expect(
-        s.onionSkinCanvasRequests(),
+        s.onionSkin.onionSkinCanvasRequests(),
         isNotEmpty,
         reason: 'the CONTROL — with everything visible there ARE ghosts',
       );
@@ -69,7 +69,7 @@ void main() {
       hideFolder(s, folder);
 
       expect(
-        s.onionSkinCanvasRequests(),
+        s.onionSkin.onionSkinCanvasRequests(),
         isEmpty,
         reason:
             'A ghost is that row\'s artwork. Hiding the folder used to leave '
@@ -88,12 +88,12 @@ void main() {
       // that disagrees, which is what makes the answer move when it is
       // folded away.
       for (final layer in s.activeCutOrNull!.layers) {
-        if (layer.id != member && !s.isLayerOnionSkinEnabled(layer.id)) {
-          s.toggleLayerOnionSkin(layer.id);
+        if (layer.id != member && !s.onionSkin.isLayerOnionSkinEnabled(layer.id)) {
+          s.onionSkin.toggleLayerOnionSkin(layer.id);
         }
       }
       expect(
-        s.displayedLayersOnionSkinEnabled,
+        s.onionSkin.displayedLayersOnionSkinEnabled,
         isFalse,
         reason:
             'the CONTROL — every displayed drawing row but the folder\'s '
@@ -103,7 +103,7 @@ void main() {
       hideFolder(s, folder);
 
       expect(
-        s.displayedLayersOnionSkinEnabled,
+        s.onionSkin.displayedLayersOnionSkinEnabled,
         isTrue,
         reason:
             'the row that disagreed is inside a folder that is off, and '

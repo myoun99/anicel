@@ -430,7 +430,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
         }
         return StoryboardEditSeEntry(layerId: layerId, globalFrame: frame);
       case LaneRowAddress():
-        return session.canNameLaneKeys
+        return session.laneVerbs.canNameLaneKeys
             ? const StoryboardEditLaneKey()
             : null;
       case TrackRowAddress():

@@ -54,7 +54,7 @@ class _WorkspaceCollapsedRows {
           FlipHudRun(
             startIndex: entry.key,
             length: exposure.length ?? 1,
-            label: session.frameNameForLayer(layer, entry.key) ?? '',
+            label: session.frameVerbs.frameNameForLayer(layer, entry.key) ?? '',
           ),
         );
       }
@@ -274,7 +274,7 @@ class _WorkspaceCollapsedRows {
       // The view state the rail reads, from the same places the timeline tab
       // reads it — not a second opinion, the same getters.
       fxState: session.effectsAndFx.layerFxState(layer.id),
-      onionSkinEnabled: session.isLayerOnionSkinEnabled(layer.id),
+      onionSkinEnabled: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
       isLayerSoloed: session.soloedSeLayerIds.value.contains(layer.id),
       isLinked: session.layerVerbs.isLayerLinked(layer.id),
       // A row HAS lanes when its lanes are not empty — the same question the
@@ -454,7 +454,7 @@ class _WorkspaceCollapsedRows {
             geometry: geometry,
             crossAxisExtent: collapsedRowHeight(),
             exposureStateForLayer: session.exposureStateForLayer,
-            frameNameForLayer: session.frameNameForLayer,
+            frameNameForLayer: session.frameVerbs.frameNameForLayer,
             celContent: _collapsedCelContent,
             projectFrameRate: session.projectSettings.projectFrameRate,
             // The CAMERA row's union summary (B4) — the same shared

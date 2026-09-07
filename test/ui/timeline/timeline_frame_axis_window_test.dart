@@ -94,7 +94,7 @@ void main() {
     // A cut long enough that the content runs well past the viewport.
     for (var frame = 0; frame < 300; frame += 4) {
       session.selectFrameIndex(frame);
-      if (session.canCreateDrawingAtCurrentFrame) {
+      if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
         session.createDrawingAtCurrentFrame();
       }
     }

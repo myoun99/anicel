@@ -73,7 +73,7 @@ void main() {
       session.selectLayer(layer.id);
       for (var frame = 0; frame < 200; frame += 4) {
         session.selectFrameIndex(frame);
-        if (session.canCreateDrawingAtCurrentFrame) {
+        if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
           session.createDrawingAtCurrentFrame();
         }
       }

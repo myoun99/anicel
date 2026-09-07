@@ -93,7 +93,7 @@ void main() {
       session.selectFrameIndex(5);
       expect(session.currentFrameIndex, 5, reason: 'fixture premise');
 
-      session.selectPreviousDrawing();
+      session.frameVerbs.flipRow(forward: false);
 
       expect(
         session.currentFrameIndex,
@@ -110,7 +110,7 @@ void main() {
       session.selectLayer(layerId);
       session.selectFrameIndex(0);
 
-      session.selectPreviousDrawing();
+      session.frameVerbs.flipRow(forward: false);
 
       expect(session.currentFrameIndex, 0);
     });
@@ -132,7 +132,7 @@ void main() {
         reason: 'fixture premise: something is selected',
       );
 
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
 
       expect(session.frameRangeSelection.value, isNull);
     });

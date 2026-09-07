@@ -137,7 +137,7 @@ void main() {
       reason: '⛔premise: the source row actually has a picture',
     );
 
-    f.session.duplicateActiveBlock(linked: false);
+    f.session.frameVerbs.duplicateActiveBlock(linked: false);
 
     final layer = f.session.layers.firstWhere((l) => l.id == f.from);
     final bornId = layer.timeline[1]?.frameId;
@@ -160,7 +160,7 @@ void main() {
     final f = twoRows();
     f.session.selectLayer(f.from);
     f.session.selectFrameIndex(0);
-    f.session.duplicateActiveBlock(linked: true);
+    f.session.frameVerbs.duplicateActiveBlock(linked: true);
 
     final layer = f.session.layers.firstWhere((l) => l.id == f.from);
     expect(layer.frames.length, 1, reason: 'nothing was minted');

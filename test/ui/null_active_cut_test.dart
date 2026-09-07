@@ -135,8 +135,8 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.se);
     s.camera.setCameraKeyframeAtCurrentFrame(pose);
     s.cutVerbs.toggleActiveCutThumbnailFrame();
-    s.selectNextFrame();
-    s.selectPreviousFrame();
+    s.frameVerbs.selectNextFrame();
+    s.frameVerbs.selectPreviousFrame();
     expect(s.activeCutId, isNull, reason: 'stand-downs kept the gap state');
     expect(
       s.repository.requireProject().tracks.first.cuts.length,

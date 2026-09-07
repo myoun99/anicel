@@ -231,21 +231,21 @@ void main() {
     final second = session.layers.last.id;
     expect(first, isNot(second), reason: 'fixture: two distinct rows');
 
-    session.toggleLayerOnionSkin(first);
-    session.toggleLayerOnionSkin(second);
+    session.onionSkin.toggleLayerOnionSkin(first);
+    session.onionSkin.toggleLayerOnionSkin(second);
     // Undo only the FIRST row's toggle.
     session.historyManager.undo();
     session.historyManager.undo();
 
-    expect(session.isLayerOnionSkinEnabled(first), isFalse);
+    expect(session.onionSkin.isLayerOnionSkinEnabled(first), isFalse);
     session.historyManager.redo();
     expect(
-      session.isLayerOnionSkinEnabled(first),
+      session.onionSkin.isLayerOnionSkinEnabled(first),
       isTrue,
       reason: 'redo restores what this command did, not the whole set',
     );
     expect(
-      session.isLayerOnionSkinEnabled(second),
+      session.onionSkin.isLayerOnionSkinEnabled(second),
       isFalse,
       reason: 'the other row stayed where the later undo left it',
     );
@@ -263,13 +263,13 @@ void main() {
     }
     final before = {
       for (final layer in session.layers)
-        layer.id: session.isLayerOnionSkinEnabled(layer.id),
+        layer.id: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
     };
     expect(before.length, greaterThan(1), reason: 'fixture: several rows');
 
-    session.toggleOnionSkinForDisplayedLayers();
+    session.onionSkin.toggleOnionSkinForDisplayedLayers();
     final changed = session.layers.where(
-      (l) => session.isLayerOnionSkinEnabled(l.id) != before[l.id],
+      (l) => session.onionSkin.isLayerOnionSkinEnabled(l.id) != before[l.id],
     );
     expect(changed, isNotEmpty, reason: 'fixture: the sweep changed rows');
 
@@ -277,7 +277,7 @@ void main() {
 
     for (final entry in before.entries) {
       expect(
-        session.isLayerOnionSkinEnabled(entry.key),
+        session.onionSkin.isLayerOnionSkinEnabled(entry.key),
         entry.value,
         reason: 'ONE undo put every swept row back',
       );

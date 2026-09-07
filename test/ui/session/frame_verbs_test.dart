@@ -20,25 +20,25 @@ void main() {
 
   test('selectNextFrame steps the playhead one frame forward', () {
     expect(session.currentFrameIndex, 0);
-    session.selectNextFrame();
+    session.frameVerbs.selectNextFrame();
     expect(session.currentFrameIndex, 1);
-    session.selectNextFrame();
+    session.frameVerbs.selectNextFrame();
     expect(session.currentFrameIndex, 2);
   });
 
   test('selectNextFrame stops at the cut\'s last frame', () {
     session.selectFrameIndex(lastFrame);
-    session.selectNextFrame();
+    session.frameVerbs.selectNextFrame();
     expect(session.currentFrameIndex, lastFrame);
   });
 
   test('selectPreviousFrame steps back and stops at the first frame', () {
     session.selectFrameIndex(2);
-    session.selectPreviousFrame();
+    session.frameVerbs.selectPreviousFrame();
     expect(session.currentFrameIndex, 1);
-    session.selectPreviousFrame();
+    session.frameVerbs.selectPreviousFrame();
     expect(session.currentFrameIndex, 0);
-    session.selectPreviousFrame();
+    session.frameVerbs.selectPreviousFrame();
     expect(session.currentFrameIndex, 0);
   });
 }

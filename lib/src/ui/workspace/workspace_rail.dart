@@ -122,7 +122,7 @@ class _WorkspaceRail {
               ),
               icon: Icons.filter_none_outlined,
               selected: onionOn,
-              onPressed: layer != null ? session.toggleOnionSkin : null,
+              onPressed: layer != null ? session.onionSkin.toggleOnionSkin : null,
             ),
             // ㉜ (user, 2026-08-12): 「선택 해제 버튼이 없다」. The VERB was
             // already here — `Ctrl+D` runs it — so this is the entrance and

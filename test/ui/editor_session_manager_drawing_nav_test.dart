@@ -48,24 +48,24 @@ void main() {
     addTearDown(session.dispose);
 
     session.selectFrameIndex(0);
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     expect(session.currentFrameIndex, 1, reason: 'an empty frame is a column');
 
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     expect(session.currentFrameIndex, 2, reason: 'onto the block');
 
     // The block holds 2..4 and is ONE column: the next press leaves the
     // whole run, landing where it ends.
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     expect(session.currentFrameIndex, 5, reason: 'the block ends here');
 
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     expect(session.currentFrameIndex, 6);
 
     // From INSIDE the block the same column is left in one press: a hold
     // belongs to its block, not to columns of its own.
     session.selectFrameIndex(3);
-    session.selectNextDrawing();
+    session.frameVerbs.flipRow(forward: true);
     expect(session.currentFrameIndex, 5, reason: 'mid-block leaves whole');
   });
 
@@ -75,22 +75,22 @@ void main() {
     addTearDown(session.dispose);
 
     session.selectFrameIndex(7);
-    session.selectPreviousDrawing();
+    session.frameVerbs.flipRow(forward: false);
     expect(session.currentFrameIndex, 6);
-    session.selectPreviousDrawing();
+    session.frameVerbs.flipRow(forward: false);
     expect(session.currentFrameIndex, 5);
 
     // The frame after a block ends steps back to that block's HEAD — it
     // used to jump here from far away, skipping 5 and 6 on the way.
-    session.selectPreviousDrawing();
+    session.frameVerbs.flipRow(forward: false);
     expect(session.currentFrameIndex, 2, reason: 'the block head');
 
     // Before the block, empty frames again, one column each.
-    session.selectPreviousDrawing();
+    session.frameVerbs.flipRow(forward: false);
     expect(session.currentFrameIndex, 1);
-    session.selectPreviousDrawing();
+    session.frameVerbs.flipRow(forward: false);
     expect(session.currentFrameIndex, 0);
-    session.selectPreviousDrawing();
+    session.frameVerbs.flipRow(forward: false);
     expect(
       session.currentFrameIndex,
       0,
@@ -106,14 +106,14 @@ void main() {
     session.selectFrameIndex(0);
     final forward = <int>[0];
     for (var press = 0; press < 4; press += 1) {
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       forward.add(session.currentFrameIndex);
     }
     expect(forward, [0, 1, 2, 5, 6]);
 
     final backward = <int>[];
     for (var press = 0; press < 4; press += 1) {
-      session.selectPreviousDrawing();
+      session.frameVerbs.flipRow(forward: false);
       backward.add(session.currentFrameIndex);
     }
     expect(backward, forward.reversed.skip(1));
@@ -161,18 +161,18 @@ void main() {
       session.selectTrackRow(const TrackId('default-track'));
       expect(session.currentRow, isA<TrackRowAddress>());
 
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(session.activeCutId, const CutId('cut-2'));
       expect(session.currentFrameIndex, 0, reason: 'the cut block\'s start');
 
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(session.activeCutId, const CutId('cut-3'));
 
       // Mid-cut, backwards leaves this cut's column whole — a hold and
       // its head are ONE column, so stepping back from either lands on
       // the previous cut rather than restarting this one.
       session.selectFrameIndex(5);
-      session.selectPreviousDrawing();
+      session.frameVerbs.flipRow(forward: false);
       expect(session.activeCutId, const CutId('cut-2'));
       expect(session.currentFrameIndex, 0, reason: 'that cut block\'s start');
     });
@@ -184,14 +184,14 @@ void main() {
       session.selectTrackRow(const TrackId('default-track'));
 
       // Onto the last cut, then to its final frame.
-      session.selectNextDrawing();
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
+      session.frameVerbs.flipRow(forward: true);
       expect(session.activeCutId, const CutId('cut-3'));
       final duration = session.requireActiveCut.duration;
       session.selectFrameIndex(duration - 1);
 
       final globalBefore = session.editingGlobalFrame;
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(
         session.editingGlobalFrame,
         globalBefore + 1,
@@ -239,7 +239,7 @@ void main() {
       session.selectFrameIndex(duration - 1);
 
       for (var press = 1; press <= 3; press += 1) {
-        session.selectNextDrawing();
+        session.frameVerbs.flipRow(forward: true);
         expect(session.currentFrameIndex, duration - 1 + press);
         expect(
           session.activeCutId,
@@ -249,7 +249,7 @@ void main() {
       }
 
       // And back down the same cells.
-      session.selectPreviousDrawing();
+      session.frameVerbs.flipRow(forward: false);
       expect(session.currentFrameIndex, duration + 1);
       expect(session.activeCutId, const CutId('cut-1'));
     });
@@ -263,7 +263,7 @@ void main() {
       expect(session.currentRow, isA<LayerRowAddress>());
       session.selectFrameIndex(0);
 
-      session.selectPreviousDrawing();
+      session.frameVerbs.flipRow(forward: false);
       expect(session.currentFrameIndex, 0);
       expect(
         session.activeCutId,
@@ -291,15 +291,15 @@ void main() {
 
       // A gap is frames on both panels alike, so the crossing costs a
       // press per frame rather than teleporting to the next cut.
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(session.activeCutId, isNull, reason: 'parked in the gap');
       expect(session.editingGlobalFrame, duration);
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(session.editingGlobalFrame, duration + 1);
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(session.editingGlobalFrame, duration + 2);
 
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(session.activeCutId, const CutId('cut-2'));
       expect(
         session.activeLayerId,
@@ -323,7 +323,7 @@ void main() {
 
       expect(session.currentRow, LayerRowAddress(layerId));
       final cutBefore = session.activeCutId;
-      session.selectNextDrawing();
+      session.frameVerbs.flipRow(forward: true);
       expect(
         session.activeCutId,
         cutBefore,
@@ -362,7 +362,7 @@ void main() {
       final cutEnd = s.requireActiveCut.duration;
 
       s.selectFrameIndex(0);
-      s.selectNextDrawing();
+      s.frameVerbs.flipRow(forward: true);
       expect(
         s.currentFrameIndex,
         cutEnd,
@@ -377,7 +377,7 @@ void main() {
       final cutEnd = s.requireActiveCut.duration;
 
       s.selectFrameIndex(cutEnd);
-      s.selectPreviousDrawing();
+      s.frameVerbs.flipRow(forward: false);
       expect(
         s.currentFrameIndex,
         0,
@@ -386,7 +386,7 @@ void main() {
       );
 
       s.selectFrameIndex(3); // inside the ghost
-      s.selectNextDrawing();
+      s.frameVerbs.flipRow(forward: true);
       expect(s.currentFrameIndex, cutEnd, reason: 'mid-hold leaves whole');
     });
 
@@ -395,7 +395,7 @@ void main() {
       addTearDown(s.dispose);
 
       s.selectFrameIndex(0);
-      s.selectNextDrawing();
+      s.frameVerbs.flipRow(forward: true);
       expect(
         s.currentFrameIndex,
         1,

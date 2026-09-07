@@ -184,11 +184,11 @@ void main() {
       expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.mixed);
 
       // Bypassing the transform bypasses the POSE, like the master did.
-      expect(session.layerCanvasPoseSample(row.id), isNull);
+      expect(session.frameVerbs.layerCanvasPoseSample(row.id), isNull);
 
       session.effectsAndFx.toggleLayerTransformFx(row.id);
       expect(transformEnabledOf(session, row.id), isTrue);
-      expect(session.layerCanvasPoseSample(row.id), isNotNull);
+      expect(session.frameVerbs.layerCanvasPoseSample(row.id), isNotNull);
       expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.on);
     });
 

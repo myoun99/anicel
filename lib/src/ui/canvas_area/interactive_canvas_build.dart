@@ -100,7 +100,7 @@ class _InteractiveCanvasBuild {
     // transforms, active layer included) with draw-through input.
     _interactivePose = _selection == null
         ? null
-        : session.layerCanvasPoseSample(_selection.layerId);
+        : session.frameVerbs.layerCanvasPoseSample(_selection.layerId);
     // There is no CUT-level pose to compose in: the V row's transform is gone,
     // so the only pose the editing canvas wraps is the active LAYER's.
     //
@@ -519,7 +519,7 @@ class _InteractiveCanvasBuild {
       // no ghosts either.
       nodes: _EditorCanvasAreaState._stackNodesWithGhosts(
         _layerStack.nodes,
-        _inGap ? const [] : frame.session.onionSkinCanvasRequests(),
+        _inGap ? const [] : frame.session.onionSkin.onionSkinCanvasRequests(),
       ),
       activeSurfacePainter: activeSurfacePainter,
       // TS1: the _selection's float draws in the active

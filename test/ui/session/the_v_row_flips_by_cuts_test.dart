@@ -43,7 +43,7 @@ void main() {
       'the cut no longer covers', () {
     final (s, firstEnd, _) = session();
     s.selectGlobalFrame(0);
-    s.selectNextDrawing();
+    s.frameVerbs.flipRow(forward: true);
     expect(s.editingGlobalFrame, firstEnd);
   });
 
@@ -51,7 +51,7 @@ void main() {
       'cut', () {
     final (s, firstEnd, secondStart) = session();
     s.selectGlobalFrame(secondStart - 1);
-    s.selectNextDrawing();
+    s.frameVerbs.flipRow(forward: true);
     expect(s.editingGlobalFrame, secondStart);
     expect(s.activeCutOrNull, isNotNull, reason: 'landed IN the next cut');
   });
@@ -60,12 +60,12 @@ void main() {
       'start, and the start of the film is the floor', () {
     final (s, firstEnd, _) = session();
     s.selectGlobalFrame(firstEnd);
-    s.selectPreviousDrawing();
+    s.frameVerbs.flipRow(forward: false);
     expect(s.editingGlobalFrame, 0);
 
     // F-21: a step that falls through the floor lands ON it rather than
     // doing nothing.
-    s.selectPreviousDrawing();
+    s.frameVerbs.flipRow(forward: false);
     expect(s.editingGlobalFrame, 0);
   });
 
@@ -115,7 +115,7 @@ void main() {
       reason: 'standing on a cut row TAKES its track',
     );
 
-    s.selectPreviousDrawing();
+    s.frameVerbs.flipRow(forward: false);
     expect(
       s.activeCutId,
       const CutId('b1'),
@@ -133,7 +133,7 @@ void main() {
     s.selectGlobalFrame(5);
     expect(s.editingGlobalFrame, 5);
 
-    s.selectPreviousDrawing();
+    s.frameVerbs.flipRow(forward: false);
     expect(s.editingGlobalFrame, 0);
   });
 }

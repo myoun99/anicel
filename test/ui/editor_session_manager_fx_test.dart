@@ -38,7 +38,7 @@ void main() {
         '(always-applied rule), bypass returns identity', () {
       final layer = session.activeLayer!;
       expect(
-        session.layerCanvasPoseSample(layer.id),
+        session.frameVerbs.layerCanvasPoseSample(layer.id),
         isNull,
         reason: 'no transform work = identity, no wrap',
       );
@@ -57,15 +57,15 @@ void main() {
         ),
       );
 
-      final sample = session.layerCanvasPoseSample(layer.id)!;
+      final sample = session.frameVerbs.layerCanvasPoseSample(layer.id)!;
       expect(sample.pose.center.x, 100);
       expect(sample.pose.center.y, 60);
       expect(sample.anchorPoint, CanvasPoint(x: 10, y: 20));
 
       session.effectsAndFx.toggleLayerFx(layer.id);
-      expect(session.layerCanvasPoseSample(layer.id), isNull);
+      expect(session.frameVerbs.layerCanvasPoseSample(layer.id), isNull);
       session.effectsAndFx.toggleLayerFx(layer.id);
-      expect(session.layerCanvasPoseSample(layer.id), isNotNull);
+      expect(session.frameVerbs.layerCanvasPoseSample(layer.id), isNotNull);
     });
 
     test('editingCanvasStack: the active layer display opacity carries the '

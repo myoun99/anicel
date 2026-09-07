@@ -42,7 +42,7 @@ void main() {
     expect(s.activeLayerId, layer.id, reason: 'the new row selects itself');
 
     // Blank cel first (UI-R25 #2: creation opens no dialog).
-    expect(s.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     s.createDrawingAtCurrentFrame();
     final refreshed = s.requireActiveCut.layers.firstWhere(
       (l) => l.id == layer.id,

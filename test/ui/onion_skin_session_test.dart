@@ -17,10 +17,10 @@ void main() {
     s.selectFrameIndex(1);
     s.createDrawingAtCurrentFrame();
 
-    expect(s.onionSkinCanvasRequests(), isEmpty, reason: 'master off');
+    expect(s.onionSkin.onionSkinCanvasRequests(), isEmpty, reason: 'master off');
 
-    s.toggleOnionSkin();
-    final requests = s.onionSkinCanvasRequests();
+    s.onionSkin.toggleOnionSkin();
+    final requests = s.onionSkin.onionSkinCanvasRequests();
     expect(requests, hasLength(1), reason: 'one unique drawing before');
     expect(requests.single.opacity, 0.4);
     expect(requests.single.tint, const OnionSkinSettings().tintBefore);
@@ -30,7 +30,7 @@ void main() {
     s.onionSkinSettings.value = s.onionSkinSettings.value.copyWith(
       mode: OnionSkinMode.images,
     );
-    expect(s.onionSkinCanvasRequests().single.tint, isNull);
+    expect(s.onionSkin.onionSkinCanvasRequests().single.tint, isNull);
   });
 
   testWidgets('O toggles the ACTIVE layer onion (UI-R17 #5 — the master '

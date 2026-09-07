@@ -36,7 +36,7 @@ void main() {
     final session = sessionWithHeldBlock();
 
     session.selectFrameIndex(2);
-    expect(session.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     session.createDrawingAtCurrentFrame();
 
     final timeline = timelineOf(session);
@@ -53,14 +53,14 @@ void main() {
 
     session.selectFrameIndex(0);
 
-    expect(session.canCreateDrawingAtCurrentFrame, isFalse);
+    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
   });
 
   test('an empty cell still just creates, as it always did', () {
     final session = sessionWithHeldBlock(length: 2);
 
     session.selectFrameIndex(4);
-    expect(session.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     session.createDrawingAtCurrentFrame();
 
     final timeline = timelineOf(session);

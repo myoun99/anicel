@@ -62,7 +62,7 @@ void main() {
     s.standOnRow(const LayerRowAddress(_layerId), frameIndex: _cutDuration - 1);
     expect(_frameOf(s), _cutDuration - 1);
 
-    s.selectNextDrawing();
+    s.frameVerbs.flipRow(forward: true);
 
     expect(
       _frameOf(s),
@@ -79,7 +79,7 @@ void main() {
     );
     expect(_frameOf(s), _cutDuration - 1);
 
-    s.selectNextDrawing();
+    s.frameVerbs.flipRow(forward: true);
 
     expect(
       _frameOf(s),
@@ -97,7 +97,7 @@ void main() {
     ]) {
       final s = _session();
       s.standOnRow(row, frameIndex: 0);
-      s.selectPreviousDrawing();
+      s.frameVerbs.flipRow(forward: false);
       expect(_frameOf(s), 0, reason: '$row — 0 밑으로는 안 간다');
     }
   });

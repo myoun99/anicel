@@ -148,7 +148,7 @@ void main() {
 
     // A SCRUB — the live ruler drag's own caller, and deliberately not a
     // committed seek: the commit is the signal the bar already had.
-    session.scrubFrameIndex(6);
+    session.frameScrub.scrubFrameIndex(6);
     await tester.pumpAndSettle();
     final duringDrag = _bar(tester);
     expect(
@@ -179,7 +179,7 @@ void main() {
     await tester.pumpAndSettle();
     final atStart = _bar(tester);
 
-    session.scrubGlobalFrame(400);
+    session.frameScrub.scrubGlobalFrame(400);
     await tester.pumpAndSettle();
     final duringDrag = _bar(tester);
     expect(duringDrag, isNot(atStart));
@@ -212,7 +212,7 @@ void main() {
     void toStart() =>
         storyboard ? session.selectGlobalFrame(0) : session.selectFrameIndex(0);
     void drag() =>
-        storyboard ? session.scrubGlobalFrame(400) : session.scrubFrameIndex(6);
+        storyboard ? session.frameScrub.scrubGlobalFrame(400) : session.frameScrub.scrubFrameIndex(6);
 
     toStart();
     if (!storyboard) {

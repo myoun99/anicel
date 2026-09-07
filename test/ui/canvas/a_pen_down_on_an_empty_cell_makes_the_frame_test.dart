@@ -144,7 +144,7 @@ void main() {
     // The cell is covered now, so the manual button says no — and the auto
     // path must say no for the SAME reason rather than growing a second
     // answer to 「can this row take a cel here」.
-    expect(session.canCreateDrawingAtCurrentFrame, isFalse);
+    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
     expect(session.autoFrame.canAutoCreateFrameForStroke, isFalse);
     expect(session.autoFrame.beginAutoFrameForStroke(), isFalse);
   });

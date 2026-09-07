@@ -88,7 +88,7 @@ void main() {
     final duration = session.requireActiveCut.duration;
     session.selectFrameIndex(duration + 3);
 
-    expect(session.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     session.createDrawingAtCurrentFrame();
     expect(session.selectedFrame, isNotNull);
 

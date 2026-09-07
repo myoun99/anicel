@@ -68,7 +68,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final layerId = session.activeLayerId!;
-    final before = session.isLayerOnionSkinEnabled(layerId);
+    final before = session.onionSkin.isLayerOnionSkinEnabled(layerId);
     final gesture = await tester.startGesture(
       tester.getCenter(
         find.byKey(ValueKey<String>('xsheet-layer-onion-$layerId')),
@@ -77,7 +77,7 @@ void main() {
     await tester.pump();
 
     expect(
-      session.isLayerOnionSkinEnabled(layerId),
+      session.onionSkin.isLayerOnionSkinEnabled(layerId),
       !before,
       reason:
           '「레이어 쪽 버튼은 탭다운」 — a drag from here paints the whole '
@@ -88,7 +88,7 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(
-      session.isLayerOnionSkinEnabled(layerId),
+      session.onionSkin.isLayerOnionSkinEnabled(layerId),
       !before,
       reason: '⛔and exactly once — the release must not toggle it back',
     );

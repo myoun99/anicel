@@ -347,8 +347,8 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       // Per-layer onion (UI-R17 #5): the lab toggles the active layer.
       final onionLayer = session.activeLayer;
       if (onionLayer != null &&
-          session.isLayerOnionSkinEnabled(onionLayer.id) != phase.onion) {
-        session.toggleLayerOnionSkin(onionLayer.id);
+          session.onionSkin.isLayerOnionSkinEnabled(onionLayer.id) != phase.onion) {
+        session.onionSkin.toggleLayerOnionSkin(onionLayer.id);
       }
       if (phase.fillTaps) {
         await _runFillTaps(session, brushTool);
@@ -438,7 +438,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
             onUpSameTurn: phase.collideSeekOnUp
                 ? () => session.selectFrameIndex((strokeIndex + 1) % frameCount)
                 : phase.scrubCollide
-                ? () => session.scrubFrameIndex((strokeIndex + 1) % frameCount)
+                ? () => session.frameScrub.scrubFrameIndex((strokeIndex + 1) % frameCount)
                 : null,
           );
           if (phase.scrubCollide) {
@@ -446,9 +446,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
             // SAME frame — then the next stroke starts immediately (the
             // user's "그리고 나서 룰러 확인하고 다시 그리기" loop).
             await _settleFrames(1);
-            session.scrubFrameIndex(strokeIndex % frameCount);
+            session.frameScrub.scrubFrameIndex(strokeIndex % frameCount);
             await _settleFrames(1);
-            session.commitFrameScrub();
+            session.frameScrub.commitFrameScrub();
             await _settleFrames(1);
           }
         }

@@ -68,7 +68,7 @@ void main() {
     final duration = session.requireActiveCut.duration;
 
     session.selectFrameIndex(3);
-    expect(session.canCreateDrawingAtCurrentFrame, isTrue);
+    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
     session.createDrawingAtCurrentFrame();
 
     final layer = storyboardLayerForCut(session.requireActiveCut)!;

@@ -82,7 +82,6 @@ import '../services/bitmap_surface_geometry.dart'
 import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
-import '../services/layer_pose_paint.dart';
 import '../core/dev_profile.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
@@ -887,7 +886,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/cell_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: _laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
+  late final CellVerbs cells = CellVerbs(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, laneVerbs: laneVerbs, rangeSelections: rangeSelections, clipboard: clipboard, internals: this, renderCaches: renderCaches);
 
   @override
   TimelineRowAddress get selectedRow => standing.selectedRow;
@@ -965,7 +964,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, trackSe: trackSe, frameVerbs: _frameVerbs);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, trackSe: trackSe, frameVerbs: frameVerbs);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -1419,7 +1418,7 @@ class EditorSessionManager extends ChangeNotifier
   );
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.
-  late final FrameVerbs _frameVerbs = FrameVerbs(
+  late final FrameVerbs frameVerbs = FrameVerbs(
     project: this,
     selection: this,
     changes: this,
@@ -1431,30 +1430,10 @@ class EditorSessionManager extends ChangeNotifier
     projectSettings: projectSettings,
   );
 
-  LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
-      _frameVerbs.layerCanvasPoseSample(layerId);
   @override
-  Frame? get selectedFrame => _frameVerbs.selectedFrame;
-  bool get canCreateDrawingAtCurrentFrame =>
-      _frameVerbs.canCreateDrawingAtCurrentFrame;
-  bool get canDuplicateActiveBlock => _frameVerbs.canDuplicateActiveBlock;
-  void duplicateActiveBlock({required bool linked}) =>
-      _frameVerbs.duplicateActiveBlock(linked: linked);
-  bool get canRenameFrameAtCurrentFrame =>
-      _frameVerbs.canRenameFrameAtCurrentFrame;
-  FrameId? renameSelectedFrame(String name) =>
-      _frameVerbs.renameSelectedFrame(name);
-  void linkSelectedFrame(FrameId targetFrameId) =>
-      _frameVerbs.linkSelectedFrame(targetFrameId);
+  Frame? get selectedFrame => frameVerbs.selectedFrame;
   @override
-  int get currentFrameIndex => _frameVerbs.currentFrameIndex;
-  void selectPreviousFrame() => _frameVerbs.selectPreviousFrame();
-  void selectNextFrame() => _frameVerbs.selectNextFrame();
-  String? frameNameForLayer(Layer layer, int frameIndex) =>
-      _frameVerbs.frameNameForLayer(layer, frameIndex);
-  int? get selectedEffectiveDuration => _frameVerbs.selectedEffectiveDuration;
-  String get currentFrameStatusText => _frameVerbs.currentFrameStatusText;
-
+  int get currentFrameIndex => frameVerbs.currentFrameIndex;
   /// The track that owns [cutId] — the V effects' home (R4: the transform
   /// lanes are TRACK data on the global axis, like the SE rows).
   @override
@@ -1573,7 +1552,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/lane_verbs.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final LaneVerbs _laneVerbs = LaneVerbs(
+  late final LaneVerbs laneVerbs = LaneVerbs(
     project: this,
     selection: this,
     timeline: this,
@@ -1582,38 +1561,9 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
   );
 
-  bool get canNameLaneKeys => _laneVerbs.canNameLaneKeys;
-  String? get laneKeyNameForSelection => _laneVerbs.laneKeyNameForSelection;
-  bool setLaneKeyNamesForSelection(String? name) =>
-      _laneVerbs.setLaneKeyNamesForSelection(name);
-  void linkLaneKeyNamesForSelection(String name) =>
-      _laneVerbs.linkLaneKeyNamesForSelection(name);
   @override
   bool resetLaneGroup(LayerId layerId, String headerLaneId) =>
-      _laneVerbs.resetLaneGroup(layerId, headerLaneId);
-  bool setTransformKeyName({
-    required LayerId layerId,
-    required TransformPropertyId property,
-    required int frameIndex,
-    required String? name,
-  }) => _laneVerbs.setTransformKeyName(
-    layerId: layerId,
-    property: property,
-    frameIndex: frameIndex,
-    name: name,
-  );
-  void linkTransformKeyName({
-    required LayerId layerId,
-    required TransformPropertyId property,
-    required int frameIndex,
-    required String name,
-  }) => _laneVerbs.linkTransformKeyName(
-    layerId: layerId,
-    property: property,
-    frameIndex: frameIndex,
-    name: name,
-  );
-
+      laneVerbs.resetLaneGroup(layerId, headerLaneId);
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
   // `currentLaneKeyAddress`, `setLaneKeyName`, `linkLaneKeyName`) retired
   // when the RANGE form arrived: a single key is the one-frame span at the
@@ -2592,7 +2542,7 @@ class EditorSessionManager extends ChangeNotifier
   ) => exposureVerbs.exposureStateForLayer(layer, frameIndex);
   void createDrawingAtCurrentFrame() {
     final layer = activeLayer;
-    if (layer == null || !canCreateDrawingAtCurrentFrame) {
+    if (layer == null || !frameVerbs.canCreateDrawingAtCurrentFrame) {
       return;
     }
 
@@ -2614,14 +2564,14 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     frameIds: this,
     controllers: activeCutControllers,
-    frameVerbs: _frameVerbs,
+    frameVerbs: frameVerbs,
   );
 
   // ── the cell instances: their own object, in their own file ─────────
   //
   // A collaborator (session/cell_instances.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: _laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: _frameVerbs, internals: this);
+  late final CellInstances cellInstances = CellInstances(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, instructionVerbs: instructionVerbs, laneVerbs: laneVerbs, layerVerbs: layerVerbs, trackSe: trackSe, cells: cells, frameVerbs: frameVerbs, internals: this);
 
   @override
   bool get canCreateInstance => cellInstances.canCreateInstance;
@@ -2916,12 +2866,20 @@ class EditorSessionManager extends ChangeNotifier
   /// Opens [count] frames at the anchor across the scope's rows; the
   /// blocks after it keep their own spacing (empty space is carried, not
   /// eaten). ONE undo step for every row it touches.
+  ///
+  /// ⛔NOT a forwarder to delete (round 8, G4): push and pull are one verb
+  /// in two directions, and [pullFrames] clamps its own argument against
+  /// [framePullSlack] — a HOST measurement, next to the scope and the
+  /// slack that [pushBlocks]/[pullBlocks] dispatch into. Deleting the push
+  /// half alone would leave the pair split across two objects, and
+  /// deleting both would put `-math.min(count, framePullSlack(…))` at
+  /// every call site.
   void pushFrames(int count, {TimelineRowAddress? currentRow}) =>
-      _frameVerbs.shiftFrames(count, currentRow: currentRow);
+      frameVerbs.shiftFrames(count, currentRow: currentRow);
 
   /// Closes up to [count] frames, clamped to [framePullSlack].
   void pullFrames(int count, {TimelineRowAddress? currentRow}) =>
-      _frameVerbs.shiftFrames(
+      frameVerbs.shiftFrames(
         -math.min(count, framePullSlack(currentRow: currentRow)),
         currentRow: currentRow,
       );
@@ -3047,7 +3005,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    laneVerbs: _laneVerbs,
+    laneVerbs: laneVerbs,
     effectsAndFx: effectsAndFx,
     internals: this,
   );
@@ -3706,7 +3664,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_scrub.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final FrameScrub _frameScrub = FrameScrub(
+  late final FrameScrub frameScrub = FrameScrub(
     project: this,
     selection: this,
     changes: this,
@@ -3715,13 +3673,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     playbackRig: playbackRig,
   );
-
-  void scrubGlobalFrame(int globalFrame) =>
-      _frameScrub.scrubGlobalFrame(globalFrame);
-  void scrubFrameIndex(int frameIndex) =>
-      _frameScrub.scrubFrameIndex(frameIndex);
-  void abandonFrameScrubPreview() => _frameScrub.abandonFrameScrubPreview();
-  void commitFrameScrub() => _frameScrub.commitFrameScrub();
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------
 
@@ -3742,25 +3693,13 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/onion_skin.dart, a part of this library). The
   // session keeps the public entry points as forwarders.
-  late final OnionSkin _onionSkin = OnionSkin(
+  late final OnionSkin onionSkin = OnionSkin(
     project: this,
     selection: this,
     changes: this,
     controllers: activeCutControllers,
     internals: this,
   );
-
-  bool isLayerOnionSkinEnabled(LayerId layerId) =>
-      _onionSkin.isLayerOnionSkinEnabled(layerId);
-  void toggleLayerOnionSkin(LayerId layerId) =>
-      _onionSkin.toggleLayerOnionSkin(layerId);
-  bool get displayedLayersOnionSkinEnabled =>
-      _onionSkin.displayedLayersOnionSkinEnabled;
-  void toggleOnionSkinForDisplayedLayers() =>
-      _onionSkin.toggleOnionSkinForDisplayedLayers();
-  void toggleOnionSkin() => _onionSkin.toggleOnionSkin();
-  List<CanvasLayerImageRequest> onionSkinCanvasRequests() =>
-      _onionSkin.onionSkinCanvasRequests();
 
   // ── the pool's content fingerprints: their own object ────────────────
   //
@@ -3837,26 +3776,6 @@ class EditorSessionManager extends ChangeNotifier
     settings: projectSettings,
     door: projectDoor,
   );
-
-  // --- Frame flipping (P1 shortcuts) ----------------------------------------
-
-  /// Steps one BLOCK back along [currentRow] (Ctrl+`,`).
-  ///
-  /// R10 #13, the user's rule with no exceptions: **whatever the row is,
-  /// count THAT row's blocks; a block where there are blocks, a frame
-  /// where there are none.** A layer row counts its exposure blocks, an SE
-  /// row its sound blocks — the same code, because an SE row is a layer
-  /// with a timeline and needs no branch of its own — and a V row counts
-  /// CUTS, which is the only place a flip crosses a cut boundary.
-  ///
-  /// That last part is the rule's dividend: "coming out of a cut on a
-  /// layer row, which row of the next cut do you land on?" is a question
-  /// that never gets asked, because layer rows live inside one cut.
-  void selectPreviousDrawing() => _frameVerbs.flipRow(forward: false);
-
-  /// Steps one BLOCK forward along [currentRow] (Ctrl+`.`). See
-  /// [selectPreviousDrawing] for the rule.
-  void selectNextDrawing() => _frameVerbs.flipRow(forward: true);
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
 
@@ -3969,7 +3888,7 @@ class EditorSessionManager extends ChangeNotifier
 
   @override
   String drawingStartStatusForLayer(Layer layer, int frameIndex) {
-    final frameName = frameNameForLayer(layer, frameIndex);
+    final frameName = frameVerbs.frameNameForLayer(layer, frameIndex);
     if (frameName == null || frameName.isEmpty) {
       return 'Drawing start';
     }
@@ -3989,7 +3908,7 @@ class EditorSessionManager extends ChangeNotifier
       // Gap state: no cut selected — the label says so.
       cutLabel: cut?.name ?? '—',
       layerLabel: layer?.name ?? '-',
-      frameLabel: _frameVerbs.currentFrameDisplayLabel(layer, frame),
+      frameLabel: frameVerbs.currentFrameDisplayLabel(layer, frame),
     );
   }
 }

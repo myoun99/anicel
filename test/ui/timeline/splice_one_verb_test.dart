@@ -197,7 +197,7 @@ void main() {
     final session = await _pump(tester, 'AAABB');
 
     _stand(session, 1); // mid-hold, deliberately
-    session.duplicateActiveBlock(linked: false);
+    session.frameVerbs.duplicateActiveBlock(linked: false);
 
     expect(
       _row(session),
@@ -210,7 +210,7 @@ void main() {
     final session = await _pump(tester, 'AAABB');
 
     _stand(session, 0);
-    session.duplicateActiveBlock(linked: true);
+    session.frameVerbs.duplicateActiveBlock(linked: true);
 
     expect(_row(session), 'AAAAAABB');
     expect(_layer(session).frames.length, 2);
@@ -222,7 +222,7 @@ void main() {
     _stand(session, 3);
     session.copyFrameAtCurrentFrame(); // B is on the clipboard
     _stand(session, 0);
-    session.duplicateActiveBlock(linked: true); // duplicating A
+    session.frameVerbs.duplicateActiveBlock(linked: true); // duplicating A
     _stand(session, 0);
     session.pasteLinkedFrameAtCurrentFrame();
 
@@ -240,7 +240,7 @@ void main() {
 
     _select(session, 3, 5); // B is the selected RANGE…
     session.selectFrameIndex(0); // …and the playhead stands back on A
-    session.duplicateActiveBlock(linked: true);
+    session.frameVerbs.duplicateActiveBlock(linked: true);
 
     expect(
       _row(session),

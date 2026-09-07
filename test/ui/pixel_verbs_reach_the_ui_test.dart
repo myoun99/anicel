@@ -135,7 +135,7 @@ void main() {
       // ⛔A SCRUB, not a committed seek, and no selection touched. A bar that
       // snaps on release 「was showing the wrong answer until then」 — that is
       // measured in the playhead file, nine of twenty-five buttons deep.
-      session.scrubFrameIndex(8);
+      session.frameScrub.scrubFrameIndex(8);
       await tester.pumpAndSettle();
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),

@@ -45,7 +45,7 @@ void main() {
     selectRotationRange(0, 9);
 
     expect(
-      session.setLaneKeyNamesForSelection('A'),
+      session.laneVerbs.setLaneKeyNamesForSelection('A'),
       isFalse,
       reason: 'the name was free',
     );
@@ -65,7 +65,7 @@ void main() {
     keyRotation({0: 10, 4: 20, 8: 30});
     selectRotationRange(0, 5);
 
-    expect(session.setLaneKeyNamesForSelection('A'), isFalse);
+    expect(session.laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);
 
     expect(rotation().keyAt(0)!.value, 10);
     expect(rotation().keyAt(4)!.value, 10);
@@ -79,12 +79,12 @@ void main() {
     // Name the far key first, so 'A' is taken outside the range that
     // follows.
     selectRotationRange(8, 9);
-    expect(session.setLaneKeyNamesForSelection('A'), isFalse);
+    expect(session.laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);
     expect(rotation().keyAt(8)!.value, 30);
 
     selectRotationRange(0, 5);
     expect(
-      session.setLaneKeyNamesForSelection('A'),
+      session.laneVerbs.setLaneKeyNamesForSelection('A'),
       isTrue,
       reason: 'that name is already held by the key at 8',
     );
@@ -96,7 +96,7 @@ void main() {
 
     // Confirming ADOPTS the value the name already holds, for the whole
     // range at once.
-    session.linkLaneKeyNamesForSelection('A');
+    session.laneVerbs.linkLaneKeyNamesForSelection('A');
 
     expect(rotation().keyAt(0)!.value, 30);
     expect(rotation().keyAt(4)!.value, 30);
@@ -107,12 +107,12 @@ void main() {
   test('the keys already inside the range do not collide with themselves', () {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(0, 5);
-    expect(session.setLaneKeyNamesForSelection('A'), isFalse);
+    expect(session.laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);
 
     // Naming the SAME range again with the SAME name must not report a
     // collision: the only keys holding it are the ones doing the joining.
     expect(
-      session.setLaneKeyNamesForSelection('A'),
+      session.laneVerbs.setLaneKeyNamesForSelection('A'),
       isFalse,
       reason: 'a range cannot collide with itself',
     );
@@ -121,25 +121,25 @@ void main() {
   test('the dialog opens with the name they agree on, blank when they do not', () {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(0, 5);
-    expect(session.laneKeyNameForSelection, isNull, reason: 'none named yet');
+    expect(session.laneVerbs.laneKeyNameForSelection, isNull, reason: 'none named yet');
 
-    session.setLaneKeyNamesForSelection('A');
-    expect(session.laneKeyNameForSelection, 'A');
+    session.laneVerbs.setLaneKeyNamesForSelection('A');
+    expect(session.laneVerbs.laneKeyNameForSelection, 'A');
 
     // Name just one of them something else: they no longer agree.
     selectRotationRange(4, 5);
-    session.setLaneKeyNamesForSelection('B');
+    session.laneVerbs.setLaneKeyNamesForSelection('B');
     selectRotationRange(0, 5);
-    expect(session.laneKeyNameForSelection, isNull);
+    expect(session.laneVerbs.laneKeyNameForSelection, isNull);
   });
 
   test('an emptied field un-names the range and leaves the values put', () {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(0, 5);
-    session.setLaneKeyNamesForSelection('A');
+    session.laneVerbs.setLaneKeyNamesForSelection('A');
     expect(rotation().keyAt(4)!.value, 10, reason: 'collapsed by the naming');
 
-    expect(session.setLaneKeyNamesForSelection(null), isFalse);
+    expect(session.laneVerbs.setLaneKeyNamesForSelection(null), isFalse);
 
     expect(rotation().keyNames, isEmpty);
     expect(rotation().keyAt(0)!.value, 10, reason: 'un-naming moves nothing');
@@ -149,8 +149,8 @@ void main() {
   test('a range with no key at all cannot be named', () {
     selectRotationRange(0, 5);
 
-    expect(session.canNameLaneKeys, isFalse);
-    expect(session.setLaneKeyNamesForSelection('A'), isFalse);
+    expect(session.laneVerbs.canNameLaneKeys, isFalse);
+    expect(session.laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);
     expect(rotation().isEmpty, isTrue);
   });
 }

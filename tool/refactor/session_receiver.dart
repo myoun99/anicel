@@ -36,10 +36,16 @@ void main(List<String> args) {
   final dry = args.contains('--dry');
 
   final replacement = <String, String>{};
+  // A verb the host bound an argument for — `selectNextDrawing()` for
+  // `frameVerbs.flipRow(forward: true)` — is written in the spec WITH its
+  // argument list, and then the `()` at the call site goes too.
+  final eatsCall = <String>{};
   for (final group in spec) {
     final getter = group['getter'] as String;
     for (final e in (group['members'] as Map<String, dynamic>).entries) {
-      replacement[e.key] = '$getter.${e.value}';
+      final target = e.value as String;
+      replacement[e.key] = '$getter.$target';
+      if (target.contains('(')) eatsCall.add(e.key);
     }
   }
 
@@ -82,16 +88,17 @@ void main(List<String> args) {
     for (final (ln, col, member) in sorted) {
       final text = lines[ln - 1];
       final at = col - 1;
-      if (at + member.length > text.length ||
-          text.substring(at, at + member.length) != member) {
-        print('REFUSED ${entry.key}:$ln:$col does not hold "$member"');
+      final wanted = eatsCall.contains(member) ? '$member()' : member;
+      if (at + wanted.length > text.length ||
+          text.substring(at, at + wanted.length) != wanted) {
+        print('REFUSED ${entry.key}:$ln:$col does not hold "$wanted"');
         refused += 1;
         continue;
       }
       lines[ln - 1] =
           text.substring(0, at) +
           replacement[member]! +
-          text.substring(at + member.length);
+          text.substring(at + wanted.length);
       applied += 1;
     }
     if (!dry) file.writeAsStringSync(lines.join('\n'));
