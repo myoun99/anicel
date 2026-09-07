@@ -25,7 +25,7 @@ void main() {
   /// so "which cut" and "where inside it" both read off a single number.
   (EditorSessionManager, int, int) scrubSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     final second = track.cuts[1].id;
     s.repository.updateCutLeadingGap(cutId: second, leadingGapFrames: 4);
@@ -87,26 +87,29 @@ void main() {
     );
   }
 
-  test('scrubbing over the NEXT cut frames THAT cut, not the one being left', () {
-    final (s, secondStart, _) = scrubSession();
-    addTearDown(s.dispose);
+  test(
+    'scrubbing over the NEXT cut frames THAT cut, not the one being left',
+    () {
+      final (s, secondStart, _) = scrubSession();
+      addTearDown(s.dispose);
 
-    expect(s.cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
+      expect(s.cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
 
-    dragTo(s, secondStart, secondStart + 5);
+      dragTo(s, secondStart, secondStart + 5);
 
-    expect(s.frameScrubActive.value, isTrue);
-    expect(
-      s.cameraPoseAtCurrentFrame.zoom,
-      2,
-      reason: 'the ACTIVE cut is left untouched by the crossing, by design',
-    );
-    expect(
-      s.displayedCameraPose!.zoom,
-      closeTo(3, 1e-6),
-      reason: 'the DISPLAY frames the cut under the cursor',
-    );
-  });
+      expect(s.frameScrubActive.value, isTrue);
+      expect(
+        s.cameraPoseAtCurrentFrame.zoom,
+        2,
+        reason: 'the ACTIVE cut is left untouched by the crossing, by design',
+      );
+      expect(
+        s.displayedCameraPose!.zoom,
+        closeTo(3, 1e-6),
+        reason: 'the DISPLAY frames the cut under the cursor',
+      );
+    },
+  );
 
   test('scrubbing over a GAP frames nothing — there is no cut to frame', () {
     final (s, _, gapFrame) = scrubSession();
@@ -177,8 +180,9 @@ void main() {
   });
 
   testWidgets('scrubbing into a gap takes the frame away, and coming back '
-      'brings it — the overlay never draws a cut that is not there',
-      (tester) async {
+      'brings it — the overlay never draws a cut that is not there', (
+    tester,
+  ) async {
     final (s, secondStart, gapFrame) = scrubSession();
     addTearDown(s.dispose);
     await pumpArea(tester, s);

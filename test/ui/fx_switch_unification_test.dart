@@ -272,7 +272,7 @@ void main() {
       session.addEffectToActiveLayer(EffectKind.blur);
 
       final sourceCutId = session.requireActiveCut.id;
-      session.createLinkedCutFromActiveCut();
+      session.cutVerbs.createLinkedCutFromActiveCut();
       final linkedCutId = session.requireActiveCut.id;
       expect(linkedCutId, isNot(sourceCutId));
 

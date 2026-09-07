@@ -25,7 +25,7 @@ void main() {
   (EditorSessionManager s, int firstEnd, int secondStart) session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.single;
     final second = track.cuts[1].id;
     s.selectCut(second);

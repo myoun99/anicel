@@ -29,7 +29,7 @@ void main() {
   /// (the new linked cut becomes active).
   ({CutId source, CutId linked}) makeLinkedPair() {
     final source = session.requireActiveCut.id;
-    session.createLinkedCutFromActiveCut();
+    session.cutVerbs.createLinkedCutFromActiveCut();
     return (source: source, linked: session.requireActiveCut.id);
   }
 
@@ -93,10 +93,9 @@ void main() {
     session.undo();
     session.redo();
 
-    expect(
-      [for (final layer in cutById(pair.source).layers) layer.id],
-      idsAfterFirst,
-    );
+    expect([
+      for (final layer in cutById(pair.source).layers) layer.id,
+    ], idsAfterFirst);
   });
 
   test('a PER-USE fixture kind does not mirror (instruction rows belong to '
@@ -198,9 +197,10 @@ void main() {
       ),
     ]);
     expect(
-      counterpartIn(pair.source, linkedRow).effects.single
-          .parameterOf(radiusId)
-          .value,
+      counterpartIn(
+        pair.source,
+        linkedRow,
+      ).effects.single.parameterOf(radiusId).value,
       7,
     );
 
@@ -397,9 +397,8 @@ void main() {
     session.layerStack.addLayerOfKind(LayerKind.animation);
     final second = session.activeLayer!;
 
-    int indexIn(CutId cutId, String name) => cutById(
-      cutId,
-    ).layers.indexWhere((layer) => layer.name == name);
+    int indexIn(CutId cutId, String name) =>
+        cutById(cutId).layers.indexWhere((layer) => layer.name == name);
 
     expect(
       indexIn(pair.linked, second.name),

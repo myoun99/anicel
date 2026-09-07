@@ -254,7 +254,7 @@ void main() {
       // retirement and the next open hands the discarded work back.
       final s = EditorSessionManager(initialProject: createDefaultProject());
       await s.projectDoor.saveProjectToFile(projectPath);
-      s.createCut();
+      s.cutVerbs.createCut();
       expect(s.projectFile.hasUnsavedChanges, isTrue);
 
       s.projectFile.discardAutosaveSidecar();
@@ -276,7 +276,7 @@ void main() {
       // it settles delete-versus-write, and this is write-versus-delete.
       final s = EditorSessionManager(initialProject: createDefaultProject());
       await s.projectDoor.saveProjectToFile(projectPath);
-      s.createCut(); // Any command raises the dirty flag.
+      s.cutVerbs.createCut(); // Any command raises the dirty flag.
       var ticked = false;
       final autosave = ProjectAutosaveService(
         isDirty: () => s.projectFile.hasUnsavedChanges && !s.projectFile.autosaveShouldStandDown,
@@ -437,7 +437,7 @@ void main() {
       expect(savedCels, isNotEmpty, reason: 'the base really holds a cel');
       // Unsaved work on top, snapshotted as a modern OVERLAY in the
       // current candidate spot, newer than the base.
-      s.createCut();
+      s.cutVerbs.createCut();
       final sidecar = AppSave.recoveryPathFor(projectPath);
       await tester.runAsync(() => s.projectDoor.writeAutosaveSnapshot(sidecar));
       addTearDown(() => File(sidecar).parent.deleteSync(recursive: true));

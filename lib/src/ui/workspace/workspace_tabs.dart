@@ -373,7 +373,8 @@ class _WorkspaceTabs {
                         guideLibrary: ListenableBuilder(
                           listenable: _state.widget.session,
                           builder: (context, _) => GuideLibraryList(
-                            guides: _state.widget.session.activeCutGuides,
+                            guides:
+                                _state.widget.session.cutVerbs.activeCutGuides,
                             canvasSize:
                                 _state
                                     .widget
@@ -385,8 +386,11 @@ class _WorkspaceTabs {
                                 _state.widget.session.selectedGuideId,
                             onGuideSelected: (id) =>
                                 _state.widget.session.selectedGuideId = id,
-                            onGuidesCommitted:
-                                _state.widget.session.setActiveCutGuides,
+                            onGuidesCommitted: _state
+                                .widget
+                                .session
+                                .cutVerbs
+                                .setActiveCutGuides,
                           ),
                         ),
                       ),
@@ -427,10 +431,12 @@ class _WorkspaceTabs {
                       valueListenable: _state._views._transformOptions,
                       builder: (context, transformOptions, _) =>
                           ValueListenableBuilder<SelectionMaskOptions>(
-                            valueListenable: _state._views._selectionMaskOptions,
+                            valueListenable:
+                                _state._views._selectionMaskOptions,
                             builder: (context, maskOptions, _) =>
                                 ValueListenableBuilder<CanvasColorSampleSource>(
-                                  valueListenable: _state._views._eyedropperSource,
+                                  valueListenable:
+                                      _state._views._eyedropperSource,
                                   // The tip library loads in two passes,
                                   // so the pickers have to follow it.
                                   builder: (context, eyedropperSource, _) =>
@@ -453,6 +459,7 @@ class _WorkspaceTabs {
                                           guides: _state
                                               .widget
                                               .session
+                                              .cutVerbs
                                               .activeCutGuides,
                                           selectedGuideId: _state
                                               .widget
@@ -461,13 +468,16 @@ class _WorkspaceTabs {
                                           onGuidesCommitted: _state
                                               .widget
                                               .session
+                                              .cutVerbs
                                               .setActiveCutGuides,
                                           tips: _state._tipLibrary.tips,
                                           onTipImportRequested: () {
                                             unawaited(
                                               _state._brushPresets
                                                   ._importAndNotice(
-                                                    _state._tipLibrary.importFromFile,
+                                                    _state
+                                                        ._tipLibrary
+                                                        .importFromFile,
                                                   ),
                                             );
                                           },
@@ -477,18 +487,25 @@ class _WorkspaceTabs {
                                                   options,
                                           eyedropperSource: eyedropperSource,
                                           onEyedropperSourceChanged: (source) =>
-                                              _state._views._eyedropperSource.value =
+                                              _state
+                                                      ._views
+                                                      ._eyedropperSource
+                                                      .value =
                                                   source,
                                           selectionMaskOptions: maskOptions,
                                           onSelectionMaskOptionsChanged:
                                               (options) =>
-                                                  _state._views._selectionMaskOptions
+                                                  _state
+                                                          ._views
+                                                          ._selectionMaskOptions
                                                           .value =
                                                       options,
                                           transformOptions: transformOptions,
                                           onTransformOptionsChanged:
                                               (options) =>
-                                                  _state._views._transformOptions
+                                                  _state
+                                                          ._views
+                                                          ._transformOptions
                                                           .value =
                                                       options,
                                           selectionCommands: _state
@@ -500,7 +517,8 @@ class _WorkspaceTabs {
                                           // the button no longer
                                           // carries one.
                                           onCutPasteAtOrigin: _state
-                                              ._cutPieceSlot.pasteAtOrigin,
+                                              ._cutPieceSlot
+                                              .pasteAtOrigin,
                                           onRegisterCutPieceAsTip: _state
                                               ._brushPresets
                                               ._registerCutPieceAsTip,
@@ -583,7 +601,9 @@ class _WorkspaceTabs {
                 // keeps the two from disagreeing about which file the
                 // session may read.
                 _state.widget.session.mediaGrants.rememberMediaGrants(grants);
-                unawaited(_state.widget.session.relinkMediaAsset(oldPath, newPath));
+                unawaited(
+                  _state.widget.session.relinkMediaAsset(oldPath, newPath),
+                );
               },
               // RELINK-2: the loss banner reads the session's cached
               // answer rather than probing the disk per row.
@@ -593,7 +613,8 @@ class _WorkspaceTabs {
               // occupies compressed, rather than the length its file had
               // when it was registered.
               storedBytes: _state.widget.session.projectFile.mediaStoredBytes,
-              conformBytes: _state.widget.session.projectFile.conformStoredBytes,
+              conformBytes:
+                  _state.widget.session.projectFile.conformStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, _state.widget.session),
               onRemoveAsset: _state.widget.session.removeMediaAsset,

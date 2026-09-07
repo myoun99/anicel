@@ -47,7 +47,7 @@ void main() {
       session.layerStack.addLayer();
     }
     for (var i = 0; i < cuts; i += 1) {
-      session.createCut();
+      session.cutVerbs.createCut();
     }
     return session;
   }

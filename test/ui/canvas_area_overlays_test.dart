@@ -45,7 +45,7 @@ void main() {
     final session = _sessionOf(tester);
     expect(_guideOverlays(), findsNothing, reason: 'no guides yet');
 
-    session.setActiveCutGuides(
+    session.cutVerbs.setActiveCutGuides(
       CutGuides(
         guides: [
           DrawingGuide(

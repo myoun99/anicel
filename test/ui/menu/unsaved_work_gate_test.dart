@@ -80,7 +80,7 @@ void main() {
     tester,
   ) async {
     final fixture = await mounted(tester);
-    fixture.session.createCut();
+    fixture.session.cutVerbs.createCut();
     expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
 
     final settled = fixture.ask();
@@ -105,7 +105,7 @@ void main() {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/gate.anicel';
     await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path));
-    fixture.session.createCut();
+    fixture.session.cutVerbs.createCut();
     await tester.runAsync(
       () => fixture.session.projectDoor.writeAutosaveSnapshot(
         fixture.session.projectFile.autosaveSidecarPath!,
@@ -167,7 +167,7 @@ void main() {
     final path = '${folder.path.replaceAll('\\', '/')}/gate-save.anicel';
     await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path));
     final savedLength = File(path).lengthSync();
-    fixture.session.createCut();
+    fixture.session.cutVerbs.createCut();
     expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
 
     final settled = await settleThroughRealSave(
@@ -201,7 +201,7 @@ void main() {
       File(path).deleteSync();
       Directory(path).createSync();
     });
-    fixture.session.createCut();
+    fixture.session.cutVerbs.createCut();
 
     final settled = await settleThroughRealSave(
       tester,
@@ -323,7 +323,7 @@ void main() {
     await tester.runAsync(
       () => fixture.session.projectDoor.saveProjectToFile(path),
     );
-    fixture.session.createCut();
+    fixture.session.cutVerbs.createCut();
 
     final settled = fixture.ask();
     await tester.pumpAndSettle();

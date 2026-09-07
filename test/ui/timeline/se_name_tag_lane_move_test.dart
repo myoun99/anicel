@@ -136,15 +136,18 @@ void main() {
         spanLaneIds: const [],
         framesAreGlobal: true,
       );
-      expect(session.beginLaneRangeMoveDrag(), isTrue,
-          reason: 'the nametag family used to refuse in silence — the '
-              'observed C① symptom');
+      expect(
+        session.beginLaneRangeMoveDrag(),
+        isTrue,
+        reason:
+            'the nametag family used to refuse in silence — the '
+            'observed C① symptom',
+      );
       session.updateLaneRangeMoveDrag(frameDelta: 5);
       session.endLaneRangeMoveDrag();
 
-      SeNameTagTrack keysOf() => session.activeTrack.seLayers.first
-          .seNameTag!
-          .track!;
+      SeNameTagTrack keysOf() =>
+          session.activeTrack.seLayers.first.seNameTag!.track!;
       expect(keysOf().fontSize.keys.keys.toList(), [7, 8]);
       expect(session.laneRangeSelection.value!.startIndex, 7);
 
@@ -256,9 +259,8 @@ void main() {
       // A second cut, active, so the active cut's global start is NOT 0 —
       // a commit that window-converts a second time would shift the keys
       // by that start again.
-      session.createCut();
-      final firstDuration = session
-          .repository
+      session.cutVerbs.createCut();
+      final firstDuration = session.repository
           .requireProject()
           .tracks
           .first
@@ -278,7 +280,12 @@ void main() {
           ),
         ),
       );
-      final globalKeys = session.activeTrack.seLayers.first.seNameTag!.track!
+      final globalKeys = session
+          .activeTrack
+          .seLayers
+          .first
+          .seNameTag!
+          .track!
           .fontSize
           .keys
           .keys
@@ -310,7 +317,12 @@ void main() {
         reason: 'cut-local: the active cut starts at $firstDuration',
       );
       expect(
-        blockPreview.previewGlobalLayers[se.id]!.seNameTag!.track!.fontSize.keys
+        blockPreview
+            .previewGlobalLayers[se.id]!
+            .seNameTag!
+            .track!
+            .fontSize
+            .keys
             .keys
             .toList(),
         [firstDuration + 7, firstDuration + 8],
@@ -322,7 +334,8 @@ void main() {
         session.activeTrack.seLayers.first.seNameTag!.track!.fontSize.keys.keys
             .toList(),
         [firstDuration + 7, firstDuration + 8],
-        reason: 'shifted by the drag delta alone — a double window '
+        reason:
+            'shifted by the drag delta alone — a double window '
             'conversion would add the cut start again',
       );
     });

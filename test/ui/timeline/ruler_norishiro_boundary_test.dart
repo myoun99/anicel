@@ -417,10 +417,10 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      session.createCut();
+      session.cutVerbs.createCut();
       final track = session.repository.requireProject().tracks.first;
       final first = track.cuts[0].duration;
-      session.createCut();
+      session.cutVerbs.createCut();
       session.selectCut(
         session.repository.requireProject().tracks.first.cuts[1].id,
       );

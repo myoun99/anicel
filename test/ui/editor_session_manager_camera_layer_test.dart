@@ -33,7 +33,7 @@ void main() {
   test('new cuts also get a camera layer', () {
     final s = session();
 
-    s.createCut();
+    s.cutVerbs.createCut();
 
     expect(
       s.requireActiveCut.layers.where((layer) => layer.kind == LayerKind.camera),

@@ -613,10 +613,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // it has room and REORDERS the track where it reaches past
                     // a neighbour — one rule, one undo per drag.
                     cutMove: StoryboardCutMoveCallbacks(
-                      onBegin: _session.beginCutMoveDrag,
-                      onUpdate: _session.updateCutMoveDrag,
-                      onEnd: _session.endCutMoveDrag,
-                      onCancel: _session.cancelCutMoveDrag,
+                      onBegin: _session.cutMove.beginCutMoveDrag,
+                      onUpdate: _session.cutMove.updateCutMoveDrag,
+                      onEnd: _session.cutMove.endCutMoveDrag,
+                      onCancel: _session.cutMove.cancelCutMoveDrag,
                     ),
                     // Cut range selection (UI-R18 #1): drag = select a run,
                     // drag inside the selection = slide the whole run, tap =

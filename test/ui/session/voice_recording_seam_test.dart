@@ -52,7 +52,7 @@ void main() {
       "active cut's start once a project has two cuts", () async {
     final manager = session();
     addTearDown(manager.dispose);
-    manager.createCut();
+    manager.cutVerbs.createCut();
 
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
@@ -83,7 +83,7 @@ void main() {
       'the editing playhead', () async {
     final manager = session();
     addTearDown(manager.dispose);
-    manager.createCut();
+    manager.cutVerbs.createCut();
 
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);

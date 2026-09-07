@@ -146,7 +146,7 @@ void main() {
       final l = s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
       return s.layerStack.celHasContentForLayer(l, 0);
     });
-    s.createLinkedCutFromActiveCut();
+    s.cutVerbs.createLinkedCutFromActiveCut();
     s.selectCut(originCutId);
     s.selectLayer(layerId);
 
@@ -290,7 +290,7 @@ void main() {
       return s.layerStack.celHasContentForLayer(l, 0);
     });
 
-    s.createLinkedCutFromActiveCut();
+    s.cutVerbs.createLinkedCutFromActiveCut();
     final project = s.repository.requireProject();
     final track = project.tracks.first;
     final linkedCut = track.cuts.firstWhere((cut) => cut.id != originCutId);

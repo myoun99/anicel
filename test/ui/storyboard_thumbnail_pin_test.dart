@@ -122,19 +122,19 @@ void main() {
       addTearDown(session.dispose);
 
       expect(session.requireActiveCut.metadata.thumbnailFrameIndex, isNull);
-      expect(session.isActiveCutThumbnailPinnedHere, isFalse);
+      expect(session.cutVerbs.isActiveCutThumbnailPinnedHere, isFalse);
 
-      session.toggleActiveCutThumbnailFrame();
+      session.cutVerbs.toggleActiveCutThumbnailFrame();
       expect(session.requireActiveCut.metadata.thumbnailFrameIndex, 0);
-      expect(session.isActiveCutThumbnailPinnedHere, isTrue);
+      expect(session.cutVerbs.isActiveCutThumbnailPinnedHere, isTrue);
 
       session.selectFrameIndex(5);
-      expect(session.isActiveCutThumbnailPinnedHere, isFalse);
-      session.toggleActiveCutThumbnailFrame();
+      expect(session.cutVerbs.isActiveCutThumbnailPinnedHere, isFalse);
+      session.cutVerbs.toggleActiveCutThumbnailFrame();
       expect(session.requireActiveCut.metadata.thumbnailFrameIndex, 5);
 
       // Pressing on the pinned frame releases the pin.
-      session.toggleActiveCutThumbnailFrame();
+      session.cutVerbs.toggleActiveCutThumbnailFrame();
       expect(session.requireActiveCut.metadata.thumbnailFrameIndex, isNull);
 
       session.undo();

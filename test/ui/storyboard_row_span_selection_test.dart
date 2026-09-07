@@ -60,7 +60,7 @@ void main() {
     final selection = session.trackFrameRangeSelection.value!;
     expect(selection.anchorRow, TrackRowAddress(session.selectedTrackId));
     expect(selection.spanRows, [TrackRowAddress(session.selectedTrackId)]);
-    expect(session.storyboardSelectedCutIds, isNotEmpty);
+    expect(session.storyboardRows.storyboardSelectedCutIds, isNotEmpty);
   });
 
   test('reaching UP from the V row picks up the S row above it — slot 0 '

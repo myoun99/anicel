@@ -325,7 +325,7 @@ class CutMoveDrag implements EditorDragSession {
     }
     // The landed span goes out AFTER the repository commit, so a reader
     // that resolves cuts from the selection's frames against the CURRENT
-    // layout ([storyboardSelectedCutIds]) sees the moved cuts, not their
+    // layout ([StoryboardRows.storyboardSelectedCutIds]) sees the moved cuts, not their
     // old seats.
     _publishLanded(plan);
   }

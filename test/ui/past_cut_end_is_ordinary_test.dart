@@ -55,7 +55,7 @@ void main() {
   /// the global axis — so this asks whether having a neighbour changes the
   /// answer.
   test('with a cut after it, past the end line is still not a gap', () {
-    session.createCut();
+    session.cutVerbs.createCut();
     final cuts = session.activeTrack.cuts;
     expect(cuts.length, greaterThan(1));
 

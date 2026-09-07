@@ -22,7 +22,7 @@ void main() {
     final manager = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
-    manager.createCut();
+    manager.cutVerbs.createCut();
     addTearDown(manager.dispose);
 
     await tester.pumpWidget(

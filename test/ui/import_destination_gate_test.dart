@@ -66,7 +66,7 @@ void main() {
   /// is selected there.
   EditorSessionManager gapped() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     s.repository.updateCutLeadingGap(
       cutId: track.cuts[1].id,

@@ -100,12 +100,12 @@ void main() {
     // actually in the file.
     final s = session();
     drawOnCurrentFrame(s);
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath);
     expect(celEntriesOf(projectPath), hasLength(2));
 
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
@@ -130,7 +130,7 @@ void main() {
       selection.layerId,
       selection.frameId,
     );
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath);
     expect(celEntriesOf(projectPath), hasLength(2));
@@ -145,39 +145,49 @@ void main() {
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     final restored = session();
-    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    await restored.projectDoor.openProjectFromFile(
+      projectPath,
+      overlayPath: overlayPath,
+    );
     expect(
       restored.renderCaches.brushFrameStore.celHasRenderableContent(deletedKey),
       isFalse,
-      reason: 'a merge that merely did not mention it would keep the base '
+      reason:
+          'a merge that merely did not mention it would keep the base '
           'copy, and the deleted drawing would come back',
     );
   });
 
-  test('opening the project WITH the overlay restores the unsaved work', () async {
-    final s = session();
-    await s.projectDoor.saveProjectToFile(projectPath);
-    final savedCuts = s.activeTrack.cuts.length;
-    s.createCut();
-    final unsavedCuts = s.activeTrack.cuts.length;
-    expect(unsavedCuts, savedCuts + 1);
-    await s.projectDoor.writeAutosaveSnapshot(overlayPath);
+  test(
+    'opening the project WITH the overlay restores the unsaved work',
+    () async {
+      final s = session();
+      await s.projectDoor.saveProjectToFile(projectPath);
+      final savedCuts = s.activeTrack.cuts.length;
+      s.cutVerbs.createCut();
+      final unsavedCuts = s.activeTrack.cuts.length;
+      expect(unsavedCuts, savedCuts + 1);
+      await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
-    // The project file on disk never learned about that cut…
-    final plain = session();
-    await plain.projectDoor.openProjectFromFile(projectPath);
-    expect(plain.activeTrack.cuts.length, savedCuts);
+      // The project file on disk never learned about that cut…
+      final plain = session();
+      await plain.projectDoor.openProjectFromFile(projectPath);
+      expect(plain.activeTrack.cuts.length, savedCuts);
 
-    // …and the overlay puts it back.
-    final restored = session();
-    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
-    expect(restored.activeTrack.cuts.length, unsavedCuts);
-    expect(
-      restored.projectFile.hasUnsavedChanges,
-      isTrue,
-      reason: 'restored work differs from the file until it is saved',
-    );
-  });
+      // …and the overlay puts it back.
+      final restored = session();
+      await restored.projectDoor.openProjectFromFile(
+        projectPath,
+        overlayPath: overlayPath,
+      );
+      expect(restored.activeTrack.cuts.length, unsavedCuts);
+      expect(
+        restored.projectFile.hasUnsavedChanges,
+        isTrue,
+        reason: 'restored work differs from the file until it is saved',
+      );
+    },
+  );
 
   test('an overlay built from a DIFFERENT version of the project is '
       'refused, not merged', () async {
@@ -186,15 +196,18 @@ void main() {
     // that no longer exists.
     final s = session();
     await s.projectDoor.saveProjectToFile(projectPath);
-    s.createCut();
+    s.cutVerbs.createCut();
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
 
     // The base moves on underneath it.
-    s.createCut();
+    s.cutVerbs.createCut();
     await s.projectDoor.saveProjectToFile(projectPath);
 
     await expectLater(
-      session().projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath),
+      session().projectDoor.openProjectFromFile(
+        projectPath,
+        overlayPath: overlayPath,
+      ),
       throwsA(isA<FormatException>()),
     );
   });
@@ -222,14 +235,17 @@ void main() {
       reason: 'a plain project is not an overlay',
     );
 
-    s.createCut();
+    s.cutVerbs.createCut();
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     expect(anicelSnapshotIsOverlay(overlayPath), isTrue);
 
     // And laying a whole archive over a project is refused rather than
     // half-applied.
     await expectLater(
-      session().projectDoor.openProjectFromFile(projectPath, overlayPath: projectPath),
+      session().projectDoor.openProjectFromFile(
+        projectPath,
+        overlayPath: projectPath,
+      ),
       throwsA(isA<FormatException>()),
     );
 
@@ -238,7 +254,10 @@ void main() {
     // and look right while every base cel reads as empty — and the next
     // full rewrite makes that loss permanent. Same law, both directions.
     await expectLater(
-      session().projectDoor.openProjectFromFile(overlayPath, recoverAs: projectPath),
+      session().projectDoor.openProjectFromFile(
+        overlayPath,
+        recoverAs: projectPath,
+      ),
       throwsA(isA<FormatException>()),
     );
   });
@@ -255,14 +274,17 @@ void main() {
     final s = session();
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath);
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     final overlayCels = celEntriesOf(overlayPath);
     expect(overlayCels, hasLength(1));
 
     final restored = session();
-    await restored.projectDoor.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    await restored.projectDoor.openProjectFromFile(
+      projectPath,
+      overlayPath: overlayPath,
+    );
     // The lifecycle fires with no edits at all.
     await restored.projectDoor.writeAutosaveSnapshot(overlayPath);
 
@@ -282,7 +304,7 @@ void main() {
     final s = session();
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath);
-    s.createCut();
+    s.cutVerbs.createCut();
 
     File(projectPath).writeAsStringSync('not an archive any more');
     expect(anicelBaseStamp(projectPath), isNull);
@@ -301,7 +323,7 @@ void main() {
     final s = session();
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath);
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
 
     await const AnicelFileService().writeRecoveryOverlay(
@@ -321,9 +343,9 @@ void main() {
 
     expect(File(overlayPath).existsSync(), isFalse);
     expect(
-      Directory(directory.path)
-          .listSync()
-          .where((e) => e.path.contains('.tmp-')),
+      Directory(
+        directory.path,
+      ).listSync().where((e) => e.path.contains('.tmp-')),
       isEmpty,
       reason: 'a discarded write must not leave its temp behind',
     );
@@ -338,10 +360,10 @@ void main() {
     // rewrite leaves only live bytes and does not.
     final s = session();
     for (var i = 0; i < 4; i += 1) {
-      s.createCut();
+      s.cutVerbs.createCut();
     }
     await s.projectDoor.saveProjectToFile(projectPath);
-    s.createCut();
+    s.cutVerbs.createCut();
     await s.projectDoor.writeAutosaveSnapshot(overlayPath);
     final before = File(projectPath).lengthSync();
 

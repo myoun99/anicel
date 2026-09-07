@@ -112,7 +112,7 @@ void main() {
     session.layerStack.addLayerOfKind(LayerKind.animation);
     final sourceCutId = session.requireActiveCut.id;
     final sourceOrder = _drawingIds(session);
-    session.createLinkedCutFromActiveCut();
+    session.cutVerbs.createLinkedCutFromActiveCut();
     final linkedCutId = session.requireActiveCut.id;
     expect(linkedCutId, isNot(sourceCutId));
     final linkedOrderBefore = _drawingIds(session);

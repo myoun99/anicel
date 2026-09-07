@@ -153,7 +153,7 @@ void main() {
     // looking clean, "save and quit" would quit.
     final blocker = File('${directory.path}/blocker2')..createSync();
     final s = session();
-    s.createCut();
+    s.cutVerbs.createCut();
     expect(s.projectFile.hasUnsavedChanges, isTrue);
 
     await runSave(

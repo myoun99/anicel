@@ -44,7 +44,8 @@ void main() {
     expect(
       layer.frames.single.name,
       isNull,
-      reason: 'no frame name by default — the layer name addresses the '
+      reason:
+          'no frame name by default — the layer name addresses the '
           'picture',
     );
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
@@ -124,7 +125,8 @@ void main() {
     expect(
       previewedRealLength() ?? 1,
       1,
-      reason: 'the live PREVIEW must not stretch the picture: the write '
+      reason:
+          'the live PREVIEW must not stretch the picture: the write '
           'normalization would snap it back, and a frame of movement that '
           'gets reverted is exactly what the project bans',
     );
@@ -154,7 +156,8 @@ void main() {
     expect(
       s.canDeleteCellAtCurrentFrame,
       isFalse,
-      reason: 'the ghost hold keeps the cel referenced, so the delete would '
+      reason:
+          'the ghost hold keeps the cel referenced, so the delete would '
           'be rebuilt by the same write — a lit button that does nothing '
           'and burns an undo slot',
     );
@@ -203,7 +206,8 @@ void main() {
     expect(
       s.canDeleteCellAtCurrentFrame,
       isFalse,
-      reason: 'the highlighted row IS the subject — with nothing deletable '
+      reason:
+          'the highlighted row IS the subject — with nothing deletable '
           'in it the button goes dark instead of retargeting',
     );
     s.deleteCellAtCurrentFrame();
@@ -250,7 +254,8 @@ void main() {
     expect(
       s.activeTrack.cuts.length,
       cutsBefore,
-      reason: 'pressing Delete over a picture band must never destroy the '
+      reason:
+          'pressing Delete over a picture band must never destroy the '
           'cut, its layers and its artwork',
     );
   });
@@ -286,7 +291,8 @@ void main() {
     expect(
       s.canSetCommaForSelectionOrCurrent,
       isFalse,
-      reason: 'the delete gate answers true here for the LANE KEYS, which '
+      reason:
+          'the delete gate answers true here for the LANE KEYS, which '
           'the comma verb has no branch for — inheriting that lit a button '
           'whose press the band\'s claim then swallowed',
     );
@@ -313,7 +319,8 @@ void main() {
       expect(
         s.canCutRunAtCurrentFrame,
         isFalse,
-        reason: 'at index $frameIndex: the lift is rebuilt by the same '
+        reason:
+            'at index $frameIndex: the lift is rebuilt by the same '
             'write, so the press would only cost a phantom undo entry',
       );
       expect(
@@ -354,16 +361,17 @@ void main() {
     expect(
       s.editInstanceSubject,
       EditInstanceSubject.nothing,
-      reason: 'Edit Instance is DOCUMENTED as the same ladder as Delete — '
+      reason:
+          'Edit Instance is DOCUMENTED as the same ladder as Delete — '
           'two shared-pill verbs answering 「지금 무엇이 선택됐나」 '
           'differently is a rule the user would have to hold twice',
     );
 
-
     expect(
       s.canSetCommaForStoryboardCursor,
       isFalse,
-      reason: 'the storyboard panel\'s comma gate reads it too — its own '
+      reason:
+          'the storyboard panel\'s comma gate reads it too — its own '
           'dispatch already refuses this band',
     );
 
@@ -376,7 +384,8 @@ void main() {
     expect(
       panel.canEditInstance,
       isFalse,
-      reason: 'the panel\'s edit resolver is the same ladder as its '
+      reason:
+          'the panel\'s edit resolver is the same ladder as its '
           'delete — falling through would open the CUT rename for a band '
           'the user drew over a picture row',
     );
@@ -416,7 +425,8 @@ void main() {
     expect(
       s.canBlankExposureAtCurrentFrame,
       isFalse,
-      reason: 'X edits an EXISTING hold, so a band holding nothing ends '
+      reason:
+          'X edits an EXISTING hold, so a band holding nothing ends '
           'the ladder instead of shortening the unswept active row\'s hold',
     );
     s.blankExposureAtCurrentFrame();
@@ -489,7 +499,8 @@ void main() {
     expect(
       s.canBlankExposureAtCurrentFrame,
       isTrue,
-      reason: 'X serves the band now (결정 14 ①ⓑ) rather than ending the '
+      reason:
+          'X serves the band now (결정 14 ①ⓑ) rather than ending the '
           'ladder — it was on this list only because it had no rung',
     );
 
@@ -507,7 +518,8 @@ void main() {
       expect(
         gate,
         isFalse,
-        reason: '$name has no rung that acts on a band, so it must not '
+        reason:
+            '$name has no rung that acts on a band, so it must not '
             'fall through to the playhead on the UNSWEPT active row',
       );
     }
@@ -522,7 +534,8 @@ void main() {
     expect(
       rowATimeline(),
       before,
-      reason: 'and none of the presses touched the row the user did not '
+      reason:
+          'and none of the presses touched the row the user did not '
           'sweep — including the X, which now acts but acts THERE',
     );
     // The other half of X's new law, stated here so this file cannot pass
@@ -530,7 +543,8 @@ void main() {
     expect(
       s.layers.firstWhere((layer) => layer.id == rowB).timeline[0],
       isNull,
-      reason: '결정 14 ①ⓑ — the band named row B, so row B is where the '
+      reason:
+          '결정 14 ①ⓑ — the band named row B, so row B is where the '
           'blank landed',
     );
 
@@ -559,7 +573,8 @@ void main() {
       expect(
         s.canDuplicateActiveBlock,
         isFalse,
-        reason: 'at $frameIndex: the independent half MINTS a cel the '
+        reason:
+            'at $frameIndex: the independent half MINTS a cel the '
             'normalization then strands — a second cel is the one thing '
             'this row\'s definition rules out',
       );
@@ -573,7 +588,8 @@ void main() {
     expect(
       s.canPasteLinkedFrameAtCurrentFrame,
       isFalse,
-      reason: 'a second exposure of the one cel is rebuilt by the same '
+      reason:
+          'a second exposure of the one cel is rebuilt by the same '
           'write — the phantom undo entry the cut standdown exists to stop',
     );
   });
@@ -597,7 +613,7 @@ void main() {
     final origin = s.requireActiveCut;
 
     // A second cut with an image row of the SAME NAME and its own cel.
-    s.duplicateActiveCut();
+    s.cutVerbs.duplicateActiveCut();
     final target = s.requireActiveCut;
     expect(target.id, isNot(origin.id));
 
@@ -627,11 +643,7 @@ void main() {
       id: originImage.id,
       name: 'A',
       frames: [
-        Frame(
-          id: originImage.frames.single.id,
-          duration: 1,
-          strokes: const [],
-        ),
+        Frame(id: originImage.frames.single.id, duration: 1, strokes: const []),
       ],
       timeline: const {},
     );
@@ -639,11 +651,7 @@ void main() {
       id: targetImage.id,
       name: 'A',
       frames: [
-        Frame(
-          id: targetImage.frames.single.id,
-          duration: 1,
-          strokes: const [],
-        ),
+        Frame(id: targetImage.frames.single.id, duration: 1, strokes: const []),
       ],
       timeline: const {},
     );
@@ -652,8 +660,6 @@ void main() {
       target: targetDrawing,
     );
     expect(drawingResolution.retargetedFrameIds, isEmpty);
-    expect(drawingResolution.joiningFrameIds, [
-      targetImage.frames.single.id,
-    ]);
+    expect(drawingResolution.joiningFrameIds, [targetImage.frames.single.id]);
   });
 }

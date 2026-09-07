@@ -279,7 +279,7 @@ class _InteractiveCanvasBuild {
       // The cut's guides reach the stroke pipeline through here;
       // the panel maps them into the active layer's artwork space
       // before the view sees them.
-      guides: session.activeCutGuides,
+      guides: session.cutVerbs.activeCutGuides,
       frameStore: session.renderCaches.brushFrameStore,
       cacheInvalidationSink: session.renderCaches.cacheInvalidationHub,
       // The pixel verbs are pressed on the timeline and write cel
@@ -476,7 +476,7 @@ class _InteractiveCanvasBuild {
                   showPositionGizmo ||
                   showAnchorGizmo ||
                   _showFadeWash ||
-                  session.activeCutGuides.isNotEmpty ||
+                  session.cutVerbs.activeCutGuides.isNotEmpty ||
                   _seNameTags.isNotEmpty) &&
               !_isPlaybackActive
           ? (context, viewport) => _overlayStack(context, viewport, frame)
@@ -557,7 +557,7 @@ class _InteractiveCanvasBuild {
         // prints. Under the camera frame and the gizmos,
         // which are chrome about the shot rather than about
         // the drawing.
-        if (frame.session.activeCutGuides.isNotEmpty)
+        if (frame.session.cutVerbs.activeCutGuides.isNotEmpty)
           _state._guideOverlay(
             frame.session,
             viewport,

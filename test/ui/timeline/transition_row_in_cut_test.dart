@@ -50,7 +50,7 @@ void main() {
     final session = tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
         .session;
-    session.createCut();
+    session.cutVerbs.createCut();
     await tester.pumpAndSettle();
     final first = session.repository.requireProject().tracks.first.cuts.first;
     // Straddling the boundary between cut 1 and cut 2: 8 frames, half on each
@@ -115,7 +115,7 @@ void main() {
     final session = tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
         .session;
-    session.createCut();
+    session.cutVerbs.createCut();
     await tester.pumpAndSettle();
     final first = session.repository.requireProject().tracks.first.cuts.first;
     final crossingStart = first.duration - 4;
@@ -321,7 +321,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.createCut();
+    session.cutVerbs.createCut();
     final first = session.repository.requireProject().tracks.first.cuts.first;
     final crossingStart = first.duration - 4;
     final foId = session.cameraInstructionSet.defs

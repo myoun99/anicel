@@ -70,9 +70,9 @@ void main() {
     addTearDown(s.dispose);
     // Slide track B's only cut right by 4: global 0..3 become its
     // leading gap.
-    expect(s.beginCutMoveDrag(const CutId('cut-b1')), isTrue);
-    s.updateCutMoveDrag(4);
-    s.endCutMoveDrag();
+    expect(s.cutMove.beginCutMoveDrag(const CutId('cut-b1')), isTrue);
+    s.cutMove.updateCutMoveDrag(4);
+    s.cutMove.endCutMoveDrag();
     s.selectFrameIndex(0);
 
     s.selectTrackCutAtPlayhead(const TrackId('track-b'));

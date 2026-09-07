@@ -14,7 +14,7 @@ void main() {
   /// Two default-track cuts with a 4-frame gap before the second.
   (EditorSessionManager, CutId, CutId, int) gappedSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     final first = track.cuts[0].id;
     final second = track.cuts[1].id;
@@ -127,14 +127,14 @@ void main() {
     expect(s.activeCutId, isNull);
 
     // Every one of these used to require a cut — now a silent stand-down.
-    s.renameActiveCut('X');
-    s.updateActiveCutNote('note');
-    s.duplicateActiveCut();
-    s.deleteActiveCut();
+    s.cutVerbs.renameActiveCut('X');
+    s.cutVerbs.updateActiveCutNote('note');
+    s.cutVerbs.duplicateActiveCut();
+    s.cutVerbs.deleteActiveCut();
     s.layerStack.addLayer();
     s.layerStack.addLayerOfKind(LayerKind.se);
     s.setCameraKeyframeAtCurrentFrame(pose);
-    s.toggleActiveCutThumbnailFrame();
+    s.cutVerbs.toggleActiveCutThumbnailFrame();
     s.selectNextFrame();
     s.selectPreviousFrame();
     expect(s.activeCutId, isNull, reason: 'stand-downs kept the gap state');

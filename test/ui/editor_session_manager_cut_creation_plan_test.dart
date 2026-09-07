@@ -58,7 +58,10 @@ void main() {
         Track(
           id: const TrackId('track'),
           name: 'T',
-          cuts: [cut('a'), cut('b', leadingGap: gap)],
+          cuts: [
+            cut('a'),
+            cut('b', leadingGap: gap),
+          ],
         ),
       ],
     ),
@@ -75,34 +78,39 @@ void main() {
     // alone: the walk-in frame is spent gap too).
     final s = session(gap: 30);
     addTearDown(s.dispose);
-    final bStartBefore = s.trackFrameAxis().entryFor(const CutId('b'))!
+    final bStartBefore = s
+        .trackFrameAxis()
+        .entryFor(const CutId('b'))!
         .startFrame;
 
     s.selectGlobalFrame(5); // the gap between a and b
     expect(s.gapParkedGlobalFrame, 5, reason: 'fixture: really parked');
     expect(s.cutPlacement.canCreateCut, isTrue);
 
-    s.createCut();
+    s.cutVerbs.createCut();
 
     final cuts = cutsOf(s);
     expect(cuts, hasLength(3));
     expect(
       cuts[1].leadingGapFrames,
       1,
-      reason: 'the walk-in distance from the gap start (5 − 4) is the new '
+      reason:
+          'the walk-in distance from the gap start (5 − 4) is the new '
           'cut\'s own leading gap — it lands AT the parked frame, not at '
           'the track\'s end',
     );
     expect(
       s.trackFrameAxis().entryFor(cuts[1].id)!.startFrame,
       5,
-      reason: 'the cut appears where the playhead stood — the whole '
+      reason:
+          'the cut appears where the playhead stood — the whole '
           'complaint was that it appeared somewhere else',
     );
     expect(
       cuts[2].leadingGapFrames,
       30 - 1 - cuts[1].duration,
-      reason: 'the follower\'s gap absorbs the WHOLE footprint — the '
+      reason:
+          'the follower\'s gap absorbs the WHOLE footprint — the '
           'walk-in frame plus the new duration (#19\'s arithmetic)',
     );
     expect(
@@ -134,17 +142,23 @@ void main() {
     );
     expect(s.cutPlacement.canCreateCut, isTrue);
 
-    s.createCut();
+    s.cutVerbs.createCut();
 
     final cuts = cutsOf(s);
     expect(cuts, hasLength(3));
     expect(cuts[1].duration, 3, reason: 'the range names the length');
-    expect(cuts[1].leadingGapFrames, 0, reason: 'the range starts at the '
-        'gap\'s own start');
+    expect(
+      cuts[1].leadingGapFrames,
+      0,
+      reason:
+          'the range starts at the '
+          'gap\'s own start',
+    );
     expect(
       s.trackFrameAxis().entryFor(cuts[2].id)!.startFrame,
       7,
-      reason: 'the new cut fits the gap exactly, so nothing behind it '
+      reason:
+          'the new cut fits the gap exactly, so nothing behind it '
           'moves — the same law #19 settled for the push',
     );
   });
@@ -162,9 +176,14 @@ void main() {
     );
 
     expect(s.cutPlacement.canCreateCut, isFalse);
-    s.createCut();
-    expect(cutsOf(s), hasLength(2), reason: 'the verb is guarded by the '
-        'same sentence that dims the button');
+    s.cutVerbs.createCut();
+    expect(
+      cutsOf(s),
+      hasLength(2),
+      reason:
+          'the verb is guarded by the '
+          'same sentence that dims the button',
+    );
   });
 
   test('the active-cut posture is unchanged: the new cut lands to the '
@@ -173,7 +192,7 @@ void main() {
     addTearDown(s.dispose);
 
     expect(s.activeCutOrNull!.id, const CutId('a'));
-    s.createCut();
+    s.cutVerbs.createCut();
 
     final cuts = cutsOf(s);
     expect(cuts, hasLength(3));

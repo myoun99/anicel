@@ -320,7 +320,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     // the ladder runs, so every phase measures at that scale.
     const labCanvas = int.fromEnvironment('BRUSH_LAB_CANVAS');
     if (labCanvas > 0) {
-      session.resizeActiveCutCanvas(
+      session.cutVerbs.resizeActiveCutCanvas(
         const CanvasSize(width: labCanvas, height: labCanvas),
         anchor: CanvasResizeAnchor.topLeft,
       );
@@ -587,7 +587,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _log('fill-roundtrip: filled, coverage ${_undecodedCount()}');
 
     final originalCutId = session.requireActiveCut.id;
-    session.duplicateActiveCut();
+    session.cutVerbs.duplicateActiveCut();
     await _settleFrames(20);
     _log(
       'fill-roundtrip: after duplicate active=${session.requireActiveCut.id} '
@@ -610,10 +610,11 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     try {
       final cut1 = session.requireActiveCut.id;
       final smallSize = session.requireActiveCut.canvasSize;
-      session.duplicateActiveCut(); // cut2 (active), same size as cut1.
+      session.cutVerbs
+          .duplicateActiveCut(); // cut2 (active), same size as cut1.
       await _settleFrames(10);
       final cut2 = session.requireActiveCut.id;
-      session.resizeActiveCutCanvas(
+      session.cutVerbs.resizeActiveCutCanvas(
         const CanvasSize(width: 8000, height: 8000),
         anchor: CanvasResizeAnchor.topLeft,
       );
@@ -681,7 +682,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       await session.projectDoor.saveProjectToFile(savePath);
       session.renderCaches.brushFrameStore.hotCelByteBudget = 0;
       _log('fill-roundtrip B: saved + hot budget 0');
-      session.duplicateActiveCut(); // Jumps to the copy = walk away.
+      session.cutVerbs.duplicateActiveCut(); // Jumps to the copy = walk away.
       await _settleFrames(10);
       await session.renderCaches.brushFrameStore.drainTiering();
       session.selectCut(originalCutId);

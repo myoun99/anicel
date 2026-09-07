@@ -51,9 +51,9 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
 
   Future<void> _editActiveCutNote() => askAboutThenCommit<String, String>(
     context,
-    session.activeCutNote,
+    session.cutVerbs.activeCutNote,
     dialog: (note) => CutNoteDialog(initialNote: note),
-    commit: session.updateActiveCutNote,
+    commit: session.cutVerbs.updateActiveCutNote,
   );
 
   Future<void> _resizeActiveCutCanvas() =>
@@ -77,7 +77,10 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           doneLabel: AppText.strings.resizeProgressDone,
           windowKey: const ValueKey<String>('resize-progress-dialog'),
           task: (report) async {
-            session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
+            session.cutVerbs.resizeActiveCutCanvas(
+              request.size,
+              anchor: request.anchor,
+            );
             await WidgetsBinding.instance.endOfFrame;
           },
         ),
@@ -90,13 +93,13 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         keyValue: 'add-cut-new',
         label: AppText.strings.cutNewCut,
         icon: Icons.add,
-        onSelected: session.createCut,
+        onSelected: session.cutVerbs.createCut,
       ),
       PanelFlyoutItem(
         keyValue: 'add-cut-duplicate',
         label: AppText.strings.cutDuplicateActive,
         icon: Icons.content_copy,
-        onSelected: session.duplicateActiveCut,
+        onSelected: session.cutVerbs.duplicateActiveCut,
       ),
       // 겸용컷: same pictures, own timing. It only ever lived in the top
       // menu bar, and it belongs beside the other ways of making a cut.
@@ -110,7 +113,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         ),
         icon: Icons.link,
         enabled: session.activeCutOrNull != null,
-        onSelected: session.createLinkedCutFromActiveCut,
+        onSelected: session.cutVerbs.createLinkedCutFromActiveCut,
       ),
     ];
   }
@@ -140,7 +143,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         keyValue: 'duplicate-cut-button',
         label: AppText.strings.cutDuplicateCut,
         icon: Icons.content_copy,
-        onSelected: session.duplicateActiveCut,
+        onSelected: session.cutVerbs.duplicateActiveCut,
       ),
       PanelFlyoutItem(
         keyValue: 'convert-cut-to-linked-button',
@@ -155,29 +158,29 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
       ),
       PanelFlyoutItem(
         keyValue: 'set-cut-thumbnail-button',
-        label: session.isActiveCutThumbnailPinnedHere
+        label: session.cutVerbs.isActiveCutThumbnailPinnedHere
             ? 'Unpin thumbnail frame'
             : 'Pin thumbnail frame',
-        icon: session.isActiveCutThumbnailPinnedHere
+        icon: session.cutVerbs.isActiveCutThumbnailPinnedHere
             ? Icons.image
             : Icons.image_outlined,
-        checked: session.isActiveCutThumbnailPinnedHere ? true : null,
-        onSelected: session.toggleActiveCutThumbnailFrame,
+        checked: session.cutVerbs.isActiveCutThumbnailPinnedHere ? true : null,
+        onSelected: session.cutVerbs.toggleActiveCutThumbnailFrame,
       ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'move-cut-left-button',
         label: AppText.strings.cutMoveLeft,
         icon: Icons.chevron_left,
-        enabled: session.canMoveActiveCutLeft,
-        onSelected: session.moveActiveCutLeft,
+        enabled: session.cutVerbs.canMoveActiveCutLeft,
+        onSelected: session.cutVerbs.moveActiveCutLeft,
       ),
       PanelFlyoutItem(
         keyValue: 'move-cut-right-button',
         label: AppText.strings.cutMoveRight,
         icon: Icons.chevron_right,
-        enabled: session.canMoveActiveCutRight,
-        onSelected: session.moveActiveCutRight,
+        enabled: session.cutVerbs.canMoveActiveCutRight,
+        onSelected: session.cutVerbs.moveActiveCutRight,
       ),
       // NO push/pull here any more: it is ONE verb aimed at whatever is
       // selected, so it lives as ONE button pair on the rail's toolbar
@@ -235,7 +238,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           icon: Icons.add,
           tooltip: AppText.strings.cutNewCut,
           onPressed: session.cutPlacement.canCreateCut
-              ? session.createCut
+              ? session.cutVerbs.createCut
               : null,
           entriesBuilder: _addEntries,
           accent: true,

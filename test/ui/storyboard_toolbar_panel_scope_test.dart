@@ -297,7 +297,7 @@ void main() {
     expect(selection.startFrame, 0);
     expect(selection.endFrameExclusive, manager.activeCutOrNull!.duration);
     expect(
-      manager.storyboardSelectedCutIds,
+      manager.storyboardRows.storyboardSelectedCutIds,
       [manager.activeCutOrNull!.id],
       reason: 'the whole cut span reads back as every cut selected',
     );

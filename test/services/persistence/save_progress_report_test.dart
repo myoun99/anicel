@@ -89,7 +89,7 @@ void main() {
   test('a FULL save reports its way to 1.0', () async {
     final s = session();
     for (var i = 0; i < 3; i += 1) {
-      s.createCut();
+      s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
     }
 
@@ -113,7 +113,7 @@ void main() {
     // Instrumenting one and trusting the other is how the fast path ends
     // up showing a window that never moves.
     final s = session();
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath);
     // The proof that an APPEND ran, rather than a full rewrite that happened
@@ -128,7 +128,7 @@ void main() {
       parseAnicelZipLayoutFile(projectPath).centralDirectoryOffset,
     );
 
-    s.createCut();
+    s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     final reports = <double>[];
     await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
@@ -136,53 +136,61 @@ void main() {
     expect(
       File(projectPath).readAsBytesSync().sublist(0, keptPrefix.length),
       keptPrefix,
-      reason: 'those bytes were rewritten, so this is the FULL path and the '
+      reason:
+          'those bytes were rewritten, so this is the FULL path and the '
           'incremental one is going untested',
     );
     expect(reports, isNotEmpty);
     expect(reports.last, 1.0);
   });
 
-  test('🚨 an APPEND with new media does not reach the end before it starts', () async {
-    // The append writer reads every streamed entry TWICE — once to
-    // checksum it before the archive is touched, once to copy the bytes.
-    // Counted as one entry, `_done` hit `_total` when the checksum pass
-    // ended: the window said 100% and then held there through the whole
-    // copy, which on a real import is most of the wait. Worse, a fraction
-    // pinned at 1.0 defeats the throttle (`clamped < 1` is false), so every
-    // 256KB chunk of the copy re-sent 1.0 — thousands of messages saying
-    // nothing.
-    //
-    // Nothing caught it because no test took this path: the incremental
-    // test saved no media, and every media test started from a fresh
-    // session, which is a full rewrite.
-    final s = session();
-    drawOnCurrentFrame(s);
-    await s.projectDoor.saveProjectToFile(projectPath);
+  test(
+    '🚨 an APPEND with new media does not reach the end before it starts',
+    () async {
+      // The append writer reads every streamed entry TWICE — once to
+      // checksum it before the archive is touched, once to copy the bytes.
+      // Counted as one entry, `_done` hit `_total` when the checksum pass
+      // ended: the window said 100% and then held there through the whole
+      // copy, which on a real import is most of the wait. Worse, a fraction
+      // pinned at 1.0 defeats the throttle (`clamped < 1` is false), so every
+      // 256KB chunk of the copy re-sent 1.0 — thousands of messages saying
+      // nothing.
+      //
+      // Nothing caught it because no test took this path: the incremental
+      // test saved no media, and every media test started from a fresh
+      // session, which is a full rewrite.
+      final s = session();
+      drawOnCurrentFrame(s);
+      await s.projectDoor.saveProjectToFile(projectPath);
 
-    File('${directory.path}/대사.wav')
-      ..createSync()
-      ..writeAsBytesSync(List<int>.filled(1200 * 1024, 9));
-    s.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
-    s.createCut();
-    drawOnCurrentFrame(s);
+      File('${directory.path}/대사.wav')
+        ..createSync()
+        ..writeAsBytesSync(List<int>.filled(1200 * 1024, 9));
+      s.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+      s.cutVerbs.createCut();
+      drawOnCurrentFrame(s);
 
-    final reports = <double>[];
-    await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
+      final reports = <double>[];
+      await s.projectDoor.saveProjectToFile(
+        projectPath,
+        onProgress: reports.add,
+      );
 
-    expect(reports.last, 1.0);
-    expect(
-      reports.where((r) => r >= 1.0),
-      hasLength(1),
-      reason: 'the bar arrives at the end ONCE. More than one 1.0 means it '
-          'got there early and then kept saying so while work continued',
-    );
-    expect(
-      reports.indexOf(1.0),
-      reports.length - 1,
-      reason: 'nothing may claim the save is finished before it is',
-    );
-  });
+      expect(reports.last, 1.0);
+      expect(
+        reports.where((r) => r >= 1.0),
+        hasLength(1),
+        reason:
+            'the bar arrives at the end ONCE. More than one 1.0 means it '
+            'got there early and then kept saying so while work continued',
+      );
+      expect(
+        reports.indexOf(1.0),
+        reports.length - 1,
+        reason: 'nothing may claim the save is finished before it is',
+      );
+    },
+  );
 
   test('an APPEND reports as it goes, not just at the end', () async {
     // The end-of-save `finish()` alone satisfies "reaches 1.0" — so on its
@@ -194,7 +202,7 @@ void main() {
     await s.projectDoor.saveProjectToFile(projectPath);
 
     for (var i = 0; i < 5; i += 1) {
-      s.createCut();
+      s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
     }
     final reports = <double>[];
@@ -207,91 +215,103 @@ void main() {
     );
   });
 
-  test('🚨 a BIGGER asset is reported on more often, at the same entry count', () async {
-    // Isolates the one idea the entry count cannot express: a streaming
-    // entry advancing by the fraction of ITSELF already read.
-    //
-    // The earlier "two assets beat one" test does NOT cover this — a second
-    // asset adds a whole entry, hence a whole extra step(), so that count
-    // rises even with the within-entry reporting deleted. Holding the entry
-    // count FIXED and varying only the asset's size leaves the sub-entry
-    // fraction as the only thing that can move the number.
-    Future<List<double>> saveAssetOf(String tag, int bytes) async {
-      final s = session();
-      drawOnCurrentFrame(s);
-      final path = '${directory.path}/$tag.wav';
-      File(path)
-        ..createSync()
-        ..writeAsBytesSync(List<int>.filled(bytes, 5));
-      s.importMediaFiles([path], copyIntoProject: true);
-      final reports = <double>[];
-      await s.projectDoor.saveProjectToFile(
-        '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
-        onProgress: reports.add,
-      );
-      return reports;
-    }
-
-    // One 256KB chunk versus twenty. Same project shape, same entry count.
-    final small = await saveAssetOf('small', 256 * 1024);
-    final big = await saveAssetOf('big', 20 * 256 * 1024);
-
-    expect(
-      big.length,
-      greaterThan(small.length),
-      reason: 'a twenty-times-larger asset produced no more reports than a '
-          'one-chunk one, so nothing is reporting DURING an entry',
-    );
-  });
-
-  test('every asset is reported on — the second does not pass in silence', () async {
-    // Two numbers share this one fraction: whole entries, and the part of a
-    // streaming entry already read. Get the hand-off between them wrong and
-    // the second asset restarts BELOW where the first ended.
-    //
-    // That never shows up as a bar running backwards — a report that dips
-    // is dropped rather than sent, so the bar simply says NOTHING for the
-    // length of a whole asset and then arrives at the end. Which is why the
-    // test is comparative: adding an asset to a project has to add reports
-    // about it. A count is the only thing that can tell "streamed quietly"
-    // apart from "streamed".
-    Future<List<double>> saveWithAssets(String tag, int assets) async {
-      final s = session();
-      drawOnCurrentFrame(s);
-      for (var i = 0; i < assets; i += 1) {
-        final path = '${directory.path}/$tag-$i.wav';
+  test(
+    '🚨 a BIGGER asset is reported on more often, at the same entry count',
+    () async {
+      // Isolates the one idea the entry count cannot express: a streaming
+      // entry advancing by the fraction of ITSELF already read.
+      //
+      // The earlier "two assets beat one" test does NOT cover this — a second
+      // asset adds a whole entry, hence a whole extra step(), so that count
+      // rises even with the within-entry reporting deleted. Holding the entry
+      // count FIXED and varying only the asset's size leaves the sub-entry
+      // fraction as the only thing that can move the number.
+      Future<List<double>> saveAssetOf(String tag, int bytes) async {
+        final s = session();
+        drawOnCurrentFrame(s);
+        final path = '${directory.path}/$tag.wav';
         File(path)
           ..createSync()
-          ..writeAsBytesSync(List<int>.filled(900 * 1024, 7));
+          ..writeAsBytesSync(List<int>.filled(bytes, 5));
         s.importMediaFiles([path], copyIntoProject: true);
-      }
-      final reports = <double>[];
-      await s.projectDoor.saveProjectToFile(
-        '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
-        onProgress: reports.add,
-      );
-      // Monotone as well: a fraction that goes back reads as work undone.
-      for (var i = 1; i < reports.length; i += 1) {
-        expect(
-          reports[i],
-          greaterThanOrEqualTo(reports[i - 1]),
-          reason: '$tag report $i dipped: ${reports[i - 1]} → ${reports[i]}',
+        final reports = <double>[];
+        await s.projectDoor.saveProjectToFile(
+          '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
+          onProgress: reports.add,
         );
+        return reports;
       }
-      return reports;
-    }
 
-    final one = await saveWithAssets('one', 1);
-    final two = await saveWithAssets('two', 2);
+      // One 256KB chunk versus twenty. Same project shape, same entry count.
+      final small = await saveAssetOf('small', 256 * 1024);
+      final big = await saveAssetOf('big', 20 * 256 * 1024);
 
-    expect(one.length, greaterThan(2), reason: 'the one asset was reported on');
-    expect(
-      two.length,
-      greaterThan(one.length),
-      reason: 'the second asset went by without a word — the bar would sit '
-          'still through it and then jump to the end',
-    );
-  });
+      expect(
+        big.length,
+        greaterThan(small.length),
+        reason:
+            'a twenty-times-larger asset produced no more reports than a '
+            'one-chunk one, so nothing is reporting DURING an entry',
+      );
+    },
+  );
+
+  test(
+    'every asset is reported on — the second does not pass in silence',
+    () async {
+      // Two numbers share this one fraction: whole entries, and the part of a
+      // streaming entry already read. Get the hand-off between them wrong and
+      // the second asset restarts BELOW where the first ended.
+      //
+      // That never shows up as a bar running backwards — a report that dips
+      // is dropped rather than sent, so the bar simply says NOTHING for the
+      // length of a whole asset and then arrives at the end. Which is why the
+      // test is comparative: adding an asset to a project has to add reports
+      // about it. A count is the only thing that can tell "streamed quietly"
+      // apart from "streamed".
+      Future<List<double>> saveWithAssets(String tag, int assets) async {
+        final s = session();
+        drawOnCurrentFrame(s);
+        for (var i = 0; i < assets; i += 1) {
+          final path = '${directory.path}/$tag-$i.wav';
+          File(path)
+            ..createSync()
+            ..writeAsBytesSync(List<int>.filled(900 * 1024, 7));
+          s.importMediaFiles([path], copyIntoProject: true);
+        }
+        final reports = <double>[];
+        await s.projectDoor.saveProjectToFile(
+          '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
+          onProgress: reports.add,
+        );
+        // Monotone as well: a fraction that goes back reads as work undone.
+        for (var i = 1; i < reports.length; i += 1) {
+          expect(
+            reports[i],
+            greaterThanOrEqualTo(reports[i - 1]),
+            reason: '$tag report $i dipped: ${reports[i - 1]} → ${reports[i]}',
+          );
+        }
+        return reports;
+      }
+
+      final one = await saveWithAssets('one', 1);
+      final two = await saveWithAssets('two', 2);
+
+      expect(
+        one.length,
+        greaterThan(2),
+        reason: 'the one asset was reported on',
+      );
+      expect(
+        two.length,
+        greaterThan(one.length),
+        reason:
+            'the second asset went by without a word — the bar would sit '
+            'still through it and then jump to the end',
+      );
+    },
+  );
 
   test('an EMPTY asset does not leave the count short of the end', () async {
     // A zero-byte file is never read from, so it never reports itself
@@ -326,7 +346,9 @@ void main() {
     s.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
     await s.projectDoor.saveProjectToFile(projectPath, onProgress: (_) {});
 
-    final archive = ZipDecoder().decodeBytes(File(projectPath).readAsBytesSync());
+    final archive = ZipDecoder().decodeBytes(
+      File(projectPath).readAsBytesSync(),
+    );
     final stored = [
       for (final entry in archive.files)
         if (entry.name != anicelProjectEntryNameCompressed &&

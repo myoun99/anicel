@@ -356,7 +356,7 @@ void main() {
       // Cut 40 becomes 39's 겸용 sibling: one folder in the studio, one
       // envelope here.
       session.selectCut(const CutId('39'));
-      session.convertActiveCutToLinked(const CutId('40'));
+      session.cutVerbs.convertActiveCutToLinked(const CutId('40'));
       final state = await pumpDialog(tester, session);
       await tapSetting(tester, 'export-scope-project');
 

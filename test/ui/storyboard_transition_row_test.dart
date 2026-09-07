@@ -108,9 +108,13 @@ void main() {
       );
       expect(
         tester.getTopLeft(strip).dy,
-        lessThan(tester.getTopLeft(find.byKey(
-          const ValueKey<String>('storyboard-se-row-0-1'),
-        )).dy),
+        lessThan(
+          tester
+              .getTopLeft(
+                find.byKey(const ValueKey<String>('storyboard-se-row-0-1')),
+              )
+              .dy,
+        ),
       );
       // The two columns agree on the row's top, which is what keeps the rail
       // and the strips in lockstep.
@@ -188,7 +192,8 @@ void main() {
       expect(
         _track(tester).transitionLayer.instructions.keys,
         [2],
-        reason: 'opening the editor must not add a span beside the one it edits',
+        reason:
+            'opening the editor must not add a span beside the one it edits',
       );
     });
 
@@ -220,7 +225,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      session.createCut();
+      session.cutVerbs.createCut();
       final track = session.repository.requireProject().tracks.first;
       final second = track.cuts[1].id;
       session.repository.updateCutLeadingGap(
@@ -540,7 +545,10 @@ void main() {
 
       final filtered = session.transitionInstructionSet.defs;
       expect(filtered, isNotEmpty);
-      expect(filtered.length, lessThan(session.cameraInstructionSet.defs.length));
+      expect(
+        filtered.length,
+        lessThan(session.cameraInstructionSet.defs.length),
+      );
       expect(
         session.transitionInstructionDefs.map((def) => def.id),
         filtered.map((def) => def.id),
@@ -606,7 +614,9 @@ void main() {
       session.selectGlobalFrame(5);
       session.createTransitionSpanAtPlayhead();
       await tester.pumpAndSettle();
-      session.selectRow(LayerRowAddress(session.activeTrack.transitionLayer.id));
+      session.selectRow(
+        LayerRowAddress(session.activeTrack.transitionLayer.id),
+      );
       await tester.pumpAndSettle();
 
       editInstance(tester);
@@ -621,9 +631,7 @@ void main() {
       expect(dialog.instructionSet.defs, session.transitionInstructionDefs);
       expect(dialog.onEditInstructionSet, isNull);
       // Dismiss through the route so the test leaves no dialog standing.
-      Navigator.of(
-        tester.element(find.byType(InstructionEventDialog)),
-      ).pop();
+      Navigator.of(tester.element(find.byType(InstructionEventDialog))).pop();
       await tester.pumpAndSettle();
       expect(
         session.activeTrack.transitionLayer.instructions.keys,
@@ -641,7 +649,9 @@ void main() {
           .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
           .session;
       session.selectGlobalFrame(7);
-      session.selectRow(LayerRowAddress(session.activeTrack.transitionLayer.id));
+      session.selectRow(
+        LayerRowAddress(session.activeTrack.transitionLayer.id),
+      );
       await tester.pumpAndSettle();
       expect(session.activeTrack.transitionLayer.instructions, isEmpty);
       // ⚠️The rail is standing here while `activeLayer` is NOT this row — the

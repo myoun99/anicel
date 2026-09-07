@@ -10,7 +10,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 void main() {
   (EditorSessionManager, CutId, CutId) twoCutSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     // createCut selects the new cut; playback starts from the first one.
     s.selectCut(track.cuts[0].id);

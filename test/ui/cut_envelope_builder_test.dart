@@ -25,7 +25,7 @@ void main() {
   });
 
   test('a 겸용 cut brings its siblings onto the same envelope', () {
-    session.createLinkedCutFromActiveCut();
+    session.cutVerbs.createLinkedCutFromActiveCut();
 
     final source = buildCutEnvelopeSource(
       project: session.repository.requireProject(),
@@ -43,7 +43,7 @@ void main() {
   });
 
   test('title falls back to the project name; the memo comes from the cut', () {
-    session.updateActiveCutNote('PAN (A)→(B)');
+    session.cutVerbs.updateActiveCutNote('PAN (A)→(B)');
 
     final source = buildCutEnvelopeSource(
       project: session.repository.requireProject(),
@@ -79,7 +79,7 @@ void main() {
 
     test('겸용 siblings share ONE set of annotations', () {
       final first = session.requireActiveCut.id;
-      session.createLinkedCutFromActiveCut();
+      session.cutVerbs.createLinkedCutFromActiveCut();
       final second = session.requireActiveCut.id;
       final project = session.repository.requireProject();
 

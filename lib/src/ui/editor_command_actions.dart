@@ -75,7 +75,7 @@ void createActiveInstance(EditorSessionManager session) {
 /// convert and at least one cut to borrow the pictures from.
 bool canConvertActiveCutToLinked(EditorSessionManager session) =>
     session.activeCutOrNull != null &&
-    session.convertToLinkedCutCandidates.isNotEmpty;
+    session.cutVerbs.convertToLinkedCutCandidates.isNotEmpty;
 
 /// Turns the active cut into a 겸용컷 of a chosen other cut — same
 /// pictures, its own timing.
@@ -87,10 +87,10 @@ Future<void> showConvertActiveCutToLinked(
   session.activeCutOrNull,
   dialog: (activeCut) => ConvertToLinkedCutDialog(
     activeCutName: activeCut.name,
-    candidates: session.convertToLinkedCutCandidates,
-    previewOf: session.convertToLinkedCutPreviewData,
+    candidates: session.cutVerbs.convertToLinkedCutCandidates,
+    previewOf: session.cutVerbs.convertToLinkedCutPreviewData,
   ),
-  commit: session.convertActiveCutToLinked,
+  commit: session.cutVerbs.convertActiveCutToLinked,
 );
 
 /// Bakes the active cut's camera work as After Effects keyframe data on the

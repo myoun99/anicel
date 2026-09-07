@@ -225,11 +225,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 effects: effects,
               ),
             );
-          case CompositeAdjustment(
-            :final children,
-            :final effects,
-            :final mix,
-          ):
+          case CompositeAdjustment(:final children, :final effects, :final mix):
             // Like the group above: the ghosts have to be able to land
             // INSIDE an adjustment's scope, or the row you are drawing on
             // would show the grade while its onion ghosts did not.
@@ -352,7 +348,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// 유저 확정 08-18 (R6q2): camera view OFF never fits — the user's framing
   /// is the framing.
   Rect? _playbackFramingRect() {
-    if (!widget.cameraViewEnabled.value || !widget.session.playbackRig.playback.isActive) {
+    if (!widget.cameraViewEnabled.value ||
+        !widget.session.playbackRig.playback.isActive) {
       return null;
     }
     final frame = widget.session.cameraFrameSize;
@@ -447,11 +444,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         widget.cameraViewEnabled.value || isCameraLayerActive;
                     return labProbe(
                       'canvasAreaBuild',
-                      () => _InteractiveCanvasBuild(this).buildInteractiveCanvas(
-                        session,
-                        isCameraLayerActive: isCameraLayerActive,
-                        showCameraOverlay: showCameraOverlay,
-                      ),
+                      () =>
+                          _InteractiveCanvasBuild(this).buildInteractiveCanvas(
+                            session,
+                            isCameraLayerActive: isCameraLayerActive,
+                            showCameraOverlay: showCameraOverlay,
+                          ),
                     );
                   },
                 );
@@ -495,7 +493,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       cutFxEnabledOf: session.isCutFxEnabled,
       trackStaticOpacityOf: session.trackStaticOpacityForCut,
       cutPictureVisibleOf: session.isCutPictureVisible,
-      onFrameCached: session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
+      onFrameCached:
+          session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
       viewport: viewport,
       background: session.projectBackground,
       backdropArgb: project.backdropArgb,
@@ -545,8 +544,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   static bool _rowAcceptsStrokes(TimelineRowAddress? row) =>
       row is! LaneRowAddress;
 
-
-  void _noteCanvasProbe(EditorSessionManager session, bool inGap, ({double activeLayerOpacity, List<ResolvedLayerEffect> activeSourceEffects, List<CompositeNode<CanvasStackRow>> nodes}) layerStack) {
+  void _noteCanvasProbe(
+    EditorSessionManager session,
+    bool inGap,
+    ({
+      double activeLayerOpacity,
+      List<ResolvedLayerEffect> activeSourceEffects,
+      List<CompositeNode<CanvasStackRow>> nodes,
+    })
+    layerStack,
+  ) {
     if (InputInspector.visible.value) {
       // The FRAME leads, and it is not decoration: without it "no new line"
       // reads two ways — the four answers were the same, or this build never
@@ -573,17 +580,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     }
     var next = start * math.pow(2, upwardDelta / 120).toDouble();
     if (snap) {
-      next = AppInput.snapToList(
-        next,
-        AppInput.settings.value.brushSizeSnaps,
-      );
+      next = AppInput.snapToList(next, AppInput.settings.value.brushSizeSnaps);
     }
     widget.onBrushToolStateChanged?.call(
       widget.brushToolState.value.copyWith(size: next),
     );
   }
 
-  Stack _playbackContent(EditorSessionManager session, CanvasViewport viewport) {
+  Stack _playbackContent(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+  ) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -591,21 +598,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           controller: session.playbackRig.playback,
           compositeCache: session.renderCaches.cutFrameCompositeCache,
           qualityOf: () => session.playbackRig.playbackQuality,
-          prerenderProgress:
-              session.playbackRig.prerenderScheduler.progress,
+          prerenderProgress: session.playbackRig.prerenderScheduler.progress,
           cameraViewEnabled: widget.cameraViewEnabled.value,
           cameraFrameSize: session.cameraFrameSize,
           cameraPoseOf: session.cameraPoseForCut,
           seNameTagsOf: session.seNameTagsForCutFrame,
           cutFxEnabledOf: session.isCutFxEnabled,
-          trackStaticOpacityOf:
-              session.trackStaticOpacityForCut,
+          trackStaticOpacityOf: session.trackStaticOpacityForCut,
           cutPictureVisibleOf: session.isCutPictureVisible,
           viewport: viewport,
           background: session.projectBackground,
-          pasteboardArgb: session.repository
-              .requireProject()
-              .pasteboardArgb,
+          pasteboardArgb: session.repository.requireProject().pasteboardArgb,
           trackEffectsOf: session.trackEffectsForCut,
           trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
           // ALL-CUTS playback watches the whole stage: the
@@ -619,9 +622,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ? _buildTrackStackView(
                   session,
                   viewport,
-                  globalFrame: session
-                      .playbackRig.playback
-                      .globalFrameIndexListenable,
+                  globalFrame:
+                      session.playbackRig.playback.globalFrameIndexListenable,
                   // Playback is the one place the crop
                   // belongs, and there it answers the toggle.
                   cameraView: widget.cameraViewEnabled.value,
@@ -644,7 +646,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return false;
   }
 
-  Positioned _anchorGizmo(EditorSessionManager session, Layer activeLayer, CanvasViewport viewport) {
+  Positioned _anchorGizmo(
+    EditorSessionManager session,
+    Layer activeLayer,
+    CanvasViewport viewport,
+  ) {
     return Positioned.fill(
       // Unwrapped like the position handle, for the same
       // reason.
@@ -655,21 +661,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           session.currentFrameIndex,
         ),
         viewport: viewport,
-        onCommitted: (anchorPoint) =>
-            session.updateLayerTransformTrack(
-              activeLayer.id,
-              transformTrackWithAnchorDragged(
-                activeLayer.transformTrack,
-                frameIndex: session.currentFrameIndex,
-                anchorPoint: anchorPoint,
-              ),
-              description: 'Anchor ${activeLayer.name}',
-            ),
+        onCommitted: (anchorPoint) => session.updateLayerTransformTrack(
+          activeLayer.id,
+          transformTrackWithAnchorDragged(
+            activeLayer.transformTrack,
+            frameIndex: session.currentFrameIndex,
+            anchorPoint: anchorPoint,
+          ),
+          description: 'Anchor ${activeLayer.name}',
+        ),
       ),
     );
   }
 
-  Positioned _positionGizmo(EditorSessionManager session, Layer activeLayer, CanvasViewport viewport) {
+  Positioned _positionGizmo(
+    EditorSessionManager session,
+    Layer activeLayer,
+    CanvasViewport viewport,
+  ) {
     return Positioned.fill(
       // No cut-pose wrap: the V row's transform is gone,
       // so the crosshair sits directly on the layer's own
@@ -683,21 +692,26 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         viewport: viewport,
         // ONE key at the playhead per drag (AE rule,
         // one undo).
-        onCommitted: (position) =>
-            session.updateLayerTransformTrack(
-              activeLayer.id,
-              transformTrackWithPositionDragged(
-                activeLayer.transformTrack,
-                frameIndex: session.currentFrameIndex,
-                position: position,
-              ),
-              description: 'Move ${activeLayer.name}',
-            ),
+        onCommitted: (position) => session.updateLayerTransformTrack(
+          activeLayer.id,
+          transformTrackWithPositionDragged(
+            activeLayer.transformTrack,
+            frameIndex: session.currentFrameIndex,
+            position: position,
+          ),
+          description: 'Move ${activeLayer.name}',
+        ),
       ),
     );
   }
 
-  Positioned _transformBox(Rect transformBoxBounds, EditorSessionManager session, Layer activeLayer, CanvasSize canvasSize, CanvasViewport viewport) {
+  Positioned _transformBox(
+    Rect transformBoxBounds,
+    EditorSessionManager session,
+    Layer activeLayer,
+    CanvasSize canvasSize,
+    CanvasViewport viewport,
+  ) {
     return Positioned.fill(
       // R5 #10: the box frames the PICTURE, and its
       // corners scale while its rotate handle turns —
@@ -705,41 +719,40 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // more: the V row's transform is gone.
       child: LayerTransformBox(
         bounds: transformBoxBounds,
-        pose: session.layerPoseAtFrame(
-          activeLayer,
-          session.currentFrameIndex,
-        ),
+        pose: session.layerPoseAtFrame(activeLayer, session.currentFrameIndex),
         anchorPoint: session.layerAnchorPointAtFrame(
           activeLayer,
           session.currentFrameIndex,
         ),
         canvasSize: canvasSize,
         viewport: viewport,
-        onScaleCommitted: (zoom) =>
-            session.updateLayerTransformTrack(
-              activeLayer.id,
-              transformTrackWithScaleDragged(
-                activeLayer.transformTrack,
-                frameIndex: session.currentFrameIndex,
-                zoom: zoom,
-              ),
-              description: 'Scale ${activeLayer.name}',
-            ),
-        onRotationCommitted: (degrees) =>
-            session.updateLayerTransformTrack(
-              activeLayer.id,
-              transformTrackWithRotationDragged(
-                activeLayer.transformTrack,
-                frameIndex: session.currentFrameIndex,
-                rotationDegrees: degrees,
-              ),
-              description: 'Rotate ${activeLayer.name}',
-            ),
+        onScaleCommitted: (zoom) => session.updateLayerTransformTrack(
+          activeLayer.id,
+          transformTrackWithScaleDragged(
+            activeLayer.transformTrack,
+            frameIndex: session.currentFrameIndex,
+            zoom: zoom,
+          ),
+          description: 'Scale ${activeLayer.name}',
+        ),
+        onRotationCommitted: (degrees) => session.updateLayerTransformTrack(
+          activeLayer.id,
+          transformTrackWithRotationDragged(
+            activeLayer.transformTrack,
+            frameIndex: session.currentFrameIndex,
+            rotationDegrees: degrees,
+          ),
+          description: 'Rotate ${activeLayer.name}',
+        ),
       ),
     );
   }
 
-  Positioned _cameraOverlay(EditorSessionManager session, CanvasViewport viewport, bool isCameraLayerActive) {
+  Positioned _cameraOverlay(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+    bool isCameraLayerActive,
+  ) {
     return Positioned.fill(
       // The cursor subscription keeps the frame gliding
       // along its animated pose during scrubs (and after
@@ -752,40 +765,41 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // frozen on the cut being left.
       child: ListenableBuilder(
         listenable: session.editingFrameCursor,
-        builder: (context, _) =>
-            ValueListenableBuilder<int?>(
-              valueListenable:
-                  session.gapParkingListenable,
-              builder: (context, _, _) {
-                final pose = session.displayedCameraPose;
-                // Nothing under the cursor to frame:
-                // the scrub is over a gap.
-                if (pose == null) {
-                  return const SizedBox.shrink();
-                }
-                return CameraFrameOverlay(
-                  pose: pose,
-                  cameraFrameSize:
-                      session.cameraFrameSize,
-                  viewport: viewport,
-                  // Dim belongs to camera-view mode;
-                  // plain manipulation keeps the
-                  // artwork undimmed.
-                  dimOpacity:
-                      widget.cameraViewEnabled.value
-                      ? widget.cameraDimOpacity.value
-                      : 0,
-                  interactive: isCameraLayerActive,
-                  onPoseCommitted: session
-                      .setCameraKeyframeAtCurrentFrame,
-                );
-              },
-            ),
+        builder: (context, _) => ValueListenableBuilder<int?>(
+          valueListenable: session.gapParkingListenable,
+          builder: (context, _, _) {
+            final pose = session.displayedCameraPose;
+            // Nothing under the cursor to frame:
+            // the scrub is over a gap.
+            if (pose == null) {
+              return const SizedBox.shrink();
+            }
+            return CameraFrameOverlay(
+              pose: pose,
+              cameraFrameSize: session.cameraFrameSize,
+              viewport: viewport,
+              // Dim belongs to camera-view mode;
+              // plain manipulation keeps the
+              // artwork undimmed.
+              dimOpacity: widget.cameraViewEnabled.value
+                  ? widget.cameraDimOpacity.value
+                  : 0,
+              interactive: isCameraLayerActive,
+              onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+            );
+          },
+        ),
       ),
     );
   }
 
-  Positioned _cutFadeWash(CanvasViewport viewport, CanvasSize canvasSize, EditorSessionManager session, double cutFadeOpacity, BuildContext context) {
+  Positioned _cutFadeWash(
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+    EditorSessionManager session,
+    double cutFadeOpacity,
+    BuildContext context,
+  ) {
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -799,26 +813,22 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           painter: _CutFadeWashPainter(
             viewport: viewport,
             canvasSize: canvasSize,
-            color:
-                Color(
-                  session.repository
-                      .requireProject()
-                      .backdropArgb,
-                ).withValues(
-                  alpha: (1 - cutFadeOpacity).clamp(
-                    0.0,
-                    1.0,
-                  ),
-                ),
-            devicePixelRatio:
-                EffectiveDevicePixelRatio.of(context),
+            color: Color(
+              session.repository.requireProject().backdropArgb,
+            ).withValues(alpha: (1 - cutFadeOpacity).clamp(0.0, 1.0)),
+            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
           ),
         ),
       ),
     );
   }
 
-  Positioned _seNameTagOverlay(CanvasViewport viewport, CanvasSize canvasSize, List<ResolvedSeNameTag> seNameTags, BuildContext context) {
+  Positioned _seNameTagOverlay(
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+    List<ResolvedSeNameTag> seNameTags,
+    BuildContext context,
+  ) {
     return Positioned.fill(
       // Rides the cut pose like the gizmo: the tag
       // annotates the posed picture, exactly as the
@@ -829,34 +839,40 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             viewport: viewport,
             canvasSize: canvasSize,
             tags: seNameTags,
-            devicePixelRatio:
-                EffectiveDevicePixelRatio.of(context),
+            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
           ),
         ),
       ),
     );
   }
 
-  Positioned _guideEditLayer(EditorSessionManager session, CanvasViewport viewport) {
+  Positioned _guideEditLayer(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+  ) {
     return Positioned.fill(
       child: GuideEditLayer(
-        guides: _liveGuides ?? session.activeCutGuides,
+        guides: _liveGuides ?? session.cutVerbs.activeCutGuides,
         viewport: viewport,
-        onGuideSelected: (id) =>
-            session.selectedGuideId = id,
+        onGuideSelected: (id) => session.selectedGuideId = id,
         // Live while dragging: the project is not
         // touched, so a drag is one undo entry.
-        onGuidesChanged: (guides) =>
-            setState(() => _liveGuides = guides),
+        onGuidesChanged: (guides) => setState(() => _liveGuides = guides),
         onGuidesCommitted: (guides) {
           setState(() => _liveGuides = null);
-          session.setActiveCutGuides(guides);
+          session.cutVerbs.setActiveCutGuides(guides);
         },
       ),
     );
   }
 
-  Positioned _guideOverlay(EditorSessionManager session, CanvasViewport viewport, CanvasSize canvasSize, BrushToolState toolState, BuildContext context) {
+  Positioned _guideOverlay(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+    BrushToolState toolState,
+    BuildContext context,
+  ) {
     return Positioned.fill(
       child: IgnorePointer(
         child: CustomPaint(
@@ -864,14 +880,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             // The live drag value while a handle is
             // moving, so the drawn guide follows the
             // finger without a project write.
-            guides:
-                _liveGuides ?? session.activeCutGuides,
+            guides: _liveGuides ?? session.cutVerbs.activeCutGuides,
             viewport: viewport,
             canvasSize: canvasSize,
-            emphasized:
-                toolState.tool == CanvasTool.guide,
-            vanishingPointLabel:
-                AppText.strings.guideVanishingPoint,
+            emphasized: toolState.tool == CanvasTool.guide,
+            vanishingPointLabel: AppText.strings.guideVanishingPoint,
             color: Theme.of(context).colorScheme.primary,
             selectedGuideId: session.selectedGuideId,
           ),
@@ -959,12 +972,8 @@ class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (
-    viewport,
-    canvasSize,
-    devicePixelRatio,
-    seNameTagSignature(tags),
-  );
+  Object get props =>
+      (viewport, canvasSize, devicePixelRatio, seNameTagSignature(tags));
 }
 
 /// R13-3: committed seeks retarget the editing stack ONLY when the

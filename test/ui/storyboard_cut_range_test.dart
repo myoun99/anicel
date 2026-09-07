@@ -65,7 +65,7 @@ void main() {
       headGlobalFrame: second.startFrame + 1,
     );
 
-    expect(session.storyboardSelectedCutIds, const [
+    expect(session.storyboardRows.storyboardSelectedCutIds, const [
       CutId('cut-1'),
       CutId('cut-2'),
     ]);
@@ -88,7 +88,7 @@ void main() {
     expect(selection.endFrameExclusive, second.startFrame);
     // It covers no CUTS, so the verbs that act on cuts find nothing — the
     // ordinary meaning of an empty selection.
-    expect(session.storyboardSelectedCutIds, isEmpty);
+    expect(session.storyboardRows.storyboardSelectedCutIds, isEmpty);
   });
 
   test('a single frame inside a cut takes that whole cut', () {
@@ -101,7 +101,9 @@ void main() {
       headGlobalFrame: third.startFrame + 2,
     );
 
-    expect(session.storyboardSelectedCutIds, const [CutId('cut-3')]);
+    expect(session.storyboardRows.storyboardSelectedCutIds, const [
+      CutId('cut-3'),
+    ]);
   });
 
   test('a sweep across every cut paints the whole run', () {
@@ -114,7 +116,7 @@ void main() {
       headGlobalFrame: axis.entryFor(const CutId('cut-3'))!.startFrame,
     );
 
-    expect(session.storyboardSelectedCutIds, const [
+    expect(session.storyboardRows.storyboardSelectedCutIds, const [
       CutId('cut-1'),
       CutId('cut-2'),
       CutId('cut-3'),
@@ -131,7 +133,7 @@ void main() {
       headGlobalFrame: axis.entryFor(const CutId('cut-2'))!.startFrame,
     );
 
-    expect(session.storyboardSelectedCutIds, const [
+    expect(session.storyboardRows.storyboardSelectedCutIds, const [
       CutId('cut-2'),
       CutId('cut-3'),
     ]);
@@ -171,7 +173,9 @@ void main() {
 
       session.selectCut(const CutId('cut-1'));
 
-      expect(session.storyboardSelectedCutIds, const [CutId('cut-3')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, const [
+        CutId('cut-3'),
+      ]);
     });
 
     test(
@@ -193,7 +197,7 @@ void main() {
         );
 
         expect(session.trackFrameRangeSelection.value, isNull);
-        expect(session.storyboardSelectedCutIds, isEmpty);
+        expect(session.storyboardRows.storyboardSelectedCutIds, isEmpty);
       },
     );
 
@@ -215,7 +219,9 @@ void main() {
       );
 
       expect(session.frameRangeSelection.value, isNull);
-      expect(session.storyboardSelectedCutIds, const [CutId('cut-1')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, const [
+        CutId('cut-1'),
+      ]);
     });
   });
 
@@ -271,7 +277,9 @@ void main() {
       );
 
       expect(session.trackFrameRangeSelection.value!.trackId, otherTrackId);
-      expect(session.storyboardSelectedCutIds, const [CutId('b-1')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, const [
+        CutId('b-1'),
+      ]);
     },
   );
 }

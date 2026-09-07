@@ -22,7 +22,7 @@ void main() {
     test('push slides the active cut and everything after it, lengths '
         'untouched', () {
       final s = session();
-      s.createCut();
+      s.cutVerbs.createCut();
       final track = s.repository.requireProject().tracks.first;
       final first = track.cuts[0].id;
       final second = track.cuts[1].id;
@@ -45,7 +45,7 @@ void main() {
 
     test('pull closes the lead-in and stops at frame 0', () {
       final s = session();
-      s.createCut();
+      s.cutVerbs.createCut();
       final first = s.repository.requireProject().tracks.first.cuts[0].id;
 
       s.selectCut(first);
@@ -60,7 +60,7 @@ void main() {
 
     test('a packed track cannot pull — nothing to close', () {
       final s = session();
-      s.createCut();
+      s.cutVerbs.createCut();
       s.selectCut(s.repository.requireProject().tracks.first.cuts[0].id);
 
       expect(s.cutShift.canPushCuts, isTrue);
@@ -69,8 +69,8 @@ void main() {
 
     test('the SELECTION decides the anchor: the run\'s first cut', () {
       final s = session();
-      s.createCut();
-      s.createCut();
+      s.cutVerbs.createCut();
+      s.cutVerbs.createCut();
       final track = s.repository.requireProject().tracks.first;
       final first = track.cuts[0].id;
       final second = track.cuts[1].id;
@@ -93,14 +93,14 @@ void main() {
     test('push restores what a drag can no longer do: a lead-in gap in '
         'front of a packed track', () {
       final s = session();
-      s.createCut();
+      s.cutVerbs.createCut();
       final first = s.repository.requireProject().tracks.first.cuts[0].id;
 
       // The drag stops at contact now, so it cannot open this.
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(5);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(5);
       expect(s.dragPreview.value, isNull);
-      s.cancelCutMoveDrag();
+      s.cutMove.cancelCutMoveDrag();
 
       s.selectCut(first);
       s.cutShift.pushCuts(5);

@@ -647,7 +647,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               layout: layout,
                               viewport: viewport,
                               onHeaderFieldCommitted: _commitHeaderField,
-                              onMemoCommitted: session.updateActiveCutNote,
+                              onMemoCommitted:
+                                  session.cutVerbs.updateActiveCutNote,
                             ),
                           ),
                           if (inkController != null &&

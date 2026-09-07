@@ -123,5 +123,5 @@ Future<void> renameActiveCutWithDialog(
   context,
   session.activeCutOrNull, // Gap state: no cut to rename.
   dialog: (cut) => RenameCutDialog(initialName: cut.name),
-  commit: session.renameActiveCut,
+  commit: session.cutVerbs.renameActiveCut,
 );

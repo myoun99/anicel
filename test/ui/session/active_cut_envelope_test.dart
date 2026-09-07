@@ -32,15 +32,16 @@ void main() {
         .firstOrNull
         ?.id;
     return {
-      'resizeActiveCutCanvas': (s) => s.resizeActiveCutCanvas(
+      'resizeActiveCutCanvas': (s) => s.cutVerbs.resizeActiveCutCanvas(
         const CanvasSize(width: 640, height: 360),
         anchor: CanvasResizeAnchor.center,
       ),
-      'duplicateActiveCut': (s) => s.duplicateActiveCut(),
-      'deleteActiveCut': (s) => s.deleteActiveCut(),
-      'updateActiveCutNote': (s) => s.updateActiveCutNote('note'),
-      'renameActiveCut': (s) => s.renameActiveCut('X'),
-      'createLinkedCutFromActiveCut': (s) => s.createLinkedCutFromActiveCut(),
+      'duplicateActiveCut': (s) => s.cutVerbs.duplicateActiveCut(),
+      'deleteActiveCut': (s) => s.cutVerbs.deleteActiveCut(),
+      'updateActiveCutNote': (s) => s.cutVerbs.updateActiveCutNote('note'),
+      'renameActiveCut': (s) => s.cutVerbs.renameActiveCut('X'),
+      'createLinkedCutFromActiveCut': (s) =>
+          s.cutVerbs.createLinkedCutFromActiveCut(),
       'setCameraKeyframeAtCurrentFrame': (s) =>
           s.setCameraKeyframeAtCurrentFrame(
             CameraPose(center: CanvasPoint(x: 10, y: 10)),
@@ -65,7 +66,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.createCut();
+    session.cutVerbs.createCut();
     final track = session.repository.requireProject().tracks.first;
     final first = track.cuts[0].id;
     final gapFrame = track.cuts[0].duration + 1;
@@ -115,7 +116,7 @@ void main() {
     );
     addTearDown(structural.dispose);
     structural.frameRangeSelection.value = bandOn(structural);
-    structural.renameActiveCut('renamed');
+    structural.cutVerbs.renameActiveCut('renamed');
     expect(
       structural.frameRangeSelection.value,
       isNull,

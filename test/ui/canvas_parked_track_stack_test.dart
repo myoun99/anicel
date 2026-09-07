@@ -28,7 +28,7 @@ void main() {
   /// Two default-track cuts with a 4-frame gap before the second.
   (EditorSessionManager, CutId, int) gappedSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     final first = track.cuts[0].id;
     final second = track.cuts[1].id;
@@ -199,7 +199,8 @@ void main() {
     expect(
       find.byKey(stackKey),
       findsOneWidget,
-      reason: 'the crossing is the edge — before D6 the canvas kept the '
+      reason:
+          'the crossing is the edge — before D6 the canvas kept the '
           'previous cut\'s picture for the rest of the drag',
     );
     expect(
@@ -262,7 +263,8 @@ void main() {
     expect(
       s.scrubOutOfTerritory.value,
       isTrue,
-      reason: 'the crossing is a real drag move — the down was in '
+      reason:
+          'the crossing is a real drag move — the down was in '
           'territory, so the no-flash rule does not apply to it',
     );
 
@@ -320,7 +322,8 @@ void main() {
       expect(
         stackCrops(tester),
         isFalse,
-        reason: 'camera view $toggle — the preview framing is not the toggle\'s',
+        reason:
+            'camera view $toggle — the preview framing is not the toggle\'s',
       );
       await drainWarming(tester);
       s.dispose();

@@ -542,6 +542,7 @@ Future<void> deleteActiveCut(WidgetTester tester) async {
   tester
       .widget<EditorWorkspace>(find.byType(EditorWorkspace))
       .session
+      .cutVerbs
       .deleteActiveCut();
   await tester.pumpAndSettle();
 }

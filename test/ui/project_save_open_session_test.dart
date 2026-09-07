@@ -61,7 +61,7 @@ void main() {
         ),
       ],
     );
-    s.createCut();
+    s.cutVerbs.createCut();
     final savedCutCount = s.repository
         .requireProject()
         .tracks
@@ -74,7 +74,7 @@ void main() {
     expect(s.projectFile.hasUnsavedChanges, isFalse);
 
     // Mutate past the save, then load the file back.
-    s.createCut();
+    s.cutVerbs.createCut();
     expect(s.projectFile.hasUnsavedChanges, isTrue);
     await s.projectDoor.openProjectFromFile(path);
 
@@ -89,11 +89,14 @@ void main() {
 
     // The saved drawing survived the round-trip as BAKED raster truth
     // (R19 bake-only: opens carry no commands — the picture is the file).
-    expect(s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
+    expect(
+      s.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
+      isNotEmpty,
+    );
 
     // New edits after the load are undoable and undo cleanly.
     s.selectCut(s.repository.requireProject().tracks.first.cuts.first.id);
-    s.createCut();
+    s.cutVerbs.createCut();
     expect(s.canUndo, isTrue);
     s.undo();
     expect(
@@ -125,7 +128,8 @@ void main() {
     expect(
       s.frameRangeSelection.value,
       isNull,
-      reason: 'the load replaces the project, so the band pointing into the '
+      reason:
+          'the load replaces the project, so the band pointing into the '
           'old one goes with it',
     );
     expect(s.cellSelectionClaimsSubject, isFalse);
@@ -141,7 +145,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final path = '${directory.path}/scene.anicel';
     await s.projectDoor.saveProjectToFile(path);
-    s.createCut();
+    s.cutVerbs.createCut();
     await s.projectDoor.saveProjectToFile(path);
 
     final entries = directory.listSync().map((e) => e.uri.pathSegments.last);
@@ -173,7 +177,7 @@ void main() {
 
     // Dirty session: the sidecar lands; the dirty flag stays (autosave is
     // not a manual save).
-    s.createCut();
+    s.cutVerbs.createCut();
     await autosave.saveNow();
     expect(sidecar.existsSync(), isTrue);
     expect(s.projectFile.hasUnsavedChanges, isTrue);
@@ -235,7 +239,7 @@ void main() {
     await s.projectDoor.saveProjectToFile(path);
 
     // A newer snapshot with one extra cut.
-    s.createCut();
+    s.cutVerbs.createCut();
     final overlay = '${directory.path}/scene.recovery';
     await s.projectDoor.writeAutosaveSnapshot(overlay);
     final recoveredCutCount = s.repository
@@ -256,7 +260,8 @@ void main() {
     expect(
       fresh.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
       isNotEmpty,
-      reason: 'the overlay holds only the delta — the base cel must come '
+      reason:
+          'the overlay holds only the delta — the base cel must come '
           'from the project file underneath it',
     );
   });

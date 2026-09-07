@@ -18,7 +18,7 @@ void main() {
   /// cut-a [0, aEnd), gap [aEnd, aEnd+4), cut-b [aEnd+4, ...).
   (EditorSessionManager, CutId, CutId, int) gappedSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     final first = track.cuts[0].id;
     final second = track.cuts[1].id;

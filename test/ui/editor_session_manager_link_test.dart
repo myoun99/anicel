@@ -47,7 +47,7 @@ void main() {
     final sourceCutId = session.requireActiveCut.id;
     final cutsBefore = session.activeTrack.cuts.length;
 
-    session.createLinkedCutFromActiveCut();
+    session.cutVerbs.createLinkedCutFromActiveCut();
 
     expect(session.activeTrack.cuts.length, cutsBefore + 1);
     expect(
@@ -64,15 +64,15 @@ void main() {
 
   test('convertToLinkedCutPreviewData resolves names for the 안내문 and '
       'convertActiveCutToLinked executes it', () {
-    session.duplicateActiveCut();
+    session.cutVerbs.duplicateActiveCut();
     final targetCutId = session.activeTrack.cuts
         .firstWhere((cut) => cut.id != session.requireActiveCut.id)
         .id;
 
-    final candidates = session.convertToLinkedCutCandidates;
+    final candidates = session.cutVerbs.convertToLinkedCutCandidates;
     expect(candidates.map((candidate) => candidate.id), [targetCutId]);
 
-    final data = session.convertToLinkedCutPreviewData(targetCutId)!;
+    final data = session.cutVerbs.convertToLinkedCutPreviewData(targetCutId)!;
     expect(data.linksAnything, isTrue);
     expect(
       data.linkingLayerNames,
@@ -80,17 +80,17 @@ void main() {
       reason: 'the duplicated cut shares layer names with the origin',
     );
 
-    session.convertActiveCutToLinked(targetCutId);
+    session.cutVerbs.convertActiveCutToLinked(targetCutId);
     expect(session.layerVerbs.isLayerLinked(session.activeLayer!.id), isTrue);
 
     // Re-running has nothing left to do.
-    final rerun = session.convertToLinkedCutPreviewData(targetCutId)!;
+    final rerun = session.cutVerbs.convertToLinkedCutPreviewData(targetCutId)!;
     expect(rerun.linksAnything, isFalse);
   });
 
   test('the preview is null for the active cut itself', () {
     expect(
-      session.convertToLinkedCutPreviewData(session.requireActiveCut.id),
+      session.cutVerbs.convertToLinkedCutPreviewData(session.requireActiveCut.id),
       isNull,
     );
   });
@@ -140,7 +140,7 @@ void main() {
   test('the same holds across a 겸용 cut', () {
     final origin = session.activeLayer!;
     final originCutId = session.requireActiveCut.id;
-    session.createLinkedCutFromActiveCut();
+    session.cutVerbs.createLinkedCutFromActiveCut();
 
     final linkedCut = session.activeTrack.cuts.firstWhere(
       (cut) => cut.id != originCutId,

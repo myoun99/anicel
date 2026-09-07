@@ -159,7 +159,7 @@ void main() {
         headGlobalFrame: 9,
       );
 
-      session.deleteActiveCut();
+      session.cutVerbs.deleteActiveCut();
 
       expect(
         session.repository.requireProject().tracks.single.cuts.map(
@@ -614,10 +614,10 @@ void main() {
         headGlobalFrame: 9,
       );
       expect(session.trackFrameRangeSelection.value!.startFrame, 8);
-      expect(session.storyboardSelectedCutIds, [const CutId('cut-2')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, [const CutId('cut-2')]);
 
-      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
-      session.updateCutMoveDrag(-8);
+      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      session.cutMove.updateCutMoveDrag(-8);
       // MID-DRAG: the drag machine writes the previewed span through the
       // selection notifier — the band painters just listen (the timeline's
       // law, now on the cut axis).
@@ -627,7 +627,7 @@ void main() {
       expect(midDrag.trackId, _trackId);
       expect(midDrag.anchorRow, const TrackRowAddress(_trackId));
 
-      session.endCutMoveDrag();
+      session.cutMove.endCutMoveDrag();
       // The landed span goes out AFTER the repository commit, so the
       // frames × CURRENT layout derivation resolves the MOVED cut.
       expect(
@@ -639,7 +639,7 @@ void main() {
       final landed = session.trackFrameRangeSelection.value!;
       expect(landed.startFrame, 0);
       expect(landed.endFrameExclusive, 6);
-      expect(session.storyboardSelectedCutIds, [const CutId('cut-2')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, [const CutId('cut-2')]);
     });
 
     test('a re-time slide carries the band by the same frames', () {
@@ -650,16 +650,16 @@ void main() {
         headGlobalFrame: 9,
       );
 
-      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
       // The last cut is unbounded on the right: +3 re-times.
-      session.updateCutMoveDrag(3);
+      session.cutMove.updateCutMoveDrag(3);
       expect(session.trackFrameRangeSelection.value!.startFrame, 11);
 
-      session.endCutMoveDrag();
+      session.cutMove.endCutMoveDrag();
       final landed = session.trackFrameRangeSelection.value!;
       expect(landed.startFrame, 11);
       expect(landed.endFrameExclusive, 17);
-      expect(session.storyboardSelectedCutIds, [const CutId('cut-2')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, [const CutId('cut-2')]);
     });
 
     test('cancelling puts the band back where the drag found it', () {
@@ -670,9 +670,9 @@ void main() {
         headGlobalFrame: 9,
       );
 
-      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
-      session.updateCutMoveDrag(3);
-      session.cancelCutMoveDrag();
+      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      session.cutMove.updateCutMoveDrag(3);
+      session.cutMove.cancelCutMoveDrag();
 
       final restored = session.trackFrameRangeSelection.value!;
       expect(restored.startFrame, 8);
@@ -686,11 +686,11 @@ void main() {
         anchorGlobalFrame: 2,
         headGlobalFrame: 2,
       );
-      expect(session.storyboardSelectedCutIds, [const CutId('cut-1')]);
+      expect(session.storyboardRows.storyboardSelectedCutIds, [const CutId('cut-1')]);
 
-      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
-      session.updateCutMoveDrag(3);
-      session.endCutMoveDrag();
+      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      session.cutMove.updateCutMoveDrag(3);
+      session.cutMove.endCutMoveDrag();
 
       // The selection never rode a run it did not cover.
       final selection = session.trackFrameRangeSelection.value!;

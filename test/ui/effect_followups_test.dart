@@ -187,7 +187,7 @@ void main() {
         session.layerStack.addLayerOfKind(LayerKind.adjustment);
         final row = session.activeLayer!;
         final sourceCutId = session.activeCutId!;
-        session.createLinkedCutFromActiveCut();
+        session.cutVerbs.createLinkedCutFromActiveCut();
 
         // The linked copy of the adjustment row, in the other cut.
         final project = session.repository.requireProject();
@@ -443,12 +443,14 @@ void main() {
         id: const LayerId('fx'),
         name: 'FX1',
       ).copyWith(effects: [brightness(20)]);
-      final own = (sample([
+      final own =
+          (sample([
                 drawing(effects: [brightness(20)]),
               ], source: CanvasColorSampleSource.layer) >>
               16) &
           0xFF;
-      final withAdjustment = (sample([
+      final withAdjustment =
+          (sample([
                 drawing(effects: [brightness(20)]),
                 adjustment,
               ], source: CanvasColorSampleSource.layer) >>

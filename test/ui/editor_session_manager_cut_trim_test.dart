@@ -13,7 +13,7 @@ void main() {
   /// Two cuts on the default track; returns (session, first id, second id).
   (EditorSessionManager, CutId, CutId) twoCutSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.createCut();
+    s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.first;
     return (s, track.cuts[0].id, track.cuts[1].id);
   }
@@ -47,9 +47,9 @@ void main() {
   /// keeps the cuts glued and empties the film's head instead, so it can
   /// no longer be used to plant a gap between two neighbours.
   void openGapBefore(EditorSessionManager s, CutId cutId, int frames) {
-    expect(s.beginCutMoveDrag(cutId), isTrue);
-    s.updateCutMoveDrag(frames);
-    s.endCutMoveDrag();
+    expect(s.cutMove.beginCutMoveDrag(cutId), isTrue);
+    s.cutMove.updateCutMoveDrag(frames);
+    s.cutMove.endCutMoveDrag();
   }
 
   /// [cutId]'s committed global start frame on the track layout.
@@ -398,11 +398,11 @@ void main() {
       // and the second cut does not move at all.
       openGapBefore(s, second, 3);
 
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(5);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(5);
       expect(previewedGap(s, first), 3);
       expect(previewedGap(s, second), 0);
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       expect(layoutStart(s, first), firstStart + 3);
       expect(layoutStart(s, second), secondStart + 3);
@@ -427,11 +427,11 @@ void main() {
 
       // Move the SECOND cut left by 5: its own 2 frames of gap are all it
       // has, so it stops touching the first cut, which never moves.
-      expect(s.beginCutMoveDrag(second), isTrue);
-      s.updateCutMoveDrag(-5);
+      expect(s.cutMove.beginCutMoveDrag(second), isTrue);
+      s.cutMove.updateCutMoveDrag(-5);
       expect(previewedGap(s, second), 0);
       expect(previewedGap(s, first), 4);
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       expect(layoutStart(s, second), secondStart - 2);
       expect(layoutStart(s, first), firstStart);
@@ -440,10 +440,10 @@ void main() {
     test('a leftward move clamps at the chain\'s total slack (frame 0)', () {
       final (s, first, second) = twoCutSession();
       // No gaps anywhere: the first cut cannot move left at all.
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(-10);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(-10);
       expect(s.dragPreview.value, isNull, reason: 'nothing can change');
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
       expect(layoutStart(s, first), 0);
       expect(layoutStart(s, second), s.cutById(first)!.duration);
     });
@@ -455,9 +455,9 @@ void main() {
       final firstDuration = s.cutById(first)!.duration;
 
       // Move the SECOND (last) cut left by 3 into its own gap.
-      s.beginCutMoveDrag(second);
-      s.updateCutMoveDrag(-3);
-      s.endCutMoveDrag();
+      s.cutMove.beginCutMoveDrag(second);
+      s.cutMove.updateCutMoveDrag(-3);
+      s.cutMove.endCutMoveDrag();
       expect(layoutStart(s, second), firstDuration + 1);
     });
 
@@ -467,10 +467,10 @@ void main() {
       openGapBefore(s, second, 10);
       final undoDepthProbe = s.canUndo;
 
-      s.beginCutMoveDrag(first);
-      s.updateCutMoveDrag(7);
+      s.cutMove.beginCutMoveDrag(first);
+      s.cutMove.updateCutMoveDrag(7);
       expect(previewedGap(s, first), 7);
-      s.cancelCutMoveDrag();
+      s.cutMove.cancelCutMoveDrag();
 
       expect(s.dragPreview.value, isNull);
       expect(s.cutById(first)!.leadingGapFrames, 0);
@@ -482,8 +482,8 @@ void main() {
     /// Three cuts on the default track.
     (EditorSessionManager, CutId, CutId, CutId) threeCutSession() {
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      s.createCut();
-      s.createCut();
+      s.cutVerbs.createCut();
+      s.cutVerbs.createCut();
       final track = s.repository.requireProject().tracks.first;
       return (s, track.cuts[0].id, track.cuts[1].id, track.cuts[2].id);
     }
@@ -493,7 +493,7 @@ void main() {
       final (s, first, second, third) = threeCutSession();
 
       selectCutRun(s, first, second);
-      expect(s.storyboardSelectedCutIds, [first, second]);
+      expect(s.storyboardRows.storyboardSelectedCutIds, [first, second]);
 
       // Backwards sweep normalizes; a head dragged off the left edge
       // clamps at frame 0.
@@ -501,10 +501,10 @@ void main() {
         anchorGlobalFrame: layoutStart(s, third),
         headGlobalFrame: -5,
       );
-      expect(s.storyboardSelectedCutIds, [first, second, third]);
+      expect(s.storyboardRows.storyboardSelectedCutIds, [first, second, third]);
 
       s.clearStoryboardCutSelection();
-      expect(s.storyboardSelectedCutIds, isEmpty);
+      expect(s.storyboardRows.storyboardSelectedCutIds, isEmpty);
     });
 
     test('a packed run has nowhere to slide: it stops at contact rather '
@@ -516,10 +516,10 @@ void main() {
       // small nudge right changes nothing at all (a bigger one would
       // reorder — see below).
       selectCutRun(s, first, second);
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(5);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(5);
       expect(s.dragPreview.value, isNull);
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       expect(layoutStart(s, first), 0);
       expect(layoutStart(s, second), s.cutById(first)!.duration);
@@ -535,11 +535,11 @@ void main() {
       // beyond it is 24 frames of travel (the neighbour's length), and 36
       // is well past it.
       selectCutRun(s, first, second);
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(36);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(36);
       // The preview already shows the new order.
       expect(previewOrderOf(s), [third, first, second]);
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       expect(
         [
@@ -573,9 +573,9 @@ void main() {
       final secondDuration = s.cutById(second)!.duration;
 
       // first's seat past second costs second's length of travel.
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(secondDuration);
-      s.endCutMoveDrag();
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(secondDuration);
+      s.cutMove.endCutMoveDrag();
 
       expect(
         [
@@ -615,11 +615,11 @@ void main() {
       s.endCutEdgeDrag();
       final secondDuration = s.cutById(second)!.duration;
 
-      expect(s.beginCutMoveDrag(first), isTrue);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
       // Three frames past the seat: the swap happened at second's length
       // of travel, and the drag goes on re-timing in the new rank.
-      s.updateCutMoveDrag(secondDuration + 3);
-      s.endCutMoveDrag();
+      s.cutMove.updateCutMoveDrag(secondDuration + 3);
+      s.cutMove.endCutMoveDrag();
 
       expect(
         [
@@ -645,10 +645,10 @@ void main() {
       final firstStart = layoutStart(s, first);
       openGapBefore(s, second, 3);
 
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(5);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(5);
       s.dragPreview.value = null; // A consumer dropped the preview.
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       expect(layoutStart(s, first), firstStart + 3);
     });
@@ -656,10 +656,10 @@ void main() {
     test('a reorder commit survives the display channel being cleared', () {
       final (s, first, second, third) = threeCutSession();
 
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(24);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(24);
       s.dragPreview.value = null; // A consumer dropped the preview.
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       expect(
         [
@@ -676,14 +676,14 @@ void main() {
       final firstStart = layoutStart(s, first);
       openGapBefore(s, second, 3);
 
-      expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(5);
+      expect(s.cutMove.beginCutMoveDrag(first), isTrue);
+      s.cutMove.updateCutMoveDrag(5);
       // Another family overwrites the shared channel mid-flight.
       s.dragPreview.value = CutTrimDragPreview(
         previewDurations: const {},
         previewGaps: {second: 9},
       );
-      s.endCutMoveDrag();
+      s.cutMove.endCutMoveDrag();
 
       // The commit is this drag's own plan — not the impostor's gaps.
       expect(layoutStart(s, first), firstStart + 3);
@@ -699,9 +699,9 @@ void main() {
       final thirdStart = layoutStart(s, third);
 
       selectCutRun(s, first, second);
-      expect(s.beginCutMoveDrag(second), isTrue);
-      s.updateCutMoveDrag(4);
-      s.endCutMoveDrag();
+      expect(s.cutMove.beginCutMoveDrag(second), isTrue);
+      s.cutMove.updateCutMoveDrag(4);
+      s.cutMove.endCutMoveDrag();
 
       // The run moved 4 together; the third cut's gap absorbed it all.
       expect(layoutStart(s, first), 4);
@@ -717,17 +717,17 @@ void main() {
       // Selecting ALL cuts: delete stands down (the project never
       // empties).
       selectCutRun(s, first, third);
-      expect(s.canDeleteSelectedCuts, isFalse);
-      s.deleteSelectedCuts();
+      expect(s.cutVerbs.canDeleteSelectedCuts, isFalse);
+      s.cutVerbs.deleteSelectedCuts();
       expect(s.repository.requireProject().tracks.first.cuts.length, 3);
 
       // A two-cut run deletes in one step and clears the selection.
       selectCutRun(s, first, second);
-      expect(s.canDeleteSelectedCuts, isTrue);
-      s.deleteSelectedCuts();
+      expect(s.cutVerbs.canDeleteSelectedCuts, isTrue);
+      s.cutVerbs.deleteSelectedCuts();
       final cutsAfter = s.repository.requireProject().tracks.first.cuts;
       expect([for (final cut in cutsAfter) cut.id], [third]);
-      expect(s.storyboardSelectedCutIds, isEmpty);
+      expect(s.storyboardRows.storyboardSelectedCutIds, isEmpty);
 
       // ONE undo restores both.
       s.undo();
@@ -740,7 +740,7 @@ void main() {
       s.selectCut(third);
 
       selectCutRun(s, first, second);
-      s.deleteActiveCut();
+      s.cutVerbs.deleteActiveCut();
 
       // The SELECTED run went, not the active cut.
       final cutsAfter = s.repository.requireProject().tracks.first.cuts;
