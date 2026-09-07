@@ -111,6 +111,7 @@ import '../core/dev_profile.dart';
 import '../models/audio_sync_settings.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
+import 'session/cut_shift.dart';
 import 'session/track_spans.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
@@ -4199,93 +4200,16 @@ class EditorSessionManager extends ChangeNotifier
         currentRow: currentRow,
       );
 
-  /// The cut-axis scope: which track, and the ordinal the shove starts at.
-  ({TrackId trackId, int anchorCutIndex})? _cutShiftScope() {
-    final project = repository.requireProject();
-    final selection = storyboardSelectedCutIds;
-    for (final track in project.tracks) {
-      if (selection.isNotEmpty) {
-        final indexes = [
-          for (final id in selection) track.cuts.indexWhere((c) => c.id == id),
-        ]..removeWhere((value) => value < 0);
-        if (indexes.isEmpty) {
-          continue;
-        }
-        indexes.sort();
-        return (trackId: track.id, anchorCutIndex: indexes.first);
-      }
-      final activeIndex = track.cuts.indexWhere((c) => c.id == activeCutId);
-      if (activeIndex >= 0) {
-        return (trackId: track.id, anchorCutIndex: activeIndex);
-      }
-    }
-    return null;
-  }
-
-  List<ShiftableBlock> _cutShiftBlocks(TrackId trackId) => [
-    for (final entry in buildStoryboardTimelineLayout(
-      repository.requireProject(),
-    ))
-      if (entry.trackId == trackId)
-        (startIndex: entry.startFrame, endIndexExclusive: entry.endFrame),
-  ];
-
-  bool get canPushCuts => _cutShiftScope() != null;
-
-  /// How far a cut PULL can travel — the same slack rule, read off the
-  /// track's cuts instead of a layer's exposures.
-  int get cutPullSlack {
-    final scope = _cutShiftScope();
-    if (scope == null) {
-      return 0;
-    }
-    final blocks = _cutShiftBlocks(scope.trackId);
-    if (scope.anchorCutIndex >= blocks.length) {
-      return 0;
-    }
-    final slack = rowPullSlack(
-      blocks: blocks,
-      anchorIndex: blocks[scope.anchorCutIndex].startIndex,
-    );
-    return slack == 0x7fffffff ? 0 : slack;
-  }
-
-  bool get canPullCuts => cutPullSlack > 0;
-
-  /// Slides the anchor cut and everything after it [count] frames later.
-  /// Cut LENGTHS never change (design D) — only where the run starts.
-  void pushCuts(int count) => _shiftCuts(count);
-
-  void pullCuts(int count) => _shiftCuts(-math.min(count, cutPullSlack));
-
-  void _shiftCuts(int delta) {
-    final scope = _cutShiftScope();
-    if (scope == null || delta == 0) {
-      return;
-    }
-    final track = repository.requireProject().tracks.firstWhere(
-      (track) => track.id == scope.trackId,
-    );
-    if (scope.anchorCutIndex >= track.cuts.length) {
-      return;
-    }
-    // Positions are cumulative, so the anchor's own leading gap carries the
-    // whole run: every cut after it follows for free with its spacing
-    // intact, which is exactly what "rigid" means here.
-    final anchor = track.cuts[scope.anchorCutIndex];
-    final after = anchor.leadingGapFrames + delta;
-    if (after < 0) {
-      return;
-    }
-    cutCommandCoordinator.commitCutDurationDrag(
-      beforeDurations: const {},
-      afterDurations: const {},
-      beforeGaps: {anchor.id: anchor.leadingGapFrames},
-      afterGaps: {anchor.id: after},
-    );
-    refreshAfterCutCommand();
-    notifyListeners();
-  }
+  // ── the cut-axis shove: its own object, in its own file ───────────────
+  //
+  // Push and pull on the CUT row (session/cut_shift.dart): the scope, the
+  // slack, and the one commit that slides the anchor cut and everything
+  // after it.
+  late final CutShift cutShift = CutShift(
+    project: this,
+    changes: this,
+    storyboardRows: _storyboardRows,
+  );
 
   // --- ONE push / pull -----------------------------------------------------
   //
@@ -4313,12 +4237,12 @@ class EditorSessionManager extends ChangeNotifier
 
   bool canPushBlocks({TimelineRowAddress? currentRow}) =>
       _shiftAimsAtCuts(currentRow)
-      ? canPushCuts
+      ? cutShift.canPushCuts
       : canPushFrames(currentRow: currentRow);
 
   int blockPullSlack({TimelineRowAddress? currentRow}) =>
       _shiftAimsAtCuts(currentRow)
-      ? cutPullSlack
+      ? cutShift.cutPullSlack
       : framePullSlack(currentRow: currentRow);
 
   bool canPullBlocks({TimelineRowAddress? currentRow}) =>
@@ -4326,12 +4250,12 @@ class EditorSessionManager extends ChangeNotifier
 
   void pushBlocks(int count, {TimelineRowAddress? currentRow}) =>
       _shiftAimsAtCuts(currentRow)
-      ? pushCuts(count)
+      ? cutShift.pushCuts(count)
       : pushFrames(count, currentRow: currentRow);
 
   void pullBlocks(int count, {TimelineRowAddress? currentRow}) =>
       _shiftAimsAtCuts(currentRow)
-      ? pullCuts(count)
+      ? cutShift.pullCuts(count)
       : pullFrames(count, currentRow: currentRow);
 
   // --- Frame RANGE selection (UI-R8, TVP-style) ----------------------------

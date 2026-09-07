@@ -30,8 +30,8 @@ void main() {
       final firstDuration = s.cutById(first)!.duration;
 
       s.selectCut(first);
-      expect(s.canPushCuts, isTrue);
-      s.pushCuts(6);
+      expect(s.cutShift.canPushCuts, isTrue);
+      s.cutShift.pushCuts(6);
 
       expect(layoutStart(s, first), 6);
       expect(layoutStart(s, second), secondStart + 6);
@@ -49,13 +49,13 @@ void main() {
       final first = s.repository.requireProject().tracks.first.cuts[0].id;
 
       s.selectCut(first);
-      s.pushCuts(6);
-      expect(s.cutPullSlack, 6);
+      s.cutShift.pushCuts(6);
+      expect(s.cutShift.cutPullSlack, 6);
 
       // Asking for more than there is closes what there is.
-      s.pullCuts(10);
+      s.cutShift.pullCuts(10);
       expect(layoutStart(s, first), 0);
-      expect(s.canPullCuts, isFalse);
+      expect(s.cutShift.canPullCuts, isFalse);
     });
 
     test('a packed track cannot pull — nothing to close', () {
@@ -63,8 +63,8 @@ void main() {
       s.createCut();
       s.selectCut(s.repository.requireProject().tracks.first.cuts[0].id);
 
-      expect(s.canPushCuts, isTrue);
-      expect(s.canPullCuts, isFalse);
+      expect(s.cutShift.canPushCuts, isTrue);
+      expect(s.cutShift.canPullCuts, isFalse);
     });
 
     test('the SELECTION decides the anchor: the run\'s first cut', () {
@@ -83,7 +83,7 @@ void main() {
         anchorGlobalFrame: secondStart,
         headGlobalFrame: layoutStart(s, third),
       );
-      s.pushCuts(4);
+      s.cutShift.pushCuts(4);
 
       expect(layoutStart(s, first), 0);
       expect(layoutStart(s, second), secondStart + 4);
@@ -103,7 +103,7 @@ void main() {
       s.cancelCutMoveDrag();
 
       s.selectCut(first);
-      s.pushCuts(5);
+      s.cutShift.pushCuts(5);
       expect(layoutStart(s, first), 5);
     });
   });
