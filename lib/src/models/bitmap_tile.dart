@@ -143,6 +143,16 @@ class BitmapTile implements Finalizable {
   ///
   /// ⛔This is not 「count the ink」. 유저 2026-08-27: 「잉크를 세는건
   /// 무거운거아니야?」 — it is, which is why nothing here counts anything.
+  ///
+  /// 🪦**IT HAD A TWIN, `isFullyTransparent`, AND THE TWIN WAS WORSE ON
+  /// EVERY AXIS.** The twin read every byte instead of every fourth,
+  /// cached nothing, and asked a STRICTER question — all bytes zero rather
+  /// than all alphas zero — so a tile whose alpha had been cleared while
+  /// its colour bytes stayed behind read as "still has something" to one
+  /// and "blank" to the other. Nothing wants the stricter question:
+  /// source-over draws nothing at alpha 0 whatever the colour bytes say,
+  /// and all five of the twin's callers were asking「is there anything to
+  /// draw here」. Deleted 2026-09-08; the callers ask this.
   bool get hasInk => _hasInk ??= _scanForInk();
 
   bool _scanForInk() {
@@ -158,13 +168,6 @@ class BitmapTile implements Finalizable {
   /// the [pixels] getter makes.
   void copyPixelsInto(Uint8List target) {
     target.setRange(0, _view.length, _view);
-  }
-
-  bool get isFullyTransparent {
-    for (final byte in _view) {
-      if (byte != 0) return false;
-    }
-    return true;
   }
 
   int byteOffsetForPixel({required int x, required int y}) {

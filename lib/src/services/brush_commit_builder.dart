@@ -45,7 +45,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     }
     return BrushCommitResult.changed(
       beforeSurface: surface,
-      afterSurface: surface.putTiles(promotedTiles),
+      afterSurface: surface.putMaterializedTiles(promotedTiles),
       dirtyTiles: dirtyTiles,
       cacheInvalidationPlan: cacheInvalidationPlanForDirtyTiles(
         layerId: layerId,

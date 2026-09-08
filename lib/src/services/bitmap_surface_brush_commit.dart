@@ -130,7 +130,13 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 
 /// The commit tail both landings share: the CHANGED scratch tiles become
 /// the surface's tiles, row-major, and whatever was staged but never
-/// changed goes back.
+/// changed goes back. A tile the pass emptied is DROPPED rather than
+/// stored — see [BitmapSurface.putMaterializedTiles].
+///
+/// ⚠️[DirtyTileSet] still names a dropped coordinate, and has to: its one
+/// consumer is [CacheInvalidationPlan.fromDirtyTiles], and a coordinate
+/// whose tile just went away is exactly one whose cached picture must go
+/// with it.
 ///
 /// R19-Z: the CHANGED scratch buffers become the finished tiles — the
 /// tile ADOPTS the native buffer (ownership leaves the pool; the
@@ -153,7 +159,7 @@ BrushSurfaceMaterialization _finishMaterialization({
   }
   var updatedSurface = surface;
   labProbe(probeName, () {
-    updatedSurface = surface.putTiles([
+    updatedSurface = surface.putMaterializedTiles([
       for (final coord in sortedCoords) scratch.finish(coord),
     ]);
   });

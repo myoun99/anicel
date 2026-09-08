@@ -499,7 +499,7 @@ int _alphaAt(WidgetTester tester, int x, int y) =>
 
 bool _surfaceIsBlank(WidgetTester tester) {
   final surface = _view(tester).sessionState.canvasState.currentSurface;
-  return surface.tiles.values.every((tile) => tile.isFullyTransparent);
+  return surface.tiles.values.every((tile) => !tile.hasInk);
 }
 
 InteractiveBrushEditCanvasView _view(WidgetTester tester) {

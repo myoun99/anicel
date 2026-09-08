@@ -296,20 +296,14 @@ BitmapSurface translateBitmapSurface(
     }
   }
 
-  final tiles = <TileCoord, BitmapTile>{};
-  for (final entry in buffers.entries) {
-    final tile = BitmapTile(
-      coord: entry.key,
-      size: tileSize,
-      pixels: entry.value,
-    );
-    if (!tile.isFullyTransparent) {
-      tiles[entry.key] = tile;
-    }
-  }
+  // The blank ones are dropped by the SAME law the commit tails keep —
+  // this pass wrote the filter itself until 2026-09-08, and being first
+  // is not a reason to keep a second copy of a rule.
   return BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSize,
-    tiles: tiles,
-  );
+  ).putMaterializedTiles([
+    for (final entry in buffers.entries)
+      BitmapTile(coord: entry.key, size: tileSize, pixels: entry.value),
+  ]);
 }

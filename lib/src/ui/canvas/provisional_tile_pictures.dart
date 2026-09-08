@@ -119,7 +119,7 @@ final Paint _tilePaint = Paint()
       // stand-in never blocks its tile's own decode, so every generation
       // is being replaced by truth while the next one composes.
       preImage = images.displayImageFor(preTile);
-      if (preImage == null && !preTile.isFullyTransparent) {
+      if (preImage == null && preTile.hasInk) {
         // Pixels were here and we have no picture of them: composing now
         // would publish a tile with the base missing.
         skipped += 1;
@@ -219,7 +219,7 @@ ProvisionalInkPainter inkFromSurface(
         // A tile with no picture and no pixels covers nothing, so its
         // absence costs nothing; one with pixels is the answer going
         // missing.
-        if (tile.isFullyTransparent) {
+        if (!tile.hasInk) {
           continue;
         }
         return false;

@@ -203,11 +203,12 @@ class _CanvasPanelSelection {
       if (identical(left, before)) {
         continue;
       }
-      // Emptied by the erase => the lift took this coordinate whole. The
-      // erase does not drop emptied tiles, so the test is the alpha, not
-      // the tile's absence. `isFullyTransparent` walks the tile's own
-      // view; `tile.pixels` would be a 256 KB defensive COPY per call.
-      if (left == null || left.isFullyTransparent) {
+      // Emptied by the erase => the lift took this coordinate whole. Both
+      // answers mean that now — a commit DROPS a tile it emptied — so the
+      // absence and the inkless tile are one branch. `hasInk` reads the
+      // tile's own view and caches; `tile.pixels` would be a 256 KB
+      // defensive COPY per call.
+      if (left == null || !left.hasInk) {
         whole[coord] = before;
       }
     }

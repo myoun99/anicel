@@ -106,6 +106,38 @@ class BitmapSurface {
     return copyWith(tiles: updated);
   }
 
+  /// [putTiles] for a pass that MATERIALIZED these tiles — a commit tail,
+  /// a geometry rebuild — where a tile with no ink left in it is dropped
+  /// instead of stored.
+  ///
+  /// 🚨★★★**A TILE THE USER ERASED AWAY WAS KEPT AS 256 KB OF ZEROES.**
+  /// Three passes materialize surfaces and each answered this its own way:
+  /// the geometry rebuild filtered, the two commit tails did not. Erase a
+  /// drawing to nothing and the cel still weighed what it did when it was
+  /// drawn — in RAM, in the hot budget, and in every undo entry that
+  /// snapshotted it.
+  ///
+  /// ⛔**AND IT IS DELIBERATELY NOT [putTiles]'s LAW.** The recipe rewrite
+  /// ([overwriteCelPixels]) is the third caller and must NOT drop: its
+  /// undo walks the tiles that exist, positionally, so a tile dropped by
+  /// the forward pass is a tile the undo never visits — and 픽셀 비우기
+  /// writes the alpha byte only, so the colour bytes a dropped tile
+  /// carried away are gone with it and no recipe can name them. The
+  /// difference is real and it is about UNDO: a commit's way back is a
+  /// surface snapshot, which holds the emptied tile whole and by
+  /// reference, so dropping it costs the commit nothing.
+  BitmapSurface putMaterializedTiles(Iterable<BitmapTile> tilesToPut) {
+    final updated = <TileCoord, BitmapTile>{..._tiles};
+    for (final tile in tilesToPut) {
+      if (tile.hasInk) {
+        updated[tile.coord] = tile;
+      } else {
+        updated.remove(tile.coord);
+      }
+    }
+    return copyWith(tiles: updated);
+  }
+
   /// The end of a copy-on-write pass: the surface with [rebuilt] put back,
   /// or THIS VERY SURFACE when the pass wrote nothing.
   ///

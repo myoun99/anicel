@@ -165,23 +165,37 @@ void main() {
       ),
     );
 
-    test('isFullyTransparent is true for blank tile', () {
+    test('a blank tile has no ink', () {
       expect(
-        BitmapTile.blank(
-          coord: TileCoord(x: 0, y: 0),
-          size: 2,
-        ).isFullyTransparent,
-        isTrue,
+        BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2).hasInk,
+        isFalse,
       );
     });
 
-    test('isFullyTransparent is false if any byte is non-zero', () {
+    test('one opaque pixel is ink', () {
       expect(
         BitmapTile(
           coord: TileCoord(x: 0, y: 0),
           size: 2,
-          pixels: Uint8List(16)..[0] = 1,
-        ).isFullyTransparent,
+          pixels: Uint8List(16)..[3] = 1,
+        ).hasInk,
+        isTrue,
+      );
+    });
+
+    /// 🚨THE CASE THE DELETED TWIN ANSWERED DIFFERENTLY. `isFullyTransparent`
+    /// read every byte, so a tile carrying colour behind zero alpha was
+    /// "not blank" to it and "no ink" to this — two answers to one
+    /// question, live in the same codebase (deleted 2026-09-08). This one
+    /// is the answer that matches what the screen does: source-over draws
+    /// nothing at alpha 0 whatever the colour bytes say.
+    test('colour behind zero alpha is NOT ink', () {
+      expect(
+        BitmapTile(
+          coord: TileCoord(x: 0, y: 0),
+          size: 2,
+          pixels: Uint8List(16)..[0] = 255,
+        ).hasInk,
         isFalse,
       );
     });

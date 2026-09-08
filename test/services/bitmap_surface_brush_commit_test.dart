@@ -209,10 +209,17 @@ void main() {
         expect(erased.dirtyTiles.contains(TileCoord(x: 0, y: 0)), isTrue);
       });
 
-      test('full erase zeroes the pixel entirely', () {
+      test('full erase zeroes the pixel entirely — and the tile it emptied '
+          'is not kept', () {
         final painted = materializeBrushDabSequenceOnBitmapSurface(
           surface: surface(),
-          sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+          sequence: BrushDabSequence([
+            onePixelDab(globalX: 0, globalY: 0),
+            // A second pixel in the SAME tile, so the erase below leaves a
+            // tile behind to read the colour off. Erasing the only pixel
+            // takes the whole tile with it (its own test says so).
+            onePixelDab(globalX: 1, globalY: 1, sequence: 1),
+          ]),
         ).surface;
 
         final erased = materializeBrushDabSequenceOnBitmapSurface(
@@ -226,7 +233,7 @@ void main() {
           y: 0,
         );
         expect(pixel.a, 0);
-        expect(pixel.r, 0);
+        expect(pixel.r, 0, reason: 'the erase takes the colour bytes too');
       });
 
       test('erasing empty canvas changes nothing', () {

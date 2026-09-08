@@ -130,6 +130,6 @@ void main() {
     expect(tile.pixels, pixels);
 
     final blank = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
-    expect(blank.isFullyTransparent, isTrue);
+    expect(blank.hasInk, isFalse);
   });
 }
