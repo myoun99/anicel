@@ -11,6 +11,7 @@ import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../../services/canvas_selection_region.dart';
 import 'lane_verbs.dart';
 import 'range_selections.dart';
 import 'frame_clipboard.dart';
@@ -163,37 +164,12 @@ class CellVerbs {
     if (keys.isEmpty) {
       return;
     }
-    // 🚨THE SPACE AXIS, and it is one law for every cel the ladder named:
-    // 「선택 있으면 그 영역, 없으면 전체(페이스트보드 포함)」 — said three
-    // times now across ③·⑤·색 변환, so it is a law and not a preference.
-    final region = _internals.pixelSelectionRegion?.call();
-    final size = _project.requireActiveCut.canvasSize;
-    final frameIndex = _selection.currentFrameIndex;
-    final byId = {for (final layer in _project.layers) layer.id: layer};
-    final targets = <CelPixelTarget>[];
-    for (final key in keys) {
-      final layer = byId[key.layerId];
-      targets.add(
-        CelPixelTarget(
-          key: key,
-          // ⚠️Mapped into each layer's OWN artwork space: a posed layer draws
-          // its pixels somewhere else than the marquee was drawn, and the
-          // region has to follow. An unposed layer — the overwhelming
-          // majority — gets it back unchanged.
-          region: region == null || layer == null
-              ? region
-              : regionInArtworkSpace(
-                  region: region,
-                  pose: _timeline.layerPoseAtFrame(layer, frameIndex),
-                  canvasSize: size,
-                ),
-        ),
-      );
-    }
+    // Read ONCE, at the moment of the press — see [PixelVerbCanvas].
+    final canvas = _internals.pixelVerbCanvas?.call();
     _project.historyManager.execute(
       CelPixelOverwriteCommand.forVerb(
         coordinator: coordinator,
-        targets: targets,
+        targets: _targetsFor(keys, canvas?.region),
         verb: verb,
         // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional on
         // `restoreSurfaceSnapshot`, and omitting it silently falls to a
@@ -208,7 +184,7 @@ class CellVerbs {
         // not white or transparent: a press with no publisher wired must
         // still do the thing the user asked for, in the colour they would
         // have got.
-        argb: _internals.pixelBrushColour?.call() ?? 0xFF000000,
+        argb: canvas?.argb ?? 0xFF000000,
         // 🚨THE SELECTION'S SOFTNESS TRAVELS WITH IT. A Ctrl+T lift on the
         // same marquee already honoured 확장·페더·AA and these four verbs
         // did not, so one outline meant two things. Read at the press for
@@ -217,9 +193,41 @@ class CellVerbs {
         // option's own default — a host with nothing wired behaves exactly
         // as it did. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` = 가).
         options:
-            _internals.pixelSelectionMask?.call() ?? SelectionMaskOptions.none,
+            canvas?.mask ?? SelectionMaskOptions.none,
       ),
     );
+  }
+
+  /// The cels a press names, each carrying the marquee restated in its own
+  /// layer's artwork space.
+  ///
+  /// 🚨THE SPACE AXIS, and it is one law for every cel the ladder named:
+  /// 「선택 있으면 그 영역, 없으면 전체(페이스트보드 포함)」 — said three
+  /// times now across ③·⑤·색 변환, so it is a law and not a preference.
+  List<CelPixelTarget> _targetsFor(
+    List<BrushFrameKey> keys,
+    CanvasSelectionRegion? region,
+  ) {
+    final size = _project.requireActiveCut.canvasSize;
+    final frameIndex = _selection.currentFrameIndex;
+    final byId = {for (final layer in _project.layers) layer.id: layer};
+    return [
+      for (final key in keys)
+        CelPixelTarget(
+          key: key,
+          // ⚠️Mapped into each layer's OWN artwork space: a posed layer draws
+          // its pixels somewhere else than the marquee was drawn, and the
+          // region has to follow. An unposed layer — the overwhelming
+          // majority — gets it back unchanged.
+          region: region == null || byId[key.layerId] == null
+              ? region
+              : regionInArtworkSpace(
+                  region: region,
+                  pose: _timeline.layerPoseAtFrame(byId[key.layerId]!, frameIndex),
+                  canvasSize: size,
+                ),
+        ),
+    ];
   }
 
   bool get hasActiveNonNegativeCell {

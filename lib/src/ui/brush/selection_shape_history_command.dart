@@ -23,7 +23,8 @@ class SelectionShapeHistoryCommand implements Command, RetainedBytesCommand {
   /// region the channel is holding, so counting both would bill this
   /// stack for a neighbour's bytes twice over.
   @override
-  int get estimatedRetainedBytes => before?.estimatedRetainedBytes ?? 0;
+  int estimatedRetainedBytes({required bool undone}) =>
+      (undone ? after : before)?.estimatedRetainedBytes ?? 0;
 
   @override
   String get description => after == null ? 'Deselect' : 'Select';

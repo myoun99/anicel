@@ -362,12 +362,12 @@ void main() {
       final session = await pump(tester);
 
       expect(
-        session.pixelSelectionMask,
+        session.pixelVerbCanvas,
         isNotNull,
-        reason: 'the third canvas-side fact the verbs need',
+        reason: 'the canvas-side facts the verbs read at the press',
       );
       expect(
-        session.pixelSelectionMask!().isHard,
+        session.pixelVerbCanvas!().mask.isHard,
         isTrue,
         reason: 'every option is off by default, so nothing changes for a '
             'user who never touched them',
@@ -381,8 +381,13 @@ void main() {
       inkThroughCoordinator(session);
       // The marquee the press reads: a box whose edge runs through the ink,
       // so a feather has somewhere to ramp.
-      session.pixelSelectionRegion = () => CanvasSelectionRegion.shape(
+      final box = CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 0, top: 0, right: 40, bottom: 40),
+      );
+      session.pixelVerbCanvas = () => (
+        region: box,
+        argb: 0xFF000000,
+        mask: SelectionMaskOptions.none,
       );
       expect(alphaAt(session, 20, 20), 255, reason: 'fixture: ink is here');
 
@@ -394,8 +399,11 @@ void main() {
       await tester.pump();
       expect(alphaAt(session, 38, 38), 255, reason: 'fixture: undo put it back');
 
-      session.pixelSelectionMask = () =>
-          const SelectionMaskOptions(featherPx: 8);
+      session.pixelVerbCanvas = () => (
+        region: box,
+        argb: 0xFF000000,
+        mask: const SelectionMaskOptions(featherPx: 8),
+      );
       cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
       await tester.pump();
       final feathered = alphaAt(session, 38, 38);

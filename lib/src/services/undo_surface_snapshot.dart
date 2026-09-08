@@ -42,7 +42,17 @@ class UndoSurfacePair {
   final UndoSurfaceSnapshot before;
   final UndoSurfaceSnapshot after;
 
-  int get residentBytes => before.residentBytes;
+  /// The half the cel is NOT currently showing — see
+  /// [RetainedBytesCommand.estimatedRetainedBytes] for why the question
+  /// needs [undone] and for the 11.5-vs-18.5 MiB that says so.
+  ///
+  /// ⛔Never the sum. Entry n's [after] IS entry n+1's [before], so on
+  /// either stack adding both halves would count a neighbour's tiles
+  /// twice — and the two stacks are symmetric, not different: applied
+  /// entries owe their befores, undone entries owe their afters, and
+  /// neither run overlaps itself.
+  int residentBytes({required bool undone}) =>
+      undone ? after.residentBytes : before.residentBytes;
 
   Future<bool> park() => UndoSurfaceSnapshot.parkAll([before, after]);
 

@@ -216,7 +216,10 @@ void main() {
         'before, and charging both counts a neighbour twice', () {
       // ⛔Not "conservative": the doubled figure is what the round before
       // this one removed, and it evicted real history with phantom bytes.
-      expect(pairOf().pair.residentBytes, BitmapTile.bytesFor(size));
+      expect(
+        pairOf().pair.residentBytes(undone: false),
+        BitmapTile.bytesFor(size),
+      );
     });
 
     test('🚨but the park moves BOTH — a before let go on its own frees '
@@ -366,6 +369,72 @@ void main() {
       expect(inner.parked, isTrue);
     });
   });
+
+  /// 🚨★★★**ONCE AN ENTRY IS UNDONE, THE OTHER HALF IS THE ONE IT HOLDS.**
+  /// The bill named the BEFORE either way. Applied that is right — the cel
+  /// is the after, so the before is what nobody else holds. Undone it is
+  /// backwards: the cel has been put back to the before, and the AFTER is
+  /// the half this entry alone is keeping alive.
+  ///
+  /// A stroke that only CREATED tiles is where it shows worst — its before
+  /// owns nothing, so it billed nearly zero while holding every tile it had
+  /// made. 🧪Measured over 40 such strokes: 11.5 MiB billed applied against
+  /// 18.5 MiB actually pinned once undone.
+  group('the bill follows the cel, not the entry', () {
+    test('a stroke that only CREATED tiles owes nothing while applied, and '
+        'owes them once undone', () {
+      final blank = surfaceOf(const []);
+      final drawn = surfaceOf([tileOf(0, 7)]);
+      final pair = UndoSurfacePair(key: keyOf('f'), before: blank, after: drawn);
+
+      expect(
+        pair.residentBytes(undone: false),
+        0,
+        reason: 'the cel HAS these tiles — the entry adds nothing to them',
+      );
+      expect(
+        pair.residentBytes(undone: true),
+        BitmapTile.bytesFor(size),
+        reason: '⛔the whole round: undone, the cel no longer has them and '
+            'this entry is the only thing that does',
+      );
+    });
+
+    test('and the ordinary stroke is the mirror of it', () {
+      final was = surfaceOf([tileOf(0, 1)]);
+      final now = surfaceOf([tileOf(0, 2)]);
+      final pair = UndoSurfacePair(key: keyOf('f'), before: was, after: now);
+
+      expect(pair.residentBytes(undone: false), BitmapTile.bytesFor(size));
+      expect(pair.residentBytes(undone: true), BitmapTile.bytesFor(size));
+    });
+
+    test('🚨the stacks answer for their own side — the redo stack is the '
+        'undone one', () {
+      final history = HistoryManager();
+      final blank = surfaceOf(const []);
+      final drawn = surfaceOf([tileOf(0, 7)]);
+      history.execute(
+        _PairCommand(
+          UndoSurfacePair(key: keyOf('f'), before: blank, after: drawn),
+        ),
+      );
+
+      expect(
+        history.retainedBytes,
+        0,
+        reason: 'applied: the cel holds the tiles, the entry adds nothing',
+      );
+
+      history.undo();
+
+      expect(
+        history.retainedBytes,
+        BitmapTile.bytesFor(size),
+        reason: '⛔and this is what the budget could not see before',
+      );
+    });
+  });
 }
 
 /// What is in the run's 휘발성 room right now.
@@ -391,7 +460,7 @@ class _Parkable implements Command, RetainedBytesCommand, ParkableCommand {
   bool dropped = false;
 
   @override
-  int get estimatedRetainedBytes => parked ? 0 : bytes;
+  int estimatedRetainedBytes({required bool undone}) => parked ? 0 : bytes;
 
   @override
   String get description => 'parkable';
@@ -413,4 +482,25 @@ class _Parkable implements Command, RetainedBytesCommand, ParkableCommand {
 
   @override
   void dropPayload() => dropped = true;
+}
+
+/// A history entry that holds nothing but a pair — the smallest thing that
+/// can show which half the stacks are billing.
+class _PairCommand implements Command, RetainedBytesCommand {
+  _PairCommand(this.pair);
+
+  final UndoSurfacePair pair;
+
+  @override
+  String get description => 'Pair';
+
+  @override
+  void execute() {}
+
+  @override
+  void undo() {}
+
+  @override
+  int estimatedRetainedBytes({required bool undone}) =>
+      pair.residentBytes(undone: undone);
 }

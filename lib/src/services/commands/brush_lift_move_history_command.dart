@@ -107,7 +107,8 @@ class BrushLiftMoveHistoryCommand
   /// ZERO while holding a full-canvas surface — so the byte budget never
   /// fired on the very entries that killed the app.
   @override
-  int get estimatedRetainedBytes => _surfaces?.residentBytes ?? 0;
+  int estimatedRetainedBytes({required bool undone}) =>
+      _surfaces?.residentBytes(undone: undone) ?? 0;
 
   /// Not landed yet: nothing of its own to move.
   @override

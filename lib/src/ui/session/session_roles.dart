@@ -124,6 +124,26 @@ abstract interface class TimelineAccess {
   TrackFrameAxis trackFrameAxis();
 }
 
+/// The canvas-side facts a PIXEL VERB press needs, read together at the
+/// moment of the press.
+///
+/// 🚨★★★**ONE MEMBER, NOT THREE.** They were three fields on
+/// [SessionInternals], published by one method and read by one collaborator
+/// — and the comment over the publisher already called them 「the canvas-side
+/// facts the PIXEL verbs need」, which is a name. Adding the mask as a fourth
+/// field would have widened the seam the ratchet below is closing; folding
+/// them narrows it by two.
+///
+/// ⚠️Read at the PRESS, all three at once: the marquee survives tool
+/// switches, the colour changes under the pointer, and the tool settings
+/// panel can move the mask while the popover is open, so a value captured
+/// when the editor opened would be none of them.
+typedef PixelVerbCanvas = ({
+  CanvasSelectionRegion? region,
+  int argb,
+  SelectionMaskOptions mask,
+});
+
 /// What collaborators still reach into the session for beyond the
 /// roles above — the measured remainder of the coupling, and a list
 /// that only shrinks: each member either moves into the one
@@ -166,10 +186,8 @@ abstract interface class SessionInternals {
   ValueNotifier<OnionSkinSettings> get onionSkinSettings;
   ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
   get opacityDragPreview;
-  int Function()? get pixelBrushColour;
-  SelectionMaskOptions Function()? get pixelSelectionMask;
+  PixelVerbCanvas Function()? get pixelVerbCanvas;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
-  CanvasSelectionRegion? Function()? get pixelSelectionRegion;
   PixelVerbSubject get pixelVerbSubject;
   bool resetLaneGroup(LayerId layerId, String headerLaneId);
   ValueNotifier<int> get revealSelectionTick;

@@ -57,7 +57,9 @@ class ResizeCutCanvasCommand
   /// history stack's byte-trim must see them — a large cut's resize
   /// used to pin its whole baked set invisibly (adversarial review).
   @override
-  int get estimatedRetainedBytes {
+  /// ⛔[undone] changes nothing here: this holds the PRE-resize surfaces
+  /// and nothing else, so there is no other half to name.
+  int estimatedRetainedBytes({required bool undone}) {
     var total = 0;
     for (final surfaces in _previousBaked.values) {
       for (final snapshot in surfaces.values) {

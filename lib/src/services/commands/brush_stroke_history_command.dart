@@ -48,7 +48,8 @@ class BrushStrokeHistoryCommand
   /// post is what the canvas is showing. See [UndoSurfacePair] for why
   /// the bill and the park name different things.
   @override
-  int get estimatedRetainedBytes => _surfaces?.residentBytes ?? 0;
+  int estimatedRetainedBytes({required bool undone}) =>
+      _surfaces?.residentBytes(undone: undone) ?? 0;
 
   /// A stroke that changed nothing has nothing to move.
   @override

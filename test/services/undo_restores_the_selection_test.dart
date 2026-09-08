@@ -134,7 +134,7 @@ void main() {
     // Nothing landed yet, so nothing is uniquely held: the erase was
     // committed before this command existed and `pre` still shares every
     // tile with the live surface.
-    expect(command.estimatedRetainedBytes, 0);
+    expect(command.estimatedRetainedBytes(undone: false), 0);
 
     command.execute();
 
@@ -145,7 +145,7 @@ void main() {
     // entries that killed the app.
     final post = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     expect(
-      command.estimatedRetainedBytes,
+      command.estimatedRetainedBytes(undone: false),
       pre.bytesNotSharedWith(post),
     );
   });

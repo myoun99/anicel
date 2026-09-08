@@ -219,7 +219,7 @@ void main() {
       );
       resize.execute();
       expect(
-        resize.estimatedRetainedBytes,
+        resize.estimatedRetainedBytes(undone: false),
         256 * 256 * 4,
         reason: 'one retained tile of RGBA — uncounted, a large cut\'s '
             'resize pinned its whole baked set invisibly',
@@ -238,7 +238,7 @@ void main() {
         brushFrameStore: store,
       );
       resize.execute();
-      expect(resize.estimatedRetainedBytes, 0);
+      expect(resize.estimatedRetainedBytes(undone: false), 0);
     });
 
     test('D5: the model follows the picture — camera keyframes, guides '

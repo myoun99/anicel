@@ -166,7 +166,10 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
   final List<({CelPixelTarget target, CelPixelRestore restore})> _applied = [];
 
   @override
-  int get estimatedRetainedBytes {
+  /// ⛔[undone] changes nothing here: a recipe is not a pair. It records
+  /// what the pixels WERE, and redo re-runs the forward pass rather than
+  /// restoring a stored post-surface — so the same bytes ride either stack.
+  int estimatedRetainedBytes({required bool undone}) {
     var total = 0;
     for (final entry in _applied) {
       total += entry.restore.estimatedRetainedBytes;

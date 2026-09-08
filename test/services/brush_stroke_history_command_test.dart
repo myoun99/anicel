@@ -76,7 +76,7 @@ void main() {
       ),
     );
     history.execute(inert);
-    expect(inert.estimatedRetainedBytes, 0);
+    expect(inert.estimatedRetainedBytes(undone: false), 0);
 
     history.undo(); // the inert command: must not touch pixels
     expect(
@@ -99,7 +99,7 @@ void main() {
       coordinator: coordinator,
       strokeData: BrushStrokeCommitData(sourceDabs: [_dab(0)]),
     )..execute();
-    expect(seeding.estimatedRetainedBytes, 0);
+    expect(seeding.estimatedRetainedBytes(undone: false), 0);
 
     final before = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final command = BrushStrokeHistoryCommand(
@@ -111,7 +111,7 @@ void main() {
     command.execute();
 
     expect(command.retainsCommitPayload, isFalse);
-    expect(command.estimatedRetainedBytes, greaterThan(0));
+    expect(command.estimatedRetainedBytes(undone: false), greaterThan(0));
 
     // 🚨EXACTLY what the entry owns — the tiles the live surface no
     // longer holds — and not twice them. `greaterThan(0)` alone passed
@@ -119,7 +119,7 @@ void main() {
     // pre(n+1) by structural sharing, and the newest post is the live
     // surface, so the second copy was never ours to bill.
     final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
-    expect(command.estimatedRetainedBytes, before.bytesNotSharedWith(after));
+    expect(command.estimatedRetainedBytes(undone: false), before.bytesNotSharedWith(after));
   });
 
   test('the HistoryManager byte budget drops the DEEPEST snapshot '

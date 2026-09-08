@@ -34,7 +34,7 @@ class _Weighted implements Command, RetainedBytesCommand {
   void undo() {}
 
   @override
-  int get estimatedRetainedBytes => _bytes;
+  int estimatedRetainedBytes({required bool undone}) => _bytes;
 }
 
 BitmapSurface _surface({
@@ -94,7 +94,10 @@ void main() {
         commands: [_Weighted(10), _Weighted(32), _Weighted(0)],
       );
       expect(composite, isA<RetainedBytesCommand>());
-      expect((composite as RetainedBytesCommand).estimatedRetainedBytes, 42);
+      expect(
+        (composite as RetainedBytesCommand).estimatedRetainedBytes(undone: false),
+        42,
+      );
     });
 
     test('a composite on the stack is visible to the budget', () {

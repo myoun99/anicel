@@ -11,15 +11,34 @@ abstract class Command {
 /// byte-trim its deep end — a run of full-canvas fills at 8000² retains
 /// ~256MB per entry, which the entry-count cap alone would never bound.
 abstract interface class RetainedBytesCommand {
-  int get estimatedRetainedBytes;
+  /// 🚨★★★**WHICH SIDE IS LIVE CHANGES THE ANSWER, and the entry cannot
+  /// know it on its own.** An entry that holds a BEFORE and an AFTER owes
+  /// only the half the cel is not currently showing: applied, the cel is
+  /// the after and the before is what nobody else holds; undone, the cel
+  /// has been put back to the before and it is the AFTER that is held by
+  /// this entry alone.
+  ///
+  /// It reported the before either way, so a stroke that only CREATED
+  /// tiles — every stroke reaching fresh paper — billed almost nothing
+  /// once undone while holding every tile it had made. 🧪Measured on 40
+  /// such strokes: **11.5 MiB billed while applied, 18.5 MiB actually
+  /// pinned once undone.**
+  ///
+  /// ⚠️Only the stacks know, so only they may answer: [undone] is true
+  /// exactly for the REDO stack. ⛔Commands that hold one payload rather
+  /// than a pair ignore it, and say so where they implement this.
+  int estimatedRetainedBytes({required bool undone});
 }
 
-/// What a RUN of commands weighs. Both callers are the same question
+/// What a RUN of commands weighs, with [undone] saying which side of each
+/// pair the cel is currently showing. Both callers are the same question
 /// asked of a different list — a composite's children, and each of the
 /// history stacks — so they are the same code.
-int retainedBytesOf(Iterable<Command> commands) => commands
-    .whereType<RetainedBytesCommand>()
-    .fold(0, (sum, command) => sum + command.estimatedRetainedBytes);
+int retainedBytesOf(Iterable<Command> commands, {required bool undone}) =>
+    commands.whereType<RetainedBytesCommand>().fold(
+      0,
+      (sum, command) => sum + command.estimatedRetainedBytes(undone: undone),
+    );
 
 /// Commands that can move their undo payload to the run's 휘발성 room
 /// instead of being deleted when the byte budget is exceeded.
@@ -90,7 +109,8 @@ class CompositeCommand
   final List<Command> commands;
 
   @override
-  int get estimatedRetainedBytes => retainedBytesOf(commands);
+  int estimatedRetainedBytes({required bool undone}) =>
+      retainedBytesOf(commands, undone: undone);
 
   /// ⚠️For the same reason the weight forwards: a composite that did not
   /// forward would be an entry the spill could never move, so the budget

@@ -174,7 +174,7 @@ class _HeavyCommand implements Command, RetainedBytesCommand {
   final int bytes;
 
   @override
-  int get estimatedRetainedBytes => bytes;
+  int estimatedRetainedBytes({required bool undone}) => bytes;
 
   @override
   String get description => 'Heavy';

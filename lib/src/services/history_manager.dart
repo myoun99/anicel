@@ -120,7 +120,8 @@ class HistoryManager extends ChangeNotifier {
   /// undone — and a memory warning arriving right then freed nothing,
   /// because by the budget's own reckoning there was nothing to free.
   int get retainedBytes =>
-      retainedBytesOf(_undoStack) + retainedBytesOf(_redoStack);
+      retainedBytesOf(_undoStack, undone: false) +
+      retainedBytesOf(_redoStack, undone: true);
 
   /// Collects everything executed inside [body] into ONE undo entry.
   ///
@@ -341,11 +342,11 @@ class HistoryManager extends ChangeNotifier {
     }
     final entriesBefore = _undoStack.length + _redoStack.length;
     // REDO SHEDS FIRST, for the same reason it parks first.
-    total -= _shed(_redoStack, total - _budget.bytes, keep: 0);
+    total -= _shed(_redoStack, total - _budget.bytes, keep: 0, undone: true);
     if (total > _budget.bytes) {
       // ⛔The newest entry always survives: pressure must not cost you the
       // undo you are about to press.
-      _shed(_undoStack, total - _budget.bytes, keep: 1);
+      _shed(_undoStack, total - _budget.bytes, keep: 1, undone: false);
     }
     // 🚨HERE, not at each caller: this is the only place an entry leaves
     // the stacks without the user asking, and a spill pass that ends in a
@@ -369,7 +370,12 @@ class HistoryManager extends ChangeNotifier {
   /// Entries BELOW one that pays are still dropped — a stack cannot lose
   /// its middle, or an undo would skip a step and restore a picture that
   /// was never on screen.
-  static int _shed(List<Command> stack, int excess, {required int keep}) {
+  static int _shed(
+    List<Command> stack,
+    int excess, {
+    required int keep,
+    required bool undone,
+  }) {
     var released = 0;
     var dropCount = 0;
     var worthDropping = 0;
@@ -377,7 +383,9 @@ class HistoryManager extends ChangeNotifier {
     while (released < excess && stack.length - dropCount > keep) {
       final command = stack[dropCount];
       if (command is RetainedBytesCommand) {
-        released += (command as RetainedBytesCommand).estimatedRetainedBytes;
+        released += (command as RetainedBytesCommand).estimatedRetainedBytes(
+          undone: undone,
+        );
       }
       dropCount += 1;
       if (released > worthReleasing) {

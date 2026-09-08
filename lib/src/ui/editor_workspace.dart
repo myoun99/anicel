@@ -943,20 +943,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // fx away holds itself until this answers (see [AttachFxConfirmController]).
     widget.session.attachFxConfirm.pending.addListener(_showAttachFxConfirm);
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
-    // 🚨The THREE canvas-side facts the PIXEL verbs need, published where all
-    // of them are in scope. Getters, not copies: the marquee survives tool
+    // 🚨The canvas-side facts the PIXEL verbs need, published where all of
+    // them are in scope. A getter, not a copy: the marquee survives tool
     // switches and the colour changes under the pointer, so a value captured
     // here would be the one that was true when the editor opened.
-    widget.session.pixelSelectionRegion = () =>
-        widget.canvasSelectionCommands?.region;
-    widget.session.pixelBrushColour = () => _brushTool.value.color;
+    //
     // 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** The verbs
     // ran on a hard mask whatever the user had set, while a Ctrl+T lift on
     // the SAME marquee honoured 확장·페더·AA — one outline, two meanings.
     // The parameter was wired all the way to `celPixelWalkFor`; only this
-    // line was missing. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` =
-    // 가): 「선택툴로 선택한채로 사용할때 … 선택의 aa 따르게」.
-    widget.session.pixelSelectionMask = () => _views._selectionMaskOptions.value;
+    // publisher was missing it. 유저 확정 2026-09-09
+    // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
+    // 선택의 aa 따르게」.
+    widget.session.pixelVerbCanvas = () => (
+      region: widget.canvasSelectionCommands?.region,
+      argb: _brushTool.value.color,
+      mask: _views._selectionMaskOptions.value,
+    );
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
     widget.session.canvasHasSelection = () =>

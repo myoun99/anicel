@@ -141,7 +141,7 @@ void main() {
 
     // Three bytes per cel — the point of the recipe. A surface-snapshot
     // undo would have retained three whole tiles, twice over.
-    expect(command.estimatedRetainedBytes, 9);
+    expect(command.estimatedRetainedBytes(undone: false), 9);
   });
 
   test('a cel with nothing under the region is left alone', () {
@@ -159,7 +159,7 @@ void main() {
 
     expect(pixelAt(target, drawn, 0, 0), [0, 255, 0, 255]);
     // Only the drawn cel is in the payload.
-    expect(command.estimatedRetainedBytes, 3);
+    expect(command.estimatedRetainedBytes(undone: false), 3);
     expect(target.currentSurfaceOf(empty).tiles, isEmpty);
   });
 
@@ -251,6 +251,6 @@ void main() {
     // A second pass would have recorded 0x112233 as "the original" and
     // undo would have stopped there.
     expect(pixelAt(target, cel, 1, 1), [0, 0, 0, 255]);
-    expect(command.estimatedRetainedBytes, 3);
+    expect(command.estimatedRetainedBytes(undone: false), 3);
   });
 }

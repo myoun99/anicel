@@ -40,8 +40,6 @@ import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
-import '../services/canvas_selection.dart' show SelectionMaskOptions;
-import '../services/canvas_selection_region.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/onion_skin_settings.dart';
@@ -830,30 +828,18 @@ class EditorSessionManager extends ChangeNotifier
   @override
   BrushFrameEditingCoordinator? pixelEditingCoordinator;
 
-  /// The marquee on the artwork, published by whoever owns it.
+  /// The canvas-side facts a pixel-verb press needs, published by whoever
+  /// owns them — see [PixelVerbCanvas].
   ///
-  /// ⛔A getter, not a copy. The region is a document-level fact that survives
-  /// tool switches (`CanvasSelectionCommands.region`), and a snapshot taken
-  /// when the toolbar was built would act on a selection the user has since
-  /// redrawn.
-  @override
-  CanvasSelectionRegion? Function()? pixelSelectionRegion;
-
-  /// The drawing colour, published by whoever owns the paint tool state.
+  /// ⛔A getter, not a copy. The marquee is a document-level fact that
+  /// survives tool switches (`CanvasSelectionCommands.region`), the colour
+  /// changes under the pointer, and the mask moves with the tool settings
+  /// panel — so a snapshot taken when the toolbar was built would act on a
+  /// selection the user has since redrawn, in a colour they have left.
   ///
-  /// ⛔The BAR does not read this. A toolbar button that had to know about
-  /// brush colour would be the second place the answer lives; the verb reads
-  /// it at the moment of the press, which is also the only moment it is true.
-  ///
-  /// 🚨Its ALPHA is ignored downstream — RGB only (유저 확정).
+  /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
   @override
-  int Function()? pixelBrushColour;
-
-  /// The softness the SELECTION carries — 확장·페더·AA. Read at the moment
-  /// of the press, like the colour beside it, because the tool settings
-  /// panel can change it while the popover is open.
-  @override
-  SelectionMaskOptions Function()? pixelSelectionMask;
+  PixelVerbCanvas Function()? pixelVerbCanvas;
 
   /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
   @override
