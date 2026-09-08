@@ -66,7 +66,12 @@ final class VideoViewerDocument implements ViewerDocument {
     // reference movie playing beside a drawing and one that eats a third of
     // every frame's budget. See [videoDecodeBackend].
     final backend = videoDecodeBackend;
-    final hasReader = QaVideoDecoder.instance?.isSupported ?? false;
+    // 🪦This asked `QaVideoDecoder.instance?.isSupported` until 2026-09-08,
+    // which is a second object answering for the one that does the work —
+    // and it is what made the whole video arm untestable: a fake backend
+    // could be injected and then never consulted, because the gate in front
+    // of it said no on any machine without the native library.
+    final hasReader = backend.supported;
     final opened = hasReader ? await backend.open(path, range: range) : null;
     switch (viewerOpenOutcome(hasReader: hasReader, opened: opened != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:

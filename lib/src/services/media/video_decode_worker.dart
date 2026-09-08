@@ -40,6 +40,23 @@ import '../../native/qa_video_decoder.dart';
 /// blinding each other (#1458) is per-isolate state that would then be
 /// tracking half the truth. The import preview rides this too.
 abstract interface class VideoDecodeBackend {
+  /// Whether this build can read a movie at all.
+  ///
+  /// 🚨★★★**THE CAPABILITY BELONGS TO THE THING THAT HAS IT.** The viewer
+  /// document used to ask `QaVideoDecoder.instance?.isSupported` directly
+  /// while doing its actual reading through this backend — one object for
+  /// the work and another for「may I」, which can disagree the moment a
+  /// backend is anything but the default one.
+  ///
+  /// ⛔And it made the whole video arm untestable: a fake backend could be
+  /// injected ([debugVideoDecodeBackend]) and then never consulted, because
+  /// the gate in front of it answered false on any machine without the
+  /// native library. `video-viewer-arm-is-unmeasured` is that gap.
+  ///
+  /// Synchronous on purpose: it is a property of the BUILD, not of a
+  /// document or a worker, so nothing has to be started to answer it.
+  bool get supported;
+
   /// Opens [path] (or the range inside it) and answers what it is, or null.
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
@@ -82,6 +99,9 @@ set debugVideoDecodeBackend(VideoDecodeBackend? backend) => _backend = backend;
 /// ⚠️Correct, never fast: this is the 15 ms that motivated the isolate.
 final class DirectVideoDecodeBackend implements VideoDecodeBackend {
   const DirectVideoDecodeBackend();
+
+  @override
+  bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
@@ -147,6 +167,11 @@ const int _opClose = 3;
 
 final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   IsolateVideoDecodeBackend();
+
+  /// ⚠️Answered on THIS isolate: whether the library loads is a property of
+  /// the build, and asking a worker would mean starting one to find out.
+  @override
+  bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
 
   SendPort? _worker;
   Future<SendPort>? _starting;
