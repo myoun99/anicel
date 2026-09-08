@@ -12,6 +12,7 @@ import '../../models/brush_dab.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
 import '../../services/brush_dab_coverage.dart';
+import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 
 /// The APP-WIDE stroke-preview raster cache (UI-R18 R18-B).
@@ -175,27 +176,22 @@ Uint8List rasterizeBrushStrokeSample(
     final pressure = math.sin(t * math.pi).clamp(0.08, 1.0).toDouble();
     // BB-3: the preview's synthetic pressure arc rides the SAME curves as
     // real strokes, so the list shows the configured taper (size/opacity/
-    // flow/hardness alike).
-    final sizeRatio = settings.sizePressureCurve?.evaluate(pressure) ?? 1.0;
-    // F-12: the curve alone. The tool's opacity caps the ACCUMULATED
-    // swatch once, below — on the dab it would not cap anything, and the
-    // preview would go on darkening past the setting exactly the way the
-    // canvas did.
-    final opacity = settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0;
-    final flow =
-        settings.flow *
-        (settings.flowPressureCurve?.evaluate(pressure) ?? 1.0);
-    final hardness =
-        settings.hardness *
-        (settings.hardnessPressureCurve?.evaluate(pressure) ?? 1.0);
-    final dab = BrushTipStampCache.instance.resolveDab(
+    // flow/hardness alike). ⛔It used to ride a COPY of them — the same four
+    // multiplications written a third time. Now it runs the one law and
+    // keeps only what is its own: the floors below.
+    //
+    // ⚠️F-12: the base opacity is 1.0 and the tool's opacity caps the
+    // ACCUMULATED swatch once, at the end — on the dab it would not cap
+    // anything, and the preview would go on darkening past the setting
+    // exactly the way the canvas did.
+    final curved = applyBrushPressureDynamics(
       BrushDab(
         center: CanvasPoint(x: x, y: y),
         color: 0xFF000000,
-        size: math.max(1.0, baseSize * sizeRatio),
-        opacity: opacity.clamp(0.05, 1.0),
-        flow: flow.clamp(0.05, 1.0),
-        hardness: hardness.clamp(0.0, 1.0),
+        size: baseSize,
+        opacity: 1.0,
+        flow: settings.flow,
+        hardness: settings.hardness,
         tipShape: settings.tipShape,
         pressure: pressure,
         sequence: sequence,
@@ -207,6 +203,21 @@ Uint8List rasterizeBrushStrokeSample(
         textureMask: settings.textureMask,
         textureScale: settings.textureScale,
         textureDensity: settings.textureDensity,
+      ),
+      sizeCurve: settings.sizePressureCurve,
+      opacityCurve: settings.opacityPressureCurve,
+      flowCurve: settings.flowPressureCurve,
+      hardnessCurve: settings.hardnessPressureCurve,
+    );
+    // 🚨THE FLOORS ARE THE PREVIEW'S OWN, and that is why they stayed here
+    // rather than moving into the law: a swatch has to show the brush's
+    // SHAPE at any setting, so it never fades to nothing and never thins
+    // below one pixel. The canvas has no such duty.
+    final dab = BrushTipStampCache.instance.resolveDab(
+      curved.copyWith(
+        size: math.max(1.0, curved.size),
+        opacity: curved.opacity.clamp(0.05, 1.0),
+        flow: curved.flow.clamp(0.05, 1.0),
       ),
     );
     sequence += 1;

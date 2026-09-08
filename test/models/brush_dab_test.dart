@@ -255,46 +255,36 @@ void main() {
       expect(value.color, 0x80FF3366);
     });
 
-    test('fromInputSample applies the size pressure curve', () {
+    test('fromInputSample carries the BASE values, curves unapplied', () {
+      // 🚨The factory used to multiply the four curves in itself — a third
+      // copy of the law that `applyBrushPressureDynamics` owns. It now hands
+      // over the settings' base values and the sample's readings, and
+      // `brushInputSamplesToBrushDabs` runs the law (see
+      // `brush_dab_placement_test`, which asserts the product).
       final value = BrushDab.fromInputSample(
         sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
         settings: BrushSettings(
           size: 20,
-          sizePressureCurve: BrushPressureCurve.identity(),
-        ),
-        sequence: 0,
-      );
-      expect(value.size, 5);
-    });
-
-    test('fromInputSample applies the opacity pressure curve', () {
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
-        settings: BrushSettings(
-          opacity: 0.8,
-          opacityPressureCurve: BrushPressureCurve.identity(),
-        ),
-        sequence: 0,
-      );
-      // F-12: the CURVE alone. The setting is the accumulated stroke's
-      // ceiling and rides `BrushDabSequence.opacity` — on the dab it would
-      // not cap anything, since dabs pile up source-over.
-      expect(value.opacity, 0.25);
-    });
-
-    test('fromInputSample applies the flow and hardness curves (BB-3)', () {
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0, pressure: 0.5),
-        settings: BrushSettings(
           flow: 0.8,
           hardness: 0.5,
+          sizePressureCurve: BrushPressureCurve.identity(),
+          opacityPressureCurve: BrushPressureCurve.identity(),
           flowPressureCurve: BrushPressureCurve.identity(),
           hardnessPressureCurve: BrushPressureCurve.identity(),
         ),
         sequence: 0,
       );
-      expect(value.flow, closeTo(0.4, 1e-9));
-      expect(value.hardness, closeTo(0.25, 1e-9));
+
+      expect(value.size, 20);
+      expect(value.flow, 0.8);
+      expect(value.hardness, 0.5);
+      // F-12 lives in the BASE: a dab's opacity starts at 1.0 because the
+      // tool's opacity is the accumulated stroke's ceiling and rides
+      // `BrushDabSequence.opacity` — on the dab it would cap nothing.
+      expect(value.opacity, 1.0);
+      // The reading still arrives, so the law downstream has something to
+      // evaluate against.
+      expect(value.pressure, 0.25);
     });
 
     test('fromInputSample preserves flow/hardness/tipShape', () {

@@ -4,6 +4,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/brush_input_sample.dart';
 import '../models/brush_settings.dart';
+import 'brush_pressure_dynamics.dart';
 import 'segment_spacing_walk.dart';
 
 BrushDabSequence brushInputSamplesToBrushDabs({
@@ -16,11 +17,19 @@ BrushDabSequence brushInputSamplesToBrushDabs({
   final dabs = <BrushDab>[];
   var nextSequence = 0;
   void emit(BrushInputSample sample) {
+    // BB-3: the base dab, then the ONE curve law. The multiplication used to
+    // sit inside the factory as a fourth copy of it.
     dabs.add(
-      BrushDab.fromInputSample(
-        sample: sample,
-        settings: settings,
-        sequence: nextSequence,
+      applyBrushPressureDynamics(
+        BrushDab.fromInputSample(
+          sample: sample,
+          settings: settings,
+          sequence: nextSequence,
+        ),
+        sizeCurve: settings.sizePressureCurve,
+        opacityCurve: settings.opacityPressureCurve,
+        flowCurve: settings.flowPressureCurve,
+        hardnessCurve: settings.hardnessPressureCurve,
       ),
     );
     nextSequence += 1;

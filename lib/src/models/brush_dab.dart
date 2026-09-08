@@ -61,32 +61,33 @@ class BrushDab {
     _validateSequence(sequence);
   }
 
+  /// A dab carrying the settings' BASE values and this sample's input
+  /// readings — before any curve has scaled it.
+  ///
+  /// 🚨THE CURVES ARE NOT APPLIED HERE. They were, inline, and the same four
+  /// multiplications lived in `applyBrushPressureDynamics` and in the preview
+  /// cache as well — one algorithm written three times, each with different
+  /// accretions (this one clamped nothing, the dynamics clamp to 0..1, the
+  /// preview floors at 0.05). Callers run [applyBrushPressureDynamics] and
+  /// keep whatever floor is theirs.
+  ///
+  /// ⚠️F-12 lives in the base, not in the curve: a dab's opacity starts at
+  /// 1.0 because the TOOL's opacity is the accumulated stroke's ceiling and
+  /// rides `BrushDabSequence.opacity` — on the dab it would cap nothing,
+  /// since dabs pile up source-over and any factor below 1 still converges
+  /// on opaque.
   factory BrushDab.fromInputSample({
     required BrushInputSample sample,
     required BrushSettings settings,
     required int sequence,
   }) {
-    // BB-3: each setting's pressure curve scales its base value (null =
-    // the setting ignores pressure). The old minimum-size floor is the
-    // size curve's left endpoint, so light strokes still never vanish.
-    final pressure = sample.pressure;
     return BrushDab(
       center: CanvasPoint(x: sample.x, y: sample.y),
       color: settings.color,
-      size:
-          settings.size *
-          (settings.sizePressureCurve?.evaluate(pressure) ?? 1.0),
-      // F-12: the pressure curve ALONE. A dab's opacity is its own
-      // variation; the tool's opacity is the accumulated stroke's ceiling
-      // and rides `BrushDabSequence.opacity` (see
-      // `brushInputSamplesToBrushDabs`, which builds that sequence).
-      opacity: settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0,
-      flow:
-          settings.flow *
-          (settings.flowPressureCurve?.evaluate(pressure) ?? 1.0),
-      hardness:
-          settings.hardness *
-          (settings.hardnessPressureCurve?.evaluate(pressure) ?? 1.0),
+      size: settings.size,
+      opacity: 1.0,
+      flow: settings.flow,
+      hardness: settings.hardness,
       tipShape: settings.tipShape,
       pressure: sample.pressure,
       sequence: sequence,

@@ -180,6 +180,47 @@ void main() {
       expect(middle.tiltAzimuthDegrees, closeTo(0.0, 1e-9));
     });
 
+    test('the four curves are applied here, not in the dab factory', () {
+      // 🚨These four assertions moved out of `brush_dab_test` when the
+      // multiplication stopped being a third copy inside
+      // `BrushDab.fromInputSample`. The factory now carries base values;
+      // the product is this function's job, so the coverage lives here.
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [BrushInputSample(x: 0, y: 0, pressure: 0.25)],
+        settings: BrushSettings(
+          size: 20,
+          flow: 0.8,
+          hardness: 0.5,
+          sizePressureCurve: BrushPressureCurve.identity(),
+          opacityPressureCurve: BrushPressureCurve.identity(),
+          flowPressureCurve: BrushPressureCurve.identity(),
+          hardnessPressureCurve: BrushPressureCurve.identity(),
+        ),
+      );
+
+      final dab = sequence.dabs.single;
+      expect(dab.size, 5);
+      expect(dab.flow, closeTo(0.2, 1e-9));
+      expect(dab.hardness, closeTo(0.125, 1e-9));
+      // F-12: the CURVE alone, because the base is 1.0. The setting is the
+      // accumulated stroke's ceiling and rides `BrushDabSequence.opacity`.
+      expect(dab.opacity, closeTo(0.25, 1e-9));
+      expect(sequence.opacity, 1.0);
+    });
+
+    test('no curve leaves the base values alone', () {
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [BrushInputSample(x: 0, y: 0, pressure: 0.25)],
+        settings: BrushSettings(size: 20, flow: 0.8, hardness: 0.5),
+      );
+
+      final dab = sequence.dabs.single;
+      expect(dab.size, 20);
+      expect(dab.flow, 0.8);
+      expect(dab.hardness, 0.5);
+      expect(dab.opacity, 1.0);
+    });
+
     test('an upright stroke leaves every dab upright', () {
       final sequence = brushInputSamplesToBrushDabs(
         samples: [BrushInputSample(x: 0, y: 0), BrushInputSample(x: 20, y: 0)],
