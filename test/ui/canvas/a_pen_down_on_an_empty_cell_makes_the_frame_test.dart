@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/auto_frame_for_stroke.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
 /// 🚨I-10 — A PEN-DOWN ON AN EMPTY CELL MAKES THE BLOCK AND DRAWS INTO IT.
@@ -39,9 +40,9 @@ void main() {
   test('⛔OFF by default — the toggle has to be asked for', () {
     final session = sessionOnEmptyCell();
     expect(AppInput.settings.value.autoCreateFrameOnDraw, isFalse);
-    expect(session.autoFrame.canAutoCreateFrameForStroke, isFalse);
+    expect(autoFrameOf(session).canAutoCreateFrameForStroke, isFalse);
     expect(
-      session.autoFrame.beginAutoFrameForStroke(),
+      autoFrameOf(session).beginAutoFrameForStroke(),
       isFalse,
       reason:
           'a press on an empty cell is still refused until the user '
@@ -55,8 +56,8 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    expect(session.autoFrame.canAutoCreateFrameForStroke, isTrue);
-    expect(session.autoFrame.beginAutoFrameForStroke(), isTrue);
+    expect(autoFrameOf(session).canAutoCreateFrameForStroke, isTrue);
+    expect(autoFrameOf(session).beginAutoFrameForStroke(), isTrue);
     expect(
       session.activeLayer!.frames,
       hasLength(1),
@@ -70,7 +71,7 @@ void main() {
     );
     final session = sessionOnEmptyCell();
     final before = session.historyManager.canUndo;
-    session.autoFrame.beginAutoFrameForStroke();
+    autoFrameOf(session).beginAutoFrameForStroke();
     expect(
       session.historyManager.canUndo,
       before,
@@ -79,10 +80,10 @@ void main() {
           'is exactly what 「답은 추천대로(merged)」 ruled out',
     );
 
-    final taken = session.autoFrame.takeAutoFrameForStroke();
+    final taken = autoFrameOf(session).takeAutoFrameForStroke();
     expect(taken, isNotNull, reason: 'the stroke gets it to compose with');
     expect(
-      session.autoFrame.takeAutoFrameForStroke(),
+      autoFrameOf(session).takeAutoFrameForStroke(),
       isNull,
       reason: 'and only once — a second stroke must not inherit it',
     );
@@ -97,10 +98,10 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    session.autoFrame.beginAutoFrameForStroke();
+    autoFrameOf(session).beginAutoFrameForStroke();
     expect(session.activeLayer!.frames, hasLength(1));
 
-    session.autoFrame.flushAutoFrameForStroke();
+    autoFrameOf(session).flushAutoFrameForStroke();
     expect(
       session.activeLayer!.frames,
       hasLength(1),
@@ -120,11 +121,11 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    session.autoFrame.beginAutoFrameForStroke();
+    autoFrameOf(session).beginAutoFrameForStroke();
     // Nothing consumed it. The next press must not sweep it into ITS undo
     // entry — that would put two unrelated blocks behind one undo.
     session.selectFrameIndex(4);
-    expect(session.autoFrame.beginAutoFrameForStroke(), isTrue);
+    expect(autoFrameOf(session).beginAutoFrameForStroke(), isTrue);
     expect(session.activeLayer!.frames, hasLength(2));
     expect(
       session.historyManager.canUndo,
@@ -145,7 +146,19 @@ void main() {
     // path must say no for the SAME reason rather than growing a second
     // answer to 「can this row take a cel here」.
     expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
-    expect(session.autoFrame.canAutoCreateFrameForStroke, isFalse);
-    expect(session.autoFrame.beginAutoFrameForStroke(), isFalse);
+    expect(autoFrameOf(session).canAutoCreateFrameForStroke, isFalse);
+    expect(autoFrameOf(session).beginAutoFrameForStroke(), isFalse);
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+AutoFrameForStroke autoFrameOf(EditorSessionManager session) =>
+    session.autoFrame;

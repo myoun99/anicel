@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/drawing_block_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 /// R10-④b: the whole-block move drag session — channel-only previews, one
@@ -40,10 +41,10 @@ void main() {
     s.addListener(() => notifies += 1);
 
     expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
+      blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
       isTrue,
     );
-    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 2);
+    blockMoveVerbsOf(s).updateDrawingBlockMoveDrag(frameDelta: 2);
 
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
@@ -54,7 +55,7 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
     expect(notifies, 0);
 
-    s.drawingBlockMove.endDrawingBlockMoveDrag();
+    blockMoveVerbsOf(s).endDrawingBlockMoveDrag();
     expect(s.dragPreview.value, isNull);
     expect(notifies, 1);
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNull);
@@ -76,16 +77,16 @@ void main() {
     s.renderCaches.brushFrameStore.getOrCreateFrame(fromKey);
 
     expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
+      blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0),
       isTrue,
     );
-    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 1, targetLayerId: b.id);
+    blockMoveVerbsOf(s).updateDrawingBlockMoveDrag(frameDelta: 1, targetLayerId: b.id);
 
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     expect(preview.previewLayers.keys, containsAll([a.id, b.id]));
     expect(preview.previewLayers[b.id]!.timeline[1]!.frameId, frameId);
 
-    s.drawingBlockMove.endDrawingBlockMoveDrag();
+    blockMoveVerbsOf(s).endDrawingBlockMoveDrag();
     // The selection follows the block onto its new layer (R12-④).
     expect(s.activeLayer!.id, b.id);
     final movedA = s.layers.firstWhere((l) => l.id == a.id);
@@ -120,9 +121,9 @@ void main() {
   test('an occupied landing PUSHES the block in the way (R12-②)', () {
     final (s, a, b) = twoLayerSession();
 
-    s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
+    blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
     // Layer B's block sits at frame 6 — landing on it pushes it behind.
-    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
+    blockMoveVerbsOf(s).updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     final previewB = preview.previewLayers[b.id]!;
     expect(previewB.timeline[6], isNotNull, reason: 'moved block lands at 6');
@@ -132,7 +133,7 @@ void main() {
       reason: 'the resident block pushed from 6 to 7',
     );
 
-    s.drawingBlockMove.endDrawingBlockMoveDrag();
+    blockMoveVerbsOf(s).endDrawingBlockMoveDrag();
     final movedB = s.layers.firstWhere((l) => l.id == b.id);
     expect(movedB.timeline[6], isNotNull);
     expect(movedB.timeline[7], isNotNull);
@@ -169,10 +170,10 @@ void main() {
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
-    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 3);
+    blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
+    blockMoveVerbsOf(s).updateDrawingBlockMoveDrag(frameDelta: 3);
     expect(s.dragPreview.value, isNotNull);
-    s.drawingBlockMove.cancelDrawingBlockMoveDrag();
+    blockMoveVerbsOf(s).cancelDrawingBlockMoveDrag();
 
     expect(s.dragPreview.value, isNull);
     expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
@@ -185,12 +186,12 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final seLayer = s.layers.firstWhere((l) => l.name.startsWith('S'));
     expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
+      blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
       isFalse,
     );
     // No block at frame 9.
     expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(
+      blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(
         layerId: s.activeLayer!.id,
         blockStartIndex: 9,
       ),
@@ -209,17 +210,17 @@ void main() {
     final seLayer = s.layers.firstWhere((l) => l.name.startsWith('S'));
 
     expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(
+      blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(
         layerId: s.activeLayer!.id,
         blockStartIndex: 0,
       ),
       isTrue,
     );
-    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 2);
+    blockMoveVerbsOf(s).updateDrawingBlockMoveDrag(frameDelta: 2);
     expect(s.dragPreview.value, isNotNull, reason: 'a move is in flight');
 
     expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
+      blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
       isFalse,
     );
     expect(
@@ -230,7 +231,7 @@ void main() {
     expect(s.dragPreview.value, isNotNull, reason: 'and it kept its preview');
 
     // And the original drag can still be closed the normal way.
-    s.drawingBlockMove.cancelDrawingBlockMoveDrag();
+    blockMoveVerbsOf(s).cancelDrawingBlockMoveDrag();
     expect(s.isBlockMoveDragActive, isFalse);
     expect(s.dragPreview.value, isNull);
   });
@@ -267,3 +268,14 @@ void main() {
     });
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+DrawingBlockMoveDragVerbs blockMoveVerbsOf(EditorSessionManager session) => session.drawingBlockMove;

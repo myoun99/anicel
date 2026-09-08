@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/camera.dart';
 
 /// ㊲ — the camera frame follows the SCRUB, not the active cut.
 ///
@@ -32,18 +33,18 @@ void main() {
 
     s.selectCut(second);
     s.selectFrameIndex(0);
-    s.camera.setCameraKeyframeAtCurrentFrame(
-      s.camera.cameraPoseAtCurrentFrame.copyWith(zoom: 1),
+    cameraOf(s).setCameraKeyframeAtCurrentFrame(
+      cameraOf(s).cameraPoseAtCurrentFrame.copyWith(zoom: 1),
     );
     s.selectFrameIndex(5);
-    s.camera.setCameraKeyframeAtCurrentFrame(
-      s.camera.cameraPoseAtCurrentFrame.copyWith(zoom: 3),
+    cameraOf(s).setCameraKeyframeAtCurrentFrame(
+      cameraOf(s).cameraPoseAtCurrentFrame.copyWith(zoom: 3),
     );
 
     s.selectCut(track.cuts[0].id);
     s.selectFrameIndex(0);
-    s.camera.setCameraKeyframeAtCurrentFrame(
-      s.camera.cameraPoseAtCurrentFrame.copyWith(zoom: 2),
+    cameraOf(s).setCameraKeyframeAtCurrentFrame(
+      cameraOf(s).cameraPoseAtCurrentFrame.copyWith(zoom: 2),
     );
 
     final layout = s.projectSettings.projectLayout();
@@ -93,18 +94,18 @@ void main() {
       final (s, secondStart, _) = scrubSession();
       addTearDown(s.dispose);
 
-      expect(s.camera.cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
+      expect(cameraOf(s).cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
 
       dragTo(s, secondStart, secondStart + 5);
 
       expect(s.frameScrubActive.value, isTrue);
       expect(
-        s.camera.cameraPoseAtCurrentFrame.zoom,
+        cameraOf(s).cameraPoseAtCurrentFrame.zoom,
         2,
         reason: 'the ACTIVE cut is left untouched by the crossing, by design',
       );
       expect(
-        s.camera.displayedCameraPose!.zoom,
+        cameraOf(s).displayedCameraPose!.zoom,
         closeTo(3, 1e-6),
         reason: 'the DISPLAY frames the cut under the cursor',
       );
@@ -118,7 +119,7 @@ void main() {
     dragTo(s, gapFrame, gapFrame + 1);
 
     expect(s.frameScrubActive.value, isTrue);
-    expect(s.camera.displayedCameraPose, isNull);
+    expect(cameraOf(s).displayedCameraPose, isNull);
   });
 
   test('the release lands what the drag was showing — commit and preview '
@@ -127,13 +128,13 @@ void main() {
     addTearDown(s.dispose);
 
     dragTo(s, secondStart, secondStart + 5);
-    final shownDuringDrag = s.camera.displayedCameraPose!.zoom;
+    final shownDuringDrag = cameraOf(s).displayedCameraPose!.zoom;
     s.frameScrub.commitFrameScrub();
 
     expect(s.frameScrubActive.value, isFalse);
     expect(s.currentFrameIndex, 5);
-    expect(s.camera.cameraPoseAtCurrentFrame.zoom, closeTo(shownDuringDrag, 1e-6));
-    expect(s.camera.displayedCameraPose!.zoom, closeTo(shownDuringDrag, 1e-6));
+    expect(cameraOf(s).cameraPoseAtCurrentFrame.zoom, closeTo(shownDuringDrag, 1e-6));
+    expect(cameraOf(s).displayedCameraPose!.zoom, closeTo(shownDuringDrag, 1e-6));
   });
 
   test('a committed parking frames nothing even where a cut covers it — only '
@@ -146,7 +147,7 @@ void main() {
     s.parkGlobalFrame(gapFrame);
 
     expect(s.frameScrubActive.value, isFalse);
-    expect(s.camera.displayedCameraPose, isNull);
+    expect(cameraOf(s).displayedCameraPose, isNull);
   });
 
   testWidgets('the overlay FOLLOWS the crossing per move: the parking is the '
@@ -200,3 +201,14 @@ void main() {
     await drainWarming(tester);
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+Camera cameraOf(EditorSessionManager session) => session.camera;

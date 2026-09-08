@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cell_instances.dart';
 
 /// UI-R25 #3: Add with a live selection fills the WHOLE selection — every
 /// selectable row kind creates over its selected range.
@@ -16,7 +17,7 @@ void main() {
 
   test('no selection = not owned (the plain playhead flow runs)', () {
     final s = session();
-    expect(s.cellInstances.createInstancesForSelection(), isFalse);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isFalse);
   });
 
   test('a drawing-row span fills every EMPTY gap with a gap-length cel in '
@@ -34,7 +35,7 @@ void main() {
       headIndex: 5,
       headLayerId: bId,
     );
-    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
 
     final a = layerOf(s, aId);
     // Gaps [0,2) and [3,6) filled around the untouched island at 2.
@@ -60,7 +61,7 @@ void main() {
       anchorIndex: 1,
       headIndex: 4,
     );
-    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
     final se = layerOf(s, seId);
     expect(se.timeline[1]!.length, 4);
 
@@ -71,7 +72,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
     final instr = layerOf(s, instrId);
     expect(instr.instructions[0]!.length, 3);
     expect(
@@ -92,7 +93,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 3,
     );
-    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
     final camera = s.activeCutOrNull!.camera;
     for (var frame = 0; frame < 4; frame += 1) {
       expect(camera.keyframeAt(frame), isNotNull, reason: 'frame $frame');
@@ -128,7 +129,7 @@ void main() {
       containsAll(<LayerId>[cameraId, instrId, drawingId]),
       reason: 'the span must cover all three row kinds for this contract',
     );
-    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
     expect(layerOf(s, instrId).instructions, isNotEmpty);
     expect(layerOf(s, drawingId).timeline, isNotEmpty);
@@ -155,7 +156,7 @@ void main() {
       headIndex: 4,
       spanLaneIds: const [],
     );
-    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
     expect(
       layerOf(s, layerId).transformTrack.position.keys.keys.toSet(),
       {2, 3, 4},
@@ -181,3 +182,14 @@ void main() {
     expect(layerOf(s, instrId).instructions[0], same(before));
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CellInstances cellInstancesOf(EditorSessionManager session) => session.cellInstances;

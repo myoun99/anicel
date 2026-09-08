@@ -17,6 +17,7 @@ import 'package:anicel/src/models/pixel_verb_subject.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cell_verbs.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 
@@ -167,7 +168,7 @@ void main() {
     final session = await pump(tester);
     await drawableRow(tester, session);
     expect(session.pixelVerbSubject, PixelVerbSubject.standing);
-    expect(session.cells.pixelVerbCellKeys(), hasLength(1));
+    expect(cellVerbsOf(session).pixelVerbCellKeys(), hasLength(1));
   });
 
   testWidgets(
@@ -175,7 +176,7 @@ void main() {
       '옛날에 했다가 폐기했어」', (tester) async {
     final session = await pump(tester);
     await drawableRow(tester, session);
-    final standing = session.cells.pixelVerbCellKeys();
+    final standing = cellVerbsOf(session).pixelVerbCellKeys();
     expect(standing, hasLength(1));
 
     // Select every row there is. Under the discarded design this would have
@@ -194,7 +195,7 @@ void main() {
           '「recolour all of their drawings」',
     );
     expect(
-      session.cells.pixelVerbCellKeys().map((k) => k.frameId).toList(),
+      cellVerbsOf(session).pixelVerbCellKeys().map((k) => k.frameId).toList(),
       standing.map((k) => k.frameId).toList(),
     );
   });
@@ -217,7 +218,7 @@ void main() {
     // to say 「more than standing would give you」 or it is not about the range
     // at all.
     expect(
-      session.cells.pixelVerbCellKeys().length,
+      cellVerbsOf(session).pixelVerbCellKeys().length,
       greaterThan(1),
       reason: 'a range is drawn ACROSS the cels, which is why it is the one '
           'rung allowed to name more than one',
@@ -245,7 +246,7 @@ void main() {
     final session = await pump(tester);
     await drawableRow(tester, session);
     expect(session.pixelVerbSubject, PixelVerbSubject.standing);
-    final key = session.cells.pixelVerbCellKeys().single;
+    final key = cellVerbsOf(session).pixelVerbCellKeys().single;
 
     // 🚨What 픽셀 비우기 leaves behind: the tiles are still there, every
     // alpha at zero. It cannot drop them — undo walks the tiles that EXIST
@@ -295,12 +296,23 @@ void main() {
       'coordinator has been published', (tester) async {
     final session = await pump(tester);
     session.pixelEditingCoordinator = null;
-    expect(session.cells.canRunPixelVerb, isFalse);
+    expect(cellVerbsOf(session).canRunPixelVerb, isFalse);
     // ⛔And the press is a no-op rather than an exception: a gate and a verb
     // that disagree is the bug T25 exists to prevent.
     expect(
-      () => session.cells.runPixelVerb(CelPixelVerb.replaceColour),
+      () => cellVerbsOf(session).runPixelVerb(CelPixelVerb.replaceColour),
       returnsNormally,
     );
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CellVerbs cellVerbsOf(EditorSessionManager session) => session.cells;

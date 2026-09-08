@@ -14,6 +14,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cut_placement.dart';
 
 /// #18 — CUT CREATION ASKS WHAT IS SELECTED, LIKE EVERY OTHER VERB.
 ///
@@ -85,7 +86,7 @@ void main() {
 
     s.selectGlobalFrame(5); // the gap between a and b
     expect(s.gapParkedGlobalFrame, 5, reason: 'fixture: really parked');
-    expect(s.cutPlacement.canCreateCut, isTrue);
+    expect(placementOf(s).canCreateCut, isTrue);
 
     s.cutVerbs.createCut();
 
@@ -140,7 +141,7 @@ void main() {
       startFrame: 4,
       endFrameExclusive: 7,
     );
-    expect(s.cutPlacement.canCreateCut, isTrue);
+    expect(placementOf(s).canCreateCut, isTrue);
 
     s.cutVerbs.createCut();
 
@@ -175,7 +176,7 @@ void main() {
       endFrameExclusive: 9,
     );
 
-    expect(s.cutPlacement.canCreateCut, isFalse);
+    expect(placementOf(s).canCreateCut, isFalse);
     s.cutVerbs.createCut();
     expect(
       cutsOf(s),
@@ -200,3 +201,14 @@ void main() {
     expect(cuts[2].id, const CutId('b'));
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CutPlacement placementOf(EditorSessionManager session) => session.cutPlacement;

@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/active_cut_span.dart';
 
 /// 🚨H17 (유저 2026-08-22) — **A CUT COMMAND DOES NOT MOVE THE ACTIVE ROW.**
 ///
@@ -42,7 +43,7 @@ void main() {
     // The rail's own composition, so a row kind added later is swept here
     // by existing rather than by being remembered.
     final kinds = <String, Layer>{
-      for (final layer in probe.activeCutSpan.activeCutRowLayers) layer.name: layer,
+      for (final layer in spanOf(probe).activeCutRowLayers) layer.name: layer,
     };
     expect(
       kinds.length,
@@ -90,7 +91,7 @@ void main() {
   test('the membership question asks the SAME three sources the rail '
       'composes from', () {
     final s = session();
-    final rows = s.activeCutSpan.activeCutRowLayers.map((layer) => layer.id).toSet();
+    final rows = spanOf(s).activeCutRowLayers.map((layer) => layer.id).toSet();
 
     for (final layer in s.layers) {
       expect(
@@ -103,3 +104,14 @@ void main() {
     }
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+ActiveCutSpan spanOf(EditorSessionManager session) => session.activeCutSpan;

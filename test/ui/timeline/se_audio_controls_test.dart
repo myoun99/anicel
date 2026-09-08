@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/audio_clips.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 /// ⑨b SE audio UX: the row's mute speaker + the audio lane's AE-style
@@ -128,31 +129,31 @@ void main() {
 
     Layer seLayer() => _seLayer(session.repository);
     expect(
-      session.audioClips.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0),
+      audioClipsOf(session).beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0),
       isTrue,
     );
 
     // Live preview: the MODEL carries the dragged offset (waveforms
     // everywhere repaint from it), history untouched.
-    session.audioClips.updateAudioClipOffsetDrag(5);
+    audioClipsOf(session).updateAudioClipOffsetDrag(5);
     expect(seLayer().audioClips.single.offsetFrames, 5);
     expect(session.canUndo, isFalse);
 
-    session.audioClips.updateAudioClipOffsetDrag(9);
+    audioClipsOf(session).updateAudioClipOffsetDrag(9);
     expect(seLayer().audioClips.single.offsetFrames, 9);
 
     // Release: ONE undo step back to the untouched clip.
-    session.audioClips.endAudioClipOffsetDrag();
+    audioClipsOf(session).endAudioClipOffsetDrag();
     expect(seLayer().audioClips.single.offsetFrames, 9);
     expect(session.canUndo, isTrue);
     session.undo();
     expect(seLayer().audioClips.single.offsetFrames, 0);
 
     // Cancel reverts silently.
-    session.audioClips.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0);
-    session.audioClips.updateAudioClipOffsetDrag(7);
+    audioClipsOf(session).beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0);
+    audioClipsOf(session).updateAudioClipOffsetDrag(7);
     expect(seLayer().audioClips.single.offsetFrames, 7);
-    session.audioClips.cancelAudioClipOffsetDrag();
+    audioClipsOf(session).cancelAudioClipOffsetDrag();
     expect(seLayer().audioClips.single.offsetFrames, 0);
   });
 
@@ -276,7 +277,7 @@ void main() {
       '0f',
     );
 
-    // Tap to type: Enter commits through session.audioClips.setAudioClipOffset.
+    // Tap to type: Enter commits through audioClipsOf(session).setAudioClipOffset.
     await tester.tap(valueCell);
     await tester.pumpAndSettle();
     // F-22 ②: the `f` is CHROME — the box holds the number alone, and a
@@ -339,7 +340,7 @@ void main() {
         .firstWhere((layer) => layer.id == const LayerId('sea-cel'));
 
     // A DRAWING row has no clips to edit — and asking must not create one.
-    session.audioClips.setAudioClipGain(const LayerId('sea-cel'), 0, 0.5);
+    audioClipsOf(session).setAudioClipGain(const LayerId('sea-cel'), 0, 0.5);
     expect(celLayer().audioClips, isEmpty);
     expect(
       session.canUndo,
@@ -348,7 +349,7 @@ void main() {
     );
 
     // An index past the end is refused, not clamped to the last clip.
-    session.audioClips.setAudioClipGain(_seLayerId, 7, 0.5);
+    audioClipsOf(session).setAudioClipGain(_seLayerId, 7, 0.5);
     expect(seLayer().audioClips.single.gain, 1.0);
     expect(session.canUndo, isFalse);
 
@@ -356,18 +357,18 @@ void main() {
     // written for. `7` is refused by any upper bound at all; only
     // `clipIndex == clips.length` tells `>=` apart from `>`, and past
     // that guard the edit reaches `clips[clipIndex]` and throws.
-    session.audioClips.setAudioClipGain(_seLayerId, 1, 0.5);
+    audioClipsOf(session).setAudioClipGain(_seLayerId, 1, 0.5);
     expect(seLayer().audioClips.single.gain, 1.0);
     expect(session.canUndo, isFalse);
 
     // Negative numbers clamp to zero rather than reaching the model.
-    session.audioClips.setAudioClipOffset(_seLayerId, 0, -4);
+    audioClipsOf(session).setAudioClipOffset(_seLayerId, 0, -4);
     expect(
       seLayer().audioClips.single.offsetFrames,
       0,
       reason: 'a negative slide is zero, not a negative offset',
     );
-    session.audioClips.setAudioClipGain(_seLayerId, 0, -2);
+    audioClipsOf(session).setAudioClipGain(_seLayerId, 0, -2);
     expect(
       seLayer().audioClips.single.gain,
       0.0,
@@ -430,7 +431,7 @@ void main() {
         .expand((cut) => cut.layers)
         .firstWhere((layer) => layer.id == const LayerId('sea-cel'));
 
-    session.audioClips.setAudioClipGain(const LayerId('sea-cel'), 0, 0.25);
+    audioClipsOf(session).setAudioClipGain(const LayerId('sea-cel'), 0, 0.25);
     expect(
       celLayer().audioClips.single.gain,
       0.75,
@@ -504,7 +505,7 @@ void main() {
     // Deliberately UNSORTED and straddling: an ascending removal would
     // take 0 out, slide everything down, and then take what is now index 2
     // (`d.wav`) instead of `c.wav`.
-    session.audioClips.unlinkAudioClipsFromLayer(_seLayerId, [0, 2]);
+    audioClipsOf(session).unlinkAudioClipsFromLayer(_seLayerId, [0, 2]);
 
     expect(
       seLayer().audioClips.map((clip) => clip.filePath),
@@ -520,7 +521,7 @@ void main() {
 
     // An unlink that removes nothing is not an undo step.
     session.redo();
-    session.audioClips.unlinkAudioClipsFromLayer(_seLayerId, [9]);
+    audioClipsOf(session).unlinkAudioClipsFromLayer(_seLayerId, [9]);
     expect(
       seLayer().audioClips.map((clip) => clip.filePath),
       ['b.wav', 'd.wav'],
@@ -537,18 +538,18 @@ void main() {
 
     Layer seLayer() => _seLayer(session.repository);
 
-    session.audioClips.setAudioClipGain(_seLayerId, 0, 0.25);
+    audioClipsOf(session).setAudioClipGain(_seLayerId, 0, 0.25);
     expect(seLayer().audioClips.single.gain, 0.25);
 
-    session.audioClips.setAudioClipGain(_seLayerId, 0, 0.25);
-    session.audioClips.setAudioClipOffset(_seLayerId, 0, 0);
-    session.audioClips.setAudioClipFades(
+    audioClipsOf(session).setAudioClipGain(_seLayerId, 0, 0.25);
+    audioClipsOf(session).setAudioClipOffset(_seLayerId, 0, 0);
+    audioClipsOf(session).setAudioClipFades(
       _seLayerId,
       0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
     );
-    session.audioClips.setAudioClipFadeCurve(
+    audioClipsOf(session).setAudioClipFadeCurve(
       _seLayerId,
       0,
       AudioFadeCurve.linear,
@@ -565,3 +566,14 @@ void main() {
     expect(session.canUndo, isFalse);
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+AudioClips audioClipsOf(EditorSessionManager session) => session.audioClips;

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cut_shift.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// Design D: the rigid shove a drag used to do, as a verb you aim. One rule
@@ -30,8 +31,8 @@ void main() {
       final firstDuration = s.cutById(first)!.duration;
 
       s.selectCut(first);
-      expect(s.cutShift.canPushCuts, isTrue);
-      s.cutShift.pushCuts(6);
+      expect(cutShoveOf(s).canPushCuts, isTrue);
+      cutShoveOf(s).pushCuts(6);
 
       expect(layoutStart(s, first), 6);
       expect(layoutStart(s, second), secondStart + 6);
@@ -49,13 +50,13 @@ void main() {
       final first = s.repository.requireProject().tracks.first.cuts[0].id;
 
       s.selectCut(first);
-      s.cutShift.pushCuts(6);
-      expect(s.cutShift.cutPullSlack, 6);
+      cutShoveOf(s).pushCuts(6);
+      expect(cutShoveOf(s).cutPullSlack, 6);
 
       // Asking for more than there is closes what there is.
-      s.cutShift.pullCuts(10);
+      cutShoveOf(s).pullCuts(10);
       expect(layoutStart(s, first), 0);
-      expect(s.cutShift.canPullCuts, isFalse);
+      expect(cutShoveOf(s).canPullCuts, isFalse);
     });
 
     test('a packed track cannot pull — nothing to close', () {
@@ -63,8 +64,8 @@ void main() {
       s.cutVerbs.createCut();
       s.selectCut(s.repository.requireProject().tracks.first.cuts[0].id);
 
-      expect(s.cutShift.canPushCuts, isTrue);
-      expect(s.cutShift.canPullCuts, isFalse);
+      expect(cutShoveOf(s).canPushCuts, isTrue);
+      expect(cutShoveOf(s).canPullCuts, isFalse);
     });
 
     test('the SELECTION decides the anchor: the run\'s first cut', () {
@@ -83,7 +84,7 @@ void main() {
         anchorGlobalFrame: secondStart,
         headGlobalFrame: layoutStart(s, third),
       );
-      s.cutShift.pushCuts(4);
+      cutShoveOf(s).pushCuts(4);
 
       expect(layoutStart(s, first), 0);
       expect(layoutStart(s, second), secondStart + 4);
@@ -103,7 +104,7 @@ void main() {
       s.cutMove.cancelCutMoveDrag();
 
       s.selectCut(first);
-      s.cutShift.pushCuts(5);
+      cutShoveOf(s).pushCuts(5);
       expect(layoutStart(s, first), 5);
     });
   });
@@ -191,3 +192,14 @@ List<(int, int)> blocksOf(EditorSessionManager s) {
       (entry.key, entry.key + entry.value.length!),
   ];
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CutShift cutShoveOf(EditorSessionManager session) => session.cutShift;

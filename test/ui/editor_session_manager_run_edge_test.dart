@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/edge_drag.dart';
 
 /// UI-R9 #10: the session's run-edge property API — one-undo commits,
 /// selection-scoped repeat patterns, None clears.
@@ -279,14 +280,14 @@ void main() {
     expect(layerOf(s, layerId).timeline[1]!.length, cutEnd - 1);
 
     expect(
-      s.edgeDrag.beginCutEdgeDrag(
+      edgeDragOf(s).beginCutEdgeDrag(
         cutId: s.requireActiveCut.id,
         edge: TimelineBlockEdge.end,
       ),
       isTrue,
     );
-    s.edgeDrag.updateCutEdgeDrag(6);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).updateCutEdgeDrag(6);
+    edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.requireActiveCut.duration, cutEnd + 6);
     expect(layerOf(s, layerId).timeline[1]!.length, cutEnd + 5);
@@ -397,3 +398,14 @@ void main() {
     expect(layer.timeline[1]!.frameId, blocks[3]!.frameId);
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+EdgeDrag edgeDragOf(EditorSessionManager session) => session.edgeDrag;

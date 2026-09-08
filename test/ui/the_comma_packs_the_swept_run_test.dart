@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/exposure_verbs.dart';
 
 /// THE COMMA SET OVER A BAND (UI-R17 #7).
 ///
@@ -30,7 +31,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    s.exposureVerbs.setCommaForSelectionOrCurrent(2);
+    commaVerbsOf(s).setCommaForSelectionOrCurrent(2);
 
     expect(
       _blocks(s),
@@ -40,7 +41,7 @@ void main() {
 
     // No new sweep: the selection followed the retimed span, so the same
     // three cels answer the next press.
-    s.exposureVerbs.setCommaForSelectionOrCurrent(1);
+    commaVerbsOf(s).setCommaForSelectionOrCurrent(1);
 
     expect(
       _blocks(s),
@@ -58,3 +59,15 @@ List<(int, int)> _blocks(EditorSessionManager s) {
       (entry.key, entry.key + entry.value.length!),
   ];
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+ExposureVerbs commaVerbsOf(EditorSessionManager session) =>
+    session.exposureVerbs;

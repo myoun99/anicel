@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/folders_and_attachments.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 
@@ -53,14 +54,14 @@ void main() {
     s.selectFrameIndex(2);
     s.createDrawingAtCurrentFrame();
     s.selectFrameIndex(0);
-    s.folders.addAttachedLayer(AttachedPlacement.above);
+    foldersOf(s).addAttachedLayer(AttachedPlacement.above);
     final firstId = s.activeLayer!.id;
     // A second attach row above it, so the first one is BURIED in the run.
-    s.folders.addAttachedLayer(AttachedPlacement.above);
+    foldersOf(s).addAttachedLayer(AttachedPlacement.above);
     final secondId = s.activeLayer!.id;
     s.selectLayer(firstId);
 
-    expect(s.folders.canDetachActiveLayer, isTrue);
+    expect(foldersOf(s).canDetachActiveLayer, isTrue);
     final displayed = s.layers.firstWhere((layer) => layer.id == firstId);
     final shownBlocks = [
       for (final entry in displayed.timeline.entries)
@@ -69,7 +70,7 @@ void main() {
     ];
     expect(shownBlocks, hasLength(2), reason: 'it mirrors the base\'s two cels');
 
-    s.folders.detachActiveLayer();
+    foldersOf(s).detachActiveLayer();
 
     final detached = _row(s, firstId);
     expect(detached.attachedToLayerId, isNull);
@@ -106,9 +107,9 @@ void main() {
       'keeps the fx lanes off the group', () {
     final s = _session();
     s.createDrawingAtCurrentFrame();
-    s.folders.addAttachedLayer(AttachedPlacement.above);
+    foldersOf(s).addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
-    s.folders.groupActiveAttachIntoFolder();
+    foldersOf(s).groupActiveAttachIntoFolder();
     final organizerId = _rows(s)
         .firstWhere((layer) => layer.kind == LayerKind.folder)
         .id;
@@ -120,7 +121,7 @@ void main() {
       reason: 'the fixture is a real organizer',
     );
 
-    s.folders.detachActiveLayer();
+    foldersOf(s).detachActiveLayer();
 
     expect(_row(s, attachId).attachedToLayerId, isNull);
     expect(_row(s, attachId).folderId, isNot(organizerId));
@@ -134,7 +135,7 @@ void main() {
     final s = _session();
     final base = s.activeLayer!;
     s.createDrawingAtCurrentFrame();
-    s.folders.addAttachedLayer(AttachedPlacement.above);
+    foldersOf(s).addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
     final before = _row(s, attachId);
     expect(before.attachedPlacement, AttachedPlacement.above);
@@ -167,7 +168,7 @@ void main() {
       'now', () {
     final s = _session();
     final base = s.activeLayer!;
-    s.folders.addAttachedLayer(AttachedPlacement.above);
+    foldersOf(s).addAttachedLayer(AttachedPlacement.above);
     s.layerStack.addLayerOfKind(LayerKind.animation);
     final loose = s.activeLayer!.id;
     // Stack: base, attach, loose. One step DOWN puts it between them.
@@ -183,3 +184,14 @@ void main() {
     expect(_animationOrder(s).last, loose.value);
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+FoldersAndAttachments foldersOf(EditorSessionManager session) => session.folders;

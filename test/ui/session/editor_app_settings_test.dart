@@ -13,6 +13,7 @@ import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -78,7 +79,7 @@ void main() {
     first.setSaveSettings(
       const AppSaveSettings(periodicSnapshotMinutes: 7),
     );
-    first.appSettings.setAudioSyncSettings(
+    appSettingsOf(first).setAudioSyncSettings(
       const AudioSyncSettings(offset: 42, micGainDb: 3),
     );
     // R11, and ⚠️only the WRITE half crosses the boundary: the UI scale is
@@ -117,7 +118,7 @@ void main() {
           AppWorkspaceColors.settings.value.pasteboardArgb == 0xFF204060 &&
           AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
-          second.appSettings.audioSyncSettings.value.offset == 42,
+          appSettingsOf(second).audioSyncSettings.value.offset == 42,
     );
 
     expect(second.languageSettings.value.programLanguage, AppLanguage.ko);
@@ -127,8 +128,52 @@ void main() {
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
-    expect(second.appSettings.audioSyncSettings.value.offset, 42);
-    expect(second.appSettings.audioSyncSettings.value.micGainDb, 3);
+    expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
+    expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);
+  });
+
+  test('a set that changes nothing notifies nobody — the guard the seven '
+      'families share', () async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final settings = appSettingsOf(session);
+
+    var languageNotifications = 0;
+    void countLanguage() => languageNotifications += 1;
+    AppText.settings.addListener(countLanguage);
+    addTearDown(() => AppText.settings.removeListener(countLanguage));
+
+    var colorNotifications = 0;
+    void countColors() => colorNotifications += 1;
+    AppWorkspaceColors.settings.addListener(countColors);
+    addTearDown(
+      () => AppWorkspaceColors.settings.removeListener(countColors),
+    );
+
+    const picked = AppLanguageSettings(programLanguage: AppLanguage.ja);
+    settings.setLanguageSettings(picked);
+    settings.setLanguageSettings(picked);
+    settings.rememberPasteboardDefault(0xFF112233);
+    settings.rememberPasteboardDefault(0xFF112233);
+
+    expect(
+      languageNotifications,
+      1,
+      reason: '⛔The unchanged guard is not an optimization: these '
+          'notifiers are app-wide, so firing on a value that did not '
+          'change rebuilds the whole app, and the write behind it is a '
+          'disk touch per step of a slider drag',
+    );
+    expect(
+      colorNotifications,
+      1,
+      reason: 'the pasteboard default rides the same walk — seven '
+          'settings wrote it out before it was one method',
+    );
+    expect(AppText.settings.value, picked, reason: 'the pick still landed');
+    expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF112233);
   });
 
   test('a session with no stores keeps the in-memory defaults', () async {
@@ -141,7 +186,7 @@ void main() {
     expect(session.languageSettings.value, const AppLanguageSettings());
     expect(AppColors.accentSettings.value, const AppAccentSettings());
     expect(AppWorkspaceColors.settings.value, const AppWorkspaceColors());
-    expect(session.appSettings.audioSyncSettings.value, AudioSyncSettings.defaults);
+    expect(appSettingsOf(session).audioSyncSettings.value, AudioSyncSettings.defaults);
   });
 }
 
@@ -153,3 +198,14 @@ Future<void> _settleUntil(bool Function() done, {int rounds = 300}) async {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+EditorAppSettings appSettingsOf(EditorSessionManager session) => session.appSettings;

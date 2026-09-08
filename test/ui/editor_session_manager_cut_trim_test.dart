@@ -6,6 +6,8 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/edge_drag.dart';
+import 'package:anicel/src/ui/session/cut_verbs.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -13,7 +15,7 @@ void main() {
   /// Two cuts on the default track; returns (session, first id, second id).
   (EditorSessionManager, CutId, CutId) twoCutSession() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    s.cutVerbs.createCut();
+    cutVerbsOf(s).createCut();
     final track = s.repository.requireProject().tracks.first;
     return (s, track.cuts[0].id, track.cuts[1].id);
   }
@@ -85,10 +87,10 @@ void main() {
     s.addListener(() => notifies += 1);
 
     expect(
-      s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end),
+      edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end),
       isTrue,
     );
-    s.edgeDrag.updateCutEdgeDrag(3);
+    edgeDragOf(s).updateCutEdgeDrag(3);
     // The preview rides the channel; the REPOSITORY stays untouched and no
     // session notify fires per step (the drag-lag fix's core invariant).
     expect(previewedDuration(s, first), before + 3);
@@ -97,13 +99,13 @@ void main() {
 
     // Cumulative deltas recompute from the snapshot; a huge negative clamps
     // at one frame.
-    s.edgeDrag.updateCutEdgeDrag(-before - 30);
+    edgeDragOf(s).updateCutEdgeDrag(-before - 30);
     expect(previewedDuration(s, first), 1);
 
-    s.edgeDrag.updateCutEdgeDrag(6);
+    edgeDragOf(s).updateCutEdgeDrag(6);
     expect(previewedDuration(s, first), before + 6);
 
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(first)!.duration, before + 6);
     expect(s.dragPreview.value, isNull);
     expect(notifies, 1);
@@ -124,7 +126,7 @@ void main() {
     final secondEnd = firstDuration + secondDuration;
 
     expect(
-      s.edgeDrag.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start),
+      edgeDragOf(s).beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start),
       isTrue,
     );
 
@@ -132,7 +134,7 @@ void main() {
     // front of it does NOT have a gap torn open between them — it
     // translates, keeping its own length, and the difference comes to rest
     // at the head of the film.
-    s.edgeDrag.updateCutEdgeDrag(5);
+    edgeDragOf(s).updateCutEdgeDrag(5);
     expect(previewedDuration(s, second), secondDuration - 5);
     expect(
       previewedGap(s, second),
@@ -151,16 +153,16 @@ void main() {
     );
 
     // Rightward movement clamps at length 1.
-    s.edgeDrag.updateCutEdgeDrag(secondDuration + 40);
+    edgeDragOf(s).updateCutEdgeDrag(secondDuration + 40);
     expect(previewedDuration(s, second), 1);
 
     // Leftward past the wall (no gap, no predecessor slack) clamps back
     // to the original start — nothing changes.
-    s.edgeDrag.updateCutEdgeDrag(-9);
+    edgeDragOf(s).updateCutEdgeDrag(-9);
     expect(s.dragPreview.value, isNull);
 
-    s.edgeDrag.updateCutEdgeDrag(4);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).updateCutEdgeDrag(4);
+    edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(s.cutById(first)!.leadingGapFrames, 4);
     expect(s.cutById(second)!.duration, secondDuration - 4);
@@ -182,9 +184,9 @@ void main() {
     // Give the FIRST cut a 4-frame lead-in gap. Its START edge trims from
     // the front, which is what opens a lead-in — a move drag cannot, with
     // the second cut packed against it.
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
-    s.edgeDrag.updateCutEdgeDrag(4);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+    edgeDragOf(s).updateCutEdgeDrag(4);
+    edgeDragOf(s).endCutEdgeDrag();
     expect(layoutStart(s, first), 4);
 
     final firstDuration = s.cutById(first)!.duration;
@@ -194,11 +196,11 @@ void main() {
     // Grow the SECOND cut's start left by 6: its own gap is 0, so the
     // cascade pushes the first cut left through ITS gap (4 frames of
     // slack) and clamps there — the length grows by the achieved 4.
-    s.edgeDrag.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-    s.edgeDrag.updateCutEdgeDrag(-6);
+    edgeDragOf(s).beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+    edgeDragOf(s).updateCutEdgeDrag(-6);
     expect(previewedGap(s, first), 0);
     expect(previewedDuration(s, second), secondDuration + 4);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.cutById(first)!.leadingGapFrames, 0);
     expect(layoutStart(s, first), 0);
@@ -216,11 +218,11 @@ void main() {
     final secondStart = layoutStart(s, second);
 
     expect(
-      s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start),
+      edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start),
       isTrue,
     );
-    s.edgeDrag.updateCutEdgeDrag(3);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).updateCutEdgeDrag(3);
+    edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.cutById(first)!.leadingGapFrames, 3);
     expect(s.cutById(first)!.duration, firstDuration - 3);
@@ -240,18 +242,18 @@ void main() {
 
     // Grow the first cut by 3: the gap absorbs it, the second cut's start
     // does not move.
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(3);
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(3);
     expect(previewedDuration(s, first), firstDuration + 3);
     expect(previewedGap(s, second), 1);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(second)!.leadingGapFrames, 1);
     expect(layoutStart(s, second), firstDuration + 4);
 
     // Grow past the remaining gap: gap 0, the excess pushes the second cut.
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(3);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(3);
+    edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(layoutStart(s, second), firstDuration + 6);
   });
@@ -264,10 +266,10 @@ void main() {
     openGapBefore(s, second, 4);
     final secondStart = layoutStart(s, second);
 
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(-2);
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(-2);
     expect(previewedGap(s, second), 6);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.cutById(first)!.duration, firstDuration - 2);
     expect(s.cutById(second)!.leadingGapFrames, 6);
@@ -283,10 +285,10 @@ void main() {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
 
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(-3);
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(-3);
     expect(previewedGap(s, second), 0);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.cutById(first)!.duration, firstDuration - 3);
     expect(s.cutById(second)!.leadingGapFrames, 0);
@@ -306,9 +308,9 @@ void main() {
     final spans = s.activeTrack.transitionLayer.instructions;
     expect(spans.keys, [duration - 3]);
 
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(-4);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(-4);
+    edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.cutById(first)!.duration, duration - 4);
     expect(
@@ -323,9 +325,9 @@ void main() {
     expect(s.activeTrack.transitionLayer.instructions, spans);
 
     // Growth leaves them alone the same way.
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(5);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(5);
+    edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(first)!.duration, duration + 5);
     expect(s.activeTrack.transitionLayer.instructions, spans);
   });
@@ -339,9 +341,9 @@ void main() {
     });
     final spans = s.activeTrack.transitionLayer.instructions;
 
-    s.edgeDrag.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-    s.edgeDrag.updateCutEdgeDrag(5);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+    edgeDragOf(s).updateCutEdgeDrag(5);
+    edgeDragOf(s).endCutEdgeDrag();
 
     // R10 R4: the emptiness lands at the head, not between the neighbours.
     expect(s.cutById(first)!.leadingGapFrames, 5);
@@ -358,12 +360,12 @@ void main() {
     final before = s.cutById(first)!.duration;
     final undoDepthProbe = s.canUndo; // createCut is already undoable.
 
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(5);
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(5);
     expect(previewedDuration(s, first), before + 5);
     expect(s.cutById(first)!.duration, before);
 
-    s.edgeDrag.cancelCutEdgeDrag();
+    edgeDragOf(s).cancelCutEdgeDrag();
     expect(s.dragPreview.value, isNull);
     expect(s.cutById(first)!.duration, before);
     expect(s.canUndo, undoDepthProbe);
@@ -376,9 +378,9 @@ void main() {
   test('ending an unchanged drag leaves no undo entry', () {
     final (s, first, _) = twoCutSession();
 
-    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.edgeDrag.updateCutEdgeDrag(0);
-    s.edgeDrag.endCutEdgeDrag();
+    edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    edgeDragOf(s).updateCutEdgeDrag(0);
+    edgeDragOf(s).endCutEdgeDrag();
 
     // The only undoable step is still the cut creation.
     s.undo();
@@ -418,9 +420,9 @@ void main() {
       final (s, first, second) = twoCutSession();
 
       // first: gap 4, second: gap 2.
-      s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
-      s.edgeDrag.updateCutEdgeDrag(4);
-      s.edgeDrag.endCutEdgeDrag();
+      edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+      edgeDragOf(s).updateCutEdgeDrag(4);
+      edgeDragOf(s).endCutEdgeDrag();
       openGapBefore(s, second, 2);
       final secondStart = layoutStart(s, second);
       final firstStart = layoutStart(s, first);
@@ -482,8 +484,8 @@ void main() {
     /// Three cuts on the default track.
     (EditorSessionManager, CutId, CutId, CutId) threeCutSession() {
       final s = EditorSessionManager(initialProject: createDefaultProject());
-      s.cutVerbs.createCut();
-      s.cutVerbs.createCut();
+      cutVerbsOf(s).createCut();
+      cutVerbsOf(s).createCut();
       final track = s.repository.requireProject().tracks.first;
       return (s, track.cuts[0].id, track.cuts[1].id, track.cuts[2].id);
     }
@@ -565,9 +567,9 @@ void main() {
       final (s, first, second) = twoCutSession();
       // Give the FIRST cut a 5-frame lead-in: its start edge trims from
       // the front, the one gesture that can empty the head of the film.
-      s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
-      s.edgeDrag.updateCutEdgeDrag(5);
-      s.edgeDrag.endCutEdgeDrag();
+      edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+      edgeDragOf(s).updateCutEdgeDrag(5);
+      edgeDragOf(s).endCutEdgeDrag();
       expect(layoutStart(s, first), 5);
       final firstDuration = s.cutById(first)!.duration;
       final secondDuration = s.cutById(second)!.duration;
@@ -610,9 +612,9 @@ void main() {
     test('a swapped cut keeps following the hand into the free space past '
         'its seat (UI 08-14 #5, stated in cuts)', () {
       final (s, first, second) = twoCutSession();
-      s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
-      s.edgeDrag.updateCutEdgeDrag(5);
-      s.edgeDrag.endCutEdgeDrag();
+      edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+      edgeDragOf(s).updateCutEdgeDrag(5);
+      edgeDragOf(s).endCutEdgeDrag();
       final secondDuration = s.cutById(second)!.duration;
 
       expect(s.cutMove.beginCutMoveDrag(first), isTrue);
@@ -717,14 +719,14 @@ void main() {
       // Selecting ALL cuts: delete stands down (the project never
       // empties).
       selectCutRun(s, first, third);
-      expect(s.cutVerbs.canDeleteSelectedCuts, isFalse);
-      s.cutVerbs.deleteSelectedCuts();
+      expect(cutVerbsOf(s).canDeleteSelectedCuts, isFalse);
+      cutVerbsOf(s).deleteSelectedCuts();
       expect(s.repository.requireProject().tracks.first.cuts.length, 3);
 
       // A two-cut run deletes in one step and clears the selection.
       selectCutRun(s, first, second);
-      expect(s.cutVerbs.canDeleteSelectedCuts, isTrue);
-      s.cutVerbs.deleteSelectedCuts();
+      expect(cutVerbsOf(s).canDeleteSelectedCuts, isTrue);
+      cutVerbsOf(s).deleteSelectedCuts();
       final cutsAfter = s.repository.requireProject().tracks.first.cuts;
       expect([for (final cut in cutsAfter) cut.id], [third]);
       expect(s.storyboardRows.storyboardSelectedCutIds, isEmpty);
@@ -740,7 +742,7 @@ void main() {
       s.selectCut(third);
 
       selectCutRun(s, first, second);
-      s.cutVerbs.deleteActiveCut();
+      cutVerbsOf(s).deleteActiveCut();
 
       // The SELECTED run went, not the active cut.
       final cutsAfter = s.repository.requireProject().tracks.first.cuts;
@@ -749,3 +751,25 @@ void main() {
     });
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CutVerbs cutVerbsOf(EditorSessionManager session) => session.cutVerbs;
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+EdgeDrag edgeDragOf(EditorSessionManager session) => session.edgeDrag;

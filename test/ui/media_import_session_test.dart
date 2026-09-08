@@ -12,6 +12,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cut_folder_import_door.dart';
 
 import '../helpers/fake_pdf_document.dart';
 
@@ -227,7 +228,7 @@ void main() {
       await writePng('$root${sep}A3.png', seed: 0xFF333333);
       await writePng('$root${sep}B1.png', seed: 0xFF444444);
       await writePng('$root${sep}_BG.png', seed: 0xFF555555);
-      return s.cutFolderDoor.importCutFolder(
+      return cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         copyIntoProject: false,
       );
@@ -289,7 +290,7 @@ void main() {
       await writePng('$root${sep}_TS_a.png', seed: 0xFF222222);
       final movie = File([tempDir.path, root, '참고.mp4'].join(sep));
       await movie.writeAsBytes(const [0, 0, 0, 24]);
-      return s.cutFolderDoor.importCutFolder(
+      return cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         copyIntoProject: true,
       );
@@ -462,7 +463,7 @@ void main() {
       final sep = Platform.pathSeparator;
       await writePng('$root${sep}A1.png');
       await writePng('$root${sep}LO${sep}A1.png', seed: 0xFF0000FF);
-      await s.cutFolderDoor.importCutFolder(
+      await cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         config: const CutFolderParseConfig(includeProcessSubfolders: true),
         copyIntoProject: false,
@@ -489,3 +490,14 @@ void main() {
     await tester.pumpAndSettle();
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CutFolderImportDoor cutFolderDoorOf(EditorSessionManager session) => session.cutFolderDoor;

@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/folder_bands.dart';
 
 /// THE FOLDER BANDS ARE MEASURED.
 ///
@@ -33,7 +34,7 @@ void main() {
   test('a folder\'s band members are its subtree', () {
     final (s, member, folder) = sessionWithFolder();
     expect(
-      s.folderBands.folderBandMembersOf(folder).map((l) => l.id),
+      bandsOf(s).folderBandMembersOf(folder).map((l) => l.id),
       [member],
       reason: 'the cache is filled from the layer stack; empty means it '
           'never was',
@@ -42,7 +43,7 @@ void main() {
 
   test('a folder\'s runs are the union of its members\' exposures', () {
     final (s, _, folder) = sessionWithFolder();
-    final runs = s.folderBands.folderBandRunsOf(folder);
+    final runs = bandsOf(s).folderBandRunsOf(folder);
     expect(runs, hasLength(1), reason: 'one cel drawn at the first frame');
     expect(runs.single.start, 0);
     expect(runs.single.endExclusive, greaterThan(0));
@@ -51,11 +52,11 @@ void main() {
   test('the band is the folder carrying the union as its timeline', () {
     final (s, _, folder) = sessionWithFolder();
     final folderLayer = s.activeCutOrNull!.layers.byId(folder)!;
-    final band = s.folderBands.folderBandLayerFor(folderLayer);
+    final band = bandsOf(s).folderBandLayerFor(folderLayer);
     expect(band.id, folder);
     expect(band.timeline.keys, [0], reason: 'one run, so one exposure');
     expect(
-      identical(s.folderBands.folderBandLayerFor(folderLayer), band),
+      identical(bandsOf(s).folderBandLayerFor(folderLayer), band),
       isTrue,
       reason: 'nothing changed, so the SAME instance — repaint, the tile '
           'bake key and the row memo all compare the Layer instance',
@@ -65,12 +66,12 @@ void main() {
   test('a member\'s own change keeps the band; the folder\'s own change '
       'renews it', () {
     final (s, member, folder) = sessionWithFolder();
-    final band = s.folderBands.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!);
+    final band = bandsOf(s).folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!);
 
     s.layerSwitches.toggleLayerVisibility(member);
     expect(
       identical(
-        s.folderBands.folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!),
+        bandsOf(s).folderBandLayerFor(s.activeCutOrNull!.layers.byId(folder)!),
         band,
       ),
       isTrue,
@@ -79,7 +80,7 @@ void main() {
     );
 
     s.layerSwitches.toggleLayerVisibility(folder);
-    final renewed = s.folderBands.folderBandLayerFor(
+    final renewed = bandsOf(s).folderBandLayerFor(
       s.activeCutOrNull!.layers.byId(folder)!,
     );
     expect(identical(renewed, band), isFalse);
@@ -92,3 +93,11 @@ void main() {
     );
   });
 }
+
+/// The band cache under its OWN name.
+///
+/// 🚨A collaborator is only reachable by `tool/mutation_run.dart` through a
+/// test that IMPORTS it, and every pin here used to arrive through
+/// [EditorSessionManager] — so 63 of the 71 files under `lib/src/ui/session/`
+/// reported UNNAMED and the campaign skipped exactly the code round 8 wrote.
+FolderBands bandsOf(EditorSessionManager s) => s.folderBands;

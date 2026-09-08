@@ -8,6 +8,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/effects_and_fx.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -46,9 +47,9 @@ void main() {
 
   test('adding an effect is one undo step and changes no pixel yet', () {
     final layerId = session.activeLayer!.id;
-    expect(session.effectsAndFx.canAddEffectToActiveLayer, isTrue);
+    expect(effectsOf(session).canAddEffectToActiveLayer, isTrue);
 
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final effect = session.activeLayer!.effects.single;
     expect(effect.kind, EffectKind.blur);
     expect(
@@ -65,8 +66,8 @@ void main() {
   });
 
   test('two effects added in a row get distinct ids (the lane address)', () {
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final effects = session.activeLayer!.effects;
     expect(effects, hasLength(2));
     expect(effects.first.id, isNot(effects.last.id));
@@ -77,7 +78,7 @@ void main() {
   });
 
   test('a lane value edit reaches the composite and undoes in one step', () {
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final layer = session.activeLayer!;
     final laneId = effectLaneId(layer.effects.single.id, 'blurX');
 
@@ -87,7 +88,7 @@ void main() {
       frameIndex: 0,
       input: '9',
     )!;
-    session.effectsAndFx.updateLayerEffects(layer.id, edited, description: 'Set Blur Width');
+    effectsOf(session).updateLayerEffects(layer.id, edited, description: 'Set Blur Width');
 
     // R9 #18: the edit lands as a KEY, and one key resolves to itself at
     // every frame — so the pixels are what the static slot used to give.
@@ -112,9 +113,9 @@ void main() {
   });
 
   test('the fx switch bypasses the chain on the editing canvas too', () {
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final layer = session.activeLayer!;
-    session.effectsAndFx.updateLayerEffects(
+    effectsOf(session).updateLayerEffects(
       layer.id,
       effectsWithLaneValueEdited(
         layer.effects,
@@ -125,7 +126,7 @@ void main() {
     );
     expect(stackEffectsOf(session.editingCanvas.stack.nodes), isNotEmpty);
 
-    session.effectsAndFx.toggleLayerFx(layer.id);
+    effectsOf(session).toggleLayerFx(layer.id);
     expect(
       stackEffectsOf(session.editingCanvas.stack.nodes),
       isEmpty,
@@ -134,10 +135,10 @@ void main() {
   });
 
   test('removing an effect drops its keys, and undo brings both back', () {
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.hueSaturation);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.hueSaturation);
     final layer = session.activeLayer!;
     final effectId = layer.effects.single.id;
-    session.effectsAndFx.updateLayerEffects(
+    effectsOf(session).updateLayerEffects(
       layer.id,
       effectsWithLaneKeyToggled(
         effectsWithLaneValueEdited(
@@ -155,7 +156,7 @@ void main() {
       isTrue,
     );
 
-    session.effectsAndFx.removeEffectFromActiveLayer(effectId);
+    effectsOf(session).removeEffectFromActiveLayer(effectId);
     expect(session.activeLayer!.effects, isEmpty);
     session.undo();
     final restored = session.activeLayer!.effects.single;
@@ -169,9 +170,9 @@ void main() {
     // chain the way the composite entry does — from the FX CARRIER. Reading
     // the row's own would leave the live surface unfiltered until the first
     // cel exists, then snap to filtered.
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final base = session.activeLayer!;
-    session.effectsAndFx.updateLayerEffects(
+    effectsOf(session).updateLayerEffects(
       base.id,
       effectsWithLaneValueEdited(
         base.effects,
@@ -198,7 +199,7 @@ void main() {
 
     expect(activeNodeEffects().single.parameter('blurX'), 9);
     // …and the BASE's fx switch is what bypasses it.
-    session.effectsAndFx.toggleLayerFx(base.id);
+    effectsOf(session).toggleLayerFx(base.id);
     expect(activeNodeEffects(), isEmpty);
   });
 
@@ -207,8 +208,8 @@ void main() {
       (layer) => layer.kind == LayerKind.camera,
     );
     session.selectLayer(camera.id);
-    expect(session.effectsAndFx.canAddEffectToActiveLayer, isFalse);
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    expect(effectsOf(session).canAddEffectToActiveLayer, isFalse);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     expect(
       session.requireActiveCut.layers
           .firstWhere((layer) => layer.id == camera.id)
@@ -267,9 +268,9 @@ void main() {
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
       expect(scopeIn(session.editingCanvas.stack.nodes), isNull);
 
-      session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      effectsOf(session).addEffectToActiveLayer(EffectKind.brightnessContrast);
       final row = session.activeLayer!;
-      session.effectsAndFx.updateLayerEffects(
+      effectsOf(session).updateLayerEffects(
         row.id,
         effectsWithLaneValueEdited(
           row.effects,
@@ -293,7 +294,7 @@ void main() {
     test('it takes effects but no transform lanes', () {
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final row = session.activeLayer!;
-      expect(session.effectsAndFx.canAddEffectToActiveLayer, isTrue);
+      expect(effectsOf(session).canAddEffectToActiveLayer, isTrue);
       expect(row.kind.hasLayerTransform, isFalse);
       // …and the coordinator refuses a transform outright — writing one is
       // a programming error, not a silently ignored edit.
@@ -344,9 +345,9 @@ void main() {
         reason: 'the folder still sits directly above its member run',
       );
 
-      session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      effectsOf(session).addEffectToActiveLayer(EffectKind.brightnessContrast);
       final withValue = session.activeLayer!;
-      session.effectsAndFx.updateLayerEffects(
+      effectsOf(session).updateLayerEffects(
         withValue.id,
         effectsWithLaneValueEdited(
           withValue.effects,
@@ -364,7 +365,7 @@ void main() {
 
     test('the row survives a save/load round trip as an adjustment', () {
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
-      session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
       final row = session.activeLayer!;
 
       final reloaded = EditorSessionManager(
@@ -382,7 +383,7 @@ void main() {
   });
 
   test('a lane RANGE move shifts effect keys as one rigid group', () {
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final layer = session.activeLayer!;
     final effectId = layer.effects.single.id;
     final laneId = effectLaneId(effectId, 'blurX');
@@ -394,7 +395,7 @@ void main() {
         frameIndex: frame,
       )!;
     }
-    session.effectsAndFx.updateLayerEffects(layer.id, effects);
+    effectsOf(session).updateLayerEffects(layer.id, effects);
 
     session.updateLaneRangeSelectionDrag(
       layerId: layer.id,
@@ -429,9 +430,9 @@ void main() {
   });
 
   test('saving and reloading the project keeps the chain identical', () {
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+    effectsOf(session).addEffectToActiveLayer(EffectKind.brightnessContrast);
     final layer = session.activeLayer!;
-    session.effectsAndFx.updateLayerEffects(
+    effectsOf(session).updateLayerEffects(
       layer.id,
       effectsWithLaneValueEdited(
         layer.effects,
@@ -455,3 +456,14 @@ void main() {
     );
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+EffectsAndFx effectsOf(EditorSessionManager session) => session.effectsAndFx;

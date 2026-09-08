@@ -18,6 +18,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cut_move_drag.dart';
 
 /// What the storyboard's selection can DO. Every verb here is the
 /// timeline's, aimed at the other axis: the rows differ, the grammar does
@@ -616,8 +617,8 @@ void main() {
       expect(session.trackFrameRangeSelection.value!.startFrame, 8);
       expect(session.storyboardRows.storyboardSelectedCutIds, [const CutId('cut-2')]);
 
-      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
-      session.cutMove.updateCutMoveDrag(-8);
+      expect(cutMoveOf(session).beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      cutMoveOf(session).updateCutMoveDrag(-8);
       // MID-DRAG: the drag machine writes the previewed span through the
       // selection notifier — the band painters just listen (the timeline's
       // law, now on the cut axis).
@@ -627,7 +628,7 @@ void main() {
       expect(midDrag.trackId, _trackId);
       expect(midDrag.anchorRow, const TrackRowAddress(_trackId));
 
-      session.cutMove.endCutMoveDrag();
+      cutMoveOf(session).endCutMoveDrag();
       // The landed span goes out AFTER the repository commit, so the
       // frames × CURRENT layout derivation resolves the MOVED cut.
       expect(
@@ -650,12 +651,12 @@ void main() {
         headGlobalFrame: 9,
       );
 
-      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      expect(cutMoveOf(session).beginCutMoveDrag(const CutId('cut-2')), isTrue);
       // The last cut is unbounded on the right: +3 re-times.
-      session.cutMove.updateCutMoveDrag(3);
+      cutMoveOf(session).updateCutMoveDrag(3);
       expect(session.trackFrameRangeSelection.value!.startFrame, 11);
 
-      session.cutMove.endCutMoveDrag();
+      cutMoveOf(session).endCutMoveDrag();
       final landed = session.trackFrameRangeSelection.value!;
       expect(landed.startFrame, 11);
       expect(landed.endFrameExclusive, 17);
@@ -670,13 +671,42 @@ void main() {
         headGlobalFrame: 9,
       );
 
-      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
-      session.cutMove.updateCutMoveDrag(3);
-      session.cutMove.cancelCutMoveDrag();
+      expect(cutMoveOf(session).beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      cutMoveOf(session).updateCutMoveDrag(3);
+      cutMoveOf(session).cancelCutMoveDrag();
 
       final restored = session.trackFrameRangeSelection.value!;
       expect(restored.startFrame, 8);
       expect(restored.endFrameExclusive, 14);
+    });
+
+    test('a REFUSED grip leaves the in-flight drag exactly as it was', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+
+      expect(cutMoveOf(session).beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      cutMoveOf(session).updateCutMoveDrag(-8);
+
+      // A cut id no track holds: the grip is refused. ⛔It must not take
+      // the slot — the first wiring of this pair overwrote the in-flight
+      // drag with null and left a preview stuck in the channel.
+      expect(
+        cutMoveOf(session).beginCutMoveDrag(const CutId('no-such-cut')),
+        isFalse,
+      );
+
+      cutMoveOf(session).endCutMoveDrag();
+      expect(
+        session.repository.requireProject().tracks.single.cuts.map(
+          (cut) => cut.id,
+        ),
+        [const CutId('cut-2'), const CutId('cut-1')],
+        reason: 'the move the user actually started still landed',
+      );
     });
 
     test('moving an UNSELECTED cut leaves the band where it is', () {
@@ -688,9 +718,9 @@ void main() {
       );
       expect(session.storyboardRows.storyboardSelectedCutIds, [const CutId('cut-1')]);
 
-      expect(session.cutMove.beginCutMoveDrag(const CutId('cut-2')), isTrue);
-      session.cutMove.updateCutMoveDrag(3);
-      session.cutMove.endCutMoveDrag();
+      expect(cutMoveOf(session).beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      cutMoveOf(session).updateCutMoveDrag(3);
+      cutMoveOf(session).endCutMoveDrag();
 
       // The selection never rode a run it did not cover.
       final selection = session.trackFrameRangeSelection.value!;
@@ -774,3 +804,14 @@ void main() {
     });
   });
 }
+
+/// The collaborator that owns the laws above, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file. Round 8 carved ~50 collaborators out of
+/// `EditorSessionManager` and every pin still arrived through the session, so
+/// 63 of the 71 files under `lib/src/ui/session/` reported UNNAMED and the
+/// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
+/// transitive reachability was tried and reverted (one small file drew 390
+/// namers); a collaborator that holds a law gets a test that names it instead.
+CutMoveDragVerbs cutMoveOf(EditorSessionManager session) => session.cutMove;

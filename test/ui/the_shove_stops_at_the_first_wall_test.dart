@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/session/block_shift.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// THE PULL STOPS WHERE THE FIRST ROW RUNS OUT OF ROOM.
@@ -42,15 +43,21 @@ void main() {
       headLayerId: rowB,
     );
 
+    // 🚨Held through its OWN type, not through the session: a mutation run
+    // aims at a collaborator only via the tests that import it, and
+    // `lib/src/ui/session/` was 63 files of UNNAMED because every pin
+    // reached the verb through `EditorSessionManager` (round 8 #6).
+    final shove = shoveOf(s);
+
     expect(
-      s.blockShift.framePullSlack(),
+      shove.framePullSlack(),
       3,
       reason:
           'row A has three frames of room and row B seven — the scope '
           'stops at three',
     );
 
-    s.blockShift.pullFrames(9);
+    shove.pullFrames(9);
 
     expect(_blocks(s, rowA), [(0, 1), (1, 2)], reason: 'A closed its gap');
     expect(
@@ -58,7 +65,7 @@ void main() {
       [(0, 1), (5, 6)],
       reason: 'B travelled the SAME three frames, not its own seven',
     );
-    expect(s.blockShift.canPullFrames(), isFalse, reason: 'A is packed now');
+    expect(shove.canPullFrames(), isFalse, reason: 'A is packed now');
   });
 }
 
@@ -69,3 +76,11 @@ List<(int, int)> _blocks(EditorSessionManager s, LayerId layerId) {
       (entry.key, entry.key + entry.value.length!),
   ];
 }
+
+/// The frame-axis shove under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file, and every pin of this law arrived
+/// through [EditorSessionManager] — so 63 of the 71 files under
+/// `lib/src/ui/session/` reported UNNAMED (round 8 #6).
+BlockShift shoveOf(EditorSessionManager session) => session.blockShift;
