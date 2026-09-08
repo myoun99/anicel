@@ -234,7 +234,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// when that lands; until then they live for the session like the three
   /// row toggles above.
   bool _railShowIcon = true;
-  bool _railShowName = false;
+
+  /// 🚨NAMES ARE ON BY DEFAULT (유저 2026-09-08: 「그룹쪽은 대신 아이콘
+  /// 버튼이아니라 **아이콘+이름**으로 해서, 이름 넣을수있게 가로로 좀 더
+  /// 길게해주고」).
+  ///
+  /// ⚠️Nothing was built for this — the named rail has existed since
+  /// 2026-07-27 (`_BrushGroupTab.namedWidth`, 96px) and only ever opened
+  /// closed. The toggle stays: 유저 confirmed 「토글은 그대로 남김」, so a
+  /// narrow screen can still trade the names back for 70px of brush list.
+  bool _railShowName = true;
 
   bool _canToggleOffRail(bool currentlyVisible) {
     return !currentlyVisible ||

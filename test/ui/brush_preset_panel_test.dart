@@ -639,8 +639,17 @@ void main() {
       of: find.byKey(const ValueKey<String>('brush-preset-tab-rail')),
       matching: find.text('A very long group name indeed'),
     );
-    expect(railName, findsNothing, reason: 'names start off');
+    // 🚨NAMES START ON (유저 2026-09-08: 「아이콘 버튼이아니라 아이콘+이름
+    // 으로 해서, 이름 넣을수있게 가로로 좀 더 길게해주고」). This assertion
+    // used to read `findsNothing, reason: 'names start off'` — the named
+    // rail existed since 2026-07-27 and only ever opened closed.
+    expect(railName, findsOneWidget, reason: 'names start on');
+    // A long name gives at the tail rather than pushing the rail wider.
+    expect(tester.widget<Text>(railName).overflow, TextOverflow.ellipsis);
 
+    // 유저 confirmed 「토글은 그대로 남김」 — a narrow screen trades the
+    // names back for brush-list width, so the control has to survive the
+    // new default.
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-preset-menu-button')),
     );
@@ -650,9 +659,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(railName, findsOneWidget);
-    // A long name gives at the tail rather than pushing the rail wider.
-    expect(tester.widget<Text>(railName).overflow, TextOverflow.ellipsis);
+    expect(railName, findsNothing);
   });
 
   testWidgets('double-tapping a tab edits its name and icon', (tester) async {
@@ -1225,4 +1232,5 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(BrushStrokePreview), findsOneWidget);
   });
+
 }
