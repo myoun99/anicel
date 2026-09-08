@@ -163,6 +163,43 @@ void main() {
     },
   );
 
+  test('🚨the converted project is bound to NO file and is UNSAVED — the '
+      'first save has to ask where the .anicel goes', () async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    // A session that was already holding an .anicel: the open has to let
+    // go of it, or the first save writes the conversion OVER the file the
+    // user opened before it.
+    session.projectFile.bindToOpenedFile(
+      '${temp.path}${Platform.pathSeparator}held.anicel',
+      entryNames: const {},
+      unsaved: false,
+    );
+    final seeksBefore = session.frameSeekCommitted.value;
+
+    expect(await session.openTvppAsProject(tvppPath: writeTvpp()), isNotNull);
+
+    expect(
+      session.projectFile.path,
+      isNull,
+      reason: 'the conversion is a NEW project — it is bound to no file',
+    );
+    expect(
+      session.projectFile.hasUnsavedChanges,
+      isTrue,
+      reason: 'a conversion is unsaved by definition — nothing on disk '
+          'holds it, so the title dot and the exit gate have to say so',
+    );
+    expect(
+      session.frameSeekCommitted.value,
+      greaterThan(seeksBefore),
+      reason: 'the playhead now stands in a different project, and the '
+          'seek-dependent panels only hear about it here',
+    );
+  });
+
   test('an unreadable pick goes through the COORDINATED read; only a '
       'parse failure answers null', () async {
     // A File Provider placeholder exists-but-refuses; the coordinated
