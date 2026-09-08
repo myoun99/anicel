@@ -13,11 +13,18 @@ import 'package:anicel/src/models/timeline_repeat.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/commands/convert_to_linked_cut_plan.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// The IMAGE layer contract (§6-z23): one cel by definition, born
 /// covering its cut, no second cel to create, an ordinary attach base.
+/// The collaborator whose comma gate this ladder reaches — named so
+/// `tool/mutation_run.dart` runs this file for it: neither of its other
+/// namers ever has a live cell BAND, which is the rung asked here.
+StoryboardCursor storyboardCursorOf(EditorSessionManager session) =>
+    session.storyboardCursor;
+
 void main() {
   test('addLayerOfKind(image) is born COVERING the cut — ONE real 1-frame '
       'cell plus a fixed end hold whose ghosts tile to the cut boundary '
@@ -368,7 +375,7 @@ void main() {
     );
 
     expect(
-      s.storyboardCursor.canSetCommaForStoryboardCursor,
+      storyboardCursorOf(s).canSetCommaForStoryboardCursor,
       isFalse,
       reason:
           'the storyboard panel\'s comma gate reads it too — its own '

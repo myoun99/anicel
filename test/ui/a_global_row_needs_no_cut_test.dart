@@ -156,6 +156,22 @@ void main() {
           'a `frame < 0` guard read as `<= 0` would make the first frame '
           'of the film the one cell the ＋ could never author on',
     );
+
+    // And the CURSOR resolves there too, which is the same guard said in
+    // the other place: author a sound at 0 and the delete must see it.
+    storyboardCursorOf(s).createSeEntryAtStoryboardCursor();
+    expect(
+      s.trackSeGlobalLayerById(seLayerId)!.timeline.keys,
+      [0, 2],
+      reason: 'fixture: the new entry sits at the global frame it was '
+          'authored on',
+    );
+    expect(
+      storyboardCursorOf(s).canDeleteBlockAtStoryboardCursor,
+      isTrue,
+      reason: 'a block at frame 0 is a block under the cursor — the guard '
+          'refuses a NEGATIVE frame, and 0 is not one',
+    );
   });
 
   test('an occupied frame still refuses, gap or not', () {
