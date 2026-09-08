@@ -13,8 +13,20 @@ import 'separable_blend_mode.dart';
 /// pen-up (never dab-by-dab — overlapping dabs must not double-apply),
 /// with the live overlay previewing through the matching ui.BlendMode.
 ///
-/// Independence rule (R26 #10): like the stabilizer, this is a HAND
-/// setting — brush preset application carries it over unchanged.
+/// ⚠️R26 #10 called this a HAND setting that preset application carries
+/// over unchanged. Half of that is already false — a brush can PIN its
+/// blend ([BrushShape.lockedBlendMode]) and the pin wins while it is
+/// selected — and the other half is on its way out: 유저 2026-09-08 asked
+/// for the hand/preset split to go entirely, 「브러시든 지우개든 블렌드
+/// 모드를 나른단거야 … 완벽통일해도 문제없으니」.
+///
+/// 🔜The shape of that change, so nobody re-derives it: [color] IS 通常, so
+/// no new value is needed — the nullable PIN becomes a non-null
+/// `BrushShape.blendMode` defaulting to [color], `clearBlendLock` and the
+/// brush half of the padlock retire with it, and import stops asking
+/// whether the file departed from the default and simply carries what the
+/// file says. The fill and the stamp keep their own fields: they have no
+/// preset for a value to belong to.
 enum BrushBlendMode {
   color,
   behind,

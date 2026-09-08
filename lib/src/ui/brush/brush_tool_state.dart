@@ -189,9 +189,18 @@ bool canvasToolRailTileIsRemembered(CanvasTool tool) =>
 /// The 26 shared brush parameters live in [shape] ([BrushShape]); the fields
 /// below forward to it, and [toBrushSettings]/[toInputSettings]/
 /// [fromBrushSettings] carry the whole shape across in one hop so a parameter
-/// can never be dropped on a converter boundary (D4). Only [tool],
-/// [stabilizerStrength], and [brushBlendMode] are the tool state's own — the
-/// three HAND settings that presets deliberately never carry (R26 #10).
+/// can never be dropped on a converter boundary (D4). [tool],
+/// [stabilizerStrength] and [brushBlendMode] are still the tool state's own.
+///
+/// ⛔THEY ARE NOT "THE THREE HAND SETTINGS PRESETS NEVER CARRY" any more,
+/// which is what this said. Size and opacity left that list when H25 was
+/// answered ([withPresetSettings] applies them), the blend already leaves
+/// it whenever a brush pins one, and 유저 2026-09-08 asked for the split to
+/// go entirely: 「손설정이든 정한거 싹 다 내보낼때 나르도록 … 그냥 위치만
+/// 지금처럼 나눈채로 두고」. What survives the change is the LAYOUT — size
+/// and opacity on the strip, the rest in the panel — not two kinds of
+/// value. The remaining work is tracked as its own round; see
+/// [BrushBlendMode] for the shape of it.
 class BrushToolState {
   factory BrushToolState({
     double size = defaultSize,
@@ -295,7 +304,8 @@ class BrushToolState {
     this.cutStampOpacity = 1.0,
   });
 
-  /// Builds tool state from a loose [BrushShape] and the three hand settings,
+  /// Builds tool state from a loose [BrushShape] and the three values that
+  /// still live outside it (tool, stabilizer, blend — see the class doc),
   /// clamping every shared parameter into the panel's ranges (see
   /// [_clampShape]). This is the wholesale hop the preset-load path takes —
   /// [fromBrushSettings] routes through it — so no shared parameter can be
