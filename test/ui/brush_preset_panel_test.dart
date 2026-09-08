@@ -1233,4 +1233,26 @@ void main() {
     expect(find.byType(BrushStrokePreview), findsOneWidget);
   });
 
+  testWidgets('the name rides the stroke, centred and slightly low', (
+    tester,
+  ) async {
+    // 유저 2026-09-08: 「스트로크가 젤 밑에 중앙에 깔려있고, 그 위에
+    // 오버레이로 스트로크랑 겹치든 말든 중앙 살짝아래에 이름있고」.
+    // `Alignment(0, 0.5)` is 「살짝 아래」 read literally — the middle of the
+    // region between the centre and the bottom. The name used to sit at
+    // `centerRight` on a 78%-alpha plate, so this alignment alone fails on
+    // the old row.
+    await _pumpPanel(tester, presets: [_calligraphy()]);
+
+    expect(
+      find.ancestor(
+        of: find.text('Calligraphy'),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Align && widget.alignment == const Alignment(0, 0.5),
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
 }
