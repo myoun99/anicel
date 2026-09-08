@@ -749,6 +749,25 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _region = channelRegion;
       _shapeNeedsLift = channelRegion != null;
       _shapeIsImplicitWholePicture = false;
+      // 🚨★★★THIS DROPS A PENDING MOVE WITHOUT LANDING IT, and what makes
+      // that safe is not visible from here. [_clearLiftState] forgets the
+      // token and the floating stamp; the lift's ERASE is already
+      // committed, so a pending session reaching this line loses the
+      // user's pixels outright and leaks its anchor in `_liftAnchors`.
+      //
+      // Two facts keep it unreachable, and BOTH are one edit away from
+      // stopping being true (checked 2026-09-08):
+      //  - `CanvasSelectionCommands.setRegion` has exactly TWO callers,
+      //    both in this layer's own path, and a write that came from here
+      //    echoes back equal and stops at the guard above.
+      //  - The one outside writer is the history command's `restoreRegion`,
+      //    and every undo/redo confirms first — `home_page.dart` wires
+      //    `historyManager.onBeforeUndoRedo` to `confirmPendingMove`.
+      //
+      // ⛔So a THIRD caller of `setRegion` opens this hole. If you are that
+      // caller, confirm the session first (`_confirmMoveSession()`, the way
+      // the committed-region path below does) rather than widening this
+      // comment.
       _clearLiftState();
       if (channelRegion == null) {
         _clearTransform();
