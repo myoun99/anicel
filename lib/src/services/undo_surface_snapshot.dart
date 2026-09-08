@@ -212,7 +212,29 @@ class UndoSurfaceSnapshot {
   /// compresses on the way OUT, and two of them do it synchronously on
   /// the thread that noticed the pressure; this is that mistake avoided
   /// rather than reproduced.
-  Future<bool> park() async {
+  /// The park in flight, so a second ask joins it instead of starting a
+  /// second one.
+  ///
+  /// 🚨A park spans an isolate hop, and the window between「encode」and
+  /// 「the path is mine」is wide open. Two memory warnings in quick
+  /// succession — the OS sends them in bursts — would each encode the same
+  /// tiles and each write a file, and only the second path would be
+  /// remembered: the first file becomes bytes on the user's disk that
+  /// nothing will ever read or remove. The history stack serialises its
+  /// own passes; a tool holding a lifted selection does not.
+  Future<bool>? _parking;
+
+  Future<bool> park() {
+    final parking = _parking;
+    if (parking != null) {
+      return parking;
+    }
+    final started = _park();
+    _parking = started;
+    return started.whenComplete(() => _parking = null);
+  }
+
+  Future<bool> _park() async {
     if (isParked) {
       return true;
     }

@@ -149,14 +149,29 @@ class _CanvasPanelSelection {
       return null;
     }
     final token = ++_liftTokenSeq;
+    // ⚠️READ THE POST-ERASE SURFACE FIRST, because the anchor is measured
+    // against it: an [UndoSurfaceSnapshot] owes only the tiles the live
+    // surface no longer holds, and here that is exactly the set the erase
+    // rebuilt. Everything else the anchor names is a tile the cel still
+    // has, and holding it costs nothing.
+    final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final held = UndoSurfaceSnapshot(
+      key: coordinator.activeFrameKey,
+      snapshot: preLift,
+      sharedWith: after,
+    );
+    // ⛔THE TOOL KEEPS THE LIFETIME, THE STORE KEEPS THE DISCIPLINE — one
+    // object, held by both. Without this the pixels are outside every
+    // budget for as long as the box stays open; see the store's own
+    // paragraph on [BrushFrameStore.holdLiftedPixels].
+    coordinator.frameStore.holdLiftedPixels(token, held);
     _state._lift._liftAnchors[token] = (
-      pixels: preLift,
+      pixels: held,
       // The selection as the session finds it — captured at the same instant
       // as the pixels, so undo can put both back exactly as they were.
       region: _state.widget.selectionCommands?.region,
     );
     _state._rebuild(() {});
-    final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final whole = <TileCoord, BitmapTile>{};
     // ⚠️ The LIFT'S tile range, not the whole cel. This walked
     // `preLift.tiles.entries` — one whole-map copy, then a full 256 KB

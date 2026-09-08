@@ -13,6 +13,7 @@ import '../../services/cel_source_effect_pass.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_stroke_commit_data.dart';
+import '../../services/undo_surface_snapshot.dart';
 import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/cut_piece.dart' show CutPiece;

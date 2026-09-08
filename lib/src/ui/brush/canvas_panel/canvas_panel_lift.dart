@@ -22,8 +22,42 @@ class _CanvasPanelLift {
   /// ⛔ONE record, not a second map beside this one. Both are anchored at the
   /// same instant and released at the same instant, and a parallel map would
   /// be one more place to forget to clear.
-  final Map<int, ({BitmapSurface pixels, CanvasSelectionRegion? region})>
+  ///
+  /// 🚨★★★**AN [UndoSurfaceSnapshot], NOT A BARE SURFACE — because the
+  /// bytes have to be nameable.** 유저 확정 2026-09-08 (`undo-41-hole-scope`
+  /// = ①, Krita 식): the same pixels are budgeted and parkable the moment a
+  /// confirm turns them into a history entry, and were budgeted by nothing
+  /// at all while the box was open — a user who had not confirmed was held
+  /// to LESS discipline than one who had. Measured: a whole-picture Ctrl+T
+  /// on a 2340×1654 cel pins 17.5 MiB here, plus up to 17.5 MiB of GPU
+  /// tile images the cache keys on the very tile objects this holds.
+  ///
+  /// 🔬What the pro tools do (조사 2026-09-08): Krita clears the source
+  /// immediately exactly as we do, and the lifted pixels are a
+  /// `KisPaintDevice` — a tiled document device — so the swapper spills
+  /// them under pressure with no help from the transform tool at all
+  /// (`tool_transform2/` contains no memory-pressure code). OpenToonz
+  /// holds ours' shape instead — raw rasters on a global tool object,
+  /// outside the image cache — and there a floating selection survives
+  /// pressure while cold cels and undo die first.
+  final Map<int, ({UndoSurfaceSnapshot pixels, CanvasSelectionRegion? region})>
   _liftAnchors = {};
+
+  /// Takes an anchor back from BOTH of its holders.
+  ///
+  /// ⛔**NEVER `_liftAnchors.remove` ON ITS OWN.** The store is holding the
+  /// same snapshot object so that a memory warning can park it, and a
+  /// half-release would leave it parking pixels nobody will ever read
+  /// again. There are three ways a lift ends and this is the one verb all
+  /// three go through.
+  ({UndoSurfaceSnapshot pixels, CanvasSelectionRegion? region})? _takeAnchor(
+    int liftToken,
+  ) {
+    _state.widget._editableCoordinator?.frameStore.releaseLiftedPixels(
+      liftToken,
+    );
+    return _liftAnchors.remove(liftToken);
+  }
 
   /// The cel as it stood just before a lift session's landing committed —
   /// the base half of a composed stand-in.
@@ -112,7 +146,7 @@ class _CanvasPanelLift {
   /// pre-lift picture (R19 P3b).
   void handleLiftConfirmed(int liftToken, BrushDab stampDab) {
     final coordinator = _state.widget._editableCoordinator;
-    final preLift = _liftAnchors.remove(liftToken);
+    final preLift = _takeAnchor(liftToken);
     if (coordinator == null) {
       return;
     }
@@ -126,7 +160,14 @@ class _CanvasPanelLift {
       // composed stand-ins the layer asks for immediately after this.
       _holdPreLandingSurface(coordinator);
       final historyManager = _state.widget.historyManager;
-      if (historyManager == null || preLift == null) {
+      // ⚠️READING THE ANCHOR CAN NOW REFUSE, and「no entry」is the honest
+      // answer to that. The pre-lift picture may be parked in the run's
+      // 휘발성 room, and a payload that will not come back cannot be the
+      // undo target — an entry built on the post-erase surface instead
+      // would say the erase never happened. It joins the two cases that
+      // already land raw rather than becoming a third shape.
+      final preLiftSurface = preLift?.pixels.surface;
+      if (historyManager == null || preLift == null || preLiftSurface == null) {
         // Headless hosts (focused tests) or a lost anchor: land raw.
         coordinator.commitSourceStroke(
           sourceDabs: [stampDab],
@@ -138,7 +179,7 @@ class _CanvasPanelLift {
         BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
           frameKey: coordinator.activeFrameKey,
-          preLiftSurface: preLift.pixels,
+          preLiftSurface: preLiftSurface,
           stampDab: stampDab,
           cacheInvalidationSink: _state.widget.cacheInvalidationSink,
           // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27: 「언두
@@ -164,14 +205,26 @@ class _CanvasPanelLift {
   /// the picture byte-exactly; nothing lands in history.
   void handleLiftReverted(int liftToken) {
     final coordinator = _state.widget._editableCoordinator;
-    final preLift = _liftAnchors.remove(liftToken);
+    final preLift = _takeAnchor(liftToken);
     if (coordinator == null || preLift == null) {
       return;
     }
     void run() {
+      // ⚠️AND HERE A REFUSAL COSTS MORE THAN AN UNDO DOES — the picture
+      // stays erased and the floating pixels are gone, because the erase
+      // was committed when the lift began. 유저 확정 2026-09-08
+      // (`undo-41-hole-scope` = (가)): 「되돌리기도 조건이 이상한 상황일
+      // 뿐인거니까」 — the payload only refuses when something outside the
+      // app removed a file we wrote this run, which is the same wager the
+      // parked undo payloads already make, and the alternative to making
+      // it is holding the bytes through a memory warning.
+      final surface = preLift.pixels.surface;
+      if (surface == null) {
+        return;
+      }
       coordinator.restoreSurfaceSnapshot(
         coordinator.activeFrameKey,
-        preLift.pixels,
+        surface,
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,
       );
     }
@@ -189,7 +242,7 @@ class _CanvasPanelLift {
   /// plain stamp commit.
   void handleLiftLanded(int liftToken, BrushDab stampDab) {
     final coordinator = _state.widget._editableCoordinator;
-    _liftAnchors.remove(liftToken);
+    _takeAnchor(liftToken);
     if (coordinator == null) {
       return;
     }

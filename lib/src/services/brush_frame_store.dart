@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:isolate';
 
@@ -16,6 +17,7 @@ import 'persistence/open_project_file.dart';
 import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
 import 'persistence/scratch_file.dart';
+import 'undo_surface_snapshot.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
 /// clamped to [384MB, 1536MB]. Null/zero RAM (the platform refused, or
@@ -260,7 +262,52 @@ class BrushFrameStore {
     // the hot tier is already over an ALREADY-low budget is exactly when
     // cooling matters most.
     _scheduleCooling();
+    // ⛔Fire and forget, exactly as the cooling pass above is: a memory
+    // warning is not a place to await an isolate. Each snapshot joins its
+    // own park if one is already in flight.
+    unawaited(UndoSurfaceSnapshot.parkAll(_liftedPixels.values));
   }
+
+  /// Pixels a TOOL has taken out of the picture and is holding until it
+  /// puts them back — a lifted selection under an open transform box, and
+  /// nothing else today.
+  ///
+  /// 🚨★★★**THE SAME BYTES WERE DISCIPLINED ON ONE SIDE OF A CONFIRM AND
+  /// NOT THE OTHER.** The moment a confirm turns a lift into a history
+  /// entry the pixels are budgeted and parkable ([UndoSurfacePair]); while
+  /// the box was still open they were a plain Map field in a widget's
+  /// State, with no budget, no cap and no spill — so a user who had NOT
+  /// confirmed was held to less discipline than one who had. Measured on a
+  /// 2340×1654 cel: a whole-picture Ctrl+T pins 17.5 MiB here, and the
+  /// image cache keys on these very tile objects, so up to 17.5 MiB of GPU
+  /// textures ride along. 유저 확정 2026-09-08 (`undo-41-hole-scope` = ①).
+  ///
+  /// 🔬**Krita's answer, and the reason this lives HERE.** Krita clears the
+  /// source device the moment the box opens, exactly as we do — the lifted
+  /// content becomes a `KisPaintDevice`, which is to say *a document device
+  /// like any other*, so the tile swapper spills it under pressure and the
+  /// transform tool contains no memory-pressure code at all. OpenToonz
+  /// holds the shape we used to: raw rasters on a global tool object,
+  /// outside the image cache, where a floating selection outlives pressure
+  /// while cold cels and undo entries die first.
+  ///
+  /// ⛔The TOOL still owns the lifetime — it mints the token and releases
+  /// it on confirm, revert or landing. This owns only the DISCIPLINE, the
+  /// way the tile store does for Krita: the two hold the same object.
+  final Map<int, UndoSurfaceSnapshot> _liftedPixels = {};
+
+  void holdLiftedPixels(int token, UndoSurfaceSnapshot pixels) {
+    _liftedPixels[token] = pixels;
+  }
+
+  void releaseLiftedPixels(int token) {
+    _liftedPixels.remove(token);
+  }
+
+  /// Bytes a tool's lifted pixels are holding right now (diagnostics/tests)
+  /// — zero once they have parked.
+  int get liftedPixelBytes =>
+      _liftedPixels.values.fold(0, (sum, held) => sum + held.residentBytes);
 
   /// Bytes currently resident in the hot tier (diagnostics/tests).
   int get hotBakedBytes => _hotBytes;
