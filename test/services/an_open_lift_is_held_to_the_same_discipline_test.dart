@@ -94,7 +94,7 @@ void main() {
     );
 
     store.respondToMemoryPressure();
-    await session.held.park();
+    await store.drainLiftedParking();
 
     // ⛔This is the whole round: before it, the store had no idea these
     // bytes existed and a warning left every one of them in RAM.
@@ -108,7 +108,7 @@ void main() {
     store.holdLiftedPixels(1, session.held);
 
     store.respondToMemoryPressure();
-    await session.held.park();
+    await store.drainLiftedParking();
 
     final back = session.held.surface;
     expect(back, isNotNull, reason: 'a revert has to be able to read this');

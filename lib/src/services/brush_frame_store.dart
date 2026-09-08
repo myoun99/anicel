@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:isolate';
 
@@ -262,10 +261,13 @@ class BrushFrameStore {
     // the hot tier is already over an ALREADY-low budget is exactly when
     // cooling matters most.
     _scheduleCooling();
-    // ⛔Fire and forget, exactly as the cooling pass above is: a memory
-    // warning is not a place to await an isolate. Each snapshot joins its
-    // own park if one is already in flight.
-    unawaited(UndoSurfaceSnapshot.parkAll(_liftedPixels.values));
+    // ⛔Not awaited, exactly as the cooling pass above is not: a memory
+    // warning is no place to wait on an isolate. Each snapshot joins its
+    // own park if one is already in flight, so a burst of warnings costs
+    // one encode.
+    _activeLiftParking = UndoSurfaceSnapshot.parkAll(
+      _liftedPixels.values,
+    ).whenComplete(() => _activeLiftParking = null);
   }
 
   /// Pixels a TOOL has taken out of the picture and is holding until it
@@ -295,6 +297,20 @@ class BrushFrameStore {
   /// it on confirm, revert or landing. This owns only the DISCIPLINE, the
   /// way the tile store does for Krita: the two hold the same object.
   final Map<int, UndoSurfaceSnapshot> _liftedPixels = {};
+
+  Future<void>? _activeLiftParking;
+
+  /// Completes when the warning's parking pass is done (tests).
+  ///
+  /// ⚠️It exists because a pin that awaited the SNAPSHOT instead did not
+  /// measure this class at all: `park()` called by hand does the same work,
+  /// so deleting the call above left every test green. The drain is the
+  /// only way to ask「did the STORE move them」.
+  Future<void> drainLiftedParking() async {
+    while (_activeLiftParking != null) {
+      await _activeLiftParking;
+    }
+  }
 
   void holdLiftedPixels(int token, UndoSurfaceSnapshot pixels) {
     _liftedPixels[token] = pixels;
