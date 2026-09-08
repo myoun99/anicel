@@ -35,24 +35,30 @@ class BrushPresetFileService {
   static String defaultBrushPresetFilePath() =>
       appSettingsFilePath('brush_presets.json');
 
-  /// Library file format version. Bump when a release adds new built-in
-  /// groups or presets: libraries saved with an older version get the new
-  /// built-ins merged in once on load (an explicitly deleted built-in stays
-  /// deleted within the same version).
+  /// Library file format version. A file that does not carry EXACTLY this
+  /// version is replaced by the built-in defaults on load.
   ///
-  /// 3 turned groups into first-class entities: they live in their own
-  /// `groups` list and presets reference one by id, where versions 1-2
-  /// repeated the group NAME on every member. 4 filled the built-in roster
-  /// out into the Pencil / Ink / Paint / Texture groups. 5 moved the tip
-  /// images out to the tip library, leaving an id behind.
+  /// 🚨⛔**THERE IS NO MIGRATION, ON PURPOSE** (유저 2026-09-09: 「기존 프리셋
+  /// 그냥 마이그레이션 관련 코드 깔끔하게 없애도되. 필요없어. **아무도
+  /// 작업안했고**」). Nobody has authored a brush yet, so five versions of
+  /// carry-forward machinery — group names rebuilt into entities, built-ins
+  /// re-homed out of the root section, icons backfilled onto rows that
+  /// already existed — was maintenance for data that does not exist. Bumping
+  /// this number now RESETS the library rather than upgrading it, which is
+  /// what makes a roster change reach the person running the app.
+  ///
+  /// 🔜**THIS IS A PRE-RELEASE POLICY AND IT HAS AN EXPIRY.** The first
+  /// release that reaches someone who has drawn with their own brushes has to
+  /// put carry-forward back before it bumps this number, or the bump eats
+  /// their library. Nothing here enforces that; this comment is the warning.
   static const int libraryVersion = 6;
 
-  /// Reads the preset library; a missing or unreadable file yields the
+  /// Reads the preset library; a missing, unreadable or older file yields the
   /// built-in defaults (nothing is written back until the next save).
   ///
-  /// [resolveTip] turns the tip ids a version 5 file stores back into masks.
-  /// An id it cannot answer leaves the brush on its parametric round tip —
-  /// a missing tip costs a brush its texture, never the editor.
+  /// [resolveTip] turns the tip ids the file stores back into masks. An id it
+  /// cannot answer leaves the brush on its parametric round tip — a missing
+  /// tip costs a brush its texture, never the editor.
   Future<BrushPresetLibraryData> loadOrDefaults({
     BrushTipResolver? resolveTip,
   }) async {
@@ -63,54 +69,22 @@ class BrushPresetFileService {
       }
       final decoded =
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      if (decoded['version'] != libraryVersion) {
+        return _defaults();
+      }
       final entries = decoded['presets'] as List<dynamic>;
-      final savedVersion = decoded['version'] as int? ?? 1;
       // An empty saved library is a valid user choice (all presets deleted).
-      var presets = _withUniquePresetIds([
+      final presets = _withUniquePresetIds([
         for (final entry in entries)
           _presetWithResolvedTips(entry as Map<String, dynamic>, resolveTip),
       ]);
-
-      final rawGroups = decoded['groups'] as List<dynamic>?;
-      List<BrushGroup> groups;
-      if (rawGroups == null) {
-        // Version 1-2 stored the group as a NAME repeated on every member;
-        // rebuild the entities from those names, in first-appearance order.
-        final migrated = _migrateLegacyGroups(entries, presets);
-        groups = migrated.groups;
-        presets = migrated.presets;
-      } else {
-        groups = _withoutDuplicateGroups([
-          for (final raw in rawGroups)
-            BrushGroup.fromJson(raw as Map<String, dynamic>),
-        ]);
-      }
-
-      if (savedVersion < libraryVersion) {
-        final knownGroupIds = {for (final group in groups) group.id};
-        final knownPresetIds = {for (final preset in presets) preset.id};
-        // v6 gave the built-in groups faces. A library saved before that
-        // already HAS those groups, so appending would not reach them —
-        // they need the icon backfilled onto the row that is already there.
-        // Only where the user has not chosen one: a choice outranks ours.
-        final builtinIcons = {
-          for (final builtin in defaultBrushGroups)
-            if (builtin.icon != null) builtin.id: builtin.icon!,
-        };
-        groups = [
-          for (final group in groups)
-            group.icon == null && builtinIcons.containsKey(group.id)
-                ? group.copyWith(icon: builtinIcons[group.id])
-                : group,
-          for (final builtin in defaultBrushGroups)
-            if (!knownGroupIds.contains(builtin.id)) builtin,
-        ];
-        presets = [
-          for (final preset in presets) _rehomedBuiltin(preset),
-          for (final builtin in defaultBrushPresets)
-            if (!knownPresetIds.contains(builtin.id)) builtin,
-        ];
-      }
+      // A file of this version always carries `groups`; one that does not is
+      // malformed, and the cast drops it into the catch below rather than
+      // into a reconstruction nobody asked for.
+      final groups = _withoutDuplicateGroups([
+        for (final raw in decoded['groups'] as List<dynamic>)
+          BrushGroup.fromJson(raw as Map<String, dynamic>),
+      ]);
 
       return (groups: groups, presets: _withKnownGroups(presets, groups));
     } on Object catch (_) {
@@ -124,48 +98,6 @@ class BrushPresetFileService {
     groups: List.of(defaultBrushGroups),
     presets: List.of(defaultBrushPresets),
   );
-
-  /// Moves a built-in that is still sitting in the ROOT section into the
-  /// group it ships in — the case of a library saved before the built-ins
-  /// had groups at all. A preset the user filed somewhere stays filed:
-  /// crossing a version line may hand out a home, never take one away.
-  static BrushPreset _rehomedBuiltin(BrushPreset preset) {
-    if (preset.groupId != null) {
-      return preset;
-    }
-    for (final builtin in defaultBrushPresets) {
-      if (builtin.id == preset.id && builtin.groupId != null) {
-        return preset.copyWith(groupId: builtin.groupId);
-      }
-    }
-    return preset;
-  }
-
-  /// Rebuilds group entities from the group NAMES a version 1-2 library
-  /// repeated on each preset, keeping first-appearance order. [entries] is
-  /// the raw json in the same order as [presets].
-  static BrushPresetLibraryData _migrateLegacyGroups(
-    List<dynamic> entries,
-    List<BrushPreset> presets,
-  ) {
-    final groups = <BrushGroup>[];
-    final idsByName = <String, BrushGroupId>{};
-    final migrated = <BrushPreset>[];
-    for (var index = 0; index < presets.length; index += 1) {
-      final name = (entries[index] as Map<String, dynamic>)['group'] as String?;
-      if (name == null) {
-        migrated.add(presets[index]);
-        continue;
-      }
-      final groupId = idsByName.putIfAbsent(name, () {
-        final id = importedBrushGroupId(name);
-        groups.add(BrushGroup(id: id, name: name));
-        return id;
-      });
-      migrated.add(presets[index].copyWith(groupId: groupId));
-    }
-    return (groups: groups, presets: migrated);
-  }
 
   /// Preset ids must be unique (they key preset rows and drive
   /// replace-on-import), so duplicates in a saved library — e.g. written by
@@ -298,9 +230,10 @@ typedef BrushTipResolver = BrushTipMask? Function(String id);
 
 /// Every distinct mask carried by [presets].
 ///
-/// The migration path uses this: a library written before tips had a home
-/// still has the images inline, and they have to be hoisted into the tip
-/// library or the next save would write ids pointing at nothing.
+/// The tip library hoists these on load (`brush_preset_library.dart`): a
+/// preset arriving with its mask INLINE — from an import, or from a built-in
+/// that carries a procedural one — has to reach the tip library, or the next
+/// save writes an id pointing at nothing.
 List<({BrushTipMask mask, String name})> brushTipMasksIn(
   Iterable<BrushPreset> presets,
 ) {

@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_group.dart';
-import 'package:anicel/src/models/brush_group_icon.dart';
 import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
@@ -135,41 +134,58 @@ void main() {
       expect((await service.loadOrDefaults()).presets, defaultBrushPresets);
     });
 
-    test('older library versions gain newly added built-ins on load', () async {
-      final path = pathIn('v1.json');
-      // A version-1 library saved before the sampled-tip built-ins existed:
-      // it holds one user preset and one (kept) old built-in.
-      final userPreset = BrushPreset(
-        id: const BrushPresetId('user-1'),
-        name: 'Mine',
-        settings: BrushSettings(size: 3),
-      );
+    test('⛔a library from ANY other version is REPLACED, not migrated', () {
+      // 유저 2026-09-09: 「기존 프리셋 그냥 마이그레이션 관련 코드 깔끔하게
+      // 없애도되. 필요없어. 아무도 작업안했고」. Five versions of
+      // carry-forward went with it, so a bump now resets — which is what
+      // makes a roster change reach the person running the app.
+      // 🔜The release that reaches someone who has drawn with their own
+      // brushes must put carry-forward back BEFORE it bumps the version.
+      Future<void> replaced(int version) async {
+        final path = pathIn('v$version.json');
+        await File(path).writeAsString(
+          jsonEncode({
+            'version': version,
+            'groups': <dynamic>[],
+            'presets': [
+              BrushPreset(
+                id: const BrushPresetId('user-1'),
+                name: 'Mine',
+                settings: BrushSettings(size: 3),
+              ).toJson(),
+            ],
+          }),
+        );
+
+        final loaded = await BrushPresetFileService(
+          filePath: path,
+        ).loadOrDefaults();
+
+        expect(loaded.presets, defaultBrushPresets, reason: 'version $version');
+        expect(loaded.groups, defaultBrushGroups, reason: 'version $version');
+      }
+
+      // Older, newer, and absent alike: only an exact match is carried.
+      return Future.wait([
+        replaced(1),
+        replaced(BrushPresetFileService.libraryVersion - 1),
+        replaced(BrushPresetFileService.libraryVersion + 1),
+      ]);
+    });
+
+    test('a file with no version at all is replaced too', () async {
+      final path = pathIn('no_version.json');
       await File(path).writeAsString(
-        jsonEncode({
-          'version': 1,
-          'presets': [userPreset.toJson(), defaultBrushPresets.first.toJson()],
-        }),
+        jsonEncode({'groups': <dynamic>[], 'presets': <dynamic>[]}),
       );
-      final service = BrushPresetFileService(filePath: path);
 
-      final loaded = await service.loadOrDefaults();
+      final loaded = await BrushPresetFileService(
+        filePath: path,
+      ).loadOrDefaults();
 
-      // Existing entries stay first and unduplicated; the built-ins the old
-      // file lacks (e.g. Chalk/Splatter) are appended.
-      expect(loaded.presets.first, userPreset);
-      expect(
-        loaded.presets.where((p) => p.id == defaultBrushPresets.first.id),
-        [defaultBrushPresets.first],
-      );
-      final loadedIds = loaded.presets.map((p) => p.id).toSet();
-      for (final builtin in defaultBrushPresets) {
-        expect(loadedIds, contains(builtin.id));
-      }
-      // Built-in GROUPS ride the same version gate.
-      final loadedGroupIds = loaded.groups.map((g) => g.id).toSet();
-      for (final builtin in defaultBrushGroups) {
-        expect(loadedGroupIds, contains(builtin.id));
-      }
+      // ⚠️NOT an empty library. An empty save is a valid user choice only at
+      // the CURRENT version, where `version` says the file meant it.
+      expect(loaded.presets, defaultBrushPresets);
     });
 
     test(
@@ -192,76 +208,6 @@ void main() {
         expect(loaded.groups, defaultBrushGroups);
       },
     );
-
-    test('crossing a version line files built-ins left at the root', () async {
-      // A library saved before the built-ins had groups: the ones the user
-      // never filed get their shipped home, everything else stays put.
-      final path = pathIn('rehome.json');
-      final builtin = defaultBrushPresets.first;
-      final movedByUser = defaultBrushPresets[1].copyWith(
-        groupId: const BrushGroupId('mine'),
-      );
-      final ownPreset = BrushPreset(
-        id: const BrushPresetId('user-1'),
-        name: 'Mine',
-        settings: BrushSettings(size: 3),
-      );
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': BrushPresetFileService.libraryVersion - 1,
-          'groups': [
-            const BrushGroup(id: BrushGroupId('mine'), name: 'Mine').toJson(),
-          ],
-          'presets': [
-            builtin.copyWith(groupId: null).toJson(),
-            movedByUser.toJson(),
-            ownPreset.toJson(),
-          ],
-        }),
-      );
-
-      final loaded = await BrushPresetFileService(
-        filePath: path,
-      ).loadOrDefaults();
-
-      final byId = {for (final preset in loaded.presets) preset.id: preset};
-      expect(byId[builtin.id]!.groupId, builtin.groupId);
-      // The user's own filing wins over the shipped home.
-      expect(byId[movedByUser.id]!.groupId, const BrushGroupId('mine'));
-      // A preset that is not a built-in is never re-homed.
-      expect(byId[ownPreset.id]!.groupId, isNull);
-    });
-
-    test('built-in groups get their icon backfilled on upgrade', () async {
-      // Appending the shipped groups cannot reach a library that ALREADY has
-      // them, which is every library saved before icons existed — the row
-      // that is already there needs the icon written onto it.
-      final path = pathIn('icons.json');
-      final shipped = defaultBrushGroups.firstWhere((g) => g.icon != null);
-      final chosen = defaultBrushGroups.firstWhere(
-        (g) => g.icon != null && g.id != shipped.id,
-      );
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': BrushPresetFileService.libraryVersion - 1,
-          'groups': [
-            // Saved before icons: no icon key at all.
-            {'id': shipped.id.toJson(), 'name': shipped.name},
-            // The user picked one; ours must not overwrite it.
-            chosen.copyWith(icon: BrushGroupIcon.star).toJson(),
-          ],
-          'presets': const <Object>[],
-        }),
-      );
-
-      final loaded = await BrushPresetFileService(
-        filePath: path,
-      ).loadOrDefaults();
-      final byId = {for (final group in loaded.groups) group.id: group};
-
-      expect(byId[shipped.id]!.icon, shipped.icon);
-      expect(byId[chosen.id]!.icon, BrushGroupIcon.star);
-    });
 
     test(
       'duplicate preset ids in a saved library are healed on load',
@@ -361,111 +307,7 @@ void main() {
     });
   });
 
-  group('version 2 -> 3 migration', () {
-    /// A version-2 entry: the group was a NAME repeated on every member.
-    Map<String, dynamic> legacyPreset(String id, {String? group}) => {
-      'id': {'value': id},
-      'name': id,
-      'settings': BrushSettings(size: 5).toJson(),
-      'group': ?group,
-    };
-
-    test('rebuilds group entities in first-appearance order', () async {
-      final path = pathIn('v2.json');
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': 2,
-          'presets': [
-            legacyPreset('loose'),
-            legacyPreset('w1', group: '불투명 수채'),
-            legacyPreset('n1', group: 'Noah'),
-            legacyPreset('w2', group: '불투명 수채'),
-          ],
-        }),
-      );
-
-      final loaded = await BrushPresetFileService(
-        filePath: path,
-      ).loadOrDefaults();
-
-      // The rebuilt groups come first, in the order their members appeared;
-      // crossing the version line also appends the built-in groups.
-      expect(loaded.groups.take(2).map((group) => group.name), [
-        '불투명 수채',
-        'Noah',
-      ]);
-      expect(
-        loaded.groups.map((group) => group.id),
-        containsAll(defaultBrushGroups.map((group) => group.id)),
-      );
-      // The id is the one the importer derives from the file name, so
-      // re-importing that same pack still lands in this migrated group.
-      expect(loaded.groups.first.id, importedBrushGroupId('불투명 수채'));
-      expect(loaded.groups.every((group) => !group.collapsed), isTrue);
-    });
-
-    test('members keep their group, ungrouped presets stay at root', () async {
-      final path = pathIn('v2_members.json');
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': 2,
-          'presets': [
-            legacyPreset('loose'),
-            legacyPreset('w1', group: '불투명 수채'),
-            legacyPreset('w2', group: '불투명 수채'),
-          ],
-        }),
-      );
-
-      final loaded = await BrushPresetFileService(
-        filePath: path,
-      ).loadOrDefaults();
-
-      final byId = {
-        for (final preset in loaded.presets) preset.id.value: preset,
-      };
-      expect(byId['loose']!.groupId, isNull);
-      expect(byId['w1']!.groupId, importedBrushGroupId('불투명 수채'));
-      expect(byId['w2']!.groupId, byId['w1']!.groupId);
-    });
-
-    test('a migrated library saves back in the new shape', () async {
-      final path = pathIn('v2_resave.json');
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': 2,
-          'presets': [legacyPreset('w1', group: 'Noah')],
-        }),
-      );
-      final service = BrushPresetFileService(filePath: path);
-
-      final loaded = await service.loadOrDefaults();
-      await service.save(loaded);
-
-      final written =
-          jsonDecode(await File(path).readAsString()) as Map<String, dynamic>;
-      expect(written['version'], BrushPresetFileService.libraryVersion);
-      // Crossing the version line also merges in the built-ins the old file
-      // predates, so the migrated preset is looked up rather than assumed
-      // to be alone.
-      expect(
-        (written['groups'] as List<dynamic>).where(
-          (group) => (group as Map)['name'] == 'Noah',
-        ),
-        hasLength(1),
-      );
-      final preset =
-          (written['presets'] as List<dynamic>).firstWhere(
-                (preset) => (preset as Map)['name'] == 'w1',
-              )
-              as Map;
-      // The old per-preset name is gone; membership is a reference now.
-      expect(preset.containsKey('group'), isFalse);
-      expect(preset['groupId'], {'value': importedBrushGroupId('Noah').value});
-    });
-  });
-
-  group('tip references (version 5)', () {
+  group('tip references', () {
     BrushTipMask mask(String id) => BrushTipMask(
       id: id,
       size: 4,
@@ -528,29 +370,6 @@ void main() {
       // The brush loses its texture, not its existence.
       expect(loaded.presets.single.settings.tipMask, isNull);
       expect(loaded.presets.single.settings.size, 12);
-    });
-
-    test('a version 4 library still carries its images inline', () async {
-      // Written before tips had a home: the blob IS the file's copy, and it
-      // must survive so the caller can hoist it into the tip library.
-      final path = pathIn('v4_inline.json');
-      final legacy = sampled().toJson();
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': 4,
-          'groups': const <Object>[],
-          'presets': [legacy],
-        }),
-      );
-
-      final loaded = await BrushPresetFileService(
-        filePath: path,
-      ).loadOrDefaults(resolveTip: (_) => null);
-
-      final restored = loaded.presets.firstWhere(
-        (preset) => preset.id == const BrushPresetId('p1'),
-      );
-      expect(restored.settings.tipMask, mask('tip-a'));
     });
   });
 
