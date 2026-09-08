@@ -23,8 +23,26 @@ import '../../tool/refactor/clone_scan.dart';
 /// 🚨The ceiling is read from THIS test's own scan, never from a side
 /// tool. A scratch counter set it to 660 on 2026-09-04 and the gate then
 /// measured 661 on the same tree: two instruments, one number apart.
+/// 87 → 88 (2026-09-09, the アンチエイリアス import). The new pair is named:
+///
+///     41 tokens
+///       lib/src/services/sut/sut_decoder.dart  _antiAliasOf
+///       lib/src/services/sut/sut_decoder.dart  _blendModeOf
+///
+/// They ARE one algorithm — "look a Clip Studio menu index up in a table;
+/// when it is not there, warn and fall back to a default" — so this is a
+/// candidate the reading confirms rather than dismisses.
+///
+/// ⛔It is not merged, because it is the SECOND. The rule of three holds:
+/// merging two would have to reconcile differences that have not yet shown
+/// which of them is essential — `_blendModeOf` names the unknown value out of
+/// a menu table (`_clipStudioBlendName`) while `_antiAliasOf` has only a
+/// number to give, and a shared helper would need a describe-hook invented
+/// for a shape seen twice. 🔜**The third index-to-enum importer merges all
+/// three and lowers this back**; it will most likely arrive from the .abr
+/// side, which has its own menus to map.
 void main() {
-  const ceiling = 87;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
