@@ -174,6 +174,48 @@ void main() {
     expect(await backend.open(movie), isNotNull);
   }, skip: skip);
 
+  test('🚨a handle names ONE document for ever — a worker that restarts '
+      'cannot hand it to another', () async {
+    // 🚨★★★THE REGRESSION THIS CATCHES WAS INTRODUCED BY THE FIX ABOVE IT.
+    // Letting a dead worker be replaced (2026-09-08) was free liveness and a
+    // correctness hole: the worker's document list is built fresh on every
+    // spawn, and the token used to be that list's INDEX. So the first
+    // document opened on a new worker got 0 while a document already open
+    // elsewhere was still holding 0 — the viewer would have drawn the import
+    // preview's movie, and closing one would have closed the other. That is
+    // #1458 exactly, which both this backend and `import_preview.dart` carry
+    // tombstones for.
+    //
+    // ⛔The nail is the HANDLE, not the recovery: two documents opened by the
+    // same backend must never share one, whatever happened to the worker in
+    // between. Monotonic minting on the SPAWNER — the side that outlives a
+    // worker — is what makes that unrepresentable.
+    if (!readerHere()) {
+      return;
+    }
+    final backend = IsolateVideoDecodeBackend();
+    final first = await backend.open(movie);
+    final second = await backend.open(movie);
+    expect(first, isNotNull, reason: 'fixture: the movie opens');
+    expect(second, isNotNull, reason: 'fixture: and opens again');
+    expect(
+      second!.token,
+      isNot(first!.token),
+      reason: 'two live documents, two handles — an index that restarts with '
+          'the worker would have handed out the same one twice',
+    );
+    await backend.close(first.token);
+    // ⛔AND A CLOSED HANDLE IS NOT RECYCLED EITHER: the next open must not
+    // be handed the number the closed document had, or a request still in
+    // flight for the old one would land on the new one.
+    final third = await backend.open(movie);
+    expect(third, isNotNull);
+    expect(third!.token, isNot(first.token));
+    expect(third.token, isNot(second.token));
+    await backend.close(second.token);
+    await backend.close(third.token);
+  }, skip: skip);
+
   test('🚨a request whose work THROWS is answered before the worker dies', () {
     // 🚨★★★**THE STRONGER OF THE TWO NEVER-SETTLES.** `Isolate.spawn`
     // defaults to `errorsAreFatal: true`, and the frame arm allocates three
@@ -200,7 +242,7 @@ void main() {
         // lands on the default arm, which replies without throwing — and
         // this expectation then fails loudly rather than passing on nothing.
         (op: 1, args: (token: 0, index: 0), reply: port.sendPort),
-        <QaVideoDocument>[],
+        <int, QaVideoDocument>{},
         (_) => throw StateError('the decode ran out of memory'),
       ),
       throwsA(isA<StateError>()),

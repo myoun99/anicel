@@ -306,9 +306,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       _decodePromotableTile(coord, source, preBlendBase);
       return;
     }
-    _decoding.add(coord);
-    _pendingDecodeCount += 1;
-
     final left = coord.x * tileSize;
     final top = coord.y * tileSize;
     // Snapshot clamps at the PASTEBOARD edge, not the canvas — live
@@ -395,6 +392,22 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       premultiplyRgbaInPlace(bytes);
     }
 
+    // 🚨★★★**NOTHING IS TAKEN UNTIL THE STAGING IS DONE.** The seat and the
+    // counter used to be claimed at the top of this function, ahead of three
+    // allocations that THROW rather than return null — the fused native
+    // scratch, a whole `Uint8List(width * height * 4)`, and the Dart
+    // pre-blend. An out-of-memory in any of them left the coordinate gated
+    // out for the rest of the stroke and the counter permanently up, which
+    // is the same hole the refusal road was written to close. The sibling
+    // law is already spelled out in `bitmap_tile_image_cache.dart`
+    // (「the staging buffer is inside the `try` on purpose」); this function
+    // did not get it until the 2026-09-09 audit.
+    //
+    // ⚠️Safe to move because everything above is SYNCHRONOUS — there is no
+    // await between the re-entry guard at the top and this line, so nothing
+    // can start a second decode for this coordinate in between.
+    _decoding.add(coord);
+    _pendingDecodeCount += 1;
     final generation = _generation;
     // ⛔[uploadRawRgba], never `decodeStraightRgbaImage`: these bytes are
     // ALREADY premultiplied (above, or by the fused kernel straight into
@@ -444,6 +457,17 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   ) {
     if (generation == _generation) {
       _decoding.remove(coord);
+      // 🚨A FOURTH THING WAS TAKEN. [_dirtyWhileDecoding] is where a dab
+      // that landed on a coordinate mid-decode waits for that decode to
+      // finish, and [_adoptDecodedTile] is the only place that ever drained
+      // it — so a refusal left the newest ink parked with nothing coming to
+      // collect it, and the tile showed the older picture until the stroke
+      // ended. ⛔Dropped rather than re-decoded: the coordinate's gate is
+      // open again on the line above, so the next dab asks for the CURRENT
+      // pixels, and re-issuing the ones that were just refused would ask
+      // the engine for the same bytes it has already turned down. Found by
+      // the 2026-09-09 audit.
+      _dirtyWhileDecoding.remove(coord);
     }
     _finishDecode();
     FlutterError.reportError(

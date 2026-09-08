@@ -530,6 +530,23 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       oldWidget.session.playbackRig.transports.remove(this);
       widget.session.playbackRig.transports.add(this);
     }
+    if (oldWidget.position != widget.position) {
+      // 🚨★★★**TURNING A PAGE IS ASKING AGAIN**, and until now only a RUN
+      // was. `_onPlayTick` was the sole place a refusal was forgotten, and
+      // it exists only while `_playTimer` does — which needs a document
+      // that turns its own pages or carries sound. A PDF has neither, so a
+      // page whose render the engine once refused stayed blank for the life
+      // of the panel: the round that stopped the hot loop had traded a
+      // livelock for a surrender, which is the half of 유저 2026-08-31's
+      // 「로드할때까지 멈춰있어야지」 that says a WAIT, not a giving up.
+      // Found by the 2026-09-09 audit of that round.
+      //
+      // ⛔Not a second clock, and not a rebuild-driven clear: this fires on
+      // a USER ACTION, so it cannot feed itself. A refusal is still
+      // remembered for as long as the reader is looking at the same page —
+      // nothing about that page changed, so there is nothing to re-ask for.
+      _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
+    }
   }
 
   @override

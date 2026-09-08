@@ -38,18 +38,34 @@ final class ImageViewerDocument implements ViewerDocument {
     }
     // The frame count needs a codec, and a codec needs a size; ask for the
     // smallest legal one so counting an animation costs nothing.
-    final probe = await descriptor.instantiateCodec(
-      targetWidth: 1,
-      targetHeight: 1,
-    );
-    final frameCount = probe.frameCount;
-    // The probe is already going to decode a 1×1 frame; reading its stated
-    // duration on the way past is what tells an animation from a still.
-    final first = await probe.getNextFrame();
-    final frameGap = first.duration;
-    first.image.dispose();
-    probe.dispose();
-    return ImageViewerDocument._(descriptor, frameCount, frameGap);
+    //
+    // 🚨★★★**AND EVERY ROAD OUT OF HERE RELEASES WHAT IT TOOK.** The buffer
+    // above already had its `finally`; the descriptor and the probe did not,
+    // so an image the engine refused to make a codec for — or whose first
+    // frame it refused to decode — leaked BOTH. This is the biggest one of
+    // its kind in the app: the header two paragraphs up measures the
+    // retained descriptor at 20 MB for an 8000×6000 PNG, against the 256 KB
+    // a tile holds. Found by the 2026-09-09 audit of the round that closed
+    // the same shape in the decode paths and claimed the family with it.
+    ui.Codec? probe;
+    try {
+      probe = await descriptor.instantiateCodec(targetWidth: 1, targetHeight: 1);
+      final frameCount = probe.frameCount;
+      // The probe is already going to decode a 1×1 frame; reading its stated
+      // duration on the way past is what tells an animation from a still.
+      final first = await probe.getNextFrame();
+      final frameGap = first.duration;
+      first.image.dispose();
+      return ImageViewerDocument._(descriptor, frameCount, frameGap);
+    } on Object {
+      // ⚠️The descriptor is disposed ONLY on this road. On the other one it
+      // becomes the document's own, and disposing it here would hand the
+      // caller a handle to nothing.
+      descriptor.dispose();
+      rethrow;
+    } finally {
+      probe?.dispose();
+    }
   }
 
   final ui.ImageDescriptor _descriptor;

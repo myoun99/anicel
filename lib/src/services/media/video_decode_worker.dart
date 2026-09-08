@@ -197,6 +197,12 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   /// nobody is going to answer, and the isolate reports that itself.
   Completer<Never>? _died;
 
+  /// The next document handle this backend hands out.
+  ///
+  /// ⛔Monotonic, and never reset — not even when the worker is replaced.
+  /// See [open] for the cross-talk a restarting index caused.
+  int _nextToken = 0;
+
   /// One request at a time, in order.
   ///
   /// 🚨★★★**THE NATIVE DOCUMENT IS A POSITION, SO THE ORDER IS THE ANSWER.**
@@ -261,16 +267,21 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   Future<Object?> _ask(int op, Object? args) {
     final result = _queue.then((_) async {
       final worker = await _ensure();
-      final died = _died;
+      // ⛔NOT nullable-with-a-fallback. [_ensure] assigns `_died` before it
+      // assigns `_worker`, and the death listener is a PORT event rather
+      // than a microtask, so it cannot land between this line and the one
+      // above. A `died == null ? await reply.first : …` arm read as
+      // defensive and was in fact unreachable — and what it held was
+      // exactly the unguarded wait this whole field exists to abolish
+      // (found by the 2026-09-09 audit).
+      final died = _died!;
       final reply = ReceivePort();
       try {
         worker.send((op: op, args: args, reply: reply.sendPort));
         // 🚨The race IS the answer. `reply.first` alone waits forever on a
         // worker that is not there any more — see [_died] for what kills
         // one and what that used to cost.
-        return died == null
-            ? await reply.first
-            : await Future.any([reply.first, died.future]);
+        return await Future.any([reply.first, died.future]);
       } finally {
         reply.close();
       }
@@ -286,7 +297,26 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
     String path, {
     ({int offset, int length})? range,
   }) async {
+    // 🚨★★★**THE TOKEN IS MINTED HERE, BY THE SIDE THAT OUTLIVES THE
+    // WORKER.** It used to be the worker's own list index, and the worker's
+    // list is created fresh on every spawn — so once [_died] let a dead
+    // worker be replaced (2026-09-08), the next document opened on the new
+    // worker got index 0 and a document already open somewhere else was
+    // still holding token 0. The viewer would then have drawn the import
+    // preview's movie, and closing one would have closed the other: exactly
+    // the bug both this file and `import_preview.dart` carry tombstones for
+    // (#1458, 「a handle says which movie is whose」), made reachable again
+    // by the recovery that was supposed to be free.
+    //
+    // ⛔A monotonic counter and nothing else. It never restarts, so a token
+    // from a dead generation is simply absent from the new worker's map —
+    // `frame` answers null and the caller says 「could not be read」, which
+    // is true. ⚠️It cannot answer 「reopen it for me」; that would need the
+    // path kept here, and inventing a silent reopen is not this round's to
+    // decide (board: `a-dead-worker-forgets-its-documents`).
+    final token = _nextToken++;
     final answer = await _ask(_opOpen, (
+      token: token,
       path: path,
       offset: range?.offset ?? 0,
       length: range?.length ?? 0,
@@ -344,9 +374,14 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
   final requests = ReceivePort();
   start.ready.send(requests.sendPort);
 
-  final documents = <QaVideoDocument>[];
-  QaVideoDocument? documentAt(int token) =>
-      token < 0 || token >= documents.length ? null : documents[token];
+  // 🚨★★★KEYED BY THE HANDLE THE ASKER MINTED, not by this list's own
+  // index. This map is created fresh on every spawn, so an index would
+  // start over at 0 while a document opened on the PREVIOUS worker was
+  // still holding 0 — see [IsolateVideoDecodeBackend.open]. A handle that
+  // belongs to a generation that died is simply absent here, and absent is
+  // an answer.
+  final documents = <int, QaVideoDocument>{};
+  QaVideoDocument? documentAt(int token) => documents[token];
 
   requests.listen(
     (message) => serveVideoDecodeRequest(
@@ -383,7 +418,7 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
 @visibleForTesting
 void serveVideoDecodeRequest(
   ({int op, Object? args, SendPort reply}) request,
-  List<QaVideoDocument> documents,
+  Map<int, QaVideoDocument> documents,
   QaVideoDocument? Function(int token) documentAt,
 ) {
   try {
@@ -401,14 +436,15 @@ void serveVideoDecodeRequest(
 /// would be the same endless wait the catch exists to prevent.
 void _serve(
   ({int op, Object? args, SendPort reply}) request,
-  List<QaVideoDocument> documents,
+  Map<int, QaVideoDocument> documents,
   QaVideoDocument? Function(int token) documentAt,
 ) {
   final decoder = QaVideoDecoder.instance;
   switch (request.op) {
     case _opOpen:
       final args =
-          request.args! as ({String path, int offset, int length});
+          request.args!
+              as ({int token, String path, int offset, int length});
       final document = decoder == null || !decoder.isSupported
           ? null
           : decoder.openDocument(
@@ -421,9 +457,9 @@ void _serve(
         request.reply.send(null);
         return;
       }
-      documents.add(document);
+      documents[args.token] = document;
       request.reply.send((
-        token: documents.length - 1,
+        token: args.token,
         width: document.info.width,
         height: document.info.height,
         frameCount: document.info.frameCount,
@@ -447,7 +483,12 @@ void _serve(
     case _opLastError:
       request.reply.send(decoder?.lastError ?? '');
     case _opClose:
-      final document = documentAt(request.args! as int);
+      // ⚠️Removed, not just closed. The handle is the ASKER's now and never
+      // repeats, so an entry left behind is a closed document a stale
+      // request could still be handed. Before 2026-09-09 the list index WAS
+      // the handle, so removing an entry would have renumbered every one
+      // after it — which is why the old code deliberately left it.
+      final document = documents.remove(request.args! as int);
       if (document != null) {
         decoder?.closeDocument(document);
       }

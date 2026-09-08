@@ -350,6 +350,14 @@ class BitmapTileImageCache extends ChangeNotifier {
       DeferredImageDisposer.instance.retire(image);
       return;
     }
+    // 🚨AND THE REFUSAL IS RETIRED WITH IT. [_TileDecodeAsk]'s headline says
+    // landed is the ABSENCE of a value; adoption is the other way a tile
+    // lands, and it left a `refused` entry standing beside a real picture.
+    // Harmless only because every reader tests [_images] first — which is
+    // the sentence [_decodeAsk] names as the cause of the original bug, so
+    // resting on it twice is how the same defect comes back. Found by the
+    // 2026-09-09 audit.
+    _decodeAsk[tile] = null;
     _images[tile] = image;
     _imageFinalizer.attach(tile, image);
     // An adopted picture IS the truth (the overlay decoded exactly these
