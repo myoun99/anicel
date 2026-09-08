@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
 /// B1 — WARMING, PROTECTION AND THE BAR REASON OVER ONE NUMBER.
@@ -64,6 +65,16 @@ void main() {
     ),
   );
 
+  /// The budget under test, held BY ITS OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. A collaborator only ever spelled
+  /// `s.playbackRig.playbackCache` is one the campaign reports UNNAMED and
+  /// never runs a mutant against — B1's one-law derivation lives in that
+  /// file and this is its witness.
+  PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
+      s.playbackRig.playbackCache;
+
   testWidgets('protection derives from the warm law — a runway composite '
       'survives the enforcer that follows every warmed frame',
       (tester) async {
@@ -73,7 +84,8 @@ void main() {
       final activeCut = s.activeCutOrNull!;
       final quality = s.playbackRig.playbackQuality;
 
-      final range = s.playbackRig.playbackCache.debugPlaybackProtectedRanges().single;
+      final budget = budgetOf(s);
+      final range = budget.debugPlaybackProtectedRanges().single;
       expect(range.endFrame, cutWarmFrameCount(activeCut) - 1);
       expect(range.endFrame, 6, reason: 'the runway reaches frame 6');
 
@@ -96,7 +108,7 @@ void main() {
 
       s.renderCaches.cutFrameCompositeCache.enforceBudget(
         maxBytes: 0,
-        protect: s.playbackRig.playbackCache.debugPlaybackProtectedRanges(),
+        protect: budget.debugPlaybackProtectedRanges(),
       );
 
       expect(
@@ -127,6 +139,7 @@ void main() {
     final s = session();
     addTearDown(s.dispose);
     final activeCut = s.activeCutOrNull!;
+    final budget = budgetOf(s);
 
     s.playbackRig.prerenderScheduler.requestWarmCut(
       cutId: activeCut.id,
@@ -138,7 +151,7 @@ void main() {
       cutWarmFrameCount(activeCut),
     );
     expect(
-      s.playbackRig.playbackCache.debugPlaybackProtectedRanges().single.endFrame + 1,
+      budget.debugPlaybackProtectedRanges().single.endFrame + 1,
       s.playbackRig.prerenderScheduler.progress.value.total,
       reason: 'one function, two readers — the disagreement WAS the bug',
     );
@@ -156,20 +169,21 @@ void main() {
       final s = session();
       addTearDown(s.dispose);
       final activeCut = s.activeCutOrNull!;
+      final budget = budgetOf(s);
 
       expect(
-        s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 2),
+        budget.isPlaybackFrameReadyForCut(activeCut, 2),
         isTrue,
         reason: 'the hole between blocks composes to nothing — ready by '
             'definition, no bake required',
       );
       expect(
-        s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 8),
+        budget.isPlaybackFrameReadyForCut(activeCut, 8),
         isTrue,
         reason: 'past every drawing is the same nothing',
       );
       expect(
-        s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 5),
+        budget.isPlaybackFrameReadyForCut(activeCut, 5),
         isFalse,
         reason: 'the runway cel is REAL content — green must wait for its '
             'bake, or the bar claims readiness playback cannot deliver',
@@ -180,7 +194,7 @@ void main() {
         frameIndex: 5,
         quality: s.playbackRig.playbackQuality,
       );
-      expect(s.playbackRig.playbackCache.isPlaybackFrameReadyForCut(activeCut, 5), isTrue);
+      expect(budget.isPlaybackFrameReadyForCut(activeCut, 5), isTrue);
     });
   });
 

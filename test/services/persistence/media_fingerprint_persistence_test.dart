@@ -8,6 +8,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/media_fingerprint_ledger.dart';
 
 /// The fingerprint's LIFE: recorded for free, kept out of the project,
 /// written to the file, and read back pointing at the right asset.
@@ -61,9 +62,19 @@ void main() {
     return path;
   }
 
+  /// The ledger under test, held BY ITS OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. A collaborator only ever spelled `s.mediaFingerprints` is
+  /// one the campaign reports UNNAMED and never runs a mutant against —
+  /// these tests hold its laws and had no way of saying so.
+  MediaFingerprintLedger ledgerOf(EditorSessionManager s) =>
+      s.mediaFingerprints;
+
   /// Records the fingerprint the way production does — from the bytes.
-  void fingerprint(EditorSessionManager s, String path) => s.mediaFingerprints
-      .rememberMediaFingerprint(path, File(path).readAsBytesSync());
+  void fingerprint(EditorSessionManager s, String path) => ledgerOf(
+    s,
+  ).rememberMediaFingerprint(path, File(path).readAsBytesSync());
 
   test('🚨 remembering a fingerprint does NOT dirty the project', () async {
     final s = session();

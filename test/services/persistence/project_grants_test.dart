@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/media_grant_ledger.dart';
 
 /// PR-5: the security-scoped tokens a project needs to reopen the media it
 /// only REFERENCES.
@@ -149,6 +150,15 @@ void main() {
       ),
     );
 
+    /// The ledger under test, held BY ITS OWN TYPE (2026-09-08).
+    ///
+    /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+    /// IMPORT it. A collaborator only ever spelled `s.mediaGrants` is one
+    /// the campaign reports UNNAMED and never runs a mutant against —
+    /// 「what this launch can USE is not what the FILE should keep」 lives
+    /// in that file and these are its tests.
+    MediaGrantLedger ledgerOf(EditorSessionManager s) => s.mediaGrants;
+
     test('a grant survives a save and reopen', () async {
       // ⚠️ The platform is PINNED, and it has to be. Opening a project
       // resolves its grants, and whether that even happens is a property
@@ -255,14 +265,15 @@ void main() {
       // Apple hands back a fresh bookmark every resolve; the one we came
       // in with is the stale copy.
       final s = session();
-      s.mediaGrants.rememberMediaGrants([
+      final ledger = ledgerOf(s);
+      ledger.rememberMediaGrants([
         const FolderGrant.granted(
           path: '/외장/참고영상.mp4',
           bookmark: 'old',
           kind: GrantKind.file,
         ),
       ]);
-      s.mediaGrants.rememberMediaGrants([
+      ledger.rememberMediaGrants([
         const FolderGrant.granted(
           path: '/외장/참고영상.mp4',
           bookmark: 'new',
@@ -270,8 +281,8 @@ void main() {
         ),
       ]);
 
-      expect(s.mediaGrants.debugMediaGrants, hasLength(1));
-      expect(s.mediaGrants.debugMediaGrants.single.bookmark, 'new');
+      expect(ledger.debugMediaGrants, hasLength(1));
+      expect(ledger.debugMediaGrants.single.bookmark, 'new');
       s.dispose();
     });
 
