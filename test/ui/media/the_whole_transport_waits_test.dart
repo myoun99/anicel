@@ -113,6 +113,39 @@ void main() {
     return fake;
   }
 
+  /// Interleaves REAL time with pumped time until [ready].
+  ///
+  /// 🚨★★★**A PUMPED CLOCK DOES NOT DECODE AN IMAGE.** `renderPage` ends in
+  /// `decodeStraightRgbaImage`, which is engine work on a real thread —
+  /// `pump()` advances the fake clock and drains microtasks, and the decode
+  /// is neither. So a buffer refilled only by pumping never refills, no
+  /// matter how many ticks.
+  ///
+  /// 🪦This cost a round. Pumping 300 times and seeing nothing land, I wrote
+  /// 「the viewer never comes back from a dry buffer」 into a test, a commit
+  /// and a board card as a PRODUCT BUG. It was the bench. The helper for
+  /// this has existed in `media_viewer_tab_host_test` the whole time,
+  /// spelled almost exactly like this and explaining exactly why — 착수 0수
+  /// 는 「이 법이 이미 어딘가에 쓰여 있나」 를 먼저 grep 하는 것이다.
+  /// ⚠️[attempts] is generous on purpose where the test WAITS FOR something
+  /// to land. Real time means real load: at 60×10ms this file passed alone
+  /// and failed inside a 317-test run, which is a flake, and a flaky nail
+  /// is not a nail — the next reader learns to re-run it. Where the test
+  /// waits for something NOT to happen, a shorter window is honest and
+  /// keeps the suite quick.
+  Future<void> settleAsync(
+    WidgetTester tester,
+    bool Function() ready, {
+    int attempts = 60,
+  }) async {
+    for (var i = 0; i < attempts && !ready(); i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+  }
+
   Future<void> pressPlay(WidgetTester tester) async {
     await tester.tap(
       find.byKey(const ValueKey<String>('media-viewer-play-button')),
@@ -149,18 +182,21 @@ void main() {
     );
   });
 
-  testWidgets('🚨a buffer that runs dry HOLDS the sound — and does NOT '
-      'come back (a pinned bug)', (tester) async {
+  testWidgets('🚨a buffer that runs dry HOLDS the sound, and refilling '
+      'brings BOTH back', (tester) async {
     // Nothing past the first frame will decode: the cushion cannot fill.
     final fake = await openMovie(tester, holdFrom: 1);
     await pressPlay(tester);
     expect(sound.holds, 0, reason: 'fixture: nothing has run dry yet');
 
-    // 24fps is 41.6ms, so one pump of 42 sits on the boundary — the
-    // neighbouring file drives ten for the same reason.
-    for (var tick = 0; tick < 3; tick += 1) {
-      await tester.pump(const Duration(milliseconds: 42));
-    }
+    // ⚠️[settleAsync] here too, and that is not a formality: it gives the
+    // decodes REAL time to land, so the frames that never arrive are the
+    // ones the backend is holding rather than ones a pumped clock could
+    // never have delivered anyway. Pumping alone would park this viewer
+    // whatever the backend did, and the assertion below would be measuring
+    // the bench instead of the law.
+    await settleAsync(tester, () => sound.holds > 0, attempts: 150);
+
     expect(
       sound.holds,
       greaterThan(0),
@@ -168,32 +204,35 @@ void main() {
           'reaches the soundtrack, or the picture would owe it dropped '
           'frames later',
     );
-    expect(slot.position.value, 0, reason: 'and the playhead did not move');
 
-    // 🚨★★★**AND IT DOES NOT COME BACK.** Releasing every held frame and
-    // pumping THREE HUNDRED ticks leaves `resumes` at zero and the playhead
-    // at 0 — 실측 2026-09-08, the first time this arm could be driven at
-    // all. So 「로드할때까지 멈춰있어야지」 is currently 「멈춰만 있는다」, and
-    // now that sound parks with the picture it parks forever too.
-    //
-    // ⛔This test asserts the park and STOPS THERE on purpose. The refill
-    // walks forward because each landing rebuilds and the rebuild asks for
-    // the next raster; a parked tick rebuilds nothing, so once every
-    // outstanding render has failed the chain has no link left. That is a
-    // guess about the cause — kicking `_fillPlaybackBuffer` from the parked
-    // tick was tried and changed nothing — so it is written down rather
-    // than fixed blind. `viewer-parks-forever-after-a-dry-buffer` on the
-    // board carries it.
-    fake.held.clear();
-    for (var tick = 0; tick < 300 && sound.resumes == 0; tick += 1) {
-      await tester.pump(const Duration(milliseconds: 42));
-    }
+    // 🚨AND IT STAYS PARKED WHILE THE FRAMES STAY HELD. ⛔The first tick of
+    // ANY run parks — the cushion has not filled yet — so asserting a park
+    // right after pressing play measures nothing about the buffer. What
+    // separates 「waiting for these frames」 from 「waiting once, always」 is
+    // that real time passes here and the playhead still does not move.
+    await settleAsync(tester, () => slot.position.value > 0);
     expect(
-      sound.resumes,
+      slot.position.value,
       0,
-      reason: '⚠️PINNING A BUG, not a law: the day this goes red the viewer '
-          'has learned to come back, and the assertion becomes '
-          'greaterThan(0) — with the playhead moving beside it',
+      reason: 'held frames, held playhead — it did not walk past a frame '
+          'that is not there',
+    );
+
+    // 🚨★★★**AND IT COMES BACK — TOGETHER.** The cushion refills, the sound
+    // resumes from where the picture stands, and the playhead moves again.
+    //
+    // ⚠️[settleAsync], not more pumping: the refill is an image decode, and
+    // a pumped clock never performs one. See that helper for the round this
+    // cost.
+    fake.held.clear();
+    await settleAsync(tester, () => sound.resumes > 0, attempts: 150);
+
+    expect(sound.resumes, greaterThan(0), reason: 'the sound picked back up');
+    expect(
+      slot.position.value,
+      greaterThan(0),
+      reason: 'and the picture moved WITH it — 「로드할때까지 멈춰있어야지」 is '
+          'a WAIT, and a wait that never ends is not the law either',
     );
 
     await tester.tap(
