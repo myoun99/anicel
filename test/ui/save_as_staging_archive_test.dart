@@ -10,6 +10,7 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart';
 
 /// The Save As staging writer (실측 iPhone+Drive, 08-26): what the export
 /// picker places must already BE the project. A never-saved project used
@@ -22,6 +23,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// standalone archive and must change NOTHING about the session: the file
 /// it produces is about to be MOVED by a document picker, so refs adopted
 /// into it would be every cel dying the moment the move lands.
+/// The door that writes the staged copy — named so `tool/mutation_run.dart`
+/// runs this file for it: the save/open suite that also names it never takes
+/// the picker road, which is where `adoptRefs: false` matters.
+ProjectFileDoor projectDoorOf(EditorSessionManager session) =>
+    session.projectDoor;
+
 void main() {
   late Directory folder;
 
@@ -169,14 +176,14 @@ void main() {
     expect(s.projectFile.hasUnsavedChanges, isTrue);
 
     final staged = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
-    final names = await s.projectDoor.writeArchiveCopy(staged);
+    final names = await projectDoorOf(s).writeArchiveCopy(staged);
 
     // What the export picker does, and all it does: MOVE.
     final placed = '${folder.path.replaceAll('\\', '/')}/placed.anicel';
     File(staged).renameSync(placed);
     final bytesAsPlaced = File(placed).readAsBytesSync();
 
-    s.projectDoor.adoptPlacedArchive(placed, mediaEntryNames: names);
+    projectDoorOf(s).adoptPlacedArchive(placed, mediaEntryNames: names);
 
     expect(s.projectFile.path, placed);
     expect(

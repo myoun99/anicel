@@ -90,6 +90,12 @@ class RowSpans {
       int? first;
       var lastExclusive = 0;
       for (final entry in events.entries) {
+        // ⚠️MUTANT SURVIVES, equivalent (2026-09-08): `<` → `<=` and `>` →
+        // `>=` below both keep the answer. The map is a SplayTreeMap, so
+        // the walk is already ascending — a strict and a loose compare
+        // assign the same values in the same order. The sweep is kept
+        // because the invariant it does not lean on is the map's ORDER,
+        // which is what the comment above says.
         if (first == null || entry.key < first) {
           first = entry.key;
         }

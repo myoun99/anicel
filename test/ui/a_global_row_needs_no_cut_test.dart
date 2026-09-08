@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 
 /// 🚨H11 (유저 2026-08-22) — **A TRACK-OWNED ROW IS NOT A CUT'S TENANT.**
 ///
@@ -31,6 +32,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// answer; it only had bearing on whether the row could be FOUND.
 ///
 /// ⚠️There was no test on any of this, which is how it stayed put.
+/// The collaborator whose gates H11 is about — named so
+/// `tool/mutation_run.dart` runs this file for it: the delete suite that
+/// also names it never stands in a gap, which is the whole subject here.
+StoryboardCursor storyboardCursorOf(EditorSessionManager session) =>
+    session.storyboardCursor;
+
 void main() {
   const trackId = TrackId('h11-track');
   const seLayerId = LayerId('h11-se');
@@ -105,7 +112,7 @@ void main() {
 
   test('the ＋ is LIVE on an S row parked in a gap', () {
     expect(
-      standingAt(10).storyboardCursor.canCreateSeEntryAtStoryboardCursor,
+      storyboardCursorOf(standingAt(10)).canCreateSeEntryAtStoryboardCursor,
       isTrue,
       reason: '「각 행들은 독립적인 글로벌행이라 뭐든 가능해야함」',
     );

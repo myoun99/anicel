@@ -19,6 +19,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/playback_rig.dart';
+import 'package:anicel/src/ui/session/render_caches.dart';
 
 /// A5 — ONE WARMING RESTART PER EDIT BURST, NOT ONE PER DAB.
 ///
@@ -29,6 +31,16 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// window has passed anyway. The debounce defers exactly ONE thing: the
 /// restart. The cache invalidations stay synchronous, because a stale
 /// composite must be unservable the instant the stroke lands.
+/// The collaborator that owns the warmer — named so `tool/mutation_run.dart`
+/// runs this file for it: the rig's own suite never schedules a warm, so the
+/// idle window and the scheduler it hangs on had no observer here.
+PlaybackRig playbackRigOf(EditorSessionManager session) => session.playbackRig;
+
+/// And the collaborator that HOLDS the debounce this file is named after —
+/// its own namer counts viewer bytes and never lets an edit burst settle.
+RenderCaches renderCachesOf(EditorSessionManager session) =>
+    session.renderCaches;
+
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -75,7 +87,7 @@ void main() {
     // no hub wired, so nothing here counts as an edit burst yet.
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey,
-      frameStore: session.renderCaches.brushFrameStore,
+      frameStore: renderCachesOf(session).brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
         tileSize: 4,
@@ -120,7 +132,7 @@ void main() {
 
     var restarts = 0;
     void countRestarts() {
-      final value = session.playbackRig.prerenderScheduler.progress.value;
+      final value = playbackRigOf(session).prerenderScheduler.progress.value;
       if (value.cached == 0 && value.total > 0) {
         restarts += 1;
       }

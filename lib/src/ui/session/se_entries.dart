@@ -98,6 +98,8 @@ class SeEntries {
     // cut's SE window and put the next speaker over this picture. The
     // scrub preview already clamps this way, so drag and release agree.
     final maxLocal = cut.duration > 0 ? cut.duration - 1 : 0;
+    // ⚠️MUTANT SURVIVES, equivalent (2026-09-08): `>` → `>=` clamps a frame
+    // that already IS [maxLocal] to itself.
     final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
     final project = _project.repository.requireProject();
     // Rows on the tracks BELOW this one: unconfigured defaults stack the

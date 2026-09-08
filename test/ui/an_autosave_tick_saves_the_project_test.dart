@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/project_autosave_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/project_file.dart';
 
 /// 🚨★★★**THE TICK SAVES THE PROJECT FILE.**
 ///
@@ -18,6 +19,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// alone. Both shapes leave the session clean and the work safe, so a
 /// test that only checked「the work survived」would pass either way — what
 /// separates them is WHICH FILE CHANGED, and that is what is asserted.
+/// The collaborator that answers whether the tick may run — named so
+/// `tool/mutation_run.dart` runs this file for it: the carried-media suite
+/// that also names it never asks the autosave question.
+ProjectFile projectFileOf(EditorSessionManager session) => session.projectFile;
+
 void main() {
   late Directory directory;
 
@@ -143,8 +149,8 @@ void main() {
     )).project.tracks.first.cuts.length;
 
     session.cutVerbs.createCut();
-    session.projectFile.discardUnsavedWork();
-    expect(session.projectFile.autosaveShouldStandDown, isTrue);
+    projectFileOf(session).discardUnsavedWork();
+    expect(projectFileOf(session).autosaveShouldStandDown, isTrue);
 
     await autosaveFor(session).saveNow();
 

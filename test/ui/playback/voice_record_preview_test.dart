@@ -7,6 +7,7 @@ import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/track_se_display.dart';
 import 'package:anicel/src/ui/session/editor_voice_recording.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
@@ -17,6 +18,12 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// The live take preview (REC1-C): while a take rolls, the armed lane
 /// shows the planner's would-be landing — real block, real waveform lane,
 /// recomputed at frame boundaries and NEVER through a session notify.
+/// The collaborator the armed lane is read through — named so
+/// `tool/mutation_run.dart` runs this file for it: the memo suite that also
+/// names it asks about row IDENTITY, this one about the clone's contents.
+TrackSeDisplay trackSeDisplayOf(EditorSessionManager session) =>
+    session.trackSe;
+
 void main() {
   EditorSessionManager session() => EditorSessionManager(
     initialProject: createDefaultProject(),
@@ -65,7 +72,7 @@ void main() {
     expect(block.length, 4);
     // The display clones serve the preview instance for the armed lane.
     expect(
-      manager.trackSe.trackSeDisplayLayers.first.audioClips.single.filePath,
+      trackSeDisplayOf(manager).trackSeDisplayLayers.first.audioClips.single.filePath,
       EditorVoiceRecording.voiceRecordPreviewPath,
     );
 

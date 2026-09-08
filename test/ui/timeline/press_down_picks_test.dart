@@ -4,6 +4,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/range_selections.dart';
+import 'package:anicel/src/ui/session/standing.dart';
 
 /// 🚨D/T10 — **the press picks; the release clears.**
 ///
@@ -20,6 +22,15 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// ⛔The guard is not a nicety. Measured: with clearing unconditional,
 /// turning the press-pick on made an SE row move stop committing — the pick
 /// wiped the very rows the move was about to carry.
+/// The two collaborators this law is split across — named so
+/// `tool/mutation_run.dart` runs this file for both: [Standing.standOnRow]
+/// asks the question and [RangeSelections.standingInsideSelection] answers
+/// it, and neither had a namer that presses.
+Standing standingOf(EditorSessionManager session) => session.standing;
+
+RangeSelections rangeSelectionsOf(EditorSessionManager session) =>
+    session.rangeSelections;
+
 void main() {
   late EditorSessionManager session;
 
@@ -83,11 +94,36 @@ void main() {
     // The last covered cell, and the first uncovered one. A half-open range
     // read as closed (or the other way) would put the edge on the wrong
     // side, and the edge is where a move drag is most often grabbed.
-    session.standOnRow(row, frameIndex: 3);
+    final ranges = rangeSelectionsOf(session);
+    expect(ranges.standingInsideSelection(row, 3), isTrue, reason: '3 is in');
+    expect(ranges.standingInsideSelection(row, 4), isFalse, reason: '4 is out');
+
+    standingOf(session).standOnRow(row, frameIndex: 3);
     expect(session.frameRangeSelection.value, isNotNull, reason: '3 is in');
 
-    session.standOnRow(row, frameIndex: 4);
+    standingOf(session).standOnRow(row, frameIndex: 4);
     expect(session.frameRangeSelection.value, isNull, reason: '4 is out');
+  });
+
+  test('standing on a LAYER row makes it the drawing target — the verb '
+      'takes the layer active unless a rail says otherwise', () {
+    final row = drawingRow();
+    final other = session.layers
+        .firstWhere((layer) => layer.id != row.layerId)
+        .id;
+    session.selectLayer(other);
+    expect(session.activeLayerId, other, reason: 'fixture premise');
+
+    standingOf(session).standOnRow(row);
+
+    expect(
+      session.activeLayerId,
+      row.layerId,
+      reason: '⛔`takesLayerActive` is false only on the STORYBOARD rails, '
+          'where the row you stand on and the layer you draw on are '
+          'separate states (유저 2026-07-27). Everywhere else standing on '
+          'a layer row IS picking it',
+    );
   });
 
   test('a row that is itself selected keeps its selection', () {

@@ -13,6 +13,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/row_selection.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -33,6 +34,12 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 /// ⚠️The swallower TAKES THEIR PLACE rather than the selection emptying —
 /// the same answer the standing row already gets. Someone who had rows
 /// selected still has rows selected after a fold.
+/// The collaborator that folds the band — named so `tool/mutation_run.dart`
+/// runs this file for it: H6's other half lives in `foldRowSelection`, and
+/// the sweep suite that also names it never folds anything.
+RowSelection rowSelectionOf(EditorSessionManager session) =>
+    session.rowSelectionVerbs;
+
 void main() {
   EditorSessionManager session() {
     final manager = EditorSessionManager(
@@ -90,7 +97,7 @@ void main() {
 
   test('folding a layer\'s lanes drops its LANE rows from the band', () {
     final s = session();
-    s.rowSelectionVerbs.beginRowSelection(layerA);
+    rowSelectionOf(s).beginRowSelection(layerA);
     s.rowSelection.value = [layerA, laneOfA, layerB];
 
     s.handOffCurrentRowOnFold(const LayerId('a'));

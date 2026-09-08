@@ -34,5 +34,12 @@ void main() {
     settings.setProjectFps(0);
     expect(settings.projectFps, start);
     expect(session.canUndo, isFalse);
+
+    // ⚠️The floor is ONE, not two. Every whole-number rate arrives as
+    // numerator/1, so a guard that refused 1 would refuse the denominator
+    // of every rate in the app — and 1 fps is a legal (if odd) sheet.
+    settings.setProjectFps(1);
+    expect(settings.projectFps, 1);
+    expect(session.repository.requireProject().frameRate.denominator, 1);
   });
 }

@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
     show InstructionEventDialog;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
@@ -80,6 +81,13 @@ Future<bool> _editInstanceEnabled(WidgetTester tester) async {
     const ValueKey<String>('shared-edit-button'),
   );
 }
+
+/// The collaborator the storyboard authors through — named so
+/// `tool/mutation_run.dart` runs this file for it: the cut-view suite that
+/// also names it only READS the row, and creation is where 유저 #17's
+/// selection-length law lives.
+Transitions transitionsOf(EditorSessionManager session) =>
+    session.transitions;
 
 void main() {
   group('the transition row on the global rail', () {
@@ -243,8 +251,11 @@ void main() {
       seekStoryboardGlobalFrame(session, aEnd + 2);
       expect(session.activeCutId, isNull, reason: 'a gap holds no cut');
 
-      expect(session.transitions.canCreateTransitionSpanAtPlayhead, isTrue);
-      session.transitions.createTransitionSpanAtPlayhead();
+      expect(
+        transitionsOf(session).canCreateTransitionSpanAtPlayhead,
+        isTrue,
+      );
+      transitionsOf(session).createTransitionSpanAtPlayhead();
 
       expect(
         session.activeTrack.transitionLayer.instructions.keys,

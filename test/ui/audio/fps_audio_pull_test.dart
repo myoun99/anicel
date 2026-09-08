@@ -19,9 +19,16 @@ import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/dialogs/fps_audio_choice_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/project_audio.dart';
 
 /// EXPORT-AUDIO ④: the fps-change audio question — when it arises, what
 /// the pull does, and that one undo step moves rate and pull together.
+/// The collaborator that owns the pull — named so `tool/mutation_run.dart`
+/// runs this file for it too: its sibling suite pins the RATE guard and
+/// this one pins the audio question and the pull itself.
+ProjectAudio projectAudioOf(EditorSessionManager session) =>
+    session.projectAudio;
+
 void main() {
   group('audioPullBetween', () {
     test('the pulldown pairs pull by their exact rational', () {
@@ -138,7 +145,7 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      expect(session.projectAudio.projectHasAnyAudio, isTrue);
+      expect(projectAudioOf(session).projectHasAnyAudio, isTrue);
       session.projectAudio.setProjectFrameRateWithAudioPull(
         ProjectFrameRate.fps24,
       );
