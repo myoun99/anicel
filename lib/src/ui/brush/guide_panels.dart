@@ -480,6 +480,11 @@ class _VanishingPointRow extends StatelessWidget {
     final strings = AppText.strings;
     final resolved = point.resolve();
     final position = resolved.position;
+    // ⚠️EQUIVALENT MUTANT, and the arm stays on purpose (2026-09-08):
+    // [HomogeneousPoint.position] is null for every `w == 0`, so dropping
+    // `resolved.isInfinite` changes no answer. It NAMES the case a reader
+    // came looking for, while the second arm also catches a cross product
+    // that overflowed to NaN — which nobody would read out of it alone.
     final subtitle = resolved.isInfinite || position == null
         ? strings.guideVanishingPointAtInfinity
         : '${position.x.round()}, ${position.y.round()}';
