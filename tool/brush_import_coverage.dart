@@ -29,16 +29,18 @@ import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
 import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
 
 void main(List<String> args) {
-  if (args.isEmpty) {
+  final paths = args.where((a) => a != '--effectors').toList();
+  if (paths.isEmpty) {
     stderr.writeln(
-      'brush_import_coverage: 인자는 .sut/.sutg/.abr 파일 경로들입니다.',
+      'brush_import_coverage: 인자는 .sut/.sutg/.abr 파일 경로들입니다.\n'
+      '  --effectors  CSP 이펙터 블롭을 입력별로 뜯어 봅니다.',
     );
     exitCode = 2;
     return;
   }
   final sutFiles = <String>[];
   final abrFiles = <String>[];
-  for (final path in args) {
+  for (final path in paths) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.abr')) {
       abrFiles.add(path);
@@ -46,8 +48,74 @@ void main(List<String> args) {
       sutFiles.add(path);
     }
   }
+  if (args.contains('--effectors')) {
+    _reportEffectors(sutFiles);
+    return;
+  }
   if (sutFiles.isNotEmpty) _reportSut(sutFiles);
   if (abrFiles.isNotEmpty) _reportAbr(abrFiles);
+}
+
+// -------------------------------------------------- CSP effector blobs
+
+/// The input-source bits an effector's flag word carries.
+///
+/// 🚨0x40 IS TILT, and it was guessed wrong for months. `sut_decoder.dart`
+/// documented it as "most likely stroke direction" because it had only ever
+/// been seen on the rotation effector; a brush with all four inputs ticked
+/// reads 0xF0 on its SIZE effector, and the panel it came from lists
+/// 筆圧 / 傾き / 速度 / ランダム. Stroke direction remains unmapped.
+const _inputBits = <int, String>{
+  0x10: '筆圧',
+  0x40: '傾き',
+  0x20: '速度',
+  0x80: 'ランダム',
+};
+
+/// Dumps each effector blob as the numbers the CSP panel shows, so a claim
+/// about the layout can be checked against a screenshot instead of argued.
+///
+/// ⚠️THE SLOT NAMES ARE A READING, NOT A SPEC. They were fixed by matching
+/// two brushes whose panels were captured; anything this prints as `?` is a
+/// slot no screenshot has pinned yet.
+void _reportEffectors(List<String> paths) {
+  for (final path in paths) {
+    final database = sqlite3.open(path, mode: OpenMode.readOnly);
+    try {
+      stdout.writeln('=' * 72);
+      stdout.writeln('FILE: ${_base(path)}');
+      for (final row in database.select('SELECT * FROM "Variant"')) {
+        final name = row.keys.contains('NodeName') ? row['NodeName'] : null;
+        stdout.writeln('--- variant ${row['VariantID']}${name == null ? '' : ' ($name)'}');
+        for (final column in row.keys) {
+          if (!column.contains('Effector')) continue;
+          final value = row[column];
+          if (value is! Uint8List || value.length < 44) continue;
+          _dumpEffector(column, value);
+        }
+      }
+    } finally {
+      database.close();
+    }
+  }
+}
+
+void _dumpEffector(String column, Uint8List bytes) {
+  final data = ByteData.sublistView(bytes);
+  int at(int index) => data.getInt32(index * 4);
+  final flags = at(2);
+  if (flags == 0) return;
+  final on = _inputBits.entries
+      .where((e) => flags & e.key != 0)
+      .map((e) => e.value)
+      .join(' · ');
+  // int[3..6] are the four minimums in the panel's own order, and int[10]
+  // is 傾き's maximum — the only input CSP gives one.
+  stdout.writeln(
+    '  ${column.padRight(28)} flags=0x${flags.toRadixString(16)} [$on]\n'
+    '      최소값 筆圧=${at(3)} 傾き=${at(4)} 速度=${at(5)} ランダム=${at(6)}'
+    '   傾き최대=${at(10)}   (${bytes.length}B)',
+  );
 }
 
 // ---------------------------------------------------------------- CSP .sut
