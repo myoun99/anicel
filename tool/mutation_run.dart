@@ -172,15 +172,30 @@ Future<void> main(List<String> args) async {
       .toList();
 
   if (targets.isEmpty) {
-    stderr.writeln('usage: mutation_run.dart <lib/...dart> [more] '
-        '[--sample N] [--out results.jsonl] [--plan]');
+    stderr.writeln(
+      'usage: mutation_run.dart <lib/...dart> [more] '
+      '[--sample N] [--out results.jsonl] [--plan]',
+    );
     exit(2);
   }
 
   final graph = buildImportGraph(roots: ['lib', 'test']);
   final namersOf = <String, List<String>>{};
   for (final entry in graph.entries) {
-    if (!entry.key.startsWith('test/')) continue;
+    // ⛔A HELPER IS NOT A SUITE, AND AN EMPTY SUITE NEVER GOES RED.
+    //
+    // Anything under test/ that imports a lib file lands in this index, and
+    // `test/helpers/` is full of files that do: device_viewport.dart is the
+    // ONLY namer this index offers for models/canvas_viewport.dart, and
+    // conform_file_path.dart the only one for services/media/
+    // media_byte_source.dart. Handing either to `flutter test` runs a file
+    // that declares no tests, which exits 0 — and [classifyRun] reads exit 0
+    // as SURVIVED. Every mutation in those files would have been written down
+    // as unnoticed, bought from a suite that could not have noticed anything
+    // (2026-09-08).
+    if (!entry.key.startsWith('test/') || !entry.key.endsWith('_test.dart')) {
+      continue;
+    }
     for (final target in entry.value) {
       namersOf.putIfAbsent(target, () => []).add(entry.key);
     }
@@ -192,15 +207,17 @@ Future<void> main(List<String> args) async {
     targets = targets.where((t) => !done.contains(t)).toList();
     // ⛔Never silent: a resume that quietly ran 3 of 339 files would read as
     // a finished campaign.
-    stdout.writeln('[resume] ${before - targets.length} of $before already '
-        'in $outPath — ${targets.length} left');
+    stdout.writeln(
+      '[resume] ${before - targets.length} of $before already '
+      'in $outPath — ${targets.length} left',
+    );
   }
 
   final sink = outPath == null
       ? null
-      : (File(outPath)..createSync(recursive: true)).openWrite(
-          mode: FileMode.append,
-        );
+      : (File(
+          outPath,
+        )..createSync(recursive: true)).openWrite(mode: FileMode.append);
 
   var killed = 0;
   var survived = 0;
@@ -216,11 +233,13 @@ Future<void> main(List<String> args) async {
       }
       if (namers.isEmpty) {
         _say(target, 'UNNAMED — no test names this file, nothing to run');
-        sink?.writeln(jsonEncode({
-          'file': target,
-          'verdict': Verdict.unnamed.name,
-          'namers': 0,
-        }));
+        sink?.writeln(
+          jsonEncode({
+            'file': target,
+            'verdict': Verdict.unnamed.name,
+            'namers': 0,
+          }),
+        );
         continue;
       }
 
@@ -232,12 +251,14 @@ Future<void> main(List<String> args) async {
       // ~3s (the analyze pre-check), so 8 tries per wanted verdict is cheap.
       final budget = all.length < sample * 8 ? all.length : sample * 8;
       final candidates = all.take(budget).toList();
-      _say(target,
-          '${chosen.length} of ${namers.length} namer(s), '
-          'want $sample informative from ${all.length} candidate(s)'
-          '${chosen.length < namers.length ? ' — CAPPED, a survivor here means '
-              'only that these ${chosen.length} did not notice' : ''}'
-          '${planOnly ? ' — plan only' : ''}');
+      _say(
+        target,
+        '${chosen.length} of ${namers.length} namer(s), '
+        'want $sample informative from ${all.length} candidate(s)'
+        '${chosen.length < namers.length ? ' — CAPPED, a survivor here means '
+                  'only that these ${chosen.length} did not notice' : ''}'
+        '${planOnly ? ' — plan only' : ''}',
+      );
       for (final namer in chosen) {
         _say(target, '  namer: $namer');
       }
@@ -270,32 +291,38 @@ Future<void> main(List<String> args) async {
             break;
         }
         _say(target, '  ${verdict.name.toUpperCase().padRight(9)} $m');
-        sink?.writeln(jsonEncode({
-          'file': target,
-          'line': m.line,
-          'kind': m.kind,
-          'was': m.was,
-          'became': m.replacement,
-          'verdict': verdict.name,
-          'namersRun': chosen.length,
-          'namers': namers.length,
-        }));
+        sink?.writeln(
+          jsonEncode({
+            'file': target,
+            'line': m.line,
+            'kind': m.kind,
+            'was': m.was,
+            'became': m.replacement,
+            'verdict': verdict.name,
+            'namersRun': chosen.length,
+            'namers': namers.length,
+          }),
+        );
       }
       // ⛔NEVER SILENT. A file that taught us nothing must say so, or the
       // JSONL reads as 「measured, and clean」 — which is what slice 1's four
       // all-unbuilt files looked like.
       if (informative < sample) {
-        _say(target,
-            'only $informative informative verdict(s) out of $sample asked '
-            'for — ${all.length} candidate(s) existed, $budget tried');
-        sink?.writeln(jsonEncode({
-          'file': target,
-          'verdict': 'incomplete',
-          'informative': informative,
-          'wanted': sample,
-          'candidates': all.length,
-          'tried': budget,
-        }));
+        _say(
+          target,
+          'only $informative informative verdict(s) out of $sample asked '
+          'for — ${all.length} candidate(s) existed, $budget tried',
+        );
+        sink?.writeln(
+          jsonEncode({
+            'file': target,
+            'verdict': 'incomplete',
+            'informative': informative,
+            'wanted': sample,
+            'candidates': all.length,
+            'tried': budget,
+          }),
+        );
       }
     }
   } finally {
@@ -304,8 +331,10 @@ Future<void> main(List<String> args) async {
   }
 
   stdout.writeln('');
-  stdout.writeln('killed $killed · survived $survived · unbuilt $unbuilt · '
-      'timeout $timedOut');
+  stdout.writeln(
+    'killed $killed · survived $survived · unbuilt $unbuilt · '
+    'timeout $timedOut',
+  );
   // ⚠️Exit 0 whatever the verdicts. A surviving mutation is a FINDING, not a
   // failure of this run — a non-zero exit would make a report indistinguishable
   // from a crash to whatever called it.
@@ -325,9 +354,11 @@ void _refuseIfDirty(String path) {
   final status = Process.runSync('git', ['status', '--porcelain', '--', path]);
   final out = (status.stdout as String).trim();
   if (out.isNotEmpty) {
-    stderr.writeln('⛔$path has uncommitted changes:\n  $out\n'
-        '  This tool rewrites the file and puts it back. Commit or revert '
-        'first — a crash mid-run would take your edits with it.');
+    stderr.writeln(
+      '⛔$path has uncommitted changes:\n  $out\n'
+      '  This tool rewrites the file and puts it back. Commit or revert '
+      'first — a crash mid-run would take your edits with it.',
+    );
     exit(3);
   }
 }
@@ -342,11 +373,10 @@ Future<Verdict> _runOne(
   file.writeAsStringSync(m.applyTo(original));
   try {
     // The cheap NO first — see [analyzeReportsError].
-    final pre = Process.runSync(
-      'dart',
-      ['analyze', file.path],
-      runInShell: true,
-    );
+    final pre = Process.runSync('dart', [
+      'analyze',
+      file.path,
+    ], runInShell: true);
     if (analyzeReportsError('${pre.stdout}${pre.stderr}')) {
       return Verdict.unbuilt;
     }
@@ -356,8 +386,10 @@ Future<Verdict> _runOne(
     // Safety #2: having written is not having written.
     final now = file.readAsStringSync();
     if (now != original) {
-      stderr.writeln('🚨COULD NOT RESTORE ${file.path} — it is still '
-          'mutated. Fix it before anything else runs.');
+      stderr.writeln(
+        '🚨COULD NOT RESTORE ${file.path} — it is still '
+        'mutated. Fix it before anything else runs.',
+      );
       exit(4);
     }
   }
@@ -430,24 +462,29 @@ Future<Verdict> _runNamers(List<String> ordered) async {
 }
 
 Future<Verdict> _runSuite(List<String> namers) async {
-  final process = await Process.start(
-    'flutter',
-    ['test', ...namers],
-    runInShell: true,
-  );
+  final process = await Process.start('flutter', [
+    'test',
+    ...namers,
+  ], runInShell: true);
   final buffer = StringBuffer();
   final done = Completer<int>();
-  unawaited(process.stdout
-      .transform(utf8.decoder)
-      .forEach(buffer.write)
-      .catchError((_) {}));
-  unawaited(process.stderr
-      .transform(utf8.decoder)
-      .forEach(buffer.write)
-      .catchError((_) {}));
-  unawaited(process.exitCode.then((code) {
-    if (!done.isCompleted) done.complete(code);
-  }));
+  unawaited(
+    process.stdout
+        .transform(utf8.decoder)
+        .forEach(buffer.write)
+        .catchError((_) {}),
+  );
+  unawaited(
+    process.stderr
+        .transform(utf8.decoder)
+        .forEach(buffer.write)
+        .catchError((_) {}),
+  );
+  unawaited(
+    process.exitCode.then((code) {
+      if (!done.isCompleted) done.complete(code);
+    }),
+  );
 
   Timer(_suiteTimeout, () {
     if (done.isCompleted) return;
