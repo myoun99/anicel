@@ -152,6 +152,106 @@ int main(void) {
     }
   }
 
+  // 🚨★★★**THE COLOUR CONVERSION, WHICH HAD NEVER RUN ANYWHERE.** It sat
+  // inside the `__ANDROID__` backend: compiled on every PR, executed on no
+  // machine anybody has (card `android-decoder-branch-never-runs`). It is
+  // pure arithmetic, so the only thing that kept it unproven was WHERE it
+  // was written — the same story as the rotation above, which was an Apple
+  // secret until the split.
+  {
+    // A 4x4 picture with room to be wrong in: the decoder is told the rows
+    // are 8 bytes apart and the chroma starts 6 rows down, while the
+    // picture is 4x4. ⛔The padding is the whole point — a vendor's
+    // hardware hands back exactly this, and reading stride as width is the
+    // classic way to get a green-striped frame.
+    //
+    // ⚠️FOUR rows and not two, because two gives the chroma a single row
+    // and a single row never multiplies by the chroma stride. Measured:
+    // with a 2x2 fixture, mutating `chroma_stride` SURVIVED — the axis was
+    // never asked a question. A fixture that does not reach a term is not
+    // a nail through it.
+    const int32_t w = 4;
+    const int32_t h = 4;
+    const int32_t stride = 8;
+    const int32_t slice = 6;
+    // Y = 81, Cb = 90, Cr = 240 is BT.601 limited-range RED. The BOTTOM
+    // half of the chroma is neutral, so the picture is red over grey and
+    // the two chroma rows cannot be confused for one another.
+    uint8_t planar[8 * 6 + 4 * 3 + 4 * 3];
+    memset(planar, 0xAA, sizeof(planar));  // padding must never be read
+    for (int32_t y = 0; y < h; y += 1) {
+      for (int32_t x = 0; x < w; x += 1) {
+        planar[y * stride + x] = 81;
+      }
+    }
+    uint8_t* u = planar + stride * slice;
+    uint8_t* v = u + (stride / 2) * (slice / 2);
+    for (int32_t cx = 0; cx < w / 2; cx += 1) {
+      u[cx] = 90;                      // top chroma row: red
+      v[cx] = 240;
+      u[(stride / 2) + cx] = 128;      // bottom chroma row: neutral
+      v[(stride / 2) + cx] = 128;
+    }
+
+    uint8_t rgba[4 * 4 * 4];
+    qa_yuv420_to_rgba(planar, w, h, stride, slice, 0, rgba);
+    expect_int("planar red is red", rgba[0], 255);
+    expect_int("planar red has no green", rgba[1], 0);
+    expect_int("planar red has no blue", rgba[2], 0);
+    expect_int("and it is opaque", rgba[3], 255);
+    // The pixel FURTHEST from the origin proves both strides were walked:
+    // reading stride as width would land this one in the padding, and
+    // reading the chroma row wrong would give it the top half's red.
+    const int32_t last = (3 * 4 + 3) * 4;
+    expect_int("the bottom half is neutral grey, not red", rgba[last], 76);
+    expect_int("as grey as it is red", rgba[last + 1], 76);
+    expect_int("and blue to match", rgba[last + 2], 76);
+
+    // NV12 says the same picture with the chroma interleaved. ⚠️Two
+    // layouts, ONE answer — a backend that read the wrong one would hand
+    // back a frame with the colours swapped rather than an obvious error.
+    uint8_t semi[8 * 6 + 8 * 3];
+    memset(semi, 0xAA, sizeof(semi));
+    for (int32_t y = 0; y < h; y += 1) {
+      for (int32_t x = 0; x < w; x += 1) {
+        semi[y * stride + x] = 81;
+      }
+    }
+    uint8_t* uv = semi + stride * slice;
+    for (int32_t cx = 0; cx < w / 2; cx += 1) {
+      uv[cx * 2] = 90;
+      uv[cx * 2 + 1] = 240;
+      uv[stride + cx * 2] = 128;
+      uv[stride + cx * 2 + 1] = 128;
+    }
+
+    uint8_t rgba_semi[4 * 4 * 4];
+    qa_yuv420_to_rgba(semi, w, h, stride, slice, 1, rgba_semi);
+    for (int32_t i = 0; i < 4 * 4 * 4; i += 1) {
+      expect_int("NV12 and I420 are the same picture", rgba_semi[i], rgba[i]);
+    }
+
+    // Black and white, to pin the LIMITED range: 16 is black and 235 is
+    // white, and a converter written for full range would answer 0 and 255
+    // to the wrong inputs.
+    uint8_t flat[8 * 6 + 4 * 3 + 4 * 3];
+    memset(flat, 128, sizeof(flat));  // neutral chroma everywhere
+    for (int32_t y = 0; y < h; y += 1) {
+      for (int32_t x = 0; x < w; x += 1) {
+        flat[y * stride + x] = 16;
+      }
+    }
+    qa_yuv420_to_rgba(flat, w, h, stride, slice, 0, rgba);
+    expect_int("luma 16 is black", rgba[0], 0);
+    for (int32_t y = 0; y < h; y += 1) {
+      for (int32_t x = 0; x < w; x += 1) {
+        flat[y * stride + x] = 235;
+      }
+    }
+    qa_yuv420_to_rgba(flat, w, h, stride, slice, 0, rgba);
+    expect_int("luma 235 is white", rgba[0], 255);
+  }
+
   // 🚨A RANGE IS CHECKED BEFORE ANY BACKEND SEES IT, and the two refusals
   // say different things. That distinction is the same one the viewer got
   // wrong in Dart — 「no decoder in this build」 for a file the decoder
