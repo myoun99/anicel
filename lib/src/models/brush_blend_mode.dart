@@ -91,10 +91,24 @@ enum BrushBlendMode {
 
   String toJson() => name;
 
-  static BrushBlendMode fromJson(Object? json) {
-    return BrushBlendMode.values.firstWhere(
-      (value) => value.name == json,
-      orElse: () => BrushBlendMode.color,
-    );
+  /// The mode written under [name], or null when it is absent or unknown.
+  ///
+  /// ⚠️THE one place that turns a stored name back into a mode. Every
+  /// reader wants one of two things on a miss — 通常, or "nothing was
+  /// stored" — and both are this plus a `??`, so neither is worth its own
+  /// loop (two private copies of exactly this scan were written and
+  /// deleted on 2026-09-08; the clone ratchet caught the second).
+  static BrushBlendMode? named(String? name) {
+    for (final mode in values) {
+      if (mode.name == name) {
+        return mode;
+      }
+    }
+    return null;
   }
+
+  /// The mode written under [json], falling back to 通常 — an unreadable
+  /// blend must not fail the load that carries it.
+  static BrushBlendMode fromJson(Object? json) =>
+      named(json is String ? json : null) ?? color;
 }

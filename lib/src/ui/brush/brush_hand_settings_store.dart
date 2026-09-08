@@ -72,7 +72,7 @@ class BrushHandSettingsStore {
                   // An unreadable name degrades to "never touched" rather
                   // than failing the whole bank — one brush loses a
                   // remembered blend, everything else still loads.
-                  blendMode: _blendModeNamed(
+                  blendMode: BrushBlendMode.named(
                     (entry.value as Map<String, dynamic>)['blendMode']
                         as String?,
                   ),
@@ -100,17 +100,4 @@ class BrushHandSettingsStore {
       }),
     );
   }
-}
-
-/// The blend mode written under [name], or null when absent or unreadable.
-BrushBlendMode? _blendModeNamed(String? name) {
-  if (name == null) {
-    return null;
-  }
-  for (final mode in BrushBlendMode.values) {
-    if (mode.name == name) {
-      return mode;
-    }
-  }
-  return null;
 }

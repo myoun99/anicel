@@ -301,11 +301,11 @@ class BrushSettings {
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       roundnessJitter: (json['roundnessJitter'] as num?)?.toDouble() ?? 0.0,
       spacingJitter: (json['spacingJitter'] as num?)?.toDouble() ?? 0.0,
-      blendMode:
-          _blendModeNamed(
-            (json['blendMode'] ?? json['lockedBlendMode']) as String?,
-          ) ??
-          BrushBlendMode.color,
+      // The legacy `lockedBlendMode` key reads straight in: a preset that
+      // PINNED a blend now simply has it.
+      blendMode: BrushBlendMode.fromJson(
+        json['blendMode'] ?? json['lockedBlendMode'],
+      ),
       scatterRadiusRatio:
           (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
       scatterCount: json['scatterCount'] as int? ?? 1,
@@ -335,22 +335,6 @@ class BrushSettings {
 
   @override
   String toString() => 'BrushSettings(shape: $shape)';
-}
-
-/// The blend mode written under [name], or null when absent or unknown — an
-/// unreadable blend degrades to 通常 rather than failing the whole load.
-/// [name] also accepts the legacy `lockedBlendMode` key: a preset that pinned
-/// a blend now simply *has* that blend.
-BrushBlendMode? _blendModeNamed(String? name) {
-  if (name == null) {
-    return null;
-  }
-  for (final mode in BrushBlendMode.values) {
-    if (mode.name == name) {
-      return mode;
-    }
-  }
-  return null;
 }
 
 /// Throws [ArgumentError] if any parameter in [shape] is outside the model's
