@@ -473,22 +473,16 @@ void main() {
       return spy;
     }
 
-    testWidgets('horizontal: the fill grows rightward from the left, the '
-        'edge marks the value along the WIDTH', (tester) async {
+    testWidgets('horizontal: the fill grows rightward from the left, and it '
+        'is the ONLY mark of the value', (tester) async {
       final spy = await track(tester, Axis.horizontal, const Size(100, 20));
-      expect(spy.rects, [
-        const Rect.fromLTWH(0, 0, 50, 20),
-        const Rect.fromLTWH(49, 0, 2, 20),
-      ]);
+      expect(spy.rects, [const Rect.fromLTWH(0, 0, 50, 20)]);
     });
 
-    testWidgets('vertical: the fill grows upward from the bottom, the edge '
-        'marks the value along the HEIGHT', (tester) async {
+    testWidgets('vertical: the fill grows upward from the bottom, and it is '
+        'the ONLY mark of the value', (tester) async {
       final spy = await track(tester, Axis.vertical, const Size(20, 100));
-      expect(spy.rects, [
-        const Rect.fromLTWH(0, 50, 20, 50),
-        const Rect.fromLTWH(0, 49, 20, 2),
-      ]);
+      expect(spy.rects, [const Rect.fromLTWH(0, 50, 20, 50)]);
     });
   });
 
