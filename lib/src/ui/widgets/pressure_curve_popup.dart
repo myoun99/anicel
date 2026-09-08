@@ -62,6 +62,38 @@ class PressureCurveButton extends StatelessWidget {
   static const Color _offInk = Color(0x4DFFFFFF);
   static const Color _offEdge = Color(0x1AFFFFFF);
 
+  /// The mini curve this button paints, and the padding around it. Named
+  /// because [slotWidth] is derived from them and a row reserving the slot
+  /// must not re-derive either.
+  /// ⚠️Two doubles rather than a `Size`: `Size.width` is not a constant
+  /// expression, and [slotWidth] has to be one.
+  static const double _curveWidth = 22;
+  static const double _curveHeight = 14;
+  static const Size _curveSize = Size(_curveWidth, _curveHeight);
+  static const double _curvePadding = 3;
+
+  /// How wide this button stands in a settings row.
+  ///
+  /// ⚠️The border is NOT in the sum: a [DecoratedBox] sizes itself to its
+  /// child and paints the shape over that box, so the stroke costs no
+  /// layout width. (A `Container` with the same decoration would differ —
+  /// it applies `decoration.padding`.)
+  ///
+  /// 🚨A ROW WITHOUT A CURVE BUTTON RESERVES THIS MUCH ANYWAY (유저 09-08:
+  /// 「슬라이더 크기는 항상 고정되도록. 압력버튼없으면 그냥 빈공간으로」).
+  /// Two of the settings panel's twenty sliders carry a button, and before
+  /// this the other eighteen ate the space — the same control at two widths
+  /// in one panel, which is the 「자리는 항상 예약하고 내용만 바꾼다」 rule
+  /// read backwards.
+  ///
+  /// ⚠️Kept honest by `pressure_curve_button_slot_test`, which lays the real
+  /// button out and fails if its width stops matching this number.
+  static const double slotWidth = _curveWidth + _curvePadding * 2;
+
+  /// Spelled out rather than left to [BorderSide]'s default, so the note in
+  /// [slotWidth] about the stroke costing no width names a real number.
+  static const double _borderWidth = 1;
+
   @override
   Widget build(BuildContext context) {
     final active = curve != null && enabled;
@@ -95,13 +127,16 @@ class PressureCurveButton extends StatelessWidget {
               decoration: ShapeDecoration(
                 shape: AppShapes.container(
                   AppShapes.wellRadius,
-                  side: BorderSide(color: active ? AppColors.accent : _offEdge),
+                  side: BorderSide(
+                    color: active ? AppColors.accent : _offEdge,
+                    width: _borderWidth,
+                  ),
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                padding: const EdgeInsets.all(_curvePadding),
                 child: CustomPaint(
-                  size: const Size(22, 14),
+                  size: _curveSize,
                   painter: _MiniCurvePainter(
                     curve: curve,
                     color: active ? AppColors.accent : _offInk,

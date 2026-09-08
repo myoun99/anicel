@@ -521,7 +521,12 @@ class _PanelSlider extends StatelessWidget {
   final FieldSliderScale scale;
 
   /// Optional right-edge control (BB-3: the pressure-curve button).
+  ///
+  /// ⚠️Optional in CONTENT, never in SPACE — see [build].
   final Widget? trailing;
+
+  /// The gap between the slider and the trailing slot.
+  static const double _trailingGap = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -535,17 +540,24 @@ class _PanelSlider extends StatelessWidget {
       scale: scale,
       onChanged: onChanged,
     );
+    // 🚨THE SLOT IS ALWAYS THERE, whether or not a button sits in it (유저
+    // 09-08: 「슬라이더 크기는 항상 고정되도록. 압력버튼없으면 그냥
+    // 빈공간으로」). ⛔The branch this replaced gave the eighteen sliders
+    // WITHOUT a curve button the button's width as well, so one panel drew
+    // its slider at two different lengths — 「자리는 항상 예약하고 내용만
+    // 바꾼다」 with the reservation missing.
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: trailing == null
-          ? slider
-          : Row(
-              children: [
-                Expanded(child: slider),
-                const SizedBox(width: 4),
-                trailing!,
-              ],
-            ),
+      child: Row(
+        children: [
+          Expanded(child: slider),
+          const SizedBox(width: _trailingGap),
+          SizedBox(
+            width: PressureCurveButton.slotWidth,
+            child: trailing,
+          ),
+        ],
+      ),
     );
   }
 }
