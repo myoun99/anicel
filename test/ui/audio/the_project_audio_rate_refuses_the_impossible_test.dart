@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/project_audio.dart';
 
 void main() {
   late EditorSessionManager session;
@@ -20,11 +21,12 @@ void main() {
   });
   tearDown(() => session.dispose());
 
-  int rate() => session.projectAudio.projectAudioSampleRate;
+  ProjectAudio audioSettings() => session.projectAudio;
+  int rate() => audioSettings().projectAudioSampleRate;
 
   test('a rate inside the range lands as one undo step', () {
     final before = rate();
-    session.projectAudio.setProjectAudioSampleRate(44100);
+    audioSettings().setProjectAudioSampleRate(44100);
     expect(rate(), 44100);
     expect(session.canUndo, isTrue);
     session.undo();
@@ -34,24 +36,24 @@ void main() {
   test('the floor and the ceiling are exact, and outside them nothing '
       'happens — not even an undo step', () {
     // The two ends themselves are ACCEPTED.
-    session.projectAudio.setProjectAudioSampleRate(8000);
+    audioSettings().setProjectAudioSampleRate(8000);
     expect(rate(), 8000);
-    session.projectAudio.setProjectAudioSampleRate(192000);
+    audioSettings().setProjectAudioSampleRate(192000);
     expect(rate(), 192000);
 
     // One step outside either end is refused, and the rate stays where the
     // last accepted call left it.
-    session.projectAudio.setProjectAudioSampleRate(7999);
+    audioSettings().setProjectAudioSampleRate(7999);
     expect(rate(), 192000);
-    session.projectAudio.setProjectAudioSampleRate(192001);
+    audioSettings().setProjectAudioSampleRate(192001);
     expect(rate(), 192000);
-    session.projectAudio.setProjectAudioSampleRate(0);
+    audioSettings().setProjectAudioSampleRate(0);
     expect(rate(), 192000);
   });
 
   test('setting the rate it already has spends no undo step', () {
     final before = rate();
-    session.projectAudio.setProjectAudioSampleRate(before);
+    audioSettings().setProjectAudioSampleRate(before);
     expect(
       session.canUndo,
       isFalse,

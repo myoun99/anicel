@@ -8,11 +8,20 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_marks.dart';
 import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
 import 'package:anicel/src/ui/session/opacity_verbs.dart';
+import 'package:anicel/src/ui/session/standing.dart';
+import 'package:anicel/src/ui/session/visibility_solo.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
 /// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps
 /// (eye/mute/fx/opacity) mirror their per-row toggles.
+/// The two collaborators these bulk verbs act through — named so
+/// `tool/mutation_run.dart` has a suite to run for each of them.
+VisibilitySolo visibilitySoloOf(EditorSessionManager session) =>
+    session.visibilitySolo;
+
+Standing standingOf(EditorSessionManager session) => session.standing;
+
 void main() {
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -215,7 +224,8 @@ void main() {
       isFalse,
     );
 
-    s.visibilitySolo.toggleLayerVisibilitySolo();
+    final solo = visibilitySoloOf(s);
+    solo.toggleLayerVisibilitySolo();
     expect(s.visibilitySolo.layerVisibilitySoloEnabled, isTrue);
     for (final layer in s.layers) {
       expect(layer.isVisible, layer.id == firstActive);
@@ -228,7 +238,7 @@ void main() {
     }
 
     // Exit: every eye returns to its snapshot state ('other' was hidden).
-    s.visibilitySolo.toggleLayerVisibilitySolo();
+    solo.toggleLayerVisibilitySolo();
     expect(s.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
     for (final layer in s.layers) {
       expect(layer.isVisible, layer.id != other);
@@ -242,7 +252,8 @@ void main() {
     s.selectCut(firstCutId);
     final activeId = s.activeLayerId!;
 
-    s.visibilitySolo.toggleLayerVisibilitySolo();
+    final solo = visibilitySoloOf(s);
+    solo.toggleLayerVisibilitySolo();
     for (final layer in s.layers) {
       expect(layer.isVisible, layer.id == activeId);
     }
@@ -344,7 +355,8 @@ void main() {
     // Two passing rows above: the NEAREST above wins.
     final near = display[activeIndex - 1];
     final far = display[0];
-    s.standing.moveSelectionToFilteredLayer(
+    final standing = standingOf(s);
+    standing.moveSelectionToFilteredLayer(
       (layer) => layer.id == near.id || layer.id == far.id,
     );
     expect(s.activeLayerId, near.id);

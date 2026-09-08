@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/session/run_frames_add_drag.dart';
 
 /// The "+ add frames" run-edge drag (UI-R8), driven through the session's
 /// own verbs.
@@ -10,6 +11,11 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 /// anywhere drove these verbs before that move (found by mutating the
 /// wiring: an always-refusing factory turned zero tests red). This file is
 /// the family's seam: kill the wiring and something here dies.
+/// The collaborator that holds the drag — named so `tool/mutation_run.dart`
+/// has a suite to run for it.
+RunFramesAddDragVerbs runFramesAddOf(EditorSessionManager session) =>
+    session.runFramesAdd;
+
 void main() {
   /// A session with one drawing block at frame 0 on the active layer.
   EditorSessionManager sessionWithRun() {
@@ -22,19 +28,20 @@ void main() {
       'frame gets a project-unique id', () {
     final s = sessionWithRun();
     addTearDown(s.dispose);
+    final drag = runFramesAddOf(s);
     final layer = s.activeLayer!;
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
     expect(
-      s.runFramesAdd.beginRunFramesAddDrag(
+      drag.beginRunFramesAddDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         atEnd: true,
       ),
       isTrue,
     );
-    s.runFramesAdd.updateRunFramesAddDrag(3);
+    drag.updateRunFramesAddDrag(3);
 
     // The in-flight form rides the channel; the repository stays put.
     final preview = s.dragPreview.value;
@@ -44,7 +51,7 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == layer.id).timeline[3], isNull);
     expect(notifies, 0);
 
-    s.runFramesAdd.endRunFramesAddDrag();
+    drag.endRunFramesAddDrag();
     expect(s.dragPreview.value, isNull);
     expect(notifies, 1);
 
@@ -73,10 +80,11 @@ void main() {
     // after-state.
     final s = sessionWithRun();
     addTearDown(s.dispose);
+    final drag = runFramesAddOf(s);
     final layer = s.activeLayer!;
 
     expect(
-      s.runFramesAdd.beginRunFramesAddDrag(
+      drag.beginRunFramesAddDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         atEnd: true,
@@ -95,11 +103,12 @@ void main() {
   test('a count back at 0 commits nothing and leaves no undo', () {
     final s = sessionWithRun();
     addTearDown(s.dispose);
+    final drag = runFramesAddOf(s);
     final layer = s.activeLayer!;
     final undoProbe = s.canUndo;
 
     expect(
-      s.runFramesAdd.beginRunFramesAddDrag(
+      drag.beginRunFramesAddDrag(
         layerId: layer.id,
         blockStartIndex: 0,
         atEnd: true,
@@ -118,7 +127,7 @@ void main() {
     final s = sessionWithRun();
     addTearDown(s.dispose);
     expect(
-      s.runFramesAdd.beginRunFramesAddDrag(
+      runFramesAddOf(s).beginRunFramesAddDrag(
         layerId: s.activeLayer!.id,
         blockStartIndex: 9,
         atEnd: true,

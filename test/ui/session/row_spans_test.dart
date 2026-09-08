@@ -5,6 +5,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/range_selections.dart';
+import 'package:anicel/src/ui/session/row_spans.dart';
 
 /// WHAT A ROW SPANS — the four reads every snap, gate and D40 verb asks of
 /// a row before it selects anything: the folder band's aggregate runs, the
@@ -15,6 +17,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// nothing named them directly — every pin was three layers up, through a
 /// drag. These are the characterisation tests written BEFORE the move, so
 /// the move has something to be judged against.
+/// The two collaborators these cases actually read — named here so
+/// `tool/mutation_run.dart` has a suite to run for each of them.
+RowSpans rowSpansOf(EditorSessionManager session) => session.rowSpans;
+
+RangeSelections rangeSelectionsOf(EditorSessionManager session) =>
+    session.rangeSelections;
+
 void main() {
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -32,13 +41,14 @@ void main() {
       (layer) => layer.kind == LayerKind.folder,
     );
 
+    final spans = rowSpansOf(s);
     expect(
-      s.rowSpans.aggregateRunsForRow(folder),
+      spans.aggregateRunsForRow(folder),
       isNotEmpty,
       reason: 'the band draws its members runs, so the snap reads them',
     );
     expect(
-      s.rowSpans.aggregateRunsForRow(s.layers.firstWhere((l) => l.id == memberId)),
+      spans.aggregateRunsForRow(s.layers.firstWhere((l) => l.id == memberId)),
       isEmpty,
       reason: 'const [] for every row that owns its own blocks',
     );
@@ -103,8 +113,9 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final rowId = s.activeLayerId!;
 
-    expect(s.rangeSelections.canSelectRowSpanForCurrentRow, isTrue);
-    s.rangeSelections.selectRowSpanForCurrentRow();
+    final ranges = rangeSelectionsOf(s);
+    expect(ranges.canSelectRowSpanForCurrentRow, isTrue);
+    ranges.selectRowSpanForCurrentRow();
 
     final selection = s.frameRangeSelection.value;
     expect(selection, isNotNull);

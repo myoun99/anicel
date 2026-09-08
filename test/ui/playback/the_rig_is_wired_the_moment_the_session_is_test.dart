@@ -1,6 +1,7 @@
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/playback_rig.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,6 +10,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// preview quality is a setting rather than a field anyone may poke —
 /// and none of them had an observer before this file: every body here
 /// could be emptied and every suite stayed green.
+/// The collaborator under test — named so `tool/mutation_run.dart` has a
+/// suite to run for it.
+PlaybackRig playbackRigOf(EditorSessionManager session) => session.playbackRig;
+
 void main() {
   late EditorSessionManager session;
 
@@ -49,11 +54,12 @@ void main() {
     var notices = 0;
     session.addListener(() => notices += 1);
 
-    final other = session.playbackRig.playbackQuality == PlaybackQuality.full
+    final rig = playbackRigOf(session);
+    final other = rig.playbackQuality == PlaybackQuality.full
         ? PlaybackQuality.half
         : PlaybackQuality.full;
-    session.playbackRig.setPlaybackQuality(other);
-    expect(session.playbackRig.playbackQuality, other);
+    rig.setPlaybackQuality(other);
+    expect(rig.playbackQuality, other);
     expect(
       notices,
       greaterThan(0),
@@ -61,7 +67,7 @@ void main() {
     );
 
     final after = notices;
-    session.playbackRig.setPlaybackQuality(other);
+    rig.setPlaybackQuality(other);
     expect(
       notices,
       after,

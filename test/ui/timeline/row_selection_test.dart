@@ -22,11 +22,17 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
     show TimelineRowSelectionBands;
+import 'package:anicel/src/ui/session/row_selection.dart';
 
 /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
 /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 완전히 같은 순서.
 /// 선택 상태에서 복사·삭제·이름편집(선택된 편집가능 레이어 전부를 같은
 /// 이름으로 일괄 변경)」.
+/// The collaborator that owns the row sweep — named so
+/// `tool/mutation_run.dart` has a suite to run for it.
+RowSelection rowSelectionOf(EditorSessionManager session) =>
+    session.rowSelectionVerbs;
+
 void main() {
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -45,10 +51,11 @@ void main() {
       final rows = railRows(s);
       expect(rows.length, greaterThan(2), reason: 'fixture has rows to span');
 
-      s.rowSelectionVerbs.beginRowSelection(rows.first.address);
+      final selectionVerbs = rowSelectionOf(s);
+      selectionVerbs.beginRowSelection(rows.first.address);
       expect(s.rowSelection.value, [rows.first.address]);
 
-      s.rowSelectionVerbs.updateRowSelection(rows, 2);
+      selectionVerbs.updateRowSelection(rows, 2);
       expect(s.rowSelection.value, [
         rows[0].address,
         rows[1].address,
@@ -57,7 +64,7 @@ void main() {
 
       // Coming back shrinks it — the span is anchor-to-head, not a
       // high-water mark.
-      s.rowSelectionVerbs.updateRowSelection(rows, 1);
+      selectionVerbs.updateRowSelection(rows, 1);
       expect(s.rowSelection.value, [rows[0].address, rows[1].address]);
     });
 

@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/session/range_selections.dart';
 
 /// deselect-button — **the tablet's Esc.**
 ///
@@ -22,6 +23,11 @@ import 'package:anicel/src/ui/home_page.dart';
 /// because space and time are different axes and the pixel verbs need both at
 /// once — but 「지금 뭔가 선택됐나」 has to count it, or the button leaves a
 /// selection sitting on screen.
+/// The collaborator whose `hasAnySelection` this button reads — named so
+/// `tool/mutation_run.dart` has a suite to run for it.
+RangeSelections rangeSelectionsOf(EditorSessionManager session) =>
+    session.rangeSelections;
+
 void main() {
   const button = ValueKey<String>('rail-deselect-button');
 
@@ -110,6 +116,7 @@ void main() {
   testWidgets('the MARQUEE is the fifth kind — it lights the button and the '
       'press lets go of it too', (tester) async {
     final session = await pump(tester);
+    final ranges = rangeSelectionsOf(session);
     expect(
       session.canvasHasSelection,
       isNotNull,
@@ -130,7 +137,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.hasAnySelection,
+      ranges.hasAnySelection,
       isTrue,
       reason: 'a marquee alone counts — 「지금 뭔가 선택됐나」',
     );

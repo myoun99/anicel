@@ -9,12 +9,18 @@ import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/text_cel_bakes.dart';
 
 /// The TEXT layer end to end (R5, §6-s): a cel's truth is its parameters,
 /// the raster is a store projection the bake sweep re-renders after every
 /// history change — so undo/redo, rasterize and 겸용 links all read
 /// correctly from the ordinary content signals. Engine text + toImage run
 /// inside the runAsync interleave (the import tests' loop).
+/// The collaborator that bakes the text — named so `tool/mutation_run.dart`
+/// has a suite to run for it.
+TextCelBakes textCelBakesOf(EditorSessionManager session) =>
+    session.textCelBakes;
+
 void main() {
   /// Pump/real-async interleave until [ready] — sweep bakes complete in
   /// real turns, their fake-zone continuations drain on pump.
@@ -51,7 +57,8 @@ void main() {
     expect(s.layerStack.celHasContentForLayer(refreshed, 0), isFalse);
 
     // Typing bakes the projection.
-    s.textCelBakes.setTextCelContentForSelectedFrame(
+    final bakes = textCelBakesOf(s);
+    bakes.setTextCelContentForSelectedFrame(
       const TextCelContent(
         text: 'カット 12',
         style: TextCelStyle(fontSize: 64, bold: true),
@@ -91,7 +98,8 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
-    s.textCelBakes.setTextCelContentForSelectedFrame(
+    final bakes = textCelBakesOf(s);
+    bakes.setTextCelContentForSelectedFrame(
       const TextCelContent(text: 'BANK', style: TextCelStyle(fontSize: 80)),
     );
     await settle(tester, () {
@@ -139,7 +147,8 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.text);
     final layerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
-    s.textCelBakes.setTextCelContentForSelectedFrame(
+    final bakes = textCelBakesOf(s);
+    bakes.setTextCelContentForSelectedFrame(
       const TextCelContent(text: 'C-12', style: TextCelStyle(fontSize: 48)),
     );
     await settle(tester, () {
@@ -280,7 +289,8 @@ void main() {
     s.layerStack.addLayerOfKind(LayerKind.text);
     final originLayerId = s.activeLayerId!;
     s.createDrawingAtCurrentFrame();
-    s.textCelBakes.setTextCelContentForSelectedFrame(
+    final bakes = textCelBakesOf(s);
+    bakes.setTextCelContentForSelectedFrame(
       const TextCelContent(text: 'C-12', style: TextCelStyle(fontSize: 48)),
     );
     await settle(tester, () {

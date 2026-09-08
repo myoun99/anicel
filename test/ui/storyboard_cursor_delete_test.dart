@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 
 /// THE STORYBOARD CURSOR'S DELETE IS MEASURED.
 ///
@@ -25,6 +26,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// test (a_global_row_needs_no_cut, H11) and the verb itself had none. So
 /// the verb is asked here, on the same fixture, for the answer the model
 /// gives — the block is gone.
+/// The collaborator that resolves the cursor — named so
+/// `tool/mutation_run.dart` has a suite to run for it.
+StoryboardCursor storyboardCursorOf(EditorSessionManager session) =>
+    session.storyboardCursor;
+
 void main() {
   const trackId = TrackId('sc-track');
   const seLayerId = LayerId('sc-se');
@@ -89,7 +95,8 @@ void main() {
   test('the fixture: standing inside the sound, the cursor holds a block', () {
     final s = standingOnSeAt(3);
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2]);
-    expect(s.storyboardCursor.canDeleteBlockAtStoryboardCursor, isTrue);
+    final cursor = storyboardCursorOf(s);
+    expect(cursor.canDeleteBlockAtStoryboardCursor, isTrue);
   });
 
   test('deleting the SE block under the cursor removes it from the row', () {

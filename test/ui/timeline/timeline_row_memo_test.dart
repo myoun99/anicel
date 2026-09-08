@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/track_se_display.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
@@ -10,6 +11,11 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// rows (camera, SE) must reuse their cached row INSTANCES across
 /// unrelated session notifies — their display identities are cached
 /// upstream and their external inputs ride the memo token now.
+/// The collaborator that caches the display clones — named so
+/// `tool/mutation_run.dart` has a suite to run for it.
+TrackSeDisplay trackSeDisplayOf(EditorSessionManager session) =>
+    session.trackSe;
+
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 700));
@@ -46,7 +52,8 @@ void main() {
     final cameraLayer = manager.layers.firstWhere(
       (layer) => layer.kind == LayerKind.camera,
     );
-    final seLayer = manager.trackSe.trackSeDisplayLayers.first;
+    final trackSe = trackSeDisplayOf(manager);
+    final seLayer = trackSe.trackSeDisplayLayers.first;
 
     // Sparse rows (camera/SE) render through the widget path — their
     // stable key is the frame-row area.

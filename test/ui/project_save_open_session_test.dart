@@ -8,11 +8,17 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// P3 through the session: save/open round-trip, the load→edit→undo
 /// lifecycle (both undo stacks clear on load), the dirty flag and the
 /// staged-copy binding.
+/// The save/open door itself — named so `tool/mutation_run.dart` has a
+/// suite to run for it.
+ProjectFileDoor projectDoorOf(EditorSessionManager session) =>
+    session.projectDoor;
+
 void main() {
   late Directory directory;
 
@@ -67,15 +73,16 @@ void main() {
         .first
         .cuts
         .length;
+    final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(path);
+    await door.saveProjectToFile(path);
     expect(s.projectFile.path, path);
     expect(s.projectFile.hasUnsavedChanges, isFalse);
 
     // Mutate past the save, then load the file back.
     s.cutVerbs.createCut();
     expect(s.projectFile.hasUnsavedChanges, isTrue);
-    await s.projectDoor.openProjectFromFile(path);
+    await door.openProjectFromFile(path);
 
     expect(
       s.repository.requireProject().tracks.first.cuts.length,
@@ -111,8 +118,9 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
+    final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(path);
+    await door.saveProjectToFile(path);
 
     // A band naming a row of the project that is about to be replaced.
     s.updateFrameRangeSelectionDrag(
@@ -122,7 +130,7 @@ void main() {
     );
     expect(s.frameRangeSelection.value, isNotNull);
 
-    await s.projectDoor.openProjectFromFile(path);
+    await door.openProjectFromFile(path);
 
     expect(
       s.frameRangeSelection.value,
@@ -142,10 +150,11 @@ void main() {
   test('the atomic write leaves no temp residue and replaces an existing '
       'file in place', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
+    final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(path);
+    await door.saveProjectToFile(path);
     s.cutVerbs.createCut();
-    await s.projectDoor.saveProjectToFile(path);
+    await door.saveProjectToFile(path);
 
     final entries = directory.listSync().map((e) => e.uri.pathSegments.last);
     expect(entries, ['scene.anicel']);

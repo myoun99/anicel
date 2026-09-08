@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
 import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
     show TimelineSelectedExposureOutline;
+import 'package:anicel/src/ui/session/transitions.dart';
 
 /// The TRANSITION row inside a CUT's timeline — visible, and read-only.
 ///
@@ -33,6 +34,11 @@ import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
 /// eight times over, so its spans drew nothing and a range selection on it
 /// covered nothing (user 2026-08-11: 「타임라인에서 안보이거든?」 ·
 /// 「선택범위… 트랜지션레이어만 작동안하니까 공통 규칙 그대로」).
+/// The collaborator that owns the spans — named so `tool/mutation_run.dart`
+/// has a suite to run for it.
+Transitions transitionsOf(EditorSessionManager session) =>
+    session.transitions;
+
 void main() {
   /// A session with two cuts and an O.L span straddling their boundary, reached
   /// through the live tree so the host is notified — a raw repository write
@@ -55,7 +61,8 @@ void main() {
     final first = session.repository.requireProject().tracks.first.cuts.first;
     // Straddling the boundary between cut 1 and cut 2: 8 frames, half on each
     // side. This is the O.L both cuts take a のりしろ for.
-    session.transitions.updateTransitionInstructions(
+    final transitions = transitionsOf(session);
+    transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         first.duration - 4: const InstructionEvent(
           instructionId: 'ol',
@@ -121,7 +128,8 @@ void main() {
     final crossingStart = first.duration - 4;
     // One F.O that CROSSES cut 1's end (refused + marked), one that stays
     // INSIDE it (applies, no marker).
-    session.transitions.updateTransitionInstructions(
+    final transitions = transitionsOf(session);
+    transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         2: const InstructionEvent(instructionId: 'fo', length: 4),
         crossingStart: const InstructionEvent(instructionId: 'fo', length: 8),
@@ -294,7 +302,8 @@ void main() {
         .firstWhere((def) => def.markType == CameraInstructionMarkType.ol)
         .id;
 
-    session.transitions.updateTransitionInstructions(
+    final transitions = transitionsOf(session);
+    transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         0: InstructionEvent(instructionId: foId, length: 4),
         8: InstructionEvent(instructionId: olId, length: 4),
@@ -329,7 +338,8 @@ void main() {
         .id;
     // One F.O INSIDE cut 1 (applies) and one CROSSING its end (refused —
     // 미적용, inert in playback and export).
-    session.transitions.updateTransitionInstructions(
+    final transitions = transitionsOf(session);
+    transitions.updateTransitionInstructions(
       SplayTreeMap<int, InstructionEvent>.from({
         2: InstructionEvent(instructionId: foId, length: 4),
         crossingStart: InstructionEvent(instructionId: foId, length: 8),

@@ -4,11 +4,16 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/se_entries.dart';
 
 /// The SE name tag's SESSION path (R5b, §6-z15): the tag is per SE ROW
 /// (one speaker), the rows are TRACK-owned, and the write must reach them
 /// through the anywhere seam with one undo — the cut-scoped path throws
 /// for track rows, which is the trap this pins.
+/// The collaborator that owns the name tag — named so
+/// `tool/mutation_run.dart` has a suite to run for it.
+SeEntries seEntriesOf(EditorSessionManager session) => session.seEntries;
+
 void main() {
   test('the tag write reaches a TRACK-owned SE row and undoes in one step; '
       'null resets it to the stacked default', () {
@@ -17,7 +22,8 @@ void main() {
 
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
-    expect(s.seEntries.canEditActiveSeNameTag, isTrue);
+    final entries = seEntriesOf(s);
+    expect(entries.canEditActiveSeNameTag, isTrue);
 
     // R5 #7: a tag has no position of its own — nothing to seed, and
     // nothing written until a STYLE is set.
@@ -26,7 +32,7 @@ void main() {
     const configured = SeNameTag(
       style: TextCelStyle(fontSize: 48, color: 0xFFFFFFFF),
     );
-    s.seEntries.setActiveSeNameTag(configured);
+    entries.setActiveSeNameTag(configured);
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
 
     s.undo();

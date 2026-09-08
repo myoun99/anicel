@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
+import 'package:anicel/src/ui/session/render_caches.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 
@@ -23,6 +24,11 @@ import '../../helpers/fake_pdf_document.dart';
 /// These drive the real panel: what a test can see is which pages have to
 /// be RE-RENDERED when you page back to them, which is exactly what an
 /// eviction costs.
+/// The collaborator the census reads — named so `tool/mutation_run.dart`
+/// has a suite to run for it.
+RenderCaches renderCachesOf(EditorSessionManager session) =>
+    session.renderCaches;
+
 void main() {
   late EditorSessionManager session;
   late MediaViewerSlot slot;
@@ -225,8 +231,9 @@ void main() {
   /// into `untrackedBytes` and read as engine overhead.
   group('the census can see the viewer', () {
     testWidgets('a loaded viewer reports its page bytes', (tester) async {
+      final caches = renderCachesOf(session);
       expect(
-        session.renderCaches.viewerRasterBytes,
+        caches.viewerRasterBytes,
         0,
         reason: 'fixture premise: nothing loaded yet',
       );
@@ -242,7 +249,7 @@ void main() {
         greaterThan(0),
         reason: 'two rendered pages are in the census, not in the gap',
       );
-      expect(item.bytes, session.renderCaches.viewerRasterBytes);
+      expect(item.bytes, caches.viewerRasterBytes);
     });
 
     testWidgets('and stops reporting when it goes away', (tester) async {

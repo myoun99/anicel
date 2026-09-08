@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/tvpp_import_door.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../models/import/tvpp_test_builder.dart';
@@ -20,6 +21,10 @@ import '../../models/import/tvpp_test_builder.dart';
 /// because the id formatter reads a sequence it does not advance and the
 /// only other ingredient — the wall clock — does not tick fast enough to
 /// separate a mint loop on Windows.
+/// The TVPaint door itself — named so `tool/mutation_run.dart` has a suite
+/// to run for it.
+TvppImportDoor tvppDoorOf(EditorSessionManager session) => session.tvppDoor;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -77,7 +82,8 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      final warnings = await session.tvppDoor.openAsProject(
+      final door = tvppDoorOf(session);
+      final warnings = await door.openAsProject(
         tvppPath: writeTvpp(),
       );
       expect(warnings, isNotNull, reason: 'the file parses');

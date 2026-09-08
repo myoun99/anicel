@@ -13,6 +13,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_folder_import_door.dart';
+import 'package:anicel/src/ui/session/project_import_doors.dart';
 
 import '../helpers/fake_pdf_document.dart';
 
@@ -21,6 +22,11 @@ import '../helpers/fake_pdf_document.dart';
 /// reference registration, rasterize, undo and the folder import's
 /// 겸용 follow-up. All real IO/codec work runs inside tester.runAsync
 /// (the fake-async zone never completes file futures).
+/// The image/PSD/PDF doors themselves — named so `tool/mutation_run.dart`
+/// has a suite to run for them.
+ProjectImportDoors importDoorsOf(EditorSessionManager session) =>
+    session.importDoors;
+
 void main() {
   late Directory tempDir;
 
@@ -71,11 +77,12 @@ void main() {
       'removes cut and registration together', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
+    final doors = importDoorsOf(s);
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
 
     final imported = await tester.runAsync(() async {
       final path = await writePng('bg.png');
-      return s.importDoors.importImageFile(
+      return doors.importImageFile(
         path: path,
         destination: ImportDestination.newCut,
         lengthFrames: 12,
@@ -340,13 +347,14 @@ void main() {
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842), ui.Size(595, 842)],
     );
     PdfRenderService.debugOpenerOverride = (path) async => fake;
+    final doors = importDoorsOf(s);
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
 
     final progress = <(int, int)>[];
     final imported = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return s.importDoors.importPdfFile(
+      return doors.importPdfFile(
         path: file.path,
         destination: ImportDestination.newCut,
         onRenderProgress: (done, total) => progress.add((done, total)),
@@ -407,7 +415,7 @@ void main() {
     final imported = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}page.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return s.importDoors.importPdfFile(
+      return importDoorsOf(s).importPdfFile(
         path: file.path,
         destination: ImportDestination.activeCutLayer,
         rasterize: true,
@@ -432,13 +440,14 @@ void main() {
     addTearDown(s.dispose);
     addTearDown(PdfRenderService.debugResetForTests);
     // No override: under flutter_tester the probe reports absent.
+    final doors = importDoorsOf(s);
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
     final canUndoBefore = s.canUndo;
 
     final imported = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}none.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-      return s.importDoors.importPdfFile(
+      return doors.importPdfFile(
         path: file.path,
         destination: ImportDestination.newCut,
         copyIntoProject: false,
