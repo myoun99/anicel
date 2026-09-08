@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
@@ -154,6 +155,9 @@ void main() {
     int mixColor = 50,
     int mixAlpha = 50,
     int mixColorExtension = 10,
+    // Null stands for a file written before the column existed; 3 (強) is
+    // what Clip Studio's own G펜 stores.
+    int? antiAlias = 3,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -179,7 +183,7 @@ void main() {
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
         BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
-        CompositeMode INTEGER);
+        CompositeMode INTEGER, AntiAlias INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -206,9 +210,9 @@ void main() {
       'DualPatternImageArray, DualSize, SyncDualBrushSize, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
-      'BrushIntervalEffector, CompositeMode) '
+      'BrushIntervalEffector, CompositeMode, AntiAlias) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(
@@ -247,6 +251,7 @@ void main() {
           randomMinimumPercent: intervalEffectorRandomMinimum,
         ),
         compositeMode,
+        antiAlias,
       ],
     );
     // Round brush without pattern data.
@@ -647,6 +652,86 @@ void main() {
 
     expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
     expect(result.warnings.any((w) => w.contains('除算')), isTrue);
+  });
+
+  test('the four アンチエイリアス buttons import as the four levels', () async {
+    // 🚨MEASURED, one real brush per level (2026-09-09, the four files the
+    // user supplied): G펜 3, 質感が残るように混ぜる 2, 鉛筆R 1, 水筆 0. G펜
+    // ships from Clip Studio at 強, which is what fixes 3 = strongest; the
+    // rest follow the control's own order.
+    const expected = <int, BrushAntiAlias>{
+      0: BrushAntiAlias.none, // なし
+      1: BrushAntiAlias.low, // 弱
+      2: BrushAntiAlias.medium, // 中
+      3: BrushAntiAlias.high, // 強
+    };
+    for (final entry in expected.entries) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        antiAlias: entry.key,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(
+        result.presets.first.settings.antiAlias,
+        entry.value,
+        reason: 'AntiAlias ${entry.key}',
+      );
+      expect(result.warnings, isEmpty, reason: 'AntiAlias ${entry.key}');
+    }
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('a file written before the column existed keeps the hard edge', () async {
+    // 強 is our identity — the edge the engine already drew — so an older
+    // file imports exactly as it did before this column was read.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      antiAlias: null,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.antiAlias, BrushAntiAlias.high);
+    expect(result.warnings, isEmpty);
+  });
+
+  test('an anti-alias level outside the four warns rather than guessing', () async {
+    // A fifth button would be a Clip Studio version we have not seen. Saying
+    // the number beats silently drawing a different edge.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      antiAlias: 7,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.antiAlias, BrushAntiAlias.high);
+    expect(
+      result.warnings.any((w) => w.contains('anti-aliasing level 7')),
+      isTrue,
+    );
+  });
+
+  test('⛔DualAntiAlias is a different column and does not drive this', () async {
+    // All four real files park `DualAntiAlias` at 2 while their own
+    // `AntiAlias` spans 0..3 — the shape of a value nobody set. A grep
+    // without a leading space matches both and reads two values per file.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      antiAlias: 0,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.antiAlias, BrushAntiAlias.none);
   });
 
   test('ground-colour mixing imports behind its gate', () async {

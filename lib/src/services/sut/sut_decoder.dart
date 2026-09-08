@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
+import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
@@ -350,7 +351,60 @@ BrushSettings _settingsFromVariant(
       brushName: brushName,
       warnings: warnings,
     ),
+    antiAlias: _antiAliasOf(
+      variant['AntiAlias'],
+      brushName: brushName,
+      warnings: warnings,
+    ),
   );
+}
+
+/// How hard Clip Studio draws this brush's edge.
+///
+/// `AntiAlias` is the INDEX of the アンチエイリアス control, a row of four
+/// buttons in the order なし・弱・中・強 — the same order and the same count
+/// as [BrushAntiAlias]. Verified against four real brushes, one per level
+/// (2026-09-09): G펜 3, 質感が残るように混ぜる 2, 鉛筆R 1, 水筆 0.
+///
+/// 🚨WHAT IS AND IS NOT VERIFIED. That the column exists, that it varies, and
+/// that 3 is 強 are measured — G펜 ships from Clip Studio at 強 and stores 3.
+/// Which of 1 and 2 is 弱 and which is 中 follows from the control's ORDER,
+/// not from a reading, and the cheapest check is opening one file in Clip
+/// Studio and looking at the panel. The two are adjacent steps of one ramp,
+/// so a swap would be a subtle edge difference rather than a wrong brush.
+///
+/// ⛔Not `BrushAntiAlias.values[index]`: that would make Clip Studio's
+/// encoding depend on our declaration order, so reordering the enum would
+/// silently re-map every imported brush. The table says the mapping out loud.
+///
+/// ⚠️`DualAntiAlias` is a SEPARATE column for the dual tip and is not this.
+/// Every one of the four files parks it at 2 while their own `AntiAlias`
+/// spans 0..3, which is exactly the shape of a value nobody set.
+BrushAntiAlias _antiAliasOf(
+  Object? value, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  final index = _intOf(value);
+  final mapped = switch (index) {
+    0 => BrushAntiAlias.none, // なし
+    1 => BrushAntiAlias.low, // 弱
+    2 => BrushAntiAlias.medium, // 中
+    3 => BrushAntiAlias.high, // 強
+    _ => null,
+  };
+  if (mapped != null) {
+    return mapped;
+  }
+  if (index != null) {
+    warnings.add(
+      'Brush "$brushName": anti-aliasing level $index is not one of Clip '
+      'Studio\'s four; imported as 強.',
+    );
+  }
+  // An absent column is an older file, and 強 is both Clip Studio's common
+  // setting and our identity — the edge the engine already drew.
+  return BrushAntiAlias.high;
 }
 
 /// The blend a Clip Studio sub tool composites with.
