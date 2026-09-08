@@ -12,12 +12,17 @@ class _BrushEditPressure {
 
   final _InteractiveBrushEditCanvasViewState _state;
 
-  /// Where and when the previous reading landed, in CANVAS space — the two
-  /// halves of a speed measurement. Null before a stroke's first sample, and
-  /// again after [restInput], so the next stroke never measures its opening
-  /// speed against where the last one stopped.
-  CanvasPoint? _travelledFrom;
-  Duration? _travelledAt;
+  /// Where and when the previous reading landed, in CANVAS space — the far
+  /// end of the next speed measurement. Null before a stroke's first sample,
+  /// and again after [restInput], so the next stroke never measures its
+  /// opening speed against where the last one stopped.
+  ///
+  /// 🚨ONE FIELD, NOT A POINT AND A TIME SIDE BY SIDE. As two nullable
+  /// fields, clearing either one already answered "no previous reading", so
+  /// deleting one of the two resets changed nothing and a mutation walked
+  /// through the pin that guards it. There is one fact here; it gets one
+  /// place to be absent.
+  ({CanvasPoint at, Duration when})? _travelled;
 
   List<BrushDab> withPressureDynamics(List<BrushDab> dabs) {
     final settings =
@@ -91,18 +96,16 @@ class _BrushEditPressure {
   void _noteSpeed(PointerEvent event) {
     final at = event.timeStamp;
     final position = _state._canvasPositionFromLocal(event.localPosition);
-    final from = _travelledFrom;
-    final since = _travelledAt;
-    _travelledFrom = position;
-    _travelledAt = at;
-    if (from == null || since == null) {
+    final previous = _travelled;
+    _travelled = (at: position, when: at);
+    if (previous == null) {
       // A pen that has just landed has no move behind it.
       _state._currentSpeed = 0.0;
       return;
     }
     final measured = AppInput.normalizedSpeed(
-      canvasPixels: from.distanceTo(position),
-      elapsed: at - since,
+      canvasPixels: previous.at.distanceTo(position),
+      elapsed: at - previous.when,
     );
     // Null is "these two readings share a clock tick", not "stopped" — the
     // last real measurement stands rather than the stroke dropping to zero.
@@ -119,8 +122,7 @@ class _BrushEditPressure {
     _state._currentTiltAzimuthDegrees = 0.0;
     _state._currentTiltAltitude = 1.0;
     _state._currentSpeed = 0.0;
-    _travelledFrom = null;
-    _travelledAt = null;
+    _travelled = null;
   }
 
   /// How the pen leans, as the pair a dab carries: degrees of azimuth and a
