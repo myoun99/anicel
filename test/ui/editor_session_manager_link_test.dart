@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/layer_verbs.dart';
 
 /// The session's link verbs (L4 wiring): 링크 복제, 독립시키기, 겸용컷
 /// 생성/변경 — thin session entrances over the L2 coordinator verbs, plus
@@ -12,8 +13,17 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 void main() {
   late EditorSessionManager session;
 
+  /// The verbs under test, held BY THEIR OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. A collaborator only ever spelled `session.layerVerbs` is
+  /// one the campaign reports UNNAMED and never runs a mutant against —
+  /// 「a link shares the drawing, not the eye」 lives in that file.
+  late LayerVerbs layerVerbs;
+
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
+    layerVerbs = session.layerVerbs;
     addTearDown(session.dispose);
   });
 
@@ -21,25 +31,25 @@ void main() {
       'unlinkActiveLayer forks back out', () {
     final activeLayer = session.activeLayer!;
     final layersBefore = session.requireActiveCut.layers.length;
-    expect(session.layerVerbs.isLayerLinked(activeLayer.id), isFalse);
-    expect(session.layerVerbs.canUnlinkActiveLayer, isFalse);
+    expect(layerVerbs.isLayerLinked(activeLayer.id), isFalse);
+    expect(layerVerbs.canUnlinkActiveLayer, isFalse);
 
-    session.layerVerbs.linkDuplicateActiveLayer();
+    layerVerbs.linkDuplicateActiveLayer();
 
     final cut = session.requireActiveCut;
     expect(cut.layers.length, layersBefore + 1);
-    expect(session.layerVerbs.isLayerLinked(activeLayer.id), isTrue);
+    expect(layerVerbs.isLayerLinked(activeLayer.id), isTrue);
     final copy = cut.layers.firstWhere(
       (layer) =>
           layer.name == activeLayer.name && layer.id != activeLayer.id,
     );
-    expect(session.layerVerbs.isLayerLinked(copy.id), isTrue);
-    expect(session.layerVerbs.canUnlinkActiveLayer, isTrue);
+    expect(layerVerbs.isLayerLinked(copy.id), isTrue);
+    expect(layerVerbs.canUnlinkActiveLayer, isTrue);
 
-    session.layerVerbs.unlinkActiveLayer();
-    expect(session.layerVerbs.isLayerLinked(activeLayer.id), isFalse);
-    expect(session.layerVerbs.isLayerLinked(copy.id), isFalse);
-    expect(session.layerVerbs.canUnlinkActiveLayer, isFalse);
+    layerVerbs.unlinkActiveLayer();
+    expect(layerVerbs.isLayerLinked(activeLayer.id), isFalse);
+    expect(layerVerbs.isLayerLinked(copy.id), isFalse);
+    expect(layerVerbs.canUnlinkActiveLayer, isFalse);
   });
 
   test('createLinkedCutFromActiveCut adds a cut whose drawing layers are '
@@ -56,7 +66,7 @@ void main() {
       reason: 'the new linked cut becomes active',
     );
     expect(
-      session.layerVerbs.isLayerLinked(session.activeLayer!.id),
+      layerVerbs.isLayerLinked(session.activeLayer!.id),
       isTrue,
       reason: 'the new cut\'s drawing layer links to the source\'s',
     );
@@ -81,7 +91,7 @@ void main() {
     );
 
     session.cutVerbs.convertActiveCutToLinked(targetCutId);
-    expect(session.layerVerbs.isLayerLinked(session.activeLayer!.id), isTrue);
+    expect(layerVerbs.isLayerLinked(session.activeLayer!.id), isTrue);
 
     // Re-running has nothing left to do.
     final rerun = session.cutVerbs.convertToLinkedCutPreviewData(targetCutId)!;
@@ -102,11 +112,11 @@ void main() {
   test('a link shares the drawing, not the eye: visibility, static opacity '
       'and blend are per-use', () {
     final origin = session.activeLayer!;
-    session.layerVerbs.linkDuplicateActiveLayer();
+    layerVerbs.linkDuplicateActiveLayer();
     final copy = session.requireActiveCut.layers.firstWhere(
       (layer) => layer.name == origin.name && layer.id != origin.id,
     );
-    expect(session.layerVerbs.isLayerLinked(origin.id), isTrue);
+    expect(layerVerbs.isLayerLinked(origin.id), isTrue);
 
     Layer read(LayerId id) =>
         session.requireActiveCut.layers.firstWhere((layer) => layer.id == id);
@@ -130,8 +140,8 @@ void main() {
 
     // ⚠️And the LINK itself survives all three — this is a display split, not
     // an unlink. The two rows are still one drawing.
-    expect(session.layerVerbs.isLayerLinked(origin.id), isTrue);
-    expect(session.layerVerbs.isLayerLinked(copy.id), isTrue);
+    expect(layerVerbs.isLayerLinked(origin.id), isTrue);
+    expect(layerVerbs.isLayerLinked(copy.id), isTrue);
   });
 
   /// The 겸용 cut never had an answer of its own — it went through the same
@@ -148,7 +158,7 @@ void main() {
     final twin = linkedCut.layers.firstWhere(
       (layer) => layer.name == origin.name,
     );
-    expect(session.layerVerbs.isLayerLinked(twin.id), isTrue);
+    expect(layerVerbs.isLayerLinked(twin.id), isTrue);
 
     session.opacityVerbs.setLayerOpacity(layerId: twin.id, opacity: 0.35);
 

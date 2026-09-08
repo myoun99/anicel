@@ -8,6 +8,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/import_landing.dart';
 
 import '../helpers/fake_pdf_document.dart';
 import '../helpers/psd_fixture.dart';
@@ -84,6 +85,16 @@ void main() {
   int cutCount(EditorSessionManager s) =>
       s.repository.requireProject().tracks.first.cuts.length;
 
+  /// The gate itself, held BY ITS OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. This law's whole point is that it is ONE object, and the
+  /// object was `session/import_landing.dart` — which no test named, so
+  /// the campaign never ran a mutant against the one file three doors
+  /// depend on. The door assertions below stay: they are what proves the
+  /// doors READ this answer rather than each keeping their own copy.
+  ImportLanding landingOf(EditorSessionManager s) => s.importLanding;
+
   testWidgets('the IMAGE door refuses the active cut when there is none, '
       'and lands nothing', (tester) async {
     final s = gapped();
@@ -107,6 +118,14 @@ void main() {
     expect(cutCount(s), cutsBefore);
     expect(s.mediaPool.mediaAssets, isEmpty);
     expect(s.canUndo, isFalse, reason: 'a refusal is not an edit');
+
+    // And the gate at the level it LIVES: the door's `isFalse` above is
+    // this null, one call deeper.
+    expect(
+      landingOf(s).arriveAt(ImportDestination.activeCutLayer, path: 'bg.png'),
+      isNull,
+      reason: 'no active cut, so the destination that names one refuses',
+    );
   });
 
   testWidgets('the PSD door refuses on the same answer', (tester) async {
@@ -211,5 +230,18 @@ void main() {
     expect(imported, isTrue);
     expect(cutCount(s), cutsBefore + 1);
     expect(s.mediaPool.mediaAssets, hasLength(1));
+
+    final arrival = landingOf(s).arriveAt(
+      ImportDestination.newCut,
+      path: 'bg.png',
+    );
+    expect(arrival, isNotNull, reason: 'the new cut is never refused');
+    expect(
+      arrival!.targetCut,
+      isNull,
+      reason:
+          '⛔one field, one question — a null cut IS the new-cut '
+          'destination, so nothing can disagree with it',
+    );
   });
 }

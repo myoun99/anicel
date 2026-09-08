@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cell_instances.dart';
+import 'package:anicel/src/ui/session/instructions.dart';
 
 /// UI-R25 #3: Add with a live selection fills the WHOLE selection — every
 /// selectable row kind creates over its selected range.
@@ -14,6 +15,8 @@ void main() {
 
   Layer layerOf(EditorSessionManager s, LayerId id) =>
       s.layers.firstWhere((l) => l.id == id);
+
+  Instructions instructionsOf(EditorSessionManager s) => s.instructionVerbs;
 
   test('no selection = not owned (the plain playhead flow runs)', () {
     final s = session();
@@ -174,11 +177,16 @@ void main() {
 
     s.layerStack.addLayerOfKind(LayerKind.instruction);
     final instrId = s.activeLayer!.id;
-    s.instructionVerbs.createDefaultInstructionEventAtCurrentFrame();
+    // 🚨HELD BY ITS OWN TYPE (2026-09-08): `tool/mutation_run.dart` picks
+    // a file's witnesses by which tests IMPORT it, so a collaborator only
+    // ever spelled `s.instructionVerbs` is one the campaign reports
+    // UNNAMED and never runs a mutant against.
+    final instructions = instructionsOf(s);
+    instructions.createDefaultInstructionEventAtCurrentFrame();
     expect(layerOf(s, instrId).instructions[0], isNotNull);
     // Creation never edits: a second press on the covered cell no-ops.
     final before = layerOf(s, instrId).instructions[0];
-    s.instructionVerbs.createDefaultInstructionEventAtCurrentFrame();
+    instructions.createDefaultInstructionEventAtCurrentFrame();
     expect(layerOf(s, instrId).instructions[0], same(before));
   });
 }

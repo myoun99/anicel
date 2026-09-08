@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 
@@ -28,10 +29,19 @@ EditorSessionManager _session() {
 /// x-sheet really renders — and with the two lists identical the slot IS
 /// the model insertion index, so these tests state landings in the terms
 /// the stack itself uses rather than in a rail's reversed ones.
+/// 🚨The verbs are held BY THEIR OWN TYPE (2026-09-08).
+/// `tool/mutation_run.dart` picks a file's witnesses by which tests IMPORT
+/// it, so a collaborator only ever spelled `session.layerRowDragVerbs` is
+/// one the campaign reports UNNAMED and never runs a mutant against — the
+/// commit path below is `session/layer_row_drag.dart`'s.
+LayerRowDrag _rowDragOf(EditorSessionManager session) =>
+    session.layerRowDragVerbs;
+
 void _dragTo(EditorSessionManager session, LayerId id, int insertAt) {
-  session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(id));
-  session.layerRowDragVerbs.updateLayerRowDrag(session.layers, insertAt);
-  session.layerRowDragVerbs.endLayerRowDrag();
+  final verbs = _rowDragOf(session);
+  verbs.beginLayerRowDrag(LayerRowSubject(id));
+  verbs.updateLayerRowDrag(session.layers, insertAt);
+  verbs.endLayerRowDrag();
 }
 
 List<String> _drawingIds(EditorSessionManager session) => [
@@ -140,9 +150,10 @@ void main() {
 
     // The SE arm reads the track's list as both the model and the display,
     // so slot 2 is "after the second row".
-    session.layerRowDragVerbs.beginLayerRowDrag(LayerRowSubject(rows.first));
-    session.layerRowDragVerbs.updateLayerRowDrag(session.activeTrack.seLayers, 2);
-    session.layerRowDragVerbs.endLayerRowDrag();
+    final verbs = _rowDragOf(session);
+    verbs.beginLayerRowDrag(LayerRowSubject(rows.first));
+    verbs.updateLayerRowDrag(session.activeTrack.seLayers, 2);
+    verbs.endLayerRowDrag();
 
     expect(
       [for (final row in session.activeTrack.seLayers) row.id],
