@@ -20,13 +20,7 @@ class _BrushEditPressure {
     }
     return <BrushDab>[
       for (final dab in dabs)
-        applyBrushPressureDynamics(
-          dab,
-          sizeCurve: settings.sizePressureCurve,
-          opacityCurve: settings.opacityPressureCurve,
-          flowCurve: settings.flowPressureCurve,
-          hardnessCurve: settings.hardnessPressureCurve,
-        ),
+        applyBrushInputDynamics(dab, shape: settings.shape),
     ];
   }
 

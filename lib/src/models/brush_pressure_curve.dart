@@ -41,8 +41,15 @@ class BrushCurvePoint {
 /// two-point curve evaluates as the EXACT straight line, so migrated
 /// legacy toggles reproduce the old linear response bit-for-bit.
 class BrushPressureCurve {
-  BrushPressureCurve(List<BrushCurvePoint> points)
+  BrushPressureCurve(List<BrushCurvePoint> points, {this.maximum = 1.0})
     : points = List.unmodifiable(points) {
+    if (!maximum.isFinite || maximum < 1.0) {
+      throw ArgumentError.value(
+        maximum,
+        'maximum',
+        'BrushPressureCurve.maximum must be finite and at least 1.0.',
+      );
+    }
     if (points.length < 2) {
       throw ArgumentError.value(
         points,
@@ -83,21 +90,38 @@ class BrushPressureCurve {
   }
 
   /// The straight 1:1 response — what the old boolean toggle meant.
-  factory BrushPressureCurve.identity() => BrushPressureCurve(const [
-    BrushCurvePoint(0.0, 0.0),
-    BrushCurvePoint(1.0, 1.0),
-  ]);
+  factory BrushPressureCurve.identity({double maximum = 1.0}) =>
+      BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(1.0, 1.0),
+      ], maximum: maximum);
 
   /// The legacy minimum-floor line (0, [minimum])-(1, 1): the old
   /// `min + (1 - min) * pressure` size response.
-  factory BrushPressureCurve.linearFrom(double minimum) =>
+  factory BrushPressureCurve.linearFrom(double minimum, {double maximum = 1.0}) =>
       BrushPressureCurve([
         BrushCurvePoint(0.0, minimum.clamp(0.0, 1.0).toDouble()),
         const BrushCurvePoint(1.0, 1.0),
-      ]);
+      ], maximum: maximum);
 
   /// Ascending-x control points; first at x=0, last at x=1.
   final List<BrushCurvePoint> points;
+
+  /// How far past the base value a full input may push, as a multiplier —
+  /// Clip Studio's 最大値, which it offers on 傾き alone (100–1000%, so
+  /// 1.0–10.0 here). 1.0 is "never exceeds the base", which is what every
+  /// curve meant before this existed.
+  ///
+  /// ⛔IT CANNOT BE A CONTROL POINT. [points] are confined to the unit square
+  /// and [evaluate] clamps the shape to [0, 1] besides, so a curve simply has
+  /// no way to say "300%". The shape and the ceiling are two facts.
+  ///
+  /// ⚠️Only SIZE can actually show a value above 1.0: `applyBrushPressureDynamics`
+  /// clamps opacity, flow and hardness to [0, 1] because there is no such
+  /// thing as 300% opacity. That is not a rule about this field — it is a
+  /// rule about those three quantities, and it is written where they are
+  /// clamped.
+  final double maximum;
 
   late final List<double> _tangents;
 
@@ -122,25 +146,44 @@ class BrushPressureCurve {
         (t3 - 2 * t2 + t) * h * _tangents[i] +
         (-2 * t3 + 3 * t2) * p1.y +
         (t3 - t2) * h * _tangents[i + 1];
-    return value.clamp(0.0, 1.0).toDouble();
+    return value.clamp(0.0, 1.0).toDouble() * maximum;
   }
 
   /// Whether this is the plain 1:1 line (the migrated "toggle ON" shape).
+  ///
+  /// ⚠️A raised [maximum] disqualifies it: the line may be 1:1 but the curve
+  /// no longer means "pressure scales the value up to its base and no
+  /// further", which is what every reader of this getter is asking.
   bool get isIdentity =>
-      points.length == 2 && points.first.y == 0.0 && points.last.y == 1.0;
+      maximum == 1.0 &&
+      points.length == 2 &&
+      points.first.y == 0.0 &&
+      points.last.y == 1.0;
 
+  /// The x,y pairs, and — only when it is not the default — [maximum] as a
+  /// single trailing value.
+  ///
+  /// ⚠️THE ODD TAIL IS THE ENCODING, and it is deliberate: [fromJson]'s pair
+  /// loop already stops before a lone final element, so a curve saved by a
+  /// build that knows about maximums still loads on one that does not (it
+  /// reads the shape and ignores the ceiling) — and a curve at the default
+  /// writes the exact same bytes it always did.
   List<double> toJson() => [
     for (final point in points) ...[point.x, point.y],
+    if (maximum != 1.0) maximum,
   ];
 
   factory BrushPressureCurve.fromJson(List<dynamic> json) {
-    return BrushPressureCurve([
-      for (var i = 0; i + 1 < json.length; i += 2)
-        BrushCurvePoint(
-          (json[i] as num).toDouble(),
-          (json[i + 1] as num).toDouble(),
-        ),
-    ]);
+    return BrushPressureCurve(
+      [
+        for (var i = 0; i + 1 < json.length; i += 2)
+          BrushCurvePoint(
+            (json[i] as num).toDouble(),
+            (json[i + 1] as num).toDouble(),
+          ),
+      ],
+      maximum: json.length.isOdd ? (json.last as num).toDouble() : 1.0,
+    );
   }
 
   @override
@@ -148,7 +191,9 @@ class BrushPressureCurve {
     if (identical(this, other)) {
       return true;
     }
-    if (other is! BrushPressureCurve || other.points.length != points.length) {
+    if (other is! BrushPressureCurve ||
+        other.points.length != points.length ||
+        other.maximum != maximum) {
       return false;
     }
     for (var i = 0; i < points.length; i += 1) {
@@ -160,10 +205,11 @@ class BrushPressureCurve {
   }
 
   @override
-  int get hashCode => Object.hashAll(points);
+  int get hashCode => Object.hash(Object.hashAll(points), maximum);
 
   @override
-  String toString() => 'BrushPressureCurve($points)';
+  String toString() =>
+      'BrushPressureCurve($points${maximum == 1.0 ? '' : ', max: $maximum'})';
 }
 
 /// Fritsch–Carlson monotone tangents: interior slopes average the

@@ -1,9 +1,15 @@
 import 'brush_anti_alias.dart';
+import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
 import 'brush_tip_shape.dart';
+
+/// What a response curve is FOR: the setting it drives, and the input that
+/// drives it. A record because it is nothing but those two facts together —
+/// giving it a class would add a name nobody needs to learn.
+typedef BrushDynamicsKey = (BrushPressureTarget, BrushInputSource);
 
 /// Which of the three sampled-mask slots a write targets.
 enum BrushMaskSlot { tip, dual, texture }
@@ -34,10 +40,7 @@ class BrushShape {
     this.hardness = 1.0,
     this.spacing = 0.1,
     this.tipShape = BrushTipShape.round,
-    this.sizePressureCurve,
-    this.opacityPressureCurve,
-    this.flowPressureCurve,
-    this.hardnessPressureCurve,
+    this.curves = const {},
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
@@ -71,14 +74,30 @@ class BrushShape {
   final double spacing;
   final BrushTipShape tipShape;
 
-  /// BB-3 (R26 #11): per-setting pen-pressure response — `null` means the
-  /// setting ignores pressure. These replaced the pressureSize /
-  /// pressureOpacity booleans and the minimumSizeRatio floor (the floor is
-  /// now the size curve's left endpoint).
-  final BrushPressureCurve? sizePressureCurve;
-  final BrushPressureCurve? opacityPressureCurve;
-  final BrushPressureCurve? flowPressureCurve;
-  final BrushPressureCurve? hardnessPressureCurve;
+  /// Every response curve this brush carries, keyed by WHAT it drives and
+  /// WHAT drives it. An absent key is "that pairing ignores that input".
+  ///
+  /// ⛔This replaced four named fields (`sizePressureCurve` and siblings),
+  /// which could only ever say "pressure". Clip Studio files a curve PER
+  /// INPUT SOURCE — one block per enabled source in the effector's tail —
+  /// so a brush that answers to both pressure and tilt could not be stored,
+  /// and import silently dropped everything that was not pressure.
+  ///
+  /// The four names survive as GETTERS below. They are projections of this
+  /// map, not a second home for the data: they read `(target, pressure)`,
+  /// which is what they always meant.
+  final Map<BrushDynamicsKey, BrushPressureCurve> curves;
+
+  /// BB-3 (R26 #11): the pressure response for one setting, or `null` when it
+  /// ignores pressure. Kept because the whole stroke chain reads these names.
+  BrushPressureCurve? get sizePressureCurve =>
+      pressureCurveFor(BrushPressureTarget.size);
+  BrushPressureCurve? get opacityPressureCurve =>
+      pressureCurveFor(BrushPressureTarget.opacity);
+  BrushPressureCurve? get flowPressureCurve =>
+      pressureCurveFor(BrushPressureTarget.flow);
+  BrushPressureCurve? get hardnessPressureCurve =>
+      pressureCurveFor(BrushPressureTarget.hardness);
 
   /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
   /// circle/square.
@@ -179,69 +198,49 @@ class BrushShape {
   /// Clip Studio's 색 늘이기. This is what smears colour along a stroke.
   final double colorStretch;
 
-  /// The pressure curve driving [target], if any.
-  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) {
-    return switch (target) {
-      BrushPressureTarget.size => sizePressureCurve,
-      BrushPressureTarget.opacity => opacityPressureCurve,
-      BrushPressureTarget.flow => flowPressureCurve,
-      BrushPressureTarget.hardness => hardnessPressureCurve,
-    };
+  /// The curve by which [source] drives [target], if any.
+  BrushPressureCurve? curveFor(
+    BrushPressureTarget target,
+    BrushInputSource source,
+  ) => curves[(target, source)];
+
+  /// The PRESSURE curve driving [target], if any — the common case, and the
+  /// only one that existed before sources were separated.
+  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
+      curveFor(target, BrushInputSource.pressure);
+
+  /// Every source that drives [target], in enum order.
+  ///
+  /// ⚠️Order is fixed but must not MATTER: the sources multiply, and
+  /// multiplication does not care. If a reader ever depends on this order,
+  /// the combination rule has stopped being multiplication.
+  Iterable<BrushInputSource> sourcesFor(BrushPressureTarget target) =>
+      BrushInputSource.values.where((s) => curves.containsKey((target, s)));
+
+  /// Sets — or, with `null`, CLEARS — one (target, source) curve, leaving
+  /// every other pairing untouched. [copyWith] deliberately preserves the
+  /// whole map (a `null` argument means "keep"), so clearing one has to go
+  /// through here.
+  BrushShape withCurve(
+    BrushPressureTarget target,
+    BrushInputSource source,
+    BrushPressureCurve? curve,
+  ) {
+    final next = Map<BrushDynamicsKey, BrushPressureCurve>.of(curves);
+    if (curve == null) {
+      next.remove((target, source));
+    } else {
+      next[(target, source)] = curve;
+    }
+    return copyWith(curves: next);
   }
 
-  /// Sets — or, with `null`, CLEARS — the pressure curve for one [target],
-  /// leaving the other three channels untouched. [copyWith] deliberately
-  /// preserves curves (a `null` argument means "keep"), so clearing one has
-  /// to go through here.
+  /// [withCurve] for the pressure source — the call every existing site
+  /// meant.
   BrushShape withPressureCurve(
     BrushPressureTarget target,
     BrushPressureCurve? curve,
-  ) {
-    return BrushShape(
-      color: color,
-      size: size,
-      opacity: opacity,
-      flow: flow,
-      hardness: hardness,
-      spacing: spacing,
-      tipShape: tipShape,
-      sizePressureCurve: target == BrushPressureTarget.size
-          ? curve
-          : sizePressureCurve,
-      opacityPressureCurve: target == BrushPressureTarget.opacity
-          ? curve
-          : opacityPressureCurve,
-      flowPressureCurve: target == BrushPressureTarget.flow
-          ? curve
-          : flowPressureCurve,
-      hardnessPressureCurve: target == BrushPressureTarget.hardness
-          ? curve
-          : hardnessPressureCurve,
-      roundness: roundness,
-      angleDegrees: angleDegrees,
-      tipMask: tipMask,
-      rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
-      angleJitter: angleJitter,
-      scatterRadiusRatio: scatterRadiusRatio,
-      scatterCount: scatterCount,
-      scatterBothAxes: scatterBothAxes,
-      dualMask: dualMask,
-      dualMaskScale: dualMaskScale,
-      textureMask: textureMask,
-      textureScale: textureScale,
-      textureDensity: textureDensity,
-      roundnessJitter: roundnessJitter,
-      spacingJitter: spacingJitter,
-      blendMode: blendMode,
-      antiAlias: antiAlias,
-      mixesGroundColor: mixesGroundColor,
-      paintAmount: paintAmount,
-      paintDensity: paintDensity,
-      colorStretch: colorStretch,
-    );
-  }
+  ) => withCurve(target, BrushInputSource.pressure, curve);
 
   /// Replaces — or CLEARS, with null — one of the three sampled masks.
   ///
@@ -256,10 +255,7 @@ class BrushShape {
       hardness: hardness,
       spacing: spacing,
       tipShape: tipShape,
-      sizePressureCurve: sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve,
-      hardnessPressureCurve: hardnessPressureCurve,
+      curves: curves,
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
@@ -294,10 +290,7 @@ class BrushShape {
     double? hardness,
     double? spacing,
     BrushTipShape? tipShape,
-    BrushPressureCurve? sizePressureCurve,
-    BrushPressureCurve? opacityPressureCurve,
-    BrushPressureCurve? flowPressureCurve,
-    BrushPressureCurve? hardnessPressureCurve,
+    Map<BrushDynamicsKey, BrushPressureCurve>? curves,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
@@ -330,11 +323,7 @@ class BrushShape {
       hardness: hardness ?? this.hardness,
       spacing: spacing ?? this.spacing,
       tipShape: tipShape ?? this.tipShape,
-      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
-      hardnessPressureCurve:
-          hardnessPressureCurve ?? this.hardnessPressureCurve,
+      curves: curves ?? this.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
@@ -372,10 +361,7 @@ class BrushShape {
           other.hardness == hardness &&
           other.spacing == spacing &&
           other.tipShape == tipShape &&
-          other.sizePressureCurve == sizePressureCurve &&
-          other.opacityPressureCurve == opacityPressureCurve &&
-          other.flowPressureCurve == flowPressureCurve &&
-          other.hardnessPressureCurve == hardnessPressureCurve &&
+          _sameCurves(other.curves, curves) &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
@@ -409,10 +395,9 @@ class BrushShape {
     hardness,
     spacing,
     tipShape,
-    sizePressureCurve,
-    opacityPressureCurve,
-    flowPressureCurve,
-    hardnessPressureCurve,
+    Object.hashAllUnordered([
+      for (final entry in curves.entries) Object.hash(entry.key, entry.value),
+    ]),
     roundness,
     angleDegrees,
     tipMask,
@@ -442,10 +427,7 @@ class BrushShape {
   String toString() =>
       'BrushShape(color: $color, size: $size, opacity: $opacity, '
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
-      'tipShape: $tipShape, sizePressureCurve: $sizePressureCurve, '
-      'opacityPressureCurve: $opacityPressureCurve, '
-      'flowPressureCurve: $flowPressureCurve, '
-      'hardnessPressureCurve: $hardnessPressureCurve, '
+      'tipShape: $tipShape, curves: $curves, '
       'roundness: $roundness, angleDegrees: $angleDegrees, tipMask: $tipMask, '
       'rotationMode: $rotationMode, sizeJitter: $sizeJitter, '
       'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
@@ -453,4 +435,71 @@ class BrushShape {
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
       'dualMaskScale: $dualMaskScale, textureMask: $textureMask, '
       'textureScale: $textureScale, textureDensity: $textureDensity)';
+}
+
+/// Whether two curve maps hold the same curves.
+///
+/// ⚠️`Map ==` is IDENTITY in Dart, so comparing the maps directly would make
+/// every rebuilt shape unequal to itself and every listener rebuild forever.
+/// The four named fields this replaced were compared one by one and got that
+/// for free; a map has to say it.
+bool _sameCurves(
+  Map<BrushDynamicsKey, BrushPressureCurve> a,
+  Map<BrushDynamicsKey, BrushPressureCurve> b,
+) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a.length != b.length) {
+    return false;
+  }
+  for (final entry in a.entries) {
+    if (b[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// The four pressure curves as a [BrushShape.curves] map.
+///
+/// The settings bags still take `sizePressureCurve:` and friends on their flat
+/// constructors — that is the shape of every call site and of the JSON — so the
+/// translation lives HERE, once, rather than four times over.
+Map<BrushDynamicsKey, BrushPressureCurve> brushPressureCurves({
+  BrushPressureCurve? size,
+  BrushPressureCurve? opacity,
+  BrushPressureCurve? flow,
+  BrushPressureCurve? hardness,
+}) => {
+  (BrushPressureTarget.size, BrushInputSource.pressure): ?size,
+  (BrushPressureTarget.opacity, BrushInputSource.pressure): ?opacity,
+  (BrushPressureTarget.flow, BrushInputSource.pressure): ?flow,
+  (BrushPressureTarget.hardness, BrushInputSource.pressure): ?hardness,
+};
+
+/// [base] with any NAMED pressure curve replaced, or `null` when the caller
+/// named none — which is `copyWith`'s "keep what is there".
+///
+/// 🚨⛔NOT [brushPressureCurves]. Building a fresh map from four nulls yields
+/// `{}`, and handing that to `copyWith` would DELETE every tilt and speed
+/// curve the brush had. The four names can only ever set their own key; they
+/// have no way to say anything about the others, so they must not erase them.
+Map<BrushDynamicsKey, BrushPressureCurve>? brushCurvesWithPressure(
+  Map<BrushDynamicsKey, BrushPressureCurve> base, {
+  BrushPressureCurve? size,
+  BrushPressureCurve? opacity,
+  BrushPressureCurve? flow,
+  BrushPressureCurve? hardness,
+}) {
+  final named = brushPressureCurves(
+    size: size,
+    opacity: opacity,
+    flow: flow,
+    hardness: hardness,
+  );
+  if (named.isEmpty) {
+    return null;
+  }
+  return {...base, ...named};
 }

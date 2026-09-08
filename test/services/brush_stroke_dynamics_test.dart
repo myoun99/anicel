@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -181,14 +182,17 @@ void main() {
 
   test('pressure minimum-size floor keeps light strokes visible', () {
     // BB-3: the floor IS the size curve's left endpoint.
-    final floor = BrushPressureCurve.linearFrom(0.65);
+    final shape = const BrushShape().withPressureCurve(
+      BrushPressureTarget.size,
+      BrushPressureCurve.linearFrom(0.65),
+    );
     final light = _dab().copyWith(pressure: 0.0);
-    final scaled = applyBrushPressureDynamics(light, sizeCurve: floor);
+    final scaled = applyBrushInputDynamics(light, shape: shape);
     expect(scaled.size, closeTo(6.5, 1e-9));
 
-    final full = applyBrushPressureDynamics(
+    final full = applyBrushInputDynamics(
       _dab().copyWith(pressure: 1.0),
-      sizeCurve: floor,
+      shape: shape,
     );
     expect(full.size, closeTo(10.0, 1e-9));
   });

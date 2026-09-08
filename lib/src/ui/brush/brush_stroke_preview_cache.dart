@@ -184,7 +184,7 @@ Uint8List rasterizeBrushStrokeSample(
     // ACCUMULATED swatch once, at the end — on the dab it would not cap
     // anything, and the preview would go on darkening past the setting
     // exactly the way the canvas did.
-    final curved = applyBrushPressureDynamics(
+    final curved = applyBrushInputDynamics(
       BrushDab(
         center: CanvasPoint(x: x, y: y),
         color: 0xFF000000,
@@ -204,10 +204,7 @@ Uint8List rasterizeBrushStrokeSample(
         textureScale: settings.textureScale,
         textureDensity: settings.textureDensity,
       ),
-      sizeCurve: settings.sizePressureCurve,
-      opacityCurve: settings.opacityPressureCurve,
-      flowCurve: settings.flowPressureCurve,
-      hardnessCurve: settings.hardnessPressureCurve,
+      shape: settings.shape,
     );
     // 🚨THE FLOORS ARE THE PREVIEW'S OWN, and that is why they stayed here
     // rather than moving into the law: a swatch has to show the brush's

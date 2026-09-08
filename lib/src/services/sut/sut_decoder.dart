@@ -10,6 +10,7 @@ import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
+import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../brush_tip_image_codec.dart';
 
@@ -241,15 +242,19 @@ BrushSettings _settingsFromVariant(
   // BB-3: effectors map to pressure CURVES — the CSP minimum value is the
   // size curve's left endpoint. Opacity and flow effectors now import as
   // their own channels (they used to be OR-merged into one opacity bool).
-  final sizePressureCurve = _effectorPressureCurve(
-    variant['BrushSizeEffector'],
-  );
-  final opacityPressureCurve = _effectorPressureCurve(
-    variant['BrushOpacityEffector'],
-  );
-  final flowPressureCurve = _effectorPressureCurve(
-    variant['BrushFlowEffector'],
-  );
+  // ⛔EVERY enabled source, not just pressure. A Clip Studio brush can drive
+  // one setting from several inputs at once, and each has its own curve block
+  // in the effector's tail; reading only the first one imported a tilt brush
+  // as a plain one.
+  final curves = <BrushDynamicsKey, BrushPressureCurve>{
+    for (final entry in _effectorCurves(variant['BrushSizeEffector']).entries)
+      (BrushPressureTarget.size, entry.key): entry.value,
+    for (final entry
+        in _effectorCurves(variant['BrushOpacityEffector']).entries)
+      (BrushPressureTarget.opacity, entry.key): entry.value,
+    for (final entry in _effectorCurves(variant['BrushFlowEffector']).entries)
+      (BrushPressureTarget.flow, entry.key): entry.value,
+  };
 
   // Random input source (flag 0x80) drives the jitters. The engine shakes a
   // value DOWNWARD from its full setting (`v *= 1 - jitter * random`), which
@@ -317,9 +322,7 @@ BrushSettings _settingsFromVariant(
         : 0.25,
     roundness: (thicknessPercent / 100.0).clamp(0.01, 1.0).toDouble(),
     angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
-    sizePressureCurve: sizePressureCurve,
-    opacityPressureCurve: opacityPressureCurve,
-    flowPressureCurve: flowPressureCurve,
+    curves: curves,
     tipMask: mask,
     sizeJitter: sizeJitter,
     opacityJitter: opacityJitter,
@@ -521,11 +524,6 @@ int? _effectorFlags(Object? effector) {
 
 bool _usesRandom(int? flags) => flags != null && (flags & 0x80) != 0;
 
-bool _effectorUsesPressure(Object? effector) {
-  final flags = _effectorFlags(effector);
-  return flags != null && (flags & 0x10) != 0;
-}
-
 /// The pen-pressure response curve an effector carries, or `null` when it
 /// does not answer to pressure.
 ///
@@ -544,17 +542,60 @@ bool _effectorUsesPressure(Object? effector) {
 /// 0..1 output and the minimum lifts its floor, which is why a brush that
 /// never touched the graph still lands on exactly the straight
 /// `min + (1 - min) * p` line this importer used to assume for everyone.
-BrushPressureCurve? _effectorPressureCurve(Object? effector) {
-  if (!_effectorUsesPressure(effector)) {
-    return null;
+/// Every input source's curve on one effector, keyed by source.
+///
+/// 🚨**THE BLOCKS RUN IN ASCENDING FLAG-BIT ORDER** — 筆圧 0x10, 速度 0x20,
+/// 傾き 0x40, ランダム 0x80 — so a source's block index is its rank among the
+/// ENABLED sources below it, and randomness (the highest bit) can never shift
+/// the others. ⚠️That is NOT the order the four minimums sit in; those run in
+/// panel order. See [BrushInputSource.effectorMinimumIndex].
+///
+/// ⛔Everything but pressure used to be dropped on the floor here, which is
+/// what made a tilt-driven Clip Studio brush import as a plain one.
+Map<BrushInputSource, BrushPressureCurve> _effectorCurves(Object? effector) {
+  final flags = _effectorFlags(effector);
+  if (flags == null) {
+    return const {};
   }
+  final curves = <BrushInputSource, BrushPressureCurve>{};
+  var block = 0;
+  for (final source in _sourcesInBlockOrder) {
+    if (flags & source.effectorFlagBit == 0) {
+      continue;
+    }
+    final curve = _effectorSourceCurve(effector, source, block);
+    if (curve != null) {
+      curves[source] = curve;
+    }
+    block += 1;
+  }
+  return curves;
+}
+
+/// The sources in the order their curve blocks are written.
+const _sourcesInBlockOrder = <BrushInputSource>[
+  BrushInputSource.pressure,
+  BrushInputSource.speed,
+  BrushInputSource.tilt,
+];
+
+BrushPressureCurve? _effectorSourceCurve(
+  Object? effector,
+  BrushInputSource source,
+  int blockIndex,
+) {
   final minimum = _effectorMinimumRatio(
     effector,
-    BrushInputSource.pressure.effectorMinimumIndex,
+    source.effectorMinimumIndex,
   );
-  final stored = effector is Uint8List ? _effectorCurvePoints(effector) : null;
+  final maximum = source == BrushInputSource.tilt
+      ? _effectorTiltMaximum(effector)
+      : 1.0;
+  final stored = effector is Uint8List
+      ? _effectorCurvePoints(effector, blockIndex)
+      : null;
   if (stored == null || stored.isEmpty) {
-    return BrushPressureCurve.linearFrom(minimum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
   final points = <BrushCurvePoint>[BrushCurvePoint(0.0, minimum)];
   for (final point in stored) {
@@ -574,19 +615,38 @@ BrushPressureCurve? _effectorPressureCurve(Object? effector) {
     points.add(const BrushCurvePoint(1.0, 1.0));
   }
   if (points.length < 2) {
-    return BrushPressureCurve.linearFrom(minimum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
   try {
-    return BrushPressureCurve(points);
+    return BrushPressureCurve(points, maximum: maximum);
   } on ArgumentError {
     // Never fail an import over a curve; the straight line is the honest
     // fallback the file already implies through its minimum.
-    return BrushPressureCurve.linearFrom(minimum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
 }
 
-/// The first curve block's stored points, origin excluded.
-List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob) {
+/// 傾き's 最大値 as a multiplier.
+///
+/// Clip Studio offers a maximum on tilt and on nothing else (100–1000%), and
+/// it sits at int[10] — measured 2026-09-08 beside the four minimums, against
+/// two brushes and their panel screenshots. Absent, short, or at-or-below
+/// 100% all mean 1.0: "never exceeds the base", which is what every curve
+/// meant before maximums existed.
+double _effectorTiltMaximum(Object? blob) {
+  if (blob is! Uint8List || blob.length < 44) {
+    return 1.0;
+  }
+  final percent = ByteData.sublistView(blob).getInt32(40);
+  if (percent <= 100) {
+    return 1.0;
+  }
+  return (percent / 100.0).clamp(1.0, 10.0).toDouble();
+}
+
+/// The [blockIndex]-th curve block's stored points, origin excluded.
+List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob, int blockIndex) {
+  var seen = 0;
   final data = ByteData.sublistView(blob);
   final intCount = blob.length ~/ 4;
   for (var i = 0; i + 7 <= intCount; i += 1) {
@@ -603,6 +663,12 @@ List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob) {
     final count = data.getInt32((i + 1) * 4);
     if (count < 2 || count > 64) {
       return null;
+    }
+    // Blocks are written one per enabled source, so walk past the ones that
+    // belong to sources ahead of this one in flag-bit order.
+    if (seen != blockIndex) {
+      seen += 1;
+      continue;
     }
     final start = (i + 7) * 4;
     final points = <BrushCurvePoint>[];

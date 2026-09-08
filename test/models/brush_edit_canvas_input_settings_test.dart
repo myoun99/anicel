@@ -143,7 +143,15 @@ void main() {
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a == c, isFalse);
-      expect(a.toString(), contains('sizePressureCurve: BrushPressureCurve'));
+      // The curves print as the KEYED MAP now — one entry naming both what it
+      // drives and what drives it, which is the whole point of the change.
+      expect(
+        a.toString(),
+        contains(
+          '(BrushPressureTarget.size, BrushInputSource.pressure): '
+          'BrushPressureCurve',
+        ),
+      );
     });
 
     test('copyWith preserves omitted values', () {

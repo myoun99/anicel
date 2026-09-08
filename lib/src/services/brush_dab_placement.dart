@@ -20,16 +20,13 @@ BrushDabSequence brushInputSamplesToBrushDabs({
     // BB-3: the base dab, then the ONE curve law. The multiplication used to
     // sit inside the factory as a fourth copy of it.
     dabs.add(
-      applyBrushPressureDynamics(
+      applyBrushInputDynamics(
         BrushDab.fromInputSample(
           sample: sample,
           settings: settings,
           sequence: nextSequence,
         ),
-        sizeCurve: settings.sizePressureCurve,
-        opacityCurve: settings.opacityPressureCurve,
-        flowCurve: settings.flowPressureCurve,
-        hardnessCurve: settings.hardnessPressureCurve,
+        shape: settings.shape,
       ),
     );
     nextSequence += 1;

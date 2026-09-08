@@ -24,10 +24,12 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   hardness: 0.6,
   spacing: 0.3,
   tipShape: BrushTipShape.square,
-  sizePressureCurve: BrushPressureCurve.linearFrom(0.2),
-  opacityPressureCurve: BrushPressureCurve.linearFrom(0.3),
-  flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
-  hardnessPressureCurve: BrushPressureCurve.identity(),
+  curves: brushPressureCurves(
+    size: BrushPressureCurve.linearFrom(0.2),
+    opacity: BrushPressureCurve.linearFrom(0.3),
+    flow: BrushPressureCurve.linearFrom(0.4),
+    hardness: BrushPressureCurve.identity(),
+  ),
   roundness: 0.4,
   angleDegrees: 60,
   tipMask: _maskFor('tip'),
@@ -87,20 +89,30 @@ void main() {
       expect(base.copyWith(textureDensity: 1.0), isNot(base));
       // The pressure curves too.
       expect(
-        base.copyWith(sizePressureCurve: BrushPressureCurve.identity()),
+        base.withPressureCurve(
+          BrushPressureTarget.size,
+          BrushPressureCurve.identity(),
+        ),
         isNot(base),
       );
       expect(
-        base.copyWith(opacityPressureCurve: BrushPressureCurve.identity()),
+        base.withPressureCurve(
+          BrushPressureTarget.opacity,
+          BrushPressureCurve.identity(),
+        ),
         isNot(base),
       );
       expect(
-        base.copyWith(flowPressureCurve: BrushPressureCurve.identity()),
+        base.withPressureCurve(
+          BrushPressureTarget.flow,
+          BrushPressureCurve.identity(),
+        ),
         isNot(base),
       );
       expect(
-        base.copyWith(
-          hardnessPressureCurve: BrushPressureCurve.linearFrom(0.1),
+        base.withPressureCurve(
+          BrushPressureTarget.hardness,
+          BrushPressureCurve.linearFrom(0.1),
         ),
         isNot(base),
       );
@@ -118,8 +130,9 @@ void main() {
       const shape = BrushShape();
       expect(shape.pressureCurveFor(BrushPressureTarget.size), isNull);
 
-      final withSize = shape.copyWith(
-        sizePressureCurve: BrushPressureCurve.identity(),
+      final withSize = shape.withPressureCurve(
+        BrushPressureTarget.size,
+        BrushPressureCurve.identity(),
       );
       expect(
         withSize.pressureCurveFor(BrushPressureTarget.size),

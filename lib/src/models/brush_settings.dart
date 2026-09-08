@@ -19,6 +19,11 @@ class BrushSettings {
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
     BrushPressureCurve? hardnessPressureCurve,
+    // The general form. The four names above are sugar for its PRESSURE
+    // entries — the only shape a caller needed before sources were
+    // separated, and still the common one. Anything given here wins, because
+    // it is the only way to say "tilt".
+    Map<BrushDynamicsKey, BrushPressureCurve> curves = const {},
     double roundness = 1.0,
     double angleDegrees = 0.0,
     BrushTipMask? tipMask,
@@ -50,10 +55,15 @@ class BrushSettings {
          hardness: hardness,
          spacing: spacing,
          tipShape: tipShape,
-         sizePressureCurve: sizePressureCurve,
-         opacityPressureCurve: opacityPressureCurve,
-         flowPressureCurve: flowPressureCurve,
-         hardnessPressureCurve: hardnessPressureCurve,
+         curves: {
+           ...brushPressureCurves(
+             size: sizePressureCurve,
+             opacity: opacityPressureCurve,
+             flow: flowPressureCurve,
+             hardness: hardnessPressureCurve,
+           ),
+           ...curves,
+         },
          roundness: roundness,
          angleDegrees: angleDegrees,
          tipMask: tipMask,
