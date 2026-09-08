@@ -17,6 +17,38 @@ class BitmapSurface {
     }
   }
 
+  /// A surface DERIVED from one whose tiles are already valid, with the
+  /// same [canvasSize] and [tileSize] — so only [added] can be wrong, and
+  /// only [added] is checked.
+  ///
+  /// 🚨★★★**EVERY EDIT PAID FOR EVERY TILE THE CEL HELD.** A commit builds
+  /// a new surface, and the public constructor above re-validates the whole
+  /// map and copies it — so the cost of putting ONE tile back was O(tiles
+  /// the cel has), whatever the size of the edit. 🧪Measured, one 20px dab
+  /// committed onto a cel holding: 400 tiles **0.64 ms** · 1,444 **2.13** ·
+  /// 5,625 **10.54** · 22,500 **44.37**. Perfectly linear in tiles HELD,
+  /// flat in tiles touched. Split at 6,400 tiles: map copy 3.19 ms,
+  /// re-validation 5.51 ms.
+  ///
+  /// ⛔**THE LAW IS STILL [_validateTileEntry]'s, and only its** — this
+  /// runs the same function, on the tiles that are actually new. A tile
+  /// already in [from] was checked when it entered, against this very
+  /// canvas size and tile size; asking again cannot learn anything.
+  ///
+  /// ⚠️[tiles] is ADOPTED, not copied: every caller builds it inline and
+  /// lets go. That is the second half of the measured cost, and it is only
+  /// safe because this constructor is private and no caller keeps the map.
+  BitmapSurface._derived({
+    required this.canvasSize,
+    required this.tileSize,
+    required Map<TileCoord, BitmapTile> tiles,
+    required Iterable<BitmapTile> added,
+  }) : _tiles = tiles {
+    for (final tile in added) {
+      _validateTileEntry(tile.coord, tile, this);
+    }
+  }
+
   final CanvasSize canvasSize;
   final int tileSize;
   final Map<TileCoord, BitmapTile> _tiles;
@@ -103,7 +135,12 @@ class BitmapSurface {
     for (final tile in tilesToPut) {
       updated[tile.coord] = tile;
     }
-    return copyWith(tiles: updated);
+    return BitmapSurface._derived(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: updated,
+      added: tilesToPut,
+    );
   }
 
   /// [putTiles] for a pass that MATERIALIZED these tiles — a commit tail,
@@ -128,14 +165,23 @@ class BitmapSurface {
   /// reference, so dropping it costs the commit nothing.
   BitmapSurface putMaterializedTiles(Iterable<BitmapTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
+    // ⚠️Only what is actually STORED is checked. A blank tile is dropped,
+    // and the storability law is about what a surface holds.
+    final kept = <BitmapTile>[];
     for (final tile in tilesToPut) {
       if (tile.hasInk) {
         updated[tile.coord] = tile;
+        kept.add(tile);
       } else {
         updated.remove(tile.coord);
       }
     }
-    return copyWith(tiles: updated);
+    return BitmapSurface._derived(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: updated,
+      added: kept,
+    );
   }
 
   /// The end of a copy-on-write pass: the surface with [rebuilt] put back,
@@ -149,7 +195,13 @@ class BitmapSurface {
 
   BitmapSurface removeTile(TileCoord coord) {
     final nextTiles = Map<TileCoord, BitmapTile>.of(_tiles)..remove(coord);
-    return copyWith(tiles: nextTiles);
+    return BitmapSurface._derived(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: nextTiles,
+      // Nothing new goes in, so nothing new needs checking.
+      added: const [],
+    );
   }
 
   BitmapSurface copyWith({
