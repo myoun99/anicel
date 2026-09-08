@@ -241,6 +241,59 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('🚨a frame it cannot read is asked for ONCE PER TICK, not as '
+      'fast as the decoder can refuse it', (tester) async {
+    // 🪦Measured before the fix, with this exact fixture: `asked` came back
+    // `[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]` — eleven asks for one frame
+    // across three ticks. Nothing was throttling it. The failure arm cleared
+    // its own marker inside a `setState`, the rebuild asked for the same
+    // page again, and that failed again: a loop whose speed was set by how
+    // quickly the decoder could say no. On a corrupt frame or a slow decoder
+    // that is a pegged CPU under a picture standing still — worst exactly
+    // where it can least be afforded ([[old-device-support-policy]]).
+    final fake = await openMovie(tester, holdFrom: 1);
+    await pressPlay(tester);
+
+    // 🪦FIRST GET TO THE STATE BEING MEASURED, and only with REAL time. A
+    // first attempt counted asks straight after the press and measured
+    // `asked == [0]` — the read-ahead had not reached the held frame at all,
+    // because frame 0's own decode cannot COMPLETE inside the fake-async
+    // zone and its marker therefore still said 「asking」. That is the trap
+    // this file's [settleAsync] header is about, walked into one more time:
+    // the number would have been the bench's, not the viewer's.
+    await settleAsync(tester, () => fake.asked.contains(1), attempts: 150);
+    expect(
+      fake.asked,
+      contains(1),
+      reason: 'fixture: the read-ahead has to actually reach the held frame '
+          'before its retry rate can mean anything',
+    );
+
+    final before = fake.asked.length;
+    // Ten ticks of the movie's own clock. The fake clock only moves on
+    // `pump`, so this is EXACTLY ten however long the real waits take.
+    const ticks = 10;
+    for (var tick = 0; tick < ticks; tick += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+
+    final asks = fake.asked.length - before;
+    expect(
+      asks,
+      lessThanOrEqualTo(ticks + 1),
+      reason: 'the play tick is the retry clock — a frame that is not there '
+          'is asked for at the rate the movie needs it and no faster '
+          '(measured $asks asks over $ticks ticks: ${fake.asked})',
+    );
+    // ⛔And not zero either: 「로드할때까지 멈춰있어야지」 is a WAIT, so it has
+    // to keep asking. A viewer that gave up would sail through the bound
+    // above — this is the half that keeps the resume below possible.
+    expect(asks, greaterThan(0), reason: 'it is still trying');
+  });
+
   testWidgets('stopping the run stops the sound', (tester) async {
     await openMovie(tester);
     await pressPlay(tester);

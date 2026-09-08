@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -16,6 +15,7 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_paint.dart' show applyCameraProjection;
+import '../../services/straight_rgba_image.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
@@ -64,15 +64,12 @@ Future<ui.Image> bitmapSurfaceToImage(BitmapSurface surface) async {
         )
       : _assemblePremultipliedRgba(tiles, width, height);
 
-  final completer = Completer<ui.Image>();
-  ui.decodeImageFromPixels(
-    buffer,
-    width,
-    height,
-    ui.PixelFormat.rgba8888,
-    completer.complete,
-  );
-  return completer.future;
+  // 🚨Through [uploadRawRgba], not `ui.decodeImageFromPixels`: the SDK
+  // function reports no failure to anyone, so the `Completer` that stood here
+  // could only ever succeed. This is the whole-canvas upload — the exact size
+  // at which an engine allocation is most likely to be refused — and its
+  // callers are exports and bakes that would have waited on it forever.
+  return uploadRawRgba(buffer, width: width, height: height);
 }
 
 /// The full-canvas premultiplied upload buffer, assembled from straight-

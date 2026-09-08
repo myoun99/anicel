@@ -45,21 +45,44 @@ import '../native/qa_native_engine.dart';
 /// plus a per-pixel loop) it costs a second full-size allocation and a
 /// second full traversal, which on a whole-picture buffer is tens of
 /// megabytes; the Dart branch here is the no-engine fallback, not the
-/// normal route. The scratch is freed on every path, inside the decode
-/// callback.
+/// normal route.
 ///
-/// [onDecoded] always receives the image, mounted or not — disposing it is
-/// the caller's business, because only the caller knows whether the result
-/// is still wanted.
+/// 🚨★★★**IT ANSWERS. `ui.decodeImageFromPixels` DOES NOT.**
 ///
-/// ⚠️There is no synchronous route to a `ui.Image` on Skia (see
-/// `syncImageUploadSupported`), which is why this is a callback and why
-/// every caller needs an answer for the frames before it fires.
-void decodeStraightRgbaImage({
+/// 🪦This was a `void` that took an `onDecoded` callback until 2026-09-08,
+/// and its own header ended 「every caller needs an answer for the frames
+/// before it fires」. The sentence was about the frames BEFORE — nobody had
+/// asked what happens when it never fires at all. Read in the SDK source:
+/// `decodeImageFromPixels` chains `ImmutableBuffer.fromUint8List().then(…)`
+/// and, INSIDE that, a second `instantiateCodec().then(…).then(…)` which it
+/// does not return. Neither chain carries an `onError`, a `catchError` or a
+/// timeout, and the inner rejection cannot even reach the outer future. So
+/// the callback fires exactly once on success and ZERO times on any
+/// failure, and the caller is told nothing at all.
+///
+/// That is not theoretical on the platforms this ships to. On Skia — which
+/// is what Windows runs, debug AND release — every decode failure funnels
+/// into `Codec.getNextFrame`'s null-image branch, which completes with an
+/// error into that dropped chain: a resize allocation that fails at the
+/// TARGET size (the old tablets of [[old-device-support-policy]]), a buffer
+/// whose length disagrees with `width * height * 4` (nothing validates
+/// that), a lost GPU upload. Every caller here already wrapped this in a
+/// `Completer` that had no `completeError` — seven of them, which is how
+/// one unreadable movie frame could wedge the media viewer for the life of
+/// its `State`.
+///
+/// ⚠️A `Future` cannot see the cases where the ENGINE never calls back at
+/// all (an isolate torn down mid-decode; an iOS app backgrounded, where
+/// Metal parks the upload in `tasks_awaiting_gpu_` with no time bound).
+/// ⛔Do not answer those with a timeout: backgrounded is a wait that is
+/// SUPPOSED to end when the app comes forward, and cancelling it would
+/// throw away a frame that was going to arrive.
+///
+/// The returned image is the caller's to dispose, mounted or not.
+Future<ui.Image> decodeStraightRgbaImage({
   required Uint8List rgba,
   required int width,
   required int height,
-  required void Function(ui.Image image) onDecoded,
 
   /// The pixels to PRODUCE, when that is smaller than the buffer's own
   /// size. 🚨★★★「보이는 것만, 보이는 해상도로」 — a video frame arrives
@@ -70,22 +93,64 @@ void decodeStraightRgbaImage({
   /// that came before.
   int? targetWidth,
   int? targetHeight,
-}) {
+}) async {
   final premultipliedCopy = premultipliedStraightRgba(rgba);
-  final premultiplied = premultipliedCopy.pixels;
-  final scratch = premultipliedCopy.scratch;
-  ui.decodeImageFromPixels(
-    premultiplied,
-    width,
-    height,
-    ui.PixelFormat.rgba8888,
-    targetWidth: targetWidth,
-    targetHeight: targetHeight,
-    (image) {
-      scratch?.free();
-      onDecoded(image);
-    },
-  );
+  try {
+    return await uploadRawRgba(
+      premultipliedCopy.pixels,
+      width: width,
+      height: height,
+      targetWidth: targetWidth,
+      targetHeight: targetHeight,
+    );
+  } finally {
+    // 🚨THE `finally` IS THE FIX, not decoration. This lived inside the
+    // decode callback, so a decode that failed never released the native
+    // premultiply scratch — the one path where the bytes are native memory
+    // rather than Dart heap, and therefore the one path where nothing else
+    // ever reclaims them.
+    premultipliedCopy.scratch?.free();
+  }
+}
+
+/// The image [decode] produced, or null when it must not be used.
+///
+/// 🚨★★★**A DECODE THAT LANDS INTO A WIDGET HAS THREE ENDINGS AND ONLY ONE
+/// OF THEM IS A PICTURE.** It can fail; it can succeed for an ask nobody
+/// wants any more (the widget went away, or a newer request overtook it);
+/// or it can arrive. The middle one is the dangerous one, because the image
+/// is real engine memory and dropping the reference does not release it —
+/// that is why this disposes it here rather than returning it for a caller
+/// to remember to.
+///
+/// ⛔[onFailed] is NOT [wanted] returning false, and collapsing the two is
+/// the mistake this signature exists to prevent: a stale ask should leave
+/// the widget's bookkeeping alone, while a REFUSED one usually has to be
+/// written down so the next attempt is allowed to happen at all.
+///
+/// 🪦Three `State`s wrote this dance out — the cut-piece preview, the import
+/// preview and the media viewer's page render — each with its own staleness
+/// token and its own idea of what a failure means. Two of them became
+/// token-identical the moment the decode gained a failure path (the clone
+/// ratchet named the pair on 2026-09-08), which is the third occurrence the
+/// rule of three was waiting for.
+Future<ui.Image?> decodedImageStillWanted(
+  Future<ui.Image> decode, {
+  required bool Function() wanted,
+  void Function()? onFailed,
+}) async {
+  final ui.Image image;
+  try {
+    image = await decode;
+  } on Object {
+    onFailed?.call();
+    return null;
+  }
+  if (wanted()) {
+    return image;
+  }
+  image.dispose();
+  return null;
 }
 
 /// Uploads PREMULTIPLIED raw RGBA as a `ui.Image`, disposing every
@@ -99,22 +164,55 @@ void decodeStraightRgbaImage({
 ///
 /// ⚠️STRAIGHT alpha goes through [premultipliedStraightRgba] first: this
 /// takes what the engine will draw, not what the app stores.
+///
+/// 🚨★★★**THIS IS `ui.decodeImageFromPixels`, WRITTEN SO IT CAN SAY NO.**
+/// Step for step it is the same algorithm — buffer, raw descriptor, codec,
+/// first frame, dispose all three — which under this repo's connascence
+/// rule makes the two COPIES, not lookalikes. The difference that matters
+/// is that this one `await`s each step, so every failure the SDK drops
+/// (see [decodeStraightRgbaImage]) arrives here as a rejection the caller
+/// can act on. That is why the callers moved here in 2026-09-08 rather
+/// than the other way round.
 Future<ui.Image> uploadRawRgba(
   Uint8List rgba, {
   required int width,
   required int height,
+
+  /// 🚨Behaviourally identical to `decodeImageFromPixels`'s pair of the
+  /// same name. Its `allowUpscaling` is a DART-SIDE clamp that is never
+  /// sent to the engine, and at its default (`true`) the clamp block is
+  /// skipped entirely — both functions then hand the same two numbers to
+  /// the same `instantiateCodec`, which owns the `<= 0 → null` handling and
+  /// the intrinsic-size fallback. Moving a caller here changes no pixel and
+  /// no size; it changes only what happens when the decode fails.
+  int? targetWidth,
+  int? targetHeight,
 }) async {
   final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
-  final descriptor = ui.ImageDescriptor.raw(
-    buffer,
-    width: width,
-    height: height,
-    pixelFormat: ui.PixelFormat.rgba8888,
-  );
-  final codec = await descriptor.instantiateCodec();
-  final frame = await codec.getNextFrame();
-  codec.dispose();
-  descriptor.dispose();
-  buffer.dispose();
-  return frame.image;
+  ui.ImageDescriptor? descriptor;
+  ui.Codec? codec;
+  try {
+    descriptor = ui.ImageDescriptor.raw(
+      buffer,
+      width: width,
+      height: height,
+      pixelFormat: ui.PixelFormat.rgba8888,
+    );
+    codec = await descriptor.instantiateCodec(
+      targetWidth: targetWidth,
+      targetHeight: targetHeight,
+    );
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  } finally {
+    // 🚨A REJECTION LEAKED ALL THREE until 2026-09-08, and the leak is
+    // bigger than it looks: the engine registers each wrapper's finalizer
+    // with `sizeof(*this)` as the external-size hint, so the GC is told a
+    // few dozen bytes while an `ImmutableBuffer` retains the whole copy —
+    // 8.3 MB for one 1080p RGBA frame. In a per-frame failure that is
+    // growth nothing reclaims until an unrelated collection happens by.
+    codec?.dispose();
+    descriptor?.dispose();
+    buffer.dispose();
+  }
 }

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -254,14 +253,11 @@ void main() {
       final bytes = await tester.runAsync(() async {
         ui.Image? image;
         if (decoded) {
-          final completer = Completer<ui.Image>();
-          decodeStraightRgbaImage(
+          image = await decodeStraightRgbaImage(
             rgba: piece.image.rgba,
             width: piece.image.width,
             height: piece.image.height,
-            onDecoded: completer.complete,
           );
-          image = await completer.future;
         }
         final recorder = ui.PictureRecorder();
         final size = Size(side.toDouble(), side.toDouble());

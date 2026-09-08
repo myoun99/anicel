@@ -15,6 +15,7 @@ import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
+import '../../services/straight_rgba_image.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
@@ -254,6 +255,24 @@ class _RenderedPage {
   final ui.Image image;
 }
 
+/// What was last asked of the document for one (page, scale).
+///
+/// 🚨★★★**LANDED IS NOT A VALUE HERE — IT IS THE ABSENCE OF ONE**, because
+/// a landed render lives in the page cache and this map is about what is
+/// still owed. What this type exists to separate is the other two, which
+/// were both spelled 「not in the set」 before 2026-09-08. See [_renders].
+enum _RenderAsk {
+  /// Out with the document, no answer yet.
+  asking,
+
+  /// The document refused this one. ⛔It is remembered until the play tick
+  /// forgets it: asking again the instant it fails is a loop, and never
+  /// asking again is a viewer that cannot recover when the frame becomes
+  /// readable — and recovery is the law here (유저 2026-08-31, 「로드할때까지
+  /// 멈춰있어야지」, which is a WAIT and not a surrender).
+  failed,
+}
+
 class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     implements PlaybackTransport {
   /// Commit sink required by the panel API; the viewer never invalidates
@@ -424,9 +443,29 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// whole header explaining why there is only ever one.
   double _soundSeconds = 0;
 
-  /// Renders in flight, one marker per (page, scale) — landings remove
-  /// their own marker, so a stale landing can never wipe a newer one.
-  final Set<(int, double)> _rendersInFlight = {};
+  /// What has been asked of the document, one entry per (page, scale) —
+  /// landings remove their own entry, so a stale landing can never wipe a
+  /// newer one.
+  ///
+  /// 🚨★★★**A RENDER HAS THREE OUTCOMES AND THIS USED TO HAVE ROOM FOR
+  /// TWO.** It was a `Set`, so ABSENT answered both 「nobody has asked」 and
+  /// 「the last ask failed, so asking again right now is fine」 — and the
+  /// failure arm below cleared the marker inside a `setState`. That rebuild
+  /// re-entered `build`, which asks for the same page again, which fails
+  /// again, which rebuilds: measured at eleven asks for one unreadable frame
+  /// across three ticks, throttled by nothing but how fast the decoder can
+  /// say no. On the tablets this app is written for
+  /// ([[old-device-support-policy]]) that is a spinning CPU under a picture
+  /// that is not moving.
+  final Map<(int, double), _RenderAsk> _renders = {};
+
+  /// Whether a render is out with the document right now.
+  ///
+  /// ⛔Not `_renders.isNotEmpty`: a FAILED entry is remembered until the
+  /// next tick, and counting it as in-flight would stop the read-ahead from
+  /// ever issuing anything again.
+  bool get _rendering =>
+      _renders.values.any((ask) => ask == _RenderAsk.asking);
 
   /// Token that changes once per successfully LOADED document — drives
   /// the panel's auto-reframe so a preserved deep zoom/pan from the
@@ -525,7 +564,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     _buffering = false;
     _renderScale = null;
     widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] = 0;
-    _rendersInFlight.clear();
+    _renders.clear();
     final document = _document;
     _document = null;
     unawaited(document?.dispose());
@@ -680,34 +719,42 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (cached != null && cached.scale == scale) {
       return;
     }
-    // One marker PER (page, scale): a shared single slot got wiped by
+    // One entry PER (page, scale): a shared single slot got wiped by
     // whichever render landed first, and the wipe re-issued duplicates
     // of work already queued on PDFium's serial worker.
-    if (!_rendersInFlight.add((pageIndex, scale))) {
+    //
+    // 🚨An entry of EITHER kind stops the ask — in flight means 「already
+    // out」 and failed means 「not until the clock says so」. See [_renders].
+    if (_renders.containsKey((pageIndex, scale))) {
       return;
     }
+    _renders[(pageIndex, scale)] = _RenderAsk.asking;
     final generation = _generation;
     final pageSize = document.pageSize(pageIndex);
     unawaited(() async {
-      final ui.Image image;
-      try {
-        image = await document.renderPage(
+      final image = await decodedImageStillWanted(
+        document.renderPage(
           pageIndex,
           width: (pageSize.width * scale).round().clamp(1, 1 << 13).toInt(),
           height: (pageSize.height * scale).round().clamp(1, 1 << 13).toInt(),
-        );
-      } on Object {
-        if (mounted && generation == _generation) {
-          setState(() => _rendersInFlight.remove((pageIndex, scale)));
-        }
-        return;
-      }
-      if (!mounted || generation != _generation) {
-        image.dispose();
+        ),
+        wanted: () => mounted && generation == _generation,
+        // ⛔NO `setState` on this road. Nothing the eye can see changed — the
+        // page that was not there is still not there — and the rebuild is
+        // exactly what made a refused frame ask again immediately, and
+        // again, for as long as it kept being refused. The retry belongs to
+        // the play tick, which is the clock that actually needs the frame.
+        onFailed: () {
+          if (mounted && generation == _generation) {
+            _renders[(pageIndex, scale)] = _RenderAsk.failed;
+          }
+        },
+      );
+      if (image == null) {
         return;
       }
       setState(() {
-        _rendersInFlight.remove((pageIndex, scale));
+        _renders.remove((pageIndex, scale));
         _pageCache[pageIndex]?.image.dispose();
         _pageCache[pageIndex] = _RenderedPage(scale: scale, image: image);
         _evictToBudget(keeping: pageIndex);
@@ -828,7 +875,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// its own.
   void _fillPlaybackBuffer() {
     final scale = _renderScale;
-    if (scale == null || _rendersInFlight.isNotEmpty) {
+    if (scale == null || _rendering) {
       return;
     }
     final ahead = _bufferAheadPages();
@@ -949,15 +996,28 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   }
 
   /// One tick of a run.
+  ///
+  /// 🚨★★★**AND THE RETRY CLOCK.** A frame the decoder refused is forgotten
+  /// here and nowhere else, so it is asked for again at the rate the movie
+  /// actually needs it — once per frame time — instead of as fast as the
+  /// decoder can keep saying no. See [_renders] for what that cost.
+  ///
+  /// ⛔The fill has to be driven from here rather than left to the next
+  /// build: while the buffer is dry [_turnThePage] returns WITHOUT a
+  /// `setState`, so a parked viewer rebuilds for nothing and the walk
+  /// forward would have no one to start it. That is why forgetting the
+  /// failure is not enough on its own.
   void _onPlayTick() {
     if (!mounted) {
       return;
     }
+    _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
     if (_turnsItsOwnPages) {
       _turnThePage();
-      return;
+    } else {
+      _followTheSound();
     }
-    _followTheSound();
+    _fillPlaybackBuffer();
   }
 
   /// 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT IS NOT

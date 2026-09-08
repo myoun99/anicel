@@ -165,16 +165,28 @@ class _ImportPreviewState extends State<ImportPreview> {
     if (rgba == null || !mounted || _video != info) {
       return;
     }
-    final completer = Completer<ui.Image>();
-    decodeStraightRgbaImage(
-      rgba: rgba,
-      width: info.info.width,
-      height: info.info.height,
-      onDecoded: completer.complete,
+    // 🚨A frame the engine refused gets the answer this panel already gives
+    // for a movie it could not open: nothing new is drawn. ⛔It does NOT
+    // throw — this runs under a scrub, and a preview that threw would take
+    // the import window with it.
+    //
+    // 🪦Before 2026-09-08 a refusal could not be observed here: the decode
+    // was a `Completer` with no failure path, so the future stayed pending
+    // forever with `_videoFrameShown` already advanced — the preview then
+    // held the PREVIOUS frame and would never ask for this index again.
+    // Putting the mark back is what lets the next scrub retry, and it is
+    // deliberately on the FAILED road only: a frame that merely arrived too
+    // late belongs to a scrub that has already moved on.
+    final image = await decodedImageStillWanted(
+      decodeStraightRgbaImage(
+        rgba: rgba,
+        width: info.info.width,
+        height: info.info.height,
+      ),
+      wanted: () => mounted && _video == info,
+      onFailed: () => _videoFrameShown = -1,
     );
-    final image = await completer.future;
-    if (!mounted || _video != info) {
-      image.dispose();
+    if (image == null) {
       return;
     }
     setState(() {

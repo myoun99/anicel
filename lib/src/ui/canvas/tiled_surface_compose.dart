@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../core/dev_profile.dart';
+import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'tile_origin.dart';
 
@@ -257,18 +257,21 @@ PositionedSurfaceImage? composePositionedSurfaceImageSyncOrNull(
       : PositionedSurfaceImage(image: image, worldRect: worldRect);
 }
 
-Future<ui.Image> _decodeTile(BitmapTile tile) {
-  final completer = Completer<ui.Image>();
+Future<ui.Image> _decodeTile(BitmapTile tile) async {
+  // 🚨Through [uploadRawRgba], not `ui.decodeImageFromPixels`: the SDK
+  // function tells nobody when a decode fails, so the `Completer` that stood
+  // here could only ever succeed — and the `upload.free()` it carried lived
+  // in the same success-only callback. A refused tile therefore leaked its
+  // native staging buffer AND left this future pending. The `finally` frees
+  // on both roads; see [uploadRawRgba] for the SDK's two dropped chains.
   final upload = BitmapTileImageCache.premultipliedTileUpload(tile);
-  ui.decodeImageFromPixels(
-    upload.view,
-    tile.size,
-    tile.size,
-    ui.PixelFormat.rgba8888,
-    (image) {
-      upload.free();
-      completer.complete(image);
-    },
-  );
-  return completer.future;
+  try {
+    return await uploadRawRgba(
+      upload.view,
+      width: tile.size,
+      height: tile.size,
+    );
+  } finally {
+    upload.free();
+  }
 }

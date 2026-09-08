@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,6 +6,7 @@ import 'brush_tip_coverage.dart';
 import 'photoshop/psd_image.dart';
 import 'photoshop/psd_reader.dart';
 import 'resample/coverage_resample.dart';
+import 'straight_rgba_image.dart';
 
 // `maxBrushTipMaskSide` moved to the mask model so the pure-Dart importers
 // can honour the same cap without pulling `dart:ui` in behind it.
@@ -89,15 +89,14 @@ Future<Uint8List> encodeBrushTipImage(BrushTipMask mask) async {
   for (var index = 0; index < mask.alpha.length; index += 1) {
     rgba[index * 4 + 3] = mask.alpha[index];
   }
-  final completer = Completer<ui.Image>();
-  ui.decodeImageFromPixels(
-    rgba,
-    mask.size,
-    mask.size,
-    ui.PixelFormat.rgba8888,
-    completer.complete,
-  );
-  final image = await completer.future;
+  // 🚨Through [uploadRawRgba], not `ui.decodeImageFromPixels`: the SDK
+  // function drops every failure into a future nobody holds, so the
+  // `Completer` that stood here could only ever succeed. Encoding a tip that
+  // the engine refuses would have hung this `await` instead of throwing —
+  // and the caller is a SAVE, which would then never finish and never say
+  // why. The bytes are already premultiplied (see the paragraph above), so
+  // this is the same upload with an answer on the failing side.
+  final image = await uploadRawRgba(rgba, width: mask.size, height: mask.size);
   try {
     final png = await image.toByteData(format: ui.ImageByteFormat.png);
     if (png == null) {

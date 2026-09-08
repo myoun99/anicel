@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -31,12 +30,9 @@ Future<ui.Image> decodePsdCompositeImage(Uint8List bytes) async {
       'This Photoshop file was saved without a composite image.',
     );
   }
-  final completer = Completer<ui.Image>();
-  decodeStraightRgbaImage(
+  return decodeStraightRgbaImage(
     rgba: composite,
     width: document.width,
     height: document.height,
-    onDecoded: completer.complete,
   );
-  return completer.future;
 }

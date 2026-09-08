@@ -62,9 +62,16 @@ final class VideoViewerDocument implements ViewerDocument {
     ({int offset, int length})? range,
   }) async {
     // 🚨Through the decode BACKEND, never `QaVideoDecoder` directly: the
-    // frames arrive off the UI isolate, which is the difference between a
-    // reference movie playing beside a drawing and one that eats a third of
-    // every frame's budget. See [videoDecodeBackend].
+    // frames arrive off the UI isolate, so the viewer's own timer, chrome
+    // and scrollbars are not stopped for a third of every frame while it
+    // plays. See [videoDecodeBackend].
+    //
+    // 🪦This used to say the difference was 「a reference movie playing
+    // beside a drawing」. That motive is retired — 유저 2026-09-07 settled
+    // that playback is EXCLUSIVE (`PlaybackTransports`), so a viewer run and
+    // a canvas run never overlap. The worker earns its place on the viewer's
+    // own smoothness and on scrubbing (110 ms per random access); only the
+    // reason changed, not the measurement.
     final backend = videoDecodeBackend;
     // 🪦This asked `QaVideoDecoder.instance?.isSupported` until 2026-09-08,
     // which is a second object answering for the one that does the work —
@@ -126,21 +133,26 @@ final class VideoViewerDocument implements ViewerDocument {
     // 🚨The await is the point of the round: the decode happens on the
     // worker, and this isolate is free while it does. A frame measured
     // 14.97 ms at 1080p — more than a third of a 24fps budget — and it used
-    // to be spent right here, beside the brush.
+    // to be spent right here, on the isolate that also has to PAINT it.
     final rgba = await _backend.frame(_token, pageIndex);
     if (rgba == null) {
       throw StateError('frame $pageIndex could not be read');
     }
-    final completer = Completer<ui.Image>();
-    decodeStraightRgbaImage(
+    // 🚨★★★**BOTH WAYS OUT OF THIS FUNCTION ARE NOW THE SAME KIND OF
+    // ANSWER.** A `Completer` stood here whose only completion was
+    // `onDecoded`, so an unreadable frame REJECTED (the throw above) while a
+    // frame that decoded badly simply never settled — and the viewer's
+    // `_ensurePageRendered` holds an in-flight marker across this await that
+    // its `on Object` arm could therefore never clear. One movie frame the
+    // engine refused wedged the panel for the life of its `State`.
+    // [decodeStraightRgbaImage] carries why the SDK cannot report that.
+    return decodeStraightRgbaImage(
       rgba: rgba,
       width: _info.width,
       height: _info.height,
       targetWidth: width,
       targetHeight: height,
-      onDecoded: completer.complete,
     );
-    return completer.future;
   }
 
   /// ⛔Closes only if THIS document is the one loaded. A bare close would

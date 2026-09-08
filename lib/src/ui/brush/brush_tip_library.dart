@@ -125,7 +125,15 @@ class BrushTipLibrary extends ChangeNotifier {
   }
 
   /// Reads an image the user picked and registers it as a tip. Returns a
-  /// user-facing message when it could not be read; `null` on success.
+  /// user-facing message when it could not be read OR could not be written;
+  /// `null` on success.
+  ///
+  /// 🪦The second half of that sentence is new (2026-09-08) and so is the
+  /// arm below it. `encodeBrushTipImage` used to wait on a decode callback
+  /// the engine never invokes when it refuses, so a tip whose image the
+  /// engine would not take made this function never return at all — the
+  /// dialog simply stayed busy. Now the refusal arrives, and a function
+  /// whose whole contract is 「a sentence or null」 is where it belongs.
   Future<String?> registerImageBytes(
     Uint8List bytes, {
     required String name,
@@ -143,7 +151,11 @@ class BrushTipLibrary extends ChangeNotifier {
       // handing the user a brush that silently does not work.
       return 'That image has no visible shape to use as a tip.';
     }
-    await register(mask, name: name);
+    try {
+      await register(mask, name: name);
+    } on Object {
+      return 'That tip could not be saved.';
+    }
     return null;
   }
 

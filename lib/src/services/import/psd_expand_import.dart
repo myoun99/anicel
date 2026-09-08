@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import '../straight_rgba_image.dart';
 import '../../models/bitmap_surface.dart';
@@ -84,8 +83,8 @@ Future<PsdExpansion?> readPsdExpansion({
     if (pixels == null) {
       continue;
     }
-    final image = await _imageFrom(
-      pixels,
+    final image = await decodeStraightRgbaImage(
+      rgba: pixels,
       width: source.width,
       height: source.height,
     );
@@ -117,19 +116,4 @@ Future<PsdExpansion?> readPsdExpansion({
     cels: cels,
     warnings: plan.warnings,
   );
-}
-
-Future<ui.Image> _imageFrom(
-  Uint8List rgba, {
-  required int width,
-  required int height,
-}) {
-  final completer = Completer<ui.Image>();
-  decodeStraightRgbaImage(
-    rgba: rgba,
-    width: width,
-    height: height,
-    onDecoded: completer.complete,
-  );
-  return completer.future;
 }

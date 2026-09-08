@@ -109,4 +109,44 @@ void main() {
 
     expect(fromEngine, dartBranch(source));
   });
+
+  /// 🚨★★★**A DECODE THAT CANNOT SUCCEED HAS TO SAY SO.**
+  ///
+  /// `ui.decodeImageFromPixels` chains two futures and attaches an error
+  /// handler to neither, so its callback fires once on success and never on
+  /// failure — the caller is told nothing at all. Every image upload in this
+  /// app wrapped that in a `Completer` with no `completeError`, which turned
+  /// one refused frame into a panel that waited for it forever.
+  ///
+  /// The fixture is the cheapest genuine refusal there is: a descriptor that
+  /// claims 64×64 RGBA over four bytes. Nothing validates that
+  /// (`ImageDescriptor.raw` does no length check), so the engine gets as far
+  /// as building the image and then hands back nothing — the same road a
+  /// resize allocation takes when it fails on a small device, which is the
+  /// case this exists for and the one a test cannot stage.
+  ///
+  /// ⚠️`runAsync`: the upload is engine work on a real thread, and the fake
+  /// clock does not drive it. Without this the test would pass on a
+  /// TIMEOUT-shaped hang rather than on the rejection.
+  group('a refused upload rejects instead of hanging', () {
+    final binding = TestWidgetsFlutterBinding.ensureInitialized();
+
+    test('the straight-alpha door', () async {
+      await binding.runAsync(() async {
+        await expectLater(
+          decodeStraightRgbaImage(rgba: Uint8List(4), width: 64, height: 64),
+          throwsA(anything),
+        );
+      });
+    });
+
+    test('and the premultiplied one under it', () async {
+      await binding.runAsync(() async {
+        await expectLater(
+          uploadRawRgba(Uint8List(4), width: 64, height: 64),
+          throwsA(anything),
+        );
+      });
+    });
+  });
 }

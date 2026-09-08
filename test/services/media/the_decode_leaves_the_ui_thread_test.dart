@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,8 +13,14 @@ import '../../helpers/native_engine_path.dart';
 /// 🚨★★★**THE WHOLE ROUND IS ONE QUESTION: WHOSE THREAD DECODES?**
 ///
 /// A 1080p frame measured 14.97 ms — more than a third of a 24fps budget —
-/// and a `dart:ffi` call blocks the isolate that makes it. Played beside a
-/// drawing, that is a third of every frame taken from the brush.
+/// and a `dart:ffi` call blocks the isolate that makes it. Spent on the
+/// isolate that also PAINTS, that is a viewer stuttering on its own.
+///
+/// 🪦This used to end 「Played beside a drawing, that is a third of every
+/// frame taken from the brush」. That motive is retired: 유저 2026-09-07
+/// settled that playback is EXCLUSIVE (`PlaybackTransports`), so a viewer
+/// run and a canvas run never overlap. The measurement is unchanged; what it
+/// buys is the viewer's own smoothness and scrubbing (110 ms per seek).
 ///
 /// ⚠️「It still works」 cannot see the difference: both backends return the
 /// same pixels. What separates them is whether the CALLER can do anything
@@ -166,4 +173,48 @@ void main() {
     // jam the queue behind it.
     expect(await backend.open(movie), isNotNull);
   }, skip: skip);
+
+  test('🚨a request whose work THROWS is answered before the worker dies', () {
+    // 🚨★★★**THE STRONGER OF THE TWO NEVER-SETTLES.** `Isolate.spawn`
+    // defaults to `errorsAreFatal: true`, and the frame arm allocates three
+    // whole frames per decode — a native scratch, a `Uint8List`, and the
+    // copy into the transfer, each 8.3 MB at 1080p and 33 MB at 4K. Those
+    // raise (`ArgumentError('Could not allocate …')`, `OutOfMemoryError`)
+    // rather than returning null, so before 2026-09-08 an out-of-memory
+    // frame KILLED the worker with nobody listening: `reply.first` never
+    // completed, the request queue never settled behind it, and every later
+    // ask — the viewer's and the import preview's, which share one backend —
+    // waited for the life of the process.
+    //
+    // ⚠️This does not go through [IsolateVideoDecodeBackend], and that is
+    // the point: every op that crosses the port is BUILT by that class, so
+    // nothing a test can ask for makes the work throw. The failure is
+    // modelled where it actually lives — inside the frame arm, on a lookup
+    // that raises the way an allocation does.
+    final port = ReceivePort();
+    addTearDown(port.close);
+
+    expect(
+      () => serveVideoDecodeRequest(
+        // 1 is the frame op. ⚠️If those constants are ever renumbered this
+        // lands on the default arm, which replies without throwing — and
+        // this expectation then fails loudly rather than passing on nothing.
+        (op: 1, args: (token: 0, index: 0), reply: port.sendPort),
+        <QaVideoDocument>[],
+        (_) => throw StateError('the decode ran out of memory'),
+      ),
+      throwsA(isA<StateError>()),
+      reason: '⛔the throw is NOT swallowed — an OutOfMemoryError is not '
+          'something to carry on from, and the spawner starts a fresh worker '
+          'for the next request. What changed is only that the asker is told',
+    );
+
+    expect(
+      port.first,
+      completion(isNull),
+      reason: 'the answer went out FIRST. `null` is not new vocabulary — it '
+          'is already what every op says for 「could not」, and every caller '
+          'on the other side already reads it that way',
+    );
+  });
 }

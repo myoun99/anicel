@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../native/qa_engine_abi.dart';
 import '../../native/qa_video_decoder.dart';
 
@@ -176,6 +178,25 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   SendPort? _worker;
   Future<SendPort>? _starting;
 
+  /// Fails when the worker stops answering — it exited, or an uncaught
+  /// error killed it.
+  ///
+  /// 🚨★★★**A REQUEST THAT WAS SENT ALWAYS GETS AN ANSWER.** `Isolate.spawn`
+  /// defaults to `errorsAreFatal: true`, and the worker's body allocates
+  /// three full frames per decode (a native scratch, a `Uint8List`, and the
+  /// copy into the transfer — 8.3 MB each at 1080p, 33 MB at 4K on the
+  /// tablets this app is written for). Any of those throwing used to KILL
+  /// the isolate with nothing on this side listening: `reply.first` never
+  /// completed, [_queue] never settled, and every later request — the
+  /// viewer's AND the import preview's, since they share one backend —
+  /// waited behind it for the life of the process.
+  ///
+  /// ⛔A timeout would be the wrong shape: a slow decode on a slow device is
+  /// the normal case, and cancelling it would throw away a frame that was
+  /// going to arrive. What is needed is not a deadline but the FACT that
+  /// nobody is going to answer, and the isolate reports that itself.
+  Completer<Never>? _died;
+
   /// One request at a time, in order.
   ///
   /// 🚨★★★**THE NATIVE DOCUMENT IS A POSITION, SO THE ORDER IS THE ANSWER.**
@@ -191,6 +212,29 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
     }
     return _starting ??= () async {
       final ready = ReceivePort();
+      // Exit and error land on ONE port: an uncaught error is fatal by
+      // default, so a worker that errors also exits, and the two are the
+      // same fact told twice. Whichever arrives first is the one that
+      // counts; the listener is written so the second changes nothing.
+      final stopped = ReceivePort();
+      final died = Completer<Never>();
+      // ⚠️Nothing may be pending when the worker dies. Without this the
+      // rejection below is an unhandled async error rather than an answer
+      // to a question nobody asked. Later listeners still receive it.
+      died.future.ignore();
+      stopped.listen((message) {
+        // Forget it, so the NEXT request spawns a fresh worker. A device
+        // that ran out of memory for one frame can decode the next one.
+        _worker = null;
+        _starting = null;
+        _died = null;
+        stopped.close();
+        if (!died.isCompleted) {
+          died.completeError(
+            StateError('the video decode worker stopped: $message'),
+          );
+        }
+      });
       await Isolate.spawn(
         _videoDecodeWorker,
         (
@@ -200,8 +244,13 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
           libraryPath: debugQaEngineLibraryPathOverride,
         ),
         debugName: 'qa-video-decode',
+        onError: stopped.sendPort,
+        onExit: stopped.sendPort,
       );
-      final port = await ready.first as SendPort;
+      _died = died;
+      // The handshake is a wait like any other: an isolate that dies before
+      // it can say hello would otherwise hang here instead of at [_ask].
+      final port = await Future.any([ready.first, died.future]) as SendPort;
       ready.close();
       return _worker = port;
     }();
@@ -212,11 +261,19 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   Future<Object?> _ask(int op, Object? args) {
     final result = _queue.then((_) async {
       final worker = await _ensure();
+      final died = _died;
       final reply = ReceivePort();
-      worker.send((op: op, args: args, reply: reply.sendPort));
-      final answer = await reply.first;
-      reply.close();
-      return answer;
+      try {
+        worker.send((op: op, args: args, reply: reply.sendPort));
+        // 🚨The race IS the answer. `reply.first` alone waits forever on a
+        // worker that is not there any more — see [_died] for what kills
+        // one and what that used to cost.
+        return died == null
+            ? await reply.first
+            : await Future.any([reply.first, died.future]);
+      } finally {
+        reply.close();
+      }
     });
     // ⛔The queue must not inherit the failure — one bad frame would jam
     // every request after it.
@@ -291,58 +348,111 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
   QaVideoDocument? documentAt(int token) =>
       token < 0 || token >= documents.length ? null : documents[token];
 
-  requests.listen((message) {
-    final request = message as ({int op, Object? args, SendPort reply});
-    final decoder = QaVideoDecoder.instance;
-    switch (request.op) {
-      case _opOpen:
-        final args =
-            request.args! as ({String path, int offset, int length});
-        final document = decoder == null || !decoder.isSupported
-            ? null
-            : decoder.openDocument(
-                args.path,
-                range: args.length > 0
-                    ? (offset: args.offset, length: args.length)
-                    : null,
-              );
-        if (document == null) {
-          request.reply.send(null);
-          return;
-        }
-        documents.add(document);
-        request.reply.send((
-          token: documents.length - 1,
-          width: document.info.width,
-          height: document.info.height,
-          frameCount: document.info.frameCount,
-          fpsNumerator: document.info.fpsNumerator,
-          fpsDenominator: document.info.fpsDenominator,
-        ));
-      case _opFrame:
-        final args = request.args! as ({int token, int index});
-        final document = documentAt(args.token);
-        final rgba = document == null
-            ? null
-            : decoder?.frameOf(document, args.index);
-        request.reply.send(
-          rgba == null
-              ? null
-              // ⚠️A copy INTO the transfer, because the decoder hands back a
-              // view of scratch it reuses. The copy stays on this isolate,
-              // which is the one with time to spare.
-              : TransferableTypedData.fromList([Uint8List.fromList(rgba)]),
-        );
-      case _opLastError:
-        request.reply.send(decoder?.lastError ?? '');
-      case _opClose:
-        final document = documentAt(request.args! as int);
-        if (document != null) {
-          decoder?.closeDocument(document);
-        }
+  requests.listen(
+    (message) => serveVideoDecodeRequest(
+      message as ({int op, Object? args, SendPort reply}),
+      documents,
+      documentAt,
+    ),
+  );
+}
+
+/// Answers one request — and answers it even when the work throws.
+///
+/// 🚨★★★**IT ANSWERS BEFORE IT DIES.** Every allocation in the frame arm
+/// throws rather than returning null: `malloc` raises
+/// `ArgumentError('Could not allocate …')` and `Uint8List` raises
+/// `OutOfMemoryError`, three full frames' worth per decode (8.3 MB each at
+/// 1080p, 33 MB at 4K on the tablets this app is written for). An uncaught
+/// throw here is FATAL to this isolate — `Isolate.spawn` defaults to
+/// `errorsAreFatal: true` — and the asker would then be left waiting on a
+/// port nobody holds, with [IsolateVideoDecodeBackend._queue] jammed behind
+/// it for every later request from every consumer.
+///
+/// `null` is not a new vocabulary word: it is already what every op says for
+/// 「could not」, and each caller on the other side already reads it that way.
+///
+/// ⛔The reply comes FIRST and the isolate is then allowed to die. An
+/// `OutOfMemoryError` is not something to carry on from here — the spawner
+/// sees the exit and starts a fresh worker for the next request, which is
+/// the only recovery that means anything.
+///
+/// 🧪Visible because the failure it exists for cannot be reached through
+/// [IsolateVideoDecodeBackend]: every op that crosses the port is built by
+/// that class, so nothing a test can ASK for makes the work throw.
+@visibleForTesting
+void serveVideoDecodeRequest(
+  ({int op, Object? args, SendPort reply}) request,
+  List<QaVideoDocument> documents,
+  QaVideoDocument? Function(int token) documentAt,
+) {
+  try {
+    _serve(request, documents, documentAt);
+  } on Object {
+    request.reply.send(null);
+    rethrow;
+  }
+}
+
+/// One request, answered.
+///
+/// ⚠️Split out of the listener so the catch there wraps the WHOLE of it.
+/// Every arm sends exactly once: an arm that returned without replying
+/// would be the same endless wait the catch exists to prevent.
+void _serve(
+  ({int op, Object? args, SendPort reply}) request,
+  List<QaVideoDocument> documents,
+  QaVideoDocument? Function(int token) documentAt,
+) {
+  final decoder = QaVideoDecoder.instance;
+  switch (request.op) {
+    case _opOpen:
+      final args =
+          request.args! as ({String path, int offset, int length});
+      final document = decoder == null || !decoder.isSupported
+          ? null
+          : decoder.openDocument(
+              args.path,
+              range: args.length > 0
+                  ? (offset: args.offset, length: args.length)
+                  : null,
+            );
+      if (document == null) {
         request.reply.send(null);
-      default:
-        request.reply.send(null);
-    }
-  });
+        return;
+      }
+      documents.add(document);
+      request.reply.send((
+        token: documents.length - 1,
+        width: document.info.width,
+        height: document.info.height,
+        frameCount: document.info.frameCount,
+        fpsNumerator: document.info.fpsNumerator,
+        fpsDenominator: document.info.fpsDenominator,
+      ));
+    case _opFrame:
+      final args = request.args! as ({int token, int index});
+      final document = documentAt(args.token);
+      final rgba = document == null
+          ? null
+          : decoder?.frameOf(document, args.index);
+      request.reply.send(
+        rgba == null
+            ? null
+            // ⚠️A copy INTO the transfer, because the decoder hands back a
+            // view of scratch it reuses. The copy stays on this isolate,
+            // which is the one with time to spare.
+            : TransferableTypedData.fromList([Uint8List.fromList(rgba)]),
+      );
+    case _opLastError:
+      request.reply.send(decoder?.lastError ?? '');
+    case _opClose:
+      final document = documentAt(request.args! as int);
+      if (document != null) {
+        decoder?.closeDocument(document);
+      }
+      request.reply.send(null);
+    default:
+      request.reply.send(null);
+  }
 }

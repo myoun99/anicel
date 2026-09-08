@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -51,7 +52,7 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
   @override
   void initState() {
     super.initState();
-    _decode();
+    unawaited(_decode());
   }
 
   @override
@@ -62,28 +63,33 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
     // throw the image away on every knob nudge. The flips are a canvas
     // transform below and the scale is the destination rect.
     if (oldWidget.piece.image.id != widget.piece.image.id) {
-      _decode();
+      unawaited(_decode());
     }
   }
 
-  void _decode() {
+  Future<void> _decode() async {
     final piece = widget.piece;
     final request = ++_request;
-    decodeStraightRgbaImage(
-      rgba: piece.image.rgba,
-      width: piece.image.width,
-      height: piece.image.height,
-      onDecoded: (image) {
-        if (!mounted || request != _request) {
-          image.dispose();
-          return;
-        }
-        setState(() {
-          _image?.dispose();
-          _image = image;
-        });
-      },
+    // 🚨A piece the engine refused leaves the preview showing what it had —
+    // no `onFailed`, because there is nothing here to write down and nothing
+    // above waiting on the picture. 🪦Until 2026-09-08 a refusal could not be
+    // observed at all: `decodeStraightRgbaImage` was a callback the SDK
+    // simply never invoked on failure.
+    final image = await decodedImageStillWanted(
+      decodeStraightRgbaImage(
+        rgba: piece.image.rgba,
+        width: piece.image.width,
+        height: piece.image.height,
+      ),
+      wanted: () => mounted && request == _request,
     );
+    if (image == null) {
+      return;
+    }
+    setState(() {
+      _image?.dispose();
+      _image = image;
+    });
   }
 
   @override
