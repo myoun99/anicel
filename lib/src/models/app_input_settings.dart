@@ -34,6 +34,7 @@ class AppInputSettings {
   const AppInputSettings({
     this.tabletService = TabletService.standard,
     this.pressureCurveGamma = 1.0,
+    this.speedReferencePixelsPerSecond = defaultSpeedReferencePixelsPerSecond,
     this.canvasRightClick = const CanvasPointerMapping(
       action: CanvasPointerAction.eyedropper,
     ),
@@ -181,6 +182,26 @@ class AppInputSettings {
   /// Wintab sidecar alike.
   final double pressureCurveGamma;
 
+  /// The pen SPEED that reads as 100% input, in canvas pixels per second.
+  ///
+  /// A brush with a 速度 curve asks "how fast is the pen moving, as 0..1",
+  /// and that ratio needs a ceiling. This is it: at this many px/s the input
+  /// is 1.0, and anything faster is 1.0 as well.
+  ///
+  /// ⛔**THE DEFAULT IS A GUESS AND WE KNOW IT** (유저 확정 2026-09-08). No
+  /// file format stores a maximum speed — Clip Studio's 速度 effector carries
+  /// a curve and a minimum, never a ceiling — and this repo had no line that
+  /// measured pointer speed at all before this setting existed. That is
+  /// exactly why it is a SETTING and not a private constant: the number is
+  /// meant to be drawn against on a tablet and moved, not defended.
+  ///
+  /// ⚠️CANVAS pixels, not screen pixels, so the same hand movement reads as
+  /// the same speed at any zoom and a replayed stroke draws what it drew.
+  final double speedReferencePixelsPerSecond;
+
+  /// The starting value of [speedReferencePixelsPerSecond].
+  static const double defaultSpeedReferencePixelsPerSecond = 2000.0;
+
   /// Which tablet backend feeds pen data (PEN-2, the CSP-style dual
   /// service — Windows only; other platforms ignore it):
   /// - [TabletService.standard] (the DEFAULT): the OS pointer pipeline
@@ -193,6 +214,7 @@ class AppInputSettings {
   AppInputSettings copyWith({
     TabletService? tabletService,
     double? pressureCurveGamma,
+    double? speedReferencePixelsPerSecond,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
     CanvasPointerMapping? canvasPenTail,
@@ -210,6 +232,8 @@ class AppInputSettings {
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
+    speedReferencePixelsPerSecond:
+        speedReferencePixelsPerSecond ?? this.speedReferencePixelsPerSecond,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
     canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
     canvasPenTail: canvasPenTail ?? this.canvasPenTail,
@@ -231,6 +255,7 @@ class AppInputSettings {
   Map<String, dynamic> toJson() => {
     'tabletService': tabletService.name,
     'pressureCurveGamma': pressureCurveGamma,
+    'speedReferencePixelsPerSecond': speedReferencePixelsPerSecond,
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
     'canvasPenTail': canvasPenTail.toJson(),
@@ -281,6 +306,9 @@ class AppInputSettings {
         TabletService.values.asNameMap()[json['tabletService']] ??
         TabletService.standard,
     pressureCurveGamma: (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
+    speedReferencePixelsPerSecond:
+        (json['speedReferencePixelsPerSecond'] as num?)?.toDouble() ??
+        defaultSpeedReferencePixelsPerSecond,
     canvasRightClick: CanvasPointerMapping.fromJson(
       json['canvasRightClick'],
       fallback: const CanvasPointerMapping(
@@ -331,6 +359,7 @@ class AppInputSettings {
       other is AppInputSettings &&
       other.tabletService == tabletService &&
       other.pressureCurveGamma == pressureCurveGamma &&
+      other.speedReferencePixelsPerSecond == speedReferencePixelsPerSecond &&
       other.canvasRightClick == canvasRightClick &&
       other.canvasWheelClick == canvasWheelClick &&
       other.canvasPenTail == canvasPenTail &&
@@ -350,6 +379,7 @@ class AppInputSettings {
   int get hashCode => Object.hash(
     tabletService,
     pressureCurveGamma,
+    speedReferencePixelsPerSecond,
     canvasRightClick,
     canvasWheelClick,
     canvasPenTail,
@@ -589,6 +619,27 @@ abstract final class AppInput {
       return pressure;
     }
     return math.pow(pressure.clamp(0.0, 1.0), gamma).toDouble();
+  }
+
+  /// How fast the pen is travelling, as the 0..1 input a 速度 curve reads:
+  /// canvas px/s over [AppInputSettings.speedReferencePixelsPerSecond],
+  /// capped at 1.
+  ///
+  /// 🚨**NULL MEANS "NO MEASUREMENT", NOT "STANDING STILL"** — the caller
+  /// keeps whatever it last measured. Two pointer readings can share a clock
+  /// tick, and reporting 0 for that pair would drop a fast stroke to a dead
+  /// stop for one dab. Speed is the only input that needs two readings to
+  /// exist at all, which is why it is the only one that can fail to answer.
+  static double? normalizedSpeed({
+    required double canvasPixels,
+    required Duration elapsed,
+  }) {
+    final seconds = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+    final reference = settings.value.speedReferencePixelsPerSecond;
+    if (seconds <= 0.0 || !canvasPixels.isFinite || !(reference > 0.0)) {
+      return null;
+    }
+    return (canvasPixels / seconds / reference).clamp(0.0, 1.0).toDouble();
   }
 
   /// The device set every timeline EDIT pan uses (range select/move,

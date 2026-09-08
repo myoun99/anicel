@@ -164,6 +164,28 @@ void main() {
       expect(middle.tiltAltitude, closeTo(0.5, 1e-9));
     });
 
+    test('⛔speed does NOT interpolate — it is the segment\'s, not the point\'s', () {
+      // Every dab between two readings was laid during the ONE hand movement
+      // that carried the pen from one to the other, so they all travelled at
+      // its speed. Lerping towards the previous sample would mix in the
+      // measurement of a DIFFERENT move.
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [
+          BrushInputSample(x: 0, y: 0, speed: 0.0),
+          BrushInputSample(x: 20, y: 0, speed: 0.8),
+        ],
+        settings: settings,
+      );
+
+      // The opening dab is the first sample's own reading; every dab the
+      // segment placed carries the segment's.
+      expect(sequence.dabs.first.speed, 0.0);
+      expect(
+        sequence.dabs.skip(1).map((dab) => dab.speed).toSet(),
+        {0.8},
+      );
+    });
+
     test('azimuth crosses 0 the short way, not the long way', () {
       // 350 -> 10 is twenty degrees forward. A plain lerp would walk the pen
       // 340 degrees BACKWARDS and put the midpoint at 180 — pointing the

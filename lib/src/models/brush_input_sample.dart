@@ -1,5 +1,5 @@
-/// One reading from the pen: where it is, how hard it presses, and how it
-/// leans.
+/// One reading from the pen: where it is, how hard it presses, how it leans
+/// and how fast it was travelling when it got here.
 ///
 /// 🚨TILT IS TWO NUMBERS, AND THEY ARE THE SIDECAR'S TWO. The tablet bridge
 /// already speaks `tiltAzimuthDegrees` + a normalized `altitude`
@@ -15,13 +15,19 @@ class BrushInputSample {
     this.pressure = 1.0,
     this.tiltAzimuthDegrees = 0.0,
     this.tiltAltitude = 1.0,
+    this.speed = 0.0,
     this.sequence = 0,
   }) {
     _validateFiniteCoordinate(x, 'x');
     _validateFiniteCoordinate(y, 'y');
-    _validatePressure(pressure);
+    // ⚠️Pressure had its OWN validator until speed arrived and made three
+    // copies of "0..1 or throw" in one file. Folding it in also plugged the
+    // hole it had: it never asked `isFinite`, and NaN loses every comparison,
+    // so a NaN pressure walked straight through the range check.
+    _validateUnitInterval(pressure, 'pressure');
     _validateFiniteCoordinate(tiltAzimuthDegrees, 'tiltAzimuthDegrees');
-    _validateAltitude(tiltAltitude);
+    _validateUnitInterval(tiltAltitude, 'tiltAltitude');
+    _validateUnitInterval(speed, 'speed');
     _validateSequence(sequence);
   }
 
@@ -36,6 +42,21 @@ class BrushInputSample {
   /// How upright the pen is: 1.0 vertical, 0.0 flat on the surface.
   final double tiltAltitude;
 
+  /// How fast the pen was travelling on its way here, already normalized to
+  /// 0..1 against `AppInputSettings.speedReferencePixelsPerSecond`.
+  ///
+  /// 🚨**NORMALIZED AT THE DOOR, like pressure and tilt.** The raw px/s never
+  /// reaches a sample, because the ratio's ceiling is a user setting and a
+  /// reader holding raw pixels would have to fetch that setting to mean
+  /// anything — sixteen readers, sixteen chances to fetch a different one.
+  /// The pen door divides once (`AppInput.normalizedSpeed`) and everything
+  /// downstream reads a plain 0..1, exactly as it does for the other two.
+  ///
+  /// ⚠️Speed is a property of the MOVE, not of the point: every dab placed
+  /// along one segment carries that segment's speed. 0.0 is a pen that has
+  /// just landed and has no move behind it yet.
+  final double speed;
+
   final int sequence;
 
   BrushInputSample copyWith({
@@ -44,6 +65,7 @@ class BrushInputSample {
     double? pressure,
     double? tiltAzimuthDegrees,
     double? tiltAltitude,
+    double? speed,
     int? sequence,
   }) {
     return BrushInputSample(
@@ -52,6 +74,7 @@ class BrushInputSample {
       pressure: pressure ?? this.pressure,
       tiltAzimuthDegrees: tiltAzimuthDegrees ?? this.tiltAzimuthDegrees,
       tiltAltitude: tiltAltitude ?? this.tiltAltitude,
+      speed: speed ?? this.speed,
       sequence: sequence ?? this.sequence,
     );
   }
@@ -65,6 +88,7 @@ class BrushInputSample {
     // upright pen.
     if (tiltAltitude != 1.0) 'tiltAltitude': tiltAltitude,
     if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
+    if (speed != 0.0) 'speed': speed,
     'sequence': sequence,
   };
 
@@ -76,6 +100,7 @@ class BrushInputSample {
       tiltAzimuthDegrees:
           (json['tiltAzimuthDegrees'] as num?)?.toDouble() ?? 0.0,
       tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble() ?? 1.0,
+      speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
       sequence: json['sequence'] as int? ?? 0,
     );
   }
@@ -89,17 +114,25 @@ class BrushInputSample {
           other.pressure == pressure &&
           other.tiltAzimuthDegrees == tiltAzimuthDegrees &&
           other.tiltAltitude == tiltAltitude &&
+          other.speed == speed &&
           other.sequence == sequence;
 
   @override
-  int get hashCode =>
-      Object.hash(x, y, pressure, tiltAzimuthDegrees, tiltAltitude, sequence);
+  int get hashCode => Object.hash(
+    x,
+    y,
+    pressure,
+    tiltAzimuthDegrees,
+    tiltAltitude,
+    speed,
+    sequence,
+  );
 
   @override
   String toString() =>
       'BrushInputSample(x: $x, y: $y, pressure: $pressure, '
       'tiltAzimuthDegrees: $tiltAzimuthDegrees, '
-      'tiltAltitude: $tiltAltitude, sequence: $sequence)';
+      'tiltAltitude: $tiltAltitude, speed: $speed, sequence: $sequence)';
 }
 
 void _validateFiniteCoordinate(double value, String fieldName) {
@@ -112,22 +145,12 @@ void _validateFiniteCoordinate(double value, String fieldName) {
   }
 }
 
-void _validatePressure(double value) {
-  if (value < 0.0 || value > 1.0) {
-    throw ArgumentError.value(
-      value,
-      'pressure',
-      'BrushInputSample.pressure must be between 0.0 and 1.0 inclusive.',
-    );
-  }
-}
-
-void _validateAltitude(double value) {
+void _validateUnitInterval(double value, String fieldName) {
   if (!value.isFinite || value < 0.0 || value > 1.0) {
     throw ArgumentError.value(
       value,
-      'tiltAltitude',
-      'BrushInputSample.tiltAltitude must be between 0.0 and 1.0 inclusive.',
+      fieldName,
+      'BrushInputSample.$fieldName must be between 0.0 and 1.0 inclusive.',
     );
   }
 }

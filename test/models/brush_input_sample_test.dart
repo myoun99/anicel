@@ -154,5 +154,47 @@ void main() {
       expect(upright == upright.copyWith(tiltAltitude: 0.5), isFalse);
       expect(upright == upright.copyWith(tiltAzimuthDegrees: 90), isFalse);
     });
+
+    test('a pen that has not moved yet reads no speed', () {
+      expect(BrushInputSample(x: 1, y: 2).speed, 0.0);
+    });
+
+    test('speed round-trips through json and takes part in equality', () {
+      final moving = BrushInputSample(x: 1, y: 2, speed: 0.75);
+
+      expect(BrushInputSample.fromJson(moving.toJson()).speed, 0.75);
+      expect(BrushInputSample.fromJson(moving.toJson()), moving);
+      expect(moving == moving.copyWith(speed: 0.25), isFalse);
+    });
+
+    test('a standing pen writes no speed key at all', () {
+      // Same contract as the tilt keys above: byte-identity with strokes
+      // recorded before speed existed, not merely equal values back.
+      expect(
+        BrushInputSample(x: 1, y: 2).toJson().containsKey('speed'),
+        isFalse,
+      );
+    });
+
+    test('speed outside 0..1 throws — the door normalizes, so px/s is a bug', () {
+      expect(
+        () => BrushInputSample(x: 1, y: 2, speed: 1200),
+        throwsArgumentError,
+      );
+      expect(
+        () => BrushInputSample(x: 1, y: 2, speed: -0.1),
+        throwsArgumentError,
+      );
+    });
+
+    test('a NaN pressure throws instead of sailing through the range check', () {
+      // Pressure had its own validator that never asked `isFinite`, and NaN
+      // loses every comparison — so `value < 0.0 || value > 1.0` was false
+      // and NaN was accepted. Folding it into the shared 0..1 check closed it.
+      expect(
+        () => BrushInputSample(x: 1, y: 2, pressure: double.nan),
+        throwsArgumentError,
+      );
+    });
   });
 }

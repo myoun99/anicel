@@ -14,6 +14,7 @@ BrushDab _dab({
   double hardness = 1,
   double pressure = 0.5,
   double tiltAltitude = 1.0,
+  double speed = 0.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: 1, y: 1),
@@ -25,6 +26,7 @@ BrushDab _dab({
     tipShape: BrushTipShape.round,
     pressure: pressure,
     tiltAltitude: tiltAltitude,
+    speed: speed,
     sequence: 0,
   );
 }
@@ -212,19 +214,55 @@ void main() {
       );
     });
 
-    test('⛔a SPEED curve is stored but contributes nothing yet', () {
-      // `BrushInputSample` carries no timestamp, so the engine cannot
-      // measure px/s. The curve must be inert rather than guessed at — and
-      // it must not be silently dropped either, which is why it survives on
-      // the shape. When speed starts being fed, this pin is what changes.
+    test('a SPEED curve drives a setting off the dab it was drawn with', () {
+      // ⚠️This pin used to assert the opposite — that a speed curve was
+      // stored and INERT, because no sample carried a clock. The pen door
+      // measures px/s now, so the curve reads what the hand did.
       final shape = _driving(
         BrushPressureTarget.size,
         BrushInputSource.speed,
-        BrushPressureCurve.linearFrom(0.0),
+        BrushPressureCurve.identity(),
       );
-      expect(shape.curveFor(BrushPressureTarget.size, BrushInputSource.speed),
-          isNotNull);
-      expect(applyBrushInputDynamics(_dab(size: 10), shape: shape).size, 10.0);
+
+      expect(
+        applyBrushInputDynamics(_dab(size: 10, speed: 0.25), shape: shape).size,
+        closeTo(2.5, 1e-9),
+      );
+      // A pen that has not moved sits at the curve's floor, which for the
+      // identity curve is zero — the same place an unpressed pen sits.
+      expect(
+        applyBrushInputDynamics(_dab(size: 10, speed: 0.0), shape: shape).size,
+        closeTo(0.0, 1e-9),
+      );
+    });
+
+    test('speed multiplies with pressure like every other pair', () {
+      final shape = _driving(
+        BrushPressureTarget.size,
+        BrushInputSource.pressure,
+        BrushPressureCurve.identity(),
+      ).withCurve(
+        BrushPressureTarget.size,
+        BrushInputSource.speed,
+        BrushPressureCurve.identity(),
+      );
+
+      expect(
+        applyBrushInputDynamics(
+          _dab(size: 12, pressure: 0.5, speed: 0.5),
+          shape: shape,
+        ).size,
+        closeTo(3.0, 1e-9),
+      );
+    });
+
+    test('brushInputValue reads speed straight off the dab', () {
+      // 🚨THE RATIO, not px/s. The pen door divided by the user's reference
+      // speed once; a second division here would apply it twice.
+      expect(
+        brushInputValue(_dab(speed: 0.4), BrushInputSource.speed),
+        0.4,
+      );
     });
 
     test('🚨SIZE may exceed its base, the other three may not', () {

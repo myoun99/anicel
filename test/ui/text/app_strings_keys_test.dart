@@ -233,6 +233,8 @@ void main() {
     'inputPressureHeading': (s) => s.inputPressureHeading,
     'inputPressureSoftHard': (s) => s.inputPressureSoftHard,
     'inputPressureLinear': (s) => s.inputPressureLinear,
+    'inputSpeedHeading': (s) => s.inputSpeedHeading,
+    'inputSpeedReference': (s) => s.inputSpeedReference,
     'inputCanvasHeading': (s) => s.inputCanvasHeading,
     'inputRightClick': (s) => s.inputRightClick,
     'inputWheelClick': (s) => s.inputWheelClick,

@@ -14,6 +14,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_session_state.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -1834,6 +1835,259 @@ void main() {
       expect(find.byType(TimelinePanel), findsNothing);
     });
   });
+
+  _penSpeedGroup();
+}
+
+/// 速度 (A-4): the pen door is the ONLY place that can measure it, because it
+/// is the only place that sees two readings and the clock between them.
+void _penSpeedGroup() {
+  group('the stroke carries the speed it was drawn at', () {
+    late AppInputSettings savedInput;
+
+    setUp(() {
+      savedInput = AppInput.settings.value;
+      AppInput.settings.value = const AppInputSettings(
+        speedReferencePixelsPerSecond: 1000,
+      );
+    });
+
+    tearDown(() {
+      AppInput.settings.value = savedInput;
+    });
+
+    testWidgets('a pen that has just landed reads no speed', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(width: 400, height: 16), results.add)),
+      );
+
+      await _timedStroke(
+        tester,
+        // One move, so the FIRST dab is the down sample's.
+        moves: const [(Offset(2, 1), Duration.zero)],
+      );
+
+      expect(results, hasLength(1));
+      expect(results.single.first.speed, 0.0);
+    });
+
+    testWidgets('a move of a known length in a known time is that ratio', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(width: 400, height: 16), results.add)),
+      );
+
+      await _timedStroke(
+        tester,
+        // 250 canvas px in 500 ms is 500 px/s, half the 1000 px/s reference.
+        moves: const [
+          (Offset(2, 1), Duration.zero),
+          (Offset(252, 1), Duration(milliseconds: 500)),
+        ],
+      );
+
+      expect(results, hasLength(1));
+      expect(results.single.last.speed, closeTo(0.5, 1e-6));
+    });
+
+    testWidgets('two readings on one clock tick keep the last measurement', (
+      tester,
+    ) async {
+      // 🚨NOT zero. Platforms coalesce readings, and a stroke that dropped to
+      // a dead stop for one dab every time they did would flicker.
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(width: 400, height: 16), results.add)),
+      );
+
+      await _timedStroke(
+        tester,
+        moves: const [
+          (Offset(2, 1), Duration.zero),
+          (Offset(252, 1), Duration(milliseconds: 500)),
+          // Same stamp as the reading before it: no elapsed time to divide by.
+          (Offset(300, 1), Duration(milliseconds: 500)),
+        ],
+      );
+
+      expect(results, hasLength(1));
+      expect(results.single.last.speed, closeTo(0.5, 1e-6));
+    });
+
+    testWidgets('a new stroke does not measure from where the last one ended', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(width: 400, height: 16), results.add)),
+      );
+
+      await _timedStroke(
+        tester,
+        moves: const [
+          (Offset(2, 1), Duration.zero),
+          (Offset(352, 1), Duration(milliseconds: 100)),
+        ],
+      );
+      await _timedStroke(
+        tester,
+        pointer: 2,
+        moves: const [(Offset(4, 1), Duration(milliseconds: 200))],
+      );
+
+      expect(results, hasLength(2));
+      // Without the reset, the second stroke's opening dab would measure the
+      // 348 px jump back across the canvas over the gap between strokes.
+      expect(results.last.first.speed, 0.0);
+    });
+
+    testWidgets('the reference speed the user set is the one that divides', (
+      tester,
+    ) async {
+      // The setting has to reach the dab, or the slider is decoration — the
+      // hop a mutation found unpinned once already (the antiAlias round).
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(width: 400, height: 16), results.add)),
+      );
+      AppInput.settings.value = const AppInputSettings(
+        speedReferencePixelsPerSecond: 4000,
+      );
+
+      await _timedStroke(
+        tester,
+        // The same 500 px/s move, now against a 4000 px/s reference.
+        moves: const [
+          (Offset(2, 1), Duration.zero),
+          (Offset(252, 1), Duration(milliseconds: 500)),
+        ],
+      );
+
+      expect(results, hasLength(1));
+      expect(results.single.last.speed, closeTo(0.125, 1e-6));
+    });
+
+    testWidgets('🚨CANVAS px/s, not screen px/s — zoom halves the reading', (
+      tester,
+    ) async {
+      // The same hand movement at 2× zoom covers half as much of the canvas,
+      // so it IS half the speed. That is what makes the setting mean one
+      // thing at every zoom and a replayed stroke draw what it drew.
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 400, height: 16),
+            results.add,
+            viewport: CanvasViewport(zoom: 2),
+          ),
+        ),
+      );
+
+      await _timedStroke(
+        tester,
+        moves: const [
+          (Offset(2, 2), Duration.zero),
+          (Offset(252, 2), Duration(milliseconds: 500)),
+        ],
+      );
+
+      expect(results, hasLength(1));
+      // 250 SCREEN px is 125 canvas px, so 250 canvas px/s against 1000.
+      expect(results.single.last.speed, closeTo(0.25, 1e-6));
+    });
+
+    testWidgets('a speed curve scales the dabs the stroke commits', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 400, height: 16),
+            results.add,
+            inputSettings: BrushEditCanvasInputSettings(
+              size: 8,
+              curves: {
+                (BrushPressureTarget.size, BrushInputSource.speed):
+                    BrushPressureCurve.identity(),
+              },
+            ),
+          ),
+        ),
+      );
+
+      await _timedStroke(
+        tester,
+        moves: const [
+          (Offset(2, 1), Duration.zero),
+          (Offset(252, 1), Duration(milliseconds: 500)),
+        ],
+      );
+
+      expect(results, hasLength(1));
+      // Half speed, identity curve, base 8.
+      expect(results.single.last.size, closeTo(4.0, 1e-6));
+      // The opening dab has no move behind it, so the curve scales it to
+      // zero — and the tip-stamp cache's own floor (0.25, `size.clamp`) is
+      // what it lands on. ⚠️Not this round's rule: a speed brush simply
+      // starts each stroke at the smallest mark the cache can resolve.
+      expect(results.single.first.size, closeTo(0.25, 1e-6));
+    });
+  });
+}
+
+/// Drives a stroke through raw pointer events carrying explicit CLOCK
+/// STAMPS — [_pressureStroke] leaves them all at zero, which is exactly the
+/// "no elapsed time" case, so speed needs its own driver.
+Future<void> _timedStroke(
+  WidgetTester tester, {
+  required List<(Offset, Duration)> moves,
+  int pointer = 1,
+}) async {
+  final (downPoint, downAt) = moves.first;
+  tester.binding.handlePointerEvent(
+    PointerDownEvent(
+      pointer: pointer,
+      kind: PointerDeviceKind.stylus,
+      position: canvasGlobalOffset(tester, downPoint),
+      timeStamp: downAt,
+      pressure: 1,
+      pressureMin: 0,
+      pressureMax: 1,
+    ),
+  );
+  await tester.pump();
+  for (final (point, at) in moves.skip(1)) {
+    tester.binding.handlePointerEvent(
+      PointerMoveEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.stylus,
+        position: canvasGlobalOffset(tester, point),
+        timeStamp: at,
+        pressure: 1,
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    await tester.pump();
+  }
+  final (lastPoint, lastAt) = moves.last;
+  tester.binding.handlePointerEvent(
+    PointerUpEvent(
+      pointer: pointer,
+      kind: PointerDeviceKind.stylus,
+      position: canvasGlobalOffset(tester, lastPoint),
+      timeStamp: lastAt,
+      pressure: 0,
+      pressureMin: 0,
+      pressureMax: 1,
+    ),
+  );
+  await tester.pump();
 }
 
 void _settlingTileGroup() {

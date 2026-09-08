@@ -446,6 +446,8 @@ enum AppStrings {
   String get inputPressureHeading => _s('inputPressureHeading');
   String get inputPressureSoftHard => _s('inputPressureSoftHard');
   String get inputPressureLinear => _s('inputPressureLinear');
+  String get inputSpeedHeading => _s('inputSpeedHeading');
+  String get inputSpeedReference => _s('inputSpeedReference');
   String get inputCanvasHeading => _s('inputCanvasHeading');
   String get inputRightClick => _s('inputRightClick');
   String get inputWheelClick => _s('inputWheelClick');
@@ -1405,6 +1407,8 @@ enum AppStrings {
     'inputPressureHeading': 'Pen pressure response',
     'inputPressureSoftHard': 'Soft ↔ Hard',
     'inputPressureLinear': 'Linear',
+    'inputSpeedHeading': 'Pen speed response',
+    'inputSpeedReference': 'Full speed at',
     'inputCanvasHeading': 'Canvas',
     'inputRightClick': 'Right click / pen side button',
     'inputWheelClick': 'Wheel click / pen upper button',
@@ -2287,6 +2291,8 @@ enum AppStrings {
     'inputPressureHeading': '筆圧カーブ',
     'inputPressureSoftHard': '柔らかい ↔ 硬い',
     'inputPressureLinear': 'リニア',
+    'inputSpeedHeading': '速度カーブ',
+    'inputSpeedReference': '最高速度',
     'inputCanvasHeading': 'カンバス',
     'inputRightClick': '右クリック / ペンのサイドボタン',
     'inputWheelClick': 'ホイールクリック / ペンの上ボタン',
@@ -3221,6 +3227,8 @@ enum AppStrings {
     'inputPressureHeading': '필압 곡선',
     'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
     'inputPressureLinear': '리니어',
+    'inputSpeedHeading': '속도 곡선',
+    'inputSpeedReference': '최고 속도',
     'inputCanvasHeading': '캔버스',
     'inputRightClick': '우클릭 / 펜 사이드 버튼',
     'inputWheelClick': '휠 클릭 / 펜 위쪽 버튼',
@@ -4164,6 +4172,8 @@ enum AppStrings {
     'inputPressureHeading': 'Réponse à la pression',
     'inputPressureSoftHard': 'Doux ↔ Dur',
     'inputPressureLinear': 'Linéaire',
+    'inputSpeedHeading': 'Réponse à la vitesse',
+    'inputSpeedReference': 'Vitesse maximale',
     'inputCanvasHeading': 'Canevas',
     'inputRightClick': 'Clic droit / bouton latéral du stylet',
     'inputWheelClick': 'Clic molette / bouton supérieur du stylet',
@@ -5095,6 +5105,8 @@ enum AppStrings {
     'inputPressureHeading': '压感曲线',
     'inputPressureSoftHard': '软 ↔ 硬',
     'inputPressureLinear': '线性',
+    'inputSpeedHeading': '速度曲线',
+    'inputSpeedReference': '最高速度',
     'inputCanvasHeading': '画布',
     'inputRightClick': '右键 / 笔侧键',
     'inputWheelClick': '滚轮点击 / 笔上键',

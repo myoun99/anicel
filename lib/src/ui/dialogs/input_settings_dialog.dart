@@ -64,6 +64,43 @@ class InputSettingsSection extends StatelessWidget {
                 ),
               ),
             ),
+            // 速度 needs a ceiling and no file format supplies one, so the
+            // user owns it (유저 확정 2026-09-08). Same block as the
+            // pressure curve: both answer 「how is this device's input
+            // read」, and a brush's speed curve is worthless until this
+            // number matches the hand that drew it.
+            const Divider(height: 16),
+            Text(
+              strings.inputSpeedHeading,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: SizedBox(
+                width: 320,
+                height: 24,
+                child: FieldSlider(
+                  key: const ValueKey<String>('settings-speed-reference'),
+                  value: settings.speedReferencePixelsPerSecond,
+                  min: 200,
+                  max: 8000,
+                  scale: FieldSliderScale.exponential,
+                  label: strings.inputSpeedReference,
+                  valueText:
+                      '${settings.speedReferencePixelsPerSecond.round()} px/s',
+                  onChanged: (reference) =>
+                      AppInput.settings.value = AppInput.settings.value
+                          .copyWith(
+                            speedReferencePixelsPerSecond: reference,
+                          ),
+                  onChangeEnd: (reference) => session.setInputSettings(
+                    settings.copyWith(
+                      speedReferencePixelsPerSecond: reference,
+                    ),
+                  ),
+                ),
+              ),
+            ),
             // PEN-7a: the CANVAS mappings for standard secondary
             // inputs — pen side/barrel + S-Pen button + mouse right
             // all arrive as 'right-click'; pen upper + wheel click as

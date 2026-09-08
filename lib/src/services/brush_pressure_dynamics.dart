@@ -67,13 +67,13 @@ double _factorFor(BrushDab dab, BrushShape shape, BrushPressureTarget target) {
 }
 
 /// What [dab] measured for [source], normalized to 0..1 — or `null` when this
-/// engine cannot answer for that source yet, in which case its curve is
-/// skipped rather than guessed at.
+/// engine cannot answer for that source, in which case its curve is skipped
+/// rather than guessed at.
 ///
-/// 🔜[BrushInputSource.speed] is the null: `BrushInputSample` carries no
-/// timestamp, so nothing here can measure px/s. Its curve is stored and
-/// imported faithfully and contributes nothing until that changes — see
-/// [BrushInputSource.speed].
+/// ⚠️Every arm is a plain read today. It stays nullable because the CALLER's
+/// contract is "skip what cannot be answered", and that is the question a
+/// source is asked, not a fact about which sources currently answer — speed
+/// was the null until the pen door learned to measure it.
 double? brushInputValue(BrushDab dab, BrushInputSource source) =>
     switch (source) {
       BrushInputSource.pressure => dab.pressure,
@@ -94,5 +94,8 @@ double? brushInputValue(BrushDab dab, BrushInputSource source) =>
       // is no "the device said nothing" value to tell that case apart from a
       // genuinely upright pen; see the board card `brush-tilt-no-device-Q1`.
       BrushInputSource.tilt => 1.0 - dab.tiltAltitude,
-      BrushInputSource.speed => null,
+      // The dab already holds the RATIO, not px/s: the pen door divides by
+      // the user's reference speed once, where pressure and tilt are
+      // normalized too. See `AppInput.normalizedSpeed`.
+      BrushInputSource.speed => dab.speed,
     };

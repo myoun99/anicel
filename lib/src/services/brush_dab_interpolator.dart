@@ -45,6 +45,11 @@ class BrushDabInterpolator {
         // opacity ramps smoothly between input samples instead of snapping
         // to the endpoint value on every inserted dab.
         pressure: previousPressure + pressureDelta * fraction,
+        // ⛔SPEED IS DELIBERATELY NOT INTERPOLATED, and it is not an
+        // oversight to fix: it rides along from `nextRaw` because it is a
+        // property of the MOVE this call is subdividing. Every dab here was
+        // laid during the one hand movement that carried the pen from
+        // `previous` to `nextRaw`, so they all travelled at its speed.
         sequence: firstSequence + index,
       );
     });

@@ -290,6 +290,11 @@ class _InteractiveBrushEditCanvasViewState
   double _currentTiltAzimuthDegrees = 0.0;
   double _currentTiltAltitude = 1.0;
 
+  /// How fast the pen travelled into the latest sample, 0..1 against the
+  /// user's reference speed. A pen that has just landed — and every stroke's
+  /// first dab — rests at 0.0.
+  double _currentSpeed = 0.0;
+
   // The held button (Round 6): a mapped button standing in for a tool.
   late final _BrushEditHold _hold = _BrushEditHold(this);
 
@@ -563,6 +568,7 @@ class _InteractiveBrushEditCanvasViewState
       sequence: sequence,
       tiltAzimuthDegrees: _currentTiltAzimuthDegrees,
       tiltAltitude: _currentTiltAltitude,
+      speed: _currentSpeed,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,

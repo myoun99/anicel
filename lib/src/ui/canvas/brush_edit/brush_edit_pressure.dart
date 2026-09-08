@@ -12,6 +12,13 @@ class _BrushEditPressure {
 
   final _InteractiveBrushEditCanvasViewState _state;
 
+  /// Where and when the previous reading landed, in CANVAS space — the two
+  /// halves of a speed measurement. Null before a stroke's first sample, and
+  /// again after [restInput], so the next stroke never measures its opening
+  /// speed against where the last one stopped.
+  CanvasPoint? _travelledFrom;
+  Duration? _travelledAt;
+
   List<BrushDab> withPressureDynamics(List<BrushDab> dabs) {
     final settings =
         _state._activeStrokeInputSettings ?? _state.widget.inputSettings;
@@ -67,14 +74,53 @@ class _BrushEditPressure {
     final tilt = penTilt(event);
     _state._currentTiltAzimuthDegrees = tilt.azimuthDegrees;
     _state._currentTiltAltitude = tilt.altitude;
+    _noteSpeed(event);
+  }
+
+  /// 速度 off the same event — the one input that needs TWO readings, so it
+  /// is the one input this object has to remember anything for.
+  ///
+  /// ⚠️Canvas space, not screen space: the viewport transform is applied
+  /// before the distance is taken, which is what makes the setting mean
+  /// canvas px/s at every zoom.
+  ///
+  /// ⛔Raw, unsmoothed. Pro tools do smooth this, and nobody asked us to —
+  /// a filter here would be a second tuning knob invented beside the one the
+  /// user actually chose. If the reference speed turns out to feel noisy on
+  /// device, that is the evidence a smoothing round would start from.
+  void _noteSpeed(PointerEvent event) {
+    final at = event.timeStamp;
+    final position = _state._canvasPositionFromLocal(event.localPosition);
+    final from = _travelledFrom;
+    final since = _travelledAt;
+    _travelledFrom = position;
+    _travelledAt = at;
+    if (from == null || since == null) {
+      // A pen that has just landed has no move behind it.
+      _state._currentSpeed = 0.0;
+      return;
+    }
+    final measured = AppInput.normalizedSpeed(
+      canvasPixels: from.distanceTo(position),
+      elapsed: at - since,
+    );
+    // Null is "these two readings share a clock tick", not "stopped" — the
+    // last real measurement stands rather than the stroke dropping to zero.
+    if (measured != null) {
+      _state._currentSpeed = measured;
+    }
   }
 
   /// Returns every input to its resting value — an upright pen at full
-  /// pressure, which is what a device that reports none draws with.
+  /// pressure, which is what a device that reports none draws with, standing
+  /// still, with no earlier reading to measure the next move against.
   void restInput() {
     _state._currentPressure = 1.0;
     _state._currentTiltAzimuthDegrees = 0.0;
     _state._currentTiltAltitude = 1.0;
+    _state._currentSpeed = 0.0;
+    _travelledFrom = null;
+    _travelledAt = null;
   }
 
   /// How the pen leans, as the pair a dab carries: degrees of azimuth and a

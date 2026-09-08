@@ -19,6 +19,7 @@ class BrushDab {
     required this.sequence,
     this.tiltAzimuthDegrees = 0.0,
     this.tiltAltitude = 1.0,
+    this.speed = 0.0,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
@@ -58,6 +59,7 @@ class BrushDab {
     _validateUnitIntervalFinite(pressure, 'pressure');
     _validateFinite(tiltAzimuthDegrees, 'tiltAzimuthDegrees');
     _validateUnitIntervalFinite(tiltAltitude, 'tiltAltitude');
+    _validateUnitIntervalFinite(speed, 'speed');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
     _validateSequence(sequence);
@@ -99,6 +101,7 @@ class BrushDab {
       // input value could never be replayed (P17).
       tiltAzimuthDegrees: sample.tiltAzimuthDegrees,
       tiltAltitude: sample.tiltAltitude,
+      speed: sample.speed,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
@@ -119,6 +122,11 @@ class BrushDab {
   final double hardness;
   final BrushTipShape tipShape;
   final double pressure;
+
+  /// How fast the pen was travelling when this dab was laid, normalized to
+  /// 0..1 by the pen door — see `BrushInputSample.speed`, which explains why
+  /// the raw px/s never travels.
+  final double speed;
 
   /// Which way the pen leaned, in degrees (0 = along +x). Meaningless while
   /// [tiltAltitude] is 1.0 — an upright pen leans nowhere.
@@ -186,6 +194,7 @@ class BrushDab {
     int? sequence,
     double? tiltAzimuthDegrees,
     double? tiltAltitude,
+    double? speed,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
@@ -212,6 +221,7 @@ class BrushDab {
       sequence: sequence ?? this.sequence,
       tiltAzimuthDegrees: tiltAzimuthDegrees ?? this.tiltAzimuthDegrees,
       tiltAltitude: tiltAltitude ?? this.tiltAltitude,
+      speed: speed ?? this.speed,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
@@ -242,6 +252,7 @@ class BrushDab {
     // existed round-trips byte-identical to one drawn with an upright pen.
     if (tiltAltitude != 1.0) 'tiltAltitude': tiltAltitude,
     if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
+    if (speed != 0.0) 'speed': speed,
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
@@ -271,6 +282,7 @@ class BrushDab {
       tiltAzimuthDegrees:
           (json['tiltAzimuthDegrees'] as num?)?.toDouble() ?? 0.0,
       tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble() ?? 1.0,
+      speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
       tipMask: json['tipMask'] == null
@@ -312,6 +324,7 @@ class BrushDab {
           other.sequence == sequence &&
           other.tiltAzimuthDegrees == tiltAzimuthDegrees &&
           other.tiltAltitude == tiltAltitude &&
+          other.speed == speed &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
@@ -339,6 +352,7 @@ class BrushDab {
     sequence,
     tiltAzimuthDegrees,
     tiltAltitude,
+    speed,
     roundness,
     angleDegrees,
     tipMask,
