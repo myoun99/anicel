@@ -46,6 +46,33 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   final int fadeInFrames;
   final int fadeOutFrames;
 
+  /// The same band asked in SECONDS — what a media viewer has instead of a
+  /// frame rate.
+  ///
+  /// 🚨★★★**A SECOND PAINTER WOULD BE A CLONE.** Everything below reduces
+  /// [frameRate] and [pixelsPerFrame] to ONE number — `pixelsPerFrame *
+  /// fps`, pixels per second — and that is the number a viewer already
+  /// knows. So this is not a conversion layer: at one frame per second a
+  /// frame IS a second, and every quantity in `paint` lands on the same
+  /// arithmetic the timeline gets.
+  ///
+  /// ⛔No trim and no envelope: a viewer shows a whole FILE, not a clip
+  /// placed on a lane, so `leadingFrames`, `gain` and the two fades have
+  /// no subject here. A caller that grows one is looking at a clip and
+  /// belongs on the main constructor.
+  WaveformPainter.perSecond({
+    required AudioPeaks peaks,
+    required double pixelsPerSecond,
+    required Color color,
+    Axis axis = Axis.horizontal,
+  }) : this(
+         peaks: peaks,
+         frameRate: const ProjectFrameRate.integer(1),
+         pixelsPerFrame: pixelsPerSecond,
+         color: color,
+         axis: axis,
+       );
+
   @override
   void paint(Canvas canvas, Size size) {
     if (peaks.peaks.isEmpty ||

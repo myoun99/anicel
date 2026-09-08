@@ -803,6 +803,12 @@ enum AppStrings {
   String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
   String get mediaViewerNoVideoDecoder => _s('mediaViewerNoVideoDecoder');
 
+  /// Sound the viewer cannot read. ⚠️Its own sentence rather than the
+  /// generic 「이 종류는 표시할 수 없다」, for the reason the video one has
+  /// its own: a missing decoder is a different BUILD, which is something
+  /// the reader can act on.
+  String get mediaViewerNoAudioDecoder => _s('mediaViewerNoAudioDecoder');
+
   /// 🚨★★★EVERY PICKER SHOWS EVERY FILE — 유저 2026-08-29: 「픽커는 어떤
   /// 플랫폼이든 어떤 확장자던 선택할수 있게하고, 대응만 지원안되는
   /// 확장자면 그 때 해당 파일 지원안된다고 안내창 띄우게」. This is that
@@ -1576,6 +1582,8 @@ enum AppStrings {
         'No PDF renderer in this build — PDF pages cannot be shown.',
     'mediaViewerNoVideoDecoder':
         'No video decoder in this build — movies cannot be shown.',
+    'mediaViewerNoAudioDecoder':
+        'This sound could not be read — no waveform to show.',
     'unsupportedFileTitle': 'Unsupported file',
     'unsupportedFileMessageTemplate':
         '"{name}" cannot be opened here. Usable formats: {kinds}.',
@@ -2481,6 +2489,7 @@ enum AppStrings {
     'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
     'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
     'mediaViewerNoVideoDecoder': 'このビルドには動画デコーダーがありません — 動画を表示できません。',
+    'mediaViewerNoAudioDecoder': 'この音声を読み込めませんでした — 波形を表示できません。',
     'mediaViewerSwap': 'もう一方のビューアと入れ替え',
     'unsupportedFileTitle': 'サポートされていないファイル',
     'unsupportedFileMessageTemplate': '「{name}」はここでは開けません。使用できる形式: {kinds}。',
@@ -3408,6 +3417,7 @@ enum AppStrings {
     'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
     'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
     'mediaViewerNoVideoDecoder': '이 빌드에는 비디오 디코더가 없습니다 — 동영상을 표시할 수 없습니다.',
+    'mediaViewerNoAudioDecoder': '이 소리를 읽지 못했습니다 — 파형을 표시할 수 없습니다.',
     'mediaViewerSwap': '반대쪽 뷰어와 맞바꾸기',
     'unsupportedFileTitle': '지원하지 않는 파일',
     'unsupportedFileMessageTemplate':
@@ -4361,6 +4371,8 @@ enum AppStrings {
     'mediaViewerNoVideoDecoder':
         'Pas de décodeur vidéo dans cette version — les films ne peuvent '
         'pas être affichés.',
+    'mediaViewerNoAudioDecoder':
+        'Ce son n\'a pas pu être lu — aucune forme d\'onde à afficher.',
     'unsupportedFileTitle': 'Fichier non pris en charge',
     'unsupportedFileMessageTemplate':
         '« {name} » ne peut pas être ouvert ici. Formats acceptés : '
@@ -5255,6 +5267,7 @@ enum AppStrings {
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',
     'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
     'mediaViewerNoVideoDecoder': '此版本没有视频解码器 — 无法显示影片。',
+    'mediaViewerNoAudioDecoder': '无法读取此声音 — 没有可显示的波形。',
     'mediaViewerSwap': '与另一个查看器互换',
     'unsupportedFileTitle': '不支持的文件',
     'unsupportedFileMessageTemplate': '无法在此处打开「{name}」。可用格式：{kinds}。',

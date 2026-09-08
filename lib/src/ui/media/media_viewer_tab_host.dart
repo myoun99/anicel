@@ -26,6 +26,8 @@ import '../editor_session_manager.dart';
 import '../playback/playback_transport.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
+import '../theme/app_theme.dart' show AppColors;
+import 'audio_viewer_document.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_drop_target.dart';
 import 'viewer_raster_budget.dart';
@@ -541,8 +543,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         _message = switch (request.kind) {
           MediaAssetKind.pdf => strings.mediaViewerNoPdfRenderer,
           MediaAssetKind.video => strings.mediaViewerNoVideoDecoder,
-          MediaAssetKind.image ||
-          MediaAssetKind.audio => strings.mediaViewerCannotDisplay,
+          // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now
+          // (its waveform), so an absence here is a conform that could not
+          // be built — a file this build cannot decode, which is the same
+          // sentence a missing video reader gets.
+          MediaAssetKind.audio => strings.mediaViewerNoAudioDecoder,
+          MediaAssetKind.image => strings.mediaViewerCannotDisplay,
         };
       } else {
         _document = document;
@@ -603,10 +609,27 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                 range: (offset: carried.offset, length: carried.length),
               );
       case MediaAssetKind.audio:
-        // Sound has no picture — the one medium that stays absent.
-        return null;
+        // 🪦This used to read 「Sound has no picture — the one medium that
+        // stays absent」. 유저 2026-09-08: 「오디오파일도 열려야하고 …
+        // 오디오는 그래서 파형을 보이게한다던가」. The picture of a sound is
+        // its waveform, and the conform that draws one is the same conform
+        // playback already builds — so this asks for it rather than making
+        // anything.
+        final store = widget.session.audioConformStore;
+        await store.ensureFor(request.path);
+        final peaks = store.peaksFor(request.path);
+        return peaks == null
+            ? null
+            : AudioViewerDocument(peaks: peaks, color: _waveformInk);
     }
   }
+
+  /// The waveform's ink.
+  ///
+  /// ⚠️A PALETTE constant, not `colorScheme.primary`: the page is a raster
+  /// and the accent is live, so an accent-coloured band would be wrong the
+  /// moment the accent changed. See [AudioViewerDocument.color].
+  static const Color _waveformInk = AppColors.textDim;
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 

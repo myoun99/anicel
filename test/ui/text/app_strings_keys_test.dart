@@ -376,6 +376,7 @@ void main() {
     'mediaViewerCannotDisplay': (s) => s.mediaViewerCannotDisplay,
     'mediaViewerNoPdfRenderer': (s) => s.mediaViewerNoPdfRenderer,
     'mediaViewerNoVideoDecoder': (s) => s.mediaViewerNoVideoDecoder,
+    'mediaViewerNoAudioDecoder': (s) => s.mediaViewerNoAudioDecoder,
     'mediaViewerSwap': (s) => s.mediaViewerSwap,
     'mediaViewerRegisterAsset': (s) => s.mediaViewerRegisterAsset,
     'panelCanvas': (s) => s.panelCanvas,

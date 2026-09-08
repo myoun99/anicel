@@ -202,4 +202,34 @@ void main() {
     expect(inkInColumn(quietVertical, 1), 0);
     expect(inkInColumn(quietVertical, size.toInt() ~/ 2), greaterThan(0));
   });
+
+  /// 🚨★★★**THE SECONDS ENTRANCE IS THE SAME PAINTER, PIXEL FOR PIXEL.**
+  ///
+  /// The media viewer thinks in seconds and the timeline in frames, and a
+  /// second painter written for the viewer would be a clone whatever its
+  /// text (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」). This is the
+  /// assertion that keeps [WaveformPainter.perSecond] an ENTRANCE rather
+  /// than a second implementation: same band, same pixels, from the two
+  /// ways of saying the one number the arithmetic actually wants.
+  test('perSecond lands on the same pixels as the frame-based band', () async {
+    // 24fps × 2 px/frame = 48 pixels per second, said both ways.
+    final byFrames = await paint(
+      WaveformPainter(
+        peaks: loud(),
+        frameRate: rate,
+        pixelsPerFrame: 2,
+        color: ink,
+      ),
+    );
+    final bySeconds = await paint(
+      WaveformPainter.perSecond(
+        peaks: loud(),
+        pixelsPerSecond: 2 * rate.approximateFps,
+        color: ink,
+      ),
+    );
+
+    expect(inkTotal(byFrames), greaterThan(0), reason: 'fixture: it drew');
+    expect(bySeconds, byFrames);
+  });
 }
