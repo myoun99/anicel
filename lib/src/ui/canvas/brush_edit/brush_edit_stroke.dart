@@ -44,7 +44,7 @@ class _BrushEditStroke {
           )
         : _state.widget.inputSettings;
     _state._activeStrokeInputSettings = strokeSettings;
-    _state._currentPressure = _state._pressure.normalizedPressure(event);
+    _state._pressure.noteSample(event);
     _state.widget.onActiveStrokeChanged?.call(true);
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
@@ -459,7 +459,7 @@ class _BrushEditStroke {
     _state._breakCurrentVisibleSegment = false;
     _state._previousRawCanvasPosition = null;
     _state._activeStrokeInputSettings = null;
-    _state._currentPressure = 1.0;
+    _state._pressure.restInput();
     _state._strokeDynamics = null;
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;

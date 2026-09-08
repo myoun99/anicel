@@ -62,6 +62,58 @@ class _BrushEditPressure {
     );
   }
 
+  /// Reads every input the next dab will carry off one pointer sample.
+  ///
+  /// 🚨ONE CALL, because pressure and tilt come off the SAME event and a
+  /// dab that mixed one sample's pressure with another's lean would be a
+  /// reading that never happened. Three call sites set pressure today; they
+  /// all go through here so a fourth input cannot be added to two of them.
+  void noteSample(PointerEvent event) {
+    _state._currentPressure = normalizedPressure(event);
+    final tilt = penTilt(event);
+    _state._currentTiltAzimuthDegrees = tilt.azimuthDegrees;
+    _state._currentTiltAltitude = tilt.altitude;
+  }
+
+  /// Returns every input to its resting value — an upright pen at full
+  /// pressure, which is what a device that reports none draws with.
+  void restInput() {
+    _state._currentPressure = 1.0;
+    _state._currentTiltAzimuthDegrees = 0.0;
+    _state._currentTiltAltitude = 1.0;
+  }
+
+  /// How the pen leans, as the pair a dab carries: degrees of azimuth and a
+  /// 0..1 altitude (1 = upright).
+  ///
+  /// 🚨READ FROM THE POINTER, NOT THE SIDECAR — deliberately, and unlike
+  /// pressure. `PenSidecars` exists because the OS pipeline MISREPORTS
+  /// pressure for some pens (PEN-2); no such defect is known for tilt, and
+  /// the sidecar does not surface it today (`qa_tablet_bridge` carries
+  /// azimuth and altitude, but `PenSidecars` publishes only pressure,
+  /// buttons and inverted). Routing tilt through the sidecar as well is a
+  /// separate round with its own evidence.
+  ///
+  /// ⚠️Flutter reports tilt as radians FROM VERTICAL and orientation as
+  /// radians around the pen's axis; the app speaks the tablet bridge's
+  /// azimuth/altitude instead, so the conversion happens once, here.
+  ({double azimuthDegrees, double altitude}) penTilt(PointerEvent event) {
+    if (event.kind != PointerDeviceKind.stylus &&
+        event.kind != PointerDeviceKind.invertedStylus) {
+      return (azimuthDegrees: 0.0, altitude: 1.0);
+    }
+    final tilt = event.tilt;
+    if (!tilt.isFinite) {
+      return (azimuthDegrees: 0.0, altitude: 1.0);
+    }
+    final altitude = (1.0 - tilt.abs() / (math.pi / 2.0)).clamp(0.0, 1.0);
+    final orientation = event.orientation;
+    final degrees = orientation.isFinite
+        ? ((orientation * 180.0 / math.pi) % 360.0 + 360.0) % 360.0
+        : 0.0;
+    return (azimuthDegrees: degrees, altitude: altitude.toDouble());
+  }
+
   /// [rgba] with the live selection applied, or [rgba] itself when there
   /// is no selection (no copy, no scan).
   Uint8List _maskedStampRgba({

@@ -16,6 +16,8 @@ class BrushDab {
     required this.tipShape,
     required this.pressure,
     required this.sequence,
+    this.tiltAzimuthDegrees = 0.0,
+    this.tiltAltitude = 1.0,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
@@ -52,6 +54,8 @@ class BrushDab {
     _validateUnitIntervalFinite(flow, 'flow');
     _validateUnitIntervalFinite(hardness, 'hardness');
     _validateUnitIntervalFinite(pressure, 'pressure');
+    _validateFinite(tiltAzimuthDegrees, 'tiltAzimuthDegrees');
+    _validateUnitIntervalFinite(tiltAltitude, 'tiltAltitude');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
     _validateSequence(sequence);
@@ -86,6 +90,11 @@ class BrushDab {
       tipShape: settings.tipShape,
       pressure: sample.pressure,
       sequence: sequence,
+      // The lean rides along unread for now: nothing evaluates a curve
+      // against it yet, and a dab that does not carry its own input value
+      // could never be replayed (P17 — a dab holds its rendering values).
+      tiltAzimuthDegrees: sample.tiltAzimuthDegrees,
+      tiltAltitude: sample.tiltAltitude,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
@@ -105,6 +114,14 @@ class BrushDab {
   final double hardness;
   final BrushTipShape tipShape;
   final double pressure;
+
+  /// Which way the pen leaned, in degrees (0 = along +x). Meaningless while
+  /// [tiltAltitude] is 1.0 — an upright pen leans nowhere.
+  final double tiltAzimuthDegrees;
+
+  /// How upright the pen was: 1.0 vertical, 0.0 flat on the surface.
+  final double tiltAltitude;
+
   final int sequence;
 
   /// Minor-to-major axis ratio of the tip in (0, 1]: 1.0 keeps the classic
@@ -158,6 +175,8 @@ class BrushDab {
     BrushTipShape? tipShape,
     double? pressure,
     int? sequence,
+    double? tiltAzimuthDegrees,
+    double? tiltAltitude,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
@@ -181,6 +200,8 @@ class BrushDab {
       tipShape: tipShape ?? this.tipShape,
       pressure: pressure ?? this.pressure,
       sequence: sequence ?? this.sequence,
+      tiltAzimuthDegrees: tiltAzimuthDegrees ?? this.tiltAzimuthDegrees,
+      tiltAltitude: tiltAltitude ?? this.tiltAltitude,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
@@ -206,6 +227,10 @@ class BrushDab {
     'tipShape': tipShape.toJson(),
     'pressure': pressure,
     'sequence': sequence,
+    // ⚠️Omitted at the resting value so a stroke recorded before tilt
+    // existed round-trips byte-identical to one drawn with an upright pen.
+    if (tiltAltitude != 1.0) 'tiltAltitude': tiltAltitude,
+    if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
@@ -231,6 +256,9 @@ class BrushDab {
       tipShape: BrushTipShape.fromJson(json['tipShape']),
       pressure: (json['pressure'] as num).toDouble(),
       sequence: json['sequence'] as int,
+      tiltAzimuthDegrees:
+          (json['tiltAzimuthDegrees'] as num?)?.toDouble() ?? 0.0,
+      tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble() ?? 1.0,
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
       tipMask: json['tipMask'] == null
@@ -267,6 +295,8 @@ class BrushDab {
           other.tipShape == tipShape &&
           other.pressure == pressure &&
           other.sequence == sequence &&
+          other.tiltAzimuthDegrees == tiltAzimuthDegrees &&
+          other.tiltAltitude == tiltAltitude &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
@@ -291,6 +321,8 @@ class BrushDab {
     tipShape,
     pressure,
     sequence,
+    tiltAzimuthDegrees,
+    tiltAltitude,
     roundness,
     angleDegrees,
     tipMask,

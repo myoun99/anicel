@@ -104,5 +104,55 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('a pen with no tilt to report rests upright', () {
+      final sample = BrushInputSample(x: 1, y: 2);
+
+      expect(sample.tiltAltitude, 1.0);
+      expect(sample.tiltAzimuthDegrees, 0.0);
+    });
+
+    test('tilt round-trips through json', () {
+      final sample = BrushInputSample(
+        x: 1,
+        y: 2,
+        tiltAzimuthDegrees: 217.5,
+        tiltAltitude: 0.4,
+      );
+
+      final restored = BrushInputSample.fromJson(sample.toJson());
+      expect(restored.tiltAzimuthDegrees, 217.5);
+      expect(restored.tiltAltitude, 0.4);
+      expect(restored, sample);
+    });
+
+    test('an upright sample writes no tilt keys at all', () {
+      // The point is byte-identity with strokes recorded before tilt
+      // existed — not merely that they read back the same.
+      expect(BrushInputSample(x: 1, y: 2).toJson().keys, [
+        'x',
+        'y',
+        'pressure',
+        'sequence',
+      ]);
+    });
+
+    test('altitude outside 0..1 throws', () {
+      expect(
+        () => BrushInputSample(x: 1, y: 2, tiltAltitude: 1.2),
+        throwsArgumentError,
+      );
+      expect(
+        () => BrushInputSample(x: 1, y: 2, tiltAltitude: -0.1),
+        throwsArgumentError,
+      );
+    });
+
+    test('tilt takes part in equality', () {
+      final upright = BrushInputSample(x: 1, y: 2);
+
+      expect(upright == upright.copyWith(tiltAltitude: 0.5), isFalse);
+      expect(upright == upright.copyWith(tiltAzimuthDegrees: 90), isFalse);
+    });
   });
 }

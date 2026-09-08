@@ -49,6 +49,14 @@ BrushDabSequence brushInputSamplesToBrushDabs({
           x: previous.x + dx * t,
           y: previous.y + dy * t,
           pressure: previous.pressure + (next.pressure - previous.pressure) * t,
+          tiltAzimuthDegrees: _lerpAngleDegrees(
+            previous.tiltAzimuthDegrees,
+            next.tiltAzimuthDegrees,
+            t,
+          ),
+          tiltAltitude:
+              previous.tiltAltitude +
+              (next.tiltAltitude - previous.tiltAltitude) * t,
         ),
       ),
     );
@@ -64,4 +72,16 @@ BrushDabSequence brushInputSamplesToBrushDabs({
   // F-12: the tool's opacity is the SEQUENCE's ceiling, not a factor on
   // each dab — the dabs carry only what varies between them.
   return BrushDabSequence(dabs, settings.opacity);
+}
+
+/// Interpolates between two ANGLES the short way round.
+///
+/// ⚠️Not the plain lerp the other inputs get: a pen swinging from 350° to
+/// 10° travels 20°, and a linear blend would walk it 340° backwards through
+/// every heading in between. Azimuth is the only wrapping value a sample
+/// carries.
+double _lerpAngleDegrees(double from, double to, double t) {
+  final delta = ((to - from + 540.0) % 360.0) - 180.0;
+  final blended = from + delta * t;
+  return ((blended % 360.0) + 360.0) % 360.0;
 }

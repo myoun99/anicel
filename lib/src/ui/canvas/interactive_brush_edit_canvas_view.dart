@@ -285,6 +285,12 @@ class _InteractiveBrushEditCanvasViewState
   /// mouse draws exactly as before.
   double _currentPressure = 1.0;
 
+  /// How the pen leaned at the latest sample: azimuth in degrees and a 0..1
+  /// altitude. An upright pen (and every device with no tilt to report)
+  /// rests at 1.0, so a mouse and a finger draw exactly as before.
+  double _currentTiltAzimuthDegrees = 0.0;
+  double _currentTiltAltitude = 1.0;
+
   // The held button (Round 6): a mapped button standing in for a tool.
   late final _BrushEditHold _hold = _BrushEditHold(this);
 
@@ -556,6 +562,8 @@ class _InteractiveBrushEditCanvasViewState
       tipShape: settings.tipShape,
       pressure: _currentPressure,
       sequence: sequence,
+      tiltAzimuthDegrees: _currentTiltAzimuthDegrees,
+      tiltAltitude: _currentTiltAltitude,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,

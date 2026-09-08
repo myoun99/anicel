@@ -150,5 +150,48 @@ void main() {
       brushInputSamplesToBrushDabs(samples: samples, settings: settings);
       expect(samples, before);
     });
+
+    test('altitude interpolates along the segment', () {
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [
+          BrushInputSample(x: 0, y: 0, tiltAltitude: 1.0),
+          BrushInputSample(x: 20, y: 0, tiltAltitude: 0.0),
+        ],
+        settings: settings,
+      );
+
+      final middle = sequence.dabs.firstWhere((dab) => dab.center.x == 10);
+      expect(middle.tiltAltitude, closeTo(0.5, 1e-9));
+    });
+
+    test('azimuth crosses 0 the short way, not the long way', () {
+      // 350 -> 10 is twenty degrees forward. A plain lerp would walk the pen
+      // 340 degrees BACKWARDS and put the midpoint at 180 — pointing the
+      // opposite way from either end.
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [
+          BrushInputSample(x: 0, y: 0, tiltAzimuthDegrees: 350, tiltAltitude: 0.5),
+          BrushInputSample(x: 20, y: 0, tiltAzimuthDegrees: 10, tiltAltitude: 0.5),
+        ],
+        settings: settings,
+      );
+
+      final middle = sequence.dabs.firstWhere((dab) => dab.center.x == 10);
+      expect(middle.tiltAzimuthDegrees, closeTo(0.0, 1e-9));
+    });
+
+    test('an upright stroke leaves every dab upright', () {
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [BrushInputSample(x: 0, y: 0), BrushInputSample(x: 20, y: 0)],
+        settings: settings,
+      );
+
+      expect(
+        sequence.dabs.every(
+          (dab) => dab.tiltAltitude == 1.0 && dab.tiltAzimuthDegrees == 0.0,
+        ),
+        isTrue,
+      );
+    });
   });
 }

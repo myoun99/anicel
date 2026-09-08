@@ -344,7 +344,7 @@ class _BrushEditPress {
       _state._touchStrokeCommitted = true;
     }
 
-    _state._currentPressure = _state._pressure.normalizedPressure(event);
+    _state._pressure.noteSample(event);
     final penPosition = _state._canvasPositionFromLocal(event.localPosition);
     _state._lastPenPosition = penPosition;
     // The stabilizer smooths BEFORE clipping/interpolation, so every
