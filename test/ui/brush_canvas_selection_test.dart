@@ -1684,6 +1684,53 @@ void main() {
     expect(env.history.undoCount, entriesBefore, reason: 'nothing recorded');
   });
 
+  /// 🚨★★★**THE OPEN BOX IS THE STORE'S BUSINESS TOO.** 유저 확정
+  /// 2026-09-08 (`undo-41-hole-scope` = ①, Krita 식): the pixels a lift
+  /// takes out of the picture are budgeted and parkable the moment a
+  /// confirm turns them into a history entry, and were budgeted by
+  /// NOTHING while the box was open — a user who had not confirmed was
+  /// held to less discipline than one who had.
+  ///
+  /// ⛔The unit pin next door drives [BrushFrameStore] directly, so it
+  /// cannot see whether the TOOL hands the bytes over and takes them back
+  /// again. This one drives the panel, which is the only way to catch a
+  /// lift that ends without releasing — a leak that shows up as the store
+  /// parking pixels nobody will ever read.
+  for (final ending in const ['확정', '되돌리기']) {
+    testWidgets('the store carries an OPEN lift, and $ending gives it back', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester);
+      final store = env.coordinator.frameStore;
+      expect(store.liftedPixelBytes, 0, reason: 'nothing lifted yet');
+
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+      expect(env.commands.movePending, isTrue);
+
+      expect(
+        store.liftedPixelBytes,
+        greaterThan(0),
+        reason: 'the pre-lift picture is held, and the store can name it',
+      );
+
+      if (ending == '확정') {
+        env.commands.confirmPendingMove();
+      } else {
+        env.commands.revertPendingMove();
+      }
+      await tester.pump();
+
+      expect(env.commands.movePending, isFalse);
+      expect(
+        store.liftedPixelBytes,
+        0,
+        reason: 'the lift ended — going on holding these is a leak',
+      );
+    });
+  }
+
   testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
     tester,
   ) async {
