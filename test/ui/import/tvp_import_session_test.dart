@@ -77,7 +77,9 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      final warnings = await session.openTvppAsProject(tvppPath: writeTvpp());
+      final warnings = await session.tvppDoor.openAsProject(
+        tvppPath: writeTvpp(),
+      );
       expect(warnings, isNotNull, reason: 'the file parses');
       expect(
         warnings!.where((w) => w.startsWith('사운드 파일이')),
@@ -179,7 +181,10 @@ void main() {
     );
     final seeksBefore = session.frameSeekCommitted.value;
 
-    expect(await session.openTvppAsProject(tvppPath: writeTvpp()), isNotNull);
+    expect(
+      await session.tvppDoor.openAsProject(tvppPath: writeTvpp()),
+      isNotNull,
+    );
 
     expect(
       session.projectFile.path,
@@ -189,13 +194,15 @@ void main() {
     expect(
       session.projectFile.hasUnsavedChanges,
       isTrue,
-      reason: 'a conversion is unsaved by definition — nothing on disk '
+      reason:
+          'a conversion is unsaved by definition — nothing on disk '
           'holds it, so the title dot and the exit gate have to say so',
     );
     expect(
       session.frameSeekCommitted.value,
       greaterThan(seeksBefore),
-      reason: 'the playhead now stands in a different project, and the '
+      reason:
+          'the playhead now stands in a different project, and the '
           'seek-dependent panels only hear about it here',
     );
   });
@@ -222,7 +229,7 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    final warnings = await session.openTvppAsProject(tvppPath: ghost);
+    final warnings = await session.tvppDoor.openAsProject(tvppPath: ghost);
     expect(staged, 1);
     expect(
       warnings,
@@ -233,14 +240,14 @@ void main() {
     // A file that READS but does not parse is the only null.
     final junk = '${temp.path}${Platform.pathSeparator}junk.tvpp';
     File(junk).writeAsBytesSync(List<int>.filled(64, 7));
-    expect(await session.openTvppAsProject(tvppPath: junk), isNull);
+    expect(await session.tvppDoor.openAsProject(tvppPath: junk), isNull);
 
     // Unreadable AND unstageable throws — access, not format.
     FolderPicker.debugCoordinatedReader =
         ({required String sourcePath, required String destinationPath}) async =>
             false;
     expect(
-      () => session.openTvppAsProject(
+      () => session.tvppDoor.openAsProject(
         tvppPath: '${temp.path}${Platform.pathSeparator}nowhere.tvpp',
       ),
       throwsA(isA<FileSystemException>()),
@@ -274,7 +281,7 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    final warnings = await session.openTvppAsProject(tvppPath: path);
+    final warnings = await session.tvppDoor.openAsProject(tvppPath: path);
 
     expect(warnings, isNotNull, reason: 'the STRUCTURE parses');
     expect(
@@ -297,7 +304,7 @@ void main() {
     addTearDown(session.dispose);
     final before = session.repository.requireProject().name;
 
-    expect(await session.openTvppAsProject(tvppPath: path), isNull);
+    expect(await session.tvppDoor.openAsProject(tvppPath: path), isNull);
     expect(
       session.repository.requireProject().name,
       before,

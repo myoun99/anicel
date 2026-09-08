@@ -205,7 +205,7 @@ class EditorTopStrip extends StatelessWidget {
         windowKey: const ValueKey<String>('open-progress-dialog'),
         runningStatus: wait.status,
         onCancel: wait.cancel,
-        task: (report) => session.openTvppAsProject(
+        task: (report) => session.tvppDoor.openAsProject(
           tvppPath: path,
           onProgress: (fraction) {
             // Reading has started, so the waiting line has nothing left
