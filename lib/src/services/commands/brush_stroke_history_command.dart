@@ -4,6 +4,7 @@ import '../brush_stroke_commit_data.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
+import 'cel_snapshot_restore.dart';
 
 /// Bridges a brush source stroke into the app-level [HistoryManager]
 /// (R19 P3b surface-snapshot undo).
@@ -102,24 +103,10 @@ class BrushStrokeHistoryCommand
     _restore(_surfaces?.before);
   }
 
-  /// ⛔A payload that will not come back leaves the picture ALONE. The
-  /// snapshot holds only the tiles the stroke did not touch when its own
-  /// are unreadable, so painting that over the cel would erase the very
-  /// drawing this step exists to protect.
-  void _restore(UndoSurfaceSnapshot? snapshot) {
-    // The cel as it stands IS the surface this snapshot was measured
-    // against — the stack steps LIFO, so undo reads the post-surface and
-    // redo reads the pre-surface, and both are its `sharedWith`.
-    final surface = snapshot?.surfaceOver(
-      coordinator.currentSurfaceOf(_frameKey),
-    );
-    if (surface == null) {
-      return;
-    }
-    coordinator.restoreSurfaceSnapshot(
-      _frameKey,
-      surface,
-      cacheInvalidationSink: cacheInvalidationSink,
-    );
-  }
+  void _restore(UndoSurfaceSnapshot? snapshot) => restoreCelSnapshot(
+    coordinator: coordinator,
+    frameKey: _frameKey,
+    snapshot: snapshot,
+    cacheInvalidationSink: cacheInvalidationSink,
+  );
 }

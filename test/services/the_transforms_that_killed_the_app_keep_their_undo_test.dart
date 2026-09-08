@@ -57,17 +57,31 @@ void main() {
       (16.0, 0xFFA0B0C0),
       (16.0, 0xFFD0E0F0),
     ];
+    final commands = <BrushLiftMoveHistoryCommand>[];
     for (final (x, colour) in confirms) {
-      history.execute(
-        BrushLiftMoveHistoryCommand(
-          coordinator: coordinator,
-          frameKey: key,
-          preLiftSurface: coordinator.currentSurfaceOf(key),
-          stampDab: stampAt(x, colour),
-        ),
+      final command = BrushLiftMoveHistoryCommand(
+        coordinator: coordinator,
+        frameKey: key,
+        preLiftSurface: coordinator.currentSurfaceOf(key),
+        stampDab: stampAt(x, colour),
       );
+      commands.add(command);
+      history.execute(command);
       pictures.add(coordinator.currentSurfaceOf(key));
     }
+
+    // 🚨★★★**THE BILL FELL TO ZERO WHETHER OR NOT THE PICTURE WAS
+    // RELEASED.** `preLiftSurface` was a `final` field, read once at the
+    // landing and never let go, so parking one of these entries encoded
+    // its tiles to disk, dropped the snapshot's references, reported zero
+    // — and freed nothing, because the command still held every tile. The
+    // assertion below measures the LEDGER, and the ledger could not see
+    // it; this is the only thing that can.
+    expect(
+      commands.map((command) => command.retainsPreLiftSurface),
+      everyElement(isFalse),
+      reason: 'the pair owns the picture after the landing, and only it',
+    );
     final residentBeforeSpill = history.retainedBytes;
     expect(
       residentBeforeSpill,

@@ -6,6 +6,7 @@ import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
+import 'cel_snapshot_restore.dart';
 
 /// Adopts a CONFIRMED move session (R16-①, TVP-style) into app history
 /// as ONE undoable step (R19 P3b surface-snapshot form).
@@ -67,7 +68,21 @@ class BrushLiftMoveHistoryCommand
   /// nothing to weigh it against yet — the erase is already committed and
   /// this still shares every tile with the live surface — and a snapshot
   /// that cannot name its neighbour cannot say what it owns.
-  final BitmapSurface _preLiftSurface;
+  ///
+  /// 🚨★★★**"UNTIL THE LANDING" WAS THE INTENT AND `final` WAS THE BUG.**
+  /// It was never released, so a confirmed transform pinned its entire
+  /// pre-lift surface for the life of the entry — and [parkPayload] then
+  /// encoded those very tiles to disk, dropped the snapshot's references,
+  /// reported ZERO, and freed nothing at all, because this field still
+  /// held every one of them. The stack's budget saw the number fall and
+  /// stopped spilling; the RAM never moved. That is the same defect
+  /// [UndoSurfaceSnapshot] fixed one file over for the SHARED tiles, and
+  /// here the fraction still pinned was 100%, not 35%.
+  ///
+  /// ⚠️It is the neighbour of [_stampDab], which is nulled two lines down
+  /// with「the stamp's RGBA payload is megabytes」as the reason. This is
+  /// the larger of the two.
+  BitmapSurface? _preLiftSurface;
 
   /// Dropped after the landing — the stamp's RGBA payload is megabytes,
   /// and redo restores the post SURFACE instead (same retention
@@ -75,6 +90,13 @@ class BrushLiftMoveHistoryCommand
   BrushDab? _stampDab;
   UndoSurfacePair? _surfaces;
   bool _landed = false;
+
+  /// Diagnostic for the accumulation regression guard, the same shape
+  /// `BrushStrokeHistoryCommand.retainsCommitPayload` is — and the reason
+  /// this one exists is that nothing could see the leak from outside: the
+  /// bill fell to zero on parking whether or not the picture was released,
+  /// so every test stayed green while the RAM never moved.
+  bool get retainsPreLiftSurface => _preLiftSurface != null;
 
   /// Zero until the landing, and then the pre-lift tiles the confirm left
   /// behind — the one law, asked of the snapshot that holds them.
@@ -112,9 +134,13 @@ class BrushLiftMoveHistoryCommand
     );
     _surfaces = UndoSurfacePair(
       key: frameKey,
-      before: _preLiftSurface,
+      before: _preLiftSurface!,
       after: coordinator.currentSurfaceOf(frameKey),
     );
+    // The pair owns the picture now, and it is the only thing that may:
+    // it can weigh it, park it and give it back. Holding a second
+    // reference here would make every one of those answers a lie.
+    _preLiftSurface = null;
     _stampDab = null;
     _landed = true;
     // Read AFTER the landing, so a redo restores the shape the confirm
@@ -130,21 +156,12 @@ class BrushLiftMoveHistoryCommand
 
   /// ⛔A payload that will not come back leaves the PIXELS alone — but the
   /// selection still travels, because the outline is held in memory here
-  /// and putting it back is never the destructive half.
-  void _restore(UndoSurfaceSnapshot? snapshot) {
-    // The cel as it stands IS the surface this snapshot was measured
-    // against — the stack steps LIFO, so undo reads the post-surface and
-    // redo reads the pre-surface, and both are its `sharedWith`.
-    final surface = snapshot?.surfaceOver(
-      coordinator.currentSurfaceOf(frameKey),
-    );
-    if (surface == null) {
-      return;
-    }
-    coordinator.restoreSurfaceSnapshot(
-      frameKey,
-      surface,
-      cacheInvalidationSink: cacheInvalidationSink,
-    );
-  }
+  /// and putting it back is never the destructive half. That asymmetry is
+  /// this command's own; the pixel half is [restoreCelSnapshot]'s.
+  void _restore(UndoSurfaceSnapshot? snapshot) => restoreCelSnapshot(
+    coordinator: coordinator,
+    frameKey: frameKey,
+    snapshot: snapshot,
+    cacheInvalidationSink: cacheInvalidationSink,
+  );
 }

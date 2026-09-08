@@ -154,9 +154,17 @@ class UndoSurfaceSnapshot {
   Map<TileCoord, BitmapTile>? _owned;
 
   BitmapSurface? _surface;
+
+  /// The file, when there was anything worth writing. ⛔NOT the answer to
+  /// "has it parked" — a snapshot that owned no tile lets go of its
+  /// surface without writing a byte, and asking this would call that one
+  /// resident forever.
   String? _parkedPath;
 
-  bool get isParked => _parkedPath != null;
+  /// Whether the tiles have left RAM, by either route.
+  bool _letGo = false;
+
+  bool get isParked => _letGo;
 
   /// RAM this snapshot is holding on its own: zero once parked, because
   /// the bytes are then a file.
@@ -190,17 +198,35 @@ class UndoSurfaceSnapshot {
   /// wrong picture painted over the right one, which is worse than the
   /// undo not happening.
   BitmapSurface? surfaceOver(BitmapSurface? live) {
+    // ⛔THE DROP COMES FIRST, and [drop]'s own doc is why: it「stays a
+    // valid snapshot afterwards — one that answers null」. Without this
+    // the shared half would still assemble, and a snapshot whose owned
+    // tiles were taken back would answer with a picture full of holes —
+    // the one answer this getter exists to refuse.
+    if (_dropped) {
+      return null;
+    }
     final resident = _surface;
     if (resident != null) {
       return resident;
     }
-    final path = _parkedPath;
-    if (path == null) {
+    if (!_letGo) {
       return null;
     }
     final shared = _sharedTilesFrom(live);
     if (shared == null) {
       return null;
+    }
+    final path = _parkedPath;
+    if (path == null) {
+      // It let go without writing anything: it owned no tile, so the
+      // shared ones ARE the whole picture and there are no holes in it.
+      _letGo = false;
+      return _surface = BitmapSurface(
+        canvasSize: _canvasSize,
+        tileSize: _tileSize,
+        tiles: shared,
+      );
     }
     final bytes = ScratchFile.read(path);
     if (bytes == null) {
@@ -222,6 +248,9 @@ class UndoSurfaceSnapshot {
       tiles: {...shared, ...owned},
     );
     _parkedPath = null;
+    // Resident again by every measure — [isParked] has to say so, or a
+    // later park would take its own early return and never write.
+    _letGo = false;
     ScratchFile.remove(path);
     return _surface;
   }
@@ -289,8 +318,19 @@ class UndoSurfaceSnapshot {
     }
     final owned = _owned;
     if (owned == null || owned.isEmpty) {
-      // Nothing of its own to move — every tile is somebody else's, so it
-      // is already weightless and there is nothing a file would free.
+      // Nothing of its own to move — every tile is somebody else's, so no
+      // file would free anything.
+      //
+      // 🚨★★★**BUT IT STILL HAD TO LET GO.** "Somebody else's" is a claim
+      // about the instant it was measured; [_surface] is a reference to
+      // the WHOLE picture, and once the drawing moves past those tiles it
+      // is the last one holding them. This early return kept it, so the
+      // one snapshot the budget was sure cost nothing was the one that
+      // went on costing — the same mistake [_sharedCoords] records, in the
+      // branch that looked too trivial to have it.
+      _owned = null;
+      _surface = null;
+      _letGo = true;
       return true;
     }
     final entry = AnicelCelEntry.fromSurface(
@@ -323,6 +363,7 @@ class UndoSurfaceSnapshot {
     _parkedPath = path;
     _owned = null;
     _surface = null;
+    _letGo = true;
     return true;
   }
 

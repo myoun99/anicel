@@ -50,13 +50,36 @@ class _CanvasPanelLift {
   /// half-release would leave it parking pixels nobody will ever read
   /// again. There are three ways a lift ends and this is the one verb all
   /// three go through.
-  ({UndoSurfaceSnapshot pixels, CanvasSelectionRegion? region})? _takeAnchor(
+  ///
+  /// 🚨★★★**AND IT READS THE PICTURE HERE, THEN GIVES THE ROOM ITS FILE
+  /// BACK.** The payload is consumed exactly once — the reading and the
+  /// releasing are one act, so neither can be forgotten at one of the three
+  /// endings. It was split before: the store's release only dropped the
+  /// map entry, and a lift that ended by LANDING never read its payload at
+  /// all, so a box that had been parked through a memory warning left a
+  /// scratch file behind for the rest of the run.
+  ///
+  /// ⚠️The abandon path pays a decode it does not use, and that is the
+  /// price of the two verbs being one. It costs anything at all only when
+  /// a warning arrived while this very box was open.
+  ({BitmapSurface? pixels, CanvasSelectionRegion? region})? _takeAnchor(
     int liftToken,
   ) {
-    _state.widget._editableCoordinator?.frameStore.releaseLiftedPixels(
-      liftToken,
-    );
-    return _liftAnchors.remove(liftToken);
+    final coordinator = _state.widget._editableCoordinator;
+    coordinator?.frameStore.releaseLiftedPixels(liftToken);
+    final anchor = _liftAnchors.remove(liftToken);
+    if (anchor == null) {
+      return null;
+    }
+    // The cel as it stands is the post-erase surface the anchor was
+    // measured against — the box has been floating over it all along.
+    final surface = coordinator == null
+        ? null
+        : anchor.pixels.surfaceOver(
+            coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+          );
+    anchor.pixels.drop();
+    return (pixels: surface, region: anchor.region);
   }
 
   /// The cel as it stood just before a lift session's landing committed —
@@ -166,9 +189,7 @@ class _CanvasPanelLift {
       // undo target — an entry built on the post-erase surface instead
       // would say the erase never happened. It joins the two cases that
       // already land raw rather than becoming a third shape.
-      final preLiftSurface = preLift?.pixels.surfaceOver(
-        coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-      );
+      final preLiftSurface = preLift?.pixels;
       if (historyManager == null || preLift == null || preLiftSurface == null) {
         // Headless hosts (focused tests) or a lost anchor: land raw.
         coordinator.commitSourceStroke(
@@ -220,9 +241,7 @@ class _CanvasPanelLift {
       // app removed a file we wrote this run, which is the same wager the
       // parked undo payloads already make, and the alternative to making
       // it is holding the bytes through a memory warning.
-      final surface = preLift.pixels.surfaceOver(
-        coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-      );
+      final surface = preLift.pixels;
       if (surface == null) {
         return;
       }

@@ -80,8 +80,15 @@ void main() {
       expect(identical(back.tileAt(mine.coord), mine), isFalse);
     });
 
-    test('a snapshot that shares everything parks nothing — there is no '
-        'file to write and nothing a file would free', () async {
+    /// 🚨A SNAPSHOT THAT SHARES EVERYTHING WRITES NO FILE — AND STILL HAS
+    /// TO LET GO. It used to return early with its whole surface still
+    /// referenced, on the grounds that every tile was "somebody else's".
+    /// That is true when it is measured and false the moment the drawing
+    /// moves past those tiles, and then this reference is the last one:
+    /// the one snapshot the budget was certain cost nothing was the one
+    /// that went on costing.
+    test('a snapshot that shares everything writes no file, and lets go '
+        'anyway', () async {
       final shared = tileOf(0, 11);
       final live = surfaceOf([shared]);
       final snapshot = UndoSurfaceSnapshot(
@@ -89,13 +96,30 @@ void main() {
         snapshot: surfaceOf([shared]),
         sharedWith: live,
       );
+      final before = _volatilePaths();
 
       expect(snapshot.residentBytes, 0);
       expect(await snapshot.park(), isTrue);
-      expect(snapshot.isParked, isFalse);
+
+      expect(
+        _volatilePaths().difference(before),
+        isEmpty,
+        reason: 'nothing of its own to write',
+      );
+      expect(
+        snapshot.isParked,
+        isTrue,
+        reason: 'and yet it is holding no picture any more',
+      );
+      expect(
+        snapshot.surfaceOver(null),
+        isNull,
+        reason: 'which is exactly what "let go" has to mean',
+      );
       expect(
         identical(snapshot.surfaceOver(live)!.tileAt(shared.coord), shared),
         isTrue,
+        reason: 'and the cel gives the same tile object back',
       );
     });
 

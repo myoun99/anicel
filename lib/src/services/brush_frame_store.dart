@@ -265,8 +265,15 @@ class BrushFrameStore {
     // warning is no place to wait on an isolate. Each snapshot joins its
     // own park if one is already in flight, so a burst of warnings costs
     // one encode.
+    // 🚨★★★**A COPY, AND `.values` WAS A CRASH.** `parkAll` awaits an
+    // isolate per snapshot, and `Map.values` is a LIVE view — so a lift
+    // that ended while its own payload was mid-encode (press Enter during
+    // a memory warning; the OS sends them in bursts) removed the entry the
+    // loop was standing on and the pass died with a
+    // ConcurrentModificationError, uncaught, inside a future nobody
+    // awaits. The list is taken once, here, where the warning arrives.
     _activeLiftParking = UndoSurfaceSnapshot.parkAll(
-      _liftedPixels.values,
+      _liftedPixels.values.toList(),
     ).whenComplete(() => _activeLiftParking = null);
   }
 
