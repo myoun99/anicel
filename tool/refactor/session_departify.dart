@@ -38,8 +38,12 @@
 // declared in the host that only a collaborator used (the declaration
 // moves), a collaborator advancing the frame sequence itself (it mints).
 //
-// ⚠️Collaborators that do not hold `_session` (editing_stack_map,
-// playback_cache_budget's `(this)` form, …) are left as parts and listed.
+// ⚠️Collaborators that do not hold `_session` (a `(this)` constructor
+// form, or a bare block of members with no `this` at all) are left as
+// parts and listed — the list is where the hand-work starts. It came out
+// EMPTY for the first time in G4-2 (2026-09-08): the session library has
+// no parts left, so this branch of the tool now only fires for a part
+// somebody adds back.
 
 import 'dart:convert';
 import 'dart:io';
