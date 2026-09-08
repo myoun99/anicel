@@ -157,6 +157,7 @@ class MediaViewerTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.framedFor,
     this.filePicker,
+    this.sound,
   });
 
   /// WHICH viewer this is — the panel's tab id, and the prefix every
@@ -228,6 +229,16 @@ class MediaViewerTabHost extends StatefulWidget {
 
   /// Injectable loose-file picker (tests).
   final Future<String?> Function()? filePicker;
+
+  /// Injectable sound (tests) — the same seam as [filePicker].
+  ///
+  /// 🚨★★★**WITHOUT THIS THE SOUND HALF IS UNMEASURED.** A widget test
+  /// never gets an audio device (`audioOutputUnlessTesting`), so every
+  /// call this panel makes into [ViewerSound] is a no-op on the bench:
+  /// deleting the hold, the resume or the stop leaves the whole suite
+  /// green. That is not 「no test was needed」, it is 「the bench cannot
+  /// see it」 — and this is the door that lets it.
+  final ViewerSound? sound;
 
   @override
   State<MediaViewerTabHost> createState() => _MediaViewerTabHostState();
@@ -393,7 +404,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// ⚠️Built lazily against the session's conform store — the SAME store
   /// the timeline plays out of, so a file conformed for one is conformed
   /// for the other and nothing is decoded twice.
-  late final ViewerSound _sound = ViewerSound(
+  late final ViewerSound _sound = widget.sound ?? ViewerSound(
     conformStore: widget.session.audioConformStore,
     resolveOutputDeviceName: () => widget
         .session
@@ -842,11 +853,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // comes through here. A sound left playing under a stopped viewer is
     // the one failure this panel cannot show on screen.
     //
-    // 🧪MUTANT SURVIVES HERE — deleting this line keeps the suite green,
-    // and that is a limit of the bench rather than a missing test: a widget
-    // test never gets a device ([audioOutputUnlessTesting]), so nothing in
-    // it can be left playing. What would catch it is a person with
-    // headphones on, which is why the line is written with its reason.
+    // 🪦This line carried a 「MUTANT SURVIVES HERE」 note for one round: the
+    // bench has no audio device, so nothing could be left playing and
+    // deleting it changed nothing. The note was right about the bench and
+    // wrong about the conclusion — the answer was a SEAM, not a shrug.
+    // `MediaViewerTabHost.sound` is that seam, and the mutant dies now.
     _sound.stop();
   }
 
@@ -933,51 +944,68 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       if (!_turnsItsOwnPages && !_sound.isCarrying) {
         return;
       }
-      _playTimer = Timer.periodic(period, (_) {
-        if (!_turnsItsOwnPages) {
-          _followTheSound();
-          return;
-        }
-          // 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT
-          // IS NOT THERE.**
-          //
-          // This used to be 「best effort, deliberately」: the page advanced
-          // on the clock and whichever raster had landed was drawn. What
-          // that produced was a picture standing still while the playhead
-          // moved — and a held picture cannot be told apart from a hold the
-          // animator DREW, which is the one judgement this panel exists to
-          // support. 유저 2026-08-31: 「유지하지말고 로드할때까지
-          // 멈춰있어야지」, and 「그림을 유지한다는게 아니라 그 곳에
-          // 멈춘다는거야」.
-          //
-          // ⚠️The CANVAS does the opposite and that is also right: it
-          // judges TIMING against sound, so it holds real time and drops
-          // frames — `AudioPlaybackSync` says so in one line, 「frames drop,
-          // time never stretches」. This is a player looking at reference,
-          // where nothing is riding on the clock, so it buffers.
-          if (!mounted) {
-            return;
-          }
-          if (_page >= _pageCount - 1) {
-            setState(_stopPlaying);
-            return;
-          }
-          final ready = _readyFramesFrom(_page + 1);
-          if (_buffering) {
-            // ⛔Not「one frame is ready, go」: that plays a frame, runs dry
-            // and parks again, which is a stutter rather than playback.
-            if (ready < _resumeAfterFrames()) {
-              return;
-            }
-            setState(() => _buffering = false);
-          } else if (ready < 1) {
-            setState(() => _buffering = true);
-            return;
-          }
-          _turnToPage(_page + 1);
-        },
-      );
+      _playTimer = Timer.periodic(period, (_) => _onPlayTick());
     });
+  }
+
+  /// One tick of a run.
+  void _onPlayTick() {
+    if (!mounted) {
+      return;
+    }
+    if (_turnsItsOwnPages) {
+      _turnThePage();
+      return;
+    }
+    _followTheSound();
+  }
+
+  /// 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT IS NOT
+  /// THERE — AND NEITHER DOES THE SOUND.**
+  ///
+  /// This used to be 「best effort, deliberately」: the page advanced on the
+  /// clock and whichever raster had landed was drawn. What that produced
+  /// was a picture standing still while the playhead moved — and a held
+  /// picture cannot be told apart from a hold the animator DREW, which is
+  /// the one judgement this panel exists to support. 유저 2026-08-31:
+  /// 「유지하지말고 로드할때까지 멈춰있어야지」, and 「그림을 유지한다는게
+  /// 아니라 그 곳에 멈춘다는거야」.
+  ///
+  /// ⚠️The CANVAS does the opposite and that is also right: it judges
+  /// TIMING against sound, so it holds real time and drops frames —
+  /// `AudioPlaybackSync` says so in one line, 「frames drop, time never
+  /// stretches」.
+  ///
+  /// 🪦That last paragraph used to end 「This is a player looking at
+  /// reference, where nothing is riding on the clock, so it buffers」, and
+  /// as of 2026-09-08 something IS riding on it: the movie's own
+  /// soundtrack. The law did not change — it reached further. A buffer
+  /// that runs dry now holds the SOUND at the same instant, so the two
+  /// stutter together and come back in step; letting the sound run on
+  /// would leave the picture to catch up by dropping frames, which is the
+  /// behaviour this surface was given its law to refuse.
+  void _turnThePage() {
+    if (_page >= _pageCount - 1) {
+      setState(_stopPlaying);
+      return;
+    }
+    final ready = _readyFramesFrom(_page + 1);
+    if (_buffering) {
+      // ⛔Not「one frame is ready, go」: that plays a frame, runs dry
+      // and parks again, which is a stutter rather than playback.
+      if (ready < _resumeAfterFrames()) {
+        return;
+      }
+      _sound.resume(_soundSeconds);
+      setState(() => _buffering = false);
+    } else if (ready < 1) {
+      // Remember where the sound was, because that is where BOTH pick up.
+      _soundSeconds = _sound.positionSeconds ?? _soundSeconds;
+      _sound.hold();
+      setState(() => _buffering = true);
+      return;
+    }
+    _turnToPage(_page + 1);
   }
 
   Future<void> _pickLooseFile() async {

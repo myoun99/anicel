@@ -47,6 +47,10 @@ class ViewerSound {
   QaAudioDevice? _device;
   int _deviceRate = 0;
 
+  /// Where the uploaded file ENDS, in device samples — kept so [resume] can
+  /// hand the transport the same span [play] gave it.
+  int _endSample = 0;
+
   /// Whether sound is actually coming out for the current file.
   bool get isCarrying => _device != null;
 
@@ -89,15 +93,40 @@ class ViewerSound {
     }
     _device = device;
     _deviceRate = armed.deviceRate;
+    _endSample = (seconds * _deviceRate).round();
     // ⚠️The START is in SAMPLES, not in whole seconds: the window only has
     // to be centred near the playhead, but the sound has to begin exactly
     // where the picture says it does.
-    device.play(
-      startSample: (fromSeconds * _deviceRate).round(),
-      stopSample: (seconds * _deviceRate).round(),
-    );
+    resume(fromSeconds);
     return true;
   }
+
+  /// Stops the sound WITHOUT letting go of what was uploaded, so [resume]
+  /// can pick it up again.
+  ///
+  /// 🚨★★★**THE WHOLE TRANSPORT WAITS — sound included.** 유저 2026-08-31
+  /// gave this viewer its law: 「유지하지말고 **로드할때까지 멈춰있어야지**」,
+  /// because a held picture cannot be told apart from a hold the animator
+  /// DREW. Once the picture has sound beside it that law has to reach the
+  /// sound too, and the alternative proves it: letting the sound run on
+  /// while the picture parks means the picture must later CATCH UP by
+  /// dropping frames — which is exactly what the user rejected for this
+  /// surface. So a movie whose buffer runs dry stutters in both, together,
+  /// and comes back in sync.
+  ///
+  /// ⚠️This is a DERIVED decision, not one that was asked for: it applies
+  /// the law this surface already has to the thing that was added to it.
+  /// Written here so the next reader can disagree with the derivation
+  /// rather than guess at the intent.
+  void hold() => _device?.stop();
+
+  /// Starts (or picks back up) at [fromSeconds] on the schedule already
+  /// uploaded. ⛔Not a seek: the streaming window is where [play] centred
+  /// it, and a jump far from there would read past its edge.
+  void resume(double fromSeconds) => _device?.play(
+    startSample: (fromSeconds * _deviceRate).round(),
+    stopSample: _endSample,
+  );
 
   /// Where the device has got to, or null while nothing is carrying.
   ///
@@ -112,10 +141,16 @@ class ViewerSound {
     return device.positionSamples / _deviceRate;
   }
 
-  /// Whether the device ran out of the file it was given.
+  /// Whether the device reached the end of the file it was given.
+  ///
+  /// ⛔It compares POSITIONS rather than asking `isPlaying`. A sound being
+  /// [hold]d is also not playing, and a viewer that read that as 「끝났다」
+  /// would stop the whole run every time a buffer ran dry.
   bool get ended {
     final device = _device;
-    return device != null && !device.isPlaying;
+    return device != null &&
+        _endSample > 0 &&
+        device.positionSamples >= _endSample;
   }
 
   /// Silence, and nothing held. ⚠️Idempotent — the viewer stops on every
@@ -124,5 +159,6 @@ class ViewerSound {
     _device?.stop();
     _device = null;
     _deviceRate = 0;
+    _endSample = 0;
   }
 }
