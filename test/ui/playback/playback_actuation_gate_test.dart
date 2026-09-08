@@ -12,6 +12,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_actuation_gate.dart';
+import 'package:anicel/src/ui/playback/playback_transport.dart';
+import '../../helpers/fake_playback_transport.dart';
 
 /// 🚨★★★ T28-c — 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」.
 ///
@@ -21,8 +23,8 @@ import 'package:anicel/src/ui/playback/playback_actuation_gate.dart';
 /// is the behaviour the user was describing when they said 「입력 일 안함」.
 void main() {
   late CanvasPlaybackController controller;
+  late PlaybackTransports transports;
   late int taps;
-
 
   CanvasPlaybackController build() => CanvasPlaybackController(
     resolveProject: () => Project(
@@ -56,7 +58,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: PlaybackActuationGate(
-            controller: controller,
+            transports: transports,
             // Focused on purpose: it puts the primary focus BELOW the gate,
             // which is the arrangement that proves the keyboard half cannot
             // work through the widget tree.
@@ -78,11 +80,14 @@ void main() {
 
   setUp(() {
     controller = build();
+    transports = PlaybackTransports()..add(controller);
     taps = 0;
-
   });
 
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    transports.dispose();
+    controller.dispose();
+  });
 
   testWidgets('stopped, the work surface does its own job', (tester) async {
     await pumpGate(tester);
@@ -164,8 +169,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: PlaybackActuationGate(
-              controller: controller,
-              navigationRegionKey: regionKey,
+              transports: transports,
+              navigationRegion: (key: regionKey, transport: controller),
               child: Column(
                 children: [
                   Expanded(
@@ -244,8 +249,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: PlaybackActuationGate(
-              controller: controller,
-              navigationRegionKey: regionKey,
+              transports: transports,
+              navigationRegion: (key: regionKey, transport: controller),
               child: Stack(
                 children: [
                   SizedBox.expand(
@@ -307,8 +312,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: PlaybackActuationGate(
-              controller: controller,
-              navigationRegionKey: regionKey,
+              transports: transports,
+              navigationRegion: (key: regionKey, transport: controller),
               child: Stack(
                 children: [
                   SizedBox.expand(
@@ -421,6 +426,122 @@ void main() {
       expect(regionTaps, 1);
       expect(taps, 1);
       expect(controller.isPlaying, isFalse);
+    });
+
+    /// 🚨★★★THE HOLE BELONGS TO ITS OWN RUN. D13's promise that a stroke
+    /// cannot leak through it rests on the canvas panel swapping its
+    /// content during a canvas run. While a MEDIA VIEWER is the thing
+    /// playing, the panel is showing the drawing surface, so an
+    /// unconditional hole would draw.
+    testWidgets('while somebody ELSE plays, the region is not a hole — '
+        'the press stops and never lands', (tester) async {
+      final viewer = FakePlaybackTransport();
+      addTearDown(viewer.dispose);
+      transports.add(viewer);
+      await pumpGateWithRegion(tester);
+      viewer.play();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('nav-region')));
+      await tester.pump();
+
+      expect(viewer.isPlaying, isFalse, reason: 'the actuation stopped it');
+      expect(
+        regionTaps,
+        0,
+        reason: 'D13 is 「재생 중 팬·줌」 for the CANVAS run; with the '
+            'drawing surface mounted, a hole here would draw a stroke',
+      );
+    });
+  });
+
+  /// 🚨★★★EXCLUSIVE PLAYBACK, BOTH DIRECTIONS (유저 2026-09-07
+  /// `exclusive`). The canvas→viewer direction always worked because the
+  /// viewer's button sits under this gate. This group is the direction
+  /// that did not exist: the gate holding a `CanvasPlaybackController` by
+  /// its concrete type could not hear a media viewer's own timer.
+  group('every transport, not just the canvas', () {
+    late FakePlaybackTransport viewer;
+
+    setUp(() {
+      viewer = FakePlaybackTransport();
+      transports.add(viewer);
+    });
+
+    tearDown(() => viewer.dispose());
+
+    testWidgets('a press while a NON-canvas transport plays stops it and is '
+        'consumed', (tester) async {
+      await pumpGate(tester);
+      viewer.play();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+
+      expect(viewer.isPlaying, isFalse);
+      expect(taps, 0, reason: '「뭘 하든 정지만. 입력 일 안함」 — the law does '
+          'not care WHICH transport is running');
+    });
+
+    testWidgets('a key down while a NON-canvas transport plays stops it', (
+      tester,
+    ) async {
+      await pumpGate(tester);
+      viewer.play();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.pump();
+
+      expect(viewer.isPlaying, isFalse);
+    });
+
+    /// The second press is the law showing through, not a bug — 유저
+    /// 2026-09-08 asked exactly this and said 「그대로 둠. 그게 직관적임」.
+    testWidgets('the SECOND actuation does its job, whichever transport was '
+        'the one playing', (tester) async {
+      await pumpGate(tester);
+      viewer.play();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+
+      expect(taps, 1);
+    });
+
+    testWidgets('a REMOVED transport no longer arms the gate — a closed '
+        'viewer tab must not answer 「재생 중」 forever', (tester) async {
+      await pumpGate(tester);
+      viewer.play();
+      await tester.pump();
+      transports.remove(viewer);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+
+      expect(taps, 1, reason: 'the gate is inert once nothing it knows plays');
+      expect(viewer.stops, 0, reason: 'and it stops what it no longer holds');
+    });
+
+    testWidgets('the canvas keeps its own half of the law with a second '
+        'transport registered', (tester) async {
+      await pumpGate(tester);
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+
+      expect(controller.isPlaying, isFalse);
+      expect(taps, 0);
+
+      controller.detachTicker();
     });
   });
 

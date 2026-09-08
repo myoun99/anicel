@@ -4,7 +4,7 @@ import 'package:flutter/rendering.dart'
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent;
 
-import 'canvas_playback_controller.dart';
+import 'playback_transport.dart';
 
 /// 🚨★★★ T28-c — WHILE PLAYING, THE FIRST ACTUATION IS STOP, AND ONLY STOP.
 /// D13 (2026-08-17) amends exactly ONE carve-out: a pointer actuation whose
@@ -24,11 +24,24 @@ import 'canvas_playback_controller.dart';
 /// (it asks whose surface the pointer actually lands on), never a
 /// surface's own check.
 ///
+/// 🚨★★★AND "PLAYING" MEANS EVERY [PlaybackTransport], NOT THE CANVAS.
+/// 유저 2026-09-07 chose `exclusive` for the media viewer's sound: 「나중에
+/// 누른 쪽이 이기고 진 쪽은 정지」, both directions. This used to hold a
+/// `CanvasPlaybackController` by its concrete type, so the canvas→viewer
+/// direction worked (the viewer's button is under this gate) and the
+/// viewer→canvas direction did not exist at all — the gate could not hear
+/// a timer it had never been told about. Holding [PlaybackTransports]
+/// instead makes exclusive fall out of the law already written here: while
+/// ANY transport plays, the first actuation stops ALL of them and is
+/// eaten, so the second press starts whichever surface it landed on.
+/// ⛔That double press is not a bug to smooth over per surface — 유저
+/// 2026-09-08, asked exactly that: 「그대로 둠. 그게 직관적임」.
+///
 /// 📐The D13 hole is decided by the HIT PATH, not by a rectangle: the
 /// floating timeline overlaps the canvas panel's rect, so 「캔버스 위 좌표」
 /// would have let a timeline press act during playback. The absorber
 /// hit-tests the subtree and passes the event ONLY when the hit CLAIMED
-/// into [navigationRegionKey]'s subtree — the canvas panel: its
+/// into [navigationRegion]'s subtree — the canvas panel: its
 /// viewport gestures, zoom buttons and panbars (the chrome the playback
 /// view renders inside on purpose, "so the panel chrome keeps working
 /// during playback"). Drawing cannot leak through the hole: playback swaps
@@ -48,9 +61,10 @@ import 'canvas_playback_controller.dart';
 /// 「키보드 줌도 통과시킨다. 재생 중 줌은 입력 수단과 무관하게 한 법으로」 —
 /// which this already satisfies by having no second case to disagree with.
 /// ⚠️It becomes a real question the day a zoom key is bound: the law is then
-/// "a viewport ZOOM passes whatever the device", and it belongs in the same
-/// two places the pointer hole does (this handler and the action funnel's
-/// `_consumedByPlayback`), never as a check inside a zoom action.
+/// "a viewport ZOOM passes whatever the device", and it belongs in this
+/// gate's own two key halves ([_PlaybackActuationGateState._onKey] and
+/// [_PlaybackActuationGateState._eatConsumedKey]), never as a check inside
+/// a zoom action.
 ///
 /// ✅유저 확정 — the two questions this had, both answered (⛔재론 금지):
 /// 1. **「입력」 = actuation only**: key DOWN, pointer DOWN, wheel/zoom.
@@ -60,24 +74,31 @@ import 'canvas_playback_controller.dart';
 ///    seek; `,` and `.` move no frame. That is what the absorber and
 ///    the handled key result are for — without them this would be "stop AND
 ///    do the thing", which is a different rule on every surface.
+///    🪦Half of that sentence was a claim, not a behaviour, until
+///    2026-09-08: `.` DID move a frame (실측). The key half now lives in
+///    [_eatConsumedKey]; the note there says why the funnel could never
+///    have done it.
 ///
-/// 📐Stopping stands where it stopped ([CanvasPlaybackController.stop]);
+/// 📐Stopping stands where it stopped ([PlaybackTransport.stop]);
 /// 「재생아닌상태가 일시정지상태나 다름없음」 only holds if it does.
 ///
-/// 🚨KEY EVENTS DO NOT GO THROUGH THE TREE HERE, and that is not a shortcut
-/// — a `Focus(onKeyEvent:)` cannot do this job. Key events dispatch from the
-/// PRIMARY FOCUS outward, so a widget only sees them if it is an ancestor of
-/// whatever holds focus. This gate is mounted inside the editor's own
-/// `FocusScope`, and with no field focused the scope IS the primary focus —
-/// an ancestor of the gate, which would therefore never be consulted at all.
-/// Anything nested deeper (a text field, a canvas focus node) would also
-/// beat it. [HardwareKeyboard]'s handler list runs BEFORE focus dispatch and
-/// returning true stops the message there, which is the only position from
-/// which the actuation can be EATEN rather than merely followed.
+/// 🚨THE STOP DOES NOT GO THROUGH THE TREE, and that is not a shortcut — a
+/// `Focus(onKeyEvent:)` cannot do it. Key events dispatch from the PRIMARY
+/// FOCUS outward, so a widget only sees them if it is an ancestor of
+/// whatever holds focus; anything nested deeper (a text field, a canvas
+/// focus node) beats it, and 「뭘 누르든」 admits no such gap.
+/// [HardwareKeyboard]'s handler list runs BEFORE focus dispatch, which is
+/// the only position from which EVERY key can be seen.
 ///
-/// ⚠️PERFORMANCE: it listens to [CanvasPlaybackController.isActiveListenable]
-/// and NOT to the controller itself. The controller notifies once per played
-/// frame; rebuilding a wrapper around the whole editor at fps is the exact
+/// ⚠️The CONSUMING half is the tree's, and where in the tree matters: the
+/// gate wraps the editor's `FocusScope` rather than sitting inside it, so
+/// its [Focus] node is on every key's way up to `Shortcuts`. That was not
+/// true until 2026-09-08 — see [_PlaybackActuationGateState._eatConsumedKey].
+///
+/// ⚠️PERFORMANCE: it listens to [PlaybackTransports], which follows each
+/// member's [PlaybackTransport.isActiveListenable] and NOT the transports
+/// themselves. The canvas controller notifies once per played frame;
+/// rebuilding a wrapper around the whole editor at fps is the exact
 /// mistake the playback view's own comments were written to prevent. The
 /// editor subtree rides through as `child`, so it is never rebuilt here at
 /// all. The region verdict is computed per EVENT HIT TEST (a press, a wheel
@@ -102,18 +123,26 @@ import 'canvas_playback_controller.dart';
 class PlaybackActuationGate extends StatefulWidget {
   const PlaybackActuationGate({
     super.key,
-    required this.controller,
+    required this.transports,
     required this.child,
-    this.navigationRegionKey,
+    this.navigationRegion,
   });
 
-  final CanvasPlaybackController controller;
+  /// Everything that plays — the canvas and whatever media viewers are
+  /// open. ⛔Never a single transport: the law is 「재생 중이면」, and the
+  /// day a surface is missing from this list is the day the law becomes
+  /// "most places".
+  final PlaybackTransports transports;
   final Widget child;
 
-  /// D13: the canvas panel's subtree key — pointer actuations whose hit
-  /// path claims into it NAVIGATE instead of stopping.
-  /// Null keeps the pure T28-c law (every actuation stops).
-  final GlobalKey? navigationRegionKey;
+  /// D13: the canvas panel's subtree key, TOGETHER WITH the run whose
+  /// picture that subtree shows — pointer actuations whose hit path claims
+  /// into it navigate instead of stopping, while that run is the one
+  /// playing. Null keeps the pure T28-c law (every actuation stops).
+  ///
+  /// ⛔One field, not two: a key without its run is a hole that opens
+  /// during somebody else's playback, which is [_regionBox]'s whole note.
+  final ({GlobalKey key, PlaybackTransport transport})? navigationRegion;
 
   @override
   State<PlaybackActuationGate> createState() => _PlaybackActuationGateState();
@@ -138,17 +167,29 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     super.dispose();
   }
 
+  /// The key event this gate has already spent on a STOP, held only for
+  /// the rest of that event's dispatch ([_eatConsumedKey] clears it).
+  ///
+  /// 🚨★★★**THE IDENTITY, NOT A FLAG.** A bare "just consumed one" boolean
+  /// is set by every actuation and cleared by nobody in particular, so a
+  /// press on the timeline would arm it and the NEXT bound key — pressed
+  /// minutes later, with nothing playing — would be eaten by it.
+  KeyEvent? _consumedKey;
+
   /// Registered for the gate's whole life, with the guard INSIDE.
   /// Subscribing and unsubscribing as playback comes and goes would make
   /// the handler's presence a second piece of state to keep true.
   ///
   /// ⚠️Returning true does NOT stop the key reaching the focus tree —
   /// measured, not assumed: Flutter dispatches the key message either way.
-  /// So this handler owns only half the law, the STOP; the app's action
-  /// funnel owns the other half by declining to run a bound action in the
-  /// same beat. A key with no binding has nothing to eat.
+  /// So this handler owns only the STOP; [_eatConsumedKey] owns the other
+  /// half. A key with no binding has nothing to eat.
   bool _onKey(KeyEvent event) {
-    if (!widget.controller.isPlaying) {
+    // Every key dispatch starts with the slot empty: a text field that
+    // handles its own keys ends dispatch before [_eatConsumedKey], and a
+    // note left there would outlive the event it describes.
+    _consumedKey = null;
+    if (!widget.transports.value) {
       return false;
     }
     if (event is! KeyDownEvent) {
@@ -157,18 +198,66 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       // saw the beginning of.
       return false;
     }
-    widget.controller.stop();
+    widget.transports.stopAll();
+    _consumedKey = event;
     return true;
   }
 
+  /// 🚨★★★**「입력 일 안함」 FOR KEYS, AND IT LIVES HERE.**
+  ///
+  /// 🪦This half did not work at all until 2026-09-08, and the note above
+  /// said where it was: 「the app's action funnel owns the other half」.
+  /// It cannot. [HardwareKeyboard]'s handlers run BEFORE focus dispatch,
+  /// so by the time the funnel is asked 「재생 중인가」 the answer is
+  /// already no — [_onKey] just made it no. 실측: with playback running,
+  /// pressing `.` stopped the transport AND stepped a frame, which is the
+  /// 「stop AND do the thing」 this gate's own doc says it forbids.
+  ///
+  /// A [Focus] node CAN do this job, but ONLY from where the gate now
+  /// sits: ABOVE the editor's `FocusScope` (`home_page`). Dispatch walks
+  /// the focus-node chain UPWARD from the primary focus, and with no field
+  /// focused that scope IS the primary focus — so the first attempt at
+  /// this, with the gate mounted UNDER the scope as it had always been,
+  /// changed nothing at all: the node was never consulted. Above the
+  /// scope it is passed on the way to the `Shortcuts` higher up, whatever
+  /// holds focus.
+  ///
+  /// ⛔It still cannot do the STOP: an unbound key must stop playback too,
+  /// and dispatch never climbs this far when a descendant — a text field,
+  /// a canvas focus node — handles the key first.
+  ///
+  /// ⚠️`canRequestFocus: false` + `skipTraversal: true` — a listening node
+  /// only. A focusable one would join Tab order and could take focus away
+  /// from the field the user is typing in.
+  KeyEventResult _eatConsumedKey(FocusNode node, KeyEvent event) {
+    if (!identical(_consumedKey, event)) {
+      return KeyEventResult.ignored;
+    }
+    _consumedKey = null;
+    return KeyEventResult.handled;
+  }
+
+  /// The navigation region's box — and ONLY while the run whose picture it
+  /// shows is the one playing.
+  ///
+  /// 🚨★★★THE HOLE BELONGS TO ITS OWN RUN. D13 is 「재생 중 팬·줌 가능」
+  /// for a CANVAS run, and the reason it cannot leak a drawing stroke is
+  /// stated above: during one, the panel swaps its content, so the drawing
+  /// surface is not mounted at all. Once a media viewer can be the thing
+  /// playing, that stops being true — the panel is then showing the
+  /// drawing surface, and an unconditional hole would let a press draw
+  /// while the viewer ran, which is exactly what D13 says cannot happen.
   RenderBox? _regionBox() {
-    final render = widget.navigationRegionKey?.currentContext
-        ?.findRenderObject();
+    final region = widget.navigationRegion;
+    if (region == null || !region.transport.isPlaying) {
+      return null;
+    }
+    final render = region.key.currentContext?.findRenderObject();
     return render is RenderBox && render.attached ? render : null;
   }
 
   void _stopUnlessNavigated() {
-    if (!widget.controller.isPlaying) {
+    if (!widget.transports.value) {
       return;
     }
     if (_verdict.navigated) {
@@ -176,33 +265,40 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       // the panel's own tap-to-stop covers the plain tap.
       return;
     }
-    widget.controller.stop();
+    widget.transports.stopAll();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: widget.controller.isActiveListenable,
-      child: widget.child,
-      builder: (context, playing, child) => Listener(
-        onPointerDown: playing ? (_) => _stopUnlessNavigated() : null,
-        // Wheel arrives as a signal; trackpad pinch/two-finger pan
-        // arrive as PAN-ZOOM events (the viewport gesture layer's own
-        // trackpad path reads exactly those) — the user named both:
-        // 「휠/줌」. All three actuation kinds share the one verdict.
-        onPointerSignal: playing ? (_) => _stopUnlessNavigated() : null,
-        onPointerPanZoomStart: playing
-            ? (_) => _stopUnlessNavigated()
-            : null,
-        // ★This is the 「입력 일 안함」 half. Without it the press would
-        // stop playback AND land on whatever was under it. The D13 hole
-        // and the stop above read ONE verdict — the absorber's — so
-        // navigate-and-stop can never disagree about the same event.
-        child: _NavigationHoleAbsorbPointer(
-          absorbing: playing,
-          regionBoxOf: _regionBox,
-          verdict: _verdict,
-          child: child,
+    // The key-consuming node wraps the WHOLE thing and is always mounted —
+    // the tree-shape law again. It reads no state, so it never rebuilds.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _eatConsumedKey,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: widget.transports,
+        child: widget.child,
+        builder: (context, playing, child) => Listener(
+          onPointerDown: playing ? (_) => _stopUnlessNavigated() : null,
+          // Wheel arrives as a signal; trackpad pinch/two-finger pan
+          // arrive as PAN-ZOOM events (the viewport gesture layer's own
+          // trackpad path reads exactly those) — the user named both:
+          // 「휠/줌」. All three actuation kinds share the one verdict.
+          onPointerSignal: playing ? (_) => _stopUnlessNavigated() : null,
+          onPointerPanZoomStart: playing
+              ? (_) => _stopUnlessNavigated()
+              : null,
+          // ★This is the 「입력 일 안함」 half. Without it the press would
+          // stop playback AND land on whatever was under it. The D13 hole
+          // and the stop above read ONE verdict — the absorber's — so
+          // navigate-and-stop can never disagree about the same event.
+          child: _NavigationHoleAbsorbPointer(
+            absorbing: playing,
+            regionBoxOf: _regionBox,
+            verdict: _verdict,
+            child: child,
+          ),
         ),
       ),
     );

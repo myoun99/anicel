@@ -13,8 +13,15 @@ import '../../native/qa_video_decoder.dart';
 /// the clip: 14.97 ms per frame decoding sequentially, 110.66 ms for a
 /// random access. A frame budget at 24fps is 41.7 ms, so playing a reference
 /// movie spent **more than a third of every frame** inside a blocking FFI
-/// call — on the same thread as the brush. On the tablets this app is
-/// written for ([[old-device-support-policy]]) it is several times that.
+/// call — on the isolate that also has to PAINT that frame, which is why the
+/// viewer stuttered on its own. On the tablets this app is written for
+/// ([[old-device-support-policy]]) it is several times that.
+///
+/// 🪦This used to end 「on the same thread as the brush」, and the motive it
+/// implied — a reference movie running while you draw — is not one the app
+/// has: 유저 2026-09-07 said so plainly, and playback is EXCLUSIVE
+/// (`PlaybackTransports`), so a viewer run and a canvas run never overlap.
+/// The measurement above is unchanged; only the reason it hurts is.
 ///
 /// A `dart:ffi` call blocks the isolate that makes it. There is no async
 /// form and no smaller fix: the decode has to happen somewhere else.

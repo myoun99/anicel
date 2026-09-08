@@ -23,6 +23,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
+import '../playback/playback_transport.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import 'media_asset_drag_data.dart';
@@ -238,7 +239,8 @@ class _RenderedPage {
   final ui.Image image;
 }
 
-class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
+class _MediaViewerTabHostState extends State<MediaViewerTabHost>
+    implements PlaybackTransport {
   /// Commit sink required by the panel API; the viewer never invalidates
   /// playback caches.
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
@@ -363,7 +365,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// The timer turning pages while playing, and null while stopped —
   /// 🚨the ONLY thing that says whether this viewer is playing, so a
   /// second flag cannot disagree with it ([[make-the-invariant-unrepresentable]]).
-  Timer? _playTimer;
+  ///
+  /// ⚠️Write it through the setter below and nowhere else. [_playingFlips]
+  /// has to fire for the actuation gate, and a notifier poked at the call
+  /// sites would be exactly the second flag this comment forbids — here it
+  /// cannot be written except by the assignment that changes the timer.
+  Timer? _playTimerField;
+
+  Timer? get _playTimer => _playTimerField;
+
+  set _playTimer(Timer? timer) {
+    _playTimerField?.cancel();
+    _playTimerField = timer;
+    _playingFlips.value = timer != null;
+  }
+
+  /// [isActiveListenable]: fires when this viewer starts or stops, and on
+  /// nothing else — never per turned page (the gate wraps the whole editor).
+  final ValueNotifier<bool> _playingFlips = ValueNotifier<bool>(false);
 
   /// Renders in flight, one marker per (page, scale) — landings remove
   /// their own marker, so a stale landing can never wipe a newer one.
@@ -413,6 +432,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     super.initState();
     widget.request.addListener(_onRequestChanged);
     widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
+    widget.session.playbackRig.transports.add(this);
     unawaited(_load(_currentRequest));
   }
 
@@ -427,12 +447,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       widget.session.memoryPressureTicks,
       _onMemoryPressure,
     );
+    if (!identical(oldWidget.session, widget.session)) {
+      oldWidget.session.playbackRig.transports.remove(this);
+      widget.session.playbackRig.transports.add(this);
+    }
   }
 
   @override
   void dispose() {
     widget.request.removeListener(_onRequestChanged);
     widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
+    // ⚠️Before [_disposeContent]: it stops the timer, and a transport that
+    // is still registered would report the flip to a gate that is about to
+    // lose the object anyway. Leaving it registered is the real hazard —
+    // a closed tab would answer 「재생 중」 forever.
+    widget.session.playbackRig.transports.remove(this);
     _generation += 1;
     _disposeContent();
     // ⛔REMOVE, not zero: a viewer that is gone is not a viewer holding
@@ -440,6 +469,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     widget.session.renderCaches.viewerRasterBytesByViewer.remove(
       widget.viewerId,
     );
+    _playingFlips.dispose();
     super.dispose();
   }
 
@@ -735,10 +765,29 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   }
 
   void _stopPlaying() {
-    _playTimer?.cancel();
     _playTimer = null;
     _buffering = false;
   }
+
+  /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
+  /// can be playing, so the actuation gate stops it with the same law it
+  /// stops the canvas with (유저 09-07 `exclusive`, both directions).
+  /// ⛔It answers from [_playTimer] and stops through [_stopPlaying]; a
+  /// separate "am I playing" for the gate would be the per-surface check
+  /// the gate exists to avoid.
+  @override
+  bool get isPlaying => _playing;
+
+  @override
+  void stop() {
+    if (!_playing) {
+      return;
+    }
+    setState(_stopPlaying);
+  }
+
+  @override
+  ValueListenable<bool> get isActiveListenable => _playingFlips;
 
   void _togglePlaying() {
     if (_playing) {

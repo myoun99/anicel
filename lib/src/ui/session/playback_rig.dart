@@ -25,6 +25,7 @@ import '../../services/playback/playback_frame_mapping.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_cache_budget.dart';
 import '../playback/playback_prerender_scheduler.dart';
+import '../playback/playback_transport.dart';
 import 'editor_voice_recording.dart';
 import 'playback_cache_budget.dart';
 import 'project_settings.dart';
@@ -139,6 +140,18 @@ class PlaybackRig implements PlaybackRun {
     onPlaylistWarmRequested: _onPlaylistWarmRequested,
   );
 
+  /// Everything in the app that plays, so the actuation gate can ask ONE
+  /// object 「누가 재생 중인가」 and stop it.
+  ///
+  /// 🚨★★★Here rather than on the session because this is playback's own
+  /// machinery, and because the gate and the media viewers both reach it
+  /// through `session.playbackRig` — the same door the canvas already uses.
+  /// ⛔Do not give a surface its own copy: a second registry is a second
+  /// answer to the same question, and exclusive playback (유저 09-07) is
+  /// only ONE law while there is only one list.
+  late final PlaybackTransports transports = PlaybackTransports()
+    ..add(playback);
+
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
   /// samples handed to the device, and cumulative drift is structurally
@@ -222,8 +235,12 @@ class PlaybackRig implements PlaybackRun {
 
   /// ⚠️The ORDER is the same one the session's `dispose` used to spell:
   /// the two fallback listeners come off the transport before the
-  /// transport and the controller they ride go down.
+  /// transport and the controller they ride go down. [transports] joins
+  /// the front of that rule for the same reason — it holds a listener on
+  /// [CanvasPlaybackController.isActiveListenable], which [playback]
+  /// disposes.
   void dispose() {
+    transports.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();

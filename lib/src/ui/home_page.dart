@@ -462,11 +462,16 @@ class _HomePageState extends State<HomePage> {
   /// exception it does NOT need: the playback toggle. Stopping is what that
   /// key was going to do anyway, so being consumed and being obeyed look the
   /// same from the outside.
+  ///
+  /// ⚠️It asks the SAME object the gate asks — 「누가 재생 중인가」 has one
+  /// answer or the two halves of one law disagree: a bound key would walk a
+  /// frame while the media viewer was still running its own timer.
   bool _consumedByPlayback() {
-    if (!_session.playbackRig.playback.isPlaying) {
+    final transports = _session.playbackRig.transports;
+    if (!transports.value) {
       return false;
     }
-    _session.playbackRig.playback.stop();
+    transports.stopAll();
     return true;
   }
 
@@ -532,11 +537,16 @@ class _HomePageState extends State<HomePage> {
     // half is [PlaybackActuationGate]'s `AbsorbPointer`; between them, the
     // first actuation of any kind stops and does nothing else.
     //
-    // ⚠️The gate's keyboard handler has already stopped playback by the time
-    // a bound key reaches here — Flutter dispatches the key message to the
-    // focus tree even when a `HardwareKeyboard` handler claims it, so
-    // returning true there stops the transport but does not eat the event.
-    // `_consumedActuation` is what actually eats it.
+    // ⚠️A bound KEY pressed during playback never gets here any more: the
+    // gate's own `Focus` node eats it on the way up (2026-09-08). This
+    // guard covers every OTHER entrance to the funnel — a control the D13
+    // hole let through, a menu item — where the law is the same and the
+    // gate has not already answered.
+    // 🪦It used to be the key half too, and could not be: the gate's
+    // `HardwareKeyboard` handler stops playback BEFORE focus dispatch, so
+    // the question below was already answered 「아니오」 by the time a key
+    // arrived. The comment here named a `_consumedActuation` that never
+    // existed.
     if (_consumedByPlayback()) {
       return;
     }
@@ -782,15 +792,26 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                 },
-                child: FocusScope(
-                  autofocus: true,
+                child: PlaybackActuationGate(
                   // 🚨T28-c — the whole editor behind ONE gate: while
                   // playing, the first actuation stops and is consumed.
-                  // ⛔Inside `Shortcuts` deliberately, so a key is eaten
-                  // rather than followed; see the widget's own note.
-                  child: PlaybackActuationGate(
-                    controller: _session.playbackRig.playback,
-                    navigationRegionKey: _canvasNavigationRegionKey,
+                  //
+                  // ⛔Inside `Shortcuts` AND above the editor's `FocusScope`,
+                  // both deliberately. Inside `Shortcuts`, so a key that
+                  // stopped playback is eaten rather than followed. ABOVE the
+                  // scope, because key dispatch walks UPWARD from the primary
+                  // focus — with no field focused the scope IS that focus, so
+                  // a gate mounted under it is never consulted at all. It sat
+                  // there until 2026-09-08 and the consuming half was dead:
+                  // 실측 — pressing `.` during playback stopped the transport
+                  // AND stepped a frame.
+                  transports: _session.playbackRig.transports,
+                  navigationRegion: (
+                    key: _canvasNavigationRegionKey,
+                    transport: _session.playbackRig.playback,
+                  ),
+                  child: FocusScope(
+                    autofocus: true,
                     // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
                     // action funnel as key bindings; the layer only observes raw
                     // touches, so drawing and pinch navigation are untouched.

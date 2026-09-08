@@ -222,16 +222,23 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-playback-view')),
       findsOneWidget,
     );
-    // Space again pauses without leaving playback mode.
+
+    // 🪦This used to read 「Space again PAUSES without leaving playback
+    // mode」, and it was green for the wrong reason. T28 deleted pause
+    // (유저 2026-08-13: 「재생/정지 상태만」), and T28-c made the second
+    // press a plain STOP — but the consuming half of that law did not work
+    // for keys until 2026-09-08, so Space was stopping playback and then
+    // ALSO running its binding, which started it again. The view stayed up
+    // because the key did two things, which is exactly what 「입력 일 안함」
+    // forbids.
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('canvas-playback-view')),
-      findsOneWidget,
-    );
-    // Stop so no ticker leaks out of the test.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('canvas-playback-view')),
+      findsNothing,
+      reason: 'the actuation stopped playback and did nothing else, so the '
+          'canvas is back to its drawing surface — and no ticker is left '
+          'running for the teardown to trip over',
     );
     await tester.pumpAndSettle();
   });

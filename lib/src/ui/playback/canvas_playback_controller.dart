@@ -10,6 +10,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import 'playback_transport.dart';
 
 /// What plays: the active cut (timeline context) or every cut of the active
 /// track in sequence (storyboard context).
@@ -36,7 +37,8 @@ class AudioClockStatus {
 /// rendering falls behind, frames are skipped rather than time stretched
 /// (Premiere/AE behavior). Notifies only when the resolved frame actually
 /// changes; the heavyweight session playhead syncs once via [onStopped].
-class CanvasPlaybackController extends ChangeNotifier {
+class CanvasPlaybackController extends ChangeNotifier
+    implements PlaybackTransport {
   CanvasPlaybackController({
     required this.resolveProject,
     required this.resolveActiveCutId,
@@ -119,6 +121,7 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// its content on this instead of listening to every tick (subscribing the
   /// whole canvas subtree to ticks rebuilt it at fps and caused real frame
   /// drops).
+  @override
   ValueListenable<bool> get isActiveListenable => _isActiveNotifier;
 
   List<StoryboardTimelineLayoutEntry>? _playlist;
@@ -155,6 +158,7 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// it.
   bool get isActive => _playlist != null;
 
+  @override
   bool get isPlaying => _playlist != null;
   PlaybackScope get scope => _scope;
 
@@ -279,6 +283,7 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// playhead exactly where it was — 「재생아닌상태가 일시정지상태나
   /// 다름없음」 is the whole argument, and it only holds if stop does not
   /// rewind.
+  @override
   void stop() {
     if (!isActive) {
       return;
