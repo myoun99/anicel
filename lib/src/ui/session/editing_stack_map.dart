@@ -105,6 +105,12 @@ class EditingStackMap {
         effects: entry.effects,
       );
     }
+    // ⛔MUTANT SURVIVES ON THE HIDDEN-ROW ARM BELOW, and the classification
+    // is NEVER APPLIED (2026-09-08): `_resolveLayerNode` asks the row's own
+    // eye BEFORE it builds an entry, so a hidden row never reaches this
+    // walk at all — no entry, no leaf, no active node. Kept as the local
+    // statement of "the eye is off ⇒ nothing shows" for a caller that hands
+    // this map a tree built some other way.
     activeLayerOpacity = !entry.layer.isVisible
         ? 0.0
         : _opacityVerbs.stackLayerOpacity(

@@ -808,6 +808,11 @@ class EdgeDrag {
       // any more — one gesture, one meaning, whether or not the cut has
       // been drawn on. The row still bounds the drag, through
       // [minimumCutDurationFor]: you cannot trim past your own panels.
+      //
+      // ⛔MUTANT SURVIVES on this edge test, and the classification is NEVER
+      // APPLIED (2026-09-08): every cut-edge fixture in the suite trims a cut
+      // with NO conte row, so `row` is null and the arm is not reached at
+      // all. A test that draws a panel first is what would kill it.
       if (edge == TimelineBlockEdge.end &&
           _beginStoryboardLastCommaDrag(cut, row)) {
         _cutEdgeDragVerb = _CutEdgeDragVerb.comma;
