@@ -106,6 +106,14 @@ cmd_land() {
   # author forgot to `git add` sit in the lane and vanish with the worktree —
   # the merge would take the callers and leave the file they call. Anything
   # .gitignore covers is already invisible here, so what is left is real work.
+  # ⚠️REFRESH THE STAT CACHE FIRST. git calls a file modified when its mtime
+  # moved, before comparing any bytes — and anything that merely READS a
+  # worktree can move an mtime (a fleet of review agents opening files did it
+  # twice on 2026-09-08). Without this, `land` refuses a lane whose content is
+  # identical to HEAD and the author goes looking for a change that is not
+  # there. `--refresh` compares the bytes and rewrites the cache; it changes
+  # no file and stages nothing, so a REAL edit still stops the merge below.
+  git -C "$p" update-index -q --really-refresh >/dev/null 2>&1 || true
   [ -z "$(git -C "$p" status --short)" ] || {
     git -C "$p" status --short >&2
     die "uncommitted changes in the lane — commit them first
