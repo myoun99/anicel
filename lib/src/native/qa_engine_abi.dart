@@ -117,7 +117,12 @@ import 'dart:io';
 ///   frame on the median cel of a real project; zstd takes 0.11ms and is
 ///   5% smaller besides. ⛔deflate stays the floor — the blob carries a
 ///   codec byte and a build with no engine still writes and reads one.
-const int kQaEngineAbiVersion = 30;
+/// - v31: `qa_dab_spec.aa_contrast` + `QA_DAB_FLAG_AA_THRESHOLD` — the
+///   brush's own edge step (`BrushAntiAlias`). It HAD to reach the C
+///   kernel: `qa_dab_blend_tiles` is what rasterizes a dab whenever the
+///   engine is present, so an edge implemented only in Dart would be a
+///   setting that does nothing in the shipped app.
+const int kQaEngineAbiVersion = 31;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

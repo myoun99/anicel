@@ -182,6 +182,9 @@ enum {
   QA_DAB_FLAG_ELLIPSE = 4,
   QA_DAB_FLAG_ROTATED_RECT = 8,
   QA_DAB_FLAG_TIP_UNROTATED = 16,
+  // 없음: the edge is a hard cut at half coverage. Set INSTEAD of an
+  // aa_contrast; the two never both apply (see BrushAntiAlias).
+  QA_DAB_FLAG_AA_THRESHOLD = 32,
 };
 
 // Field order/types MUST match the Dart QaDabSpecStruct exactly; the
@@ -204,6 +207,10 @@ typedef struct {
   double radius_sq_skip;
   double texture_density;
   double texture_one_minus_density;
+  // The brush edge step, already resolved: 1.0 leaves the coverage ramp
+  // alone, otherwise it scales about 0.5. Ignored when the threshold flag
+  // is set. v31.
+  double aa_contrast;
   int32_t source_r;
   int32_t source_g;
   int32_t source_b;
@@ -387,6 +394,8 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int has_tip = s->tip_alpha != NULL;
   const int has_dual = s->dual_alpha != NULL;
   const int has_tex = s->tex_alpha != NULL;
+  const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
+  const double aa_contrast = s->aa_contrast;
   int32_t changed = 0;
 
   for (int32_t y = span_top; y < span_bottom_exclusive; y += 1) {
@@ -458,6 +467,25 @@ QA_EXPORT int32_t qa_dab_blend_tile(
           }
         }
         coverage = 1.0;
+      }
+
+      // The brush's own EDGE, before anything tiles over it. Same place and
+      // same arithmetic as blendDabTilesDart (유저 확정).
+      if (aa_threshold) {
+        coverage = coverage >= 0.5 ? 1.0 : 0.0;
+        if (coverage <= 0.0) {
+          continue;
+        }
+      } else if (aa_contrast != 1.0) {
+        coverage = (coverage - 0.5) * aa_contrast + 0.5;
+        if (coverage < 0.0) {
+          coverage = 0.0;
+        } else if (coverage > 1.0) {
+          coverage = 1.0;
+        }
+        if (coverage <= 0.0) {
+          continue;
+        }
       }
 
       if (has_dual) {
@@ -4666,4 +4694,5 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 // budget.
 // v29: qa_process_footprint_bytes / qa_available_memory_bytes - what this
 // process is actually holding, and what the OS will still let it take.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 30; }
+// v31: qa_dab_spec gains aa_contrast + QA_DAB_FLAG_AA_THRESHOLD (brush edge).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 31; }

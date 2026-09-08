@@ -1,3 +1,4 @@
+import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
@@ -37,6 +38,7 @@ class BrushEditCanvasInputSettings {
     double textureDensity = 1.0,
     bool erase = false,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    BrushAntiAlias antiAlias = BrushAntiAlias.high,
     double stabilizerStrength = 0.0,
   }) {
     assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.');
@@ -111,6 +113,7 @@ class BrushEditCanvasInputSettings {
         textureMask: textureMask,
         textureScale: textureScale,
         textureDensity: textureDensity,
+        antiAlias: antiAlias,
       ),
       erase: erase,
       blendMode: blendMode,
@@ -200,6 +203,9 @@ class BrushEditCanvasInputSettings {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+
+  /// How hard the edge lands — see [BrushShape.antiAlias].
+  BrushAntiAlias get antiAlias => shape.antiAlias;
 
   /// Eraser mode: dabs remove destination alpha (destination-out) instead
   /// of painting color.

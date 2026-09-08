@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
+import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/canvas_size.dart';
@@ -77,6 +78,8 @@ class BrushDabPlan {
     required this.radius,
     required this.hardRadius,
     required this.edgeSpan,
+    required this.aaThreshold,
+    required this.aaContrast,
     required this.minorRadius,
     required this.radiusSqSkip,
     required this.tipCos,
@@ -124,6 +127,15 @@ class BrushDabPlan {
 
   final double centerX;
   final double centerY;
+
+  /// The edge step, hoisted out of the pixel loop (see [BrushAntiAlias]).
+  /// [aaThreshold] is 없음 — a hard cut at half coverage; otherwise
+  /// [aaContrast] scales the ramp about 0.5, and 1.0 leaves it alone.
+  /// ⛔TWO FIELDS FOR ONE ENUM ON PURPOSE: this is the per-pixel form of
+  /// [BrushAntiAlias.applyTo], derived once here so the loop needs no
+  /// switch. The enum stays the definition.
+  final bool aaThreshold;
+  final double aaContrast;
   final double radius;
   final double hardRadius;
   final double edgeSpan;
@@ -245,6 +257,8 @@ class BrushDabPlan {
       radius: radius,
       hardRadius: hardRadius,
       edgeSpan: radius - hardRadius,
+      aaThreshold: dab.antiAlias == BrushAntiAlias.none,
+      aaContrast: dab.antiAlias.contrast ?? 1.0,
       minorRadius: minorRadius,
       radiusSqSkip: radius * radius * (1.0 + 1e-12),
       tipCos: tipCos,
@@ -355,6 +369,7 @@ class BrushDabPlan {
     radiusSqSkip: plan.radiusSqSkip,
     textureDensity: plan.textureDensity,
     textureOneMinusDensity: plan.textureOneMinusDensity,
+    aaContrast: plan.aaContrast,
     sourceR: plan.sourceR,
     sourceG: plan.sourceG,
     sourceB: plan.sourceB,
@@ -363,7 +378,8 @@ class BrushDabPlan {
         (plan.isRound ? QaNativeEngine.dabFlagRound : 0) |
         (plan.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
         (plan.isRotatedRect ? QaNativeEngine.dabFlagRotatedRect : 0) |
-        (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0),
+        (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
+        (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0),
     regionLeft: plan.left,
     regionTop: plan.top,
     tipAlpha: plan.tipMask?.alphaNormalized,
@@ -453,6 +469,8 @@ void blendDabTilesDart(
   final radius = plan.radius;
   final hardRadius = plan.hardRadius;
   final edgeSpan = plan.edgeSpan;
+  final aaThreshold = plan.aaThreshold;
+  final aaContrast = plan.aaContrast;
   final minorRadius = plan.minorRadius;
   final radiusSqSkip = plan.radiusSqSkip;
   final tipCos = plan.tipCos;
@@ -566,6 +584,24 @@ void blendDabTilesDart(
             }
           }
           coverage = 1.0;
+        }
+
+        // The brush's own EDGE, before anything tiles over it (유저 확정).
+        //
+        // ⚠️Placed HERE and nowhere else: ahead of the dual tip and the
+        // paper texture, so tightening the edge hardens the SILHOUETTE and
+        // leaves the texture inside it soft. Behind them it would binarize
+        // a textured brush whole, which is a different brush.
+        if (aaThreshold) {
+          coverage = coverage >= 0.5 ? 1.0 : 0.0;
+          if (coverage <= 0.0) {
+            continue;
+          }
+        } else if (aaContrast != 1.0) {
+          coverage = ((coverage - 0.5) * aaContrast + 0.5).clamp(0.0, 1.0);
+          if (coverage <= 0.0) {
+            continue;
+          }
         }
 
         // Dual-brush texture: a second tiled mask multiplies the coverage.

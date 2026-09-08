@@ -995,6 +995,8 @@ enum AppStrings {
   String get brPaintDensity => _s('brPaintDensity');
   String get brColorStretch => _s('brColorStretch');
   String get brHardness => _s('brHardness');
+  String get brEdge => _s('brEdge');
+  String get brEdgeNone => _s('brEdgeNone');
   String get brSpacing => _s('brSpacing');
   String get brAngle => _s('brAngle');
   String get brRoundness => _s('brRoundness');
@@ -1744,6 +1746,8 @@ enum AppStrings {
     'brPaintDensity': 'Paint density',
     'brColorStretch': 'Colour stretch',
     'brHardness': 'Hardness',
+    'brEdge': 'Edge',
+    'brEdgeNone': 'None',
     'brSpacing': 'Spacing',
     'brAngle': 'Angle',
     'brRoundness': 'Roundness',
@@ -2647,6 +2651,8 @@ enum AppStrings {
     'brPaintDensity': '絵の具濃度',
     'brColorStretch': '色延び',
     'brHardness': '硬さ',
+    'brEdge': 'エッジ',
+    'brEdgeNone': 'なし',
     'brSpacing': '間隔',
     'brAngle': '角度',
     'brRoundness': '真円率',
@@ -3572,6 +3578,8 @@ enum AppStrings {
     'brPaintDensity': '물감 농도',
     'brColorStretch': '색 늘이기',
     'brHardness': '경도',
+    'brEdge': '가장자리',
+    'brEdgeNone': '없음',
     'brSpacing': '간격',
     'brAngle': '각도',
     'brRoundness': '원형률',
@@ -4535,6 +4543,8 @@ enum AppStrings {
     'brPaintDensity': 'Densité de peinture',
     'brColorStretch': 'Étirement de la couleur',
     'brHardness': 'Dureté',
+    'brEdge': 'Bord',
+    'brEdgeNone': 'Aucun',
     'brSpacing': 'Espacement',
     'brAngle': 'Angle',
     'brRoundness': 'Rondeur',
@@ -5418,6 +5428,8 @@ enum AppStrings {
     'brPaintDensity': '颜料浓度',
     'brColorStretch': '色彩延伸',
     'brHardness': '硬度',
+    'brEdge': '边缘',
+    'brEdgeNone': '无',
     'brSpacing': '间距',
     'brAngle': '角度',
     'brRoundness': '圆度',

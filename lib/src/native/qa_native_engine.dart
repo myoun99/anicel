@@ -1772,6 +1772,10 @@ class QaNativeEngine {
   static const int dabFlagRotatedRect = 8;
   static const int dabFlagTipUnrotated = 16;
 
+  /// 없음 — the edge is a hard cut at half coverage. Set INSTEAD of an
+  /// [aaContrast]; the two never both apply (see `BrushAntiAlias`).
+  static const int dabFlagAaThreshold = 32;
+
   /// Per-dab setup for [dabBlendTile]: fills the spec struct and uploads
   /// masks (identity-cached) and lattices (arena). All values mirror the
   /// Dart materializer's per-dab hoists exactly; the kernel is a pure
@@ -1792,6 +1796,7 @@ class QaNativeEngine {
     required double radiusSqSkip,
     required double textureDensity,
     required double textureOneMinusDensity,
+    required double aaContrast,
     required int sourceR,
     required int sourceG,
     required int sourceB,
@@ -1878,6 +1883,7 @@ class QaNativeEngine {
     spec.radiusSqSkip = radiusSqSkip;
     spec.textureDensity = textureDensity;
     spec.textureOneMinusDensity = textureOneMinusDensity;
+    spec.aaContrast = aaContrast;
     spec.sourceR = sourceR;
     spec.sourceG = sourceG;
     spec.sourceB = sourceB;
@@ -2105,6 +2111,14 @@ final class QaDabSpecStruct extends Struct {
   external double textureDensity;
   @Double()
   external double textureOneMinusDensity;
+
+  /// v31: the resolved brush-edge step (1.0 = leave the ramp alone).
+  ///
+  /// ⚠️THE ORDER OF THIS BLOCK IS THE ABI. It sits exactly where
+  /// `aa_contrast` sits in `qa_dab_spec` — after `texture_one_minus_density`,
+  /// last of the doubles — and `qa_dab_spec_sizeof` is what catches a slip.
+  @Double()
+  external double aaContrast;
   @Int32()
   external int sourceR;
   @Int32()

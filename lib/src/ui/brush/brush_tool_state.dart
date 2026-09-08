@@ -1,3 +1,4 @@
+import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
@@ -239,6 +240,7 @@ class BrushToolState {
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    BrushAntiAlias antiAlias = BrushAntiAlias.high,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     double fillOpacity = 1.0,
@@ -279,6 +281,7 @@ class BrushToolState {
       fillShape: fillShape,
       stabilizerStrength: stabilizerStrength,
       blendMode: blendMode,
+      antiAlias: antiAlias,
       fillBlendMode: fillBlendMode,
       cutStampBlendMode: cutStampBlendMode,
       fillOpacity: fillOpacity,
@@ -373,6 +376,7 @@ class BrushToolState {
     CanvasShapeKind? fillShape,
     double? stabilizerStrength,
     BrushBlendMode? blendMode,
+    BrushAntiAlias? antiAlias,
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? cutStampBlendMode,
     double? fillOpacity,
@@ -413,6 +417,7 @@ class BrushToolState {
         paintDensity: paintDensity ?? 1.0,
         colorStretch: colorStretch ?? 0.0,
         blendMode: blendMode ?? BrushBlendMode.color,
+        antiAlias: antiAlias ?? BrushAntiAlias.high,
       ),
       tool: tool ?? CanvasTool.brush,
       selectShape: selectShape ?? CanvasShapeKind.rect,
@@ -532,6 +537,9 @@ class BrushToolState {
 
   /// How this brush composites — see [BrushShape.blendMode].
   BrushBlendMode get blendMode => shape.blendMode;
+
+  /// How hard this brush's edge lands — see [BrushShape.antiAlias].
+  BrushAntiAlias get antiAlias => shape.antiAlias;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -849,6 +857,7 @@ class BrushToolState {
     double? paintDensity,
     double? colorStretch,
     BrushBlendMode? blendMode,
+    BrushAntiAlias? antiAlias,
     CanvasTool? tool,
     CanvasShapeKind? selectShape,
     CanvasShapeKind? cutShape,
@@ -898,6 +907,7 @@ class BrushToolState {
           paintDensity: paintDensity,
           colorStretch: colorStretch,
           blendMode: blendMode,
+          antiAlias: antiAlias,
         ),
       ),
       tool: tool ?? this.tool,

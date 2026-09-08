@@ -1,3 +1,4 @@
+import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
@@ -36,6 +37,7 @@ class BrushSettings {
     double roundnessJitter = 0.0,
     double spacingJitter = 0.0,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    BrushAntiAlias antiAlias = BrushAntiAlias.high,
     bool mixesGroundColor = false,
     double paintAmount = 1.0,
     double paintDensity = 1.0,
@@ -70,6 +72,7 @@ class BrushSettings {
          roundnessJitter: roundnessJitter,
          spacingJitter: spacingJitter,
          blendMode: blendMode,
+         antiAlias: antiAlias,
          mixesGroundColor: mixesGroundColor,
          paintAmount: paintAmount,
          paintDensity: paintDensity,
@@ -130,6 +133,9 @@ class BrushSettings {
   /// How this brush composites — see [BrushShape.blendMode].
   BrushBlendMode get blendMode => shape.blendMode;
 
+  /// How hard this brush's edge lands — see [BrushShape.antiAlias].
+  BrushAntiAlias get antiAlias => shape.antiAlias;
+
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
   double get paintAmount => shape.paintAmount;
@@ -170,6 +176,7 @@ class BrushSettings {
     double? roundnessJitter,
     double? spacingJitter,
     BrushBlendMode? blendMode,
+    BrushAntiAlias? antiAlias,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -206,6 +213,7 @@ class BrushSettings {
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       spacingJitter: spacingJitter ?? this.spacingJitter,
       blendMode: blendMode ?? this.blendMode,
+      antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -241,6 +249,9 @@ class BrushSettings {
     // 通常 is the default, so it writes nothing — presets saved before every
     // brush carried a blend round-trip byte-identically.
     if (blendMode != BrushBlendMode.color) 'blendMode': blendMode.name,
+    // Same rule, same reason: [BrushAntiAlias.high] IS the ramp every brush
+    // drew before the setting existed.
+    if (antiAlias != BrushAntiAlias.high) 'antiAlias': antiAlias.name,
     'scatterRadiusRatio': scatterRadiusRatio,
     'scatterCount': scatterCount,
     'scatterBothAxes': scatterBothAxes,
@@ -306,6 +317,9 @@ class BrushSettings {
       blendMode: BrushBlendMode.fromJson(
         json['blendMode'] ?? json['lockedBlendMode'],
       ),
+      antiAlias:
+          BrushAntiAlias.named(json['antiAlias'] as String?) ??
+          BrushAntiAlias.high,
       scatterRadiusRatio:
           (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
       scatterCount: json['scatterCount'] as int? ?? 1,

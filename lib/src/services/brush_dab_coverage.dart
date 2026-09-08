@@ -68,6 +68,13 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
       if (coverage <= 0.0) {
         continue;
       }
+      // The brush's own EDGE, ahead of the tiled masks — the same place and
+      // the same arithmetic as `blendDabTilesDart`, which is what makes this
+      // a reference for it rather than a second opinion.
+      coverage = dab.antiAlias.applyTo(coverage);
+      if (coverage <= 0.0) {
+        continue;
+      }
       coverage = texturedCoverageAt(coverage, x, y);
       if (coverage <= 0.0) {
         continue;

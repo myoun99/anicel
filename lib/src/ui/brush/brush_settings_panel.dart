@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/brush_anti_alias.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot;
 import '../../models/brush_tip_entry.dart';
@@ -124,6 +125,13 @@ class BrushSettingsPanel extends StatelessWidget {
               BrushPressureTarget.hardness,
               AppText.strings.brHardness,
             ),
+          ),
+          // Beside hardness on purpose: hardness sets how WIDE the coverage
+          // ramp is, this sets how hard its edge cuts. Two halves of one
+          // footprint, so they read together.
+          _AntiAliasRow(
+            value: state.antiAlias,
+            onChanged: (step) => onChanged(state.copyWith(antiAlias: step)),
           ),
           _PanelSlider(
             label: AppText.strings.brRoundness,
@@ -497,6 +505,75 @@ class _PanelSwitch extends StatelessWidget {
 // The BRUSH BLEND row moved to the TOP STRIP with size and opacity (유저
 // 확정). It is the same button and the same lock, transplanted rather than
 // rebuilt — see `_BlendModeControl` in editor_top_strip.dart.
+
+/// The brush EDGE row — 없음 / 1 / 2 / 3 (유저 확정, 클튜 4단).
+///
+/// A [SegmentedButton] because that is how this program already asks a
+/// short N-way question (the transform anchor and the eyedropper source),
+/// and because the four answers have plain names — no icon has to be
+/// invented for them. `showSelectedIcon: false` for the house rule:
+/// 선택 표시는 색상만.
+class _AntiAliasRow extends StatelessWidget {
+  const _AntiAliasRow({required this.value, required this.onChanged});
+
+  final BrushAntiAlias value;
+  final ValueChanged<BrushAntiAlias> onChanged;
+
+  /// 1·2·3 are DIGITS, not words — they read the same in every language
+  /// this program speaks, so only 없음 goes through [AppText].
+  String _labelFor(BrushAntiAlias step) => switch (step) {
+    BrushAntiAlias.none => AppText.strings.brEdgeNone,
+    BrushAntiAlias.low => '1',
+    BrushAntiAlias.medium => '2',
+    BrushAntiAlias.high => '3',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Same trailing reservation as [_PanelSlider]: this row lines up with
+    // the sliders above and below it, and the slot stays empty rather than
+    // letting the segments grow into it (⛔자리는 항상 예약하고 내용만 바꾼다).
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                  AppText.strings.brEdge,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SegmentedButton<BrushAntiAlias>(
+                    key: const ValueKey<String>('brush-tool-edge-segments'),
+                    showSelectedIcon: false,
+                    segments: [
+                      for (final step in BrushAntiAlias.values)
+                        ButtonSegment<BrushAntiAlias>(
+                          value: step,
+                          label: Text(_labelFor(step)),
+                        ),
+                    ],
+                    selected: {value},
+                    onSelectionChanged: (selection) =>
+                        onChanged(selection.first),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: _PanelSlider._trailingGap),
+          const SizedBox(width: PressureCurveButton.slotWidth),
+        ],
+      ),
+    );
+  }
+}
 
 class _PanelSlider extends StatelessWidget {
   const _PanelSlider({

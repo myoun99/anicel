@@ -1,3 +1,4 @@
+import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
@@ -54,6 +55,7 @@ class BrushShape {
     this.textureDensity = 1.0,
     this.roundnessJitter = 0.0,
     this.spacingJitter = 0.0,
+    this.antiAlias = BrushAntiAlias.high,
     this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
     this.paintAmount = 1.0,
@@ -144,6 +146,12 @@ class BrushShape {
   /// default and carries what the file says.
   final BrushBlendMode blendMode;
 
+  /// How hard this brush's own edge lands — see [BrushAntiAlias].
+  ///
+  /// Defaults to [BrushAntiAlias.high], the ramp the engine drew before this
+  /// existed, so a preset that says nothing draws exactly as it always did.
+  final BrushAntiAlias antiAlias;
+
   /// Random per-segment spacing reduction, 0..1 — Clip Studio drives this
   /// from its interval effector's random input source, which breaks up the
   /// even beat of a stamped brush.
@@ -227,6 +235,7 @@ class BrushShape {
       roundnessJitter: roundnessJitter,
       spacingJitter: spacingJitter,
       blendMode: blendMode,
+      antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -257,6 +266,7 @@ class BrushShape {
       roundnessJitter: roundnessJitter,
       spacingJitter: spacingJitter,
       blendMode: blendMode,
+      antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -307,6 +317,7 @@ class BrushShape {
     double? spacingJitter,
     bool? mixesGroundColor,
     BrushBlendMode? blendMode,
+    BrushAntiAlias? antiAlias,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
@@ -342,6 +353,7 @@ class BrushShape {
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       spacingJitter: spacingJitter ?? this.spacingJitter,
       blendMode: blendMode ?? this.blendMode,
+      antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -382,6 +394,7 @@ class BrushShape {
           other.roundnessJitter == roundnessJitter &&
           other.spacingJitter == spacingJitter &&
           other.blendMode == blendMode &&
+          other.antiAlias == antiAlias &&
           other.mixesGroundColor == mixesGroundColor &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
@@ -418,6 +431,7 @@ class BrushShape {
     roundnessJitter,
     spacingJitter,
     blendMode,
+    antiAlias,
     mixesGroundColor,
     paintAmount,
     paintDensity,

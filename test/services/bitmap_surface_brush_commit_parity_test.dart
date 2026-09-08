@@ -5,6 +5,7 @@ import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
@@ -116,6 +117,7 @@ BrushDab dab({
   BrushTipMask? textureMask,
   double textureScale = 1.0,
   double textureDensity = 1.0,
+  BrushAntiAlias antiAlias = BrushAntiAlias.high,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -127,6 +129,7 @@ BrushDab dab({
     tipShape: tipShape,
     pressure: 1.0,
     sequence: sequence,
+    antiAlias: antiAlias,
     roundness: roundness,
     angleDegrees: angleDegrees,
     tipMask: tipMask,
@@ -239,6 +242,30 @@ void main() {
         ]),
         reason: 'hardness extremes',
       );
+    });
+
+    test('🚨every EDGE step agrees across all three transcriptions', () {
+      // The fast path is the C kernel whenever the engine is present and
+      // `blendDabTilesDart` when it is not; the oracle is the per-pixel
+      // reference. The edge remap had to be written into all three at the
+      // same point in the cascade, and this is the pin that says it was —
+      // one dab per step, so a step written into only one of them fails
+      // here with the step named.
+      //
+      // 🧪Measured 2026-09-08: `+ 0.5` -> `+ 0.6` in the C kernel alone,
+      // rebuilt, and this went red on `edge step low` — so the C really is
+      // what runs here when the engine is present. Where it is NOT (the
+      // .dll is Windows-only), the same case covers `blendDabTilesDart`.
+      for (final step in BrushAntiAlias.values) {
+        expectParity(
+          surface: blankSurface(),
+          sequence: strokeOf([
+            dab(x: 40, y: 40, hardness: 0.0, antiAlias: step),
+            dab(x: 80, y: 40, hardness: 0.6, antiAlias: step, sequence: 1),
+          ]),
+          reason: 'edge step ${step.name}',
+        );
+      }
     });
 
     test('full opacity and flow overwrite path', () {
