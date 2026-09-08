@@ -182,27 +182,33 @@ void main() {
     });
 
     test('a few colours become a palette of index bytes', () {
-      final surface = surfaceOf([
-        tileWith(origin, {
-          (0, 0): [10, 10, 10, 255],
-          (1, 0): [20, 20, 20, 255],
-          (2, 0): [10, 10, 10, 255],
-          (3, 0): [30, 30, 30, 255],
-        }),
-      ]);
+      // ⚠️SIX pixels, not four, and the number is load-bearing: a palette
+      // has to carry its table, so it only becomes the smallest answer once
+      // there are more pixels than the table costs (9 bytes of table + n
+      // index bytes against 3n raw bytes ⇒ n ≥ 5). At four pixels the raw
+      // channels are literally one byte smaller, and the recipe shape is
+      // whichever is smallest — see `_RestoreBuilder.build`.
+      final art = <(int, int), List<int>>{
+        (0, 0): [10, 10, 10, 255],
+        (1, 0): [20, 20, 20, 255],
+        (2, 0): [10, 10, 10, 255],
+        (3, 0): [30, 30, 30, 255],
+        (4, 0): [20, 20, 20, 255],
+        (5, 0): [30, 30, 30, 255],
+      };
+      final surface = surfaceOf([tileWith(origin, art)]);
 
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([
-          (origin, maskOverAll([(0, 0), (1, 0), (2, 0), (3, 0)])),
-        ]),
+        walk: walk([(origin, maskOverAll(art.keys))]),
         value: Uint8List.fromList([0, 0, 255]),
       );
 
       final restore = result.restore! as PalettedCelPixelRestore;
       expect(restore.palette, [10, 10, 10, 20, 20, 20, 30, 30, 30]);
-      expect(restore.indices, [0, 1, 0, 2]);
+      expect(restore.indices, [0, 1, 0, 2, 1, 2]);
+      expect(restore.estimatedRetainedBytes, 15);
     });
 
     test('more than 256 colours falls back to raw channels', () {
@@ -355,8 +361,17 @@ void main() {
       );
       // All three took part — skipping the empty one would shift every
       // later value by one on the way back.
-      expect(forward.restore, isA<PalettedCelPixelRestore>());
-      expect((forward.restore! as PalettedCelPixelRestore).indices.length, 3);
+      //
+      // ⚠️Asked of the RECIPE, not of its shape: which shape is smallest
+      // for three bytes is an accounting detail (raw wins here), while
+      // "position 1 remembers the pixel that was already empty" is the law.
+      final recorded = <int>[];
+      for (var index = 0; index < 3; index += 1) {
+        final into = Uint8List(1);
+        forward.restore!.readInto(into, index);
+        recorded.add(into.first);
+      }
+      expect(recorded, [255, 0, 255]);
 
       final undone = overwriteCelPixels(
         surface: forward.surface,
@@ -419,6 +434,133 @@ void main() {
       );
 
       expect(result.surface.tileAt(neighbour), isNull);
+    });
+  });
+
+  /// 🚨THE TIER THE LADDER COULD NOT REACH. A palette index is one byte PER
+  /// PIXEL however few colours there are, and beyond 256 colours the recipe
+  /// used to be the whole channel per pixel — so a pass over an ordinary
+  /// shaded drawing paid megabytes to say the same value over and over.
+  ///
+  /// Every case here is paired with the mutation that must turn it red.
+  group('a repeating pre-image is said once per run', () {
+    /// [runs] stretches of [runLength] pixels each, laid along row 0 and
+    /// wrapping, every stretch a different colour.
+    ({BitmapSurface surface, List<(int, int)> covered}) banded({
+      required int runs,
+      required int runLength,
+      required int Function(int band) colour,
+    }) {
+      final pixels = <(int, int), List<int>>{};
+      final covered = <(int, int)>[];
+      for (var index = 0; index < runs * runLength; index += 1) {
+        final at = (index % 256, index ~/ 256);
+        final value = colour(index ~/ runLength);
+        pixels[at] = [value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF, 255];
+        covered.add(at);
+      }
+      return (surface: surfaceOf([tileWith(origin, pixels)]), covered: covered);
+    }
+
+    test('long stretches beat one index per pixel — and by a lot', () {
+      final art = banded(runs: 8, runLength: 200, colour: (band) => band * 4919);
+
+      final result = overwriteCelPixels(
+        surface: art.surface,
+        channel: CelPixelChannel.colour,
+        walk: walk([(origin, maskOverAll(art.covered))]),
+        value: Uint8List.fromList([0, 0, 255]),
+      );
+
+      final restore = result.restore! as RunLengthCelPixelRestore;
+      expect(restore.lengths, List<int>.filled(8, 200));
+      // ⛔The number is the point, not the type: 8 runs × (3 value + 4
+      // length) against 1,600 index bytes plus a palette.
+      expect(restore.estimatedRetainedBytes, 56);
+      expect(art.covered.length, 1600);
+    });
+
+    test('🚨and it rescues the case that used to cost four bytes a pixel — '
+        'more than 256 colours, in stretches', () {
+      // The palette overflows at 256, so the old ladder had no answer left
+      // but the channels themselves.
+      final art = banded(runs: 300, runLength: 20, colour: (band) => band * 7919);
+
+      final result = overwriteCelPixels(
+        surface: art.surface,
+        channel: CelPixelChannel.colour,
+        walk: walk([(origin, maskOverAll(art.covered))]),
+        value: Uint8List.fromList([0, 0, 255]),
+      );
+
+      final restore = result.restore! as RunLengthCelPixelRestore;
+      expect(restore.estimatedRetainedBytes, 300 * 7);
+      expect(
+        restore.estimatedRetainedBytes,
+        lessThan(art.covered.length * 3),
+        reason: 'raw would have been three bytes for every one of 6,000 pixels',
+      );
+    });
+
+    test('undo through a run recipe restores the original bytes exactly', () {
+      final art = banded(runs: 5, runLength: 50, colour: (band) => band * 4919);
+      final before = [
+        for (final at in art.covered)
+          pixelAt(art.surface, origin, at.$1, at.$2),
+      ];
+
+      final forward = overwriteCelPixels(
+        surface: art.surface,
+        channel: CelPixelChannel.colour,
+        walk: walk([(origin, maskOverAll(art.covered))]),
+        value: Uint8List.fromList([0, 0, 255]),
+      );
+      expect(forward.restore, isA<RunLengthCelPixelRestore>());
+
+      final undone = overwriteCelPixels(
+        surface: forward.surface,
+        channel: CelPixelChannel.colour,
+        walk: walk([(origin, maskOverAll(art.covered))]),
+        restore: forward.restore,
+      );
+
+      for (var i = 0; i < art.covered.length; i += 1) {
+        final at = art.covered[i];
+        expect(
+          pixelAt(undone.surface, origin, at.$1, at.$2),
+          before[i],
+          reason: 'pixel $at came back through run ${i ~/ 50}',
+        );
+      }
+
+      // 🚨AND AGAIN, on the same recipe object. A run recipe reads through a
+      // CURSOR, so a second pass starts at index 0 with the cursor parked at
+      // the end of the last one — it has to notice and walk back. Undo, redo
+      // and undo again is an ordinary thing to do.
+      final second = overwriteCelPixels(
+        surface: forward.surface,
+        channel: CelPixelChannel.colour,
+        walk: walk([(origin, maskOverAll(art.covered))]),
+        restore: forward.restore,
+      );
+      for (var i = 0; i < art.covered.length; i += 1) {
+        final at = art.covered[i];
+        expect(pixelAt(second.surface, origin, at.$1, at.$2), before[i]);
+      }
+    });
+
+    test('⛔interleaved values keep the palette — a run that is one pixel '
+        'long costs more than the value it stands for', () {
+      final art = banded(runs: 300, runLength: 1, colour: (band) => band % 3);
+
+      final result = overwriteCelPixels(
+        surface: art.surface,
+        channel: CelPixelChannel.colour,
+        walk: walk([(origin, maskOverAll(art.covered))]),
+        value: Uint8List.fromList([0, 0, 255]),
+      );
+
+      expect(result.restore, isA<PalettedCelPixelRestore>());
     });
   });
 }

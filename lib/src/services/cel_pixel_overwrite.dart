@@ -85,9 +85,16 @@ enum CelPixelVerb {
 /// - the drawing under the region was one flat colour (every line art cel,
 ///   and ALWAYS true from the second recolour onward, since the first one
 ///   made it flat) -> [UniformCelPixelRestore], one value;
-/// - it was a handful of colours -> [PalettedCelPixelRestore], one index
-///   byte per touched pixel;
-/// - it was a photograph -> [RawCelPixelRestore], the channels themselves.
+/// - it repeated in stretches, which is what a drawing does along a row
+///   -> [RunLengthCelPixelRestore], one value per run;
+/// - it was a handful of colours, interleaved -> [PalettedCelPixelRestore],
+///   one index byte per touched pixel;
+/// - it was noise -> [RawCelPixelRestore], the channels themselves.
+///
+/// ⚠️THESE ARE NOT TRIED IN ORDER — the smallest is kept. A fixed order was
+/// a guess (that anything a palette can index is best said by indices), and
+/// the guess is wrong wherever the values repeat, which is most drawings.
+/// [_RestoreBuilder.build] measures all of them against one ruler.
 ///
 /// Redo needs nothing at all: the forward pass is deterministic, so it
 /// simply runs again.
@@ -242,6 +249,61 @@ final class PalettedCelPixelRestore extends CelPixelRestore {
   }
 }
 
+/// The values REPEAT along the walk — so the recipe names each run once.
+///
+/// 🚨THE TIER THE OTHER THREE COULD NOT REACH, and the drawings that need
+/// it are the ordinary ones. A palette index is one byte PER PIXEL however
+/// few colours there are, and [RawCelPixelRestore] is the whole channel
+/// per pixel — so a pass over a shaded cel with a couple of hundred
+/// colours in it paid megabytes to say the same value over and over. A
+/// drawing is not noise: line, fill and paper arrive in long stretches
+/// along a row, which is exactly what a run says cheaply.
+///
+/// ⚠️It does not replace the palette. Runs lose to indices the moment the
+/// values INTERLEAVE — a dither or a photograph makes every run one pixel
+/// long, and then a run costs more than the value it stands for. That is
+/// why [_RestoreBuilder] measures all of them and keeps the smallest
+/// rather than trying them in a fixed order.
+final class RunLengthCelPixelRestore extends CelPixelRestore {
+  RunLengthCelPixelRestore({required this.values, required this.lengths})
+    : assert(
+        lengths.isNotEmpty,
+        'a run-length recipe with no runs restores nothing.',
+      );
+
+  /// One value per run, packed end to end in channel order.
+  final Uint8List values;
+
+  /// How many touched pixels each run covers, in walk order.
+  final Uint32List lengths;
+
+  @override
+  int get estimatedRetainedBytes => values.length + lengths.lengthInBytes;
+
+  /// Where the cursor stands: [_run] is the run holding pixel [_runStart].
+  ///
+  /// ⚠️A CURSOR, because every caller walks forward. [overwriteCelPixels]
+  /// reads index 0, 1, 2 … in one pass, so the cursor advances one step per
+  /// pixel and the whole read is linear. A caller that jumps BACKWARD (a
+  /// second undo pass starting over) resets and re-walks — correct at any
+  /// order, fast at the only order anyone uses.
+  int _run = 0;
+  int _runStart = 0;
+
+  @override
+  void readInto(Uint8List into, int index) {
+    if (index < _runStart) {
+      _run = 0;
+      _runStart = 0;
+    }
+    while (_runStart + lengths[_run] <= index) {
+      _runStart += lengths[_run];
+      _run += 1;
+    }
+    into.setRange(0, into.length, values, _run * into.length);
+  }
+}
+
 /// More distinct values than a palette can index — the channels are kept
 /// as they were, one pixel after another in walk order.
 final class RawCelPixelRestore extends CelPixelRestore {
@@ -263,10 +325,18 @@ final class RawCelPixelRestore extends CelPixelRestore {
 /// index byte costs as much as the value it stands for.
 const int _maxPaletteEntries = 256;
 
+/// What one run's LENGTH costs, beside its value.
+///
+/// ⚠️Four, and it has to be four: a run is counted across the whole walk,
+/// not within a tile, so a flat cel is one run of several million. A
+/// 16-bit length would have to split those, which is a rule that buys
+/// nothing — the split runs would each carry their value again.
+const int _runLengthBytes = 4;
+
 /// Collects the original values of the pixels a pass touches and decides,
 /// at the end, which recipe shape says them most cheaply.
 ///
-/// The three shapes are not guesses about the drawing — they are measured
+/// The four shapes are not guesses about the drawing — they are measured
 /// while the forward pass walks the pixels it has to walk anyway, so
 /// choosing between them costs one map lookup per pixel and no second
 /// pass.
@@ -304,6 +374,13 @@ class _RestoreBuilder {
   /// answer.
   bool _paletteOpen = true;
   int _count = 0;
+
+  /// The runs, filled from the moment a second distinct value arrives.
+  /// ⚠️Never cleared: unlike the palette these cannot overflow — a run per
+  /// pixel is simply a bad answer, and [build] then picks a better one.
+  final BytesBuilder _runValues = BytesBuilder(copy: false);
+  final List<int> _runLengths = [];
+  int _lastRunKey = -1;
 
   void add(Uint8List channelBytes) {
     _count += 1;
@@ -348,16 +425,37 @@ class _RestoreBuilder {
     _indices = indices;
     _palette = palette;
     _paletteIndexByKey = {key: 0};
+    // The uniform stretch that just ended IS the first run, however long it
+    // was — the optimistic path never had to remember it pixel by pixel.
+    _runValues.add(Uint8List.fromList(first));
+    _runLengths.add(skipped);
+    _lastRunKey = key;
+  }
+
+  /// One more pixel on the current run, or the start of the next one.
+  void _extendRun(int key, Uint8List channelBytes) {
+    if (key == _lastRunKey) {
+      _runLengths[_runLengths.length - 1] += 1;
+      return;
+    }
+    _lastRunKey = key;
+    _runValues.add(Uint8List.fromList(channelBytes));
+    _runLengths.add(1);
   }
 
   void _addToStructures(Uint8List channelBytes) {
     _raw!.add(Uint8List.fromList(channelBytes));
-    if (!_paletteOpen) {
-      return;
-    }
     var key = 0;
     for (var byte = 0; byte < byteCount; byte += 1) {
       key = (key << 8) | channelBytes[byte];
+    }
+    // ⚠️BEFORE the palette's early return: runs are measured even after the
+    // palette has overflowed, and that is the whole point — a drawing with
+    // more than 256 colours is exactly the drawing the old ladder had to
+    // answer with four bytes a pixel.
+    _extendRun(key, channelBytes);
+    if (!_paletteOpen) {
+      return;
     }
     final byKey = _paletteIndexByKey;
     final existing = byKey[key];
@@ -378,6 +476,18 @@ class _RestoreBuilder {
   }
 
   /// Null when the pass touched nothing.
+  ///
+  /// 🚨★★★**THE SMALLEST WINS — it is not a ladder any more.** It used to
+  /// be an ordered fallback (uniform, else paletted, else raw), and that
+  /// order encoded a guess: that anything a palette can index is best said
+  /// by indices. The guess is wrong wherever the values REPEAT, which is
+  /// most drawings — a palette index is one byte per pixel however few
+  /// colours there are. Every shape is measured against the same ruler now
+  /// ([CelPixelRestore.estimatedRetainedBytes]) and the cheapest is kept.
+  ///
+  /// ⚠️Measured from the BUILDERS' lengths, not by building all of them: a
+  /// whole-cel pass's raw buffer is megabytes, and materializing it only to
+  /// find it lost would be the expensive half of the work.
   CelPixelRestore? build() {
     if (_count == 0) {
       return null;
@@ -388,7 +498,18 @@ class _RestoreBuilder {
     if (_paletteOpen && _paletteIndexByKey.length == 1) {
       return UniformCelPixelRestore(_palette.toBytes());
     }
-    if (_paletteOpen) {
+    final runBytes = _runLengths.length * (byteCount + _runLengthBytes);
+    final paletteBytes = _paletteOpen
+        ? _palette.length + _indices.length
+        : null;
+    final rawBytes = _raw!.length;
+    if (runBytes <= rawBytes && (paletteBytes == null || runBytes <= paletteBytes)) {
+      return RunLengthCelPixelRestore(
+        values: _runValues.toBytes(),
+        lengths: Uint32List.fromList(_runLengths),
+      );
+    }
+    if (paletteBytes != null && paletteBytes <= rawBytes) {
       return PalettedCelPixelRestore(
         palette: _palette.toBytes(),
         indices: Uint8List.fromList(_indices),
