@@ -174,6 +174,72 @@ void main() {
       );
     });
 
+    /// 🚨★★★**A WAVEFORM TURNS NO PAGES, AND STILL PLAYS.** 유저
+    /// 2026-09-08: 「뷰어 소리 내는 범위는 싹 다야 … 비디오 프로그램이랑
+    /// 비슷한느낌으로」. The button used to ask only whether the document
+    /// advances by itself, which a sound never does.
+    testWidgets('a sound gets the play button, and a playhead standing at '
+        'the start', (tester) async {
+      await pumpViewer(
+        tester,
+        result: ConformResult(
+          outcome: ConformOutcome.built,
+          peaks: peaksOfSeconds(2),
+          samples: Float32List(2 * 48000),
+          channels: 1,
+          sampleRate: 48000,
+          frames: 2 * 48000,
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('media-viewer-play-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('media-viewer-playhead')),
+        findsOneWidget,
+        reason: '⛔not only while it plays — a line that appears on the '
+            'first press is UI popping into existence, and where the head '
+            'STANDS is what says where a second press resumes from',
+      );
+    });
+
+    /// 🚨★★★**A STAND-DOWN MUST NOT LIE TO THE GATE.** There is no audio
+    /// device under `flutter_tester`, so this is the path the test machine
+    /// always takes — and it is the one that matters: a viewer that
+    /// started a timer anyway would answer 「재생 중」 to
+    /// `PlaybackActuationGate` with nothing coming out, and the gate would
+    /// then eat the user's next press on behalf of silence.
+    testWidgets('with no sound coming out, pressing play starts NOTHING', (
+      tester,
+    ) async {
+      await pumpViewer(
+        tester,
+        result: ConformResult(
+          outcome: ConformOutcome.built,
+          peaks: peaksOfSeconds(2),
+          samples: Float32List(2 * 48000),
+          channels: 1,
+          sampleRate: 48000,
+          frames: 2 * 48000,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      );
+      await tester.pump();
+
+      expect(
+        session!.playbackRig.transports.value,
+        isFalse,
+        reason: 'the app is not playing, because nothing is',
+      );
+      // And no timer is left behind for the teardown to trip over.
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
     testWidgets('a sound this build cannot read says SO — and not the '
         'generic 「this kind cannot be shown」', (tester) async {
       await pumpViewer(

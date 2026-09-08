@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io' show Platform;
 
 import 'package:ffi/ffi.dart';
 
@@ -392,6 +393,29 @@ int audioDeviceIndexByName(
 /// One sequence for the three callers that need a speaker — the playback
 /// transport, the scrub arm and the recording cue — which differ only in
 /// the rate, the channel count and where the name comes from.
+/// The device, unless a widget test is asking.
+///
+/// 🚨★★★**A WIDGET TEST NEVER TOUCHES THE HARDWARE.** `flutter_tester`
+/// runs on a developer's machine with speakers attached, and every audio
+/// path here can reach them — so the paths take their device through this
+/// rather than through [QaAudioDevice.instance] directly.
+///
+/// ⚠️Written down once when the media viewer became the FOURTH caller
+/// (2026-09-08). The transport, the scrubber and the Preferences device
+/// list had each spelled the same `FLUTTER_TEST` check out, and the viewer
+/// was written WITHOUT one — which is how it was found: a widget test
+/// opened a real output and reported that sound was playing.
+///
+/// ⛔It is not a resolver a caller may skip 「just this once」. A path that
+/// wants a device for a reason of its own still comes through here and
+/// gets null under test; the injectable `resolveDevice` seams stay, and
+/// they exist so a test can hand in a FAKE, never so one can reach the
+/// real thing.
+QaAudioDevice? audioOutputUnlessTesting() =>
+    Platform.environment['FLUTTER_TEST'] == 'true'
+    ? null
+    : QaAudioDevice.instance;
+
 bool openAudioOutput(
   QaAudioDevice device, {
   required int sampleRate,

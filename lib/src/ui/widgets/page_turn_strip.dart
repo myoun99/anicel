@@ -6,7 +6,9 @@ import 'drag_value_label.dart';
 
 /// The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13) —
 /// the timesheet's ◀ n/N ▶ grammar stood upright, drag/type on the
-/// readout included. Empty below two pages: nothing to turn.
+/// readout included. Below two pages the CLUSTER is empty — nothing to
+/// turn — while a [leading] run still rides, because what it carries is
+/// not a page control.
 ///
 /// ONE cluster for the three sheets that turn pages (the timesheet, the
 /// conte, the media viewer — 「최대한 통일」): the same chevrons, the same
@@ -30,7 +32,16 @@ List<Widget> pageTurnStrip({
   List<Widget> leading = const <Widget>[],
 }) {
   if (page.count <= 1) {
-    return const <Widget>[];
+    // ⛔The PAGE cluster goes; [leading] does not. 유저 확정 ⑥ is about a
+    // page turner that could never turn — 「a still image gets no strip
+    // rather than a permanently disabled one」 — and a leading control with
+    // a subject of its own is not that.
+    //
+    // 🪦Everything used to go, because 「재생 = 페이지 넘김」 held: the only
+    // leading control was the viewer's play button, and a document with one
+    // page had nothing to play. A sound broke that (2026-09-08) — its
+    // waveform is ONE page and it plays for two minutes.
+    return [...leading];
   }
   final strings = AppText.strings;
   return [

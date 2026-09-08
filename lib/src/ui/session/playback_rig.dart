@@ -15,7 +15,7 @@ import 'dart:io';
 
 import '../../models/playback_quality.dart';
 import '../../models/storyboard_timeline_layout.dart';
-import '../../native/qa_audio_device.dart' show QaAudioDevice;
+import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
 import '../playback/audio_device_transport.dart';
 import '../playback/audio_playback_sync.dart';
@@ -163,9 +163,7 @@ class PlaybackRig implements PlaybackRun {
     resolveProject: () => _project.repository.currentProject,
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
-    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
-        ? () => null
-        : null,
+    resolveDevice: audioOutputUnlessTesting,
     resolveUserOffsetSamples: (sampleRate) =>
         _internals.appSettings.audioSyncSettings.value.offsetSamples(
           sampleRate: sampleRate,
@@ -183,12 +181,8 @@ class PlaybackRig implements PlaybackRun {
   /// R4); empty without a native binary (widget tests, engine-less runs).
   List<({String name, bool isDefault})> audioDevicesOf({
     required bool capture,
-  }) {
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
-      return const [];
-    }
-    return QaAudioDevice.instance?.devicesOf(capture: capture) ?? const [];
-  }
+  }) =>
+      audioOutputUnlessTesting()?.devicesOf(capture: capture) ?? const [];
 
   /// Scrubbing the playhead plays each crossed frame's slice of the mix
   /// (2D): one `play(frame, frame+1)` per crossed frame on the same
@@ -200,9 +194,7 @@ class PlaybackRig implements PlaybackRun {
     resolveProject: () => _project.repository.currentProject,
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
-    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
-        ? () => null
-        : null,
+    resolveDevice: audioOutputUnlessTesting,
     resolveSoloedLayerIds: () => _internals.soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>

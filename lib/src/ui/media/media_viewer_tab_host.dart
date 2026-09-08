@@ -17,6 +17,7 @@ import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -32,6 +33,7 @@ import 'media_asset_drag_data.dart';
 import 'media_asset_drop_target.dart';
 import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
+import 'viewer_sound.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
@@ -386,6 +388,31 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// nothing else — never per turned page (the gate wraps the whole editor).
   final ValueNotifier<bool> _playingFlips = ValueNotifier<bool>(false);
 
+  /// This viewer's sound, or silence if the app has no audio device.
+  ///
+  /// ⚠️Built lazily against the session's conform store — the SAME store
+  /// the timeline plays out of, so a file conformed for one is conformed
+  /// for the other and nothing is decoded twice.
+  late final ViewerSound _sound = ViewerSound(
+    conformStore: widget.session.audioConformStore,
+    resolveOutputDeviceName: () => widget
+        .session
+        .appSettings
+        .audioSyncSettings
+        .value
+        .outputDeviceName,
+  );
+
+  /// Where the sound has got to, in seconds — the playhead's position on
+  /// the waveform.
+  ///
+  /// 🚨It is read from the DEVICE every tick, never counted up here: the
+  /// device counts samples handed to the hardware, so a playhead that
+  /// follows it cannot drift from what is being heard. A local counter
+  /// would be a second clock, and the timeline's transport spends its
+  /// whole header explaining why there is only ever one.
+  double _soundSeconds = 0;
+
   /// Renders in flight, one marker per (page, scale) — landings remove
   /// their own marker, so a stale landing can never wipe a newer one.
   final Set<(int, double)> _rendersInFlight = {};
@@ -693,7 +720,27 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 「비디오 … 불러와서 재생가능하게」. It asks the DOCUMENT, so an
   /// animated GIF gets the same button a movie does; nothing here knows
   /// what a movie is.
-  bool get _canPlay => (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
+  bool get _turnsItsOwnPages =>
+      (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
+
+  /// The file whose SOUND this viewer would play, or null when the thing
+  /// on screen cannot carry any.
+  ///
+  /// ⛔It asks [mediaKindCanCarrySound] — the predicate the conform walk
+  /// already uses — rather than testing for audio here. A movie carries a
+  /// soundtrack, and a viewer that decided that for itself would be the
+  /// second place the app answers 「이게 소리를 가질 수 있나」.
+  String? get _soundPath {
+    final request = _currentRequest;
+    return request != null && mediaKindCanCarrySound(request.kind)
+        ? request.path
+        : null;
+  }
+
+  /// Whether there is anything to PLAY: pages that advance by themselves,
+  /// or sound. 유저 2026-09-08: 「뷰어 소리 내는 범위는 싹 다야」 — so a
+  /// waveform, which turns no pages at all, still gets the button.
+  bool get _canPlay => _turnsItsOwnPages || _soundPath != null;
 
   bool get _playing => _playTimer != null;
 
@@ -790,6 +837,39 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   void _stopPlaying() {
     _playTimer = null;
     _buffering = false;
+    // ⚠️Unconditional: [ViewerSound.stop] is idempotent, and every path out
+    // of a run — the button, the actuation gate, a new file, a closed tab —
+    // comes through here. A sound left playing under a stopped viewer is
+    // the one failure this panel cannot show on screen.
+    //
+    // 🧪MUTANT SURVIVES HERE — deleting this line keeps the suite green,
+    // and that is a limit of the bench rather than a missing test: a widget
+    // test never gets a device ([audioOutputUnlessTesting]), so nothing in
+    // it can be left playing. What would catch it is a person with
+    // headphones on, which is why the line is written with its reason.
+    _sound.stop();
+  }
+
+  /// One tick of a run that has SOUND and no pages: move the playhead to
+  /// wherever the device has got to.
+  ///
+  /// 🚨★★★**THE PICTURE FOLLOWS THE SOUND, NEVER A COUNTER.** The device
+  /// counts samples handed to the hardware, so a playhead read from it
+  /// cannot drift from what is being heard however late this tick runs.
+  /// Counting up here instead would be a second clock, which is the exact
+  /// thing the timeline's device transport exists to avoid.
+  void _followTheSound() {
+    if (!mounted) {
+      return;
+    }
+    final at = _sound.positionSeconds;
+    if (at == null || _sound.ended) {
+      // Ran out: a viewer that kept ticking on a silent device would say
+      // 「재생 중」 to the actuation gate forever.
+      setState(_stopPlaying);
+      return;
+    }
+    setState(() => _soundSeconds = at);
   }
 
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
@@ -812,15 +892,28 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   @override
   ValueListenable<bool> get isActiveListenable => _playingFlips;
 
+  /// How often a run of THIS document has something to do: once per
+  /// frame while pages advance, and otherwise once per screen frame,
+  /// which is all a playhead sliding along a waveform needs. Null = there
+  /// is nothing to run.
+  Duration? get _playTickPeriod {
+    final fps = _document?.framesPerSecond ?? 0;
+    if (_turnsItsOwnPages) {
+      return Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000));
+    }
+    return _soundPath == null ? null : const Duration(milliseconds: 16);
+  }
+
   void _togglePlaying() {
     if (_playing) {
       setState(_stopPlaying);
       return;
     }
-    final fps = _document?.framesPerSecond;
-    if (fps == null || fps <= 0) {
+    final period = _playTickPeriod;
+    if (period == null) {
       return;
     }
+    final soundPath = _soundPath;
     setState(() {
       // From the top when the playhead is already at the end: pressing play
       // on the last frame has to DO something, and the only sensible
@@ -828,9 +921,23 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       if (_page >= _pageCount - 1) {
         _turnToPage(0);
       }
-      _playTimer = Timer.periodic(
-        Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000)),
-        (_) {
+      if (soundPath != null) {
+        _soundSeconds = 0;
+        _sound.play(soundPath, fromSeconds: 0);
+      }
+      // ⛔A run with neither pages to turn nor sound coming out is a timer
+      // saying 「재생 중」 to the actuation gate while nothing happens — and
+      // the gate would then eat the next press for it. Standing down is
+      // silent BY DESIGN (no audio device, a conform still landing), so
+      // this is the shape that keeps a stand-down from becoming a lie.
+      if (!_turnsItsOwnPages && !_sound.isCarrying) {
+        return;
+      }
+      _playTimer = Timer.periodic(period, (_) {
+        if (!_turnsItsOwnPages) {
+          _followTheSound();
+          return;
+        }
           // 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT
           // IS NOT THERE.**
           //
@@ -965,6 +1072,18 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final docSize = document != null && pageCount > 0
         ? document.pageSize(pageIndex)
         : const ui.Size(640, 480);
+
+    // How long the sound is, when the page IS the sound — the waveform's
+    // whole width is that many seconds, so it is also the scale the
+    // playhead sits on.
+    //
+    // ⛔Only for a page that does not turn: a movie's playhead is its PAGE,
+    // and giving it a second one in seconds would be two answers to 「어디를
+    //보고 있나」. The movie's soundtrack is the next step of the roadmap and
+    // it rides the page, not this.
+    final waveformSeconds = _turnsItsOwnPages || _soundPath == null
+        ? null
+        : widget.session.audioConformStore.durationSecondsFor(_soundPath!);
 
     // The lazy render for the visible page, at the current zoom's tier.
     //
@@ -1124,6 +1243,35 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                 ),
               ),
             ),
+          // The playhead over a waveform — its own layer, never inside the
+          // page above.
+          //
+          // 🚨The page rides a [StaticRaster] because it changes when you
+          // page or pan and NOT otherwise; a playhead painted into it would
+          // re-bake that raster sixty times a second, which is the exact
+          // cost that widget exists to remove.
+          //
+          // ⛔Present whenever the file has sound, not only while it plays:
+          // a line that appears on the first press is UI that pops into
+          // existence, and where the playhead STANDS is what tells you
+          // where a second press would resume from.
+          if (waveformSeconds != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  key: ValueKey<String>(_key('playhead')),
+                  painter: _PlayheadPainter(
+                    atSeconds: _soundSeconds,
+                    ofSeconds: waveformSeconds,
+                    docSize: docSize,
+                    viewport: viewport,
+                    effectiveRatio: EffectiveDevicePixelRatio.of(context),
+                    color: AppColors.accent,
+                  ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1210,4 +1358,53 @@ class _MediaPagePainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (image, docSize, paperFill, viewport, effectiveRatio);
+}
+
+/// The line that says where in the sound you are.
+///
+/// ⚠️Its own painter and its own layer above the page: the page is a
+/// [StaticRaster] that re-bakes only when you page or pan, and a playhead
+/// inside it would re-bake it on every tick of a run.
+class _PlayheadPainter extends CustomPainter with RepaintOnProps {
+  const _PlayheadPainter({
+    required this.atSeconds,
+    required this.ofSeconds,
+    required this.docSize,
+    required this.viewport,
+    required this.effectiveRatio,
+    required this.color,
+  });
+
+  final double atSeconds;
+  final double ofSeconds;
+  final ui.Size docSize;
+  final CanvasViewport viewport;
+  final double effectiveRatio;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (ofSeconds <= 0) {
+      return;
+    }
+    canvas.save();
+    // The SAME transform the page uses — the line has to land on the
+    // waveform under every zoom and pan, so it cannot compute its own.
+    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
+    final x = docSize.width * (atSeconds / ofSeconds).clamp(0.0, 1.0);
+    canvas.drawLine(
+      Offset(x, 0),
+      Offset(x, docSize.height),
+      Paint()
+        // In DOCUMENT units, so the line thins as you zoom in rather than
+        // growing into a bar over the sample it is pointing at.
+        ..strokeWidth = docSize.width / 600
+        ..color = color,
+    );
+    canvas.restore();
+  }
+
+  @override
+  Object get props =>
+      (atSeconds, ofSeconds, docSize, viewport, effectiveRatio, color);
 }
