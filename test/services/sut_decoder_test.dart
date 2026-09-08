@@ -46,17 +46,37 @@ void main() {
   /// An effector blob. [curve] appends the response-curve block Clip Studio
   /// writes in the tail: a `12, <point count>, 16, 0, 0, 0, 0` marker at int
   /// 11, then one (x, y) float64 pair per point BEYOND the implied origin.
+  /// 🚨**THE FOUR MINIMUM SLOTS ARE WRITTEN SEPARATELY**, at `int[3..6]` in
+  /// panel order (筆圧 · 傾き · 速度 · ランダム).
+  ///
+  /// ⛔This used to write `minimumPercent` to `int[3]` and nothing else, so
+  /// every synthetic blob had its four slots collapsed into one — and a
+  /// decoder reading the WRONG slot read the right number anyway. That is
+  /// exactly how `_effectorRandomJitter` took pressure's floor as random's
+  /// amplitude and no test complained. A fixture that cannot express the
+  /// defect cannot catch it.
   Uint8List effector(
     int flags, {
     int minimumPercent = 0,
+    int? tiltMinimumPercent,
+    int? speedMinimumPercent,
+    int? randomMinimumPercent,
     List<(double, double)>? curve,
   }) {
+    void writeMinimums(ByteData bytes) {
+      bytes
+        ..setInt32(12, minimumPercent)
+        ..setInt32(16, tiltMinimumPercent ?? 0)
+        ..setInt32(20, speedMinimumPercent ?? 0)
+        ..setInt32(24, randomMinimumPercent ?? 0);
+    }
+
     if (curve == null) {
-      final bytes = ByteData(16)
+      final bytes = ByteData(28)
         ..setInt32(0, 44)
         ..setInt32(4, 0xf0)
-        ..setInt32(8, flags)
-        ..setInt32(12, minimumPercent);
+        ..setInt32(8, flags);
+      writeMinimums(bytes);
       return bytes.buffer.asUint8List();
     }
     final length = 72 + curve.length * 16;
@@ -64,10 +84,10 @@ void main() {
       ..setInt32(0, 44)
       ..setInt32(4, length)
       ..setInt32(8, flags)
-      ..setInt32(12, minimumPercent)
       ..setInt32(44, 12) // marker at int 11
       ..setInt32(48, curve.length + 1) // count includes the implied origin
       ..setInt32(52, 16);
+    writeMinimums(bytes);
     for (var i = 0; i < curve.length; i += 1) {
       bytes
         ..setFloat64(72 + i * 16, curve[i].$1)
@@ -114,13 +134,17 @@ void main() {
     int brushSizeUnit = 0,
     int sizeEffectorFlags = 0x10,
     int sizeEffectorMinimum = 59,
+    int sizeEffectorRandomMinimum = 0,
     List<(double, double)>? sizeEffectorCurve,
     int flowEffectorFlags = 0x30,
     int flowEffectorMinimum = 0,
+    int flowEffectorRandomMinimum = 0,
     int thicknessEffectorFlags = 0x00,
     int thicknessEffectorMinimum = 0,
+    int thicknessEffectorRandomMinimum = 0,
     int intervalEffectorFlags = 0x00,
     int intervalEffectorMinimum = 0,
+    int intervalEffectorRandomMinimum = 0,
     int rotationEffector = 0x03,
     int rotationRandomScale = 100,
     double dualSize = 30.0,
@@ -190,10 +214,15 @@ void main() {
         effector(
           sizeEffectorFlags,
           minimumPercent: sizeEffectorMinimum,
+          randomMinimumPercent: sizeEffectorRandomMinimum,
           curve: sizeEffectorCurve,
         ),
         effector(0x00),
-        effector(flowEffectorFlags, minimumPercent: flowEffectorMinimum),
+        effector(
+          flowEffectorFlags,
+          minimumPercent: flowEffectorMinimum,
+          randomMinimumPercent: flowEffectorRandomMinimum,
+        ),
         if (texturePng == null) null else patternArray(textureCatalogPath),
         brushSizeUnit,
         rotationEffector,
@@ -210,10 +239,12 @@ void main() {
         effector(
           thicknessEffectorFlags,
           minimumPercent: thicknessEffectorMinimum,
+          randomMinimumPercent: thicknessEffectorRandomMinimum,
         ),
         effector(
           intervalEffectorFlags,
           minimumPercent: intervalEffectorMinimum,
+          randomMinimumPercent: intervalEffectorRandomMinimum,
         ),
         compositeMode,
       ],
@@ -395,12 +426,20 @@ void main() {
   });
 
   test('random input source drives the jitters', () async {
+    // 🚨THE PRESSURE SLOTS CARRY DECOY VALUES. Random's floor lives at
+    // int[6] and pressure's at int[3]; before 2026-09-09 the decoder read
+    // int[3] for both, and this test could not tell because the fixture
+    // wrote one number into every slot. Now the two disagree on purpose —
+    // if the reader slips back to pressure's slot, the amplitudes come out
+    // 0.93 / 0.55 instead of 0.8 / 0.96 and this fails.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorFlags: 0x80,
-      sizeEffectorMinimum: 20,
+      sizeEffectorMinimum: 7,
+      sizeEffectorRandomMinimum: 20,
       flowEffectorFlags: 0x80,
-      flowEffectorMinimum: 4,
+      flowEffectorMinimum: 45,
+      flowEffectorRandomMinimum: 4,
       rotationEffector: 0xC3,
       rotationRandomScale: 45,
     );
@@ -489,7 +528,8 @@ void main() {
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       thicknessEffectorFlags: 0x80,
-      thicknessEffectorMinimum: 35,
+      thicknessEffectorMinimum: 8,
+      thicknessEffectorRandomMinimum: 35,
     );
     final s = (await decodeSutBrushFile(
       filePath: path,
@@ -504,7 +544,8 @@ void main() {
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       intervalEffectorFlags: 0x80,
-      intervalEffectorMinimum: 20,
+      intervalEffectorMinimum: 8,
+      intervalEffectorRandomMinimum: 20,
     );
     final s = (await decodeSutBrushFile(
       filePath: path,

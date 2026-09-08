@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
@@ -547,7 +548,10 @@ BrushPressureCurve? _effectorPressureCurve(Object? effector) {
   if (!_effectorUsesPressure(effector)) {
     return null;
   }
-  final minimum = _effectorMinimumRatio(effector);
+  final minimum = _effectorMinimumRatio(
+    effector,
+    BrushInputSource.pressure.effectorMinimumIndex,
+  );
   final stored = effector is Uint8List ? _effectorCurvePoints(effector) : null;
   if (stored == null || stored.isEmpty) {
     return BrushPressureCurve.linearFrom(minimum);
@@ -628,16 +632,35 @@ double _effectorRandomJitter(Object? effector) {
   if (!_usesRandom(_effectorFlags(effector))) {
     return 0.0;
   }
-  return (1.0 - _effectorMinimumRatio(effector)).clamp(0.0, 1.0).toDouble();
+  return (1.0 -
+          _effectorMinimumRatio(
+            effector,
+            BrushInputSource.randomEffectorMinimumIndex,
+          ))
+      .clamp(0.0, 1.0)
+      .toDouble();
 }
 
-/// The effector's minimum-output percentage (byte offset 12) — Clip
-/// Studio's 최소치 slider, the pressure floor for the affected value.
-double _effectorMinimumRatio(Object? blob) {
-  if (blob is! Uint8List || blob.length < 16) {
+/// One source's 최소치 percentage — the floor that source's curve lifts to.
+///
+/// 🚨**THERE ARE FOUR OF THESE, NOT ONE.** The blob stores a minimum per
+/// input source at `int[3 + index]` in PANEL order (筆圧 · 傾き · 速度 ·
+/// ランダム), and Clip Studio's own manual says so: TIPS #563 「各入力項目が
+/// 最小値の時、設定してある数値を100としたときの何%で描画するかを設定します」
+/// — 各入力項目, per input.
+///
+/// ⛔This used to read `int[3]` for everybody and call it "the pressure
+/// floor". That was harmless for pressure and WRONG for random, which took
+/// pressure's number as its jitter amplitude (see [_effectorRandomJitter]).
+/// The fixtures could not catch it: `sut_decoder_test`'s `effector()` wrote
+/// only `setInt32(12, …)`, so every synthetic blob had its four slots
+/// collapsed into one and any index read the same value.
+double _effectorMinimumRatio(Object? blob, int sourceIndex) {
+  final offset = 12 + sourceIndex * 4;
+  if (blob is! Uint8List || blob.length < offset + 4) {
     return 0.0;
   }
-  final minimum = ByteData.sublistView(blob).getInt32(12);
+  final minimum = ByteData.sublistView(blob).getInt32(offset);
   return (minimum / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
