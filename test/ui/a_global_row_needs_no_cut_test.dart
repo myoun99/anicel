@@ -143,6 +143,21 @@ void main() {
     expect(s.trackSeGlobalLayerById(seLayerId)!.timeline.keys, [2, 14]);
   });
 
+  test('GLOBAL FRAME ZERO is a frame like any other — the guard refuses a '
+      'NEGATIVE frame, not the first one', () {
+    final s = session();
+    s.selectRow(const LayerRowAddress(seLayerId));
+    s.selectGlobalFrame(0);
+
+    expect(
+      storyboardCursorOf(s).canCreateSeEntryAtStoryboardCursor,
+      isTrue,
+      reason: 'frame 0 is empty on this row (its only sound is [2,5)), and '
+          'a `frame < 0` guard read as `<= 0` would make the first frame '
+          'of the film the one cell the ＋ could never author on',
+    );
+  });
+
   test('an occupied frame still refuses, gap or not', () {
     final s = session();
     s.selectRow(const LayerRowAddress(seLayerId));

@@ -55,6 +55,19 @@ void main() {
     final trackSe = trackSeDisplayOf(manager);
     final seLayer = trackSe.trackSeDisplayLayers.first;
 
+    // 🚨THE CLONE CACHE IS WHAT THE ROW MEMO STANDS ON. The display clones
+    // used to be rebuilt on EVERY read, so every session notify handed the
+    // grids fresh `Layer` identities and defeated every identity-keyed row
+    // memo below — the 「selecting a layer got slow after adding
+    // dialogue」 regression. Same source layer + same window = the SAME
+    // instance back, and nothing said so: mutating the window key away
+    // left this file green while the memo it exists for could never hit.
+    expect(
+      identical(trackSe.trackSeDisplayLayers.first, seLayer),
+      isTrue,
+      reason: 'a second read with nothing edited is a cache HIT',
+    );
+
     // Sparse rows (camera/SE) render through the widget path — their
     // stable key is the frame-row area.
     final cameraRow = find.byKey(

@@ -108,6 +108,13 @@ class PlaybackRig implements PlaybackRun {
         // Production: 1200ms (R13-4) — during an active work session the
         // warmer resumes only in REAL pauses; per-tile abort granularity
         // covers whatever still collides at the resume boundary.
+        //
+        // ⚠️MUTANT SURVIVES, wrong axis (2026-09-08): swapping the two
+        // branches leaves every suite green. What the DELAY does is pinned
+        // by the scheduler's own unit tests, which inject a duration; this
+        // line only picks which one, and no suite that names the rig arms
+        // the quiet-window poll. A test that noticed would have to assert
+        // on a timer, which is the shape those unit tests already are.
         idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
             ? Duration.zero
             : const Duration(milliseconds: 1200),

@@ -3,6 +3,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/track_se_display.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -11,6 +12,13 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 /// the ONE lane-move machine: a ranged key move on a nametag lane shifts
 /// its keys as one rigid group, exactly as the transform and effect
 /// families do. No new machine — a third subject arm.
+/// The collaborator that answers 「is this a TRACK-owned SE row」 — named
+/// so `tool/mutation_run.dart` runs this file for it: that question is what
+/// decides whether the tag's keys convert onto the global axis here, and
+/// neither of its other namers asks it.
+TrackSeDisplay trackSeDisplayOf(EditorSessionManager session) =>
+    session.trackSe;
+
 void main() {
   group('seNameTagTrackWithLaneSpanKeysShifted (the pure law)', () {
     SeNameTagTrack keyed(Map<int, double> sizes, {Map<int, bool>? bolds}) =>
@@ -117,6 +125,12 @@ void main() {
       );
       addTearDown(session.dispose);
       final se = session.activeTrack.seLayers.first;
+      expect(
+        trackSeDisplayOf(session).isTrackSeLayerId(se.id),
+        isTrue,
+        reason: 'fixture premise: the row is TRACK-owned, which is what puts '
+            'its tag keys on the global axis',
+      );
       session.seEntries.setSeNameTagForLayer(
         se.id,
         SeNameTag(
