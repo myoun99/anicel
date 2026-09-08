@@ -78,6 +78,14 @@ class UndoSurfacePair {
 /// ⚠️No format of its own: the payload is an [AnicelCelBlob], the same
 /// thing a cooled cel becomes, so the codec is picked in the one place
 /// that picks codecs and a second encoder cannot drift from it.
+///
+/// ⚠️And that reuse is what pins the codec HERE too, with no second test:
+/// `the_cooling_path_is_zstd_test` drives `AnicelCelBlob.encode` through
+/// `Isolate.run`, which is exactly the call [park] makes. The hazard it
+/// watches — statics do not cross an isolate boundary, so a worker that
+/// cannot find the engine silently writes deflate and nothing goes red —
+/// is one hazard, not two. ⛔A copy of that test aimed at this class
+/// would measure the same thing twice.
 class UndoSurfaceSnapshot {
   /// Parks every snapshot an entry holds, answering false if ANY refused
   /// — an entry stops holding RAM only when all of it has moved.

@@ -1,6 +1,7 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
@@ -31,7 +32,20 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   final LayerId sourceLayerId;
 
   /// The cels forked at execute — undo removes exactly these.
-  final List<(BrushFrameKey, BitmapSurface)> _forkedCels = [];
+  ///
+  /// 🚨★★★**KEYS AND SIZES, NEVER THE SURFACES.** This used to hold the
+  /// forked [BitmapSurface]s and it read them for one field: undo puts an
+  /// EMPTY surface of the same canvas size back. So an entry sitting on
+  /// the undo stack for the rest of the session pinned a whole layer's
+  /// pixels — invisibly, because this command reports no weight at all
+  /// (the byte budget only sees a [RetainedBytesCommand]). It looked
+  /// harmless while the store still held the same objects, and stopped
+  /// being harmless the moment the user drew on the forked layer.
+  ///
+  /// ⛔It cannot become a [RetainedBytesCommand] instead: the answer is
+  /// not「report these bytes」, it is「do not hold them」. A redo re-reads
+  /// the pixels from the store on its way through [execute] anyway.
+  final List<(BrushFrameKey, CanvasSize)> _forkedCels = [];
 
   @override
   String get description => 'Unlink layer $sourceLayerId';
@@ -50,7 +64,9 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
     }
 
     // 1. Capture the shared pixels THROUGH the still-linked member keys
-    //    (they resolve to the canonical cels).
+    //    (they resolve to the canonical cels). LOCAL, so the pixels are
+    //    gone the moment this call returns — see [_forkedCels].
+    final forked = <(BrushFrameKey, BitmapSurface)>[];
     _forkedCels.clear();
     for (final member in members) {
       if (project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) ==
@@ -67,7 +83,8 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
         );
         final surface = brushFrameStore.bakedSurfaceOrNull(memberKey);
         if (surface != null) {
-          _forkedCels.add((memberKey, surface));
+          forked.add((memberKey, surface));
+          _forkedCels.add((memberKey, surface.canvasSize));
         }
       }
     }
@@ -96,7 +113,7 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
     // 3. The member keys now resolve to THEMSELVES — store the captured
     //    pixels as the layer's own cels (surfaces are immutable, sharing
     //    the object is a true copy-on-write fork).
-    for (final (key, surface) in _forkedCels) {
+    for (final (key, surface) in forked) {
       brushFrameStore.storeBakedSurface(key, surface);
     }
     markExecuted();
@@ -107,10 +124,10 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   /// template fixes that order (see [LinkRegistrySnapshotCommand.undo]).
   @override
   void undoBeforeRegistry() {
-    for (final (key, surface) in _forkedCels) {
+    for (final (key, canvasSize) in _forkedCels) {
       brushFrameStore.storeBakedSurface(
         key,
-        BitmapSurface(canvasSize: surface.canvasSize),
+        BitmapSurface(canvasSize: canvasSize),
       );
     }
   }
