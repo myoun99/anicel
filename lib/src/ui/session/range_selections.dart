@@ -426,7 +426,7 @@ class RangeSelections {
   /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
   /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
   /// [framesAreGlobal] says which axis the surface counted in — the same
-  /// question [_internals.shiftAnchorFor] asks for the frame-shift verbs. The
+  /// question `BlockShift.shiftAnchorFor` asks for the frame-shift verbs. The
   /// storyboard's strips ARE the track's global axis; a cut panel's are
   /// its window, and a track-SE row's span is translated onto the global
   /// axis on the way in, because that is where the selection lives.

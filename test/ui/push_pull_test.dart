@@ -126,8 +126,8 @@ void main() {
       final s = twoBlockSession();
 
       s.selectFrameIndex(4);
-      expect(s.canPushFrames(), isTrue);
-      s.pushFrames(3);
+      expect(s.blockShift.canPushFrames(), isTrue);
+      s.blockShift.pushFrames(3);
 
       expect(blocksOf(s), [(0, 1), (7, 8)]);
 
@@ -140,12 +140,12 @@ void main() {
       final s = twoBlockSession();
 
       s.selectFrameIndex(4);
-      expect(s.framePullSlack(), 3);
+      expect(s.blockShift.framePullSlack(), 3);
 
       // Asking for more than there is closes what there is.
-      s.pullFrames(9);
+      s.blockShift.pullFrames(9);
       expect(blocksOf(s), [(0, 1), (1, 2)]);
-      expect(s.canPullFrames(), isFalse);
+      expect(s.blockShift.canPullFrames(), isFalse);
     });
 
     test('a block STRADDLING the anchor stays put — the anchor is a '
@@ -159,7 +159,7 @@ void main() {
 
       s.clearFrameRangeSelection();
       s.selectFrameIndex(2);
-      s.pushFrames(2);
+      s.blockShift.pushFrames(2);
 
       // The straddled block held; only the one starting after the anchor
       // travelled.
@@ -176,7 +176,7 @@ void main() {
         anchorIndex: 4,
         headIndex: 4,
       );
-      s.pushFrames(2);
+      s.blockShift.pushFrames(2);
 
       expect(blocksOf(s), [(0, 1), (6, 7)]);
     });

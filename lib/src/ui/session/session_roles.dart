@@ -143,14 +143,6 @@ abstract interface class SessionInternals {
     TimelineFrameRangeSelection selection,
   );
   void followPlaybackCut();
-  ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
-  frameShiftScope({TimelineRowAddress? currentRow});
-  int shiftAnchorFor(
-    LayerId layerId,
-    int anchorIndex, {
-    required bool anchorIsGlobal,
-  });
-  Layer? shiftLayerFor(LayerId layerId);
   Layer? get targetLayerForKindToggle;
   AttachFxConfirmController get attachFxConfirm;
   BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);

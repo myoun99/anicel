@@ -178,9 +178,9 @@ void main() {
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
       );
-      expect(session.canPushFrames(), isTrue);
+      expect(session.blockShift.canPushFrames(), isTrue);
 
-      session.pushFrames(2);
+      session.blockShift.pushFrames(2);
 
       // Both sounds travel: the shove opens 2 frames at the anchor and
       // everything after keeps its own spacing.
@@ -200,7 +200,7 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.pushFrames(1);
+      session.blockShift.pushFrames(1);
 
       expect(seLayerOf(session).timeline.keys, [3, 10]);
     });
@@ -216,8 +216,8 @@ void main() {
 
       // The [9,12) sound sits 4 frames after the anchor's block end (5),
       // so the pull closes that gap and stops.
-      expect(session.framePullSlack(), 4);
-      session.pullFrames(9);
+      expect(session.blockShift.framePullSlack(), 4);
+      session.blockShift.pullFrames(9);
 
       expect(seLayerOf(session).timeline.keys, [2, 5]);
     });
@@ -227,8 +227,8 @@ void main() {
 
       // The active layer is cut 1's cel, which carries nothing — the frame
       // scope still resolves to it, not to any S row.
-      expect(session.canPushFrames(), isTrue);
-      session.pushFrames(2);
+      expect(session.blockShift.canPushFrames(), isTrue);
+      session.blockShift.pushFrames(2);
 
       expect(seLayerOf(session).timeline.keys, [2, 9]);
     });
@@ -708,8 +708,8 @@ void main() {
         headGlobalFrame: 9,
       );
 
-      expect(session.canPushBlocks(), isTrue);
-      session.pushBlocks(3);
+      expect(session.blockShift.canPushBlocks(), isTrue);
+      session.blockShift.pushBlocks(3);
 
       // Cut 2's leading gap carries its whole run (design D); the sounds
       // are on another axis and stay put.
@@ -734,7 +734,7 @@ void main() {
         headGlobalFrame: 3,
       );
 
-      session.pushBlocks(2);
+      session.blockShift.pushBlocks(2);
 
       expect(seLayerOf(session).timeline.keys, [4, 11]);
       expect(
@@ -752,7 +752,7 @@ void main() {
     test('with NOTHING selected the asking rail decides: a cut row shoves '
         'cuts, an S row shoves sounds', () {
       final cutRowSession = sessionFor();
-      cutRowSession.pushBlocks(
+      cutRowSession.blockShift.pushBlocks(
         2,
         currentRow: cutRowSession.selectedRow, // the V row by default
       );
@@ -769,7 +769,7 @@ void main() {
 
       final seRowSession = sessionFor();
       seRowSession.selectRow(const LayerRowAddress(_seLayerId));
-      seRowSession.pushBlocks(2, currentRow: seRowSession.selectedRow);
+      seRowSession.blockShift.pushBlocks(2, currentRow: seRowSession.selectedRow);
       expect(seLayerOf(seRowSession).timeline.keys, [4, 11]);
     });
   });

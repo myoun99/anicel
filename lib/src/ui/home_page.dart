@@ -617,12 +617,12 @@ class _HomePageState extends State<HomePage> {
           _session.layerMarks.toggleMarkAtCurrentFrame();
         }
       case EditorActionIds.timelinePushBlocks:
-        if (_session.canPushBlocks()) {
-          _session.pushBlocks(1);
+        if (_session.blockShift.canPushBlocks()) {
+          _session.blockShift.pushBlocks(1);
         }
       case EditorActionIds.timelinePullBlocks:
-        if (_session.canPullBlocks()) {
-          _session.pullBlocks(1);
+        if (_session.blockShift.canPullBlocks()) {
+          _session.blockShift.pullBlocks(1);
         }
       case EditorActionIds.canvasRotateCcw:
         _canvasViewCommands.rotateBy(-15);

@@ -285,7 +285,7 @@ class LaneVerbs {
   /// to show.
   ///
   /// This is the axis rule the frame-shift verbs already follow
-  /// ([_internals.shiftLayerFor], UI-R18 #1), now said once more for the lane
+  /// (`BlockShift.shiftLayerFor`, UI-R18 #1), now said once more for the lane
   /// family. R5 #8's window conversion on the way OUT retires with it:
   /// what goes in was global to begin with.
   /// ★And a V TRACK's own lane rows answer with a CARRIER layer — the

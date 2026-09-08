@@ -549,7 +549,7 @@ void main() {
         headIndex: 0,
         headLayerId: attachId,
       );
-      s.pushFrames(2);
+      s.blockShift.pushFrames(2);
 
       final storedBase = cutLayers(s).firstWhere((l) => l.id == base.id);
       expect(storedBase.timeline.containsKey(2), isTrue);

@@ -58,9 +58,9 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
   late bool _canPull;
 
   bool get _derivedPush =>
-      widget.session.canPushBlocks(currentRow: widget.currentRow);
+      widget.session.blockShift.canPushBlocks(currentRow: widget.currentRow);
   bool get _derivedPull =>
-      widget.session.canPullBlocks(currentRow: widget.currentRow);
+      widget.session.blockShift.canPullBlocks(currentRow: widget.currentRow);
 
   /// Re-derives after a signal that does NOT come through a parent rebuild.
   ///
@@ -135,7 +135,7 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
           tooltip: AppText.strings.tlPush,
           icon: const Icon(Icons.keyboard_tab),
           onPressed: _canPush
-              ? () => session.pushBlocks(1, currentRow: currentRow)
+              ? () => session.blockShift.pushBlocks(1, currentRow: currentRow)
               : null,
         ),
         AppIconButton(
@@ -143,7 +143,7 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
           tooltip: AppText.strings.tlPull,
           icon: const Icon(Icons.keyboard_backspace),
           onPressed: _canPull
-              ? () => session.pullBlocks(1, currentRow: currentRow)
+              ? () => session.blockShift.pullBlocks(1, currentRow: currentRow)
               : null,
         ),
       ],

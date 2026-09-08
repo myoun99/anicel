@@ -5,7 +5,6 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/row_block_shift.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/flip_column_step.dart';
 import '../../models/timeline_repeat.dart';
@@ -248,44 +247,6 @@ class FrameVerbs {
         minted: minted,
       );
     }
-    _changes.notifyChanged();
-  }
-
-  void shiftFrames(int delta, {TimelineRowAddress? currentRow}) {
-    final scope = _internals.frameShiftScope(currentRow: currentRow);
-    if (scope == null || delta == 0) {
-      return;
-    }
-    final edits = <({Layer before, Layer after})>[];
-    for (final layerId in scope.layerIds) {
-      // The COMMIT layer, never the display clone: a track-SE row's clone
-      // is a projection and writing it back would drop the edit (the
-      // clones are never written back).
-      final before = _project.commitLayerById(layerId);
-      if (before == null) {
-        continue;
-      }
-      final anchor = _internals.shiftAnchorFor(
-        layerId,
-        scope.anchorIndex,
-        anchorIsGlobal: scope.anchorIsGlobal,
-      );
-      final after = before.copyWith(
-        timeline: timelineShiftedFrom(
-          before.timeline,
-          anchorIndex: anchor,
-          delta: delta,
-        ),
-      );
-      if (after.timeline != before.timeline) {
-        edits.add((before: before, after: after));
-      }
-    }
-    if (edits.isEmpty) {
-      return;
-    }
-    _controllers.timelineController.commitLayerTimelineDrags(edits);
-    _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
 

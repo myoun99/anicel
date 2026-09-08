@@ -179,12 +179,12 @@ void main() {
     // and read 0 here — the verb stood down with real room on the row.
     const seRow = LayerRowAddress(LayerId('se-row-1'));
     expect(
-      session.framePullSlack(currentRow: seRow),
+      session.blockShift.framePullSlack(currentRow: seRow),
       4,
       reason: 'global 16 may travel to 12, where the previous sound ends',
     );
 
-    session.pullFrames(9, currentRow: seRow);
+    session.blockShift.pullFrames(9, currentRow: seRow);
     await tester.pumpAndSettle();
 
     final global = session.repository

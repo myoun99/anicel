@@ -62,16 +62,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // Packed against frame 0: there is no lead-in to close.
-    expect(session.canPullBlocks(), isFalse);
+    expect(session.blockShift.canPullBlocks(), isFalse);
     expect(enabled(tester, 'pull-blocks-button'), isFalse);
     expect(enabled(tester, 'push-blocks-button'), isTrue);
 
     // An EDIT, not a seek — and nothing above this widget is listening.
-    session.pushBlocks(1);
+    session.blockShift.pushBlocks(1);
     await tester.pump();
 
     expect(
-      session.canPullBlocks(),
+      session.blockShift.canPullBlocks(),
       isTrue,
       reason: 'the arrangement really did change',
     );
@@ -82,9 +82,9 @@ void main() {
     );
 
     // Both ways: closing the slack greys it again.
-    session.pullBlocks(1);
+    session.blockShift.pullBlocks(1);
     await tester.pump();
-    expect(session.canPullBlocks(), isFalse);
+    expect(session.blockShift.canPullBlocks(), isFalse);
     expect(enabled(tester, 'pull-blocks-button'), isFalse);
 
     // Unmount before disposing: the widget holds two listeners on this
@@ -105,11 +105,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('push-blocks-button')));
     await tester.pumpAndSettle();
 
-    expect(session.canPullBlocks(), isTrue);
+    expect(session.blockShift.canPullBlocks(), isTrue);
     expect(enabled(tester, 'pull-blocks-button'), isTrue);
     await tester.tap(find.byKey(const ValueKey<String>('pull-blocks-button')));
     await tester.pumpAndSettle();
-    expect(session.canPullBlocks(), isFalse);
+    expect(session.blockShift.canPullBlocks(), isFalse);
   });
 
   /// T16 — the delete glyph's two ends are NAMED, so no third colour exists

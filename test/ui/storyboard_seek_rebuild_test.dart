@@ -197,9 +197,9 @@ void main() {
     manager.createDrawingAtCurrentFrame();
     manager.selectFrameIndex(4);
     manager.createDrawingAtCurrentFrame();
-    expect(manager.framePullSlack(), 3, reason: 'the fixture has the gap');
+    expect(manager.blockShift.framePullSlack(), 3, reason: 'the fixture has the gap');
     manager.selectFrameIndex(0);
-    expect(manager.framePullSlack(), 0, reason: 'and none at the start');
+    expect(manager.blockShift.framePullSlack(), 0, reason: 'and none at the start');
 
     // Mounted BARE: nothing above these buttons can rebuild them, so a
     // change in their enabled state can only come from their own listener.
