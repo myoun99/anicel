@@ -493,9 +493,16 @@ double _textureDensityOf(Map<String, Object?> variant) {
 /// real files show 0x13 on a brush whose rotation follows pressure and 0xC3
 /// on the one brush carrying a non-default random scale.
 ///
-/// Bit 0x10 selects pen pressure and 0x80 random. 0x20 (velocity) and 0x40
-/// (seen only on the rotation effector, most likely stroke direction) have
-/// no engine target yet and stay unmapped.
+/// Bit 0x10 selects pen pressure, 0x20 velocity, **0x40 pen TILT** and 0x80
+/// random. Only pressure and random have an engine target so far; the other
+/// two are read and dropped.
+///
+/// ↩️0x40 was guessed here as "most likely stroke direction", on the evidence
+/// that it only ever appeared on the rotation effector. 🚨THE GUESS WAS
+/// WRONG, and a brush settled it (`물붓.sut`, 2026-09-08): every one of its
+/// four inputs is ticked and its SIZE effector reads 0xF0, so the fourth bit
+/// belongs to 傾き. ⛔Stroke direction is therefore still unmapped — do not
+/// reach for 0x40 when it comes up.
 int? _effectorFlags(Object? effector) {
   if (effector is int) {
     return effector;
