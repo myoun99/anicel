@@ -162,6 +162,37 @@ void main() {
         reason: 'one drawing held across the clip stays one cel',
       );
       expect(tap.timeline[0]!.length, 10);
+
+      // 🚨AND THE PIXELS ARE IN THE STORE. Everything above is satisfied
+      // by an import that decoded every record and then threw the tiles
+      // away — the warnings would still be empty, the cels would still be
+      // ten, and the timeline would still be right. The fixture's first
+      // drawing is the only one carrying ink (a 16×12 rect), so the store
+      // is the only place that can say the picture arrived.
+      final inked = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+        session.brushFrameKeyForCut(cuts.single, a.id, a.frames.first.id),
+      );
+      expect(inked, isNotNull, reason: 'the first drawing baked');
+      var painted = 0;
+      for (final tile in inked!.tiles.values) {
+        final bytes = tile.pixels;
+        for (var p = 0; p < bytes.length; p += 4) {
+          if (bytes[p] != 0 ||
+              bytes[p + 1] != 0 ||
+              bytes[p + 2] != 0 ||
+              bytes[p + 3] != 0) {
+            painted += 1;
+          }
+        }
+      }
+      expect(
+        painted,
+        16 * 12,
+        reason:
+            'the rect the fixture drew, pixel for pixel — a count that is '
+            'zero means the bake was skipped, and one that is 64×48 means '
+            'the decode filled the canvas instead of the drawing',
+      );
     },
   );
 
