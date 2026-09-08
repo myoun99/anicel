@@ -1,4 +1,13 @@
-part of '../editor_session_manager.dart';
+import '../../models/composite_tree.dart';
+import '../../models/cut.dart';
+import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
+import '../../services/cel_source_effect_pass.dart';
+import '../../services/cut_frame_composite_plan.dart';
+import '../canvas/canvas_layer_stack_view.dart';
+import 'opacity_verbs.dart';
+import 'session_roles.dart';
 
 /// Maps the shared composite TREE onto the editing canvas's stack.
 ///
@@ -13,14 +22,17 @@ part of '../editor_session_manager.dart';
 /// somewhere else is how the panel and the stack would come to disagree.
 class EditingStackMap {
   EditingStackMap({
-    required this.session,
+    required OpacityVerbs opacityVerbs,
+    required SessionInternals internals,
     required this.cut,
     required this.stackCut,
     required this.frameIndex,
     required this.activeLayerId,
-  });
+  }) : _opacityVerbs = opacityVerbs,
+       _internals = internals;
 
-  final EditorSessionManager session;
+  final OpacityVerbs _opacityVerbs;
+  final SessionInternals _internals;
   final Cut cut;
   final Cut stackCut;
   final int frameIndex;
@@ -57,7 +69,7 @@ class EditingStackMap {
   /// 똑같이). The hand-built block this replaced appended it at the top
   /// level and lost all three.
   CanvasStackRow _live(CutFrameCompositeLiveRow node) {
-    activeLayerOpacity = session.opacityVerbs.stackLayerOpacity(
+    activeLayerOpacity = _opacityVerbs.stackLayerOpacity(
       node.layer,
       stackCut.layers,
       frameIndex,
@@ -81,7 +93,7 @@ class EditingStackMap {
     if (entry.layer.id != activeLayerId ||
         !layerAcceptsBrushInput(entry.layer)) {
       return CanvasLayerImageRequest(
-        frameKey: session.brushFrameKeyForCut(
+        frameKey: _internals.brushFrameKeyForCut(
           cut,
           entry.layer.id,
           entry.frame.id,
@@ -95,7 +107,7 @@ class EditingStackMap {
     }
     activeLayerOpacity = !entry.layer.isVisible
         ? 0.0
-        : session.opacityVerbs.stackLayerOpacity(
+        : _opacityVerbs.stackLayerOpacity(
             entry.layer,
             stackCut.layers,
             frameIndex,
@@ -107,7 +119,7 @@ class EditingStackMap {
       // would have requested, so the stack can keep that route's image as
       // the first-activation stand-in while the promoted surface's tiles
       // decode.
-      frameKey: session.brushFrameKeyForCut(
+      frameKey: _internals.brushFrameKeyForCut(
         cut,
         entry.layer.id,
         entry.frame.id,

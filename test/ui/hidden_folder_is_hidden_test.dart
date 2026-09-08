@@ -155,7 +155,7 @@ void main() {
     test('takes no strokes when its FOLDER is hidden', () {
       final (s, member, folder) = sessionWithFolder();
       expect(
-        s.activeBrushEditorSelection,
+        s.editingCanvas.activeBrushEditorSelection,
         isNotNull,
         reason: 'the CONTROL — a visible row is drawable',
       );
@@ -163,7 +163,7 @@ void main() {
       hideFolder(s, folder);
 
       expect(
-        s.activeBrushEditorSelection,
+        s.editingCanvas.activeBrushEditorSelection,
         isNull,
         reason:
             'R4 #1 refuses a hidden row because you would be drawing into '
@@ -193,7 +193,7 @@ void main() {
       );
 
       expect(
-        holdsActive(s.editingCanvasStack.nodes),
+        holdsActive(s.editingCanvas.stack.nodes),
         isTrue,
         reason: 'the CONTROL — the live surface needs a slot to draw into',
       );
@@ -203,7 +203,7 @@ void main() {
       }
 
       expect(
-        holdsActive(s.editingCanvasStack.nodes),
+        holdsActive(s.editingCanvas.stack.nodes),
         isFalse,
         reason:
             'A row WITH a cel is dropped by the tree walk, which honours the '
@@ -221,7 +221,7 @@ void main() {
       s.opacityVerbs.setLayerOpacity(layerId: folder, opacity: 0.5);
 
       expect(
-        s.editingCanvasStack.activeLayerOpacity,
+        s.editingCanvas.stack.activeLayerOpacity,
         closeTo(0.5, 1e-9),
         reason:
             'During a ruler scrub the interactive view draws the active row '
@@ -237,7 +237,7 @@ void main() {
       s.opacityVerbs.setLayerOpacity(layerId: folder, opacity: 0.5);
       s.opacityVerbs.setLayerOpacity(layerId: member, opacity: 0.4);
 
-      expect(s.editingCanvasStack.activeLayerOpacity, closeTo(0.2, 1e-9));
+      expect(s.editingCanvas.stack.activeLayerOpacity, closeTo(0.2, 1e-9));
     });
   });
 

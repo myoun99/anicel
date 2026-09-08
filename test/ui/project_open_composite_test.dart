@@ -45,7 +45,7 @@ void main() {
   Future<(EditorSessionManager, BrushFrameKey)> reopenedSession() async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
-    final selection = s.activeBrushEditorSelection!;
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
     final drawnKey = s.brushFrameKeyForCut(
       s.requireActiveCut,
       selection.layerId,

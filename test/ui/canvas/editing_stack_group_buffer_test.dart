@@ -55,13 +55,13 @@ void main() {
   test('a PASS-THROUGH folder produces no group node on the editing canvas '
       'either — an organizing folder costs nothing anywhere', () {
     final s = sessionWithFolder();
-    expect(countGroups(s.editingCanvasStack.nodes), 0);
+    expect(countGroups(s.editingCanvas.stack.nodes), 0);
   });
 
   test('the ACTIVE layer stands in the tree as its own node', () {
     final s = sessionWithFolder();
     expect(
-      holdsActive(s.editingCanvasStack.nodes),
+      holdsActive(s.editingCanvas.stack.nodes),
       isTrue,
       reason: 'the merged painter needs a place to draw the live surface',
     );
@@ -70,7 +70,7 @@ void main() {
   test('the folder CONTAINING the active layer buffers too — the merged '
       'painter closes the saveLayer it opened', () {
     final s = sessionWithFolder(blend: LayerBlendMode.multiply);
-    final nodes = s.editingCanvasStack.nodes;
+    final nodes = s.editingCanvas.stack.nodes;
 
     expect(countGroups(nodes), 1);
     final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
@@ -87,7 +87,7 @@ void main() {
   test('inside a buffering folder the member carries no folder state — it '
       'is on the buffer, so nothing double-applies', () {
     final s = sessionWithFolder(blend: LayerBlendMode.multiply, opacity: 0.5);
-    final group = s.editingCanvasStack.nodes
+    final group = s.editingCanvas.stack.nodes
         .whereType<CompositeGroup<CanvasStackRow>>()
         .single;
     expect(group.opacity, closeTo(0.5, 1e-9));
@@ -115,7 +115,7 @@ void main() {
     s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     s.selectLayer(outside.id);
 
-    expect(countGroups(s.editingCanvasStack.nodes), 1);
+    expect(countGroups(s.editingCanvas.stack.nodes), 1);
   });
 
   test('🚨a folder whose every member was SKIPPED produces no node at all — '
@@ -132,7 +132,7 @@ void main() {
     }
 
     expect(
-      countGroups(s.editingCanvasStack.nodes),
+      countGroups(s.editingCanvas.stack.nodes),
       0,
       reason: 'the folder buffers nothing, so it opens nothing',
     );
@@ -144,9 +144,9 @@ void main() {
     addTearDown(s.dispose);
     final seRow = s.activeTrack.seLayers.first;
 
-    final drawn = s.editingCanvasStack.nodes.length;
+    final drawn = s.editingCanvas.stack.nodes.length;
     s.layerSwitches.toggleLayerVisibility(seRow.id);
-    final hidden = s.editingCanvasStack.nodes.length;
+    final hidden = s.editingCanvas.stack.nodes.length;
 
     expect(
       drawn - hidden,

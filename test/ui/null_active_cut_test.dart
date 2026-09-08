@@ -33,7 +33,7 @@ void main() {
     expect(s.activeCutOrNull, isNull);
     expect(s.layers, isEmpty, reason: 'no rows at all — not even track SE');
     expect(s.activeLayer, isNull);
-    expect(s.activeBrushEditorSelection, isNull);
+    expect(s.editingCanvas.activeBrushEditorSelection, isNull);
     expect(s.editingPlayheadInGap, isTrue);
     expect(s.canvasSelectionLabels.cutLabel, '—');
     expect(() => s.requireActiveCut, throwsStateError);

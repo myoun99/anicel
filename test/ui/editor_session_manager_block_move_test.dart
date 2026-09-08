@@ -100,7 +100,7 @@ void main() {
     // The canvas targets the moved drawing where it landed (R12-⑪): the
     // brush editor selection resolves the cel on the NEW layer.
     s.selectFrameIndex(1);
-    final selection = s.activeBrushEditorSelection;
+    final selection = s.editingCanvas.activeBrushEditorSelection;
     expect(selection, isNotNull);
     expect(selection!.layerId, b.id);
     expect(selection.frameId, frameId);

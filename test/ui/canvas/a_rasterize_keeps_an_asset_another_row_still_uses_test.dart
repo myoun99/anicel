@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -85,7 +84,7 @@ void main() {
     expect(s.mediaPool.mediaAssets, hasLength(1));
 
     s.selectLayer(referring.first.id);
-    s.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeActiveLayer();
     expect(
       s.mediaPool.mediaAssets,
       hasLength(1),
@@ -102,7 +101,7 @@ void main() {
     );
 
     s.selectLayer(referring.last.id);
-    s.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeActiveLayer();
     expect(
       s.mediaPool.mediaAssets,
       isEmpty,

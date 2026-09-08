@@ -83,7 +83,7 @@ void main() {
     // Anchor resolve-through (the R19b rule): the mirrored cell IS the
     // attach cel — drawing lands on it.
     final cutAttach = cutLayers(s).firstWhere((l) => l.id == attachId);
-    expect(s.activeBrushEditorSelection!.frameId, cutAttach.frames.single.id);
+    expect(s.editingCanvas.activeBrushEditorSelection!.frameId, cutAttach.frames.single.id);
   });
 
   test('a SYNCED attach row EAGERLY mirrors every base cel at creation '
@@ -115,7 +115,7 @@ void main() {
 
     // The mirror cel at the playhead resolves as the brush target (its own
     // independent pixels, riding the base's exposure).
-    expect(s.selectedFrame!.id, s.activeBrushEditorSelection!.frameId);
+    expect(s.selectedFrame!.id, s.editingCanvas.activeBrushEditorSelection!.frameId);
     expect(
       attached.baseFrameLinks.values,
       contains(s.selectedFrame!.id),

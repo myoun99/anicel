@@ -97,7 +97,7 @@ void main() {
     );
     expect(
       stackEffectsOf(
-        session.editingCanvasStack.nodes,
+        session.editingCanvas.stack.nodes,
       ).single.parameter('blurX'),
       9,
       reason: 'the editing canvas reads the same resolver the routes do',
@@ -108,7 +108,7 @@ void main() {
       session.activeLayer!.effects.single.parameterOf('blurX').resolveAt(0),
       0,
     );
-    expect(stackEffectsOf(session.editingCanvasStack.nodes), isEmpty);
+    expect(stackEffectsOf(session.editingCanvas.stack.nodes), isEmpty);
   });
 
   test('the fx switch bypasses the chain on the editing canvas too', () {
@@ -123,11 +123,11 @@ void main() {
         input: '9',
       )!,
     );
-    expect(stackEffectsOf(session.editingCanvasStack.nodes), isNotEmpty);
+    expect(stackEffectsOf(session.editingCanvas.stack.nodes), isNotEmpty);
 
     session.effectsAndFx.toggleLayerFx(layer.id);
     expect(
-      stackEffectsOf(session.editingCanvasStack.nodes),
+      stackEffectsOf(session.editingCanvas.stack.nodes),
       isEmpty,
       reason: 'the fx switch is one switch for every kind of FX',
     );
@@ -188,7 +188,7 @@ void main() {
     // Specifically the ACTIVE node — the live surface the next stroke
     // lands in — not just "some node in the stack carries effects".
     List<ResolvedLayerEffect> activeNodeEffects() {
-      for (final node in session.editingCanvasStack.nodes) {
+      for (final node in session.editingCanvas.stack.nodes) {
         if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
           return row.effects;
         }
@@ -265,7 +265,7 @@ void main() {
       // correctly no scope at all.
       session.createDrawingAtCurrentFrame();
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
-      expect(scopeIn(session.editingCanvasStack.nodes), isNull);
+      expect(scopeIn(session.editingCanvas.stack.nodes), isNull);
 
       session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
       final row = session.activeLayer!;
@@ -279,7 +279,7 @@ void main() {
         )!,
       );
 
-      final scope = scopeIn(session.editingCanvasStack.nodes);
+      final scope = scopeIn(session.editingCanvas.stack.nodes);
       expect(scope, isNotNull);
       expect(scope!.effects.single.parameter('brightness'), 30);
       expect(scope.mix, 1);
@@ -356,7 +356,7 @@ void main() {
         )!,
       );
       expect(
-        scopeIn(session.editingCanvasStack.nodes),
+        scopeIn(session.editingCanvas.stack.nodes),
         isNotNull,
         reason: 'inside the folder it must still find the member below it',
       );

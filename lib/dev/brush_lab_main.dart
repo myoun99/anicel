@@ -332,7 +332,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     for (var frame = 0; frame < frameCount; frame += 1) {
       session.selectFrameIndex(frame);
       await _settleFrames(2);
-      if (session.activeBrushEditorSelection == null) {
+      if (session.editingCanvas.activeBrushEditorSelection == null) {
         session.createDrawingAtCurrentFrame();
         await _settleFrames(4);
       }
@@ -483,7 +483,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   ) async {
     session.selectFrameIndex(7);
     await _settleFrames(2);
-    if (session.activeBrushEditorSelection == null) {
+    if (session.editingCanvas.activeBrushEditorSelection == null) {
       session.createDrawingAtCurrentFrame();
       await _settleFrames(4);
     }
@@ -621,7 +621,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       await _settleFrames(10);
       session.selectFrameIndex(3);
       await _settleFrames(2);
-      if (session.activeBrushEditorSelection == null) {
+      if (session.editingCanvas.activeBrushEditorSelection == null) {
         session.createDrawingAtCurrentFrame();
         await _settleFrames(4);
       }

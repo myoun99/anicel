@@ -73,7 +73,7 @@ void main() {
     // Sanity: the default active drawing layer edits normally.
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
-    expect(session.activeBrushEditorSelection, isNotNull);
+    expect(session.editingCanvas.activeBrushEditorSelection, isNotNull);
 
     // The SE fixture layer: create an entry, land the selection on it.
     final seLayer = session.layers.firstWhere(
@@ -84,7 +84,7 @@ void main() {
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
     expect(session.selectedFrame, isNotNull, reason: 'entry exists');
     expect(
-      session.activeBrushEditorSelection,
+      session.editingCanvas.activeBrushEditorSelection,
       isNull,
       reason: 'SE cels are data rows — the pen must not land on them',
     );
@@ -100,7 +100,7 @@ void main() {
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
 
     final stackLayerIds = [
-      for (final node in session.editingCanvasStack.nodes)
+      for (final node in session.editingCanvas.stack.nodes)
         if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r))
           r.frameKey.layerId,
     ];

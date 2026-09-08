@@ -44,7 +44,7 @@ void main() {
           'cut — and `inGap` is what would take the paper away',
     );
     expect(
-      session.editingCanvasStack.nodes,
+      session.editingCanvas.stack.nodes,
       isNotEmpty,
       reason: 'the void hands the canvas an empty stack; this must not be it',
     );
@@ -65,7 +65,7 @@ void main() {
 
     expect(session.requireActiveCut.id, cuts.first.id, reason: 'still here');
     expect(session.editingPlayheadInGap, isFalse);
-    expect(session.editingCanvasStack.nodes, isNotEmpty);
+    expect(session.editingCanvas.stack.nodes, isNotEmpty);
   });
 
   /// And the LAST cut's far side, which is a trailing gap on the global axis

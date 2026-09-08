@@ -69,7 +69,7 @@ class _InteractiveCanvasBuild {
             activeLayerOpacity: 1.0,
             activeSourceEffects: const <ResolvedLayerEffect>[],
           )
-        : session.editingCanvasStack;
+        : session.editingCanvas.stack;
     // T12 field probe (no-op while the Input Inspector is hidden, and it
     // prints only when one of the four answers CHANGES — a line per build
     // would bury the inspector's five-note window in a single scrub).
@@ -95,7 +95,7 @@ class _InteractiveCanvasBuild {
         ? null
         : isCameraLayerActive
         ? session.camera.cameraBackdropSelection
-        : session.activeBrushEditorSelection;
+        : session.editingCanvas.activeBrushEditorSelection;
     // The layer shown in the interactive view draws POSED (always-applied
     // transforms, active layer included) with draw-through input.
     _interactivePose = _selection == null
@@ -459,7 +459,7 @@ class _InteractiveCanvasBuild {
                 ),
       interactiveContentOpacity: _layerStack.activeLayerOpacity,
       // The CPU half of the row you are drawing on — see
-      // [EditorSessionManager.editingCanvasStack].
+      // [EditingCanvas.stack].
       activeSourceEffects: _layerStack.activeSourceEffects,
       interactiveContentPose: _interactivePose,
       // The playback view renders the camera framing itself; the editing

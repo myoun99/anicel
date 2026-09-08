@@ -74,7 +74,7 @@ void main() {
     final s = made.session;
     s.selectFrameIndex(40);
 
-    final nodes = s.editingCanvasStack.nodes;
+    final nodes = s.editingCanvas.stack.nodes;
     expect(
       activeIn(nodes),
       isNotNull,
@@ -96,7 +96,7 @@ void main() {
     s.selectFrameIndex(40);
 
     expect(
-      activeIn(s.editingCanvasStack.nodes),
+      activeIn(s.editingCanvas.stack.nodes),
       isNotNull,
       reason:
           'the premise: with the folder VISIBLE the row is in the tree — '
@@ -107,7 +107,7 @@ void main() {
     s.layerSwitches.toggleLayerVisibility(made.folderId);
 
     expect(
-      activeIn(s.editingCanvasStack.nodes),
+      activeIn(s.editingCanvas.stack.nodes),
       isNull,
       reason:
           'a switched-off folder hides what is inside it — the canvas '
@@ -123,7 +123,7 @@ void main() {
     final s = made.session;
     s.selectFrameIndex(40);
 
-    final nodes = s.editingCanvasStack.nodes;
+    final nodes = s.editingCanvas.stack.nodes;
     final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
     expect(
       group.opacity,

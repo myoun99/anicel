@@ -454,8 +454,8 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'timeline-rasterize-layer-button',
         label: AppText.strings.menuLabel('layer-rasterize', 'Rasterize layer'),
         icon: Icons.texture_outlined,
-        enabled: serves && session.canRasterizeActiveLayer,
-        onSelected: session.rasterizeActiveLayer,
+        enabled: serves && session.editingCanvas.canRasterizeActiveLayer,
+        onSelected: session.editingCanvas.rasterizeActiveLayer,
       ),
       // 'SE name tag…' opened a window. R5 #7 put every control it held on
       // the SE row's Name Tag lane group, so the entry would only lead

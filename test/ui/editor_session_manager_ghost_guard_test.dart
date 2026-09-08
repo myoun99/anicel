@@ -56,11 +56,11 @@ void main() {
       'drawing through the repeat edits the source)', () {
     final (s, _) = sessionWithGhostTail();
     s.selectFrameIndex(0);
-    final anchorSelection = s.activeBrushEditorSelection;
+    final anchorSelection = s.editingCanvas.activeBrushEditorSelection;
     expect(anchorSelection, isNotNull);
 
     s.selectFrameIndex(2);
-    final ghostSelection = s.activeBrushEditorSelection;
+    final ghostSelection = s.editingCanvas.activeBrushEditorSelection;
     expect(ghostSelection, isNotNull);
     expect(
       ghostSelection!.frameId,

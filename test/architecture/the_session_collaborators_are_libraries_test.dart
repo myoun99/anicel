@@ -39,22 +39,18 @@ const _rolesFile = 'lib/src/ui/session/session_roles.dart';
 /// reason each one could not leave in G0.
 ///
 /// An entry that no longer matches anything FAILS: a ledger that keeps paid
-/// debts on it stops being read.
-const _stillParts = <String, String>{
-  'editing_stack_map.dart':
-      'It declares no class — it is a block of session members split out by '
-      'file, so it has no `this` to hand roles to. It leaves when its '
-      'members find an owner (G1).',
-};
+/// debts on it stops being read. It is EMPTY as of G4-2 (2026-09-08), when
+/// the composite tree found its owner and `editing_stack_map.dart` took its
+/// roles by constructor like everything else — so the ledger now says what
+/// it always meant to: the session library has no parts.
+const _stillParts = <String, String>{};
 
 /// The files under `session/` that name the session ON PURPOSE.
 ///
-/// ⛔A COLLABORATOR may never be here. These are the two that are not
-/// collaborators: the part above (a part carries its parent's name by
-/// definition) and a UI wiring function that takes the session as an
+/// ⛔A COLLABORATOR may never be here. This is the one that is not a
+/// collaborator: a UI wiring function that takes the session as an
 /// argument, which is the composition root's job, not a collaborator's.
 const _mayNameTheSession = <String, String>{
-  'editing_stack_map.dart': 'It is a `part of` the session library.',
   'session_legend_callbacks.dart':
       'A free function that WIRES a session into the timeline legend. It '
       'takes the session as a parameter — it does not hold one.',

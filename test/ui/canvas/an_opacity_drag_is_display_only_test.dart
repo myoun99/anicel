@@ -26,7 +26,7 @@ void main() {
     final layerId = s.activeLayerId!;
 
     expect(
-      s.editingCanvasStack.activeLayerOpacity,
+      s.editingCanvas.stack.activeLayerOpacity,
       closeTo(1, 1e-9),
       reason: 'the premise: nothing is dragging yet',
     );
@@ -34,7 +34,7 @@ void main() {
     s.opacityVerbs.previewLayerOpacity(layerId, 0.35);
 
     expect(
-      s.editingCanvasStack.activeLayerOpacity,
+      s.editingCanvas.stack.activeLayerOpacity,
       closeTo(0.35, 1e-9),
       reason: 'the canvas follows the drag',
     );
@@ -62,7 +62,7 @@ void main() {
     s.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
 
     double? seOpacityIn(EditorSessionManager session) {
-      for (final node in session.editingCanvasStack.nodes) {
+      for (final node in session.editingCanvas.stack.nodes) {
         if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r)
             when r.frameKey.layerId == seLayer.id) {
           return r.opacity;
@@ -98,7 +98,7 @@ void main() {
     s.selectFrameIndex(0);
     s.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
 
-    bool seIsDrawn() => s.editingCanvasStack.nodes.any(
+    bool seIsDrawn() => s.editingCanvas.stack.nodes.any(
       (node) =>
           node is CompositeLeaf<CanvasStackRow> &&
           node.payload is CanvasLayerImageRequest &&

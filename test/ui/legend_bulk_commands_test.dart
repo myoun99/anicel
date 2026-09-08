@@ -247,11 +247,11 @@ void main() {
     final s = session();
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    expect(s.activeBrushEditorSelection, isNotNull);
+    expect(s.editingCanvas.activeBrushEditorSelection, isNotNull);
     s.layerSwitches.toggleLayerVisibility(s.activeLayerId!);
-    expect(s.activeBrushEditorSelection, isNull);
+    expect(s.editingCanvas.activeBrushEditorSelection, isNull);
     s.layerSwitches.toggleLayerVisibility(s.activeLayerId!);
-    expect(s.activeBrushEditorSelection, isNotNull);
+    expect(s.editingCanvas.activeBrushEditorSelection, isNotNull);
   });
 
   test('opacity drag previews WITHOUT a session notify; the release commits '
@@ -266,7 +266,7 @@ void main() {
     // The repo stays untouched during the drag…
     expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 1.0);
     // …while the editing canvas follows the preview.
-    expect(s.editingCanvasStack.activeLayerOpacity, closeTo(0.5, 1e-9));
+    expect(s.editingCanvas.stack.activeLayerOpacity, closeTo(0.5, 1e-9));
 
     s.opacityVerbs.commitLayerOpacity(id, 0.5);
     expect(notifies, 1);

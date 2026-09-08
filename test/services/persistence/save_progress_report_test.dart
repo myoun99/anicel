@@ -53,7 +53,7 @@ void main() {
 
   void drawOnCurrentFrame(EditorSessionManager s) {
     s.createDrawingAtCurrentFrame();
-    final selection = s.activeBrushEditorSelection!;
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
     BrushFrameEditingCoordinator(
       initialFrameKey: s.brushFrameKeyForCut(
         s.requireActiveCut,

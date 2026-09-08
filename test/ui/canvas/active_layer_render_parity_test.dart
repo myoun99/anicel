@@ -291,7 +291,7 @@ void main() {
       final (s, target, other) = sessionWithTwoRows(LayerBlendMode.multiply);
 
       s.selectLayer(other);
-      final asImage = imageRequestsIn(s.editingCanvasStack.nodes).toList();
+      final asImage = imageRequestsIn(s.editingCanvas.stack.nodes).toList();
       expect(
         asImage.map((r) => r.blendMode),
         contains(LayerBlendMode.multiply),
@@ -299,7 +299,7 @@ void main() {
       );
 
       s.selectLayer(target);
-      final asActive = activeNodeIn(s.editingCanvasStack.nodes);
+      final asActive = activeNodeIn(s.editingCanvas.stack.nodes);
       expect(asActive, isNotNull, reason: 'the active row stands in the tree');
       expect(
         asActive!.blendMode,
@@ -316,14 +316,14 @@ void main() {
       s.opacityVerbs.setLayerOpacity(layerId: target, opacity: 0.4);
 
       s.selectLayer(other);
-      final asImage = imageRequestsIn(s.editingCanvasStack.nodes)
+      final asImage = imageRequestsIn(s.editingCanvas.stack.nodes)
           .where((r) => r.opacity < 1)
           .toList();
       expect(asImage, hasLength(1), reason: 'the CONTROL, again');
       final cachedOpacity = asImage.single.opacity;
 
       s.selectLayer(target);
-      final asActive = activeNodeIn(s.editingCanvasStack.nodes);
+      final asActive = activeNodeIn(s.editingCanvas.stack.nodes);
       expect(
         asActive!.opacity,
         closeTo(cachedOpacity, 1e-9),

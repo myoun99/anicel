@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
-import '../services/cel_source_effect_pass.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
@@ -45,19 +44,16 @@ import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/track_se_migration.dart';
-import '../models/composite_tree.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
-import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../services/canvas_selection_region.dart';
-import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/onion_skin_settings.dart';
@@ -78,7 +74,6 @@ import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/playback_frame_mapping.dart';
-import 'canvas/canvas_layer_stack_view.dart';
 import '../core/dev_profile.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
@@ -98,7 +93,6 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
-import 'brush/brush_editor_selection.dart';
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -160,8 +154,7 @@ import 'session/frame_verbs.dart';
 import 'session/standing.dart';
 import 'session/cut_move_drag.dart';
 import 'session/layer_switch_verbs.dart';
-
-part 'session/editing_stack_map.dart';
+import 'session/editing_canvas.dart';
 
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
@@ -1305,130 +1298,22 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
-  /// The editing canvas's composite TREE at the playhead — the same tree
-  /// playback and export composite, with the ACTIVE layer standing in it
-  /// as a [CanvasActiveLayerRow] instead of a cached image.
-  ///
-  /// That node is the whole point: the stack used to be two flat lists
-  /// painted around the interactive view, so a folder's group buffer —
-  /// one `saveLayer` — could never span the layer you were drawing on.
-  /// Now one painter opens the buffer, draws the live surface inside it,
-  /// and closes it.
-  ///
-  /// [activeLayerOpacity] is the active row's display opacity (0 while
-  /// hidden; includes its animated Opacity); its pose rides separately
-  /// through [layerCanvasPoseSample] into the interactive draw-through
-  /// wrap, so it is repeated on the node for the merged painter.
-  ({
-    List<CompositeNode<CanvasStackRow>> nodes,
-    double activeLayerOpacity,
-    List<ResolvedLayerEffect> activeSourceEffects,
-  })
-  get editingCanvasStack {
-    final cut = activeCutOrNull;
-    final activeLayerId = this.activeLayerId;
-    if (cut == null) {
-      return (
-        nodes: const <CompositeNode<CanvasStackRow>>[],
-        activeLayerOpacity: 1.0,
-        activeSourceEffects: const <ResolvedLayerEffect>[],
-      );
-    }
-
-    final frameIndex =
-        activeCutControllers.timelineController.currentFrameIndex;
-    // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
-    // static opacity substitutes in before the shared visit, so the canvas
-    // follows the drag without any repo write per move.
-    final preview = opacityDragPreview.value;
-    final stackCut = preview == null
-        ? cut
-        : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
-
-    final walk = EditingStackMap(
-      session: this,
-      cut: cut,
-      stackCut: stackCut,
-      frameIndex: frameIndex,
-      activeLayerId: activeLayerId,
-    );
-    final nodes = <CompositeNode<CanvasStackRow>>[
-      ...walk.mapTree(
-        resolveCutFrameCompositeTree(
-          cut: stackCut,
-          frameIndex: frameIndex,
-          liveLayerId:
-              activeLayerId != null &&
-                  stackCut.layers.byId(activeLayerId) != null &&
-                  layerAcceptsBrushInput(stackCut.layers.byId(activeLayerId)!)
-              ? activeLayerId
-              : null,
-        ),
-      ),
-      // Track-owned SE rows join as their cut-local display clones — they
-      // composite read-only like before the ownership move (their
-      // transform tracks are stripped, so the plain resolve path
-      // suffices). They live outside the cut's stack, so they land at the
-      // top level.
-      ..._trackSeDisplayNodes(cut, frameIndex: frameIndex, preview: preview),
-    ];
-    return (
-      nodes: List.unmodifiable(nodes),
-      activeLayerOpacity: walk.activeLayerOpacity,
-      activeSourceEffects: walk.activeSourceEffects,
-    );
-  }
-
-  /// [source] with the DRAGGED rows' opacity substituted in — display
-  /// only, so the canvas follows an opacity drag without a repo write per
-  /// move.
-  static List<Layer> _withOpacityPreview(
-    List<Layer> source,
-    ({Set<LayerId> layerIds, double opacity}) preview,
-  ) => [
-    for (final layer in source)
-      preview.layerIds.contains(layer.id) && layer.kind.hasPictureOpacity
-          ? layer.copyWith(opacity: preview.opacity)
-          : layer,
-  ];
-
-  /// The track's SE rows as cut-local display clones, read-only.
-  Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
-    Cut cut, {
-    required int frameIndex,
-    required ({Set<LayerId> layerIds, double opacity})? preview,
-  }) sync* {
-    final rows = preview == null
-        ? trackSe.trackSeDisplayLayers
-        : _withOpacityPreview(trackSe.trackSeDisplayLayers, preview);
-    for (final layer in rows) {
-      if (!layer.isVisible || layer.opacity <= 0) {
-        continue;
-      }
-      final opacity = layer.transformEnabled
-          ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
-          : layer.opacity.clamp(0.0, 1.0).toDouble();
-      // The ANIMATED opacity reaching zero, which the flag above cannot
-      // see (that one reads the row's static value). ⚠️Untested: it needs
-      // a transform track whose opacity curve hits 0 while the row's own
-      // stays above it (2026-09-05).
-      if (opacity <= 0) {
-        continue;
-      }
-      final frame = resolveExposedFrameAt(layer, frameIndex);
-      if (frame == null) {
-        continue;
-      }
-      yield CompositeLeaf(
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-          opacity: opacity,
-          pose: null,
-          anchorPoint: null,
-        ),
-      );
-    }
-  }
+  // ── the editing canvas: its own object, in its own file ─────────────
+  //
+  // A collaborator (session/editing_canvas.dart): what the canvas draws at
+  // the playhead and which cel the brush may touch in it — one subject,
+  // because `layerAcceptsBrushInput` answers both. Callers name it: a
+  // forwarder here would be a second name for the same verb (round 8, G4).
+  late final EditingCanvas editingCanvas = EditingCanvas(
+    project: this,
+    selection: this,
+    changes: this,
+    timeline: this,
+    internals: this,
+    controllers: activeCutControllers,
+    opacityVerbs: opacityVerbs,
+    trackSe: trackSe,
+  );
 
   // ── the opacity verbs: their own object, in their own file ──────────
   //
@@ -1762,50 +1647,6 @@ class EditorSessionManager extends ChangeNotifier
       activeCutControllers.layerController.activeLayerId;
   @override
   Layer? get activeLayer => activeCutControllers.layerController.activeLayer;
-
-  BrushEditorSelection? get activeBrushEditorSelection {
-    final activeLayer = this.activeLayer;
-    final selectedFrame = this.selectedFrame;
-    if (activeLayer == null || selectedFrame == null) {
-      return null;
-    }
-    // Ghost repeat instances resolve to their ANCHOR cel deliberately
-    // (UI-R19b, user decision): drawing with the playhead on a ghost
-    // edits the source cel — the light-table workflow. Delete alone
-    // stays refused on ghosts.
-    // R6-④: SE/instruction cels are data rows — no editable brush target,
-    // so the canvas never accepts strokes on them (the drawn stack still
-    // composites them read-only). A media-REFERENCE layer (§6-z23) shows
-    // a library asset: no strokes until it is rasterized.
-    if (!layerAcceptsBrushInput(activeLayer)) {
-      return null;
-    }
-    // R4 #1: a hidden layer takes no strokes either — you would be drawing
-    // into something the canvas doesn't show. Flip the eye back on (or use
-    // the solo mode) to draw.
-    //
-    // 🚨AND THE FOLDER'S EYE COUNTS (유저 2026-08-13: 「숨긴 폴더는 안에
-    // 있는 레이어들도 숨김상태인거일거잖아. 그러면 브러시 막는거지」). The
-    // reason R4 #1 gives — you would be drawing into something the canvas
-    // doesn't show — is the SAME reason one folder up, and asking only the
-    // row's own eye is how a stroke went on landing in a folder the user had
-    // switched off.
-    if (!layers.rowVisible(activeLayer)) {
-      return null;
-    }
-
-    final cutId = editingSession.activeCutId;
-    if (cutId == null) {
-      return null; // Gap state: no cut, no brush target.
-    }
-    return BrushEditorSelection(
-      projectId: repository.requireProject().id,
-      trackId: selectedTrackId,
-      cutId: cutId,
-      layerId: activeLayer.id,
-      frameId: selectedFrame.id,
-    );
-  }
 
   // ── folders and attachments: their own object ───────────────────────
   //
@@ -2370,55 +2211,6 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
     MemoryBlackBox.end('tvpp-import');
     return warnings;
-  }
-
-  /// Rasterize (§6-f): the ONE verb for every derived-content layer.
-  /// Reference layers null [Layer.mediaReference] (the pixels are already
-  /// the cels) and drop the asset registration when nothing else uses it
-  /// (§6-t); TEXT layers become plain animation rows — the parameters go,
-  /// the baked pixels stay, the brush unlocks (§6-s).
-  bool get canRasterizeActiveLayer =>
-      activeLayer?.mediaReference != null ||
-      activeLayer?.kind == LayerKind.text;
-
-  void rasterizeActiveLayer() {
-    final layer = activeLayer;
-    if (layer != null && layer.kind == LayerKind.text) {
-      activeCutControllers.timelineController.rasterizeTextLayer(
-        layerId: layer.id,
-      );
-      refreshAfterCutCommand(preferredActiveLayerId: layer.id);
-      notifyListeners();
-      return;
-    }
-    final reference = layer?.mediaReference;
-    final cutId = editingSession.activeCutId;
-    if (layer == null || reference == null || cutId == null) {
-      return;
-    }
-    // The asset survives when ANY OTHER layer still references its path
-    // (audio clips count through the ordinary reference check) — only
-    // the last referrer's rasterize unregisters (§6-t).
-    var othersReference = false;
-    outer:
-    for (final track in repository.requireProject().tracks) {
-      for (final cut in track.cuts) {
-        for (final other in cut.layers) {
-          if (other.id != layer.id &&
-              other.mediaReference?.assetPath == reference.assetPath) {
-            othersReference = true;
-            break outer;
-          }
-        }
-      }
-    }
-    cutCommandCoordinator.rasterizeLayerReference(
-      cutId: cutId,
-      layerId: layer.id,
-      assetStillReferenced: othersReference,
-    );
-    refreshAfterCutCommand(preferredActiveLayerId: layer.id);
-    notifyListeners();
   }
 
   // --- Text cel bake sweep (R5, §6-s) --------------------------------------

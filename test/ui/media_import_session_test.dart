@@ -188,10 +188,10 @@ void main() {
       (layer) => layer.kind == LayerKind.image,
     );
     s.selectLayer(layer.id);
-    expect(s.canRasterizeActiveLayer, isTrue);
+    expect(s.editingCanvas.canRasterizeActiveLayer, isTrue);
     expect(s.mediaPool.mediaAssets, hasLength(1));
 
-    s.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeActiveLayer();
     final after = s.requireActiveCut.layers.firstWhere(
       (l) => l.id == layer.id,
     );

@@ -99,8 +99,8 @@ void main() {
       return s.layerStack.celHasContentForLayer(l, 0);
     });
 
-    expect(s.canRasterizeActiveLayer, isTrue);
-    s.rasterizeActiveLayer();
+    expect(s.editingCanvas.canRasterizeActiveLayer, isTrue);
+    s.editingCanvas.rasterizeActiveLayer();
     var after = s.requireActiveCut.layers.firstWhere((l) => l.id == layerId);
     expect(after.kind, LayerKind.animation);
     expect(after.frames.single.textContent, isNull);
@@ -150,7 +150,7 @@ void main() {
     s.selectCut(originCutId);
     s.selectLayer(layerId);
 
-    s.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeActiveLayer();
     // Give the sweep every chance to (wrongly) clear the shared bank.
     for (var i = 0; i < 5; i += 1) {
       await tester.runAsync(

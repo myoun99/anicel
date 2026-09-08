@@ -28,7 +28,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     // A real stroke in the brush store (the canvas commit path) so the
     // round-trip carries drawing content.
-    final selection = s.activeBrushEditorSelection!;
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
     final drawnKey = s.brushFrameKeyForCut(
       s.requireActiveCut,
       selection.layerId,

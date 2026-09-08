@@ -38,7 +38,7 @@ void main() {
 
   void drawOnCurrentFrame(EditorSessionManager s) {
     s.createDrawingAtCurrentFrame();
-    final selection = s.activeBrushEditorSelection!;
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
     BrushFrameEditingCoordinator(
       initialFrameKey: s.brushFrameKeyForCut(
         s.requireActiveCut,
@@ -76,7 +76,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     drawOnCurrentFrame(s);
-    final selection = s.activeBrushEditorSelection!;
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
     final drawnKey = s.brushFrameKeyForCut(
       s.requireActiveCut,
       selection.layerId,
@@ -123,7 +123,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     drawOnCurrentFrame(s);
-    final selection = s.activeBrushEditorSelection!;
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
     final drawnKey = s.brushFrameKeyForCut(
       s.requireActiveCut,
       selection.layerId,

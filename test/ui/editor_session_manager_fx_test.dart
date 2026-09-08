@@ -68,7 +68,7 @@ void main() {
       expect(session.frameVerbs.layerCanvasPoseSample(layer.id), isNotNull);
     });
 
-    test('editingCanvasStack: the active layer display opacity carries the '
+    test('the editing canvas stack: the active layer display opacity carries the '
         'animated Opacity sample; bypass restores the static value', () {
       final layer = session.activeLayer!;
       session.opacityVerbs.setLayerOpacity(layerId: layer.id, opacity: 0.8);
@@ -79,10 +79,10 @@ void main() {
         ),
       );
 
-      expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.4, 1e-9));
+      expect(session.editingCanvas.stack.activeLayerOpacity, closeTo(0.4, 1e-9));
 
       session.effectsAndFx.toggleLayerFx(layer.id);
-      expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.8, 1e-9));
+      expect(session.editingCanvas.stack.activeLayerOpacity, closeTo(0.8, 1e-9));
     });
 
     test('camera fx bypass: cameraPoseForCut returns the identity pose on '
