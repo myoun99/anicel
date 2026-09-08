@@ -17,7 +17,6 @@ import 'package:anicel/src/models/pixel_verb_subject.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cell_verbs.dart';
