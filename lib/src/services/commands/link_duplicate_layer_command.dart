@@ -57,19 +57,15 @@ class LinkDuplicateLayerCommand implements Command {
   @override
   void execute() {
     repository.updateProject((project) {
-      final position = requireCutPosition(project, cutId);
-      final track = position.track;
-      final cut = position.cut;
-      final source = requireLayer(
+      final group = requireAttachedGroup(
         project,
         cutId: cutId,
         layerId: sourceLayerId,
       );
-      final baseId = attachBaseIdOf(source);
-      final members = attachedGroupSlice(baseId, cut.layers);
-      if (members.isEmpty) {
-        throw StateError('Attach base not found: $baseId');
-      }
+      final track = group.track;
+      final cut = group.cut;
+      final baseId = group.baseId;
+      final members = group.members;
 
       final copies = <Layer>[
         for (final member in members)

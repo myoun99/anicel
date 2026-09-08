@@ -1,4 +1,3 @@
-import '../../models/attached_layer_resolve.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -53,15 +52,13 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   @override
   void execute() {
     final project = repository.requireProject();
-    final position = requireCutPosition(project, cutId);
-    final track = position.track;
-    final cut = position.cut;
-    final source = requireLayer(project, cutId: cutId, layerId: sourceLayerId);
-    final baseId = attachBaseIdOf(source);
-    final members = attachedGroupSlice(baseId, cut.layers);
-    if (members.isEmpty) {
-      throw StateError('Attach base not found: $baseId');
-    }
+    final attached = requireAttachedGroup(
+      project,
+      cutId: cutId,
+      layerId: sourceLayerId,
+    );
+    final track = attached.track;
+    final members = attached.members;
 
     // 1. Capture the shared pixels THROUGH the still-linked member keys
     //    (they resolve to the canonical cels). LOCAL, so the pixels are

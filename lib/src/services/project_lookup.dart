@@ -1,3 +1,4 @@
+import '../models/attached_layer_resolve.dart';
 import '../models/cut.dart';
 import '../models/track_id.dart';
 import '../models/cut_id.dart';
@@ -71,6 +72,41 @@ Layer requireLayer(
   }
 
   throw StateError('Layer not found in cut $cutId: $layerId');
+}
+
+/// The whole ATTACH GROUP [layerId] belongs to, inside [cutId]'s cut —
+/// with the track and cut that were walked to find it.
+///
+/// 🚨ONE LAW, and it had been written twice. Both link-group commands
+/// (링크 복제 and 독립시키기) opened with the same eight lines: find the
+/// cut, find the layer, resolve its attach BASE, take the group slice,
+/// and throw when the slice comes back empty. Neither of them is about
+/// resolving a group — they are about what to do with one — and a second
+/// copy of a lookup that throws is where the two messages drift.
+///
+/// ⚠️A group is never legitimately empty: [attachBaseIdOf] answers the
+/// layer's own id when it is not attached to anything, so the slice
+/// always holds at least that layer. An empty one means the base names a
+/// layer this cut does not have.
+({Track track, Cut cut, LayerId baseId, List<Layer> members})
+requireAttachedGroup(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) {
+  final position = requireCutPosition(project, cutId);
+  final source = requireLayer(project, cutId: cutId, layerId: layerId);
+  final baseId = attachBaseIdOf(source);
+  final members = attachedGroupSlice(baseId, position.cut.layers);
+  if (members.isEmpty) {
+    throw StateError('Attach base not found: $baseId');
+  }
+  return (
+    track: position.track,
+    cut: position.cut,
+    baseId: baseId,
+    members: members,
+  );
 }
 
 /// The exposure BLOCK starting at [blockStartIndex] on [layer] — the one a
