@@ -101,7 +101,6 @@ void main() {
     expect(sink.brushFrames.single.wholeFrame, isFalse);
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
     expect(frame.inactivePreviewDirty, isFalse);
-    expect(frame.cacheDirtyTiles.isEmpty, isTrue);
     final cache = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
     expect(cache.isValid, isTrue);
     expect(cache.sourceRevision, frame.sourceRevision);

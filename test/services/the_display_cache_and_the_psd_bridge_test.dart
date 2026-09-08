@@ -7,7 +7,6 @@ import 'package:anicel/src/models/brush_frame_display_cache.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/dirty_tile_set.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -93,27 +92,12 @@ void main() {
       );
     });
 
-    test('the dirty tiles default to none rather than null — a caller '
-        'walking them must not have to ask first', () {
-      final cache = BrushFrameDisplayCache(
-        frameKey: key,
-        previewSurface: surface(),
-        sourceRevision: 0,
-      );
-
-      expect(cache.dirtyTiles.isEmpty, isTrue);
-    });
-
-    test('the dirty tiles carry through copyWith', () {
-      final cache = BrushFrameDisplayCache(
-        frameKey: key,
-        previewSurface: surface(),
-        sourceRevision: 0,
-        dirtyTiles: DirtyTileSet([TileCoord(x: 2, y: 3)]),
-      );
-
-      expect(cache.copyWith(sourceRevision: 1).dirtyTiles.length, 1);
-    });
+    // 🪦Two cases stood here pinning a `dirtyTiles` set on this cache —
+    // that it defaulted to empty "so a caller walking them need not ask
+    // first", and that it survived copyWith. There was never such a
+    // caller: the set was unioned into on every edit and read by nobody,
+    // for a year. The tile-granular answer travels on
+    // `BrushFrameCacheInvalidation`, which is asked (`hasDirtyTiles`).
   });
 
   group('the PSD bridge', () {

@@ -201,10 +201,7 @@ class BrushFrameEditingCoordinator {
 
     labProbe(
       'commit.markEdited',
-      () => frameStore.markCelEdited(
-        _activeFrameKey,
-        dirtyTiles: affectedEntry.dirtyTiles,
-      ),
+      () => frameStore.markCelEdited(_activeFrameKey),
     );
     labProbe(
       'commit.donate',

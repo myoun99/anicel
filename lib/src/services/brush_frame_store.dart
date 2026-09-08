@@ -9,7 +9,6 @@ import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/cut_id.dart';
-import '../models/dirty_tile_set.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
@@ -1012,10 +1011,7 @@ class BrushFrameStore {
       dirty: false,
     );
     _putDisplayCache(key, cache);
-    _frames[key] = state.copyWith(
-      inactivePreviewDirty: false,
-      cacheDirtyTiles: DirtyTileSet.empty(),
-    );
+    _frames[key] = state.copyWith(inactivePreviewDirty: false);
     return cache;
   }
 
@@ -1023,39 +1019,32 @@ class BrushFrameStore {
   /// is the ONLY mutation signal): bumps the source revision so playback
   /// image caches invalidate, and dirties the display-cache bookkeeping
   /// until the follow-up donation refreshes it.
-  BrushFrameDrawingState markCelEdited(
-    BrushFrameKey key, {
-    DirtyTileSet? dirtyTiles,
-  }) {
-    final next = _update(
-      _canonicalize(key),
-      (state) => _markCacheDirty(state, dirtyTiles: dirtyTiles),
-    );
+  ///
+  /// ⚠️It does NOT take the tiles the edit touched, and asking for them
+  /// here would be asking twice: the tile-granular answer is what
+  /// `BrushFrameCacheInvalidation` carries, and that one has readers. This
+  /// used to accept a `dirtyTiles` set and union it into two ledgers
+  /// neither of which was ever read — while one call away the same word
+  /// meant the opposite (`_invalidateBrushFrame(dirtyTiles: null)` says
+  /// 「the whole frame」, and this said 「add nothing」).
+  BrushFrameDrawingState markCelEdited(BrushFrameKey key) {
+    final next = _update(_canonicalize(key), _markCacheDirty);
     // The composite caches this edit just invalidated have no event of
     // their own (they self-validate by signature) — see [celPixelRevision].
     celPixelRevision.value += 1;
     return next;
   }
 
-  BrushFrameDrawingState _markCacheDirty(
-    BrushFrameDrawingState state, {
-    DirtyTileSet? dirtyTiles,
-  }) {
+  BrushFrameDrawingState _markCacheDirty(BrushFrameDrawingState state) {
     final next = state.copyWith(
       inactivePreviewDirty: true,
       sourceRevision: state.sourceRevision + 1,
-      cacheDirtyTiles: dirtyTiles == null
-          ? state.cacheDirtyTiles
-          : state.cacheDirtyTiles.union(dirtyTiles),
     );
     final existing = _displayCaches[state.key];
     if (existing != null) {
       _displayCaches[state.key] = existing.copyWith(
         dirty: true,
         sourceRevision: next.sourceRevision,
-        dirtyTiles: dirtyTiles == null
-            ? existing.dirtyTiles
-            : existing.dirtyTiles.union(dirtyTiles),
       );
     }
     return next;

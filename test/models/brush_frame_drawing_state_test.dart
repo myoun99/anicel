@@ -2,11 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_drawing_state.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/dirty_tile_set.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 
 /// R19 P3b: the drawing state is a pure mutation ledger (revision +
@@ -23,18 +21,12 @@ void main() {
 
   test('copyWith updates the ledger fields and keeps the rest', () {
     final state = BrushFrameDrawingState(key: key, sourceRevision: 3);
-    final dirty = DirtyTileSet.empty().add(TileCoord(x: 1, y: 0));
 
-    final next = state.copyWith(
-      sourceRevision: 4,
-      inactivePreviewDirty: true,
-      cacheDirtyTiles: dirty,
-    );
+    final next = state.copyWith(sourceRevision: 4, inactivePreviewDirty: true);
 
     expect(next.key, key);
     expect(next.sourceRevision, 4);
     expect(next.inactivePreviewDirty, isTrue);
-    expect(next.cacheDirtyTiles.contains(TileCoord(x: 1, y: 0)), isTrue);
     expect(state.sourceRevision, 3, reason: 'immutable value semantics');
   });
 

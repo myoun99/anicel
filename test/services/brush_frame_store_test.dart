@@ -6,7 +6,6 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/dirty_tile_set.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
@@ -140,10 +139,7 @@ void main() {
     store.storeRebuiltDisplayCache(key: k, previewSurface: surface);
     final revisionBefore = store.getOrCreateFrame(k).sourceRevision;
 
-    store.markCelEdited(
-      k,
-      dirtyTiles: DirtyTileSet.empty().add(TileCoord(x: 0, y: 0)),
-    );
+    store.markCelEdited(k);
 
     expect(
       store.getOrCreateFrame(k).sourceRevision,
