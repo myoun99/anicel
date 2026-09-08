@@ -86,8 +86,13 @@ class InputSettingsSection extends StatelessWidget {
                   max: 8000,
                   scale: FieldSliderScale.exponential,
                   label: strings.inputSpeedReference,
-                  valueText:
-                      '${settings.speedReferencePixelsPerSecond.round()} px/s',
+                  // F-9: the shared formatter, not a local `.round()` — a
+                  // bar shows the value it actually has, and a whole number
+                  // renders whole through it anyway.
+                  valueText: sliderValueText(
+                    settings.speedReferencePixelsPerSecond,
+                    unit: ' px/s',
+                  ),
                   onChanged: (reference) =>
                       AppInput.settings.value = AppInput.settings.value
                           .copyWith(

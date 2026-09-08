@@ -11,6 +11,8 @@ void main() {
     double size = 8,
     int sequence = 0,
     double pressure = 1,
+    double tiltAltitude = 1,
+    double speed = 0,
   }) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
@@ -21,6 +23,8 @@ void main() {
       hardness: 1,
       tipShape: BrushTipShape.round,
       pressure: pressure,
+      tiltAltitude: tiltAltitude,
+      speed: speed,
       sequence: sequence,
     );
   }
@@ -125,6 +129,46 @@ void main() {
     for (var i = 1; i < pressures.length; i += 1) {
       expect(pressures[i], greaterThan(pressures[i - 1]));
     }
+  });
+
+  test('🚨interpolates the LEAN too — this is the live interpolator', () {
+    // The tilt round made 傾き drive the curves but only taught the OTHER
+    // interpolator (`brushInputSamplesToBrushDabs`) to ramp it — and nothing
+    // in `lib/` calls that one. So every dab between two pointer readings
+    // wore the endpoint's lean and a tilt brush stepped instead of ramping,
+    // with a green pin watching the wrong door the whole time.
+    const interpolator = BrushDabInterpolator();
+    final sampled = interpolator.interpolate(
+      previous: dab(0, 0, size: 8, tiltAltitude: 1.0),
+      nextRaw: dab(8, 0, size: 8, tiltAltitude: 0.0),
+      firstSequence: 1,
+      spacingRatio: 0.25,
+    );
+
+    expect(sampled.length, greaterThan(1));
+    final altitudes = sampled.map((dab) => dab.tiltAltitude).toList();
+    expect(altitudes.last, closeTo(0.0, 1e-9));
+    expect(altitudes.first, lessThan(1.0));
+    expect(altitudes.first, greaterThan(0.0));
+    for (var i = 1; i < altitudes.length; i += 1) {
+      expect(altitudes[i], lessThan(altitudes[i - 1]));
+    }
+  });
+
+  test('⛔does NOT interpolate speed — it is the segment\'s, not the point\'s', () {
+    // Every dab here was laid during the ONE move being subdivided, so they
+    // all travelled at its speed. Unlike pressure and lean, blending toward
+    // the previous reading would mix in a DIFFERENT move's measurement.
+    const interpolator = BrushDabInterpolator();
+    final sampled = interpolator.interpolate(
+      previous: dab(0, 0, size: 8, speed: 0.0),
+      nextRaw: dab(8, 0, size: 8, speed: 0.6),
+      firstSequence: 1,
+      spacingRatio: 0.25,
+    );
+
+    expect(sampled.length, greaterThan(1));
+    expect(sampled.map((dab) => dab.speed).toSet(), {0.6});
   });
 
   test('a single seed dab keeps the raw pressure', () {

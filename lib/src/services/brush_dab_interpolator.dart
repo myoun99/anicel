@@ -37,6 +37,8 @@ class BrushDabInterpolator {
     final stepCount = math.max(1, (distance / spacing).ceil());
     final previousPressure = previous.pressure;
     final pressureDelta = nextRaw.pressure - previousPressure;
+    final previousAltitude = previous.tiltAltitude;
+    final altitudeDelta = nextRaw.tiltAltitude - previousAltitude;
     return List<BrushDab>.generate(stepCount, (index) {
       final fraction = (index + 1) / stepCount;
       return nextRaw.copyWith(
@@ -45,6 +47,19 @@ class BrushDabInterpolator {
         // opacity ramps smoothly between input samples instead of snapping
         // to the endpoint value on every inserted dab.
         pressure: previousPressure + pressureDelta * fraction,
+        // 🚨AND THE LEAN, for exactly the same reason. This was pressure-only
+        // until 速度 sent someone through both interpolators: the tilt round
+        // made 傾き drive the curves but never reached the LIVE one, so every
+        // dab between two pointer readings wore the endpoint's lean and a
+        // tilt brush stepped instead of ramping. The pin that would have said
+        // so was watching `brushInputSamplesToBrushDabs`, which nothing in
+        // `lib/` calls.
+        //
+        // ⛔Azimuth is deliberately left riding along from `nextRaw`: nothing
+        // reads it yet, and its lerp has to go the SHORT way round the circle
+        // (350° to 10° is twenty degrees forward, not 340 back). The round
+        // that gives it a reader is the one that shares that helper.
+        tiltAltitude: previousAltitude + altitudeDelta * fraction,
         // ⛔SPEED IS DELIBERATELY NOT INTERPOLATED, and it is not an
         // oversight to fix: it rides along from `nextRaw` because it is a
         // property of the MOVE this call is subdividing. Every dab here was
