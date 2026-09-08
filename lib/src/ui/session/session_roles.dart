@@ -23,6 +23,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
@@ -166,6 +167,7 @@ abstract interface class SessionInternals {
   ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
   get opacityDragPreview;
   int Function()? get pixelBrushColour;
+  SelectionMaskOptions Function()? get pixelSelectionMask;
   BrushFrameEditingCoordinator? get pixelEditingCoordinator;
   CanvasSelectionRegion? Function()? get pixelSelectionRegion;
   PixelVerbSubject get pixelVerbSubject;

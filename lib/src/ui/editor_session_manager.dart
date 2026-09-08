@@ -40,6 +40,7 @@ import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
+import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/canvas_selection_region.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -847,6 +848,12 @@ class EditorSessionManager extends ChangeNotifier
   /// 🚨Its ALPHA is ignored downstream — RGB only (유저 확정).
   @override
   int Function()? pixelBrushColour;
+
+  /// The softness the SELECTION carries — 확장·페더·AA. Read at the moment
+  /// of the press, like the colour beside it, because the tool settings
+  /// panel can change it while the popover is open.
+  @override
+  SelectionMaskOptions Function()? pixelSelectionMask;
 
   /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
   @override

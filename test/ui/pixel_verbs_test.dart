@@ -15,6 +15,9 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/pixel_verb_subject.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cell_verbs.dart';
@@ -303,6 +306,109 @@ void main() {
       () => cellVerbsOf(session).runPixelVerb(CelPixelVerb.replaceColour),
       returnsNormally,
     );
+  });
+
+  /// 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** A Ctrl+T
+  /// lift on a marquee honoured 확장·페더·AA; these four verbs ran on a hard
+  /// mask whatever the user had set, so one outline meant two things. The
+  /// parameter was wired all the way to `celPixelWalkFor` — only the press
+  /// site never passed it. 유저 확정 2026-09-09 (`pixel-verbs-mask-options`
+  /// = 가): 「선택툴로 선택한채로 사용할때 … 선택의 aa 따르게」.
+  ///
+  /// ⚠️Two halves, and each has its own mutant: the WORKSPACE has to publish
+  /// the fact, and the PRESS has to pass it on.
+  /// 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** A Ctrl+T
+  /// lift on a marquee honoured 확장·페더·AA; these four verbs ran on a hard
+  /// mask whatever the user had set, so one outline meant two things. The
+  /// parameter was wired all the way to `celPixelWalkFor` — only the press
+  /// site never passed it. 유저 확정 2026-09-09 (`pixel-verbs-mask-options`
+  /// = 가): 「선택툴로 선택한채로 사용할때 … 선택의 aa 따르게」.
+  ///
+  /// ⚠️Two halves, and each has its own mutant: the WORKSPACE has to publish
+  /// the fact, and the PRESS has to pass it on.
+  group('the selection\'s softness reaches the pixel verbs', () {
+    /// ⚠️Ink written through the COORDINATOR, not the store beside it. The
+    /// fixture one level up seeds `renderCaches.brushFrameStore` directly and
+    /// that is enough for the ladder tests, which only ask WHICH cels a press
+    /// names — but the press itself reads `coordinator.currentSurfaceOf`,
+    /// which answers with an empty 256-tile surface for the same key. A pin
+    /// on the PIXELS has to put the drawing where the verb will look.
+    void inkThroughCoordinator(EditorSessionManager session) {
+      final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+      final coordinator = session.pixelEditingCoordinator!;
+      final base = coordinator.currentSurfaceOf(key);
+      final bytes = base.tileSize * base.tileSize * 4;
+      coordinator.restoreSurfaceSnapshot(
+        key,
+        base.putTiles([
+          BitmapTile(
+            coord: TileCoord(x: 0, y: 0),
+            size: base.tileSize,
+            pixels: Uint8List(bytes)..fillRange(0, bytes, 0xFF),
+          ),
+        ]),
+      );
+    }
+
+    int alphaAt(EditorSessionManager session, int x, int y) {
+      final key = cellVerbsOf(session).pixelVerbCellKeys().single;
+      final tile = session.pixelEditingCoordinator!
+          .currentSurfaceOf(key)
+          .tileAt(TileCoord(x: 0, y: 0))!;
+      return tile.pixels[tile.byteOffsetForPixel(x: x, y: y) + 3];
+    }
+
+    testWidgets('the workspace publishes it, beside the colour and the '
+        'marquee', (tester) async {
+      final session = await pump(tester);
+
+      expect(
+        session.pixelSelectionMask,
+        isNotNull,
+        reason: 'the third canvas-side fact the verbs need',
+      );
+      expect(
+        session.pixelSelectionMask!().isHard,
+        isTrue,
+        reason: 'every option is off by default, so nothing changes for a '
+            'user who never touched them',
+      );
+    });
+
+    testWidgets('🚨and a FEATHERED marquee softens what 픽셀 비우기 takes',
+        (tester) async {
+      final session = await pump(tester);
+      await drawableRow(tester, session);
+      inkThroughCoordinator(session);
+      // The marquee the press reads: a box whose edge runs through the ink,
+      // so a feather has somewhere to ramp.
+      session.pixelSelectionRegion = () => CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 40, bottom: 40),
+      );
+      expect(alphaAt(session, 20, 20), 255, reason: 'fixture: ink is here');
+
+      cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      await tester.pump();
+      final hard = alphaAt(session, 38, 38);
+
+      session.historyManager.undo();
+      await tester.pump();
+      expect(alphaAt(session, 38, 38), 255, reason: 'fixture: undo put it back');
+
+      session.pixelSelectionMask = () =>
+          const SelectionMaskOptions(featherPx: 8);
+      cellVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      await tester.pump();
+      final feathered = alphaAt(session, 38, 38);
+
+      expect(hard, 0, reason: 'a hard mask empties the pixel outright');
+      expect(
+        feathered,
+        greaterThan(hard),
+        reason: '⛔the whole round: the press used to ignore this and both '
+            'runs came out identical',
+      );
+    });
   });
 }
 

@@ -10,6 +10,7 @@ import '../timeline/timeline_cell_exposure_state.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
+import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'lane_verbs.dart';
 import 'range_selections.dart';
 import 'frame_clipboard.dart';
@@ -208,6 +209,15 @@ class CellVerbs {
         // still do the thing the user asked for, in the colour they would
         // have got.
         argb: _internals.pixelBrushColour?.call() ?? 0xFF000000,
+        // 🚨THE SELECTION'S SOFTNESS TRAVELS WITH IT. A Ctrl+T lift on the
+        // same marquee already honoured 확장·페더·AA and these four verbs
+        // did not, so one outline meant two things. Read at the press for
+        // the same reason the colour is (the panel can change it while the
+        // popover is open). ⛔The fallback is `none`, which is also every
+        // option's own default — a host with nothing wired behaves exactly
+        // as it did. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` = 가).
+        options:
+            _internals.pixelSelectionMask?.call() ?? SelectionMaskOptions.none,
       ),
     );
   }
