@@ -503,8 +503,10 @@ double _textureDensityOf(Map<String, Object?> variant) {
 /// on the one brush carrying a non-default random scale.
 ///
 /// Bit 0x10 selects pen pressure, 0x20 velocity, **0x40 pen TILT** and 0x80
-/// random. Only pressure and random have an engine target so far; the other
-/// two are read and dropped.
+/// random. ⛔They are no longer "read and dropped": every one of the three
+/// curve sources gets its own curve and its own minimum (see
+/// [_effectorCurves]), and random drives the jitters. 速度's curve is stored
+/// but not yet applied — the dab has no clock.
 ///
 /// ↩️0x40 was guessed here as "most likely stroke direction", on the evidence
 /// that it only ever appeared on the rotation effector. 🚨THE GUESS WAS
@@ -522,26 +524,9 @@ int? _effectorFlags(Object? effector) {
   return null;
 }
 
+/// Whether the effector answers to the RANDOM input (0x80).
 bool _usesRandom(int? flags) => flags != null && (flags & 0x80) != 0;
 
-/// The pen-pressure response curve an effector carries, or `null` when it
-/// does not answer to pressure.
-///
-/// Clip Studio stores the 筆압설정 graph in the effector's tail, and the
-/// engine's curve is the same shape of object — control points read by a
-/// monotone spline — so the graph imports as itself instead of being
-/// flattened to a line.
-///
-/// Layout: a `12, <point count>, 16, 0, 0, 0, 0` marker, then `count - 1`
-/// (x, y) float64 pairs; the origin (0, 0) is implied rather than stored.
-/// One block per input source, in ascending flag-bit order, so the pressure
-/// curve is the FIRST block whenever pressure (0x10) is set — it is the
-/// lowest source bit there is.
-///
-/// The 최소치 slider is a SEPARATE control: the stored curve spans the full
-/// 0..1 output and the minimum lifts its floor, which is why a brush that
-/// never touched the graph still lands on exactly the straight
-/// `min + (1 - min) * p` line this importer used to assume for everyone.
 /// Every input source's curve on one effector, keyed by source.
 ///
 /// 🚨**THE BLOCKS RUN IN ASCENDING FLAG-BIT ORDER** — 筆圧 0x10, 速度 0x20,
@@ -591,13 +576,22 @@ BrushPressureCurve? _effectorSourceCurve(
   final maximum = source == BrushInputSource.tilt
       ? _effectorTiltMaximum(effector)
       : 1.0;
+  // 🚨THE FLOOR IS DIVIDED BY THE CEILING, and getting this wrong is silent.
+  //
+  // The panel says the response runs from 최소치% to 최대치%. Our curve stores
+  // a SHAPE in [0, 1] and `evaluate` returns `shape * maximum`, so for the
+  // output to land on 최소치 at no input the shape has to start at
+  // `minimum / maximum` — not at `minimum`, which would come out
+  // maximum-times too high. With no maximum (every source but 傾き) the
+  // division is by 1.0 and this is exactly what it always was.
+  final floor = (minimum / maximum).clamp(0.0, 1.0).toDouble();
   final stored = effector is Uint8List
       ? _effectorCurvePoints(effector, blockIndex)
       : null;
   if (stored == null || stored.isEmpty) {
-    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
+    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
   }
-  final points = <BrushCurvePoint>[BrushCurvePoint(0.0, minimum)];
+  final points = <BrushCurvePoint>[BrushCurvePoint(0.0, floor)];
   for (final point in stored) {
     // The engine wants strictly increasing x inside the unit square; Clip
     // Studio pads unused slots by repeating the last point.
@@ -607,7 +601,7 @@ BrushPressureCurve? _effectorSourceCurve(
     points.add(
       BrushCurvePoint(
         point.x,
-        (minimum + (1.0 - minimum) * point.y).clamp(0.0, 1.0).toDouble(),
+        (floor + (1.0 - floor) * point.y).clamp(0.0, 1.0).toDouble(),
       ),
     );
   }
@@ -615,14 +609,14 @@ BrushPressureCurve? _effectorSourceCurve(
     points.add(const BrushCurvePoint(1.0, 1.0));
   }
   if (points.length < 2) {
-    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
+    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
   }
   try {
     return BrushPressureCurve(points, maximum: maximum);
   } on ArgumentError {
     // Never fail an import over a curve; the straight line is the honest
     // fallback the file already implies through its minimum.
-    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
+    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
   }
 }
 
@@ -662,7 +656,12 @@ List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob, int blockIndex) {
     }
     final count = data.getInt32((i + 1) * 4);
     if (count < 2 || count > 64) {
-      return null;
+      // ⛔NOT `return null`. That was safe while only the FIRST block was
+      // ever read; now a nonsense count in an early source's block would
+      // abandon the scan and cost every LATER source its curve. A header
+      // whose count makes no sense is not a block, so it does not count as
+      // one either — `seen` stays put.
+      continue;
     }
     // Blocks are written one per enabled source, so walk past the ones that
     // belong to sources ahead of this one in flag-bit order.

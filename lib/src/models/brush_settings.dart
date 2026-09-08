@@ -1,5 +1,6 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
+import 'brush_input_source.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
@@ -146,6 +147,12 @@ class BrushSettings {
   /// How hard this brush's edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
 
+  /// The curves the four legacy JSON keys cannot express.
+  Map<BrushDynamicsKey, BrushPressureCurve> get _nonPressureCurves => {
+    for (final entry in shape.curves.entries)
+      if (entry.key.$2 != BrushInputSource.pressure) entry.key: entry.value,
+  };
+
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
   double get paintAmount => shape.paintAmount;
@@ -200,11 +207,21 @@ class BrushSettings {
       hardness: hardness ?? this.hardness,
       spacing: spacing ?? this.spacing,
       tipShape: tipShape ?? this.tipShape,
-      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
-      hardnessPressureCurve:
-          hardnessPressureCurve ?? this.hardnessPressureCurve,
+      // 🚨MERGE, DO NOT REBUILD. The four names can only address
+      // `(target, pressure)`; handing the constructor a map built from them
+      // alone would DELETE every tilt and speed curve this brush carries,
+      // silently and with no error. `BrushToolState.copyWith` was written
+      // with this helper and this one was not — an adversarial review found
+      // the gap on 2026-09-09, and the pin below now fails without it.
+      curves:
+          brushCurvesWithPressure(
+            shape.curves,
+            size: sizePressureCurve,
+            opacity: opacityPressureCurve,
+            flow: flowPressureCurve,
+            hardness: hardnessPressureCurve,
+          ) ??
+          shape.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
@@ -247,6 +264,23 @@ class BrushSettings {
       'flowPressureCurve': flowPressureCurve!.toJson(),
     if (hardnessPressureCurve != null)
       'hardnessPressureCurve': hardnessPressureCurve!.toJson(),
+    // 🚨EVERY OTHER SOURCE, or the import that read them was for nothing.
+    //
+    // ⛔The four keys above can only spell `(target, pressure)`. Leaving it
+    // there meant a Clip Studio brush imported WITH its tilt curve lost it
+    // on the very next save — the library persists immediately after an
+    // import — which is the exact defect this round set out to end. Found by
+    // adversarial review 2026-09-09, after the round had already claimed to
+    // have fixed it.
+    //
+    // ⚠️Pressure entries stay in the four legacy keys and are NOT repeated
+    // here, so a brush that only answers to pressure writes the same bytes
+    // it always did.
+    if (_nonPressureCurves.isNotEmpty)
+      'curves': {
+        for (final entry in _nonPressureCurves.entries)
+          '${entry.key.$1.name}.${entry.key.$2.name}': entry.value.toJson(),
+      },
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
@@ -311,6 +345,7 @@ class BrushSettings {
       opacityPressureCurve: opacityCurve,
       flowPressureCurve: curveOf('flowPressureCurve'),
       hardnessPressureCurve: curveOf('hardnessPressureCurve'),
+      curves: _curvesFromJson(json['curves']),
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
       tipMask: json['tipMask'] == null
@@ -453,4 +488,36 @@ void _validateNonNegativeFinite(double value, String fieldName) {
       'BrushSettings.$fieldName must be finite and non-negative.',
     );
   }
+}
+
+/// The `curves` block: `"<target>.<source>"` -> curve.
+///
+/// ⚠️An entry naming a target or a source this build does not know is
+/// SKIPPED, not an error — the same rule the blend mode follows. A preset
+/// written by a later version has to stay loadable, minus what it says that
+/// we cannot yet hear.
+Map<BrushDynamicsKey, BrushPressureCurve> _curvesFromJson(Object? json) {
+  if (json is! Map) {
+    return const {};
+  }
+  final out = <BrushDynamicsKey, BrushPressureCurve>{};
+  for (final entry in json.entries) {
+    final parts = '${entry.key}'.split('.');
+    if (parts.length != 2 || entry.value is! List) {
+      continue;
+    }
+    final target = BrushPressureTarget.values
+        .where((t) => t.name == parts[0])
+        .firstOrNull;
+    final source = BrushInputSource.values
+        .where((s) => s.name == parts[1])
+        .firstOrNull;
+    if (target == null || source == null) {
+      continue;
+    }
+    out[(target, source)] = BrushPressureCurve.fromJson(
+      entry.value as List<dynamic>,
+    );
+  }
+  return out;
 }

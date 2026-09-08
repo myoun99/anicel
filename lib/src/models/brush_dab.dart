@@ -67,10 +67,10 @@ class BrushDab {
   /// readings — before any curve has scaled it.
   ///
   /// 🚨THE CURVES ARE NOT APPLIED HERE. They were, inline, and the same four
-  /// multiplications lived in `applyBrushPressureDynamics` and in the preview
+  /// multiplications lived in `applyBrushInputDynamics` and in the preview
   /// cache as well — one algorithm written three times, each with different
   /// accretions (this one clamped nothing, the dynamics clamp to 0..1, the
-  /// preview floors at 0.05). Callers run [applyBrushPressureDynamics] and
+  /// preview floors at 0.05). Callers run [applyBrushInputDynamics] and
   /// keep whatever floor is theirs.
   ///
   /// ⚠️F-12 lives in the base, not in the curve: a dab's opacity starts at
@@ -93,9 +93,10 @@ class BrushDab {
       tipShape: settings.tipShape,
       pressure: sample.pressure,
       sequence: sequence,
-      // The lean rides along unread for now: nothing evaluates a curve
-      // against it yet, and a dab that does not carry its own input value
-      // could never be replayed (P17 — a dab holds its rendering values).
+      // ⛔"Rides along unread" is no longer true: `applyBrushInputDynamics`
+      // evaluates 傾き curves against [tiltAltitude]. It travels on the dab
+      // for the reason it always did — a dab that does not carry its own
+      // input value could never be replayed (P17).
       tiltAzimuthDegrees: sample.tiltAzimuthDegrees,
       tiltAltitude: sample.tiltAltitude,
       roundness: settings.roundness,

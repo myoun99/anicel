@@ -77,8 +77,22 @@ double _factorFor(BrushDab dab, BrushShape shape, BrushPressureTarget target) {
 double? brushInputValue(BrushDab dab, BrushInputSource source) =>
     switch (source) {
       BrushInputSource.pressure => dab.pressure,
-      // 1.0 is an upright pen and 0.0 is flat on the page. Clip Studio's
-      // 傾き slider reads the same way round, so the curve imports as itself.
-      BrushInputSource.tilt => dab.tiltAltitude,
+      // 🚨THE COMPLEMENT, not the field itself. 傾き is HOW FAR THE PEN LEANS
+      // — more lean, more input — while [BrushDab.tiltAltitude] is how
+      // UPRIGHT it is (1.0 vertical, 0.0 flat on the page). They run opposite
+      // ways, so the conversion is forced by what the two words mean; it is
+      // not a choice about how tilt should behave. Which way the RESPONSE
+      // runs is the curve's own shape, and that comes out of the file.
+      //
+      // ⛔An earlier draft passed `tiltAltitude` straight through with a
+      // comment claiming Clip Studio reads the same way round. Nobody had
+      // checked that, and it was backwards.
+      //
+      // ⚠️A device that reports NO tilt sits at altitude 1.0, so it lands
+      // here as lean 0.0 — the floor of the curve. For an imported brush
+      // with a 0% minimum that is a stroke that vanishes on a mouse. There
+      // is no "the device said nothing" value to tell that case apart from a
+      // genuinely upright pen; see the board card `brush-tilt-no-device-Q1`.
+      BrushInputSource.tilt => 1.0 - dab.tiltAltitude,
       BrushInputSource.speed => null,
     };

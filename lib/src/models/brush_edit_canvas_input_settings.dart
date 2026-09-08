@@ -19,6 +19,10 @@ class BrushEditCanvasInputSettings {
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
     BrushPressureCurve? hardnessPressureCurve,
+    // The general form; the four names above are sugar for its PRESSURE
+    // entries. Anything given here wins, because it is the only way to say
+    // "tilt".
+    Map<BrushDynamicsKey, BrushPressureCurve> curves = const {},
     double roundness = 1.0,
     double angleDegrees = 0.0,
     BrushTipMask? tipMask,
@@ -92,12 +96,15 @@ class BrushEditCanvasInputSettings {
         hardness: hardness,
         spacing: spacing,
         tipShape: tipShape,
-        curves: brushPressureCurves(
-          size: sizePressureCurve,
-          opacity: opacityPressureCurve,
-          flow: flowPressureCurve,
-          hardness: hardnessPressureCurve,
-        ),
+        curves: {
+          ...brushPressureCurves(
+            size: sizePressureCurve,
+            opacity: opacityPressureCurve,
+            flow: flowPressureCurve,
+            hardness: hardnessPressureCurve,
+          ),
+          ...curves,
+        },
         roundness: roundness,
         angleDegrees: angleDegrees,
         tipMask: tipMask,
@@ -182,11 +189,16 @@ class BrushEditCanvasInputSettings {
 
   /// Whether any pressure curve is active (the no-pressure hot path skips
   /// the per-dab dynamics pass entirely).
-  bool get hasPressureDynamics =>
-      sizePressureCurve != null ||
-      opacityPressureCurve != null ||
-      flowPressureCurve != null ||
-      hardnessPressureCurve != null;
+  /// Whether ANY input drives ANY setting on this brush.
+  ///
+  /// ⛔It used to name the four PRESSURE curves one by one, which quietly
+  /// became a second copy of the emptiness law and answered "no" for a
+  /// tilt-only brush — so the pen stroke skipped its dynamics while the
+  /// preview and the committed stroke applied them, one brush drawing two
+  /// ways (adversarial review, 2026-09-09). It reads the whole map now, and
+  /// `applyBrushInputDynamics` owns the same question for the paths that do
+  /// not gate at all.
+  bool get hasPressureDynamics => shape.curves.isNotEmpty;
 
   double get roundness => shape.roundness;
   double get angleDegrees => shape.angleDegrees;
@@ -264,11 +276,20 @@ class BrushEditCanvasInputSettings {
       hardness: hardness ?? this.hardness,
       tipShape: tipShape ?? this.tipShape,
       spacing: spacing ?? this.spacing,
-      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
-      hardnessPressureCurve:
-          hardnessPressureCurve ?? this.hardnessPressureCurve,
+      // 🚨MERGE, DO NOT REBUILD — see `BrushSettings.copyWith`. The live
+      // stroke path goes through here: a mapped-erase press snapshots the
+      // settings with `copyWith(erase: true)`, and rebuilding from the four
+      // pressure names would strip the brush of its tilt response for that
+      // whole stroke while an ordinary press kept it.
+      curves:
+          brushCurvesWithPressure(
+            shape.curves,
+            size: sizePressureCurve,
+            opacity: opacityPressureCurve,
+            flow: flowPressureCurve,
+            hardness: hardnessPressureCurve,
+          ) ??
+          shape.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,

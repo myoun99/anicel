@@ -116,7 +116,7 @@ class BrushPressureCurve {
   /// and [evaluate] clamps the shape to [0, 1] besides, so a curve simply has
   /// no way to say "300%". The shape and the ceiling are two facts.
   ///
-  /// ⚠️Only SIZE can actually show a value above 1.0: `applyBrushPressureDynamics`
+  /// ⚠️Only SIZE can actually show a value above 1.0: `applyBrushInputDynamics`
   /// clamps opacity, flow and hardness to [0, 1] because there is no such
   /// thing as 300% opacity. That is not a rule about this field — it is a
   /// rule about those three quantities, and it is written where they are

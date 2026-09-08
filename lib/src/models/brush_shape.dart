@@ -86,6 +86,18 @@ class BrushShape {
   /// The four names survive as GETTERS below. They are projections of this
   /// map, not a second home for the data: they read `(target, pressure)`,
   /// which is what they always meant.
+  ///
+  /// ⚠️STORED BY REFERENCE — this class is const, so it cannot wrap the map
+  /// the way [BrushPressureCurve] wraps its points. Every producer therefore
+  /// hands over a FRESH map it does not keep (, ,
+  /// the importers), and nobody may mutate one after handing it over: a shape
+  /// is a value and a live cache key, so a map that changes underneath it
+  /// changes its hashCode after the fact.
+  /// ⚠️STORED BY REFERENCE. This class is const, so it cannot wrap the map
+  /// the way [BrushPressureCurve] wraps its points. Every producer therefore
+  /// hands over a FRESH map it does not keep, and nobody may mutate one
+  /// afterwards: a shape is a value AND a live cache key, so a map that
+  /// changes underneath it changes its hashCode after the fact.
   final Map<BrushDynamicsKey, BrushPressureCurve> curves;
 
   /// BB-3 (R26 #11): the pressure response for one setting, or `null` when it
@@ -208,14 +220,6 @@ class BrushShape {
   /// only one that existed before sources were separated.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       curveFor(target, BrushInputSource.pressure);
-
-  /// Every source that drives [target], in enum order.
-  ///
-  /// ⚠️Order is fixed but must not MATTER: the sources multiply, and
-  /// multiplication does not care. If a reader ever depends on this order,
-  /// the combination rule has stopped being multiplication.
-  Iterable<BrushInputSource> sourcesFor(BrushPressureTarget target) =>
-      BrushInputSource.values.where((s) => curves.containsKey((target, s)));
 
   /// Sets — or, with `null`, CLEARS — one (target, source) curve, leaving
   /// every other pairing untouched. [copyWith] deliberately preserves the

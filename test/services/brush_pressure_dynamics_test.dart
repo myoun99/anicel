@@ -151,8 +151,10 @@ void main() {
 
     test('a source at full contributes exactly 1.0, so adding one is '
         'non-destructive', () {
-      // This is WHY multiply was chosen: enabling tilt on an upright pen
-      // must not move the stroke at all.
+      // This is WHY multiply was chosen: a source sitting at FULL input
+      // contributes exactly 1.0, so switching it on cannot move the stroke.
+      // ⚠️Full tilt input is a pen laid FLAT (altitude 0.0), not an upright
+      // one — 傾き is how far it leans.
       final pressureOnly = _driving(
         BrushPressureTarget.size,
         BrushInputSource.pressure,
@@ -163,7 +165,7 @@ void main() {
         BrushInputSource.tilt,
         BrushPressureCurve.identity(),
       );
-      final dab = _dab(size: 10, pressure: 0.5, tiltAltitude: 1.0);
+      final dab = _dab(size: 10, pressure: 0.5, tiltAltitude: 0.0);
       expect(
         applyBrushInputDynamics(dab, shape: withTilt).size,
         applyBrushInputDynamics(dab, shape: pressureOnly).size,
@@ -172,7 +174,7 @@ void main() {
 
     test('tilt alone drives a setting — pressure need not be involved', () {
       final result = applyBrushInputDynamics(
-        _dab(size: 10, pressure: 1.0, tiltAltitude: 0.25),
+        _dab(size: 10, pressure: 1.0, tiltAltitude: 0.75),
         shape: _driving(
           BrushPressureTarget.size,
           BrushInputSource.tilt,
@@ -180,6 +182,34 @@ void main() {
         ),
       );
       expect(result.size, closeTo(2.5, 1e-9));
+    });
+
+    test('🚨TILT IS THE LEAN, NOT THE UPRIGHTNESS — the sign, pinned', () {
+      // 傾き rises as the pen goes down toward the page, while
+      // `BrushDab.tiltAltitude` rises as it stands up. Passing the field
+      // straight through is backwards, and it looked right enough to ship
+      // once (caught by review, 2026-09-09).
+      final shape = _driving(
+        BrushPressureTarget.size,
+        BrushInputSource.tilt,
+        BrushPressureCurve.identity(),
+      );
+      // Flat on the page = full input = full size.
+      expect(
+        applyBrushInputDynamics(
+          _dab(size: 10, tiltAltitude: 0.0),
+          shape: shape,
+        ).size,
+        closeTo(10.0, 1e-9),
+      );
+      // Straight up = no lean = the curve's floor, which here is zero.
+      expect(
+        applyBrushInputDynamics(
+          _dab(size: 10, tiltAltitude: 1.0),
+          shape: shape,
+        ).size,
+        closeTo(0.0, 1e-9),
+      );
     });
 
     test('⛔a SPEED curve is stored but contributes nothing yet', () {
