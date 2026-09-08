@@ -56,5 +56,34 @@ void main() {
     test('a many-digit count is read whole', () {
       expect(lastSkipCount('+900 ~123: All tests passed!'), 123);
     });
+
+    /// 🚨★★★**A TILDE IN A TEST NAME IS NOT A SKIP COUNT.** 실측
+    /// 2026-09-08: a run reported 「105 test(s) SKIPPED」 where five had
+    /// been, because one of the tests it printed is called 「a bare Row
+    /// overflowed at the ~100px a drop-zone preview shrinks to」 and the
+    /// pattern was a bare `~(\d+)`.
+    ///
+    /// ⛔That is this gate crying wolf, which is worse than it staying
+    /// quiet: the next reader learns to wave a skip warning through, and
+    /// the whole point of the file is that a warning nobody obeys is not a
+    /// mechanism.
+    test('a tilde inside a test NAME is not the counter', () {
+      expect(
+        lastSkipCount(
+          '00:06 +633 -1: some_test.dart: a bare Row overflowed at the '
+          '~100px a drop-zone preview shrinks to',
+        ),
+        isNull,
+      );
+      expect(
+        lastSkipCount(
+          '00:01 +5 ~2: a.dart: passed\n'
+          '00:06 +633 -1: b.dart: overflowed at the ~100px it shrinks to',
+        ),
+        2,
+        reason: 'the real counter still wins, and a later name cannot '
+            'overwrite it',
+      );
+    });
   });
 }

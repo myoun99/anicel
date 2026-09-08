@@ -17,9 +17,14 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/fake_pdf_document.dart';
 
 /// The media viewer panel (R4, §6-h): images and PDF pages inside the
-/// canvas shell, page stepping, and the two honest refusals (no PDF
-/// renderer / no viewer for the kind). The PDF renderer is INJECTED —
-/// flutter_tester never touches the FFI plugin.
+/// canvas shell, page stepping, and the honest refusals. The PDF renderer
+/// is INJECTED — flutter_tester never touches the FFI plugin.
+///
+/// 🪦One of those refusals used to be 「no viewer for the KIND」, and the
+/// kind it meant was audio. Sound has a picture now — its waveform — so
+/// what is left is a sound this build could not READ, which is the same
+/// shape the video arm has. The waveform itself is pinned next door, in
+/// `an_audio_file_opens_as_its_waveform_test`.
 void main() {
   late EditorSessionManager session;
   late MediaViewerSlot slot;
@@ -139,14 +144,24 @@ void main() {
     );
   });
 
-  testWidgets('an audio request states the kind has no viewer', (tester) async {
+  testWidgets('an audio request whose sound cannot be read says SO', (
+    tester,
+  ) async {
     await pumpViewer(tester);
     slot.request.value = const MediaViewerRequest(
+      // A path with nothing behind it: the conform has nothing to build
+      // from, so there is no waveform to draw.
       path: 'C:/work/foot.wav',
       kind: MediaAssetKind.audio,
     );
     await tester.pumpAndSettle();
-    expect(find.text(AppText.strings.mediaViewerCannotDisplay), findsOneWidget);
+    expect(
+      find.text(AppText.strings.mediaViewerNoAudioDecoder),
+      findsOneWidget,
+      reason: '🪦this used to assert 「이 종류의 미디어는 아직 표시할 수 '
+          '없습니다」 — the kind HAS a viewer now, so the only thing left to '
+          'refuse is a file it could not read',
+    );
   });
 
   testWidgets('two viewers mounted at once keep separate keys and separate '

@@ -309,9 +309,19 @@ class _BatchResult {
 /// wrote 「a known local condition」 and carried on — and the fix was one
 /// paragraph further down the same file. A note that has to be obeyed is not
 /// a rule; this is the mechanism.
+/// ⚠️IT IS THE COUNTER, NOT EVERY TILDE. The pattern was a bare `~(\d+)`
+/// until 2026-09-08, and a test whose NAME contains one — 「a bare Row
+/// overflowed at the ~100px a drop-zone preview shrinks to」 — was read as
+/// a hundred skipped tests. The run it landed in reported 105 where the
+/// truth was 5, which is the same failure mode this whole function exists
+/// to prevent, pointing the other way: a gate that cries wolf is a gate
+/// the next reader learns to wave through.
+///
+/// The counter only ever appears as `+<passed> ~<skipped>:` — flutter's
+/// own progress line — so that is what this asks for.
 int? lastSkipCount(String text) {
   int? found;
-  for (final m in RegExp(r'~(\d+)').allMatches(text)) {
+  for (final m in RegExp(r'\+\d+ ~(\d+):').allMatches(text)) {
     found = int.parse(m.group(1)!);
   }
   return found;
