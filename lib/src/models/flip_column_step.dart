@@ -1,5 +1,18 @@
 /// THE flip's step: one column, left or right.
 ///
+/// R10 #13, the user's rule with no exceptions: **whatever the row is,
+/// count THAT row's blocks; a block where there are blocks, a frame
+/// where there are none.** A layer row counts its exposure blocks, an SE
+/// row its sound blocks — the same code, because an SE row is a layer
+/// with a timeline and needs no branch of its own — and a V row counts
+/// CUTS, which is the only place a flip crosses a cut boundary.
+///
+/// That last part is the rule's dividend: "coming out of a cut on a
+/// layer row, which row of the next cut do you land on?" is a question
+/// that never gets asked, because layer rows live inside one cut.
+/// (Carried here verbatim in round 8 G4 from the two session forwarders
+/// it used to sit on — [FrameVerbs.flipRow] is what dispatches it.)
+///
 /// A flip axis is made of COLUMNS. A block that covers frames is one
 /// column however long it holds; a frame no block covers is a column of
 /// its own. That single definition is what makes the two directions

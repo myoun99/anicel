@@ -456,18 +456,7 @@ class FrameVerbs {
   }
 
   /// Steps one BLOCK along the current row (Ctrl+`,` back, Ctrl+`.`
-  /// forward).
-  ///
-  /// R10 #13, the user's rule with no exceptions: **whatever the row is,
-  /// count THAT row's blocks; a block where there are blocks, a frame
-  /// where there are none.** A layer row counts its exposure blocks, an SE
-  /// row its sound blocks — the same code, because an SE row is a layer
-  /// with a timeline and needs no branch of its own — and a V row counts
-  /// CUTS, which is the only place a flip crosses a cut boundary.
-  ///
-  /// That last part is the rule's dividend: "coming out of a cut on a
-  /// layer row, which row of the next cut do you land on?" is a question
-  /// that never gets asked, because layer rows live inside one cut.
+  /// forward). R10 #13, the user's flip rule: `flip_column_step.dart`.
   void flipRow({required bool forward}) {
     // 🚨F-13 (유저 2026-08-24): 「선택범위로 선택하고 취소되는 행동
     // 늘리고싶음. 지금 선택하고 플립등으로 프레임 이동하면 취소안되고 레이어
