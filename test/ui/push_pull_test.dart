@@ -154,7 +154,7 @@ void main() {
 
       // Grow the first block over frames 0..3, then anchor inside it.
       s.selectFrameIndex(0);
-      s.setCommaForSelectionOrCurrent(4);
+      s.exposureVerbs.setCommaForSelectionOrCurrent(4);
       expect(blocksOf(s), [(0, 4), (4, 5)]);
 
       s.clearFrameRangeSelection();

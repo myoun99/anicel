@@ -177,7 +177,6 @@ abstract interface class SessionInternals {
   void selectTrackCutAtPlayhead(TrackId trackId);
   void selectTrackRow(TrackId trackId);
   ValueNotifier<bool> get selectionInteractionActive;
-  void setCommaForSelectionOrCurrent(int comma);
   ValueNotifier<Set<LayerId>> get soloedSeLayerIds;
   void standOnRow(
     TimelineRowAddress row, {

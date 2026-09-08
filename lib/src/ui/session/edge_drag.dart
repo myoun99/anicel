@@ -22,6 +22,7 @@ import 'range_selections.dart';
 import 'folders_and_attachments.dart';
 import 'track_se_display.dart';
 import 'transitions.dart';
+import 'exposure_verbs.dart';
 
 /// The EDGE DRAGS — an exposure's comma grip, a cut's end grip and a
 /// transition's edge, on the timeline and on the storyboard — as their own
@@ -36,7 +37,7 @@ import 'transitions.dart';
 /// It reaches the session through `_session` — the same private seams it
 /// always used, in the same library, so nothing became public to move.
 class EdgeDrag {
-  EdgeDrag({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required ActiveCutControllers controllers, required SessionInternals internals, required FoldersAndAttachments folders, required RangeSelections rangeSelections, required StoryboardCursor storyboardCursor, required TrackSeDisplay trackSe, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _controllers = controllers, _internals = internals, _folders = folders, _rangeSelections = rangeSelections, _storyboardCursor = storyboardCursor, _trackSe = trackSe, _transitions = transitions;
+  EdgeDrag({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required ActiveCutControllers controllers, required SessionInternals internals, required FoldersAndAttachments folders, required RangeSelections rangeSelections, required StoryboardCursor storyboardCursor, required TrackSeDisplay trackSe, required Transitions transitions, required ExposureVerbs exposureVerbs}) : _project = project, _selection = selection, _changes = changes, _controllers = controllers, _internals = internals, _folders = folders, _rangeSelections = rangeSelections, _storyboardCursor = storyboardCursor, _trackSe = trackSe, _transitions = transitions, _exposureVerbs = exposureVerbs;
 
   final TrackSeDisplay _trackSe;
   final Transitions _transitions;
@@ -49,6 +50,7 @@ class EdgeDrag {
   final FoldersAndAttachments _folders;
   final RangeSelections _rangeSelections;
   final StoryboardCursor _storyboardCursor;
+  final ExposureVerbs _exposureVerbs;
 
   TransitionEdgeDrag? _transitionEdgeDrag;
 
@@ -1289,7 +1291,7 @@ class EdgeDrag {
       // IS a retimable one.
       if (_rangeSelections.cutLocalSelectionBlockStartsByLayer() !=
           null) {
-        _internals.setCommaForSelectionOrCurrent(comma);
+        _exposureVerbs.setCommaForSelectionOrCurrent(comma);
       }
       return;
     }

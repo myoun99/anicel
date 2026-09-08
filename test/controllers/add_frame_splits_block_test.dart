@@ -19,7 +19,7 @@ void main() {
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
     // Hold it out to [0, length).
-    session.setCommaForSelectionOrCurrent(length);
+    session.exposureVerbs.setCommaForSelectionOrCurrent(length);
     expect(
       session.layers.firstWhere((layer) => layer.id == layerId).timeline.keys,
       [0],

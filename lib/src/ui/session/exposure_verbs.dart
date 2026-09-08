@@ -6,30 +6,42 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'active_cut_controllers.dart';
+import 'cell_verbs.dart';
+import 'range_selections.dart';
 import 'session_roles.dart';
 import 'camera.dart';
 
 /// The EXPOSURE VERBS — blanking an exposure, lengthening and shortening
-/// the selected one, and a layer's exposure state — as their own object.
+/// the selected one, setting a whole run's comma, and a layer's exposure
+/// state — as their own object.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
-/// 2026-09-02). Dry-run before cutting: the rest reads none of it.
+/// 2026-09-02). Dry-run before cutting: the rest reads none of it. The
+/// comma set joined it in G4-2 (2026-09-08): it is the same subject —
+/// how long a block is exposed — and its gate and its press have to read
+/// one answer, so they live beside the lengthen/shorten pair.
 class ExposureVerbs {
   ExposureVerbs({
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required Camera camera,
+    required RangeSelections rangeSelections,
+    required CellVerbs cells,
   }) : _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _camera = camera;
+       _camera = camera,
+       _rangeSelections = rangeSelections,
+       _cells = cells;
 
   final Camera _camera;
 
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
+  final RangeSelections _rangeSelections;
+  final CellVerbs _cells;
 
   /// The timesheet "X here" action: blanks the covering block's hold so the
   /// current cell (and the rest of the old hold) becomes empty.
@@ -189,5 +201,74 @@ class ExposureVerbs {
     }
     return _controllers.timelineController.blockForLayerAt(layer: layer) !=
         null;
+  }
+
+  // --- Comma set (UI-R17 #7: the 1/2/3/4/N buttons) -------------------------
+
+  /// Whether a comma set has a target: the selection's blocks, else the
+  /// active layer's block covering the playhead.
+  ///
+  /// The second rung borrows the delete gate, which answers true for LANE
+  /// KEYS as well — a subject this verb has no branch for. Under a
+  /// claiming band that inheritance is what lit the buttons over a press
+  /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
+  /// read here too and the two stay one answer.
+  bool get canSetCommaForSelectionOrCurrent =>
+      _rangeSelections.selectionBlockStartsByLayer() != null ||
+      (!_cells.cellSelectionClaimsSubject &&
+          _cells.canDeleteCellAtCurrentFrame);
+
+  /// Sets the exposure length of every selected block — or the covering
+  /// block at the playhead without a selection — to [comma], packing each
+  /// layer's run with the retime ripple (1--2--3-- set to 1 reads 123;
+  /// TVP). One composite undo across spanned layers; the selection
+  /// follows the retimed span so repeated comma presses keep operating on
+  /// the same cels.
+  void setCommaForSelectionOrCurrent(int comma) {
+    if (comma < 1) {
+      return;
+    }
+    final selection = _selection.frameRangeSelection.value;
+    // Single-cel rows are already absent — the shared collector states
+    // that standdown once, so this verb and its `can…` gate agree.
+    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
+    if (selection != null &&
+        selectionTargets != null &&
+        selectionTargets.isNotEmpty) {
+      _controllers.timelineController.retimeBlocksForLayers({
+        for (final entry in selectionTargets.entries)
+          entry.key: {for (final start in entry.value) start: comma},
+      });
+      _rangeSelections.reselectRetimedSelection(selection, selectionTargets);
+      _changes.warmActiveCut();
+      _changes.notifyChanged();
+      return;
+    }
+    if (_cells.cellSelectionClaimsSubject) {
+      // Same law as the delete verb: a band that resolves to nothing
+      // retimable is a no-op, never a press that lands on some other row.
+      return;
+    }
+    final layer = _selection.activeLayer;
+    // Synced attach rows own no timing (free rows retime normally);
+    // single-cel rows are pinned by the covering normalization.
+    if (layer == null ||
+        isSyncedAttachedLayer(layer) ||
+        layer.kind.holdsSingleCel) {
+      return;
+    }
+    final block = coveringDrawingBlockAt(
+      layer.timeline,
+      _controllers.timelineController.currentFrameIndex,
+    );
+    if (block == null || block.entry.ghost) {
+      return;
+    }
+    _controllers.timelineController.retimeBlocksForLayer(
+      layerId: layer.id,
+      newLengthByStart: {block.startIndex: comma},
+    );
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
   }
 }

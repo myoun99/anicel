@@ -603,7 +603,7 @@ void main() {
         anchorIndex: 0,
         headIndex: 0,
       );
-      expect(s.canSetCommaForSelectionOrCurrent, isFalse);
+      expect(s.exposureVerbs.canSetCommaForSelectionOrCurrent, isFalse);
     });
 
     test('독립시키기 from a BELOW attach row unlinks the whole group '

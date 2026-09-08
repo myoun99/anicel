@@ -1255,7 +1255,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.cells.canDeleteCellAtCurrentFrame,
       session.exposureVerbs.canDecreaseSelectedExposure,
       session.exposureVerbs.canIncreaseSelectedExposure,
-      session.canSetCommaForSelectionOrCurrent,
+      session.exposureVerbs.canSetCommaForSelectionOrCurrent,
       // The Add button gates on the active layer's kind + cell state.
       // NOTE: these two move together with the can* getters above in every
       // reachable scenario, so the guard test cannot isolate them — they are

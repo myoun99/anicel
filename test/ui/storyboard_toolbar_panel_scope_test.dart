@@ -338,7 +338,7 @@ void main() {
     // lights blank/mark/copy over on the timeline panel.
     manager.selectFrameIndex(0);
     manager.createDrawingAtCurrentFrame();
-    manager.setCommaForSelectionOrCurrent(4);
+    manager.exposureVerbs.setCommaForSelectionOrCurrent(4);
     manager.selectFrameIndex(1);
     await tester.pumpAndSettle();
     expect(manager.exposureVerbs.canBlankExposureAtCurrentFrame, isTrue,

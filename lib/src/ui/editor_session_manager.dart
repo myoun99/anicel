@@ -38,7 +38,6 @@ import '../services/editing/active_cut_helpers.dart';
 import '../services/editing/editing_session_state.dart';
 import '../services/editing/layer_standing_after_change.dart';
 import '../controllers/timeline_controller.dart';
-import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
@@ -65,7 +64,6 @@ import '../models/onion_skin_settings.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
-import '../models/timeline_coverage.dart';
 import '../models/timeline_empty_gaps.dart';
 import '../models/delete_subject.dart';
 import '../models/timeline_selection_kind.dart';
@@ -1961,7 +1959,7 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart): the exposure, cut
   // and transition edge drags with their snapshots. Callers name it
   // (round 8, G4).
-  late final EdgeDrag edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, internals: this);
+  late final EdgeDrag edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, exposureVerbs: exposureVerbs, internals: this);
 
   /// The transition row as the in-flight edge drag would leave it — the
   /// strip renders THIS while a grip is held, so the mark follows the hand
@@ -2509,6 +2507,8 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     controllers: activeCutControllers,
     camera: camera,
+    rangeSelections: rangeSelections,
+    cells: cells,
   );
 
   @override
@@ -2999,75 +2999,6 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   String? get selectedFrameName => selectedFrame?.name;
-
-  // --- Comma set (UI-R17 #7: the 1/2/3/4/N buttons) -------------------------
-
-  /// Whether a comma set has a target: the selection's blocks, else the
-  /// active layer's block covering the playhead.
-  ///
-  /// The second rung borrows the delete gate, which answers true for LANE
-  /// KEYS as well — a subject this verb has no branch for. Under a
-  /// claiming band that inheritance is what lit the buttons over a press
-  /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
-  /// read here too and the two stay one answer.
-  bool get canSetCommaForSelectionOrCurrent =>
-      rangeSelections.selectionBlockStartsByLayer() != null ||
-      (!cells.cellSelectionClaimsSubject && cells.canDeleteCellAtCurrentFrame);
-
-  /// Sets the exposure length of every selected block — or the covering
-  /// block at the playhead without a selection — to [comma], packing each
-  /// layer's run with the retime ripple (1--2--3-- set to 1 reads 123;
-  /// TVP). One composite undo across spanned layers; the selection
-  /// follows the retimed span so repeated comma presses keep operating on
-  /// the same cels.
-  @override
-  void setCommaForSelectionOrCurrent(int comma) {
-    if (comma < 1) {
-      return;
-    }
-    final selection = frameRangeSelection.value;
-    // Single-cel rows are already absent — the shared collector states
-    // that standdown once, so this verb and its `can…` gate agree.
-    final selectionTargets = rangeSelections.selectionBlockStartsByLayer();
-    if (selection != null &&
-        selectionTargets != null &&
-        selectionTargets.isNotEmpty) {
-      activeCutControllers.timelineController.retimeBlocksForLayers({
-        for (final entry in selectionTargets.entries)
-          entry.key: {for (final start in entry.value) start: comma},
-      });
-      rangeSelections.reselectRetimedSelection(selection, selectionTargets);
-      warmActiveCut();
-      notifyListeners();
-      return;
-    }
-    if (cells.cellSelectionClaimsSubject) {
-      // Same law as the delete verb: a band that resolves to nothing
-      // retimable is a no-op, never a press that lands on some other row.
-      return;
-    }
-    final layer = activeLayer;
-    // Synced attach rows own no timing (free rows retime normally);
-    // single-cel rows are pinned by the covering normalization.
-    if (layer == null ||
-        isSyncedAttachedLayer(layer) ||
-        layer.kind.holdsSingleCel) {
-      return;
-    }
-    final block = coveringDrawingBlockAt(
-      layer.timeline,
-      activeCutControllers.timelineController.currentFrameIndex,
-    );
-    if (block == null || block.entry.ghost) {
-      return;
-    }
-    activeCutControllers.timelineController.retimeBlocksForLayer(
-      layerId: layer.id,
-      newLengthByStart: {block.startIndex: comma},
-    );
-    warmActiveCut();
-    notifyListeners();
-  }
 
   // --- B8: the frame verbs, addressed by the STORYBOARD cursor --------------
   //

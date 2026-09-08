@@ -228,7 +228,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.canSetCommaForSelectionOrCurrent,
+      session.exposureVerbs.canSetCommaForSelectionOrCurrent,
       isTrue,
       reason: 'the state moved',
     );

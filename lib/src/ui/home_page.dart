@@ -661,15 +661,15 @@ class _HomePageState extends State<HomePage> {
         _abandonPolygonOrCancelTransform();
       // The comma set row (UI-R17 #7): current block or whole selection.
       case EditorActionIds.timelineComma1:
-        _session.setCommaForSelectionOrCurrent(1);
+        _session.exposureVerbs.setCommaForSelectionOrCurrent(1);
       case EditorActionIds.timelineComma2:
-        _session.setCommaForSelectionOrCurrent(2);
+        _session.exposureVerbs.setCommaForSelectionOrCurrent(2);
       case EditorActionIds.timelineComma3:
-        _session.setCommaForSelectionOrCurrent(3);
+        _session.exposureVerbs.setCommaForSelectionOrCurrent(3);
       case EditorActionIds.timelineComma4:
-        _session.setCommaForSelectionOrCurrent(4);
+        _session.exposureVerbs.setCommaForSelectionOrCurrent(4);
       case EditorActionIds.timelineCommaN:
-        if (_session.canSetCommaForSelectionOrCurrent) {
+        if (_session.exposureVerbs.canSetCommaForSelectionOrCurrent) {
           unawaited(showTimelineCommaCountDialog(context, _session));
         }
     }
