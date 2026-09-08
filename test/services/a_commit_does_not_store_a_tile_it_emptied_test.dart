@@ -118,7 +118,7 @@ void main() {
       promotedTiles: [blanked],
     );
 
-    expect(result.afterSurface!.tileAt(origin), isNull);
+    expect(result.afterSurface.tileAt(origin), isNull);
     expect(
       result.dirtyTiles.contains(origin),
       isTrue,
