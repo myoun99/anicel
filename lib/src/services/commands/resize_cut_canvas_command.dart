@@ -186,7 +186,9 @@ class ResizeCutCanvasCommand
         // to a surface with holes in it.
         brushFrameStore?.restoreBakedForCut(target, {
           for (final entry in previousBaked.entries)
-            entry.key: ?entry.value.surface,
+            entry.key: ?entry.value.surfaceOver(
+              brushFrameStore?.hotBakedSurfaceOrNull(entry.key),
+            ),
         });
       }
     }

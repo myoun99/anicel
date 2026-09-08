@@ -120,9 +120,9 @@ class UndoSurfaceSnapshot {
        _tileSize = snapshot.tileSize,
        _surface = snapshot,
        _owned = snapshot.tilesNotSharedWith(sharedWith) {
-    _shared = {
-      for (final entry in snapshot.tiles.entries)
-        if (!_owned!.containsKey(entry.key)) entry.key: entry.value,
+    _sharedCoords = {
+      for (final coord in snapshot.tiles.keys)
+        if (!_owned!.containsKey(coord)) coord,
     };
   }
 
@@ -133,10 +133,22 @@ class UndoSurfaceSnapshot {
   final CanvasSize _canvasSize;
   final int _tileSize;
 
-  /// The tiles somebody else is holding anyway. Kept BY REFERENCE across a
-  /// park: they cost this snapshot nothing, and holding them is what lets
-  /// the way back rebuild the surface without reading them off disk.
-  late final Map<TileCoord, BitmapTile> _shared;
+  /// WHERE the tiles somebody else is holding are — coordinates only.
+  ///
+  /// 🚨★★★**IT HELD THE TILES THEMSELVES, AND THAT QUIETLY DEFEATED
+  /// PARKING.** The comment here said they「cost this snapshot nothing」
+  /// because somebody else holds them — true at the instant of measuring,
+  /// and false the moment the picture moves past them. A tile that is
+  /// [_owned] by entry n is [_shared] by every entry below n, and [park]
+  /// dropped `_owned` while keeping `_shared`: the deep prefix reported
+  /// zero and the bytes stayed. 🧪Measured on a 60-tap pass, parking the
+  /// whole prefix: **billed 34.3 MiB, freed 22.3 MiB, 12.0 MiB still
+  /// pinned** by this field alone (2026-09-09).
+  ///
+  /// ⛔So it cannot hold a tile at all now. The rebuild takes them from
+  /// the surface handed to [surfaceOver], which by the stack's own LIFO
+  /// order is the very surface this one was measured against.
+  late final Set<TileCoord> _sharedCoords;
 
   /// The tiles only this snapshot holds — null once they are on disk.
   Map<TileCoord, BitmapTile>? _owned;
@@ -164,13 +176,30 @@ class UndoSurfaceSnapshot {
   /// stepped from a keystroke. It is affordable because the spill parks
   /// the DEEP end — the entry the user is about to press Ctrl+Z on is the
   /// last one that would ever be on disk.
-  BitmapSurface? get surface {
+  ///
+  /// 🚨★★★**[live] IS THE SURFACE THIS ONE WAS MEASURED AGAINST**, which
+  /// for a history entry is simply the cel as it stands right now: the
+  /// stack steps LIFO, so when entry n is undone the cel IS entry n's
+  /// post-surface, and when it is redone the cel IS its pre-surface. Both
+  /// are the `sharedWith` this snapshot was built with. The shared tiles
+  /// are read back out of it rather than held here — see [_sharedCoords]
+  /// for the 12 MiB that cost.
+  ///
+  /// ⛔It REFUSES rather than guessing when [live] cannot answer for a
+  /// shared coordinate. A surface assembled from a stale base would be the
+  /// wrong picture painted over the right one, which is worse than the
+  /// undo not happening.
+  BitmapSurface? surfaceOver(BitmapSurface? live) {
     final resident = _surface;
     if (resident != null) {
       return resident;
     }
     final path = _parkedPath;
     if (path == null) {
+      return null;
+    }
+    final shared = _sharedTilesFrom(live);
+    if (shared == null) {
       return null;
     }
     final bytes = ScratchFile.read(path);
@@ -190,11 +219,31 @@ class UndoSurfaceSnapshot {
     _surface = BitmapSurface(
       canvasSize: _canvasSize,
       tileSize: _tileSize,
-      tiles: {..._shared, ...owned},
+      tiles: {...shared, ...owned},
     );
     _parkedPath = null;
     ScratchFile.remove(path);
     return _surface;
+  }
+
+  /// The shared tiles, taken from [live] — or null when it cannot answer
+  /// for every coordinate this snapshot expects of it.
+  Map<TileCoord, BitmapTile>? _sharedTilesFrom(BitmapSurface? live) {
+    if (_sharedCoords.isEmpty) {
+      return const {};
+    }
+    if (live == null) {
+      return null;
+    }
+    final tiles = <TileCoord, BitmapTile>{};
+    for (final coord in _sharedCoords) {
+      final tile = live.tileAt(coord);
+      if (tile == null) {
+        return null;
+      }
+      tiles[coord] = tile;
+    }
+    return tiles;
   }
 
   /// Moves the owned tiles into the run's 휘발성 room. Answers false when
@@ -257,6 +306,20 @@ class UndoSurfaceSnapshot {
     if (path == null) {
       return false;
     }
+    if (_dropped) {
+      // 🚨THE ENTRY LEFT THE STACK WHILE THE ENCODE WAS IN THE ISOLATE.
+      // [drop] could not give this file back — it did not exist yet, and
+      // `_parkedPath` was still null — so the only place that can is here,
+      // on the way out. Without it the spill leaves one unreadable,
+      // unremovable file per shed entry, which is the exact shape
+      // [ParkableCommand.dropPayload] exists to prevent. The window is
+      // wide open in practice: the stack sheds and trims from `_push`,
+      // synchronously, while this await is parked on the event loop.
+      ScratchFile.remove(path);
+      _owned = null;
+      _surface = null;
+      return true;
+    }
     _parkedPath = path;
     _owned = null;
     _surface = null;
@@ -270,6 +333,11 @@ class UndoSurfaceSnapshot {
   /// alternative, leaving it able to read a file that is gone, is the
   /// same answer by a slower route.
   void drop() {
+    // ⚠️SET FIRST, and it is the whole point of the flag: a park may be in
+    // the isolate right now, in which case there is no path to remove yet
+    // and [_park] has to do it when it lands. Reading `_parkedPath` alone
+    // made this a silent no-op exactly when the room was busiest.
+    _dropped = true;
     final path = _parkedPath;
     if (path == null) {
       return;
@@ -277,4 +345,9 @@ class UndoSurfaceSnapshot {
     _parkedPath = null;
     ScratchFile.remove(path);
   }
+
+  /// Whether the entry holding this has left the stack. Never unset: an
+  /// entry does not come back, and a park that lands afterwards must give
+  /// its file straight back rather than record it.
+  bool _dropped = false;
 }

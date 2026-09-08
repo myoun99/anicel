@@ -126,7 +126,7 @@ void main() {
       isTrue,
       reason: '⛔the save must not reach 휘발성',
     );
-    final restored = parked.surface;
+    final restored = parked.surfaceOver(null);
     expect(restored, isNotNull, reason: 'the undo still has its payload');
     expect(
       restored!.tiles[origin]!.pixels,

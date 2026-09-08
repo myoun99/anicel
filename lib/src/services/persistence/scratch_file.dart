@@ -29,13 +29,23 @@ class ScratchFile {
   /// ⚠️The PARENT of the file, not the room — a caller whose name carries
   /// its own folder (`cels/<name>.celz`) has nowhere to land otherwise,
   /// and every write silently refuses.
+  ///
+  /// ⚠️**AND THE NEIGHBOUR GOES WITH A REFUSAL.** The refusal path exists
+  /// for the disk being full, and the write that fails is exactly the one
+  /// that has already put bytes in `<path>.part` — leaving them there
+  /// takes space on the volume that just said it had none. Worse, the
+  /// caller RETRIES: the undo stack's stand-down is cleared by the next
+  /// edit, and the volatile room hands out a fresh name each attempt, so
+  /// one orphan per stroke accumulated for the rest of the run.
   static String? write(String path, Uint8List bytes) {
+    final partPath = '$path.part';
     try {
       File(path).parent.createSync(recursive: true);
-      final part = File('$path.part')..writeAsBytesSync(bytes, flush: true);
+      final part = File(partPath)..writeAsBytesSync(bytes, flush: true);
       part.renameSync(path);
       return path;
     } on Object {
+      remove(partPath);
       return null;
     }
   }

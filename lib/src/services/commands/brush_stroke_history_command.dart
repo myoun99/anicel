@@ -107,7 +107,12 @@ class BrushStrokeHistoryCommand
   /// are unreadable, so painting that over the cel would erase the very
   /// drawing this step exists to protect.
   void _restore(UndoSurfaceSnapshot? snapshot) {
-    final surface = snapshot?.surface;
+    // The cel as it stands IS the surface this snapshot was measured
+    // against — the stack steps LIFO, so undo reads the post-surface and
+    // redo reads the pre-surface, and both are its `sharedWith`.
+    final surface = snapshot?.surfaceOver(
+      coordinator.currentSurfaceOf(_frameKey),
+    );
     if (surface == null) {
       return;
     }

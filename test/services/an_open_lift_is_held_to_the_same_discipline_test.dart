@@ -59,11 +59,14 @@ void main() {
 
   /// What a lift leaves behind: the picture as it was, measured against
   /// the surface the erase produced.
-  ({UndoSurfaceSnapshot held, BitmapSurface preLift}) lift() {
+  ({UndoSurfaceSnapshot held, BitmapSurface preLift, BitmapSurface live})
+  lift() {
     final untouched = tileOf(0, 11);
     final lifted = tileOf(1, 22);
     final preLift = surfaceOf([untouched, lifted]);
-    // The erase rebuilt the lifted tile and left the other one alone.
+    // The erase rebuilt the lifted tile and left the other one alone. It is
+    // also the CEL while the box is open, which is what a revert reads the
+    // shared tiles back out of.
     final afterErase = surfaceOf([untouched, tileOf(1, 0)]);
     return (
       held: UndoSurfaceSnapshot(
@@ -72,6 +75,7 @@ void main() {
         sharedWith: afterErase,
       ),
       preLift: preLift,
+      live: afterErase,
     );
   }
 
@@ -110,7 +114,7 @@ void main() {
     store.respondToMemoryPressure();
     await store.drainLiftedParking();
 
-    final back = session.held.surface;
+    final back = session.held.surfaceOver(session.live);
     expect(back, isNotNull, reason: 'a revert has to be able to read this');
     expect(back!.tiles.length, 2);
     for (final coord in session.preLift.tiles.keys) {

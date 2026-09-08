@@ -69,7 +69,7 @@ void main() {
       expect(snapshot.residentBytes, 0);
       expect(snapshot.isParked, isTrue);
 
-      final back = snapshot.surface!;
+      final back = snapshot.surfaceOver(surfaceOf([shared]))!;
       expect(back.tiles.length, 2);
       // ⛔The shared tile must come back as the SAME OBJECT: writing it
       // would have copied bytes that were not going anywhere, and reading
@@ -93,7 +93,10 @@ void main() {
       expect(snapshot.residentBytes, 0);
       expect(await snapshot.park(), isTrue);
       expect(snapshot.isParked, isFalse);
-      expect(identical(snapshot.surface!.tileAt(shared.coord), shared), isTrue);
+      expect(
+        identical(snapshot.surfaceOver(live)!.tileAt(shared.coord), shared),
+        isTrue,
+      );
     });
 
     test('coming back is byte-exact, pasteboard coords included', () async {
@@ -109,7 +112,9 @@ void main() {
       );
 
       await snapshot.park();
-      final back = snapshot.surface!.tileAt(TileCoord(x: -1, y: 0))!;
+      final back = snapshot
+          .surfaceOver(null)!
+          .tileAt(TileCoord(x: -1, y: 0))!;
       expect(back.pixels, tile.pixels);
     });
 
@@ -128,7 +133,7 @@ void main() {
       for (final path in _volatilePaths().difference(before)) {
         File(path).deleteSync();
       }
-      expect(snapshot.surface, isNull);
+      expect(snapshot.surfaceOver(null), isNull);
     });
 
     test('reading it back removes the file — a session of undos must not '
@@ -143,7 +148,7 @@ void main() {
       final mine = _volatilePaths().difference(before);
       expect(mine, hasLength(1));
 
-      expect(snapshot.surface, isNotNull);
+      expect(snapshot.surfaceOver(null), isNotNull);
 
       expect(File(mine.single).existsSync(), isFalse);
       expect(snapshot.isParked, isFalse);
@@ -161,19 +166,25 @@ void main() {
       final mine = _volatilePaths().difference(before);
       UndoSurfaceSnapshot.dropAll([snapshot]);
       expect(mine.every((path) => !File(path).existsSync()), isTrue);
-      expect(snapshot.surface, isNull);
+      expect(snapshot.surfaceOver(null), isNull);
     });
   });
 
   group('the pair bills one end and moves both', () {
-    UndoSurfacePair pairOf() {
+    /// The pair AND the two surfaces it was measured against — reading a
+    /// snapshot back needs the other end, because the tiles neither end
+    /// owns are not held by either of them any more.
+    ({UndoSurfacePair pair, BitmapSurface before, BitmapSurface after})
+    pairOf() {
       final kept = tileOf(0, 1);
       final gone = tileOf(1, 2); // only the BEFORE has this one
       final made = tileOf(2, 3); // only the AFTER has this one
-      return UndoSurfacePair(
-        key: keyOf('f'),
-        before: surfaceOf([kept, gone]),
-        after: surfaceOf([kept, made]),
+      final before = surfaceOf([kept, gone]);
+      final after = surfaceOf([kept, made]);
+      return (
+        pair: UndoSurfacePair(key: keyOf('f'), before: before, after: after),
+        before: before,
+        after: after,
       );
     }
 
@@ -181,30 +192,55 @@ void main() {
         'before, and charging both counts a neighbour twice', () {
       // ⛔Not "conservative": the doubled figure is what the round before
       // this one removed, and it evicted real history with phantom bytes.
-      expect(pairOf().residentBytes, BitmapTile.bytesFor(size));
+      expect(pairOf().pair.residentBytes, BitmapTile.bytesFor(size));
     });
 
     test('🚨but the park moves BOTH — a before let go on its own frees '
         'nothing, because the previous entry\'s after holds the same tiles',
         () async {
-      final pair = pairOf();
-      expect(await pair.park(), isTrue);
-      expect(pair.before.isParked, isTrue);
-      expect(pair.after.isParked, isTrue);
+      final session = pairOf();
+      expect(await session.pair.park(), isTrue);
+      expect(session.pair.before.isParked, isTrue);
+      expect(session.pair.after.isParked, isTrue);
     });
 
     test('and both come back', () async {
-      final pair = pairOf();
-      await pair.park();
-      expect(pair.before.surface!.tiles.length, 2);
-      expect(pair.after.surface!.tiles.length, 2);
+      final session = pairOf();
+      await session.pair.park();
+      final before = session.pair.before.surfaceOver(session.after)!;
+      final after = session.pair.after.surfaceOver(session.before)!;
+      expect(before.tiles.length, 2);
+      expect(after.tiles.length, 2);
       expect(
         identical(
-          pair.before.surface!.tileAt(TileCoord(x: 0, y: 0)),
-          pair.after.surface!.tileAt(TileCoord(x: 0, y: 0)),
+          before.tileAt(TileCoord(x: 0, y: 0)),
+          after.tileAt(TileCoord(x: 0, y: 0)),
         ),
         isTrue,
         reason: 'the tile neither end owns was never written',
+      );
+    });
+
+    /// 🚨THE PARK USED TO REPORT BYTES IT HAD NOT ACTUALLY LET GO OF. The
+    /// shared tiles were held BY REFERENCE across it, so a tile the picture
+    /// had moved past stayed in RAM through every entry below the one that
+    /// owned it — 12.0 MiB of a 34.3 MiB bill on a measured 60-tap pass.
+    /// A parked snapshot cannot hold one now, which is why reading it back
+    /// needs the other end handed in.
+    test('🚨a parked snapshot holds NO tile of its own — not even a shared '
+        'one', () async {
+      final session = pairOf();
+      await session.pair.park();
+
+      expect(
+        session.pair.before.surfaceOver(null),
+        isNull,
+        reason: 'with nothing to take the shared tiles from, it refuses',
+      );
+      expect(
+        session.pair.before.surfaceOver(surfaceOf([tileOf(9, 9)])),
+        isNull,
+        reason: 'a base that cannot answer for a shared coord is refused too',
       );
     });
   });

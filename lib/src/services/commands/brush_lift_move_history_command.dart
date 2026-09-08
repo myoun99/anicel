@@ -132,7 +132,12 @@ class BrushLiftMoveHistoryCommand
   /// selection still travels, because the outline is held in memory here
   /// and putting it back is never the destructive half.
   void _restore(UndoSurfaceSnapshot? snapshot) {
-    final surface = snapshot?.surface;
+    // The cel as it stands IS the surface this snapshot was measured
+    // against — the stack steps LIFO, so undo reads the post-surface and
+    // redo reads the pre-surface, and both are its `sharedWith`.
+    final surface = snapshot?.surfaceOver(
+      coordinator.currentSurfaceOf(frameKey),
+    );
     if (surface == null) {
       return;
     }

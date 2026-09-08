@@ -166,7 +166,9 @@ class _CanvasPanelLift {
       // undo target — an entry built on the post-erase surface instead
       // would say the erase never happened. It joins the two cases that
       // already land raw rather than becoming a third shape.
-      final preLiftSurface = preLift?.pixels.surface;
+      final preLiftSurface = preLift?.pixels.surfaceOver(
+        coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+      );
       if (historyManager == null || preLift == null || preLiftSurface == null) {
         // Headless hosts (focused tests) or a lost anchor: land raw.
         coordinator.commitSourceStroke(
@@ -218,7 +220,9 @@ class _CanvasPanelLift {
       // app removed a file we wrote this run, which is the same wager the
       // parked undo payloads already make, and the alternative to making
       // it is holding the bytes through a memory warning.
-      final surface = preLift.pixels.surface;
+      final surface = preLift.pixels.surfaceOver(
+        coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+      );
       if (surface == null) {
         return;
       }
