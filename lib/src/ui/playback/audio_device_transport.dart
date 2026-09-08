@@ -261,36 +261,29 @@ class AudioDeviceTransport {
       device.stop();
       device.close();
     }
-    if (!device.isOpen) {
-      if (!openAudioOutput(
-        device,
-        sampleRate: conformStore.projectSampleRate,
-        preferredName: desiredName,
-      )) {
-        return;
-      }
-      _openedDeviceName = desiredName;
-    }
-    _device = device;
-    _deviceRate = device.sampleRate;
-
     // Every scheduled file must be resident at the DEVICE rate — or
     // streamable from its conform (AUDIO-PRO R6) — before the device can
     // promise anything. A missing one stands this run down and is kicked
     // (conform or rate conversion) for the next.
-    final mix = audioMixScheduleFrom(
+    final armed = armAudioOutput(
+      device: device,
+      conformStore: conformStore,
+      window: _window,
       schedule: schedule,
       rate: _rate,
-      sampleRate: _deviceRate,
+      centerFrame: controller.globalFrameIndexListenable.value ?? 0,
+      preferredDeviceName: desiredName,
     );
-    device.stop();
-    _window.mix = mix;
-    if (!_uploadWindow(
-      _rate.frameToSample(
-        controller.globalFrameIndexListenable.value ?? 0,
-        _deviceRate,
-      ),
-    )) {
+    if (armed == null) {
+      return;
+    }
+    // ⚠️Recorded even when the upload stands the run down: the device IS
+    // open under this name, and the reopen check above compares against
+    // what is open — not against what last carried a run.
+    _openedDeviceName = desiredName;
+    _device = device;
+    _deviceRate = armed.deviceRate;
+    if (!armed.uploaded) {
       return;
     }
     _totalFrames = _playbackTotalFrames();

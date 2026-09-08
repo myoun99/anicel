@@ -1,3 +1,4 @@
+import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
@@ -68,4 +69,64 @@ class AudioStreamingWindow {
     this.centerSample = centerSample;
     return true;
   }
+}
+
+/// Opens the output if it is closed, converts [schedule] to samples and
+/// uploads it centred on [centerFrame].
+///
+/// 🚨★★★**ONE ORDER, BECAUSE GETTING IT WRONG IS SILENT.** Open, read the
+/// device's OWN rate, build the mix at that rate, stop, upload. Every step
+/// depends on the one before it — the mix cannot be built before the rate
+/// is known, and the rate is not known until the device is open, because
+/// WASAPI shared mode hands back whatever rate it likes however nicely 48k
+/// was asked for. A caller that reorders any of it gets sound at the wrong
+/// speed, or none, and nothing throws.
+///
+/// ⚠️Written down once when the media viewer became the THIRD caller
+/// (2026-09-08). The transport and the scrubber had spelled the same five
+/// steps out separately; the rule is that a third makes it a law
+/// ([[no-copy-to-share]] · the rule of three).
+///
+/// ⛔What is NOT here, deliberately: WHEN to reopen for a changed output
+/// device. The transport owns that at the run boundary and the scrubber
+/// explicitly defers to it, so a reopen decided in here would be a second
+/// answer. A caller that wants one closes the device first and calls this.
+///
+/// Null = the output would not open, and nothing was touched. `uploaded:
+/// false` = it is open at [deviceRate] but the sources are not resident
+/// yet — the lookups have KICKED their conforms, so the caller stands this
+/// attempt down and the next one converges.
+({int deviceRate, bool uploaded})? armAudioOutput({
+  required QaAudioDevice device,
+  required AudioConformStore conformStore,
+  required AudioStreamingWindow window,
+  required List<ScheduledAudioClip> schedule,
+  required ProjectFrameRate rate,
+  required int centerFrame,
+  required String? preferredDeviceName,
+}) {
+  if (!device.isOpen &&
+      !openAudioOutput(
+        device,
+        sampleRate: conformStore.projectSampleRate,
+        preferredName: preferredDeviceName,
+      )) {
+    return null;
+  }
+  final deviceRate = device.sampleRate;
+  window.mix = audioMixScheduleFrom(
+    schedule: schedule,
+    rate: rate,
+    sampleRate: deviceRate,
+  );
+  device.stop();
+  return (
+    deviceRate: deviceRate,
+    uploaded: window.upload(
+      device: device,
+      conformStore: conformStore,
+      deviceRate: deviceRate,
+      centerSample: rate.frameToSample(centerFrame, deviceRate),
+    ),
+  );
 }

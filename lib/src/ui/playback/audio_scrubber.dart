@@ -133,27 +133,23 @@ class AudioScrubber {
     if (device == null) {
       return;
     }
-    if (!device.isOpen &&
-        !openAudioOutput(
-          device,
-          sampleRate: conformStore.projectSampleRate,
-          preferredName: resolveOutputDeviceName?.call(),
-        )) {
-      return;
-    }
-    _deviceRate = device.sampleRate;
-    final mix = audioMixScheduleFrom(
+    final armed = armAudioOutput(
+      device: device,
+      conformStore: conformStore,
+      window: _window,
       schedule: schedule,
       rate: _rate,
-      sampleRate: _deviceRate,
+      centerFrame: localFrame,
+      preferredDeviceName: resolveOutputDeviceName?.call(),
     );
-    device.stop();
-    _device = device;
-    _window.mix = mix;
-    if (!_uploadWindow(_rate.frameToSample(localFrame, _deviceRate))) {
-      _device = null;
+    if (armed == null) {
+      return;
+    }
+    _deviceRate = armed.deviceRate;
+    if (!armed.uploaded) {
       return; // kicked by the lookups; this gesture stays visual
     }
+    _device = device;
     _armed = true;
     _stoodDown = false;
   }
