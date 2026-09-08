@@ -1,14 +1,37 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../core/sync_image_upload.dart';
+import '../../services/straight_rgba_image.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
 import 'deferred_image_disposal.dart';
+
+/// What has been asked of the engine for one tile that has no picture yet.
+///
+/// ⛔LANDED IS NOT A VALUE — it is the absence of one, because a landed
+/// decode lives in the image map and this only records what is still owed.
+/// The two spellings this separates were both 「not in the set」 before
+/// 2026-09-09; see [BitmapTileImageCache._decodeAsk] for what that cost.
+enum _TileDecodeAsk {
+  /// Out with the engine, no answer yet. Everything stands aside for this
+  /// one, because it is going to land and overwrite what they would put
+  /// there.
+  running,
+
+  /// The engine refused it. ⛔NOT a reason to stand aside: nothing is
+  /// coming, so the adoption doors are the only way this tile ever gets a
+  /// picture. And not a reason to ask again either — a [BitmapTile] is
+  /// immutable and `Expando`-keyed, so the ask's identity can never change,
+  /// and re-asking on the repaint that this schedules would be a loop with
+  /// a frame for a period.
+  refused,
+}
 
 /// Identity-keyed cache converting immutable [BitmapTile] pixel bytes into
 /// GPU-ready [ui.Image]s for display.
@@ -56,8 +79,27 @@ class BitmapTileImageCache extends ChangeNotifier {
   }
 
   final Expando<ui.Image> _images = Expando<ui.Image>('bitmapTileImages');
-  final Expando<Object> _inFlight = Expando<Object>('bitmapTileImageDecodes');
-  static const Object _inFlightMarker = Object();
+
+  /// What this cache has been through for one tile's own picture, when it
+  /// has no picture yet. Absent means nobody has asked.
+  ///
+  /// 🚨★★★**ABSENT USED TO MEAN BOTH 「nobody has asked」 AND 「the last ask
+  /// was REFUSED」.** This was a `Set`-shaped `Expando` with ONE write and
+  /// ZERO clears — `git log -S` finds no commit that ever removed one —
+  /// because the marker was cleared nowhere and success only worked by
+  /// every reader testing [_images] first. `ui.decodeImageFromPixels` does
+  /// not invoke its callback on failure (read in the SDK source), so a
+  /// refused tile kept a marker nothing could retire, and was then
+  /// unrequestable ([needsDecodeStart], [ensureDecoded]), un-adoptable
+  /// ([adoptDecoded]) AND un-uploadable ([adoptSyncUpload]) — a canvas tile
+  /// blank for the life of the tile object, that even the in-frame
+  /// synchronous upload stood aside for. Downstream, `allDecoded` never
+  /// came true, so the settle window's two-second give-up dropped the
+  /// stand-in and a tile-shaped patch of the stroke reverted to pre-stroke
+  /// pixels — the exact failure the settle machinery exists to prevent.
+  final Expando<_TileDecodeAsk> _decodeAsk = Expando<_TileDecodeAsk>(
+    'bitmapTileImageDecodes',
+  );
   // Deferred, not direct, disposal: the finalizer runs at GC time — pen-up
   // commits allocate heavily and collect right when a replaced tile's image
   // is still referenced by the frame on screen. Disposing it there raced
@@ -191,7 +233,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// chunking (R18 B-1) uses this to collect pending tiles without paying
   /// the start cost.
   bool needsDecodeStart(BitmapTile tile) =>
-      _images[tile] == null && _inFlight[tile] == null;
+      _images[tile] == null && _decodeAsk[tile] == null;
 
   /// Decode STARTS a consumer should pay per frame (R18 B-1): each start
   /// runs a synchronous tile copy + premultiply on the UI thread, so
@@ -209,33 +251,72 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// [staleScope] identifies the logical surface lineage (e.g. a brush frame)
   /// so [latestImageForCoord] never leaks another lineage's artwork.
   void ensureDecoded(BitmapTile tile, {Object? staleScope}) {
-    if (_images[tile] != null || _inFlight[tile] != null) {
+    if (_images[tile] != null || _decodeAsk[tile] != null) {
       return;
     }
-    _inFlight[tile] = _inFlightMarker;
+    _decodeAsk[tile] = _TileDecodeAsk.running;
+    unawaited(_decodeInto(tile, staleScope));
+  }
 
-    final upload = premultipliedTileUpload(tile);
-
-    ui.decodeImageFromPixels(
-      upload.view,
-      tile.size,
-      tile.size,
-      ui.PixelFormat.rgba8888,
-      (image) {
+  /// 🚨★★★**THE ASK IS GIVEN BACK ON ALL THREE ROADS**, and structurally —
+  /// the statement after the `await`, or the `catch`. There is no fourth
+  /// way out of this body, which is what makes 「refused」 impossible to
+  /// confuse with 「never asked」. ⛔The staging buffer is inside the `try`
+  /// on purpose: [premultipliedTileUpload] `malloc`s, so it can throw
+  /// BEFORE any decode starts, and that road left a marker too.
+  Future<void> _decodeInto(BitmapTile tile, Object? staleScope) async {
+    try {
+      final upload = premultipliedTileUpload(tile);
+      final ui.Image image;
+      try {
+        image = await uploadRawRgba(
+          upload.view,
+          width: tile.size,
+          height: tile.size,
+        );
+      } finally {
+        // ⚠️No earlier: the bytes may be a window onto native memory, and
+        // `ImmutableBuffer.fromUint8List` copies them into engine memory
+        // during the call itself. No later either — an in-flight tile
+        // holding 256 KB of native staging is the cost this whole handoff
+        // exists to avoid paying twice.
         upload.free();
-        _images[tile] = image;
-        _imageFinalizer.attach(tile, image);
-        // Truth has landed; the stand-in has nothing left to stand in for.
-        _dropProvisional(tile);
-        final scoped = _latestDecodedByScope.remove(staleScope);
-        // Re-insert: this scope becomes the most recently used.
-        (_latestDecodedByScope[staleScope] =
-                scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
-            tile;
-        _evictScopesBeyondBudget();
-        _scheduleNotify();
-      },
-    );
+      }
+      _decodeAsk[tile] = null;
+      _images[tile] = image;
+      _imageFinalizer.attach(tile, image);
+      // Truth has landed; the stand-in has nothing left to stand in for.
+      _dropProvisional(tile);
+      final scoped = _latestDecodedByScope.remove(staleScope);
+      // Re-insert: this scope becomes the most recently used.
+      (_latestDecodedByScope[staleScope] =
+              scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
+          tile;
+      _evictScopesBeyondBudget();
+      _scheduleNotify();
+    } on Object catch (error, stack) {
+      _decodeAsk[tile] = _TileDecodeAsk.refused;
+      // 🚨★★★**AND IT NOTIFIES.** The refused TILE has nothing new to
+      // draw, but the pipeline behind it does: starts are budgeted
+      // ([decodeStartBudget]) and 「completions notify → repaint → the next
+      // chunk starts」 is the ONLY thing that drains the rest. A whole
+      // chunk refusing during a transient squeeze would otherwise stop a
+      // thousand-tile cel converging until some unrelated widget happened
+      // to repaint. ⛔This is not the media viewer's re-ask loop: the
+      // refusal is written down FIRST, so the repaint this schedules
+      // collects the other tiles and never this one.
+      _scheduleNotify();
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'anicel',
+          context: ErrorDescription(
+            'decoding a ${tile.size}px canvas tile at ${tile.coord}',
+          ),
+        ),
+      );
+    }
   }
 
   /// ADOPTS an already-decoded [image] as [tile]'s picture — the
@@ -258,7 +339,14 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
     // An in-flight decode for this tile would land later and overwrite
     // the entry (leaking this image's ownership), so let it win instead.
-    if (_inFlight[tile] != null) {
+    //
+    // 🚨RUNNING, not 「asked at all」. A REFUSED ask is never going to land,
+    // so standing aside for one threw away the pen-up handoff's image — the
+    // very picture the live overlay had already decoded from these exact
+    // bytes — and left the tile blank with nothing left to fill it. That is
+    // this guard's own reasoning read correctly: it is about a decode that
+    // WILL arrive.
+    if (_decodeAsk[tile] == _TileDecodeAsk.running) {
       DeferredImageDisposer.instance.retire(image);
       return;
     }
@@ -302,8 +390,10 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
     // An in-flight decode would land later and overwrite the entry,
     // leaking this image's ownership — the same reason [adoptDecoded]
-    // stands aside for one.
-    if (_inFlight[tile] != null) {
+    // stands aside for one. 🚨RUNNING only: a refused ask is not coming,
+    // and this synchronous upload is the one door that can still fill the
+    // tile inside the frame.
+    if (_decodeAsk[tile] == _TileDecodeAsk.running) {
       return null;
     }
     final upload = premultipliedTileUpload(tile);

@@ -14,6 +14,7 @@ import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
+import '../../services/straight_rgba_image.dart';
 import '../../native/qa_native_engine.dart' show QaStampScratch;
 import '../../services/brush_live_stroke_rasterizer.dart'
     show
@@ -395,15 +396,64 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     }
 
     final generation = _generation;
-    ui.decodeImageFromPixels(bytes, width, height, ui.PixelFormat.rgba8888, (
-      image,
-    ) {
-      scratch?.free();
+    // ⛔[uploadRawRgba], never `decodeStraightRgbaImage`: these bytes are
+    // ALREADY premultiplied (above, or by the fused kernel straight into
+    // the scratch), and the straight-alpha door would premultiply a second
+    // full copy — another 256 KB allocation and traversal per tile per
+    // frame, on the path whose whole R25 round was about removing exactly
+    // that.
+    unawaited(() async {
+      final ui.Image image;
+      try {
+        image = await uploadRawRgba(bytes, width: width, height: height);
+      } on Object catch (error, stack) {
+        _refuseDecodedTile(coord, generation, error, stack);
+        return;
+      } finally {
+        scratch?.free();
+      }
       _adoptDecodedTile(coord, image, source, (
         generation: generation,
         revision: null,
       ));
-    });
+    }());
+  }
+
+  /// THE THIRD LANDING: the engine refused this tile.
+  ///
+  /// ⛔BOTH DECODES LAND HERE TOO, for the reason [_adoptDecodedTile]'s
+  /// header gives — and it mirrors that function's generation check for a
+  /// reason of its own. After [_clearTiles] or
+  /// [beginStrokeKeepingStandIns] a NEWER decode may already have re-added
+  /// this coordinate, and removing it then would un-gate a live upload:
+  /// two starts for one coordinate, and a counter that went up twice and
+  /// comes down once.
+  ///
+  /// 🚨[_finishDecode] runs unconditionally, exactly as it does on the
+  /// stale road above — the counter is 「how many engine answers are still
+  /// owed, ACROSS generations」, and a refusal is an answer. Before
+  /// 2026-09-09 there was no answer at all: the callback never fired, so
+  /// the coordinate stayed gated out for the rest of the stroke and the
+  /// counter could only ever go up, hanging `waitForPendingDecodes` for
+  /// good.
+  void _refuseDecodedTile(
+    TileCoord coord,
+    int generation,
+    Object error,
+    StackTrace stack,
+  ) {
+    if (generation == _generation) {
+      _decoding.remove(coord);
+    }
+    _finishDecode();
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'anicel',
+        context: ErrorDescription('decoding the live stroke tile at $coord'),
+      ),
+    );
   }
 
   /// Adopts [image] as [coord]'s overlay picture, or throws it away when
@@ -483,21 +533,40 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _decoding.add(coord);
     _pendingDecodeCount += 1;
     final generation = _generation;
-    ui.decodeImageFromPixels(
-      blended.pixels,
-      tileSize,
-      tileSize,
-      ui.PixelFormat.rgba8888,
-      (image) {
+    unawaited(() async {
+      final ui.Image image;
+      try {
+        image = await uploadRawRgba(
+          blended.pixels,
+          width: tileSize,
+          height: tileSize,
+        );
+      } on Object catch (error, stack) {
+        _refuseDecodedTile(coord, generation, error, stack);
+        return;
+      } finally {
         blended.free();
-        _adoptDecodedTile(coord, image, source, (
-          generation: generation,
-          revision: blended.revision,
-        ));
-      },
-    );
+      }
+      _adoptDecodedTile(coord, image, source, (
+        generation: generation,
+        revision: blended.revision,
+      ));
+    }());
   }
 
+  /// One engine answer arrived — a picture, a stale one, or a refusal.
+  ///
+  /// 🚨★★★**AND `_decoding.clear()` DELIBERATELY DOES NOT TOUCH THIS
+  /// COUNTER.** They are not two fields that must agree: `_decoding` says
+  /// 「which coordinates are gated out of a new start IN THIS GENERATION」
+  /// and this says 「how many answers are still owed, ACROSS generations」.
+  /// A clear bumps [_generation] first, so the uploads it abandons still
+  /// come back and still decrement here. Zeroing the counter alongside the
+  /// clear would drive those late decrements negative, and `== 0` below
+  /// would never hold again — breaking the barrier in the other direction.
+  /// ⚠️Undocumented until 2026-09-09, and correct the whole time; written
+  /// down now because the round that gave a refusal its own landing had to
+  /// work it out from scratch to know it must not "fix" it.
   void _finishDecode() {
     _pendingDecodeCount -= 1;
     if (_pendingDecodeCount == 0) {

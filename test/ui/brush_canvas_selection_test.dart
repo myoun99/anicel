@@ -1,10 +1,13 @@
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
+import 'dart:ui' as ui show Image;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart'
+    show debugRawRgbaUploader;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -542,6 +545,107 @@ void main() {
       checked,
       greaterThan(0),
       reason: 'a preview with no opaque pixel proves nothing',
+    );
+  });
+
+  testWidgets('🚨a REFUSED resample still opens the gate, so the next '
+      'transform previews', (tester) async {
+    // 🚨★★★`_resampleInFlight` is the throughput gate — one resample at a
+    // time, so a drag cannot queue one full-canvas transform per pointer
+    // event. It was set before `ui.decodeImageFromPixels` and cleared only
+    // inside its callback, and that callback is never invoked on a refusal
+    // (read in the SDK source). One refused upload therefore left the gate
+    // closed for the life of the widget: the handles and the marching ants
+    // kept running at 60 fps while the transformed pixels stopped, for good.
+    //
+    // ⛔The fix is NOT to fold the gate into `_resampleImageRequest`. Those
+    // answer two different questions — which ask is current, versus whether
+    // an upload is outstanding — and `_discardFloatResample` invalidates the
+    // ask while deliberately leaving the gate CLOSED, because a discarded
+    // upload is still holding a whole-picture scratch and still occupying
+    // the engine. One field for both would start a second full-canvas upload
+    // every time a drag crossed back through identity.
+    //
+    // 🚨The refusal comes through the seam because Windows runs Skia in
+    // every build and so does CI: on the machines this project develops on,
+    // the engine never refuses. See [debugRawRgbaUploader].
+    // ⚠️THE SEAM IS GLOBAL, and this widget uploads canvas TILES through it
+    // too. Refusing everything wedges the fixture itself (measured: the test
+    // ran to its ten-minute timeout), so the refusal is aimed: only the
+    // float's own stamp, identified by not being one of the square canvas
+    // tiles the painter is asking for at the same moment.
+    final resampleSizes = <String>[];
+    var resamples = 0;
+    var refuseResample = false;
+    ui.Image aSmallImage() {
+      final recorder = PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 4, 4),
+        Paint()..color = const Color(0xFF00FF00),
+      );
+      return recorder.endRecording().toImageSync(4, 4);
+    }
+
+    debugRawRgbaUploader =
+        (
+          rgba, {
+          required int width,
+          required int height,
+          int? targetWidth,
+          int? targetHeight,
+        }) {
+          final isTile = width == height && (width & (width - 1)) == 0;
+          if (isTile) {
+            return Future<ui.Image>.value(aSmallImage());
+          }
+          resamples += 1;
+          resampleSizes.add('${width}x$height');
+          if (refuseResample) {
+            return Future<ui.Image>.error(StateError('the engine refused this'));
+          }
+          return Future<ui.Image>.value(aSmallImage());
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+
+    // ⛔AND THE REFUSAL IS DELIBERATELY SILENT HERE, unlike the tile cache
+    // and the stroke overlay. This runs once per pointer move of a drag, so
+    // a report per refused resample would be a flood rather than a signal —
+    // and the ask retires itself: the next move is a different transform,
+    // which is why this site needs no refusal ledger either.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    // A ROTATION: a pure translation short-circuits and never reaches the
+    // resampler at all, which is what the preview-parity test above says.
+    refuseResample = true;
+    env.commands.setTransformValues(tx: 0, ty: 0, rotationDegrees: 24, scale: 1);
+    await tester.pump();
+    await tester.pump();
+    final afterRefusal = resamples;
+
+    // A second, DIFFERENT transform. With the gate stuck closed this asks
+    // for nothing at all — the bug, seen from outside the widget.
+    refuseResample = false;
+    env.commands.setTransformValues(tx: 0, ty: 0, rotationDegrees: 31, scale: 1);
+    await tester.pump();
+    await tester.pump();
+
+
+    expect(
+      afterRefusal,
+      greaterThan(0),
+      reason: 'instrument: the rotation reached the resampler — at 0 the '
+          'assertion below would be measuring a transform that never ran '
+          '(sizes seen: $resampleSizes)',
+    );
+    expect(
+      resamples,
+      greaterThan(afterRefusal),
+      reason: 'the gate reopened on the refused road, so the preview keeps '
+          'following the drag (sizes seen: $resampleSizes)',
     );
   });
 

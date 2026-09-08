@@ -6,7 +6,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../services/straight_rgba_image.dart' show premultipliedStraightRgba;
+import '../../services/straight_rgba_image.dart'
+    show decodeStraightRgbaImage, decodedImageStillWanted;
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
@@ -1877,32 +1878,54 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
     // allocation and a second full traversal on every frame of a drag,
     // which on a whole-picture transform is tens of megabytes per pointer
-    // move. The scratch is freed in the decode callback, on every path.
-    final premultipliedCopy = premultipliedStraightRgba(stamp.rgba);
-    final premultiplied = premultipliedCopy.pixels;
-    final scratch = premultipliedCopy.scratch;
+    // move.
+    //
+    // 🪦It was written out here until 2026-09-09, ending 「The scratch is
+    // freed in the decode callback, on every path」 — which was true of
+    // every path THROUGH the callback, and the callback has a road that
+    // never reaches it. [decodeStraightRgbaImage] is the same pass with
+    // the release in a `finally`, and hand-rolling it beside it was a copy.
     final request = ++_resampleImageRequest;
     _resampleInFlight = true;
-    ui.decodeImageFromPixels(
-      premultiplied,
-      stamp.width,
-      stamp.height,
-      ui.PixelFormat.rgba8888,
-      (image) {
-        scratch?.free();
+    unawaited(() async {
+      final ui.Image? image;
+      try {
+        image = await decodedImageStillWanted(
+          decodeStraightRgbaImage(
+            rgba: stamp.rgba,
+            width: stamp.width,
+            height: stamp.height,
+          ),
+          wanted: () => mounted && request == _resampleImageRequest,
+        );
+      } finally {
+        // 🚨★★★**THE GATE IS EXACTLY THE UPLOAD'S LIFETIME, and it is
+        // released structurally so it cannot be skipped.** A refused
+        // decode used to leave it closed for ever: the handles and the
+        // marching ants kept running at 60 fps while the transformed
+        // pixels stopped, permanently, for that widget.
+        //
+        // ⛔It is NOT folded into [_resampleImageRequest], and the two are
+        // not two spellings of one fact. The request says WHICH ask is
+        // current; this says whether an upload is outstanding — see the
+        // throughput rule this function's header states. That is why
+        // [_discardFloatResample] invalidates the ask and deliberately
+        // leaves the gate CLOSED: a discarded upload is still holding a
+        // whole-picture scratch and still occupying the engine. Making
+        // one field answer both would start a second full-canvas upload
+        // on every crossing back through identity.
         _resampleInFlight = false;
-        if (!mounted || request != _resampleImageRequest) {
-          image.dispose();
-          return;
-        }
-        setState(() {
-          _resampledFloatImage?.dispose();
-          _resampledFloatImage = image;
-          _resampledImageDab = dab;
-        });
-        _runFloatResampleIfIdle();
-      },
-    );
+      }
+      if (image == null) {
+        return;
+      }
+      setState(() {
+        _resampledFloatImage?.dispose();
+        _resampledFloatImage = image;
+        _resampledImageDab = dab;
+      });
+      _runFloatResampleIfIdle();
+    }());
   }
 
   void _discardFloatResample() {

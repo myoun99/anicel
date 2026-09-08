@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../native/qa_native_engine.dart';
 
 /// Straight-alpha [rgba] premultiplied for the display upload, with the
@@ -188,6 +190,16 @@ Future<ui.Image> uploadRawRgba(
   int? targetWidth,
   int? targetHeight,
 }) async {
+  final override = _debugUploader;
+  if (override != null) {
+    return override(
+      rgba,
+      width: width,
+      height: height,
+      targetWidth: targetWidth,
+      targetHeight: targetHeight,
+    );
+  }
   final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
   ui.ImageDescriptor? descriptor;
   ui.Codec? codec;
@@ -216,3 +228,56 @@ Future<ui.Image> uploadRawRgba(
     buffer.dispose();
   }
 }
+
+/// Stands in for the engine's ASYNCHRONOUS upload in tests.
+///
+/// 🚨Not a convenience — it is [debugSyncImageUploadOverride]'s argument word
+/// for word, for the same reason: a refusal road that nothing exercises is
+/// not a road. The one fixture that stages a genuine refusal without a
+/// device — a descriptor that lies about its buffer's length — reaches
+/// [uploadRawRgba] only where the CALLER's bytes can lie, and the two
+/// hottest callers build their own: a `BitmapTile` validates its own pixel
+/// length, and the stroke overlay allocates `width * height * 4` itself. On
+/// every machine this project develops and CIs on, the engine simply never
+/// refuses.
+///
+/// ⚠️IT DOES NOT REPLACE THE GENUINE-REFUSAL TESTS. That the ENGINE rejects
+/// is pinned against the real path by the lying-descriptor fixture in
+/// `straight_rgba_image_test.dart`; that each CALLER survives a rejection is
+/// pinned through here. Neither can do the other's job, and a seam that
+/// became the only reason anything ever failed would be measuring itself.
+///
+/// ⚠️It sits UNDER [decodeStraightRgbaImage], so a test that installs it
+/// still runs the real premultiply and its native scratch — only the engine
+/// handoff is stood in for. That is what keeps the scratch-release
+/// assertions honest.
+@visibleForTesting
+set debugRawRgbaUploader(
+  Future<ui.Image> Function(
+    Uint8List rgba, {
+    required int width,
+    required int height,
+    int? targetWidth,
+    int? targetHeight,
+  })?
+  uploader,
+) => _debugUploader = uploader;
+
+@visibleForTesting
+Future<ui.Image> Function(
+  Uint8List rgba, {
+  required int width,
+  required int height,
+  int? targetWidth,
+  int? targetHeight,
+})?
+get debugRawRgbaUploader => _debugUploader;
+
+Future<ui.Image> Function(
+  Uint8List rgba, {
+  required int width,
+  required int height,
+  int? targetWidth,
+  int? targetHeight,
+})?
+_debugUploader;

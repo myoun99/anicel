@@ -1,6 +1,7 @@
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
 import '../core/rgb_tolerance.dart';
@@ -2007,7 +2008,9 @@ final class QaComposeTileItemStruct extends Struct {
 /// `ui.decodeImageFromPixels`; call [free] in the decode callback (the
 /// engine has consumed the bytes by then).
 class QaStampScratch {
-  QaStampScratch._(this.view, this._buffer);
+  QaStampScratch._(this.view, this._buffer) {
+    _live += 1;
+  }
 
   final Uint8List view;
   final Pointer<Uint8> _buffer;
@@ -2017,7 +2020,26 @@ class QaStampScratch {
 
   void free() {
     malloc.free(_buffer);
+    _live -= 1;
   }
+
+  static int _live = 0;
+
+  /// How many of these are alive right now.
+  ///
+  /// 🧪★★★**A LEAK HERE IS INVISIBLE TO EVERYTHING ELSE.** This is a bare
+  /// `malloc` with no `NativeFinalizer` behind it, so an unfreed scratch is
+  /// not reclaimed by the GC, does not show up in Dart heap numbers, and
+  /// costs a whole stamp — 256 KB at the production tile size, megabytes at
+  /// whole-canvas. Four call sites freed it inside a decode CALLBACK, which
+  /// `ui.decodeImageFromPixels` does not invoke when it refuses; every one
+  /// of them now frees in a `finally` instead, and without a count the
+  /// difference between those two shapes is something no test can see.
+  ///
+  /// ⛔Read it around an operation, never as an absolute: this is a
+  /// process-wide counter and other work holds scratches at the same time.
+  @visibleForTesting
+  static int get debugLiveCount => _live;
 }
 
 /// The lazy fill raster's shared native buffers (R18 A-2b): the raster

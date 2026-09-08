@@ -128,6 +128,42 @@ void main() {
   /// ⚠️`runAsync`: the upload is engine work on a real thread, and the fake
   /// clock does not drive it. Without this the test would pass on a
   /// TIMEOUT-shaped hang rather than on the rejection.
+  /// 🚨★★★**AND THE NATIVE SCRATCH COMES BACK ON THE REFUSED ROAD TOO.**
+  ///
+  /// The premultiply is a bare `malloc` with no `NativeFinalizer` behind it,
+  /// and four call sites used to free it inside the decode CALLBACK — which
+  /// `ui.decodeImageFromPixels` does not invoke when it refuses. So every
+  /// refused decode leaked a whole stamp of native memory: 256 KB at the
+  /// production tile size, megabytes at whole-canvas, invisible to the GC
+  /// and to every Dart heap number there is. The release is a `finally` now,
+  /// and this is the only thing that can tell the two shapes apart.
+  test('🚨a refused decode still gives the native scratch back', () async {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    final binding = TestWidgetsFlutterBinding.ensureInitialized();
+    // ⛔Read around the operation, never absolutely: the counter is
+    // process-wide and this suite is not the only thing holding scratches.
+    final before = QaStampScratch.debugLiveCount;
+
+    await binding.runAsync(() async {
+      await expectLater(
+        // A descriptor that lies about its buffer's length: the premultiply
+        // succeeds and takes a scratch, and the ENGINE is what refuses.
+        decodeStraightRgbaImage(rgba: Uint8List(4), width: 64, height: 64),
+        throwsA(anything),
+      );
+    });
+
+    expect(
+      QaStampScratch.debugLiveCount,
+      before,
+      reason: 'the scratch the premultiply took was handed back even though '
+          'no image ever arrived',
+    );
+  });
+
   group('a refused upload rejects instead of hanging', () {
     final binding = TestWidgetsFlutterBinding.ensureInitialized();
 

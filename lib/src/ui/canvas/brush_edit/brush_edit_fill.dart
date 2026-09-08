@@ -97,38 +97,38 @@ class _BrushEditFill {
       );
       // The stamp is straight-alpha; the overlay pipeline (like the
       // tile images) uploads premultiplied. The fused C kernel does
-      // 64MP in one pass — the same loop in Dart was seconds. The
-      // scratch buffer is fresh per fill; the decode callback frees it.
-      final engine = QaNativeEngine.instance;
-      final Uint8List premultiplied;
-      QaStampScratch? scratch;
-      if (engine != null) {
-        scratch = engine.premultipliedStampCopy(stampRgba);
-        premultiplied = scratch.view;
-      } else {
-        premultiplied = premultipliedRgbaCopy(stampRgba);
-      }
+      // 64MP in one pass — the same loop in Dart was seconds.
+      //
+      // 🪦This ended 「The scratch buffer is fresh per fill; the decode
+      // callback frees it」, written when a decode callback was assumed
+      // always to come. It is not: `ui.decodeImageFromPixels` never
+      // invokes it on failure, so a refused fill leaked a whole stamp of
+      // NATIVE memory — a `malloc` with no finalizer behind it, at
+      // whole-canvas size. Freeing is a `finally` now, and both branches
+      // of the same decision go through [decodeStraightRgbaImage], which
+      // is this premultiply with that release already built in.
       final token = _state._fillOverlayToken;
-      ui.decodeImageFromPixels(
-        premultiplied,
-        stamp.width,
-        stamp.height,
-        ui.PixelFormat.rgba8888,
-        (image) {
-          scratch?.free();
-          if (!_state.mounted || token != _state._fillOverlayToken) {
-            // The overlay was reset (settle handoff, frame switch, next
-            // fill) before this decode landed — never painted, safe to
-            // dispose directly.
-            image.dispose();
-            return;
-          }
-          _state._overlay._overlayModel.setStampOverlay(
-            image,
-            Offset(landing.left.toDouble(), landing.top.toDouble()),
-          );
-        },
-      );
+      unawaited(() async {
+        final image = await decodedImageStillWanted(
+          decodeStraightRgbaImage(
+            rgba: stampRgba,
+            width: stamp.width,
+            height: stamp.height,
+          ),
+          // The overlay may be reset (settle handoff, frame switch, next
+          // fill) before this lands; then it was never painted and the
+          // helper disposes it.
+          wanted: () =>
+              _state.mounted && token == _state._fillOverlayToken,
+        );
+        if (image == null) {
+          return;
+        }
+        _state._overlay._overlayModel.setStampOverlay(
+          image,
+          Offset(landing.left.toDouble(), landing.top.toDouble()),
+        );
+      }());
     } else {
       // A stampless fill dab (synthetic/test): no overlay preview —
       // the deferred commit below still lands it identically.

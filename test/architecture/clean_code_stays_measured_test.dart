@@ -13,7 +13,22 @@ import '../../tool/refactor/clean_code_scan.dart';
 void main() {
   const wideSignatures = 378;
   const longBodies = 437;
-  const longClasses = 52;
+  /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
+  /// above says a session that pushes one up reads what it added.
+  ///
+  /// `ActiveStrokeOverlayModel` sat at 598 lines — one under the line — and
+  /// gained a THIRD landing for a tile decode (`_refuseDecodedTile`) plus
+  /// the decisions behind it, from the round that gave a refused upload
+  /// somewhere to land. ⛔Most of the growth is DOCUMENTATION: the scan
+  /// measures a class from its own doc comment, and the largest single
+  /// addition is the paragraph explaining why `_decoding.clear()`
+  /// deliberately does not touch `_pendingDecodeCount` — correct since it
+  /// was written, recorded nowhere, and re-derived from scratch by that
+  /// round precisely because nobody had. Cutting it back to buy a number is
+  /// the trade this repo does not make (「결정 주석은 절대 지우지 않는다」),
+  /// and shrinking the class to fit is a different round on the app's
+  /// hottest file.
+  const longClasses = 53;
 
   late CleanCodeScan scan;
   setUpAll(() {

@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -27,6 +25,8 @@ import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_ground_color_sampling.dart';
+import '../../services/straight_rgba_image.dart'
+    show decodeStraightRgbaImage, decodedImageStillWanted;
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
@@ -34,7 +34,6 @@ import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_blend.dart'
     show applySelectionMaskToStrokeAlpha;
 import '../../services/brush_stroke_commit_data.dart';
-import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../models/drawing_guide.dart';
