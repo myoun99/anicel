@@ -37,13 +37,17 @@ void main() {
     cutShape: CanvasShapeKind.ellipse,
     fillShape: CanvasShapeKind.lasso,
     stabilizerStrength: 0.7,
-    brushBlendMode: BrushBlendMode.multiply,
     fillBlendMode: BrushBlendMode.screen,
     cutStampBlendMode: BrushBlendMode.add,
   );
 
-  BrushSettings preset() =>
-      BrushSettings.fromShape(const BrushShape(size: 99, spacing: 0.5));
+  BrushSettings preset() => BrushSettings.fromShape(
+    const BrushShape(
+      size: 99,
+      spacing: 0.5,
+      blendMode: BrushBlendMode.multiply,
+    ),
+  );
 
   test('applying a preset leaves every non-shape setting exactly as it was', () {
     final before = armed();
@@ -58,8 +62,11 @@ void main() {
     expect(after.cutShape, before.cutShape);
     expect(after.fillShape, before.fillShape);
     expect(after.stabilizerStrength, before.stabilizerStrength);
-    expect(after.brushBlendMode, before.brushBlendMode);
-    expect(after.fillBlendMode, before.fillBlendMode);
+    expect(
+      after.fillBlendMode,
+      before.fillBlendMode,
+      reason: 'the fill has no preset for a blend to arrive from',
+    );
     expect(after.cutStampBlendMode, before.cutStampBlendMode);
   });
 
@@ -84,7 +91,20 @@ void main() {
     final after = before.withPresetSettings(preset(), tool: CanvasTool.brush);
     expect(after.color, before.color);
     expect(after.stabilizerStrength, before.stabilizerStrength);
-    expect(after.brushBlendMode, before.brushBlendMode);
+  });
+
+  test('the BLEND is not one of them either — it rides in the shape now', () {
+    // ⛔R26 #10's other half 「블렌딩모드가 바뀌지 않음」, retired 2026-09-08:
+    // 「툴/손 설정 구분 없애고 모든 설정이 내보낼때 나르도록. 브러시든
+    // 지우개든 블렌드 모드를 나른단거야」.
+    final before = BrushToolState.fromShape(
+      const BrushShape(blendMode: BrushBlendMode.screen),
+    );
+    expect(
+      before.withPresetSettings(preset(), tool: CanvasTool.brush).blendMode,
+      BrushBlendMode.multiply,
+      reason: 'the preset carries 乗算 and the brush wears it',
+    );
   });
 
   test('SIZE is no longer one of them — a brush wears its own (H25)', () {
@@ -107,7 +127,7 @@ void main() {
           .withPresetSettings(
             preset(),
             tool: CanvasTool.brush,
-            handSet: (size: 33, opacity: null),
+            handSet: (size: 33, opacity: null, blendMode: null),
           )
           .size,
       33,

@@ -13,20 +13,20 @@ import 'separable_blend_mode.dart';
 /// pen-up (never dab-by-dab — overlapping dabs must not double-apply),
 /// with the live overlay previewing through the matching ui.BlendMode.
 ///
-/// ⚠️R26 #10 called this a HAND setting that preset application carries
-/// over unchanged. Half of that is already false — a brush can PIN its
-/// blend ([BrushShape.lockedBlendMode]) and the pin wins while it is
-/// selected — and the other half is on its way out: 유저 2026-09-08 asked
-/// for the hand/preset split to go entirely, 「브러시든 지우개든 블렌드
-/// 모드를 나른단거야 … 완벽통일해도 문제없으니」.
+/// ⛔R26 #10 called this a HAND setting that preset application carries over
+/// unchanged. That ruling is RETIRED — 유저 2026-09-08: 「툴/손 설정 구분
+/// 없애고 모든 설정이 내보낼때 나르도록. 브러시든 지우개든 블렌드 모드를
+/// 나른단거야 … 완벽통일해도 문제없으니」. A brush now simply HAS a blend the
+/// way it has a size: [BrushShape.blendMode], non-null, [color] by default —
+/// because [color] IS 通常, "normal" is a value here, never an absence. Every
+/// intermediate contraption that existed to express "this brush departs from
+/// the default" (a nullable pin, `clearBlendLock`, the padlock) is gone with
+/// it, and import carries what the file says without asking whether it
+/// departed. An ERASER is not a special case: it is a brush whose blend is
+/// [erase], and exporting it exports that.
 ///
-/// 🔜The shape of that change, so nobody re-derives it: [color] IS 通常, so
-/// no new value is needed — the nullable PIN becomes a non-null
-/// `BrushShape.blendMode` defaulting to [color], `clearBlendLock` and the
-/// brush half of the padlock retire with it, and import stops asking
-/// whether the file departed from the default and simply carries what the
-/// file says. The fill and the stamp keep their own fields: they have no
-/// preset for a value to belong to.
+/// The fill and the stamp keep their own separate fields in
+/// `BrushToolState`: they have no preset for a value to belong to.
 enum BrushBlendMode {
   color,
   behind,

@@ -514,7 +514,7 @@ void main() {
     expect(s.spacingJitter, closeTo(0.8, 1e-9));
   });
 
-  test('a non-normal composite mode pins the brush', () async {
+  test('a non-normal composite mode travels with the brush', () async {
     // ウェット水彩 composites with 乗算, and Clip Studio files that on the
     // sub tool rather than the hand — so it travels with the brush.
     final path = await buildFixture(
@@ -527,22 +527,22 @@ void main() {
     );
 
     expect(
-      result.presets.first.settings.lockedBlendMode,
+      result.presets.first.settings.blendMode,
       BrushBlendMode.multiply,
     );
     expect(result.warnings, isEmpty);
   });
 
-  test('a normal composite mode pins nothing', () async {
-    // The rule both importers share: a file that never left the default has
-    // nothing to say, so R26 #10 keeps holding for it.
+  test('a normal composite mode imports as 通常', () async {
+    // The rule both importers share: index 0 is a VALUE, not an absence —
+    // the brush composites normally and says so.
     final path = await buildFixture(tipPng: await blackPng(4, 4));
     final result = await decodeSutBrushFile(
       filePath: path,
       sourceName: 'fixture',
     );
 
-    expect(result.presets.first.settings.lockedBlendMode, isNull);
+    expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
   });
 
   test(
@@ -576,7 +576,7 @@ void main() {
           sourceName: 'fixture',
         );
         expect(
-          result.presets.first.settings.lockedBlendMode,
+          result.presets.first.settings.blendMode,
           entry.value,
           reason: 'menu index ${entry.key}',
         );
@@ -604,7 +604,7 @@ void main() {
       sourceName: 'fixture',
     );
 
-    expect(result.presets.first.settings.lockedBlendMode, isNull);
+    expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
     expect(result.warnings.any((w) => w.contains('除算')), isTrue);
   });
 

@@ -341,7 +341,7 @@ BrushSettings _settingsFromVariant(
     paintAmount: paintAmount,
     paintDensity: paintDensity,
     colorStretch: colorStretch,
-    lockedBlendMode: _blendLockOf(
+    blendMode: _blendModeOf(
       variant['CompositeMode'],
       brushName: brushName,
       warnings: warnings,
@@ -349,7 +349,7 @@ BrushSettings _settingsFromVariant(
   );
 }
 
-/// The blend a Clip Studio sub tool pins, or null to leave the hand alone.
+/// The blend a Clip Studio sub tool composites with.
 ///
 /// `CompositeMode` is the INDEX of Clip Studio's 合成モード menu, read off
 /// the brush menu itself. Two entries had already been pinned by real files
@@ -361,16 +361,18 @@ BrushSettings _settingsFromVariant(
 /// 透明度置換 or the (黒)/(白) burn and dodge variants, so its indices do not
 /// line up. This table is the brush menu's.
 ///
-/// Only a non-normal mode locks — a brush that never left the default has
-/// nothing to say, so the hand setting keeps it.
-BrushBlendMode? _blendLockOf(
+/// ⛔This used to answer "does this brush PIN a blend?", and index 0 meant
+/// "no". It does not any more (유저 2026-09-08): a brush simply HAS a blend,
+/// 通常 included, so 0 is a value like every other index and an unreadable
+/// column falls back to it rather than to an absence.
+BrushBlendMode _blendModeOf(
   Object? value, {
   required String brushName,
   required List<String> warnings,
 }) {
   final mode = _intOf(value);
   if (mode == null || mode == 0) {
-    return null; // 通常
+    return BrushBlendMode.color; // 通常
   }
   final mapped = switch (mode) {
     1 => BrushBlendMode.darken, // 比較(暗)
@@ -396,9 +398,9 @@ BrushBlendMode? _blendLockOf(
   // Naming it beats a bare number: it says what a brush would need.
   warnings.add(
     'Brush "$brushName": blend mode ${_clipStudioBlendName(mode)} has no '
-    'equivalent yet; imported without a blend lock.',
+    'equivalent yet; imported as 通常.',
   );
-  return null;
+  return BrushBlendMode.color;
 }
 
 /// The 合成モード menu entry at [index], for warnings.
@@ -453,7 +455,10 @@ double _percentRatio(Object? value, {required double fallback}) {
 /// percentage of the brush size (Clip Studio's own default presentation);
 /// unsynced, it is an absolute size in the same unit as `BrushSize`, so the
 /// ratio comes from dividing. Either way the engine wants a multiplier.
-double _dualMaskScaleOf(Map<String, Object?> variant, {required double brushSize}) {
+double _dualMaskScaleOf(
+  Map<String, Object?> variant, {
+  required double brushSize,
+}) {
   final dualSize = _doubleOf(variant['DualSize']);
   if (dualSize == null || !dualSize.isFinite || dualSize <= 0.0) {
     return 1.0;
@@ -555,7 +560,10 @@ BrushPressureCurve? _effectorPressureCurve(Object? effector) {
       continue;
     }
     points.add(
-      BrushCurvePoint(point.x, (minimum + (1.0 - minimum) * point.y).clamp(0.0, 1.0).toDouble()),
+      BrushCurvePoint(
+        point.x,
+        (minimum + (1.0 - minimum) * point.y).clamp(0.0, 1.0).toDouble(),
+      ),
     );
   }
   if (points.last.x < 1.0) {

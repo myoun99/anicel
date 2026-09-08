@@ -4,8 +4,8 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
-/// BB-2 (R26 #9/#10/#11): the CSP-grouped brush settings — the retired
-/// color/tip rows, and the hand-setting independence of size + blend.
+/// BB-2 (R26 #9/#11): the CSP-grouped brush settings — the retired
+/// color/tip rows, and where the blend lives now that R26 #10 is gone.
 ///
 /// The blend DROPDOWN itself is no longer here. It moved to the top strip
 /// with size and opacity, so its widget tests live in
@@ -49,7 +49,6 @@ void main() {
       'brush-tool-size-slider',
       'brush-tool-opacity-slider',
       'brush-tool-blend-menu-button',
-      'brush-tool-blend-lock-toggle',
       // The pressure curves went WITH their values: a curve belongs
       // beside the number it shapes.
       'brush-tool-pressure-size',
@@ -73,28 +72,26 @@ void main() {
     );
   });
 
-  test('R26 #10: size and the brush blend are HAND settings — presets '
-      'neither carry nor overwrite them', () {
-    final tuned = BrushToolState(
-      size: 42,
-      brushBlendMode: BrushBlendMode.multiply,
-    );
-    // A preset built from someone else's settings...
-    final applied = BrushToolState.fromBrushSettings(
-      BrushToolState(size: 3).toBrushSettings(),
-    );
+  test('⛔R26 #10 IS RETIRED: the blend is the BRUSH\'s, so a preset both '
+      'carries it and applies it (유저 2026-09-08)', () {
+    // The old law was 「브러시 다른거 선택한다고 사이즈/블렌딩모드가 바뀌지
+    // 않음」 and this test used to pin exactly that. 유저 replaced it:
+    // 「툴/손 설정 구분 없애고 모든 설정이 내보낼때 나르도록」.
+    final tuned = BrushToolState(size: 42, blendMode: BrushBlendMode.multiply);
+
+    // It travels through the preset payload, both ways...
+    expect(tuned.toBrushSettings().blendMode, BrushBlendMode.multiply);
     expect(
-      applied.brushBlendMode,
-      BrushBlendMode.color,
-      reason: 'not preset payload',
+      BrushToolState.fromBrushSettings(tuned.toBrushSettings()).blendMode,
+      BrushBlendMode.multiply,
     );
-    // ...and the preset-apply site carries the live values over.
-    final preserved = applied.copyWith(
-      size: tuned.size,
-      brushBlendMode: tuned.brushBlendMode,
-    );
-    expect(preserved.size, 42);
-    expect(preserved.brushBlendMode, BrushBlendMode.multiply);
+
+    // ...and picking a brush wears the brush's blend, not the hand's.
+    final applied = BrushToolState(
+      blendMode: BrushBlendMode.screen,
+    ).withPresetSettings(tuned.toBrushSettings(), tool: CanvasTool.brush);
+    expect(applied.blendMode, BrushBlendMode.multiply);
+    expect(applied.size, 42, reason: 'H25: a brush wears its own size too');
   });
 
   test('the eraser tool and the erase blend both ride the dab erase flag '
@@ -107,12 +104,12 @@ void main() {
       isTrue,
     );
     final eraseBlend = BrushToolState.defaults
-        .copyWith(brushBlendMode: BrushBlendMode.erase)
+        .copyWith(blendMode: BrushBlendMode.erase)
         .toInputSettings();
     expect(eraseBlend.erase, isTrue);
     expect(eraseBlend.blendMode, BrushBlendMode.erase);
     final multiply = BrushToolState.defaults
-        .copyWith(brushBlendMode: BrushBlendMode.multiply)
+        .copyWith(blendMode: BrushBlendMode.multiply)
         .toInputSettings();
     expect(multiply.erase, isFalse);
     expect(multiply.blendMode, BrushBlendMode.multiply);

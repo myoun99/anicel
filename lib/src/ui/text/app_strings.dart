@@ -1022,7 +1022,6 @@ enum AppStrings {
 
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
-  String get brBlendLock => _s('brBlendLock');
   String get brEditGroup => _s('brEditGroup');
   String get brFolderIcon => _s('brFolderIcon');
   String get brFolderName => _s('brFolderName');
@@ -1772,7 +1771,6 @@ enum AppStrings {
     'tlAutoFrame': 'Make a frame where there is none',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
-    'brBlendLock': 'Pin this blend mode to the brush',
     'brEditGroup': 'Edit group',
     'brFolderIcon': 'Folder icon',
     'brFolderName': 'Folder name',
@@ -2676,7 +2674,6 @@ enum AppStrings {
     'tlAutoFrame': '空のセルに描いたらフレームを作る',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
-    'brBlendLock': '合成モードをブラシに固定',
     'brEditGroup': 'グループを編集',
     'brFolderIcon': 'フォルダーのアイコン',
     'brFolderName': 'フォルダー名',
@@ -3602,7 +3599,6 @@ enum AppStrings {
     'tlAutoFrame': '빈 칸에 그리면 프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
-    'brBlendLock': '합성 모드를 브러시에 고정',
     'brEditGroup': '그룹 편집',
     'brFolderIcon': '폴더 아이콘',
     'brFolderName': '폴더 이름',
@@ -4566,7 +4562,6 @@ enum AppStrings {
     'tlAutoFrame': "Créer une image là où il n'y en a pas",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
-    'brBlendLock': 'Épingler ce mode de fusion au pinceau',
     'brEditGroup': 'Modifier le groupe',
     'brFolderIcon': 'Icône du dossier',
     'brFolderName': 'Nom du dossier',
@@ -5450,7 +5445,6 @@ enum AppStrings {
     'tlAutoFrame': '在空单元格上绘制时自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
-    'brBlendLock': '将混合模式固定到画笔',
     'brEditGroup': '编辑分组',
     'brFolderIcon': '文件夹图标',
     'brFolderName': '文件夹名称',

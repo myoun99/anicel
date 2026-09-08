@@ -74,7 +74,7 @@ void main() {
         color: handColor,
         size: 77,
         stabilizerStrength: 0.42,
-        brushBlendMode: BrushBlendMode.multiply,
+        blendMode: BrushBlendMode.multiply,
       );
 
       final applied = hand.withPresetSettings(
@@ -96,7 +96,14 @@ void main() {
         BrushToolState.defaults.size,
         reason: 'H25 supersedes R26 #10 for size',
       );
-      expect(applied.brushBlendMode, BrushBlendMode.multiply, reason: 'R26 #10');
+      // ⛔And 유저 2026-09-08 took the BLEND off it too: the preset's blend
+      // is the brush's, so applying one brings 通常 with it. Same reasoning
+      // as size — the point of THIS test is the palette.
+      expect(
+        applied.blendMode,
+        BrushBlendMode.color,
+        reason: 'the preset carries 通常 and the brush wears it',
+      );
       expect(applied.stabilizerStrength, closeTo(0.42, 1e-9), reason: 'P7');
       expect(applied.tool, CanvasTool.brush);
     });

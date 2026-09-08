@@ -589,7 +589,6 @@ void main() {
     'trAnchorCenter': (s) => s.trAnchorCenter,
     'trMeshColumns': (s) => s.trMeshColumns,
     'trMeshRows': (s) => s.trMeshRows,
-    'brBlendLock': (s) => s.brBlendLock,
     'brEditGroup': (s) => s.brEditGroup,
     'brFolderName': (s) => s.brFolderName,
     'brFolderIcon': (s) => s.brFolderIcon,

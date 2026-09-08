@@ -177,7 +177,7 @@ void main() {
           .withActiveBlendMode(BrushBlendMode.multiply)
           .copyWith(tool: CanvasTool.fill)
           .withActiveBlendMode(BrushBlendMode.behind);
-      expect(state.brushBlendMode, BrushBlendMode.multiply);
+      expect(state.blendMode, BrushBlendMode.multiply);
       expect(state.fillBlendMode, BrushBlendMode.behind);
       expect(state.activeBlendMode, BrushBlendMode.behind);
       expect(
@@ -198,28 +198,32 @@ void main() {
       );
     });
 
-    test('a pin wins over the tool value, and each tool pins its own', () {
-      // 유저: 잠금이 있는 거는 그거 따라가고 없으면 마지막에 선택한 블렌드.
+    test('⛔THE PADLOCK IS GONE — there is nothing left to pin', () {
+      // 유저 2026-09-08: 「사실상 이제와서 자물쇠 의미가 없어진거같은데 …
+      // 3번으로 자물쇠 삭제 가자」. A brush's blend used to need a PIN to
+      // survive a brush swap; now it survives because it IS the brush's,
+      // and the fill's survives because the fill is a different drawer.
+      // Both promises the padlock made are structural, so it made none.
       final fill = BrushToolState.defaults
           .copyWith(tool: CanvasTool.fill)
-          .withActiveBlendMode(BrushBlendMode.behind)
-          .withActiveBlendLock(BrushBlendMode.multiply);
-      expect(fill.activeBlendMode, BrushBlendMode.multiply);
-      expect(fill.fillBlendMode, BrushBlendMode.behind, reason: 'still there');
+          .withActiveBlendMode(BrushBlendMode.behind);
+      expect(fill.activeBlendMode, BrushBlendMode.behind);
+
+      final brush = fill
+          .copyWith(tool: CanvasTool.brush)
+          .withActiveBlendMode(BrushBlendMode.multiply);
+      expect(brush.activeBlendMode, BrushBlendMode.multiply);
       expect(
-        fill.withActiveBlendLock(null).activeBlendMode,
+        brush.copyWith(tool: CanvasTool.fill).activeBlendMode,
         BrushBlendMode.behind,
-        reason: 'unlocking falls back to the tool value',
+        reason: 'the fill kept its own without anyone locking it',
       );
-      // The brush pins through its PRESET, where a brush's pin belongs.
-      final brush = fill.copyWith(tool: CanvasTool.brush);
-      expect(brush.activeBlendLock, isNull, reason: 'the fill pin is not its');
     });
 
     test('the eraser IS the erase blend and outranks everything', () {
       final state = BrushToolState.defaults
           .copyWith(tool: CanvasTool.eraser)
-          .copyWith(brushBlendMode: BrushBlendMode.multiply);
+          .copyWith(blendMode: BrushBlendMode.multiply);
       expect(state.activeBlendMode, BrushBlendMode.erase);
       expect(state.toInputSettings().erase, isTrue);
     });
@@ -409,18 +413,14 @@ void main() {
         reason: 'the brush never hears about it',
       );
 
-      final pinned = stamp.withActiveBlendLock(BrushBlendMode.multiply);
-      expect(pinned.activeBlendLock, BrushBlendMode.multiply);
-      expect(pinned.activeBlendMode, BrushBlendMode.multiply, reason: '핀 > 툴 값');
       expect(
-        pinned.copyWith(tool: CanvasTool.brush).activeBlendLock,
-        isNull,
-        reason: "the brush's pin lives in its preset and stays free",
-      );
-      expect(
-        pinned.withActiveBlendLock(null).activeBlendMode,
+        stamp
+            .copyWith(tool: CanvasTool.brush)
+            .withActiveBlendMode(BrushBlendMode.multiply)
+            .copyWith(tool: CanvasTool.cutStamp)
+            .activeBlendMode,
         BrushBlendMode.behind,
-        reason: 'unpinning falls back to the mode the tool was set to',
+        reason: 'and it never hears about the brush either',
       );
     });
 

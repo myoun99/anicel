@@ -186,21 +186,23 @@ bool canvasToolRailTileIsRemembered(CanvasTool tool) =>
 /// separate from project, cut, layer, frame, stroke, cache, and save/load
 /// data.
 ///
-/// The 26 shared brush parameters live in [shape] ([BrushShape]); the fields
+/// The shared brush parameters live in [shape] ([BrushShape]); the fields
 /// below forward to it, and [toBrushSettings]/[toInputSettings]/
 /// [fromBrushSettings] carry the whole shape across in one hop so a parameter
-/// can never be dropped on a converter boundary (D4). [tool],
-/// [stabilizerStrength] and [brushBlendMode] are still the tool state's own.
+/// can never be dropped on a converter boundary (D4).
 ///
-/// ⛔THEY ARE NOT "THE THREE HAND SETTINGS PRESETS NEVER CARRY" any more,
-/// which is what this said. Size and opacity left that list when H25 was
-/// answered ([withPresetSettings] applies them), the blend already leaves
-/// it whenever a brush pins one, and 유저 2026-09-08 asked for the split to
-/// go entirely: 「손설정이든 정한거 싹 다 내보낼때 나르도록 … 그냥 위치만
-/// 지금처럼 나눈채로 두고」. What survives the change is the LAYOUT — size
-/// and opacity on the strip, the rest in the panel — not two kinds of
-/// value. The remaining work is tracked as its own round; see
-/// [BrushBlendMode] for the shape of it.
+/// ⛔THERE IS NO LONGER A "HAND SETTINGS PRESETS NEVER CARRY" LIST, which is
+/// what this used to describe. Size and opacity left it when H25 was
+/// answered ([withPresetSettings] applies them), and the blend left it in
+/// 2026-09-08 when 유저 retired the split outright: 「툴/손 설정 구분 없애고
+/// 모든 설정이 내보낼때 나르도록 … 그냥 위치만 지금처럼 나눈채로 두고」.
+/// What survives is the LAYOUT — size and opacity on the strip, the rest in
+/// the panel — not two kinds of value.
+///
+/// What is genuinely the tool state's own is [tool], [stabilizerStrength]
+/// (hand feel, not a brush parameter), and the NON-BRUSH tools' settings
+/// ([fillBlendMode], [cutStampBlendMode], [fillOpacity], [cutStampOpacity]):
+/// those tools have no preset for a value to belong to.
 class BrushToolState {
   factory BrushToolState({
     double size = defaultSize,
@@ -236,13 +238,11 @@ class BrushToolState {
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
-    BrushBlendMode brushBlendMode = BrushBlendMode.color,
+    BrushBlendMode blendMode = BrushBlendMode.color,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
-    BrushBlendMode? fillBlendLock,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     double fillOpacity = 1.0,
     double cutStampOpacity = 1.0,
-    BrushBlendMode? cutStampBlendLock,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -278,11 +278,9 @@ class BrushToolState {
       cutShape: cutShape,
       fillShape: fillShape,
       stabilizerStrength: stabilizerStrength,
-      brushBlendMode: brushBlendMode,
+      blendMode: blendMode,
       fillBlendMode: fillBlendMode,
-      fillBlendLock: fillBlendLock,
       cutStampBlendMode: cutStampBlendMode,
-      cutStampBlendLock: cutStampBlendLock,
       fillOpacity: fillOpacity,
       cutStampOpacity: cutStampOpacity,
     );
@@ -295,21 +293,21 @@ class BrushToolState {
     this.cutShape = CanvasShapeKind.rect,
     this.fillShape = CanvasShapeKind.rect,
     this.stabilizerStrength = 0.0,
-    this.brushBlendMode = BrushBlendMode.color,
     this.fillBlendMode = BrushBlendMode.color,
-    this.fillBlendLock,
     this.cutStampBlendMode = BrushBlendMode.color,
-    this.cutStampBlendLock,
     this.fillOpacity = 1.0,
     this.cutStampOpacity = 1.0,
   });
 
-  /// Builds tool state from a loose [BrushShape] and the three values that
-  /// still live outside it (tool, stabilizer, blend — see the class doc),
-  /// clamping every shared parameter into the panel's ranges (see
-  /// [_clampShape]). This is the wholesale hop the preset-load path takes —
-  /// [fromBrushSettings] routes through it — so no shared parameter can be
-  /// dropped when a preset is applied.
+  /// Builds tool state from a loose [BrushShape] and the values that still
+  /// live outside it (tool, stabilizer, the non-brush tools' own blends and
+  /// opacities — see the class doc), clamping every shared parameter into the
+  /// panel's ranges (see [_clampShape]). This is the wholesale hop the
+  /// preset-load path takes — [fromBrushSettings] routes through it — so no
+  /// shared parameter can be dropped when a preset is applied.
+  ///
+  /// The BRUSH's blend is not a parameter here: it rides in [shape] like its
+  /// size does.
   factory BrushToolState.fromShape(
     BrushShape shape, {
     CanvasTool tool = CanvasTool.brush,
@@ -317,11 +315,8 @@ class BrushToolState {
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
-    BrushBlendMode brushBlendMode = BrushBlendMode.color,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
-    BrushBlendMode? fillBlendLock,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
-    BrushBlendMode? cutStampBlendLock,
     double fillOpacity = 1.0,
     double cutStampOpacity = 1.0,
   }) {
@@ -332,11 +327,8 @@ class BrushToolState {
       cutShape: cutShape,
       fillShape: fillShape,
       stabilizerStrength: clampStabilizerStrength(stabilizerStrength),
-      brushBlendMode: brushBlendMode,
       fillBlendMode: fillBlendMode,
-      fillBlendLock: fillBlendLock,
       cutStampBlendMode: cutStampBlendMode,
-      cutStampBlendLock: cutStampBlendLock,
       fillOpacity: clampOpacity(fillOpacity),
       cutStampOpacity: clampOpacity(cutStampOpacity),
     );
@@ -380,11 +372,9 @@ class BrushToolState {
     CanvasShapeKind? cutShape,
     CanvasShapeKind? fillShape,
     double? stabilizerStrength,
-    BrushBlendMode? brushBlendMode,
+    BrushBlendMode? blendMode,
     BrushBlendMode? fillBlendMode,
-    BrushBlendMode? fillBlendLock,
     BrushBlendMode? cutStampBlendMode,
-    BrushBlendMode? cutStampBlendLock,
     double? fillOpacity,
     double? cutStampOpacity,
   }) {
@@ -422,17 +412,15 @@ class BrushToolState {
         paintAmount: paintAmount ?? 1.0,
         paintDensity: paintDensity ?? 1.0,
         colorStretch: colorStretch ?? 0.0,
+        blendMode: blendMode ?? BrushBlendMode.color,
       ),
       tool: tool ?? CanvasTool.brush,
       selectShape: selectShape ?? CanvasShapeKind.rect,
       cutShape: cutShape ?? CanvasShapeKind.rect,
       fillShape: fillShape ?? CanvasShapeKind.rect,
       stabilizerStrength: stabilizerStrength ?? 0.0,
-      brushBlendMode: brushBlendMode ?? BrushBlendMode.color,
       fillBlendMode: fillBlendMode ?? BrushBlendMode.color,
-      fillBlendLock: fillBlendLock,
       cutStampBlendMode: cutStampBlendMode ?? BrushBlendMode.color,
-      cutStampBlendLock: cutStampBlendLock,
       fillOpacity: fillOpacity ?? 1.0,
       cutStampOpacity: cutStampOpacity ?? 1.0,
     );
@@ -542,12 +530,8 @@ class BrushToolState {
   double get roundnessJitter => shape.roundnessJitter;
   double get spacingJitter => shape.spacingJitter;
 
-  /// The blend this brush pins, or null when it leaves the hand setting be.
-  BrushBlendMode? get lockedBlendMode => shape.lockedBlendMode;
-
-  /// What actually composites: the lock when there is one, else the hand.
-  BrushBlendMode get effectiveBlendMode =>
-      shape.lockedBlendMode ?? brushBlendMode;
+  /// How this brush composites — see [BrushShape.blendMode].
+  BrushBlendMode get blendMode => shape.blendMode;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -616,40 +600,21 @@ class BrushToolState {
   /// application carries it over unchanged.
   final double stabilizerStrength;
 
-  /// The BRUSH's own composite mode (BB-1, R26 #9). Like the stabilizer
-  /// — and like [size] since R26 #10 — a HAND setting outside brush
-  /// presets: picking another brush never flips it.
-  final BrushBlendMode brushBlendMode;
-
   /// The FILL's composite mode, kept apart from the brush's (유저 확정:
-  /// 잠금도 블렌드모드 선택도 툴에 산다).
+  /// 블렌드모드 선택은 툴에 산다).
   ///
   /// One shared field would mean painting shadows on multiply and then
   /// reaching for the bucket fills on multiply too — a setting from
   /// another tool arriving unannounced, which is the leak the cut tool had
   /// to block on opacity. Two fields make it structural instead of
-  /// remembered.
+  /// remembered. The brush's own blend lives in [shape] for the same
+  /// reason its size does; the fill has no preset to keep one in.
   final BrushBlendMode fillBlendMode;
-
-  /// The fill's blend PIN, or null when it is free.
-  ///
-  /// Same meaning as the brush's pin, different home: a brush pins through
-  /// its preset ([BrushShape.lockedBlendMode]) because the pin belongs to
-  /// the brush, and the fill has no preset to belong to, so it pins here.
-  /// What the padlock says is one thing either way — this tool's blend
-  /// does not change until you unlock it.
-  final BrushBlendMode? fillBlendLock;
 
   /// The STAMP's composite mode (TS8), its own field for the same reason
   /// the fill got one: 유저 확정 — 값은 툴별 칸. Painting shadows on
   /// multiply and then dropping a stamp must not drop it on multiply.
   final BrushBlendMode cutStampBlendMode;
-
-  /// The stamp's blend PIN, or null when it is free. Like the fill, the
-  /// stamp has no preset for a pin to belong to, so it pins here — without
-  /// this field the padlock would read and write the BRUSH's pin, which is
-  /// the very leak the per-tool fields exist to stop.
-  final BrushBlendMode? cutStampBlendLock;
 
   /// The FILL's opacity, and the STAMP's (TP1).
   ///
@@ -693,26 +658,18 @@ class BrushToolState {
     _ => copyWith(opacity: value),
   };
 
-  /// The blend the ACTIVE tool actually composites with — a pin when there
-  /// is one, otherwise the mode that tool was last set to.
+  /// The blend the ACTIVE tool composites with — the brush's own, or the
+  /// mode the non-brush tool was last set to.
   ///
   /// The eraser is not a blend CHOICE: the tool IS the erase blend, and it
-  /// wins over both (R26 #9).
+  /// wins over what the shape says (R26 #9).
   BrushBlendMode get activeBlendMode => switch (tool) {
     CanvasTool.eraser => BrushBlendMode.erase,
     // Both fill tiles share one blend: they are one tool wearing two ways
     // of choosing an area (유저 확정: 채우기 툴 하나로 공유).
-    CanvasTool.fill || CanvasTool.fillShape => fillBlendLock ?? fillBlendMode,
-    CanvasTool.cutStamp => cutStampBlendLock ?? cutStampBlendMode,
-    _ => effectiveBlendMode,
-  };
-
-  /// The pin on the ACTIVE tool's blend, or null when it is free (or when
-  /// the tool composites nothing at all).
-  BrushBlendMode? get activeBlendLock => switch (tool) {
-    CanvasTool.fill || CanvasTool.fillShape => fillBlendLock,
-    CanvasTool.cutStamp => cutStampBlendLock,
-    _ => lockedBlendMode,
+    CanvasTool.fill || CanvasTool.fillShape => fillBlendMode,
+    CanvasTool.cutStamp => cutStampBlendMode,
+    _ => blendMode,
   };
 
   /// Whether the active tool composites at all — whether a blend control
@@ -752,10 +709,8 @@ class BrushToolState {
   ///   down at all.
   bool supports(ToolParameter parameter) => switch (tool) {
     CanvasTool.brush || CanvasTool.eraser => true,
-    CanvasTool.fill ||
-    CanvasTool.fillShape ||
-    CanvasTool.cutStamp => parameter == ToolParameter.blend ||
-        parameter == ToolParameter.opacity,
+    CanvasTool.fill || CanvasTool.fillShape || CanvasTool.cutStamp =>
+      parameter == ToolParameter.blend || parameter == ToolParameter.opacity,
     _ => false,
   };
 
@@ -764,24 +719,6 @@ class BrushToolState {
   factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
       BrushToolState.fromShape(settings.shape);
 
-  /// This state after a PRESET's [settings] are applied, on [tool].
-  ///
-  /// A preset carries a whole brush, but four things are the user's HAND
-  /// and never come from it — they are how this person holds the pen right
-  /// now, not what the brush is:
-  ///
-  /// * the stabilizer (P7),
-  /// * the SIZE and the brush BLEND (R26 #10 — "브러시 다른거 선택한다고
-  ///   사이즈/블렌딩모드가 바뀌지 않음"),
-  /// * the COLOUR (R9 #2). A preset stores a colour so it can be saved and
-  ///   imported faithfully, and most of the roster's presets carry the
-  ///   default black — so before this rule, every brush swap silently
-  ///   repainted the palette black.
-  ///
-  /// The remembered SHAPE KINDS ride along for the same reason: a preset is
-  /// a brush, and which outline the select and cut tools drag is not part
-  /// of one. Rebuilding from settings alone would quietly snap both back to
-  /// the rectangle every time a brush was picked.
   /// This state after a PRESET's [settings] are applied, on [tool].
   ///
   /// This used to REBUILD the state from the preset's shape and then hand-list
@@ -816,16 +753,19 @@ class BrushToolState {
   ///   브러시크기 남아있도록. 불투명도도 마찬가지」 — so a brush wears ITS OWN
   ///   size again. Later ruling wins, and R26 #10 stays written here because
   ///   the next reader will otherwise find this a bug.
+  ///   ⛔The BLEND half of that same R26 #10 sentence is retired too (유저
+  ///   2026-09-08): it rides in `shape`, so a preset swap carries it and no
+  ///   exception is needed here. See [BrushBlendMode].
   ///
-  /// [handSet] is what the hand last set ON THIS BRUSH (null for a brush
-  /// nobody has touched, which then reads the size baked into its own file —
-  /// the user's answer to Q-brush-param). Individual arguments win over
-  /// `shape:` in [copyWith], which is exactly the order this needs.
+  /// [handSet] is what was last set ON THIS BRUSH (null for a brush nobody
+  /// has touched, which then reads what is baked into its own file — the
+  /// user's answer to Q-brush-param). Individual arguments win over `shape:`
+  /// in [copyWith], which is exactly the order this needs.
   ///
   /// The list went from eleven entries to one, and the one that remains is
   /// the only one a reader has to be able to justify. (The stabilizer and
-  /// the brush blend were on the old list for the same reason and no longer
-  /// need to be — they are outside the shape, so they are already safe.)
+  /// the remembered shape kinds were on the old list and no longer need to
+  /// be — they are outside the shape, so they are already safe.)
   BrushToolState withPresetSettings(
     BrushSettings settings, {
     required CanvasTool tool,
@@ -835,6 +775,7 @@ class BrushToolState {
     tool: tool,
     size: handSet?.size,
     opacity: handSet?.opacity,
+    blendMode: handSet?.blendMode,
     color: color,
   );
 
@@ -907,20 +848,14 @@ class BrushToolState {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
-    bool clearBlendLock = false,
-    BrushBlendMode? lockedBlendMode,
+    BrushBlendMode? blendMode,
     CanvasTool? tool,
     CanvasShapeKind? selectShape,
     CanvasShapeKind? cutShape,
     CanvasShapeKind? fillShape,
     double? stabilizerStrength,
-    BrushBlendMode? brushBlendMode,
     BrushBlendMode? fillBlendMode,
-    bool clearFillBlendLock = false,
-    BrushBlendMode? fillBlendLock,
     BrushBlendMode? cutStampBlendMode,
-    bool clearCutStampBlendLock = false,
-    BrushBlendMode? cutStampBlendLock,
     double? fillOpacity,
     double? cutStampOpacity,
   }) {
@@ -962,8 +897,7 @@ class BrushToolState {
           paintAmount: paintAmount,
           paintDensity: paintDensity,
           colorStretch: colorStretch,
-          clearBlendLock: clearBlendLock,
-          lockedBlendMode: lockedBlendMode,
+          blendMode: blendMode,
         ),
       ),
       tool: tool ?? this.tool,
@@ -973,15 +907,8 @@ class BrushToolState {
       stabilizerStrength: clampStabilizerStrength(
         stabilizerStrength ?? this.stabilizerStrength,
       ),
-      brushBlendMode: brushBlendMode ?? this.brushBlendMode,
       fillBlendMode: fillBlendMode ?? this.fillBlendMode,
-      fillBlendLock: clearFillBlendLock
-          ? null
-          : (fillBlendLock ?? this.fillBlendLock),
       cutStampBlendMode: cutStampBlendMode ?? this.cutStampBlendMode,
-      cutStampBlendLock: clearCutStampBlendLock
-          ? null
-          : (cutStampBlendLock ?? this.cutStampBlendLock),
       fillOpacity: clampOpacity(fillOpacity ?? this.fillOpacity),
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
     );
@@ -989,32 +916,14 @@ class BrushToolState {
 
   /// This state with the ACTIVE tool's blend set to [mode].
   ///
-  /// One control writes to whichever field the armed tool owns, so the
-  /// strip's blend button never has to name a tool — and picking a mode
+  /// One control writes to whichever drawer the armed tool owns — the
+  /// BRUSH's is its own shape, the non-brush tools' are their fields — so
+  /// the strip's blend button never has to name a tool, and picking a mode
   /// for one tool can never reach into another's.
   BrushToolState withActiveBlendMode(BrushBlendMode mode) => switch (tool) {
     CanvasTool.fill || CanvasTool.fillShape => copyWith(fillBlendMode: mode),
     CanvasTool.cutStamp => copyWith(cutStampBlendMode: mode),
-    _ => copyWith(brushBlendMode: mode),
-  };
-
-  /// This state with the ACTIVE tool's blend pinned to [mode], or freed
-  /// when [mode] is null.
-  ///
-  /// The brush pins through its PRESET, which is where a brush's pin has
-  /// always belonged (유저: 프리셋 저장된 핀은 그대로 사용하고 싶음); the
-  /// fill has no preset, so it pins on the tool state. Same padlock, same
-  /// promise, different drawer.
-  BrushToolState withActiveBlendLock(BrushBlendMode? mode) => switch (tool) {
-    CanvasTool.fill || CanvasTool.fillShape => mode == null
-        ? copyWith(clearFillBlendLock: true)
-        : copyWith(fillBlendLock: mode),
-    CanvasTool.cutStamp => mode == null
-        ? copyWith(clearCutStampBlendLock: true)
-        : copyWith(cutStampBlendLock: mode),
-    _ => mode == null
-        ? copyWith(clearBlendLock: true)
-        : copyWith(lockedBlendMode: mode),
+    _ => copyWith(blendMode: mode),
   };
 
   /// The pressure curve driving [target], if any.
@@ -1042,11 +951,8 @@ class BrushToolState {
     cutShape: cutShape,
     fillShape: fillShape,
     stabilizerStrength: stabilizerStrength,
-    brushBlendMode: brushBlendMode,
     fillBlendMode: fillBlendMode,
-    fillBlendLock: fillBlendLock,
     cutStampBlendMode: cutStampBlendMode,
-    cutStampBlendLock: cutStampBlendLock,
     fillOpacity: fillOpacity,
     cutStampOpacity: cutStampOpacity,
   );
@@ -1156,14 +1062,13 @@ class BrushToolState {
           other.cutShape == cutShape &&
           other.fillShape == fillShape &&
           other.stabilizerStrength == stabilizerStrength &&
-          // BB-3 audit fix: brushBlendMode was MISSING from ==/hashCode
-          // since BB-1 — two states differing only in blend compared
-          // equal, so listeners could skip rebuilding on a blend change.
-          other.brushBlendMode == brushBlendMode &&
+          // BB-3 audit fix: the brush's blend was MISSING from ==/hashCode
+          // since BB-1 — two states differing only in blend compared equal,
+          // so listeners could skip rebuilding on a blend change. It now
+          // rides in `shape` (compared above), which is why every non-shape
+          // field below still has to be listed by hand.
           other.fillBlendMode == fillBlendMode &&
-          other.fillBlendLock == fillBlendLock &&
           other.cutStampBlendMode == cutStampBlendMode &&
-          other.cutStampBlendLock == cutStampBlendLock &&
           other.fillOpacity == fillOpacity &&
           other.cutStampOpacity == cutStampOpacity;
 
@@ -1175,11 +1080,8 @@ class BrushToolState {
     cutShape,
     fillShape,
     stabilizerStrength,
-    brushBlendMode,
     fillBlendMode,
-    fillBlendLock,
     cutStampBlendMode,
-    cutStampBlendLock,
     fillOpacity,
     cutStampOpacity,
   );

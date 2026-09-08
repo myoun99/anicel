@@ -379,50 +379,41 @@ void main() {
     expect(tester.getTopLeft(sizeBar).dx, barLeftBefore);
   });
 
-  testWidgets('the blend lock pins and releases', (tester) async {
+  testWidgets('⛔THE PADLOCK IS GONE — the blend button just picks', (
+    tester,
+  ) async {
+    // 유저 2026-09-08: 「사실상 이제와서 자물쇠 의미가 없어진거같은데 …
+    // 3번으로 자물쇠 삭제 가자」. The padlock existed to stop a brush swap
+    // moving the blend under you; the blend is now the BRUSH's, so a swap
+    // bringing its blend along IS the answer and there is nothing to pin.
+    // ⛔With it goes R4 #12's 「잠궜는데 바꿀 수 있으면 잠금이 아니잖아」 —
+    // that rule governed a control that no longer exists.
     await pumpHome(tester);
-    final lock = find.byKey(
-      const ValueKey<String>('brush-tool-blend-lock-toggle'),
-    );
     final button = find.byKey(
       const ValueKey<String>('brush-tool-blend-menu-button'),
     );
 
-    // Pin the CURRENT mode, so the stroke does not change under you at the
-    // moment you pin it, and the button keeps saying what it said.
-    await tester.tap(lock);
-    await tester.pumpAndSettle();
     expect(
-      find.descendant(of: button, matching: find.text('Color')),
-      findsOneWidget,
-    );
-
-    // ⛔CONTRACT CHANGE (유저, R4 #12: 잠궜는데 바꿀 수 있으면 잠금이
-    // 아니잖아). While pinned the button REFUSES TO OPEN. It used to open
-    // and edit the pin, which made the padlock a label rather than a lock —
-    // the same control both fixed the brush to a mode and changed which
-    // mode it was fixed to.
-    await openStrip(tester, 'brush-tool-blend-menu-button');
-    expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-screen')),
+      find.byKey(const ValueKey<String>('brush-tool-blend-lock-toggle')),
       findsNothing,
-      reason: 'a locked blend has no menu to pick from',
-    );
-    expect(
-      find.descendant(of: button, matching: find.text('Color')),
-      findsOneWidget,
+      reason: 'no padlock anywhere on the strip',
     );
 
-    // Unlocking gives it back, and the hand setting underneath was never
-    // touched by any of this.
-    await tester.tap(lock);
-    await tester.pumpAndSettle();
+    // One verb, always available: open, pick, done.
     await openStrip(tester, 'brush-tool-blend-menu-button');
     await tapEntry(tester, 'brush-tool-blend-screen');
     expect(
       find.descendant(of: button, matching: find.text('Screen')),
       findsOneWidget,
-      reason: 'unlock, choose, lock again — the lock is one tap away',
+    );
+
+    // And it still opens afterwards — the state it just wrote never locks
+    // the control that wrote it.
+    await openStrip(tester, 'brush-tool-blend-menu-button');
+    await tapEntry(tester, 'brush-tool-blend-multiply');
+    expect(
+      find.descendant(of: button, matching: find.text('Multiply')),
+      findsOneWidget,
     );
   });
 
@@ -445,8 +436,8 @@ void main() {
       findsNothing,
       reason: 'the eraser IS the erase blend; there is nothing to choose',
     );
-    // The lock toggle retires with the flyout, and its width has to stay
-    // spoken for — otherwise picking up the eraser slides every bar left.
+    // The chip has to occupy exactly what the flyout button did — otherwise
+    // picking up the eraser slides every bar left.
     expect(tester.getTopLeft(sizeBar).dx, barLeftWithBrush);
   });
 
@@ -461,7 +452,6 @@ void main() {
     // point — a list of findsOneWidget would pass on any arrangement.
     final order = [
       'brush-tool-blend-menu-button',
-      'brush-tool-blend-lock-toggle',
       'top-strip-size-bar',
       'brush-tool-pressure-size',
       'top-strip-opacity-bar',

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -49,7 +50,7 @@ void main() {
       final after = hand.withPresetSettings(
         settingsWithSize(7),
         tool: CanvasTool.brush,
-        handSet: (size: 13, opacity: null),
+        handSet: (size: 13, opacity: null, blendMode: null),
       );
 
       expect(after.size, 13);
@@ -77,11 +78,45 @@ void main() {
                 BrushToolState.defaults.shape.copyWith(opacity: 0.25),
               ),
               tool: CanvasTool.brush,
-              handSet: (size: null, opacity: 0.5),
+              handSet: (size: null, opacity: 0.5, blendMode: null),
             )
             .opacity,
         0.5,
         reason: 'hand-set: what the hand set',
+      );
+    });
+
+    test('and so does the BLEND (유저 2026-09-08)', () {
+      // 「블렌드모드도 어차피 브러시/툴마다 다르게 저장되도록. 사이즈나
+      // 불투명도처럼 그렇게 되도록」 — the same two-part rule, third field.
+      final multiply = BrushSettings.fromShape(
+        BrushToolState.defaults.shape.copyWith(
+          blendMode: BrushBlendMode.multiply,
+        ),
+      );
+      final hand = BrushToolState.defaults.copyWith(
+        blendMode: BrushBlendMode.screen,
+      );
+
+      expect(
+        hand.withPresetSettings(multiply, tool: CanvasTool.brush).blendMode,
+        BrushBlendMode.multiply,
+        reason: 'untouched: the brush\'s own',
+      );
+      expect(
+        hand
+            .withPresetSettings(
+              multiply,
+              tool: CanvasTool.brush,
+              handSet: (
+                size: null,
+                opacity: null,
+                blendMode: BrushBlendMode.add,
+              ),
+            )
+            .blendMode,
+        BrushBlendMode.add,
+        reason: 'hand-set: what the hand set on THIS brush',
       );
     });
 
@@ -113,14 +148,18 @@ void main() {
         filePath: '${folder.path}/bank.json',
       );
       await store.save({
-        'sketch': (size: 13, opacity: 0.5),
-        'ink': (size: 2.5, opacity: null),
+        'sketch': (size: 13, opacity: 0.5, blendMode: BrushBlendMode.multiply),
+        'ink': (size: 2.5, opacity: null, blendMode: null),
       });
 
       final read = await store.load();
 
-      expect(read['sketch'], (size: 13.0, opacity: 0.5));
-      expect(read['ink'], (size: 2.5, opacity: null));
+      expect(read['sketch'], (
+        size: 13.0,
+        opacity: 0.5,
+        blendMode: BrushBlendMode.multiply,
+      ));
+      expect(read['ink'], (size: 2.5, opacity: null, blendMode: null));
     });
 
     test('a missing file is simply an empty bank — every brush then reads '

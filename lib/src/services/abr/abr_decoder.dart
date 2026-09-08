@@ -327,7 +327,7 @@ BrushPreset? _presetFromBrushDescriptor(
   final toolOptions = entry.childDescriptor('toolOptions');
   final opacityPercent = toolOptions?.numberValue('Opct') ?? 100.0;
   final flowPercent = toolOptions?.numberValue('flow') ?? 100.0;
-  final blendLock = _blendLockOf(toolOptions?['Md  ']);
+  final blendMode = _blendModeOf(toolOptions?['Md  ']);
 
   // Dynamics live at the preset level (sibling of 'Brsh'), gated by the
   // useTipDynamics / usePaintDynamics switches. Control type ('bVTy')
@@ -492,24 +492,27 @@ BrushPreset? _presetFromBrushDescriptor(
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
-      lockedBlendMode: blendLock,
+      blendMode: blendMode,
     ),
   );
 }
 
-/// The blend a Photoshop brush pins, or null to leave the hand setting be.
+/// The blend a Photoshop brush composites with.
 ///
 /// Photoshop names its blends with the PSD format's four-character keys.
-/// Only a non-normal one locks — see the Clip Studio importer for why the
-/// rule is shared. An unrecognised key simply does not lock, which is why
+/// An unrecognised key falls back to [BrushBlendMode.color] — which is why
 /// Photoshop's "Clear" is deliberately absent: guessing its key wrong would
 /// turn a paint brush into an eraser.
-BrushBlendMode? _blendLockOf(Object? value) {
+///
+/// ⛔This used to answer "does this brush PIN a blend?" and returned null for
+/// 'Nrml'. It does not any more (유저 2026-09-08) — see the Clip Studio
+/// importer's twin for why the rule is shared.
+BrushBlendMode _blendModeOf(Object? value) {
   if (value is! PsEnum) {
-    return null;
+    return BrushBlendMode.color;
   }
   return switch (value.value) {
-    'Nrml' => null,
+    'Nrml' => BrushBlendMode.color,
     'Mltp' => BrushBlendMode.multiply,
     'Drkn' => BrushBlendMode.darken,
     'CBrn' => BrushBlendMode.colorBurn,
@@ -523,7 +526,7 @@ BrushBlendMode? _blendLockOf(Object? value) {
     'Dfrn' => BrushBlendMode.difference,
     'Xclu' => BrushBlendMode.exclusion,
     'Bhnd' => BrushBlendMode.behind,
-    _ => null,
+    _ => BrushBlendMode.color,
   };
 }
 
@@ -571,7 +574,7 @@ BrushSettings _settingsForTip(
   BrushTipMask? textureMask,
   double textureScale = 1.0,
   double textureDensity = 1.0,
-  BrushBlendMode? lockedBlendMode,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   // Photoshop angles span -180..180; the ellipse repeats every 180.
   final normalizedAngle = ((angleDegrees % 180.0) + 180.0) % 180.0;
@@ -601,6 +604,6 @@ BrushSettings _settingsForTip(
     textureMask: textureMask,
     textureScale: textureScale,
     textureDensity: textureDensity,
-    lockedBlendMode: lockedBlendMode,
+    blendMode: blendMode,
   );
 }

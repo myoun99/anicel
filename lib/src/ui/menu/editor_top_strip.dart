@@ -3,7 +3,6 @@ import 'dart:io' show File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
-import '../widgets/app_icon_button.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart';
@@ -167,19 +166,14 @@ class EditorTopStrip extends StatelessWidget {
     // closed that door. With no sidecar to reach, the exception is a
     // silent discard with nothing behind it, and「reload from disk」is
     // still reachable by answering Discard at the gate.
-    if (!await ensureUnsavedWorkSettled(context, session) ||
-        !context.mounted) {
+    if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
       return;
     }
     final staged = await _stagedCopyForOpen(context, path);
     if (staged == null || !context.mounted) {
       return;
     }
-    await _openRead(
-      context,
-      pick,
-      readPath: staged.path,
-    );
+    await _openRead(context, pick, readPath: staged.path);
   }
 
   /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
@@ -238,10 +232,7 @@ class EditorTopStrip extends StatelessWidget {
       return;
     }
     if (warnings == null) {
-      showFileError(
-        context,
-        const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'),
-      );
+      showFileError(context, const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'));
     } else if (warnings.isNotEmpty) {
       await showAppNotice(
         context,
@@ -1027,14 +1018,10 @@ class _BlendModeControl extends StatelessWidget {
 
   /// Wider than the label needs on average, so the common modes read whole
   /// and only the long ones are cut.
+  ///
+  /// ONE width for BOTH states, so picking up the eraser — which shows a
+  /// fixed 消去 instead of a chooser — does not slide the bars sideways.
   static const double _buttonWidth = 116;
-  static const double _lockWidth = 32;
-
-  /// What the whole group occupies — held constant across BOTH states, so
-  /// picking up the eraser (which retires the lock, since the eraser is not
-  /// making a blend choice) does not slide the bars sideways either. Same
-  /// reason the button width is fixed.
-  static const double _groupWidth = _buttonWidth + _lockWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -1050,16 +1037,13 @@ class _BlendModeControl extends StatelessWidget {
         // "this exists and does not apply here", which is the question the
         // user actually had: 뭐가 적용되고 뭐가 적용안되는지.
         final blendOn = state.supports(ToolParameter.blend);
-        // The ERASER tool locks it to 消去/Erase — the eraser IS the erase
+        // The ERASER tool fixes it to 消去/Erase — the eraser IS the erase
         // blend — and that is not a blend CHOICE, so the flyout stands down.
         final toolLocked = state.tool == CanvasTool.eraser;
-        // The active tool's own pin, if it has one; distinct from the
-        // eraser's.
-        final pinned = state.activeBlendLock;
         final mode = state.activeBlendMode;
         if (toolLocked) {
           return SizedBox(
-            width: _groupWidth,
+            width: _buttonWidth,
             child: Container(
               key: const ValueKey<String>('brush-tool-blend-locked'),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -1091,86 +1075,39 @@ class _BlendModeControl extends StatelessWidget {
             ),
           );
         }
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: _buttonWidth,
-              child: PanelFlyoutButton(
-                key: const ValueKey<String>('brush-tool-blend-menu-button'),
-                label: mode.labelFor(language),
-                tooltip: AppText.strings.brBlendMode,
-                // A LOCK THAT LOCKS (유저, R4 #12: 잠궜는데 바꿀 수 있으면
-                // 잠금이 아니잖아).
-                //
-                // ⛔The pin used to stay editable, and picking a mode while
-                // pinned rewrote the PIN — so the one control that says "this
-                // brush is fixed to Multiply" was also the control that
-                // changed which mode it was fixed to. Two verbs on one
-                // button, and the quieter one was the one the padlock had
-                // just promised. Unlock, choose, lock again; the lock is
-                // one tap away and it is right beside this.
-                enabled: blendOn && pinned == null,
-                // `expand` is what makes the fixed box hold: the label
-                // becomes Flexible inside it, so it ellipsizes rather than
-                // overflowing the width the strip budgeted.
-                expand: true,
-                entriesBuilder: () => [
-                  // ONE list for every tool that composites — TS8 유저 법:
-                  // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
-                  // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
-                  // joining `toolHasBlendMode` is all it took: the eraser's
-                  // single-entry case is the `toolLocked` box above, so this
-                  // list needs no per-tool filter to obey that law.
-                  for (final candidate in BrushBlendMode.values)
-                    PanelFlyoutItem(
-                      keyValue: 'brush-tool-blend-${candidate.name}',
-                      label: candidate.labelFor(language),
-                      checked: candidate == mode,
-                      // Writes to whichever tool is armed — the button
-                      // never names one (유저 확정: 블렌드모드 선택도 툴에
-                      // 산다).
-                      onSelected: () => brushTool.value = state
-                          .withActiveBlendMode(candidate),
-                    ),
-                ],
-              ),
-            ),
-            SizedBox(
-              width: _lockWidth,
-              // The 32px box IS the target: M3 would otherwise inflate to 48
-              // and blow the width this group promised to hold. It is passed
-              // as an [AppIconButtonBox] rather than hand-rolled now — the
-              // group still owns the number, and the app owns everything
-              // else about the button.
-              child: AppIconButton(
-                keyValue: 'brush-tool-blend-lock-toggle',
-                tooltip: AppText.strings.brBlendLock,
-                size: const AppIconButtonBox(
-                  width: _lockWidth,
-                  height: _lockWidth,
-                  iconSize: 16,
+        return SizedBox(
+          width: _buttonWidth,
+          child: PanelFlyoutButton(
+            key: const ValueKey<String>('brush-tool-blend-menu-button'),
+            label: mode.labelFor(language),
+            tooltip: AppText.strings.brBlendMode,
+            enabled: blendOn,
+            // `expand` is what makes the fixed box hold: the label
+            // becomes Flexible inside it, so it ellipsizes rather than
+            // overflowing the width the strip budgeted.
+            expand: true,
+            entriesBuilder: () => [
+              // ONE list for every tool that composites — TS8 유저 법:
+              // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
+              // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
+              // joining `toolHasBlendMode` is all it took: the eraser's
+              // single-entry case is the `toolLocked` box above, so this
+              // list needs no per-tool filter to obey that law.
+              for (final candidate in BrushBlendMode.values)
+                PanelFlyoutItem(
+                  keyValue: 'brush-tool-blend-${candidate.name}',
+                  label: candidate.labelFor(language),
+                  checked: candidate == mode,
+                  // Writes to whichever drawer the armed tool owns — the
+                  // BRUSH's is its own shape, so the mode picked here is
+                  // the mode that brush keeps and exports. The button
+                  // never names a tool (유저 확정: 블렌드모드 선택도 툴에
+                  // 산다).
+                  onSelected: () =>
+                      brushTool.value = state.withActiveBlendMode(candidate),
                 ),
-                icon: Icon(
-                  pinned == null
-                      ? Icons.lock_open_outlined
-                      : Icons.lock_outline,
-                  color: pinned == null
-                      ? theme.colorScheme.onSurfaceVariant
-                      : theme.colorScheme.primary,
-                ),
-                // Locking captures whatever is showing, so the stroke does
-                // not change under you at the moment you pin it. Null while
-                // the tool composites nothing — pinning a blend it does not
-                // read would be pinning nothing (TP2).
-                onPressed: blendOn
-                    ? () => brushTool.value = state.withActiveBlendLock(
-                        pinned == null ? mode : null,
-                      )
-                    : null,
-              ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );

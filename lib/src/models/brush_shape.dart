@@ -54,7 +54,7 @@ class BrushShape {
     this.textureDensity = 1.0,
     this.roundnessJitter = 0.0,
     this.spacingJitter = 0.0,
-    this.lockedBlendMode,
+    this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
@@ -127,20 +127,22 @@ class BrushShape {
   /// stops looking stamped.
   final double roundnessJitter;
 
-  /// The blend this brush PINS, or null to leave the hand setting alone.
+  /// How this brush composites. Every brush states one; [BrushBlendMode.color]
+  /// IS 通常, so "normal" is a value here rather than an absence.
   ///
-  /// Null is "this brush does not say", and it keeps the R26 #10
-  /// independence rule intact: a preset never moves the blend under you
-  /// unless it was deliberately locked. A locked brush overrides the hand
-  /// setting only while it is selected — the hand setting is untouched and
-  /// comes back when you leave.
+  /// ⛔THIS WAS A NULLABLE PIN, and the pin existed for exactly one reason:
+  /// R26 #10 said a preset must never move the blend under you, while Clip
+  /// Studio files a brush's composite under the sub tool and importing
+  /// ウェット水彩 without it lost the 乗算 (`324e4e2a`). Null meant "this brush
+  /// does not say", so hand-made brushes kept the old behaviour and only an
+  /// imported one overrode the hand.
   ///
-  /// Import locks only when the file asked for something OTHER than normal.
-  /// That is one rule for both source apps even though they disagree about
-  /// who owns a brush's composite (Photoshop files it under tool options,
-  /// Clip Studio under the sub tool): what matters is not which app it came
-  /// from but whether the file departed from the default.
-  final BrushBlendMode? lockedBlendMode;
+  /// 유저 2026-09-08 retired the rule the pin was protecting — 「손설정이든
+  /// 정한거 싹 다 내보낼때 나르도록 … 브러시든 지우개든 블렌드 모드를
+  /// 나른단거야」 — so the brush simply owns its blend, the way it already
+  /// owned its size. Import stops asking whether the file departed from the
+  /// default and carries what the file says.
+  final BrushBlendMode blendMode;
 
   /// Random per-segment spacing reduction, 0..1 — Clip Studio drives this
   /// from its interval effector's random input source, which breaks up the
@@ -224,7 +226,7 @@ class BrushShape {
       textureDensity: textureDensity,
       roundnessJitter: roundnessJitter,
       spacingJitter: spacingJitter,
-      lockedBlendMode: lockedBlendMode,
+      blendMode: blendMode,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -254,7 +256,7 @@ class BrushShape {
       tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
       roundnessJitter: roundnessJitter,
       spacingJitter: spacingJitter,
-      lockedBlendMode: lockedBlendMode,
+      blendMode: blendMode,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -304,10 +306,7 @@ class BrushShape {
     double? roundnessJitter,
     double? spacingJitter,
     bool? mixesGroundColor,
-    // Unlocking needs to WRITE null, which `?? this` cannot express, so it
-    // rides its own flag rather than a nullable value.
-    bool clearBlendLock = false,
-    BrushBlendMode? lockedBlendMode,
+    BrushBlendMode? blendMode,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
@@ -342,9 +341,7 @@ class BrushShape {
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       spacingJitter: spacingJitter ?? this.spacingJitter,
-      lockedBlendMode: clearBlendLock
-          ? null
-          : (lockedBlendMode ?? this.lockedBlendMode),
+      blendMode: blendMode ?? this.blendMode,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -384,7 +381,7 @@ class BrushShape {
           other.textureDensity == textureDensity &&
           other.roundnessJitter == roundnessJitter &&
           other.spacingJitter == spacingJitter &&
-          other.lockedBlendMode == lockedBlendMode &&
+          other.blendMode == blendMode &&
           other.mixesGroundColor == mixesGroundColor &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
@@ -420,7 +417,7 @@ class BrushShape {
     textureDensity,
     roundnessJitter,
     spacingJitter,
-    lockedBlendMode,
+    blendMode,
     mixesGroundColor,
     paintAmount,
     paintDensity,

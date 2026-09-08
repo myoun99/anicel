@@ -138,11 +138,11 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
         // individual arguments win over the shape laid down beneath them.
         // `stabilizerStrength` needs no such line; it is its own field, so
         // building from `next` already keeps the live one.
-        next = next.copyWith(
-          shape: stored.shape,
-          color: next.color,
-          brushBlendMode: stored.brushBlendMode,
-        );
+        //
+        // ⛔The blend needed a line of its own until 2026-09-08. It does not
+        // any more: it rides in the shape now (see [BrushBlendMode]), so
+        // `shape: stored.shape` restores it the way it restores the size.
+        next = next.copyWith(shape: stored.shape, color: next.color);
       }
     }
     super.value = next;

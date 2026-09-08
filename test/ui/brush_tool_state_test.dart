@@ -177,17 +177,18 @@ void main() {
       expect(a == c, isFalse);
     });
 
-    test('brushBlendMode participates in equality (BB-3 audit fix)', () {
+    test('the blend participates in equality (BB-3 audit fix)', () {
+      // It rides in `shape` now, but the hole this pins is the same: two
+      // states differing only in blend must not compare equal, or listeners
+      // skip the rebuild that shows the change.
       final a = BrushToolState.defaults.copyWith(
-        brushBlendMode: BrushBlendMode.multiply,
+        blendMode: BrushBlendMode.multiply,
       );
       const b = BrushToolState.defaults;
       expect(a == b, isFalse);
       expect(
         a,
-        BrushToolState.defaults.copyWith(
-          brushBlendMode: BrushBlendMode.multiply,
-        ),
+        BrushToolState.defaults.copyWith(blendMode: BrushBlendMode.multiply),
       );
     });
 
@@ -234,9 +235,11 @@ void main() {
     // NON-default value. A converter that silently drops one turns its value
     // back into the default, so the round-trip equality below fails loudly
     // instead of passing on default==default (the trap the old, partial
-    // version of this test walked into). The three hand-only fields — tool,
-    // stabilizerStrength, brushBlendMode — are NOT carried into BrushSettings
-    // by design (R26 #10), so they stay at their defaults here.
+    // version of this test walked into). What is NOT carried into
+    // BrushSettings is what is not a brush parameter — `tool` and
+    // `stabilizerStrength` (hand feel) — so they stay at their defaults
+    // here. ⛔The blend used to be on that list under R26 #10 and is not
+    // any more: it is a carried field like every other, and it is below.
     BrushTipMask maskFor(String id) => BrushTipMask(
       id: id,
       size: 2,
@@ -270,6 +273,7 @@ void main() {
       textureMask: maskFor('texture'),
       textureScale: 1.2,
       textureDensity: 0.9,
+      blendMode: BrushBlendMode.multiply,
     );
 
     test('every carried field survives toBrushSettings/fromBrushSettings', () {
@@ -306,6 +310,7 @@ void main() {
       expect(input.textureMask, state.textureMask);
       expect(input.textureScale, state.textureScale);
       expect(input.textureDensity, state.textureDensity);
+      expect(input.blendMode, state.blendMode);
     });
 
     test('fromBrushSettings clamps out-of-range preset values', () {
@@ -344,7 +349,7 @@ void main() {
       // stages — so suppressing the blend was a deviation, not a safeguard.
       final state = BrushToolState.fromBrushSettings(
         mixingPreset(),
-      ).copyWith(brushBlendMode: BrushBlendMode.multiply);
+      ).copyWith(blendMode: BrushBlendMode.multiply);
 
       expect(state.toInputSettings().blendMode, BrushBlendMode.multiply);
     });
@@ -359,65 +364,69 @@ void main() {
       expect(input.erase, isTrue);
     });
 
-    test('a non-mixing brush keeps the hand blend mode', () {
-      final state = BrushToolState(brushBlendMode: BrushBlendMode.multiply);
+    test('a non-mixing brush keeps its blend mode', () {
+      final state = BrushToolState(blendMode: BrushBlendMode.multiply);
 
       expect(state.toInputSettings().blendMode, BrushBlendMode.multiply);
     });
   });
 
-  group('blend lock', () {
-    test('a pinned brush overrides the hand setting while selected', () {
-      final hand = BrushToolState(brushBlendMode: BrushBlendMode.screen);
-      final pinned = hand.copyWith(lockedBlendMode: BrushBlendMode.multiply);
+  /// ⛔This group was called "blend lock" and pinned a nullable PIN that
+  /// overrode a separate hand setting. 유저 2026-09-08 retired both — 「툴/손
+  /// 설정 구분 없애고 모든 설정이 내보낼때 나르도록 … 3번으로 자물쇠 삭제
+  /// 가자」 — so a brush simply HAS a blend, 通常 included, and there is no
+  /// second value for it to win over. What survives is every promise the pin
+  /// was making, now made structurally.
+  group('the brush blend', () {
+    test('reaches the stroke', () {
+      final state = BrushToolState(blendMode: BrushBlendMode.multiply);
 
-      expect(pinned.toInputSettings().blendMode, BrushBlendMode.multiply);
-      // The hand setting is not consumed — it is what comes back.
-      expect(pinned.brushBlendMode, BrushBlendMode.screen);
-      expect(
-        pinned.copyWith(clearBlendLock: true).toInputSettings().blendMode,
-        BrushBlendMode.screen,
-      );
+      expect(state.blendMode, BrushBlendMode.multiply);
+      expect(state.toInputSettings().blendMode, BrushBlendMode.multiply);
     });
 
-    test('an unpinned brush leaves the hand setting in charge', () {
-      final state = BrushToolState(brushBlendMode: BrushBlendMode.overlay);
-
-      expect(state.lockedBlendMode, isNull);
-      expect(state.effectiveBlendMode, BrushBlendMode.overlay);
-    });
-
-    test('a pin travels with the preset', () {
-      final settings = BrushSettings(lockedBlendMode: BrushBlendMode.multiply);
+    test('travels with the preset, through JSON both ways', () {
+      final settings = BrushSettings(blendMode: BrushBlendMode.multiply);
       final applied = BrushToolState.fromBrushSettings(settings);
 
-      expect(applied.lockedBlendMode, BrushBlendMode.multiply);
+      expect(applied.blendMode, BrushBlendMode.multiply);
       expect(
-        BrushSettings.fromJson(settings.toJson()).lockedBlendMode,
+        BrushSettings.fromJson(settings.toJson()).blendMode,
         BrushBlendMode.multiply,
       );
     });
 
-    test('an unpinned preset writes no lock at all', () {
-      // R26 #10 survives for everything that never pinned: a preset must
-      // not move the blend under you unless it was deliberately locked.
-      expect(BrushSettings().toJson().containsKey('lockedBlendMode'), isFalse);
-      expect(BrushSettings().lockedBlendMode, isNull);
+    test('writes nothing when it is 通常, and reads the legacy pin key', () {
+      // 通常 IS the default, so a preset saved before every brush carried a
+      // blend round-trips byte-identically...
+      expect(BrushSettings().toJson().containsKey('blendMode'), isFalse);
+      expect(BrushSettings().blendMode, BrushBlendMode.color);
+
+      // ...and one saved WITH a pin still loads: a brush that pinned a blend
+      // now simply has it.
+      expect(
+        BrushSettings.fromJson({
+          'color': 0xFF000000,
+          'size': 4.0,
+          'opacity': 1.0,
+          'rotationMode': 'fixed',
+          'lockedBlendMode': 'multiply',
+        }).blendMode,
+        BrushBlendMode.multiply,
+      );
     });
 
-    test('a pinned brush still yields to the eraser tool', () {
+    test('still yields to the eraser TOOL', () {
       final state = BrushToolState(
         tool: CanvasTool.eraser,
-      ).copyWith(lockedBlendMode: BrushBlendMode.multiply);
+      ).copyWith(blendMode: BrushBlendMode.multiply);
 
       expect(state.toInputSettings().blendMode, BrushBlendMode.erase);
       expect(state.toInputSettings().erase, isTrue);
     });
 
-    test('a pin of erase erases', () {
-      final state = BrushToolState().copyWith(
-        lockedBlendMode: BrushBlendMode.erase,
-      );
+    test('a brush whose blend IS erase erases', () {
+      final state = BrushToolState().copyWith(blendMode: BrushBlendMode.erase);
 
       expect(state.toInputSettings().erase, isTrue);
     });

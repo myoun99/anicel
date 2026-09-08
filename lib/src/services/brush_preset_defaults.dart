@@ -24,11 +24,10 @@ const BrushGroupId _textureGroup = BrushGroupId('builtin-texture-group');
 /// ⛔The original reason (2026-07-25) was that "size and blend mode are hand
 /// settings a preset never carries", so an eraser brush could only ever be a
 /// tip SHAPE, which the roster already has. **That premise is false now.**
-/// `BrushShape.lockedBlendMode` is a preset field, `BrushShape.size` always
-/// was, `withPresetSettings` applies both, and 유저 2026-09-08 asked for the
-/// hand/preset split to go entirely: 「손설정이든 정한거 싹 다 내보낼때
-/// 나르도록 … 지우개는 그냥 지우개 브러시 내보낼때 블렌드를 내보내면
-/// 되는거고」.
+/// `BrushShape.blendMode` is a preset field, `BrushShape.size` always was,
+/// `withPresetSettings` applies both, and the hand/preset split is GONE as
+/// of 2026-09-08: 「손설정이든 정한거 싹 다 내보낼때 나르도록 … 지우개는
+/// 그냥 지우개 브러시 내보낼때 블렌드를 내보내면 되는거고」.
 ///
 /// ⇒ An eraser brush CAN be expressed. Whether the roster should ship a
 /// group of them is a fresh question for the roster round, not a thing this

@@ -183,7 +183,14 @@ class _WorkspaceBrushPresets {
     if (presetId == null) {
       return;
     }
-    final next = (size: state.size, opacity: state.activeOpacity);
+    final next = (
+      size: state.size,
+      opacity: state.activeOpacity,
+      // The brush's OWN blend, not `activeBlendMode` — the latter answers
+      // 消去 for the eraser tool no matter what the brush says, and writing
+      // that back would make every eraser preset claim erase as an edit.
+      blendMode: state.blendMode,
+    );
     if (_brushHandSettings[presetId.value] == next) {
       return;
     }

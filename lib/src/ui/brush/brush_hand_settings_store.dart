@@ -2,14 +2,30 @@ import '../../services/persistence/versioned_settings_file.dart';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../models/brush_blend_mode.dart';
 import '../../services/persistence/app_support_path.dart';
 
-/// The size and opacity a HAND last set on one brush.
+/// What was last set on one brush, by hand, since the brush was loaded.
 ///
 /// 🚨H25 (유저 2026-08-23): 「클튜보면 브러시크기가 브러시마다 다르게
 /// 설정가능하던데, 그거 따라가도록. 브러시 고르고 브러시크기 설정하면 다음에 같은
 /// 브러시 선택할때 해당 브러시크기 남아있도록. 불투명도도 마찬가지」.
-typedef BrushHandSettings = ({double? size, double? opacity});
+///
+/// The BLEND joined them on 2026-09-08, by the same request and for the same
+/// reason: 「블렌드모드도 어차피 브러시/툴마다 다르게 저장되도록. 사이즈나
+/// 불투명도처럼 그렇게 되도록」. Every field here is a brush parameter that
+/// the panel can change — this record is not a different KIND of value (that
+/// split is gone), it is the app remembering an unsaved edit between
+/// sessions instead of rewriting the brush file under you.
+///
+/// ⚠️Every entry is nullable and every reader treats null as "this brush was
+/// never touched, use what its own file says". Adding a field therefore needs
+/// no version bump: an older file simply has none of it.
+typedef BrushHandSettings = ({
+  double? size,
+  double? opacity,
+  BrushBlendMode? blendMode,
+});
 
 /// Where those values live BETWEEN sessions.
 ///
@@ -53,6 +69,13 @@ class BrushHandSettingsStore {
                   opacity:
                       (entry.value as Map<String, dynamic>)['opacity']
                           as double?,
+                  // An unreadable name degrades to "never touched" rather
+                  // than failing the whole bank — one brush loses a
+                  // remembered blend, everything else still loads.
+                  blendMode: _blendModeNamed(
+                    (entry.value as Map<String, dynamic>)['blendMode']
+                        as String?,
+                  ),
                 ),
           };
         },
@@ -70,9 +93,24 @@ class BrushHandSettingsStore {
             entry.key: {
               if (entry.value.size != null) 'size': entry.value.size,
               if (entry.value.opacity != null) 'opacity': entry.value.opacity,
+              if (entry.value.blendMode != null)
+                'blendMode': entry.value.blendMode!.name,
             },
         },
       }),
     );
   }
+}
+
+/// The blend mode written under [name], or null when absent or unreadable.
+BrushBlendMode? _blendModeNamed(String? name) {
+  if (name == null) {
+    return null;
+  }
+  for (final mode in BrushBlendMode.values) {
+    if (mode.name == name) {
+      return mode;
+    }
+  }
+  return null;
 }

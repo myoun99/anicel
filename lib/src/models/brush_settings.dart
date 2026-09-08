@@ -35,7 +35,7 @@ class BrushSettings {
     double textureDensity = 1.0,
     double roundnessJitter = 0.0,
     double spacingJitter = 0.0,
-    BrushBlendMode? lockedBlendMode,
+    BrushBlendMode blendMode = BrushBlendMode.color,
     bool mixesGroundColor = false,
     double paintAmount = 1.0,
     double paintDensity = 1.0,
@@ -69,7 +69,7 @@ class BrushSettings {
          textureDensity: textureDensity,
          roundnessJitter: roundnessJitter,
          spacingJitter: spacingJitter,
-         lockedBlendMode: lockedBlendMode,
+         blendMode: blendMode,
          mixesGroundColor: mixesGroundColor,
          paintAmount: paintAmount,
          paintDensity: paintDensity,
@@ -127,8 +127,8 @@ class BrushSettings {
   double get roundnessJitter => shape.roundnessJitter;
   double get spacingJitter => shape.spacingJitter;
 
-  /// The blend this brush pins — see [BrushShape.lockedBlendMode].
-  BrushBlendMode? get lockedBlendMode => shape.lockedBlendMode;
+  /// How this brush composites — see [BrushShape.blendMode].
+  BrushBlendMode get blendMode => shape.blendMode;
 
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
@@ -169,8 +169,7 @@ class BrushSettings {
     double? textureDensity,
     double? roundnessJitter,
     double? spacingJitter,
-    bool clearBlendLock = false,
-    BrushBlendMode? lockedBlendMode,
+    BrushBlendMode? blendMode,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -206,9 +205,7 @@ class BrushSettings {
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       spacingJitter: spacingJitter ?? this.spacingJitter,
-      lockedBlendMode: clearBlendLock
-          ? null
-          : (lockedBlendMode ?? this.lockedBlendMode),
+      blendMode: blendMode ?? this.blendMode,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -241,7 +238,9 @@ class BrushSettings {
     'angleJitter': angleJitter,
     if (roundnessJitter > 0.0) 'roundnessJitter': roundnessJitter,
     if (spacingJitter > 0.0) 'spacingJitter': spacingJitter,
-    if (lockedBlendMode != null) 'lockedBlendMode': lockedBlendMode!.name,
+    // 通常 is the default, so it writes nothing — presets saved before every
+    // brush carried a blend round-trip byte-identically.
+    if (blendMode != BrushBlendMode.color) 'blendMode': blendMode.name,
     'scatterRadiusRatio': scatterRadiusRatio,
     'scatterCount': scatterCount,
     'scatterBothAxes': scatterBothAxes,
@@ -302,7 +301,11 @@ class BrushSettings {
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       roundnessJitter: (json['roundnessJitter'] as num?)?.toDouble() ?? 0.0,
       spacingJitter: (json['spacingJitter'] as num?)?.toDouble() ?? 0.0,
-      lockedBlendMode: _blendModeNamed(json['lockedBlendMode'] as String?),
+      blendMode:
+          _blendModeNamed(
+            (json['blendMode'] ?? json['lockedBlendMode']) as String?,
+          ) ??
+          BrushBlendMode.color,
       scatterRadiusRatio:
           (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
       scatterCount: json['scatterCount'] as int? ?? 1,
@@ -334,8 +337,10 @@ class BrushSettings {
   String toString() => 'BrushSettings(shape: $shape)';
 }
 
-/// The blend mode written under [name], or null when absent or unknown —
-/// an unreadable lock degrades to "not locked" rather than failing a load.
+/// The blend mode written under [name], or null when absent or unknown — an
+/// unreadable blend degrades to 通常 rather than failing the whole load.
+/// [name] also accepts the legacy `lockedBlendMode` key: a preset that pinned
+/// a blend now simply *has* that blend.
 BrushBlendMode? _blendModeNamed(String? name) {
   if (name == null) {
     return null;

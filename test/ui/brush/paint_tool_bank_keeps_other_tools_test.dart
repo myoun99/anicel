@@ -102,12 +102,16 @@ void main() {
     notifier.value = notifier.value.copyWith(
       tool: CanvasTool.brush,
       size: 42,
-      brushBlendMode: BrushBlendMode.multiply,
+      blendMode: BrushBlendMode.multiply,
     );
     notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
     notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
 
     expect(notifier.value.size, 42);
-    expect(notifier.value.brushBlendMode, BrushBlendMode.multiply);
+    expect(
+      notifier.value.blendMode,
+      BrushBlendMode.multiply,
+      reason: 'the blend rides in the shape the bank restores',
+    );
   });
 }
