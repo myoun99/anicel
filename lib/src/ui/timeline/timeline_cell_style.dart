@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -86,37 +87,21 @@ BoxDecoration get timelineStandingCellDecoration => BoxDecoration(
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);
 
-/// THE text-on-ground law (2026-08-17, the difference blend's successor —
-/// device verdict: white ink in [BlendMode.difference] read as navy over
-/// the PURPLE blocks). The blocks are painted by our own code with KNOWN
-/// colors, so the writing simply picks solid BLACK or WHITE by the
-/// luminance of the ground it sits on: crisp glyphs, no halo, no blend.
-const Color timelineTextOnLightGroundColor = Color(0xFF000000);
-const Color timelineTextOnDarkGroundColor = Color(0xFFFFFFFF);
-
-/// The crossover luminance where black's WCAG contrast overtakes white's:
-/// black wins iff (L+0.05)² > 0.05×1.05, i.e. L > √0.0525−0.05 ≈ 0.1791.
-/// Sitting exactly there makes every pick the higher-contrast one by
-/// construction — every layer-mark paper lands BLACK (purple, the reported
-/// regression, is L≈0.22 where white manages only 3.9:1 against black's
-/// 5.4:1), the dark lanes land WHITE (15:1+), and the 43%-alpha empty-cel
-/// blends land WHITE for every colored mark (purple's is L≈0.07, white
-/// 9.0:1) — only the plain paper's blend sits a hair ABOVE the crossover
-/// (L≈0.181), where the two inks are equal anyway (4.6:1 vs 4.5:1).
-const double timelineTextGroundLuminanceCrossover = 0.179;
+/// 🚨THE TEXT-ON-GROUND LAW MOVED to `../theme/text_on_ground.dart` when the
+/// settings slider became its second reader (유저 2026-09-08). The names
+/// below are the timeline's spelling of it, kept so the thirty-one call
+/// sites here do not all change in a round that is about a slider — new
+/// readers import the theme file and use the unprefixed names.
+const Color timelineTextOnLightGroundColor = textOnLightGroundColor;
+const Color timelineTextOnDarkGroundColor = textOnDarkGroundColor;
+const double timelineTextGroundLuminanceCrossover =
+    textGroundLuminanceCrossover;
 
 /// Whether [ground] takes the DARK ink under the law above.
-bool timelineGroundIsLight(Color ground) =>
-    ground.computeLuminance() > timelineTextGroundLuminanceCrossover;
+bool timelineGroundIsLight(Color ground) => groundIsLight(ground);
 
-/// The block/코마 writing's ink over [ground] — ONE rule on every surface
-/// (run duration labels, storyboard band text, panel writing, the edge
-/// grip bars). [ground] must be the COMPOSITED color the mark actually
-/// sits on: a translucent paper is blended over its backdrop first
-/// (`computeLuminance` ignores alpha).
-Color timelineTextOnColor(Color ground) => timelineGroundIsLight(ground)
-    ? timelineTextOnLightGroundColor
-    : timelineTextOnDarkGroundColor;
+/// The block/코마 writing's ink over [ground].
+Color timelineTextOnColor(Color ground) => textOnColor(ground);
 
 /// The ink for writing that sits INSIDE a frame block — the cel NAME in
 /// the cell and the 코마 number at the block's end alike.

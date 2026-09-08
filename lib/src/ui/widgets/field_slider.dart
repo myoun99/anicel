@@ -8,6 +8,7 @@ import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import 'axis_bar_gesture.dart';
 import 'superellipse_clip.dart';
@@ -416,9 +417,28 @@ class _FieldSliderState extends State<FieldSlider> {
 
   double get _radius => widget.height < 20 ? 3 : 4;
 
+  /// Where the fill starts, in track space — 0 for a quantity, the neutral
+  /// value for a balance ([FieldSlider.fillOrigin]). Read by the painter AND
+  /// by the writing's clip, which is why it is one getter.
+  double get _originFraction => widget.fillOrigin == null
+      ? 0.0
+      : _tFor(widget.fillOrigin!).clamp(0.0, 1.0);
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final accentColor = widget.restingAccent ?? AppColors.accent;
+    // 🚨THE INK COMES FROM THE GROUND LAW, NOT FROM A NEW CONTRAST SUM
+    // (`law-패널`, 유저 2026-09-08). The track has TWO grounds now that the
+    // fill is solid accent, so the writing is laid twice — once in each
+    // ground's ink — and the fill's own rectangle clips the second. The
+    // dim/bright hierarchy the row already had survives as an ALPHA on
+    // whichever ink the law picked, so it reads the same over both.
+    // ⚠️These colours only survive where the mask does not reach — the
+    // shader replaces the ink wherever a fill exists. The ALPHA does
+    // survive `srcIn`, which is how a dimmer label could be expressed later
+    // if the flattened pair turns out to read worse (유저: 「심플하게
+    // 가자고 … 세부적인건 끝나고 조절하게」).
     final labelStyle = textTheme.labelSmall?.copyWith(color: AppColors.textDim);
     final valueStyle = textTheme.labelSmall?.copyWith(
       color: _valueInk,
@@ -433,8 +453,9 @@ class _FieldSliderState extends State<FieldSlider> {
         ? widget.valueTextBuilder!(_valueFor(gestureT))
         : widget.valueText;
 
-    final Widget inner;
-    if (widget.label == null) {
+    Widget buildInner(TextStyle? labelStyle, TextStyle? valueStyle) {
+      final Widget inner;
+      if (widget.label == null) {
       // Stood up, the readout reads DOWN the bar through the shared
       // vertical-writing table, with three-digit 縦中横 so `100%` costs
       // two cells rather than four.
@@ -473,7 +494,21 @@ class _FieldSliderState extends State<FieldSlider> {
                 ) else Text(valueText, maxLines: 1, style: valueStyle),
         ],
       );
+      }
+      return inner;
     }
+
+    final inner = _FieldSliderWriting(
+      axis: widget.axis,
+      near: math.min(_originFraction, t),
+      far: math.max(_originFraction, t),
+      padding: _vertical
+          ? const EdgeInsets.symmetric(vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 8),
+      onFill: textOnColor(accentColor),
+      onTrack: textOnColor(AppColors.surface),
+      child: buildInner(labelStyle, valueStyle),
+    );
 
     Widget bar = LayoutBuilder(
       builder: (context, constraints) {
@@ -492,22 +527,19 @@ class _FieldSliderState extends State<FieldSlider> {
               painter: _FieldSliderTrackPainter(
                 axis: widget.axis,
                 t: t,
-                originT: widget.fillOrigin == null
-                    ? 0.0
-                    : _tFor(widget.fillOrigin!).clamp(0.0, 1.0),
+                originT: _originFraction,
                 accent: dragging
                     ? AppColors.accent
                     : (widget.restingAccent ?? AppColors.accent),
               ),
+              // ⚠️The writing carries its own padding now: its clip has to
+              // measure the TRACK, and a Padding above it would hand it a
+              // box eight pixels narrower on each side than the fill it is
+              // clipping against.
               child: SizedBox(
                 width: _vertical ? widget.height : null,
                 height: _vertical ? null : widget.height,
-                child: Padding(
-                  padding: _vertical
-                      ? const EdgeInsets.symmetric(vertical: 8)
-                      : const EdgeInsets.symmetric(horizontal: 8),
-                  child: inner,
-                ),
+                child: inner,
               ),
             ),
           ),
@@ -576,6 +608,66 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 }
 
+/// The row's label and value, written ONCE and recoloured at the fill's edge.
+///
+/// 🚨A solid fill gives the track two grounds and one string can straddle
+/// them, so the ink has to change PART WAY THROUGH a word. Two things this
+/// deliberately is not:
+/// ⛔**Not one ink picked by where the text sits** — that needs a threshold
+/// nobody decided, and inventing one is what `law-패널` forbids.
+/// ⛔**Not the writing laid twice and clipped** — that was the first shape
+/// tried, and it puts TWO Text widgets in the tree for one string: assistive
+/// tech reads the row twice and `find.text` stops being unique (two slider
+/// tests said so immediately).
+/// ⇒ A hard-stopped gradient through [BlendMode.srcIn]: one widget, one
+/// semantics node, and both colours still come from [textOnColor].
+class _FieldSliderWriting extends StatelessWidget {
+  const _FieldSliderWriting({
+    required this.axis,
+    required this.near,
+    required this.far,
+    required this.padding,
+    required this.onFill,
+    required this.onTrack,
+    required this.child,
+  });
+
+  final Axis axis;
+
+  /// The fill's span in track fractions, already ordered.
+  final double near;
+  final double far;
+
+  final EdgeInsets padding;
+  final Color onFill;
+  final Color onTrack;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final writing = Padding(padding: padding, child: child);
+    if (far <= near) {
+      return writing;
+    }
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (bounds) => LinearGradient(
+        // ⚠️A vertical bar fills UPWARD, so its gradient runs bottom-to-top
+        // — the same inversion the painter applies.
+        begin: axis == Axis.horizontal
+            ? Alignment.centerLeft
+            : Alignment.bottomCenter,
+        end: axis == Axis.horizontal
+            ? Alignment.centerRight
+            : Alignment.topCenter,
+        colors: [onTrack, onTrack, onFill, onFill, onTrack, onTrack],
+        stops: [0, near, near, far, far, 1],
+      ).createShader(bounds),
+      child: writing,
+    );
+  }
+}
+
 class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
   const _FieldSliderTrackPainter({
     required this.t,
@@ -607,7 +699,15 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
     final fillStart = along(originT);
     final near = math.min(fillStart, fillEnd);
     final far = math.max(fillStart, fillEnd);
-    final fill = Paint()..color = accent.withValues(alpha: 0.26);
+    // 🚨THE FILL IS THE ACCENT ITSELF (유저 2026-09-08: 「그냥 깔끔하게 앱
+    // 강조색 그대로 칠하도록. 이상한 세로선 넣지말고」).
+    //
+    // ⛔The 26%-alpha wash and the 2px accent edge that used to ride the
+    // fill's end are BOTH gone, and they went together: the edge existed to
+    // mark the position because a wash that pale did not read as an end. A
+    // solid fill IS the position, so keeping the line would be marking the
+    // same fact twice.
+    final fill = Paint()..color = accent;
     if (far > near) {
       canvas.drawRect(
         axis == Axis.horizontal
@@ -616,15 +716,6 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
         fill,
       );
     }
-    // 2px accent edge marks the position (the thumb's replacement); pinned
-    // inside the track at both extremes so it never clips away.
-    final edge = (fillEnd - 1).clamp(0.0, trackExtent - 2);
-    canvas.drawRect(
-      axis == Axis.horizontal
-          ? Rect.fromLTWH(edge, 0, 2, size.height)
-          : Rect.fromLTWH(0, edge, size.width, 2),
-      Paint()..color = accent,
-    );
   }
 
   @override
