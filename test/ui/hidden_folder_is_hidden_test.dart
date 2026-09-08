@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_canvas.dart';
 import 'package:anicel/src/ui/export/export_cels_selection.dart';
+import 'package:anicel/src/ui/session/onion_skin.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 /// HIDING A FOLDER HIDES WHAT IS INSIDE IT — EVERYWHERE, NOT JUST WHERE THE
@@ -40,6 +41,15 @@ void main() {
     return (s, member, folder);
   }
 
+  /// The onion skin, held BY ITS OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. A collaborator only ever spelled `s.onionSkin` is one the
+  /// campaign reports UNNAMED and never runs a mutant against — 「a ghost
+  /// is shown exactly when its row is」 lives in that file, and these two
+  /// tests are what hold it.
+  OnionSkin onionOf(EditorSessionManager s) => s.onionSkin;
+
   void hideFolder(EditorSessionManager s, LayerId folder) {
     if (s.activeCutOrNull!.layers.byId(folder)!.isVisible) {
       s.layerSwitches.toggleLayerVisibility(folder);
@@ -55,14 +65,15 @@ void main() {
     test('a ghost stops when its FOLDER is hidden, not only when its own eye '
         'is', () {
       final (s, member, folder) = sessionWithFolder();
-      s.onionSkin.toggleLayerOnionSkin(member);
+      final onion = onionOf(s);
+      onion.toggleLayerOnionSkin(member);
       // Something to ghost: a second drawing so the plan has a neighbour.
       s.selectFrameIndex(1);
       s.createDrawingAtCurrentFrame();
       s.selectFrameIndex(2);
 
       expect(
-        s.onionSkin.onionSkinCanvasRequests(),
+        onion.onionSkinCanvasRequests(),
         isNotEmpty,
         reason: 'the CONTROL — with everything visible there ARE ghosts',
       );
@@ -70,7 +81,7 @@ void main() {
       hideFolder(s, folder);
 
       expect(
-        s.onionSkin.onionSkinCanvasRequests(),
+        onion.onionSkinCanvasRequests(),
         isEmpty,
         reason:
             'A ghost is that row\'s artwork. Hiding the folder used to leave '
@@ -82,6 +93,7 @@ void main() {
 
     test('the bulk sweep does not count a row inside a hidden folder', () {
       final (s, member, folder) = sessionWithFolder();
+      final onion = onionOf(s);
       // 🆕R27 #16 made the DIRECTION row a drawing row, so the default
       // project now offers the sweep two rows rather than one. The law under
       // test is unchanged — 「every DISPLAYED layer」 may not count a row the
@@ -89,12 +101,12 @@ void main() {
       // that disagrees, which is what makes the answer move when it is
       // folded away.
       for (final layer in s.activeCutOrNull!.layers) {
-        if (layer.id != member && !s.onionSkin.isLayerOnionSkinEnabled(layer.id)) {
-          s.onionSkin.toggleLayerOnionSkin(layer.id);
+        if (layer.id != member && !onion.isLayerOnionSkinEnabled(layer.id)) {
+          onion.toggleLayerOnionSkin(layer.id);
         }
       }
       expect(
-        s.onionSkin.displayedLayersOnionSkinEnabled,
+        onion.displayedLayersOnionSkinEnabled,
         isFalse,
         reason:
             'the CONTROL — every displayed drawing row but the folder\'s '
@@ -104,7 +116,7 @@ void main() {
       hideFolder(s, folder);
 
       expect(
-        s.onionSkin.displayedLayersOnionSkinEnabled,
+        onion.displayedLayersOnionSkinEnabled,
         isTrue,
         reason:
             'the row that disagreed is inside a folder that is off, and '

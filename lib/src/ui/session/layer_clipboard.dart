@@ -69,6 +69,15 @@ class LayerClipboard {
       // R9 #7: this cut already holds its one row of that kind.
       // ⚠️NEVER APPLIED by any test (mutation, 2026-09-06): nothing copies a
       // single-instance row and pastes it into a cut that already has one.
+      //
+      // ⚠️RE-MEASURED 2026-09-08, now that this file is NAMED by a test and
+      // the campaign can reach it: `if (false)` here still SURVIVES. The
+      // one test that tries — `r9_p1_instant_cel_test`'s 「copy/paste and
+      // duplicate cannot make a second one」 — never gets here, because
+      // [copyActiveLayer]'s `isClipboardCopyable` gate refuses a storyboard
+      // row first and the board stays empty. Classification unchanged:
+      // NEVER APPLIED, and the guard is kept as the second lock on R9 #7
+      // for the day some kind is both copyable and singleton.
       return;
     }
     final activeLayer = _selection.activeLayer;

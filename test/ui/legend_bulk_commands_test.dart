@@ -5,6 +5,9 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/layer_marks.dart';
+import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
+import 'package:anicel/src/ui/session/opacity_verbs.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
@@ -17,6 +20,17 @@ void main() {
     return s;
   }
 
+  // 🚨THE THREE COLLABORATORS THESE SWEEPS LIVE IN, HELD BY THEIR OWN
+  // TYPES (2026-09-08). `tool/mutation_run.dart` picks a file's witnesses
+  // by which tests IMPORT it, so a collaborator only ever spelled
+  // `s.layerSwitches` / `s.layerMarks` / `s.opacityVerbs` is one the
+  // campaign reports UNNAMED and never runs a mutant against — every
+  // 「one press, ONE undo entry」 law below lives in those three files and
+  // they had no witness the campaign could see.
+  LayerSwitchVerbs switches(EditorSessionManager s) => s.layerSwitches;
+  LayerMarks marks(EditorSessionManager s) => s.layerMarks;
+  OpacityVerbs opacity(EditorSessionManager s) => s.opacityVerbs;
+
   test('setAllLayersOnTimesheet flips every cut-owned layer in ONE undo', () {
     final s = session();
     final before = [
@@ -24,7 +38,7 @@ void main() {
     ];
     expect(before, contains(true), reason: 'fixture has sheet-on layers');
 
-    s.layerSwitches.setAllLayersOnTimesheet(false);
+    switches(s).setAllLayersOnTimesheet(false);
     expect(
       s.requireActiveCut.layers.every((layer) => !layer.onTimesheet),
       isTrue,
@@ -45,10 +59,10 @@ void main() {
       reason: 'fixture default: the flag starts on',
     );
 
-    s.layerSwitches.setAllLayersOnTimesheet(false);
+    switches(s).setAllLayersOnTimesheet(false);
     expect(s.activeTrack.transitionLayer.onTimesheet, isFalse);
 
-    s.layerSwitches.setAllLayersOnTimesheet(true);
+    switches(s).setAllLayersOnTimesheet(true);
     expect(s.activeTrack.transitionLayer.onTimesheet, isTrue);
 
     // Still ONE undo per sweep.
@@ -62,7 +76,7 @@ void main() {
     final seLayer = s.activeTrack.seLayers.first;
     expect(seLayer.mark, LayerMark.none);
 
-    s.layerMarks.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.layout));
+    marks(s).setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.layout));
     expect(
       s.layers.firstWhere((layer) => layer.id == seLayer.id).mark,
       const LayerMark(process: LayerProcess.layout),
@@ -74,15 +88,15 @@ void main() {
     );
 
     final sheetBefore = seLayer.onTimesheet;
-    s.layerSwitches.toggleLayerTimesheet(seLayer.id);
+    switches(s).toggleLayerTimesheet(seLayer.id);
     expect(
       s.layers.firstWhere((layer) => layer.id == seLayer.id).onTimesheet,
       !sheetBefore,
     );
 
     // The bulk sweeps include the track SE rows now too.
-    s.layerMarks.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.conte));
-    s.layerMarks.clearAllLayerMarks();
+    marks(s).setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.conte));
+    marks(s).clearAllLayerMarks();
     expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
   });
 
@@ -91,11 +105,11 @@ void main() {
     final markedId = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
-    s.layerMarks.setLayerMark(markedId, const LayerMark(process: LayerProcess.layout));
+    marks(s).setLayerMark(markedId, const LayerMark(process: LayerProcess.layout));
     final undosAfterMark = s.canUndo;
     expect(undosAfterMark, isTrue);
 
-    s.layerMarks.clearAllLayerMarks();
+    marks(s).clearAllLayerMarks();
     expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
     s.undo();
     expect(
@@ -105,8 +119,8 @@ void main() {
 
     // A markless sweep adds no history: clearing twice then undoing ONCE
     // returns to the marked state (the second clear was a no-op).
-    s.layerMarks.clearAllLayerMarks();
-    s.layerMarks.clearAllLayerMarks();
+    marks(s).clearAllLayerMarks();
+    marks(s).clearAllLayerMarks();
     s.undo();
     expect(
       s.layers.firstWhere((layer) => layer.id == markedId).mark,
@@ -121,10 +135,10 @@ void main() {
     final attachId = s.layers
         .firstWhere((layer) => layer.attachedToLayerId != null)
         .id;
-    final before = s.layerSwitches.isLayerOnTimesheet(attachId);
+    final before = switches(s).isLayerOnTimesheet(attachId);
 
-    s.layerSwitches.setAllLayersOnTimesheet(!before);
-    expect(s.layerSwitches.isLayerOnTimesheet(attachId), before);
+    switches(s).setAllLayersOnTimesheet(!before);
+    expect(switches(s).isLayerOnTimesheet(attachId), before);
   });
 
   test('the fill-reference flag flips per row and the sweep clears every '
@@ -139,13 +153,13 @@ void main() {
       reason: 'fixture default: nothing is a fill reference',
     );
 
-    s.layerSwitches.toggleLayerFillReference(drawing);
+    switches(s).toggleLayerFillReference(drawing);
     expect(
       s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
       isTrue,
     );
 
-    s.layerSwitches.clearAllFillReferences();
+    switches(s).clearAllFillReferences();
     expect(s.layers.every((layer) => !layer.isFillReference), isTrue);
     s.undo();
     expect(
@@ -165,22 +179,22 @@ void main() {
         .id;
     final captured = s.layers.firstWhere((layer) => layer.id == drawing);
 
-    s.layerSwitches.toggleLayerTimesheet(drawing);
-    expect(s.layerSwitches.isLayerOnTimesheet(drawing), !captured.onTimesheet);
+    switches(s).toggleLayerTimesheet(drawing);
+    expect(switches(s).isLayerOnTimesheet(drawing), !captured.onTimesheet);
 
-    s.layerSwitches.toggleLayerVisibility(drawing);
-    expect(s.layerSwitches.isLayerEyeOn(drawing), !captured.isVisible);
+    switches(s).toggleLayerVisibility(drawing);
+    expect(switches(s).isLayerEyeOn(drawing), !captured.isVisible);
 
     s.updateLayerTransformEnabled(drawing, enabled: !captured.transformEnabled);
-    expect(s.layerSwitches.isLayerTransformOn(drawing), !captured.transformEnabled);
+    expect(switches(s).isLayerTransformOn(drawing), !captured.transformEnabled);
   });
 
   test('visibility sweeps: hide all, show all', () {
     final s = session();
-    s.layerSwitches.setAllLayersVisibility(false);
+    switches(s).setAllLayersVisibility(false);
     expect(s.layers.every((layer) => !layer.isVisible), isTrue);
 
-    s.layerSwitches.setAllLayersVisibility(true);
+    switches(s).setAllLayersVisibility(true);
     expect(s.layers.every((layer) => layer.isVisible), isTrue);
   });
 
@@ -195,7 +209,7 @@ void main() {
           (layer) => layer.id != firstActive && layer.kind != LayerKind.camera,
         )
         .id;
-    s.layerSwitches.toggleLayerVisibility(other);
+    switches(s).toggleLayerVisibility(other);
     expect(
       s.layers.firstWhere((layer) => layer.id == other).isVisible,
       isFalse,
@@ -248,9 +262,9 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
     expect(s.editingCanvas.activeBrushEditorSelection, isNotNull);
-    s.layerSwitches.toggleLayerVisibility(s.activeLayerId!);
+    switches(s).toggleLayerVisibility(s.activeLayerId!);
     expect(s.editingCanvas.activeBrushEditorSelection, isNull);
-    s.layerSwitches.toggleLayerVisibility(s.activeLayerId!);
+    switches(s).toggleLayerVisibility(s.activeLayerId!);
     expect(s.editingCanvas.activeBrushEditorSelection, isNotNull);
   });
 
@@ -261,14 +275,14 @@ void main() {
     s.addListener(() => notifies += 1);
     final id = s.activeLayerId!;
 
-    s.opacityVerbs.previewLayerOpacity(id, 0.5);
+    opacity(s).previewLayerOpacity(id, 0.5);
     expect(notifies, 0);
     // The repo stays untouched during the drag…
     expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 1.0);
     // …while the editing canvas follows the preview.
     expect(s.editingCanvas.stack.activeLayerOpacity, closeTo(0.5, 1e-9));
 
-    s.opacityVerbs.commitLayerOpacity(id, 0.5);
+    opacity(s).commitLayerOpacity(id, 0.5);
     expect(notifies, 1);
     expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 0.5);
     expect(s.opacityDragPreview.value, isNull);
@@ -281,7 +295,7 @@ void main() {
       for (final layer in s.layers)
         if (layer.kind.hasPictureOpacity) layer.id,
     };
-    s.opacityVerbs.commitLayersOpacity(targets, 0.3);
+    opacity(s).commitLayersOpacity(targets, 0.3);
     for (final layer in s.layers) {
       if (layer.kind.hasPictureOpacity) {
         expect(layer.opacity, closeTo(0.3, 1e-9));
@@ -302,10 +316,10 @@ void main() {
         if (layer.kind.hasPictureOpacity) layer.id,
     };
 
-    s.opacityVerbs.previewLayersOpacity(targets, 0.42);
+    opacity(s).previewLayersOpacity(targets, 0.42);
     expect(s.lastMasterOpacity, 1.0);
 
-    s.opacityVerbs.commitLayersOpacity(targets, 0.42);
+    opacity(s).commitLayersOpacity(targets, 0.42);
     expect(s.lastMasterOpacity, closeTo(0.42, 1e-9));
   });
 
@@ -367,7 +381,7 @@ void main() {
 
   test('SE mute sweep touches only SE layers', () {
     final s = session();
-    s.layerSwitches.setAllSeLayersMuted(true);
+    switches(s).setAllSeLayersMuted(true);
     for (final layer in s.layers) {
       if (layer.kind == LayerKind.se) {
         expect(layer.muted, isTrue);
@@ -375,7 +389,7 @@ void main() {
         expect(layer.muted, isFalse);
       }
     }
-    s.layerSwitches.setAllSeLayersMuted(false);
+    switches(s).setAllSeLayersMuted(false);
     expect(s.layers.every((layer) => !layer.muted), isTrue);
   });
 
@@ -384,8 +398,8 @@ void main() {
     final target = s.layers
         .firstWhere((layer) => layer.kind != LayerKind.camera)
         .id;
-    s.opacityVerbs.setLayerOpacity(layerId: target, opacity: 0.4);
-    s.opacityVerbs.resetAllLayersOpacity();
+    opacity(s).setLayerOpacity(layerId: target, opacity: 0.4);
+    opacity(s).resetAllLayersOpacity();
     for (final layer in s.layers) {
       if (layer.kind != LayerKind.camera) {
         expect(layer.opacity, 1.0);

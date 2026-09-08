@@ -4,6 +4,8 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/layer_clipboard.dart';
+import 'package:anicel/src/ui/session/layer_stack.dart';
 
 /// R9 P1 — the three items whose whole point is that something happens
 /// IMMEDIATELY, or stops happening at all.
@@ -15,6 +17,15 @@ void main() {
     addTearDown(session.dispose);
     return session;
   }
+
+  // 🚨THE TWO COLLABORATORS R9 #7 LIVES IN, HELD BY THEIR OWN TYPES
+  // (2026-09-08). `tool/mutation_run.dart` picks a file's witnesses by
+  // which tests IMPORT it, so a collaborator only ever spelled
+  // `session.layerStack` / `session.layerClipboard` is one the campaign
+  // reports UNNAMED and never runs a mutant against.
+  LayerStack stackOf(EditorSessionManager session) => session.layerStack;
+  LayerClipboard boardOf(EditorSessionManager session) =>
+      session.layerClipboard;
 
   group('#16 — why the tile cache missed on every rebuild', () {
     test('a method tear-off is NOT identical to itself, but IS equal', () {
@@ -132,22 +143,23 @@ void main() {
 
     test('Add Layer offers it once, then refuses — and says so first', () {
       final session = makeSession();
+      final stack = stackOf(session);
       int storyboardRows() => session.requireActiveCut.layers
           .where((l) => l.kind == LayerKind.storyboard)
           .length;
 
       expect(storyboardRows(), 0);
-      expect(session.layerStack.canAddLayerOfKind(LayerKind.storyboard), isTrue);
+      expect(stack.canAddLayerOfKind(LayerKind.storyboard), isTrue);
 
-      session.layerStack.addLayerOfKind(LayerKind.storyboard);
+      stack.addLayerOfKind(LayerKind.storyboard);
       expect(storyboardRows(), 1);
 
       expect(
-        session.layerStack.canAddLayerOfKind(LayerKind.storyboard),
+        stack.canAddLayerOfKind(LayerKind.storyboard),
         isFalse,
         reason: 'the menu entry greys out instead of swallowing the tap',
       );
-      session.layerStack.addLayerOfKind(LayerKind.storyboard);
+      stack.addLayerOfKind(LayerKind.storyboard);
       expect(
         storyboardRows(),
         1,
@@ -155,9 +167,9 @@ void main() {
       );
 
       // The rule is per KIND, not a general freeze.
-      expect(session.layerStack.canAddLayerOfKind(LayerKind.animation), isTrue);
+      expect(stack.canAddLayerOfKind(LayerKind.animation), isTrue);
       final before = session.requireActiveCut.layers.length;
-      session.layerStack.addLayerOfKind(LayerKind.animation);
+      stack.addLayerOfKind(LayerKind.animation);
       expect(session.requireActiveCut.layers.length, before + 1);
     });
 
@@ -173,9 +185,12 @@ void main() {
         reason: 'a duplicate lands in the SAME cut',
       );
 
-      session.layerClipboard.copyActiveLayer();
+      // ⚠️THE PASTE ARM IS REACHED FROM HERE, and only from here — see
+      // [LayerClipboard.pasteLayerFromClipboard]'s R9 #7 guard.
+      final board = boardOf(session);
+      board.copyActiveLayer();
       session.layerVerbs.duplicateActiveLayer();
-      session.layerClipboard.pasteLayerFromClipboard();
+      board.pasteLayerFromClipboard();
 
       expect(
         session.requireActiveCut.layers

@@ -6,11 +6,20 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 
 void main() {
   EditorSessionManager session() =>
       EditorSessionManager(initialProject: createDefaultProject());
+
+  /// The layer board, held BY ITS OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. A collaborator only ever spelled `s.layerClipboard` is one
+  /// the campaign reports UNNAMED and never runs a mutant against — the
+  /// copy's kind stand-down lives in that file and this is what holds it.
+  LayerClipboard boardOf(EditorSessionManager s) => s.layerClipboard;
 
   CameraPose pose({double x = 100}) =>
       CameraPose(center: CanvasPoint(x: x, y: 50));
@@ -55,8 +64,9 @@ void main() {
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
 
     // Copy/duplicate quietly refuse the camera layer.
-    s.layerClipboard.copyActiveLayer();
-    expect(s.layerClipboard.hasLayerClipboard, isFalse);
+    final board = boardOf(s);
+    board.copyActiveLayer();
+    expect(board.hasLayerClipboard, isFalse);
     final layerCount = s.requireActiveCut.layers.length;
     s.layerVerbs.duplicateActiveLayer();
     expect(s.requireActiveCut.layers.length, layerCount);

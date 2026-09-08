@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/frame_clipboard.dart';
 
 /// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — **THE CLIPBOARD TAKES EVERY SWEPT
 /// ROW.**
@@ -65,6 +66,14 @@ void main() {
     return session;
   }
 
+  /// The board under test, held BY ITS OWN TYPE (2026-09-08).
+  ///
+  /// 🚨`tool/mutation_run.dart` picks a file's witnesses by which tests
+  /// IMPORT it. A collaborator only ever spelled `session.clipboard` is one
+  /// the campaign reports UNNAMED and never runs a mutant against — 결정 14
+  /// ②ⓐ×③ⓐ lives in that file and these are its tests.
+  FrameClipboard board(EditorSessionManager session) => session.clipboard;
+
   List<int> coveredFrames(EditorSessionManager session, LayerId id) {
     final layer = session.layers.firstWhere((l) => l.id == id);
     final covered = <int>[];
@@ -105,7 +114,7 @@ void main() {
     session.selectFrameIndex(0);
     sweep(session, const [rowA, rowB], from: 0, toExclusive: 3);
 
-    session.clipboard.cutRunAtCurrentFrame();
+    board(session).cutRunAtCurrentFrame();
     expect(coveredFrames(session, rowA), isEmpty);
     expect(
       coveredFrames(session, rowB),
@@ -130,7 +139,7 @@ void main() {
     session.selectLayer(rowA);
     session.selectFrameIndex(0);
     sweep(session, const [rowA, rowB], from: 0, toExclusive: 3);
-    session.clipboard.cutRunAtCurrentFrame();
+    board(session).cutRunAtCurrentFrame();
     expect(coveredFrames(session, rowA), isEmpty);
     expect(coveredFrames(session, rowB), isEmpty);
 
@@ -209,7 +218,7 @@ void main() {
     session.selectFrameIndex(0);
     session.clearFrameRangeSelection();
 
-    session.clipboard.cutRunAtCurrentFrame();
+    board(session).cutRunAtCurrentFrame();
     expect(coveredFrames(session, rowA), isEmpty);
     expect(
       coveredFrames(session, rowB),
