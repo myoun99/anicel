@@ -264,23 +264,8 @@ class BrushSettings {
       'flowPressureCurve': flowPressureCurve!.toJson(),
     if (hardnessPressureCurve != null)
       'hardnessPressureCurve': hardnessPressureCurve!.toJson(),
-    // 🚨EVERY OTHER SOURCE, or the import that read them was for nothing.
-    //
-    // ⛔The four keys above can only spell `(target, pressure)`. Leaving it
-    // there meant a Clip Studio brush imported WITH its tilt curve lost it
-    // on the very next save — the library persists immediately after an
-    // import — which is the exact defect this round set out to end. Found by
-    // adversarial review 2026-09-09, after the round had already claimed to
-    // have fixed it.
-    //
-    // ⚠️Pressure entries stay in the four legacy keys and are NOT repeated
-    // here, so a brush that only answers to pressure writes the same bytes
-    // it always did.
-    if (_nonPressureCurves.isNotEmpty)
-      'curves': {
-        for (final entry in _nonPressureCurves.entries)
-          '${entry.key.$1.name}.${entry.key.$2.name}': entry.value.toJson(),
-      },
+    // Every OTHER source — see [_curvesToJson].
+    ..._curvesToJson(_nonPressureCurves),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
@@ -488,6 +473,35 @@ void _validateNonNegativeFinite(double value, String fieldName) {
       'BrushSettings.$fieldName must be finite and non-negative.',
     );
   }
+}
+
+/// The `curves` block, or nothing at all when there is none to write — it is
+/// SPREAD into [BrushSettings.toJson], so an empty map adds no key and a
+/// brush that predates input sources serialises byte-for-byte as before.
+///
+/// 🚨THIS IS WHERE EVERY NON-PRESSURE CURVE LIVES ON DISK, and it was missing
+/// for one commit. The four legacy keys can only spell `(target, pressure)`,
+/// so a Clip Studio brush imported WITH its tilt curve lost it on the very
+/// next save — the library persists immediately after an import — which is
+/// the exact defect that round set out to end. Found by adversarial review
+/// 2026-09-09, after the round had already claimed to have fixed it.
+///
+/// ⚠️Pressure entries stay in the four legacy keys and are NOT repeated here.
+///
+/// Paired with [_curvesFromJson] on purpose: one place spells the
+/// `"<target>.<source>"` key, one place reads it, and they sit together.
+Map<String, Object?> _curvesToJson(
+  Map<BrushDynamicsKey, BrushPressureCurve> curves,
+) {
+  if (curves.isEmpty) {
+    return const {};
+  }
+  return {
+    'curves': {
+      for (final entry in curves.entries)
+        '${entry.key.$1.name}.${entry.key.$2.name}': entry.value.toJson(),
+    },
+  };
 }
 
 /// The `curves` block: `"<target>.<source>"` -> curve.
