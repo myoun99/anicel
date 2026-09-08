@@ -186,8 +186,14 @@ class ResizeCutCanvasCommand
         // to a surface with holes in it.
         brushFrameStore?.restoreBakedForCut(target, {
           for (final entry in previousBaked.entries)
+            // ⚠️`bakedSurfaceOrNull`, NOT the hot-only reader the measure
+            // above uses. That one refuses to materialize on purpose — an
+            // accounting question must not pull a cel hot as a side
+            // effect — but this is a READ, and a cel that cooled since the
+            // resize would answer null there and be silently left out of
+            // its own undo.
             entry.key: ?entry.value.surfaceOver(
-              brushFrameStore?.hotBakedSurfaceOrNull(entry.key),
+              brushFrameStore?.bakedSurfaceOrNull(entry.key),
             ),
         });
       }

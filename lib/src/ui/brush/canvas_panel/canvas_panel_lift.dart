@@ -73,10 +73,15 @@ class _CanvasPanelLift {
     }
     // The cel as it stands is the post-erase surface the anchor was
     // measured against — the box has been floating over it all along.
+    //
+    // ⛔**THE SNAPSHOT'S OWN KEY, NOT THE ACTIVE ONE.** A cel change is one
+    // of the three ways a lift ends, and it lands the stamp through
+    // `_resetAll`: reading the ACTIVE cel there would measure this
+    // anchor against a different drawing entirely.
     final surface = coordinator == null
         ? null
         : anchor.pixels.surfaceOver(
-            coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+            coordinator.currentSurfaceOf(anchor.pixels.key),
           );
     anchor.pixels.drop();
     return (pixels: surface, region: anchor.region);
