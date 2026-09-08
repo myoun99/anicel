@@ -5,10 +5,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 void main() {
   const sliderKey = ValueKey<String>('field-slider-under-test');
+
+  /// The TRACK, not the widget box. ⚠️A [FieldSlider] is a Row now — the bar
+  /// plus the +/− stepper — so the widget's own rect no longer maps to the
+  /// value. Position arithmetic has to address the bar, and this is how.
+  Finder trackOf(Key key) => find.descendant(
+    of: find.byKey(key),
+    matching: find.byType(DragVerbClaim),
+  );
   const trackWidth = 200.0;
 
   Widget harness({
@@ -55,7 +64,7 @@ void main() {
   ) async {
     final value = ValueNotifier<double>(0.2);
     await tester.pumpWidget(harness(value: value));
-    await tester.tapAt(tester.getCenter(find.byKey(sliderKey)));
+    await tester.tapAt(tester.getCenter(trackOf(sliderKey)));
     await tester.pump();
     expect(value.value, moreOrLessEquals(0.5, epsilon: 0.02));
   });
@@ -66,11 +75,15 @@ void main() {
     final value = ValueNotifier<double>(0.5);
     final ends = <double>[];
     await tester.pumpWidget(harness(value: value, changeEnds: ends));
-    await tester.drag(find.byKey(sliderKey), const Offset(50, 0));
+    // ⚠️Relative to the MEASURED track: the bar shares its row with the
+    // stepper now, so a fixed pixel drag is no longer a fixed fraction.
+    final track = tester.getSize(trackOf(sliderKey)).width;
+    await tester.drag(trackOf(sliderKey), const Offset(50, 0));
     await tester.pump();
-    expect(value.value, moreOrLessEquals(0.75, epsilon: 0.02));
+    final expected = 0.5 + 50 / track;
+    expect(value.value, moreOrLessEquals(expected, epsilon: 0.02));
     expect(ends, hasLength(1));
-    expect(ends.single, moreOrLessEquals(0.75, epsilon: 0.02));
+    expect(ends.single, moreOrLessEquals(expected, epsilon: 0.02));
   });
 
   testWidgets('exponential: track center lands on the geometric mean', (
@@ -85,7 +98,7 @@ void main() {
         scale: FieldSliderScale.exponential,
       ),
     );
-    await tester.tapAt(tester.getCenter(find.byKey(sliderKey)));
+    await tester.tapAt(tester.getCenter(trackOf(sliderKey)));
     await tester.pump();
     expect(value.value, moreOrLessEquals(10, epsilon: 0.5));
   });
@@ -94,7 +107,7 @@ void main() {
     final value = ValueNotifier<double>(0.5);
     await tester.pumpWidget(harness(value: value));
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.drag(find.byKey(sliderKey), const Offset(100, 0));
+    await tester.drag(trackOf(sliderKey), const Offset(100, 0));
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
     expect(value.value, moreOrLessEquals(0.55, epsilon: 0.01));
@@ -103,7 +116,7 @@ void main() {
   testWidgets('scroll wheel steps by one percent of the track', (tester) async {
     final value = ValueNotifier<double>(0.5);
     await tester.pumpWidget(harness(value: value));
-    final center = tester.getCenter(find.byKey(sliderKey));
+    final center = tester.getCenter(trackOf(sliderKey));
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     pointer.hover(center);
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, -40)));
@@ -122,7 +135,7 @@ void main() {
       harness(value: value, min: 0, max: 8, divisions: 8),
     );
     await tester.tapAt(
-      tester.getTopLeft(find.byKey(sliderKey)) + const Offset(55, 12),
+      tester.getTopLeft(trackOf(sliderKey)) + const Offset(55, 12),
     );
     await tester.pump();
     expect(value.value, 2);
@@ -132,7 +145,7 @@ void main() {
       'and the second one sets the value like the first', (tester) async {
     final value = ValueNotifier<double>(0.2);
     await tester.pumpWidget(harness(value: value));
-    final box = tester.getRect(find.byKey(sliderKey));
+    final box = tester.getRect(trackOf(sliderKey));
     final quarter = Offset(box.left + box.width * 0.25, box.center.dy);
 
     await tester.tapAt(quarter);
@@ -156,23 +169,24 @@ void main() {
       harness(value: value, label: null, format: (v) => '100%'),
     );
     final text = tester.getCenter(find.text('100%'));
-    final bar = tester.getCenter(find.byKey(sliderKey));
+    final bar = tester.getCenter(trackOf(sliderKey));
     expect((text.dx - bar.dx).abs(), lessThan(1));
   });
 
   testWidgets('disabled slider ignores input and dims', (tester) async {
     final value = ValueNotifier<double>(0.2);
     await tester.pumpWidget(harness(value: value, enabled: false));
-    await tester.tapAt(tester.getCenter(find.byKey(sliderKey)));
+    // ⚠️A disabled bar has no drag claim to address, so the dimmed bar
+    // itself is the target. The +/− pair is still beside it, dimmed and
+    // inert — the row must not change width when the control comes alive.
+    final dimmed = find.descendant(
+      of: find.byKey(sliderKey),
+      matching: find.byType(Opacity),
+    );
+    await tester.tapAt(tester.getCenter(dimmed));
     await tester.pump();
     expect(value.value, 0.2);
-    final opacity = tester.widget<Opacity>(
-      find.descendant(
-        of: find.byKey(sliderKey),
-        matching: find.byType(Opacity),
-      ),
-    );
-    expect(opacity.opacity, 0.4);
+    expect(tester.widget<Opacity>(dimmed).opacity, 0.4);
   });
 
   // 🚨유저 확정 2026-08-14, ⛔재론 금지: 「**슬라이더위에서 조작하기 시작하면
@@ -279,7 +293,7 @@ void main() {
       final commits = <double>[];
       await tester.pumpWidget(scrolled(value, commits));
 
-      final rect = tester.getRect(find.byKey(sliderKey));
+      final rect = tester.getRect(trackOf(sliderKey));
       final gesture = await tester.startGesture(
         Offset(rect.left + rect.width * 0.75, rect.center.dy),
         kind: PointerDeviceKind.stylus,
@@ -302,7 +316,7 @@ void main() {
       final commits = <double>[];
       await tester.pumpWidget(scrolled(value, commits));
 
-      final rect = tester.getRect(find.byKey(sliderKey));
+      final rect = tester.getRect(trackOf(sliderKey));
       final gesture = await tester.startGesture(
         Offset(rect.left + rect.width * 0.4, rect.center.dy),
         kind: PointerDeviceKind.stylus,
@@ -329,7 +343,7 @@ void main() {
         scrolled(value, commits, controller: controller),
       );
 
-      final rect = tester.getRect(find.byKey(sliderKey));
+      final rect = tester.getRect(trackOf(sliderKey));
       final gesture = await tester.startGesture(
         Offset(rect.left + rect.width * 0.75, rect.center.dy),
         kind: PointerDeviceKind.stylus,
@@ -399,7 +413,7 @@ void main() {
       // pointer-down value and the resting value are the same number, so
       // the assertion below could not tell a bar that answered the press
       // from one that did nothing at all.
-      final rect = tester.getRect(find.byKey(sliderKey));
+      final rect = tester.getRect(trackOf(sliderKey));
       await tester.dragFrom(
         Offset(rect.center.dx, rect.bottom - rect.height / 4),
         const Offset(-80, 0),
@@ -465,7 +479,7 @@ void main() {
       ),
     );
 
-    final rect = tester.getRect(find.byKey(sliderKey));
+    final rect = tester.getRect(trackOf(sliderKey));
     await tester.tapAt(Offset(rect.left + rect.width * 0.75, rect.center.dy));
     await tester.pumpAndSettle();
 
@@ -512,7 +526,7 @@ void main() {
       ),
     );
 
-    final rect = tester.getRect(find.byKey(sliderKey));
+    final rect = tester.getRect(trackOf(sliderKey));
     final at = Offset(rect.left + rect.width * 0.4, rect.center.dy);
     final gesture = await tester.startGesture(
       at,
@@ -556,7 +570,7 @@ void main() {
       addTearDown(value.dispose);
       await tester.pumpWidget(verticalHarness(value));
 
-      final rect = tester.getRect(find.byKey(sliderKey));
+      final rect = tester.getRect(trackOf(sliderKey));
       // A quarter up from the bottom.
       await tester.tapAt(Offset(rect.center.dx, rect.bottom - rect.height / 4));
       await tester.pump();
@@ -568,7 +582,7 @@ void main() {
       addTearDown(value.dispose);
       await tester.pumpWidget(verticalHarness(value));
 
-      final rect = tester.getRect(find.byKey(sliderKey));
+      final rect = tester.getRect(trackOf(sliderKey));
       await tester.tapAt(rect.center);
       await tester.pump();
       expect(value.value, moreOrLessEquals(0.5, epsilon: 0.02));

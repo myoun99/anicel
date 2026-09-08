@@ -1,6 +1,7 @@
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,13 +28,19 @@ void main() {
         ),
       ),
     );
-
     // ⛔The 26%-alpha wash this replaced would fail on colour alone: the
-    // assertion is the OPAQUE accent over the left half of a 100px track.
+    // assertion is the OPAQUE accent over the left half of the TRACK.
+    //
+    // ⚠️The track, not the box: this bar is LABELLED, so it carries the +/−
+    // stepper and half the widget is no longer half the bar.
+    final track = find.descendant(
+      of: find.byType(FieldSlider),
+      matching: find.byType(DragVerbClaim),
+    );
     expect(
-      find.byType(FieldSlider),
+      track,
       paints..rect(
-        rect: const Rect.fromLTWH(0, 0, 50, 24),
+        rect: Rect.fromLTWH(0, 0, tester.getSize(track).width / 2, 24),
         color: AppColors.accent,
       ),
     );

@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
+import '../text/app_strings.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
+import 'app_icon_button.dart';
 import 'axis_bar_gesture.dart';
 import 'superellipse_clip.dart';
 import '../repaint_props.dart';
@@ -396,7 +398,24 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 
   void _handleWheel(PointerScrollEvent event) {
-    if (!_enabled || event.scrollDelta.dy == 0) {
+    if (event.scrollDelta.dy == 0) {
+      return;
+    }
+    _stepBy(event.scrollDelta.dy < 0 ? 1 : -1);
+  }
+
+  /// One notch [direction] (+1 up, -1 down).
+  ///
+  /// 🚨★THE ONE PLACE A STEP IS DEFINED. The wheel and the +/− buttons are
+  /// two ways of asking for the same thing, and 유저 확정 (2026-09-08) says
+  /// so outright: 「`+1` = 휠과 같은 걸음」. Two implementations would be one
+  /// question with two answers, and they would drift the first time either
+  /// scale changed.
+  ///
+  /// A step is a COMPLETE edit — there is no release to wait for — so
+  /// commit-on-release consumers get their commit right away.
+  void _stepBy(int direction) {
+    if (!_enabled) {
       return;
     }
     final divisions = widget.divisions;
@@ -406,12 +425,9 @@ class _FieldSliderState extends State<FieldSlider> {
     } else {
       step = _shiftHeld ? 0.001 : 0.01;
     }
-    final direction = event.scrollDelta.dy < 0 ? 1.0 : -1.0;
     final t = (_tFor(widget.value) + direction * step).clamp(0.0, 1.0);
     final value = _valueFor(t);
     _emit(value);
-    // A wheel step is a complete edit (no release to wait for): commit-on-
-    // release consumers get their commit right away.
     widget.onChangeEnd?.call(value);
   }
 
@@ -548,7 +564,11 @@ class _FieldSliderState extends State<FieldSlider> {
     );
 
     if (!_enabled) {
-      return Opacity(opacity: 0.4, child: bar);
+      // ⛔THE STEPPER STILL STANDS THERE, dimmed and inert. A disabled bar
+      // that dropped it would be 「없다가 생기는 UI」 — the row would be
+      // wider the moment the control came alive, and everything beside it
+      // would shift.
+      return _withStepper(Opacity(opacity: 0.4, child: bar));
     }
     bar = MouseRegion(
       cursor: _vertical
@@ -585,7 +605,7 @@ class _FieldSliderState extends State<FieldSlider> {
         child: bar,
       ),
     );
-    return Semantics(
+    final claimed = Semantics(
       slider: true,
       label: widget.label,
       value: widget.valueText,
@@ -605,7 +625,112 @@ class _FieldSliderState extends State<FieldSlider> {
         ),
       ),
     );
+    return _withStepper(claimed);
   }
+
+  /// [bar] with the +/− pair beside it, when this is the kind of bar that
+  /// carries one.
+  ///
+  /// 🚨★THERE ARE TWO KINDS OF BAR, AND THE VARIANT DECIDES WHICH — not the
+  /// call site (유저 2026-09-09: 「슬라이더는 2개로 두자. 스텝퍼 적용 미적용
+  /// 규칙. **초소형 변형은 기본적으로 빼도록**」).
+  ///
+  /// * A LABELLED bar is a settings row. It has room, it is read and nudged
+  ///   deliberately, and it gets the stepper.
+  /// * The MICRO variant (`label == null`) is the inline slot — a timeline
+  ///   layer row, a lane header — where the whole control is already down to
+  ///   a number in a gap. Two more buttons there would take the track it has
+  ///   left, and the value is not being tuned to a digit in that context.
+  ///
+  /// ⛔NO PER-SITE FLAG. A boolean here is how the two kinds stop being two
+  /// kinds — the same trap `ControlPressClaim` names about its own scope: the
+  /// panels would grow bars that disagree with the rows beside them.
+  ///
+  /// A VERTICAL bar is out for a plainer reason: it is the timeline's turned
+  /// axis, whose row has no horizontal room at all, and the buttons would
+  /// have to stack into the track itself.
+  Widget _withStepper(Widget bar) {
+    if (widget.axis == Axis.vertical || widget.label == null) {
+      return bar;
+    }
+    return Row(
+      children: [
+        Expanded(child: bar),
+        _FieldSliderStepper(
+          height: widget.height,
+          enabled: _enabled,
+          onStep: _stepBy,
+        ),
+      ],
+    );
+  }
+}
+
+/// The +/− pair at the right of a value bar (유저 확정 2026-09-08: 「+버튼을
+/// 세로로 위아래로 나눠서 위에 +버튼, 아래 -버튼」).
+///
+/// ⛔It fires [FieldSlider]'s own `_stepBy`, NOT arithmetic of its own — one
+/// notch here is one notch of the wheel, which is the whole of 유저's third
+/// 착수 결정. A second implementation would be one question with two answers.
+///
+/// The two cells split the bar's height, so a row is exactly as tall with the
+/// stepper as without it and nothing below shifts.
+class _FieldSliderStepper extends StatelessWidget {
+  const _FieldSliderStepper({
+    required this.height,
+    required this.enabled,
+    required this.onStep,
+  });
+
+  final double height;
+  final bool enabled;
+  final ValueChanged<int> onStep;
+
+  /// Narrow on purpose: this sits in panels already budgeted to the pixel,
+  /// and it is a nudge, not a target you aim at from across the screen.
+  static const double width = 14;
+
+  /// The gap to the bar, so the buttons never look like part of the track.
+  static const double _gap = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final half = height / 2;
+    return Padding(
+      padding: const EdgeInsets.only(left: _gap),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Column(
+          children: [
+            // 🚨THE PLUS WEARS THE ACCENT, like every other ＋ in the app
+            // (유저 확정 2026-08-10: 「＋가있는 모든곳. 공통적으로」). The
+            // MINUS does not: the accent rule is the plus's alone, and its
+            // twin — the red one — is for DELETE, which this is not. The
+            // pair looking uneven is the law's own shape, not an oversight.
+            _cell(
+              Icons.add,
+              1,
+              half,
+              color: AppColors.addGlyph(enabled: enabled),
+            ),
+            _cell(Icons.remove, -1, half),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cell(IconData icon, int direction, double half, {Color? color}) =>
+      AppIconButton(
+        keyValue: 'field-slider-step-${direction > 0 ? 'up' : 'down'}',
+        tooltip: direction > 0
+            ? AppText.strings.stepUp
+            : AppText.strings.stepDown,
+        size: AppIconButtonBox(width: width, height: half, iconSize: half - 2),
+        icon: Icon(icon, color: color),
+        onPressed: enabled ? () => onStep(direction) : null,
+      );
 }
 
 /// The row's label and value, written ONCE and recoloured at the fill's edge.

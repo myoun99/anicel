@@ -995,6 +995,8 @@ enum AppStrings {
   String get brPaintDensity => _s('brPaintDensity');
   String get brColorStretch => _s('brColorStretch');
   String get brHardness => _s('brHardness');
+  String get stepUp => _s('stepUp');
+  String get stepDown => _s('stepDown');
   String get brEdge => _s('brEdge');
   String get brEdgeNone => _s('brEdgeNone');
   String get brSpacing => _s('brSpacing');
@@ -1746,6 +1748,8 @@ enum AppStrings {
     'brPaintDensity': 'Paint density',
     'brColorStretch': 'Colour stretch',
     'brHardness': 'Hardness',
+    'stepUp': 'Step up',
+    'stepDown': 'Step down',
     'brEdge': 'Edge',
     'brEdgeNone': 'None',
     'brSpacing': 'Spacing',
@@ -2651,6 +2655,8 @@ enum AppStrings {
     'brPaintDensity': '絵の具濃度',
     'brColorStretch': '色延び',
     'brHardness': '硬さ',
+    'stepUp': '1目盛り上げる',
+    'stepDown': '1目盛り下げる',
     'brEdge': 'エッジ',
     'brEdgeNone': 'なし',
     'brSpacing': '間隔',
@@ -3578,6 +3584,8 @@ enum AppStrings {
     'brPaintDensity': '물감 농도',
     'brColorStretch': '색 늘이기',
     'brHardness': '경도',
+    'stepUp': '한 걸음 올리기',
+    'stepDown': '한 걸음 내리기',
     'brEdge': '가장자리',
     'brEdgeNone': '없음',
     'brSpacing': '간격',
@@ -4543,6 +4551,8 @@ enum AppStrings {
     'brPaintDensity': 'Densité de peinture',
     'brColorStretch': 'Étirement de la couleur',
     'brHardness': 'Dureté',
+    'stepUp': 'Monter d’un cran',
+    'stepDown': 'Baisser d’un cran',
     'brEdge': 'Bord',
     'brEdgeNone': 'Aucun',
     'brSpacing': 'Espacement',
@@ -5428,6 +5438,8 @@ enum AppStrings {
     'brPaintDensity': '颜料浓度',
     'brColorStretch': '色彩延伸',
     'brHardness': '硬度',
+    'stepUp': '增加一级',
+    'stepDown': '减少一级',
     'brEdge': '边缘',
     'brEdgeNone': '无',
     'brSpacing': '间距',

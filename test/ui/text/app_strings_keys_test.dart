@@ -527,6 +527,8 @@ void main() {
     'brOpacity': (s) => s.brOpacity,
     'brFlow': (s) => s.brFlow,
     'brHardness': (s) => s.brHardness,
+    'stepUp': (s) => s.stepUp,
+    'stepDown': (s) => s.stepDown,
     'brEdge': (s) => s.brEdge,
     'brEdgeNone': (s) => s.brEdgeNone,
     'brSpacing': (s) => s.brSpacing,
