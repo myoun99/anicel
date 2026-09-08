@@ -79,9 +79,18 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     coordinator: coordinator,
     targets: targets,
     channel: verb.channel,
-    value: verb.channel == CelPixelChannel.colour
-        ? Uint8List.fromList([argbRed(argb), argbGreen(argb), argbBlue(argb)])
-        : Uint8List.fromList([0]),
+    // ⚠️Exhaustive on the CHANNEL, not on the verb: this is the one place
+    // that packs a value to the channel's own width, so a new channel must
+    // be made to say what its bytes are instead of silently shipping
+    // alpha's single zero. See [CelPixelChannel.byteCount].
+    value: switch (verb.channel) {
+      CelPixelChannel.colour => Uint8List.fromList([
+        argbRed(argb),
+        argbGreen(argb),
+        argbBlue(argb),
+      ]),
+      CelPixelChannel.alpha => Uint8List.fromList([0]),
+    },
     selector: verb.selectorFor(argb),
     description: switch (verb) {
       CelPixelVerb.replaceColour => 'Replace colour',

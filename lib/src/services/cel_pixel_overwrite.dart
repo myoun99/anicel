@@ -103,10 +103,28 @@ enum CelPixelChannel {
   alpha;
 
   /// How many bytes of one pixel this channel names.
-  int get byteCount => this == CelPixelChannel.colour ? 3 : 1;
+  ///
+  /// 🚨★★★**A SWITCH, NOT `== colour ? … : …`, AND THAT IS THE WHOLE
+  /// POINT.** Every one of this enum's questions used to be a ternary, so
+  /// a THIRD channel would have compiled in silence and answered every one
+  /// of them as if it were [alpha] — one byte wide, at offset 3, taking
+  /// every masked pixel. Nothing would have gone red; the pass would just
+  /// have written the wrong byte. An exhaustive switch turns that into a
+  /// compile error at each site, which is the only place it can be caught.
+  ///
+  /// ⚠️[CelPixelVerb] was already written this way (`switch (verb)` in
+  /// `CelPixelOverwriteCommand.forVerb`) — this enum was the one that had
+  /// not caught up.
+  int get byteCount => switch (this) {
+    CelPixelChannel.colour => 3,
+    CelPixelChannel.alpha => 1,
+  };
 
   /// The offset of channel byte [index] within a pixel's RGBA quad.
-  int byteOffset(int index) => this == CelPixelChannel.colour ? index : 3;
+  int byteOffset(int index) => switch (this) {
+    CelPixelChannel.colour => index,
+    CelPixelChannel.alpha => 3,
+  };
 }
 
 /// Whether a pixel takes part, given its CURRENT alpha and its mask
@@ -153,7 +171,13 @@ bool celPixelParticipates({
     // on the wrong pixels. A test caught exactly that.
     return selector.erases(red, green, blue);
   }
-  return channel == CelPixelChannel.alpha || alpha > 0;
+  // ⚠️Exhaustive for the reason [CelPixelChannel.byteCount] gives: a new
+  // channel must be made to STATE its participation rule rather than
+  // inheriting alpha's by falling off the end of a boolean.
+  return switch (channel) {
+    CelPixelChannel.alpha => true,
+    CelPixelChannel.colour => alpha > 0,
+  };
 }
 
 /// What one cel needs in order to be put back exactly as it was.
