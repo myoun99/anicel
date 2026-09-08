@@ -68,6 +68,15 @@ cmd_open() {
   mkdir -p "$p/build"
   # The native engine, so parity pins RUN instead of skipping. A skip is not a pass.
   [ -d "$ROOT/build/native_standalone" ] && cp -r "$ROOT/build/native_standalone" "$p/build/" 2>/dev/null
+  # 🚨AND THROW AWAY THE CMAKE CACHE THAT CAME WITH IT. A CMakeCache.txt
+  # remembers the ABSOLUTE directory it was created in, so `cmake --build
+  # build/native_standalone` inside the lane builds into the MAIN CHECKOUT
+  # — a lane's uncommitted C landing in the trunk's binary, silently
+  # (2026-09-08, caught while proving a decoder change). What the copy is
+  # for is the built .dll; the cache is not part of that, and deleting it
+  # makes a lane that wants to rebuild re-configure in its own directory,
+  # which is the only correct answer.
+  rm -f "$p/build/native_standalone/CMakeCache.txt"
   (cd "$p" && flutter pub get >/dev/null 2>&1)
   echo "$p"
 }
