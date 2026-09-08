@@ -299,16 +299,21 @@ void main() {
       }
     });
 
-    test('an old library hands its inline tips to the tip library', () async {
-      // The migration that matters: a preset written before tips had a home
-      // still carries the image, and the next save will write only an id —
-      // so the image has to be adopted or it is lost.
+    test('a preset carrying its tip INLINE hands it to the tip library', () async {
+      // ⚠️This used to stage a version-4 file and call itself "the migration
+      // that matters". Migration is gone (유저 2026-09-09), and an old file is
+      // replaced by the defaults now — so the case had stopped being about
+      // adoption and started being about a loader that no longer runs.
+      //
+      // The LIVE case is the same shape and still real: an IMPORT builds a
+      // preset with the mask inline, `brushTipMasksIn` finds it, and the tip
+      // library adopts it — or the next save writes an id pointing at nothing.
       final tip = BrushTipMask(
         id: 'sut-abc-tip',
         size: 4,
         alpha: Uint8List.fromList(List<int>.filled(16, 210)),
       );
-      final legacy = BrushPreset(
+      final imported = BrushPreset(
         id: const BrushPresetId('p1'),
         name: 'Wet wash',
         settings: BrushSettings(size: 9, tipMask: tip),
@@ -316,9 +321,9 @@ void main() {
       await File(service.filePath).parent.create(recursive: true);
       await File(service.filePath).writeAsString(
         jsonEncode({
-          'version': 4,
+          'version': BrushPresetFileService.libraryVersion,
           'groups': const <Object>[],
-          'presets': [legacy.toJson()],
+          'presets': [imported.toJson()],
         }),
       );
 
