@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
@@ -18,6 +19,8 @@ import '../../services/sut/sut_decoder.dart';
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
 import 'picked_file.dart';
+import '../../models/brush_hand_settings.dart';
+import '../../services/brush_pack_file.dart';
 import '../text/app_strings.dart';
 
 /// Production picker: the platform open-file dialog, showing EVERY file.
@@ -79,12 +82,25 @@ class BrushPresetLibrary extends ChangeNotifier {
     BrushPresetFileService? fileService,
     FilePicker? filePicker,
     BrushTipLibrary? tipLibrary,
+    this.handSettingsPort,
   }) : _fileService = fileService ?? BrushPresetFileService(),
        _filePicker = filePicker ?? _openBrushFileDialog,
        _tipLibrary = tipLibrary;
 
   final BrushPresetFileService _fileService;
   final FilePicker _filePicker;
+
+  /// How an exported file gets the hand settings, and how an imported one
+  /// gives them back.
+  ///
+  /// 🚨유저 (`Q-brush-store`): 「앱 안에서는 앱 저장소에 두되 내보낼 때는
+  /// 브러시 파일에 쓴다」, and 2026-09-08: 「불투명도든 뭐든 손설정이든 정한거
+  /// 싹 다 내보낼때 나르도록 하고싶음」.
+  ///
+  /// ⚠️A PORT, not a store: the bank lives in the workspace beside the tool
+  /// state that writes it, and pulling the whole store in here would give
+  /// one value two owners. Null in tests that do not care.
+  final BrushHandSettingsPort? handSettingsPort;
 
   /// Where the sampled tips live. Presets reference them by id on disk, so
   /// loading resolves through here — and any tip that arrives INSIDE a
@@ -282,6 +298,76 @@ class BrushPresetLibrary extends ChangeNotifier {
     import: _importBrushFile,
   );
 
+  /// Writes [presets] — and the groups they belong to — as one `.anibrush`.
+  ///
+  /// 🚨유저 확정 (`brush-export-format-Q1`, 답 1): our own format, nothing
+  /// lost. The two entry points are the user's own split (`H25-Q1`, 답
+  /// both-by-selection): one brush, or the group it sits in.
+  ///
+  /// Returns the user-facing message, or null when the save was cancelled.
+  Future<String?> exportPresets(
+    List<BrushPreset> presets, {
+    required Future<String?> Function(String suggestedName) pickDestination,
+    required Future<void> Function(String path, String contents) write,
+  }) async {
+    if (presets.isEmpty) {
+      return null;
+    }
+    final ids = {for (final preset in presets) preset.id};
+    final groupIds = {
+      for (final preset in presets)
+        if (preset.groupId != null) preset.groupId,
+    };
+    final bank = handSettingsPort?.read() ?? const {};
+    final pack = BrushPack(
+      presets: presets,
+      handSettings: {
+        for (final id in ids)
+          if (bank[id.value] != null) id.value: bank[id.value]!,
+      },
+    );
+    final suggested =
+        '${presets.length == 1 ? presets.single.name : _groupNameFor(groupIds)}'
+        '.$anicelBrushExtension';
+    final String? path;
+    try {
+      path = await pickDestination(suggested);
+    } on Object catch (error) {
+      return 'Could not choose where to save: $error';
+    }
+    if (path == null || _disposed) {
+      return null;
+    }
+    try {
+      await write(path, encodeBrushPack(pack));
+    } on Object catch (error) {
+      return 'Could not write the brush file: $error';
+    }
+    return presets.length == 1
+        ? 'Exported "${presets.single.name}".'
+        : 'Exported ${presets.length} brushes.';
+  }
+
+  /// The presets in [groupId], in library order — the second entry point.
+  /// A null id means the ROOT section, which is every preset without a
+  /// group rather than a group of its own.
+  List<BrushPreset> presetsInGroup(BrushGroupId? groupId) => [
+    for (final preset in _presets)
+      if (preset.groupId == groupId) preset,
+  ];
+
+  String _groupNameFor(Set<BrushGroupId?> groupIds) {
+    if (groupIds.length != 1) {
+      return 'Brushes';
+    }
+    for (final group in _groups) {
+      if (group.id == groupIds.single) {
+        return group.name;
+      }
+    }
+    return 'Brushes';
+  }
+
   /// The decode→merge half of [importFromFile], on a file already picked.
   Future<String?> _importBrushFile(PickedFile pick) async {
     final lowerName = pick.name.toLowerCase();
@@ -302,8 +388,15 @@ class BrushPresetLibrary extends ChangeNotifier {
     }
     final List<BrushPreset> imported;
     final List<String> warnings;
+    // What the exporting hand had set on each brush, by preset id.
+    var handInFile = const <String, BrushHandSettings>{};
     try {
-      if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
+      if (lowerName.endsWith('.$anicelBrushExtension')) {
+        final pack = decodeBrushPack(utf8.decode(pick.bytes));
+        imported = pack.presets;
+        warnings = const [];
+        handInFile = pack.handSettings;
+      } else if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
         final result = await _decodeSutBytes(pick.bytes, sourceName: baseName);
         imported = result.presets;
         warnings = result.warnings;
@@ -312,6 +405,8 @@ class BrushPresetLibrary extends ChangeNotifier {
         imported = result.presets;
         warnings = result.warnings;
       }
+    } on BrushPackFormatException catch (error) {
+      return error.message;
     } on AbrDecodeException catch (error) {
       return error.message;
     } on SutDecodeException catch (error) {
@@ -329,6 +424,26 @@ class BrushPresetLibrary extends ChangeNotifier {
     );
     _groups = merged.groups;
     _presets = merged.presets;
+    // 🚨THE HAND SETTINGS ARRIVE WITH THEIR BRUSH (유저, `Q-brush-store`:
+    // 「내보낼 때는 브러시 파일에 쓴다」).
+    //
+    // ⚠️Keyed by id, and that is checked rather than assumed: the merge
+    // REPLACES a colliding preset instead of re-minting it (two presets may
+    // never share an id), so the id in the file is the id in the library.
+    // An entry naming a brush that did not land is dropped — a bank row for
+    // a preset that does not exist would attach to whatever took that id
+    // later.
+    final port = handSettingsPort;
+    if (handInFile.isNotEmpty && port != null) {
+      final landedIds = {for (final preset in _presets) preset.id.value};
+      final landed = {
+        for (final entry in handInFile.entries)
+          if (landedIds.contains(entry.key)) entry.key: entry.value,
+      };
+      if (landed.isNotEmpty) {
+        port.write(landed);
+      }
+    }
     if (!_presets.any((preset) => preset.id == _activePresetId)) {
       _activePresetId = null;
     }
@@ -411,3 +526,13 @@ class BrushPresetLibrary extends ChangeNotifier {
     _writing = null;
   }
 }
+
+/// How the library reaches the hand-settings bank without owning it.
+///
+/// ⚠️Two operations because there are two: an export READS what the hand has
+/// set, and an import WRITES what arrived. One callback answering both would
+/// be a flag deciding which question it was asked.
+typedef BrushHandSettingsPort = ({
+  Map<String, BrushHandSettings> Function() read,
+  void Function(Map<String, BrushHandSettings> arrived) write,
+});

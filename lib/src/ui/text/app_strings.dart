@@ -1131,6 +1131,9 @@ enum AppStrings {
   String get brSaveAsPreset => _s('brSaveAsPreset');
   String get brImportBrushes => _s('brImportBrushes');
   String get brResetLibrary => _s('brResetLibrary');
+  String get brExportSelected => _s('brExportSelected');
+  String get brExportGroup => _s('brExportGroup');
+  String get brExportNothing => _s('brExportNothing');
   String get brExpand => _s('brExpand');
   String get brMeshWarp => _s('brMeshWarp');
   String get trModeNormal => _s('trModeNormal');
@@ -1943,6 +1946,9 @@ enum AppStrings {
     'brSaveAsPreset': 'Save current settings as preset',
     'brImportBrushes': 'Import brushes (.abr, .sut, .sutg)',
     'brResetLibrary': 'Reset brush library',
+    'brExportSelected': 'Export brush',
+    'brExportGroup': 'Export brush group',
+    'brExportNothing': 'There is nothing to export here.',
     'brExpand': 'Expand',
     'brMeshWarp': 'Mesh Warp',
     'trModeNormal': 'Transform',
@@ -2906,6 +2912,9 @@ enum AppStrings {
     'brSaveAsPreset': '現在の設定をプリセットとして保存',
     'brImportBrushes': 'ブラシを読み込み（.abr、.sut、.sutg）',
     'brResetLibrary': 'ブラシライブラリをリセット',
+    'brExportSelected': 'ブラシを書き出し',
+    'brExportGroup': 'ブラシグループを書き出し',
+    'brExportNothing': '書き出すブラシがありません。',
     'brExpand': '展開',
     'brMeshWarp': 'メッシュワープ',
     'trModeNormal': '変形',
@@ -3893,6 +3902,9 @@ enum AppStrings {
     'brSaveAsPreset': '현재 설정을 프리셋으로 저장',
     'brImportBrushes': '브러시 가져오기 (.abr, .sut, .sutg)',
     'brResetLibrary': '브러시 라이브러리 초기화',
+    'brExportSelected': '브러시 내보내기',
+    'brExportGroup': '브러시 그룹 내보내기',
+    'brExportNothing': '내보낼 브러시가 없습니다.',
     'brExpand': '펼치기',
     'brMeshWarp': '메시 워프',
     'trModeNormal': '일반 변형',
@@ -4929,6 +4941,9 @@ enum AppStrings {
     'brSaveAsPreset': 'Enregistrer les réglages comme préréglage',
     'brImportBrushes': 'Importer des pinceaux (.abr, .sut, .sutg)',
     'brResetLibrary': 'Réinitialiser la bibliothèque',
+    'brExportSelected': 'Exporter la brosse',
+    'brExportGroup': 'Exporter le groupe',
+    'brExportNothing': 'Aucune brosse à exporter ici.',
     'brExpand': 'Déplier',
     'brMeshWarp': 'Déformation par grille',
     'commonReset': 'Réinitialiser',
@@ -5860,6 +5875,9 @@ enum AppStrings {
     'brSaveAsPreset': '将当前设置保存为预设',
     'brImportBrushes': '导入画笔（.abr、.sut、.sutg）',
     'brResetLibrary': '重置画笔库',
+    'brExportSelected': '导出画笔',
+    'brExportGroup': '导出画笔组',
+    'brExportNothing': '这里没有可导出的画笔。',
     'brExpand': '展开',
     'brMeshWarp': '网格变形',
     'trModeNormal': '变形',

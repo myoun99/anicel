@@ -89,6 +89,23 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
+			<string>com.myoun.anicel.brush</string>
+			<key>UTTypeDescription</key>
+			<string>Anicel Brush</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>anibrush</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
 			<string>com.myoun.anicel.project</string>
 			<key>UTTypeDescription</key>
 			<string>Anicel Project</string>

@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:anicel/src/models/brush_hand_settings.dart';
+import 'package:anicel/src/ui/brush/picked_file.dart';
+import 'package:anicel/src/services/brush_pack_file.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -470,6 +473,8 @@ void main() {
     });
   });
 
+  group('brush export', _exportRoundTripTests);
+
   group('🚨the library writes ONE AT A TIME, in call order', () {
     test('a second edit does not start a second write', () async {
       // Eleven mutators persist, and they used to fire each save unawaited
@@ -566,4 +571,187 @@ class _RecordingFileService extends BrushPresetFileService {
   Future<void> settle() async {
     while (await _finishOne()) {}
   }
+}
+
+/// 🚨유저 (`brush-export-format-Q1` 답 1 + `H25-Q1` 답 both-by-selection):
+/// export a brush or the group it sits in, in our own format, losing nothing
+/// — 「불투명도든 뭐든 손설정이든 정한거 싹 다 내보낼때 나르도록 하고싶음」.
+void _exportRoundTripTests() {
+  late Directory tempDirectory;
+
+  setUp(() async {
+    tempDirectory = await Directory.systemTemp.createTemp('brush_export_test');
+  });
+
+  tearDown(() async {
+    // Same retry as the suite's own tearDown: a fire-and-forget persist may
+    // still hold the file, and Windows refuses the delete until it lands.
+    for (var attempt = 0; ; attempt += 1) {
+      try {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+        return;
+      } on FileSystemException {
+        if (attempt >= 20) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+  });
+
+  BrushPresetLibrary libraryOf({
+    required BrushPresetFileService service,
+    Map<String, BrushHandSettings>? bank,
+    PickedFile? picked,
+  }) {
+    final held = bank ?? <String, BrushHandSettings>{};
+    return BrushPresetLibrary(
+      fileService: service,
+      filePicker: picked == null ? () async => null : () async => picked,
+      handSettingsPort: (
+        read: () => held,
+        write: held.addAll,
+      ),
+    );
+  }
+
+  test('🚨a brush exported and imported back keeps its settings AND what the '
+      'hand had set on it', () async {
+    final service = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/library.json',
+    );
+    final bank = <String, BrushHandSettings>{};
+    final source = libraryOf(service: service, bank: bank);
+    addTearDown(source.dispose);
+    source.saveCurrent(BrushSettings(size: 7, hardness: 0.3));
+    final saved = source.presets.single;
+    // The bank is keyed by the id the library minted, so key onto it.
+    bank[saved.id.value] = (size: 40.0, opacity: 0.25, blendMode: null);
+
+    final path = '${tempDirectory.path}/one.anibrush';
+    final message = await source.exportPresets(
+      [saved],
+      pickDestination: (_) async => path,
+      write: (destination, contents) =>
+          File(destination).writeAsString(contents),
+    );
+
+    expect(message, contains('Exported'));
+    expect(await File(path).exists(), isTrue);
+
+    // A FRESH library, with its own empty bank, reads the file back.
+    final freshService = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/other.json',
+    );
+    final landed = <String, BrushHandSettings>{};
+    final receiver = libraryOf(
+      service: freshService,
+      bank: landed,
+      picked: (
+        name: 'one.anibrush',
+        bytes: await File(path).readAsBytes(),
+      ),
+    );
+    addTearDown(receiver.dispose);
+    await receiver.load();
+
+    expect(await receiver.importFromFile(), contains('Imported'));
+    final arrived = receiver.presets.firstWhere(
+      (preset) => preset.name == saved.name,
+    );
+    expect(arrived.settings.size, 7);
+    expect(arrived.settings.hardness, 0.3);
+    expect(
+      landed[arrived.id.value]?.size,
+      40.0,
+      reason: 'the hand settings followed the brush onto its NEW id',
+    );
+    expect(landed[arrived.id.value]?.opacity, 0.25);
+  });
+
+  test('⛔a hand entry naming a brush the file does not carry is DROPPED',
+      () async {
+    // Otherwise it sits in the bank waiting for whatever preset takes that
+    // id next, and hands that brush a size its owner never set.
+    final service = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/library.json',
+    );
+    final stowaway = encodeBrushPack(
+      BrushPack(
+        presets: [
+          BrushPreset(
+            id: const BrushPresetId('real'),
+            name: 'Real',
+            settings: BrushSettings(size: 9),
+          ),
+        ],
+        handSettings: const {'ghost': (size: 99.0, opacity: null, blendMode: null)},
+      ),
+    );
+    final landed = <String, BrushHandSettings>{};
+    final receiver = libraryOf(
+      service: service,
+      bank: landed,
+      picked: (
+        name: 'pack.anibrush',
+        bytes: Uint8List.fromList(utf8.encode(stowaway)),
+      ),
+    );
+    addTearDown(receiver.dispose);
+    await receiver.load();
+
+    expect(await receiver.importFromFile(), contains('Imported'));
+    expect(landed.containsKey('real'), isFalse, reason: 'it set none');
+    expect(
+      landed.containsKey('ghost'),
+      isFalse,
+      reason: 'and the entry for a brush that never arrived is gone',
+    );
+  });
+
+  test('⛔a file that is not ours is refused with a sentence, not a crash',
+      () async {
+    final service = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/library.json',
+    );
+    final receiver = libraryOf(
+      service: service,
+      picked: (
+        name: 'broken.anibrush',
+        bytes: Uint8List.fromList('not a pack'.codeUnits),
+      ),
+    );
+    addTearDown(receiver.dispose);
+    await receiver.load();
+
+    final before = receiver.presets.length;
+    final message = await receiver.importFromFile();
+    expect(message, isNotNull);
+    expect(message, contains('Anicel brush'));
+    expect(receiver.presets.length, before, reason: 'nothing was merged');
+  });
+
+  test('exporting an empty selection writes nothing and says nothing', () async {
+    final service = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/library.json',
+    );
+    final library = libraryOf(service: service);
+    addTearDown(library.dispose);
+
+    var picked = false;
+    expect(
+      await library.exportPresets(
+        const [],
+        pickDestination: (_) async {
+          picked = true;
+          return null;
+        },
+        write: (_, _) async {},
+      ),
+      isNull,
+    );
+    expect(picked, isFalse);
+  });
 }

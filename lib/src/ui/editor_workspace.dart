@@ -65,6 +65,7 @@ import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import '../services/audio/conform_wav_export.dart';
+import '../services/brush_pack_file.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
@@ -979,6 +980,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
       tipLibrary: _tipLibrary,
+      handSettingsPort: _brushPresets._handSettingsPort,
     );
     // Tips first: presets reference them by id, so the library has to be
     // able to answer before the presets that ask are read.

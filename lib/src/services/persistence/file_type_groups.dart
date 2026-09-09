@@ -29,11 +29,22 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
+import '../brush_pack_file.dart';
 import 'anicel_project_archive.dart';
 
 /// The exported type for a project file — the identifier declared in both
 /// Apple Info.plists. Public because a test pins the two together.
 const String anicelProjectUti = 'com.myoun.anicel.project';
+
+/// The exported type for a brush file this app writes — declared in both
+/// Apple Info.plists beside [anicelProjectUti], and pinned to them by the
+/// same test.
+///
+/// ⚠️It is OURS, so it gets a private identifier rather than the `public.data`
+/// umbrella the imported brush packs use: Apple ships no type for `.abr` or
+/// `.sut` and squatting on Adobe's or Celsys' reverse-DNS would be wrong,
+/// but nobody else owns `.anibrush`.
+const String anicelBrushUti = 'com.myoun.anicel.brush';
 
 /// Apple's umbrella types. Filtering on the umbrella rather than on a dozen
 /// concrete identifiers is deliberate: it keeps working for formats the OS
@@ -80,8 +91,17 @@ const List<String> audioFileExtensions = [
 /// Movie containers the media pool will register.
 const List<String> videoFileExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
 
-/// Brush packs Anicel can import.
-const List<String> brushFileExtensions = ['abr', 'sut', 'sutg'];
+/// Brush files Anicel can import — the two it borrows, and its own.
+///
+/// ⚠️`anibrush` is in here because import and export are one door: a format
+/// the app writes and cannot read back would leave every exported brush
+/// stranded on the machine that made it.
+const List<String> brushFileExtensions = [
+  anicelBrushExtension,
+  'abr',
+  'sut',
+  'sutg',
+];
 
 /// What each identifier means to Android, which filters by MIME and has
 /// never heard of a uniform type identifier.
@@ -103,6 +123,7 @@ const Map<String, String> mimeForUti = {
   _utiPdf: 'application/pdf',
   _utiData: '*/*',
   anicelProjectUti: '*/*',
+  anicelBrushUti: '*/*',
 };
 
 /// Every identifier this file hands to a picker. Public so the test can
@@ -115,6 +136,7 @@ const List<String> allPickerUtis = [
   _utiPdf,
   _utiData,
   anicelProjectUti,
+  anicelBrushUti,
 ];
 
 /// The picker filters, one per surface that opens a file dialog.
@@ -175,8 +197,18 @@ abstract final class FileTypeGroups {
 
   static XTypeGroup get tvppProject => tvppProjectFor(Platform.operatingSystem);
 
-  /// Brush packs (Photoshop `.abr`, Clip Studio `.sut`/`.sutg`) — the one
-  /// group that cannot be the same on every Apple platform.
+  /// Anicel's OWN brush file, for the one place that WRITES one: the preset
+  /// panel's export. We own the type, so it is declared rather than borrowed
+  /// — see [anicelBrushUti].
+  static const XTypeGroup anicelBrush = XTypeGroup(
+    label: 'Anicel brush',
+    extensions: [anicelBrushExtension],
+    uniformTypeIdentifiers: [anicelBrushUti],
+  );
+
+  /// Brush files for the IMPORT picker — ours plus the two it borrows
+  /// (Photoshop `.abr`, Clip Studio `.sut`/`.sutg`). The one group that
+  /// cannot be the same on every Apple platform.
   ///
   /// Apple ships no type for any of these formats, and declaring imported
   /// ones under Adobe's and Celsys' reverse-DNS would be squatting on

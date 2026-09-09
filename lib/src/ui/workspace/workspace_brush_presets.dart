@@ -283,6 +283,72 @@ class _WorkspaceBrushPresets {
   /// in a notice. Both libraries answer the same contract — a user-facing
   /// message on failure, null on success or a cancelled picker — so which
   /// library is the one value that differs.
+  /// The port the library exports and imports hand settings through.
+  ///
+  /// ⚠️The bank lives HERE, beside the tool state that writes it, so the
+  /// library borrows it rather than owning a second copy.
+  BrushHandSettingsPort get _handSettingsPort => (
+    read: () => Map<String, BrushHandSettings>.of(_brushHandSettings),
+    write: (arrived) {
+      _brushHandSettings.addAll(arrived);
+      unawaited(
+        _brushHandSettingsStore.save(
+          Map<String, BrushHandSettings>.of(_brushHandSettings),
+        ),
+      );
+    },
+  );
+
+  /// Writes one brush, or a whole group, as a `.anibrush`.
+  ///
+  /// 🚨유저 (`H25-Q1`, 답 both-by-selection): both buttons exist and the
+  /// SELECTION decides which one applies. The library owns the format and
+  /// the id bookkeeping; what belongs here is the two things only a widget
+  /// can do — ask where to put the file, and say what happened.
+  Future<void> _exportAndNotice(List<BrushPreset> presets) async {
+    if (presets.isEmpty) {
+      await _notice(AppText.strings.brExportNothing);
+      return;
+    }
+    final message = await _state._presetLibrary.exportPresets(
+      presets,
+      pickDestination: (suggestedName) async {
+        final grant = await pickSaveDestinationForUser(
+          _state.context,
+          suggestedName: suggestedName,
+          acceptedTypeGroups: const [FileTypeGroups.anicelBrush],
+        );
+        return grant?.path;
+      },
+      write: (path, contents) async {
+        // ⚠️The Windows save dialog does not append the extension the filter
+        // names (see `FolderPicker.pickSaveDestination`), so the caller
+        // answers the suffix — here, once, rather than in the library, which
+        // has no business knowing which platform asked.
+        final withSuffix = path.toLowerCase().endsWith(
+          '.$anicelBrushExtension',
+        )
+            ? path
+            : '$path.$anicelBrushExtension';
+        await File(withSuffix).writeAsString(contents, flush: true);
+      },
+    );
+    if (message != null) {
+      await _notice(message);
+    }
+  }
+
+  Future<void> _notice(String message) async {
+    if (!_state.mounted) {
+      return;
+    }
+    await showAppNotice(
+      _state.context,
+      title: AppText.strings.commonNotice,
+      message: message,
+    );
+  }
+
   Future<void> _importAndNotice(
     Future<String?> Function() importFromFile,
   ) async {

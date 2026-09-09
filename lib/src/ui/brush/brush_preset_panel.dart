@@ -38,6 +38,8 @@ enum _BrushPresetMenuAction {
   rename,
   delete,
   reset,
+  exportPreset,
+  exportGroup,
 }
 
 // ⛔The per-tab ⋯ menu is gone (유저, R4 #10: 그 시스템 삭제. 그냥 심플하게
@@ -88,6 +90,8 @@ class BrushPresetPanel extends StatefulWidget {
     this.onGroupDeleted,
     this.onGroupsReordered,
     this.onLibraryReset,
+    this.onPresetExported,
+    this.onGroupExported,
   });
 
   final List<BrushPreset> presets;
@@ -131,6 +135,12 @@ class BrushPresetPanel extends StatefulWidget {
 
   /// Throws the library away and re-seeds the built-ins (confirmed first).
   final VoidCallback? onLibraryReset;
+
+  /// 🚨유저 (`H25-Q1`, 답 both-by-selection): 「점선 버튼통해 브러시
+  /// 내보내기, 브러시 그룹 내보내기」 — one brush, or the group it sits in.
+  /// Both write one `.anibrush` (`brush-export-format-Q1`, 답 1).
+  final ValueChanged<BrushPresetId>? onPresetExported;
+  final ValueChanged<BrushGroupId?>? onGroupExported;
 
   /// List height when the panel is laid out somewhere with no height of its
   /// own — a widget test pumping it inside a scroll view. Docked, the
@@ -345,6 +355,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         }
       case _BrushPresetMenuAction.reset:
         unawaited(_resetLibrary());
+      case _BrushPresetMenuAction.exportPreset:
+        final selectedId = widget.selectedPresetId;
+        if (selectedId != null) {
+          widget.onPresetExported!(selectedId);
+        }
+      case _BrushPresetMenuAction.exportGroup:
+        // ⚠️Null is the ROOT section, which is a real answer here: every
+        // brush that belongs to no group is still a selection worth
+        // exporting.
+        widget.onGroupExported!(_openGroup?.id);
     }
   }
 
@@ -655,6 +675,22 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           AppText.strings.brDeleteSelected,
           _BrushPresetMenuAction.delete,
           enabled: widget.selectedPresetId != null,
+        ),
+      // 🚨유저 (`H25-Q1`): 「점선 버튼통해 브러시 내보내기, 브러시 그룹
+      // 내보내기」 — the selection decides which, so both sit here rather than
+      // one of them becoming a mode.
+      if (widget.onPresetExported != null)
+        item(
+          'brush-preset-menu-export',
+          AppText.strings.brExportSelected,
+          _BrushPresetMenuAction.exportPreset,
+          enabled: widget.selectedPresetId != null,
+        ),
+      if (widget.onGroupExported != null)
+        item(
+          'brush-preset-menu-export-group',
+          AppText.strings.brExportGroup,
+          _BrushPresetMenuAction.exportGroup,
         ),
       if (widget.onLibraryReset != null) ...[
         const PanelFlyoutDivider(),

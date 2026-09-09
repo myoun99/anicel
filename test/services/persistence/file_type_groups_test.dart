@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
 
 /// PICK-1. Two of these assertions are unusual and deliberate: they read the
@@ -33,6 +34,7 @@ void main() {
   /// that is the platform whose picker throws without them.
   final groups = <String, XTypeGroup>{
     'anicelProject': FileTypeGroups.anicelProject,
+    'anicelBrush': FileTypeGroups.anicelBrush,
     'brushes': FileTypeGroups.brushesFor('ios'),
     'images': FileTypeGroups.images,
     'viewableMedia': FileTypeGroups.viewableMedia,
@@ -193,6 +195,36 @@ void main() {
         }
         // And something has to open it.
         expect(contents, contains('CFBundleDocumentTypes'));
+      });
+
+      test('$platform exports the BRUSH type too — the other type we own', () {
+        // 유저 확정 (`brush-export-format-Q1`, 답 1): the app writes its own
+        // brush format, so `.anibrush` is ours to declare. Undeclared, the
+        // Apple picker greys out every brush file the user just exported.
+        final contents = plist('$platform/Runner/Info.plist');
+        final block = declarationFor(contents, anicelBrushUti);
+        expect(
+          block,
+          isNotNull,
+          reason: 'FileTypeGroups.anicelBrush filters on $anicelBrushUti.',
+        );
+        expect(block, contains('<string>public.data</string>'));
+        expect(
+          block,
+          contains('<string>$anicelBrushExtension</string>'),
+          reason: 'The type must claim the .$anicelBrushExtension extension.',
+        );
+        final exportedAt = contents.indexOf('UTExportedTypeDeclarations');
+        final importedAt = contents.indexOf('UTImportedTypeDeclarations');
+        final declaredAt = contents.indexOf('<string>$anicelBrushUti</string>');
+        expect(declaredAt, greaterThan(exportedAt));
+        if (importedAt >= 0) {
+          expect(
+            declaredAt,
+            lessThan(importedAt),
+            reason: 'a type we OWN sits under the exported block',
+          );
+        }
       });
 
       test('$platform imports every format Apple ships no type for', () {

@@ -365,6 +365,22 @@ class _WorkspaceTabs {
                                 _state._presetLibrary.reorderGroups,
                             onLibraryReset:
                                 _state._presetLibrary.resetToDefaults,
+                            onPresetExported: (id) {
+                              unawaited(
+                                _state._brushPresets._exportAndNotice([
+                                  for (final preset
+                                      in _state._presetLibrary.presets)
+                                    if (preset.id == id) preset,
+                                ]),
+                              );
+                            },
+                            onGroupExported: (groupId) {
+                              unawaited(
+                                _state._brushPresets._exportAndNotice(
+                                  _state._presetLibrary.presetsInGroup(groupId),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         // The cut's own guides. Unlike the brush library
