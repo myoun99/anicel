@@ -52,12 +52,25 @@ void main() {
     return () => state;
   }
 
-  testWidgets('no tip library means no picker at all', (tester) async {
+  testWidgets('⛔an empty library still shows every picker row', (
+    tester,
+  ) async {
+    // It used to take the three rows and the whole Texture group HEADER off
+    // the panel — product shape decided by a bare panel test, when the app
+    // always ships built-in tips. An empty library just opens an empty grid.
     await pumpPanel(tester, tips: const []);
 
     expect(
       find.byKey(const ValueKey<String>('brush-tip-picker-tip')),
-      findsNothing,
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-tip-picker-dual')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-tip-picker-texture')),
+      findsOneWidget,
     );
   });
 
@@ -237,13 +250,21 @@ void main() {
     expect(read().tipMask, isNull);
   });
 
-  testWidgets('the texture sliders appear only once a texture is set', (
-    tester,
-  ) async {
-    await pumpPanel(tester, tips: [_entry('tip-1', 'Mine')]);
+  testWidgets('⛔the texture sliders WAKE UP with a texture, they do not '
+      'appear', (tester) async {
+    // Picking a texture used to push two new rows into the panel right where
+    // the popup had just been — 「자리는 항상 예약하고 내용만 바꾼다」.
+    const density = ValueKey<String>('brush-tool-texture-density-slider');
+    final read = await pumpPanel(tester, tips: [_entry('tip-1', 'Mine')]);
+    expect(find.byKey(density), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(density));
+    await tester.drag(find.byKey(density), const Offset(-60, 0));
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('brush-tool-texture-density-slider')),
-      findsNothing,
+      read().textureDensity,
+      1.0,
+      reason: 'dead until there is a texture for it to thin',
     );
 
     final swatch = find.byKey(
@@ -258,10 +279,11 @@ void main() {
     await tester.pumpAndSettle();
     await dismissPicker(tester);
 
-    expect(
-      find.byKey(const ValueKey<String>('brush-tool-texture-density-slider')),
-      findsOneWidget,
-    );
+    expect(find.byKey(density), findsOneWidget);
+    await tester.ensureVisible(find.byKey(density));
+    await tester.drag(find.byKey(density), const Offset(-60, 0));
+    await tester.pumpAndSettle();
+    expect(read().textureDensity, lessThan(1.0));
   });
 
   testWidgets('the add button asks the host to open an image', (tester) async {

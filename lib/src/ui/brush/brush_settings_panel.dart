@@ -36,8 +36,14 @@ class BrushSettingsPanel extends StatelessWidget {
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
 
-  /// The shared tip library, for the tip / dual / texture pickers. Empty
-  /// keeps the pickers hidden, which is what a bare panel test wants.
+  /// The shared tip library, for the tip / dual / texture pickers.
+  ///
+  /// ⛔An empty library used to take the three picker rows and the whole
+  /// Texture group OFF the panel. That was product shape decided by a bare
+  /// panel test — the app always ships built-in tips, so the branch could
+  /// only ever fire in a test, and what it removed was a group HEADER as
+  /// well. The rows are always here now; an empty library just opens an
+  /// empty grid.
   final List<BrushTipEntry> tips;
 
   /// Opens the add-a-tip-from-an-image flow.
@@ -98,21 +104,20 @@ class BrushSettingsPanel extends StatelessWidget {
             ),
           ),
           const _GroupHeader('Brush tip'),
-          if (tips.isNotEmpty)
-            BrushTipPickerRow(
-              label: AppText.strings.brBrushTip,
-              role: BrushTipRole.tip,
-              selected: state.tipMask,
-              tips: tips,
-              onImportRequested: onTipImportRequested,
-              onRenameTip: onRenameTip,
-              onDeleteTip: onDeleteTip,
-              // The sampled tip REPLACES hardness and tip shape, so clearing
-              // it is how a brush gets its parametric footprint back — which
-              // is why this goes through withTipMask rather than copyWith.
-              onPicked: (mask) =>
-                  onChanged(state.withMask(BrushMaskSlot.tip, mask)),
-            ),
+          BrushTipPickerRow(
+            label: AppText.strings.brBrushTip,
+            role: BrushTipRole.tip,
+            selected: state.tipMask,
+            tips: tips,
+            onImportRequested: onTipImportRequested,
+            onRenameTip: onRenameTip,
+            onDeleteTip: onDeleteTip,
+            // The sampled tip REPLACES hardness and tip shape, so clearing
+            // it is how a brush gets its parametric footprint back — which
+            // is why this goes through withTipMask rather than copyWith.
+            onPicked: (mask) =>
+                onChanged(state.withMask(BrushMaskSlot.tip, mask)),
+          ),
           _PanelSlider(
             label: AppText.strings.brHardness,
             valueLabel: hardnessLabel,
@@ -223,38 +228,44 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) =>
                 onChanged(state.copyWith(mixesGroundColor: value)),
           ),
-          if (state.mixesGroundColor) ...[
-            _PanelSlider(
-              label: AppText.strings.brPaintAmount,
-              valueLabel: '${(state.paintAmount * 100).round()}%',
-              value: BrushToolState.clampZeroToOne(state.paintAmount),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-paint-amount-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(paintAmount: value)),
-            ),
-            _PanelSlider(
-              label: AppText.strings.brPaintDensity,
-              valueLabel: '${(state.paintDensity * 100).round()}%',
-              value: BrushToolState.clampZeroToOne(state.paintDensity),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-paint-density-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(paintDensity: value)),
-            ),
-            _PanelSlider(
-              label: AppText.strings.brColorStretch,
-              valueLabel: '${(state.colorStretch * 100).round()}%',
-              value: BrushToolState.clampZeroToOne(state.colorStretch),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-color-stretch-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(colorStretch: value)),
-            ),
-          ],
+          // ⛔THE ROWS DO NOT APPEAR AND DISAPPEAR — they go DEAD (유저, 반복:
+          // 「없다가 생기는 UI 금지. 자리는 항상 예약하고 내용만 바꾼다」).
+          // The three below used to be mounted only while mixing was on, so
+          // turning the switch made the panel jump and everything under it
+          // moved out from under the finger.
+          _PanelSlider(
+            label: AppText.strings.brPaintAmount,
+            valueLabel: '${(state.paintAmount * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.paintAmount),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-paint-amount-slider',
+            onChanged: state.mixesGroundColor
+                ? (value) => onChanged(state.copyWith(paintAmount: value))
+                : null,
+          ),
+          _PanelSlider(
+            label: AppText.strings.brPaintDensity,
+            valueLabel: '${(state.paintDensity * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.paintDensity),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-paint-density-slider',
+            onChanged: state.mixesGroundColor
+                ? (value) => onChanged(state.copyWith(paintDensity: value))
+                : null,
+          ),
+          _PanelSlider(
+            label: AppText.strings.brColorStretch,
+            valueLabel: '${(state.colorStretch * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.colorStretch),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-color-stretch-slider',
+            onChanged: state.mixesGroundColor
+                ? (value) => onChanged(state.copyWith(colorStretch: value))
+                : null,
+          ),
           const _GroupHeader('Scattering'),
           _PanelSlider(
             // A ratio of the brush size, so scatter keeps its character as
@@ -287,81 +298,79 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterBothAxes: value)),
           ),
-          if (tips.isNotEmpty) ...[
-            const _GroupHeader('Texture'),
-            BrushTipPickerRow(
-              label: AppText.strings.brDualTip,
-              role: BrushTipRole.dual,
-              selected: state.dualMask,
-              tips: tips,
-              onImportRequested: onTipImportRequested,
-              onRenameTip: onRenameTip,
-              onDeleteTip: onDeleteTip,
-              onPicked: (mask) =>
-                  onChanged(state.withMask(BrushMaskSlot.dual, mask)),
-            ),
-            if (state.dualMask != null)
-              _PanelSlider(
-                label: AppText.strings.brScale,
-                valueLabel: '${(state.dualMaskScale * 100).round()}%',
-                value: BrushToolState.clampDualMaskScale(state.dualMaskScale),
-                min: 0.05,
-                max: 10,
-                scale: FieldSliderScale.exponential,
-                keyValue: 'brush-tool-dual-scale-slider',
-                onChanged: (value) =>
-                    onChanged(state.copyWith(dualMaskScale: value)),
-              ),
-            // The dual mask's own density, beside its scale — the same pair
-            // the texture mask below has had all along. The dual mask used to
-            // be an unconditional multiply, which made it the one mask you
-            // could only have at full strength.
-            if (state.dualMask != null)
-              _PanelSlider(
-                label: AppText.strings.brTextureDensity,
-                valueLabel: '${(state.dualDensity * 100).round()}%',
-                value: BrushToolState.clampZeroToOne(state.dualDensity),
-                min: 0,
-                max: 1,
-                keyValue: 'brush-tool-dual-density-slider',
-                onChanged: (value) =>
-                    onChanged(state.copyWith(dualDensity: value)),
-              ),
-            BrushTipPickerRow(
-              label: AppText.strings.brTexture,
-              role: BrushTipRole.texture,
-              selected: state.textureMask,
-              tips: tips,
-              onImportRequested: onTipImportRequested,
-              onRenameTip: onRenameTip,
-              onDeleteTip: onDeleteTip,
-              onPicked: (mask) =>
-                  onChanged(state.withMask(BrushMaskSlot.texture, mask)),
-            ),
-            if (state.textureMask != null) ...[
-              _PanelSlider(
-                label: AppText.strings.brScale,
-                valueLabel: '${(state.textureScale * 100).round()}%',
-                value: BrushToolState.clampDualMaskScale(state.textureScale),
-                min: 0.05,
-                max: 10,
-                scale: FieldSliderScale.exponential,
-                keyValue: 'brush-tool-texture-scale-slider',
-                onChanged: (value) =>
-                    onChanged(state.copyWith(textureScale: value)),
-              ),
-              _PanelSlider(
-                label: AppText.strings.brTextureDensity,
-                valueLabel: '${(state.textureDensity * 100).round()}%',
-                value: BrushToolState.clampZeroToOne(state.textureDensity),
-                min: 0,
-                max: 1,
-                keyValue: 'brush-tool-texture-density-slider',
-                onChanged: (value) =>
-                    onChanged(state.copyWith(textureDensity: value)),
-              ),
-            ],
-          ],
+          const _GroupHeader('Texture'),
+          BrushTipPickerRow(
+            label: AppText.strings.brDualTip,
+            role: BrushTipRole.dual,
+            selected: state.dualMask,
+            tips: tips,
+            onImportRequested: onTipImportRequested,
+            onRenameTip: onRenameTip,
+            onDeleteTip: onDeleteTip,
+            onPicked: (mask) =>
+                onChanged(state.withMask(BrushMaskSlot.dual, mask)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brScale,
+            valueLabel: '${(state.dualMaskScale * 100).round()}%',
+            value: BrushToolState.clampDualMaskScale(state.dualMaskScale),
+            min: 0.05,
+            max: 10,
+            scale: FieldSliderScale.exponential,
+            keyValue: 'brush-tool-dual-scale-slider',
+            onChanged: state.dualMask == null
+                ? null
+                : (value) => onChanged(state.copyWith(dualMaskScale: value)),
+          ),
+          // The dual mask's own density, beside its scale — the same pair
+          // the texture mask below has had all along. The dual mask used to
+          // be an unconditional multiply, which made it the one mask you
+          // could only have at full strength.
+          _PanelSlider(
+            label: AppText.strings.brTextureDensity,
+            valueLabel: '${(state.dualDensity * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.dualDensity),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-dual-density-slider',
+            onChanged: state.dualMask == null
+                ? null
+                : (value) => onChanged(state.copyWith(dualDensity: value)),
+          ),
+          BrushTipPickerRow(
+            label: AppText.strings.brTexture,
+            role: BrushTipRole.texture,
+            selected: state.textureMask,
+            tips: tips,
+            onImportRequested: onTipImportRequested,
+            onRenameTip: onRenameTip,
+            onDeleteTip: onDeleteTip,
+            onPicked: (mask) =>
+                onChanged(state.withMask(BrushMaskSlot.texture, mask)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brScale,
+            valueLabel: '${(state.textureScale * 100).round()}%',
+            value: BrushToolState.clampDualMaskScale(state.textureScale),
+            min: 0.05,
+            max: 10,
+            scale: FieldSliderScale.exponential,
+            keyValue: 'brush-tool-texture-scale-slider',
+            onChanged: state.textureMask == null
+                ? null
+                : (value) => onChanged(state.copyWith(textureScale: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brTextureDensity,
+            valueLabel: '${(state.textureDensity * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.textureDensity),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-texture-density-slider',
+            onChanged: state.textureMask == null
+                ? null
+                : (value) => onChanged(state.copyWith(textureDensity: value)),
+          ),
           const _GroupHeader('Correction'),
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
           // of brush presets on purpose.
@@ -609,7 +618,12 @@ class _PanelSlider extends StatelessWidget {
   final double min;
   final double max;
   final String keyValue;
-  final ValueChanged<double> onChanged;
+
+  /// Null makes the row DEAD, not absent: it keeps its place, its label and
+  /// its number, and stops taking the gesture. That is the whole reason this
+  /// is nullable — see the mixing and mask rows, which used to be mounted
+  /// conditionally and made the panel jump under the finger.
+  final ValueChanged<double>? onChanged;
   final FieldSliderScale scale;
 
   /// Optional right-edge control (BB-3: the pressure-curve button).

@@ -301,6 +301,37 @@ void main() {
       return () => state;
     }
 
+    testWidgets('⛔the mask sliders keep their place with no mask picked', (
+      tester,
+    ) async {
+      // The dual and texture scale/density rows used to be mounted only once
+      // a mask was chosen, so picking one in the popup shoved four rows into
+      // the panel under the finger that had just come back from it.
+      final read = await pumpPanel(tester);
+
+      expect(read().dualMask, isNull);
+      expect(read().textureMask, isNull);
+
+      for (final key in [
+        'brush-tool-dual-scale-slider',
+        'brush-tool-dual-density-slider',
+        'brush-tool-texture-scale-slider',
+        'brush-tool-texture-density-slider',
+      ]) {
+        final slider = find.byKey(ValueKey<String>(key));
+        expect(slider, findsOneWidget, reason: '$key must keep its place');
+        await tester.ensureVisible(slider);
+        await tester.drag(slider, const Offset(60, 0));
+        await tester.pumpAndSettle();
+      }
+
+      // Present, and DEAD: with no mask there is nothing for them to scale.
+      expect(read().dualMaskScale, 1.0);
+      expect(read().dualDensity, 1.0);
+      expect(read().textureScale, 1.0);
+      expect(read().textureDensity, 1.0);
+    });
+
     testWidgets('the jitter sliders reach the engine', (tester) async {
       // These have existed in the engine since P20 with no way to touch
       // them: only a preset or an import could turn them on.
@@ -344,14 +375,25 @@ void main() {
     // The blend lock moved to the top strip with the blend button; its
     // pin/release test went with it (editor_top_strip_test.dart).
 
-    testWidgets('mixing hides its knobs until it is switched on', (
+    testWidgets('⛔mixing DEADENS its knobs, it does not remove them', (
       tester,
     ) async {
+      // 유저, 반복: 「없다가 생기는 UI 금지. 자리는 항상 예약하고 내용만
+      // 바꾼다」. The three knobs used to be mounted only while mixing was
+      // on, so the switch made everything below it jump.
       final read = await pumpPanel(tester);
       const amount = ValueKey<String>('brush-tool-paint-amount-slider');
+      const stretchKey = ValueKey<String>('brush-tool-color-stretch-slider');
 
       expect(read().mixesGroundColor, isFalse);
-      expect(find.byKey(amount), findsNothing);
+      expect(find.byKey(amount), findsOneWidget);
+
+      // Dead means dead: dragging it while mixing is off changes nothing.
+      final before = read().colorStretch;
+      await tester.ensureVisible(find.byKey(stretchKey));
+      await tester.drag(find.byKey(stretchKey), const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(read().colorStretch, before);
 
       final toggle = find.byKey(
         const ValueKey<String>('brush-tool-mixing-toggle'),
