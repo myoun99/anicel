@@ -39,12 +39,12 @@ class BrushStrokePreviewCache {
   /// covers several hundred presets before eviction starts.
   static const int capacity = 512;
 
-  final BakeOnceLru<(BrushSettings, int, int), ui.Image> _store =
-      BakeOnceLru<(BrushSettings, int, int), ui.Image>(
+  final BakeOnceLru<(BrushSettings, int, int), BrushStrokeSample> _store =
+      BakeOnceLru<(BrushSettings, int, int), BrushStrokeSample>(
         capacity: capacity,
         // Callers hold clones (the contract above), so disposing the
         // cache's own handle here is safe.
-        retire: (image) => image.dispose(),
+        retire: (sample) => sample.image.dispose(),
       );
 
   /// Isolate fan-out cap: a fast scroll requests dozens of rows at once;
@@ -53,26 +53,30 @@ class BrushStrokePreviewCache {
   int _activeRasters = 0;
   final Queue<void Function()> _rasterQueue = Queue<void Function()>();
 
-  /// The cached image for the key, or null (LRU touch on hit). The
-  /// returned image stays OWNED BY THE CACHE — callers that hold it
-  /// across frames must [ui.Image.clone] it.
-  ui.Image? imageFor(BrushSettings settings, int width, int height) {
+  /// The cached sample for the key, or null (LRU touch on hit). Its image
+  /// stays OWNED BY THE CACHE — callers that hold it across frames must
+  /// [ui.Image.clone] it.
+  BrushStrokeSample? sampleFor(BrushSettings settings, int width, int height) {
     final key = (settings, width, height);
     return _store.peek(key);
   }
 
   /// Rasterizes (once) and caches the key's sample. Concurrent calls for
   /// the same key share one raster.
-  Future<ui.Image> ensure(BrushSettings settings, int width, int height) {
+  Future<BrushStrokeSample> ensure(
+    BrushSettings settings,
+    int width,
+    int height,
+  ) {
     final key = (settings, width, height);
-    final cached = imageFor(settings, width, height);
+    final cached = sampleFor(settings, width, height);
     if (cached != null) {
-      return Future<ui.Image>.value(cached);
+      return Future<BrushStrokeSample>.value(cached);
     }
     return _store.ensure(key, () => _rasterize(settings, width, height));
   }
 
-  Future<ui.Image> _rasterize(
+  Future<BrushStrokeSample> _rasterize(
     BrushSettings settings,
     int width,
     int height,
@@ -103,7 +107,17 @@ class BrushStrokePreviewCache {
       rgba[base + 2] = value;
       rgba[base + 3] = value;
     }
-    return uploadRawRgba(rgba, width: width, height: height);
+    return BrushStrokeSample(
+      image: await uploadRawRgba(rgba, width: width, height: height),
+      // Measured HERE, off the bytes that are already in hand, because a
+      // `ui.Image` can only be read back asynchronously — asking the GPU
+      // for these pixels once per row is the cost this avoids.
+      nameGroundCoverage: brushStrokeNameGroundCoverage(
+        alpha,
+        width: width,
+        height: height,
+      ),
+    );
   }
 
   Future<void> _acquireRasterSlot() {
@@ -130,10 +144,76 @@ class BrushStrokePreviewCache {
   @visibleForTesting
   void clear() {
     for (final entry in _store.entries) {
-      entry.value.dispose();
+      entry.value.image.dispose();
     }
     _store.clear();
   }
+}
+
+/// One baked stroke sample: the picture, and how much INK sits under the
+/// preset's name.
+///
+/// 🚨THE NAME RIDES THE STROKE (유저 2026-09-08), so the thing behind it is
+/// not a colour anyone can look up — it is the row's ground with a variable
+/// amount of stroke on top. `textOnColor` needs the COMPOSITED ground, which
+/// is what [nameGroundCoverage] supplies: 0 is bare row, 1 is solid ink.
+/// It rides with the image because it is measured from the very bytes the
+/// image is uploaded from, and it is a property of the same bake.
+class BrushStrokeSample {
+  const BrushStrokeSample({
+    required this.image,
+    required this.nameGroundCoverage,
+  });
+
+  final ui.Image image;
+
+  /// 0..1 mean alpha under the name's box — see [brushStrokeNameBandTop].
+  final double nameGroundCoverage;
+
+  BrushStrokeSample cloneImage() => BrushStrokeSample(
+    image: image.clone(),
+    nameGroundCoverage: nameGroundCoverage,
+  );
+}
+
+/// The box the preset name occupies, as fractions of the sample.
+///
+/// ⚠️ONE PLACE, because two would drift: the widget PLACES the text with
+/// these and the rasterizer MEASURES with them. They describe an 11pt line
+/// centred at `Alignment(0, 0.5)` — the middle of the region between the
+/// centre and the bottom — in a row about thirty logical pixels tall, and
+/// the middle 70% of the width, which is where a one-line ellipsized name
+/// actually lands.
+const double brushStrokeNameBandTop = 0.52;
+const double brushStrokeNameBandBottom = 0.98;
+const double brushStrokeNameBandLeft = 0.15;
+const double brushStrokeNameBandRight = 0.85;
+
+/// Mean coverage under the name's box, 0..1.
+double brushStrokeNameGroundCoverage(
+  Uint8List alpha, {
+  required int width,
+  required int height,
+}) {
+  final top = (height * brushStrokeNameBandTop).floor().clamp(0, height - 1);
+  final bottom = (height * brushStrokeNameBandBottom).ceil().clamp(
+    top + 1,
+    height,
+  );
+  final left = (width * brushStrokeNameBandLeft).floor().clamp(0, width - 1);
+  final right = (width * brushStrokeNameBandRight).ceil().clamp(
+    left + 1,
+    width,
+  );
+  var total = 0;
+  for (var y = top; y < bottom; y += 1) {
+    final row = y * width;
+    for (var x = left; x < right; x += 1) {
+      total += alpha[row + x];
+    }
+  }
+  final count = (bottom - top) * (right - left);
+  return count <= 0 ? 0.0 : total / (count * 255.0);
 }
 
 /// The stroke-sample rasterizer (moved OUT of the widget so the isolate

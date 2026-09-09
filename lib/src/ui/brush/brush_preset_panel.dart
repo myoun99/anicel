@@ -1267,39 +1267,24 @@ class _BrushPresetRow extends StatelessWidget {
         ),
       );
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: BrushStrokePreview(settings: preset.settings),
-        ),
-        // 🚨THE NAME RIDES THE STROKE (유저 2026-09-08: 「스트로크가 젤 밑에
-        // 중앙에 깔려있고, 그 위에 오버레이로 **스트로크랑 겹치든 말든**
-        // 중앙 살짝아래에 이름있고」).
-        //
-        // ⛔The 78%-alpha plate this replaced existed to keep the two apart,
-        // and the user asked for them not to be kept apart. It also pinned
-        // the name to the RIGHT edge, where a long name and a long stroke
-        // fought over the same pixels.
-        //
-        // ⚠️`Alignment(0, 0.5)` is 「살짝 아래」 read literally: the middle of
-        // the region between the centre (0) and the bottom (1).
-        if (showName)
-          Align(
-            alignment: const Alignment(0, 0.5),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                preset.name,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: nameColor),
-              ),
-            ),
-          ),
-      ],
+    // 🚨THE NAME MOVED INTO THE PREVIEW, and that is the point: it rides the
+    // stroke (유저 2026-09-08), so its ink has to be picked from what the
+    // stroke actually put behind it, and only the widget holding the raster
+    // knows that. The old `Stack` here wrote in a theme colour — the same
+    // family the stroke is tinted with — which is why a name on a thick
+    // stroke was invisible (유저 2026-09-10). The placement decision and the
+    // ⛔rejected 78%-alpha plate travelled with it.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: BrushStrokePreview(
+        settings: preset.settings,
+        name: showName ? preset.name : null,
+        // The row paints nothing of its own when it is not selected, so the
+        // panel's surface IS the ground under the sample.
+        nameGround: selected
+            ? colorScheme.surfaceContainerHigh
+            : colorScheme.surface,
+      ),
     );
   }
 }
