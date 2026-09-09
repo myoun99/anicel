@@ -95,6 +95,8 @@ class BrushDabPlan {
     required this.tipMask,
     required this.dualMask,
     required this.textureMask,
+    required this.dualDensity,
+    required this.dualOneMinusDensity,
     required this.textureDensity,
     required this.textureOneMinusDensity,
     required this.tipULattice,
@@ -165,6 +167,8 @@ class BrushDabPlan {
   final BrushTipMask? tipMask;
   final BrushTipMask? dualMask;
   final BrushTipMask? textureMask;
+  final double dualDensity;
+  final double dualOneMinusDensity;
   final double textureDensity;
   final double textureOneMinusDensity;
 
@@ -234,6 +238,7 @@ class BrushDabPlan {
     // the resulting bytes are unchanged — the parity suites pin this.
     final dualMask = dab.dualMask;
     final textureMask = dab.textureMask;
+    final dualDensity = dab.dualDensity;
     final textureDensity = dab.textureDensity;
     final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
     final tiles = clip.tileRange(tileSize: tileSize);
@@ -274,6 +279,8 @@ class BrushDabPlan {
       tipMask: tipMask,
       dualMask: dualMask,
       textureMask: textureMask,
+      dualDensity: dualDensity,
+      dualOneMinusDensity: 1.0 - dualDensity,
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
       tipULattice: unrotatedTip
@@ -367,6 +374,8 @@ class BrushDabPlan {
     dabFlow: plan.dabFlow,
     sourceAlphaNorm: plan.sourceAlphaNorm,
     radiusSqSkip: plan.radiusSqSkip,
+    dualDensity: plan.dualDensity,
+    dualOneMinusDensity: plan.dualOneMinusDensity,
     textureDensity: plan.textureDensity,
     textureOneMinusDensity: plan.textureOneMinusDensity,
     aaContrast: plan.aaContrast,
@@ -486,6 +495,8 @@ void blendDabTilesDart(
   final sourceR = plan.sourceR;
   final sourceG = plan.sourceG;
   final sourceB = plan.sourceB;
+  final dualDensity = plan.dualDensity;
+  final dualOneMinusDensity = plan.dualOneMinusDensity;
   final textureDensity = plan.textureDensity;
   final textureOneMinusDensity = plan.textureOneMinusDensity;
   final left = plan.left;
@@ -606,13 +617,16 @@ void blendDabTilesDart(
 
         // Dual-brush texture: a second tiled mask multiplies the coverage.
         if (dualMask != null) {
-          coverage *= sampleBrushTipMaskTiledCoverageLattice(
+          final dualSample = sampleBrushTipMaskTiledCoverageLattice(
             mask: dualMask,
             uAxis: dualULattice!,
             uIndex: x - left,
             vAxis: dualVLattice!,
             vIndex: vIndex,
           );
+          // Same law as the texture blend below; density 1.0 is the plain
+          // multiply this used to do unconditionally.
+          coverage *= dualOneMinusDensity + dualDensity * dualSample;
           if (coverage <= 0.0) {
             continue;
           }

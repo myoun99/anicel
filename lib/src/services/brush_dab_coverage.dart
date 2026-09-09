@@ -24,7 +24,7 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   double texturedCoverageAt(double coverage, int x, int y) {
     var result = coverage;
     if (dualMask != null) {
-      result *= sampleBrushTipMaskTiledCoverage(
+      final dualSample = sampleBrushTipMaskTiledCoverage(
         mask: dualMask,
         dx: x + 0.5 - dab.center.x,
         dy: y + 0.5 - dab.center.y,
@@ -32,6 +32,10 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
         offsetU: dab.dualOffsetU,
         offsetV: dab.dualOffsetV,
       );
+      // The same law the texture mask below has always had. At density 1.0
+      // this is the plain multiply the dual mask used to do unconditionally,
+      // so a brush that never asked for a density draws byte-identically.
+      result *= (1.0 - dab.dualDensity) + dab.dualDensity * dualSample;
       if (result <= 0.0) {
         return 0.0;
       }

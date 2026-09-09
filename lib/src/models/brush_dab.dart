@@ -25,6 +25,7 @@ class BrushDab {
     this.tipMask,
     this.dualMask,
     this.dualMaskScale = 1.0,
+    this.dualDensity = 1.0,
     this.dualOffsetU = 0.0,
     this.dualOffsetV = 0.0,
     this.textureMask,
@@ -42,6 +43,7 @@ class BrushDab {
       );
     }
     _validateUnitIntervalFinite(textureDensity, 'textureDensity');
+    _validateUnitIntervalFinite(dualDensity, 'dualDensity');
     _validateColor(color);
     if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
       throw ArgumentError.value(
@@ -106,6 +108,7 @@ class BrushDab {
       tipMask: settings.tipMask,
       dualMask: settings.dualMask,
       dualMaskScale: settings.dualMaskScale,
+      dualDensity: settings.dualDensity,
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
@@ -154,6 +157,11 @@ class BrushDab {
   /// tile period) chosen at placement time.
   final BrushTipMask? dualMask;
   final double dualMaskScale;
+
+  /// How hard the dual mask bites: `coverage *= (1 - d) + d * sample`, the
+  /// same shape [textureDensity] has had all along. 1.0 is the plain
+  /// multiply the dual mask used to do unconditionally.
+  final double dualDensity;
   final double dualOffsetU;
   final double dualOffsetV;
 
@@ -199,6 +207,7 @@ class BrushDab {
     BrushTipMask? tipMask,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    double? dualDensity,
     double? dualOffsetU,
     double? dualOffsetV,
     BrushTipMask? textureMask,
@@ -226,6 +235,7 @@ class BrushDab {
       tipMask: tipMask ?? this.tipMask,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      dualDensity: dualDensity ?? this.dualDensity,
       dualOffsetU: dualOffsetU ?? this.dualOffsetU,
       dualOffsetV: dualOffsetV ?? this.dualOffsetV,
       textureMask: textureMask ?? this.textureMask,
@@ -260,6 +270,7 @@ class BrushDab {
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
     if (dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
+    'dualDensity': dualDensity,
     'dualOffsetU': dualOffsetU,
     'dualOffsetV': dualOffsetV,
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
@@ -296,6 +307,7 @@ class BrushDab {
           ? null
           : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
+      dualDensity: (json['dualDensity'] as num?)?.toDouble() ?? 1.0,
       dualOffsetU: (json['dualOffsetU'] as num?)?.toDouble() ?? 0.0,
       dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
       textureMask: json['textureMask'] == null
@@ -334,6 +346,7 @@ class BrushDab {
           other.tipMask == tipMask &&
           other.dualMask == dualMask &&
           other.dualMaskScale == dualMaskScale &&
+          other.dualDensity == dualDensity &&
           other.dualOffsetU == dualOffsetU &&
           other.dualOffsetV == dualOffsetV &&
           other.textureMask == textureMask &&
@@ -362,6 +375,7 @@ class BrushDab {
     tipMask,
     dualMask,
     dualMaskScale,
+    dualDensity,
     dualOffsetU,
     dualOffsetV,
     textureMask,

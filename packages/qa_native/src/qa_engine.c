@@ -211,6 +211,11 @@ typedef struct {
   // alone, otherwise it scales about 0.5. Ignored when the threshold flag
   // is set. v31.
   double aa_contrast;
+  /* How hard the DUAL mask bites — the same law the texture mask has had all
+     along: coverage *= one_minus + density * sample. 1.0 is the plain
+     multiply the dual mask used to do unconditionally. v32. */
+  double dual_density;
+  double dual_one_minus_density;
   int32_t source_r;
   int32_t source_g;
   int32_t source_b;
@@ -489,11 +494,14 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       }
 
       if (has_dual) {
-        coverage *= qa_sample_tiled_lattice(
+        const double dual_sample = qa_sample_tiled_lattice(
             s->dual_alpha, s->dual_size, s->dual_u_texel0, s->dual_u_texel1,
             s->dual_u_fraction, s->dual_u_one_minus, s->dual_v_texel0,
             s->dual_v_texel1, s->dual_v_fraction, s->dual_v_one_minus,
             x - s->region_left, v_index);
+        /* Same law as the texture blend below; density 1.0 is the plain
+           multiply this used to do unconditionally. */
+        coverage *= s->dual_one_minus_density + s->dual_density * dual_sample;
         if (coverage <= 0.0) {
           continue;
         }
@@ -4695,4 +4703,4 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 // v29: qa_process_footprint_bytes / qa_available_memory_bytes - what this
 // process is actually holding, and what the OS will still let it take.
 // v31: qa_dab_spec gains aa_contrast + QA_DAB_FLAG_AA_THRESHOLD (brush edge).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 31; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 32; }

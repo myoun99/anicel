@@ -230,6 +230,7 @@ class BrushToolState {
     bool scatterBothAxes = true,
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
+    double dualDensity = 1.0,
     BrushTipMask? textureMask,
     double textureScale = 1.0,
     double textureDensity = 1.0,
@@ -270,6 +271,7 @@ class BrushToolState {
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
+      dualDensity: dualDensity,
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
@@ -360,6 +362,7 @@ class BrushToolState {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    double? dualDensity,
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
@@ -407,6 +410,7 @@ class BrushToolState {
         scatterBothAxes: scatterBothAxes ?? true,
         dualMask: dualMask,
         dualMaskScale: dualMaskScale ?? 1.0,
+        dualDensity: dualDensity ?? 1.0,
         textureMask: textureMask,
         textureScale: textureScale ?? 1.0,
         textureDensity: textureDensity ?? 1.0,
@@ -452,6 +456,7 @@ class BrushToolState {
     scatterRadiusRatio: clampScatterRadius(s.scatterRadiusRatio),
     scatterCount: clampScatterCount(s.scatterCount),
     dualMaskScale: clampDualMaskScale(s.dualMaskScale),
+    dualDensity: clampZeroToOne(s.dualDensity),
     textureScale: clampDualMaskScale(s.textureScale),
     textureDensity: clampZeroToOne(s.textureDensity),
   );
@@ -541,6 +546,9 @@ class BrushToolState {
   bool get scatterBothAxes => shape.scatterBothAxes;
   BrushTipMask? get dualMask => shape.dualMask;
   double get dualMaskScale => shape.dualMaskScale;
+
+  /// See [BrushShape.dualDensity].
+  double get dualDensity => shape.dualDensity;
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
@@ -844,6 +852,7 @@ class BrushToolState {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    double? dualDensity,
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,

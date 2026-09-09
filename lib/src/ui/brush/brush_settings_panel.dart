@@ -312,6 +312,21 @@ class BrushSettingsPanel extends StatelessWidget {
                 onChanged: (value) =>
                     onChanged(state.copyWith(dualMaskScale: value)),
               ),
+            // The dual mask's own density, beside its scale — the same pair
+            // the texture mask below has had all along. The dual mask used to
+            // be an unconditional multiply, which made it the one mask you
+            // could only have at full strength.
+            if (state.dualMask != null)
+              _PanelSlider(
+                label: AppText.strings.brTextureDensity,
+                valueLabel: '${(state.dualDensity * 100).round()}%',
+                value: BrushToolState.clampZeroToOne(state.dualDensity),
+                min: 0,
+                max: 1,
+                keyValue: 'brush-tool-dual-density-slider',
+                onChanged: (value) =>
+                    onChanged(state.copyWith(dualDensity: value)),
+              ),
             BrushTipPickerRow(
               label: AppText.strings.brTexture,
               role: BrushTipRole.texture,

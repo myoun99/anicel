@@ -112,6 +112,7 @@ BrushDab dab({
   BrushTipMask? tipMask,
   BrushTipMask? dualMask,
   double dualMaskScale = 1.0,
+  double dualDensity = 1.0,
   double dualOffsetU = 0.0,
   double dualOffsetV = 0.0,
   BrushTipMask? textureMask,
@@ -135,6 +136,7 @@ BrushDab dab({
     tipMask: tipMask,
     dualMask: dualMask,
     dualMaskScale: dualMaskScale,
+    dualDensity: dualDensity,
     dualOffsetU: dualOffsetU,
     dualOffsetV: dualOffsetV,
     textureMask: textureMask,
@@ -434,6 +436,46 @@ void main() {
             ),
         ]),
         reason: 'sampled tip rotated across tiles',
+      );
+    });
+
+    test('🚨a dual mask at PARTIAL density agrees across all three', () {
+      // ⚠️The case above runs at density 1.0, which is the identity — it
+      // exercises the plain multiply the dual mask always did, not the new
+      // blend. Every transcription would still agree if one of them had
+      // dropped the density term entirely. Only a value that is neither 0
+      // nor 1 makes the three actually compare.
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 40.4,
+            y: 40.6,
+            size: 18,
+            hardness: 0.5,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.7,
+            dualDensity: 0.35,
+            dualOffsetU: 0.31,
+            dualOffsetV: 0.77,
+            sequence: 0,
+          ),
+          // ...and with a texture on top, so the two density blends run in
+          // the same pixel and their ORDER is pinned as well.
+          dab(
+            x: 52.2,
+            y: 44.8,
+            size: 18,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.55,
+            dualDensity: 0.8,
+            textureMask: _testTipMask,
+            textureScale: 1.3,
+            textureDensity: 0.4,
+            sequence: 1,
+          ),
+        ]),
+        reason: 'the dual density blend must be one law in all three',
       );
     });
 

@@ -35,6 +35,7 @@ class BrushSettings {
     bool scatterBothAxes = true,
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
+    double dualDensity = 1.0,
     BrushTipMask? textureMask,
     double textureScale = 1.0,
     double textureDensity = 1.0,
@@ -74,6 +75,7 @@ class BrushSettings {
          scatterBothAxes: scatterBothAxes,
          dualMask: dualMask,
          dualMaskScale: dualMaskScale,
+         dualDensity: dualDensity,
          textureMask: textureMask,
          textureScale: textureScale,
          textureDensity: textureDensity,
@@ -130,6 +132,9 @@ class BrushSettings {
   bool get scatterBothAxes => shape.scatterBothAxes;
   BrushTipMask? get dualMask => shape.dualMask;
   double get dualMaskScale => shape.dualMaskScale;
+
+  /// See [BrushShape.dualDensity].
+  double get dualDensity => shape.dualDensity;
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
@@ -182,6 +187,7 @@ class BrushSettings {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    double? dualDensity,
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
@@ -228,6 +234,7 @@ class BrushSettings {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      dualDensity: dualDensity ?? this.dualDensity,
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
@@ -279,6 +286,7 @@ class BrushSettings {
     'scatterBothAxes': scatterBothAxes,
     if (dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
+    'dualDensity': dualDensity,
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
     'textureScale': textureScale,
     'textureDensity': textureDensity,
@@ -348,6 +356,7 @@ class BrushSettings {
           ? null
           : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
+      dualDensity: (json['dualDensity'] as num?)?.toDouble() ?? 1.0,
       textureMask: json['textureMask'] == null
           ? null
           : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),

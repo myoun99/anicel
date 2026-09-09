@@ -1795,6 +1795,8 @@ class QaNativeEngine {
     required double dabFlow,
     required double sourceAlphaNorm,
     required double radiusSqSkip,
+    required double dualDensity,
+    required double dualOneMinusDensity,
     required double textureDensity,
     required double textureOneMinusDensity,
     required double aaContrast,
@@ -1882,6 +1884,8 @@ class QaNativeEngine {
     spec.dabFlow = dabFlow;
     spec.sourceAlphaNorm = sourceAlphaNorm;
     spec.radiusSqSkip = radiusSqSkip;
+    spec.dualDensity = dualDensity;
+    spec.dualOneMinusDensity = dualOneMinusDensity;
     spec.textureDensity = textureDensity;
     spec.textureOneMinusDensity = textureOneMinusDensity;
     spec.aaContrast = aaContrast;
@@ -2141,6 +2145,14 @@ final class QaDabSpecStruct extends Struct {
   /// last of the doubles — and `qa_dab_spec_sizeof` is what catches a slip.
   @Double()
   external double aaContrast;
+
+  /// v32: how hard the DUAL mask bites, after [aaContrast] and still last of
+  /// the doubles. ⚠️THE ORDER OF THIS BLOCK IS THE ABI — `qa_dab_spec_sizeof`
+  /// is what catches a slip.
+  @Double()
+  external double dualDensity;
+  @Double()
+  external double dualOneMinusDensity;
   @Int32()
   external int sourceR;
   @Int32()

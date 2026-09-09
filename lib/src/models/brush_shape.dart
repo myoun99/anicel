@@ -51,6 +51,7 @@ class BrushShape {
     this.scatterBothAxes = true,
     this.dualMask,
     this.dualMaskScale = 1.0,
+    this.dualDensity = 1.0,
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
@@ -152,6 +153,14 @@ class BrushShape {
   /// [dualMaskScale] times the dab size with a random per-dab phase.
   final BrushTipMask? dualMask;
   final double dualMaskScale;
+
+  /// How hard the dual mask bites, 0..1 — `coverage *= (1 - d) + d * sample`.
+  ///
+  /// 🚨1.0 IS THE OLD BEHAVIOUR: the dual mask used to be an unconditional
+  /// multiply, all or nothing, while the texture mask beside it has had this
+  /// exact knob all along. That asymmetry was the whole reason to add it —
+  /// two masks doing the same job, one of them dimmable and one not.
+  final double dualDensity;
 
   /// Paper texture tiled in canvas space; see the same fields on `BrushDab`.
   final BrushTipMask? textureMask;
@@ -316,6 +325,7 @@ class BrushShape {
       scatterBothAxes: scatterBothAxes,
       dualMask: slot == BrushMaskSlot.dual ? mask : dualMask,
       dualMaskScale: dualMaskScale,
+      dualDensity: dualDensity,
       textureMask: slot == BrushMaskSlot.texture ? mask : textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
@@ -342,6 +352,7 @@ class BrushShape {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    double? dualDensity,
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
@@ -374,6 +385,7 @@ class BrushShape {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      dualDensity: dualDensity ?? this.dualDensity,
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
@@ -411,6 +423,7 @@ class BrushShape {
           other.scatterBothAxes == scatterBothAxes &&
           other.dualMask == dualMask &&
           other.dualMaskScale == dualMaskScale &&
+          other.dualDensity == dualDensity &&
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
@@ -446,6 +459,7 @@ class BrushShape {
     scatterBothAxes,
     dualMask,
     dualMaskScale,
+    dualDensity,
     textureMask,
     textureScale,
     textureDensity,

@@ -122,7 +122,13 @@ import 'dart:io';
 ///   kernel: `qa_dab_blend_tiles` is what rasterizes a dab whenever the
 ///   engine is present, so an edge implemented only in Dart would be a
 ///   setting that does nothing in the shipped app.
-const int kQaEngineAbiVersion = 31;
+/// - v32: `qa_dab_spec.dual_density` + `dual_one_minus_density` — how hard the
+///   DUAL mask bites. The texture mask has had exactly this knob since it
+///   shipped (`coverage *= (1 - d) + d * sample`) while the dual mask was an
+///   unconditional multiply, all or nothing. Two masks doing the same job,
+///   one of them dimmable and one not, is the whole reason. 1.0 is the old
+///   behaviour, so every brush that never asks draws byte-identically.
+const int kQaEngineAbiVersion = 32;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

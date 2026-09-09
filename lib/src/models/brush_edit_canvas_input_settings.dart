@@ -35,6 +35,7 @@ class BrushEditCanvasInputSettings {
     bool scatterBothAxes = true,
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
+    double dualDensity = 1.0,
     BrushTipMask? textureMask,
     double textureScale = 1.0,
     double textureDensity = 1.0,
@@ -116,6 +117,7 @@ class BrushEditCanvasInputSettings {
         scatterBothAxes: scatterBothAxes,
         dualMask: dualMask,
         dualMaskScale: dualMaskScale,
+        dualDensity: dualDensity,
         textureMask: textureMask,
         textureScale: textureScale,
         textureDensity: textureDensity,
@@ -210,6 +212,9 @@ class BrushEditCanvasInputSettings {
   bool get scatterBothAxes => shape.scatterBothAxes;
   BrushTipMask? get dualMask => shape.dualMask;
   double get dualMaskScale => shape.dualMaskScale;
+
+  /// See [BrushShape.dualDensity].
+  double get dualDensity => shape.dualDensity;
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
@@ -256,6 +261,7 @@ class BrushEditCanvasInputSettings {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    double? dualDensity,
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
@@ -298,6 +304,7 @@ class BrushEditCanvasInputSettings {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      dualDensity: dualDensity ?? this.dualDensity,
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
