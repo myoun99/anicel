@@ -645,6 +645,3 @@ class PremultipliedTileUpload {
   /// Call from the decode callback, once — never before it fires.
   void free() => _scratch?.free();
 }
-
-
-

@@ -9,7 +9,6 @@ import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import '../core/dev_profile.dart';
 import '../models/placed_tile.dart';
 import '../models/bitmap_surface.dart';
-import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
