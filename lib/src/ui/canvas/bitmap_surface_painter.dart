@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 
 import '../../models/canvas_viewport.dart';
@@ -365,12 +366,12 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   ///
   /// Inert otherwise: one bool read per undrawable coordinate, and those
   /// are the coordinates that were about to cost nothing anyway.
-  void _markUnpainted(Canvas canvas, BitmapTile tile) {
+  void _markUnpainted(Canvas canvas, PlacedTile placed) {
     if (!MeasurementMode.showUnpaintedTiles.value) {
       return;
     }
     canvas.drawRect(
-      tileOriginOffset(tile) & Size.square(tile.size.toDouble()),
+      tileOriginOffset(placed) & Size.square(placed.tile.size.toDouble()),
       Paint()..color = const Color(0x99FF00FF),
     );
   }
@@ -378,22 +379,23 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// Draws [tile] a pixel at a time; true when it put anything on the
   /// canvas. The caller spends its budget on the answer, not on the
   /// attempt.
-  bool _paintTilePixels(Canvas canvas, BitmapTile tile, Paint? layerPaint) {
+  bool _paintTilePixels(Canvas canvas, PlacedTile placed, Paint? layerPaint) {
     // `readPixels`, not the `pixels` getter: that getter is a defensive
     // 256 KB COPY per call, and this path already runs on the frames
     // where there is least room for it — the budget above is spent
     // exactly when nothing has decoded yet.
-    return tile.readPixels(
-      (_, pixels) => _paintTilePixelsFrom(canvas, tile, pixels, layerPaint),
+    return placed.tile.readPixels(
+      (_, pixels) => _paintTilePixelsFrom(canvas, placed, pixels, layerPaint),
     );
   }
 
   bool _paintTilePixelsFrom(
     Canvas canvas,
-    BitmapTile tile,
+    PlacedTile placed,
     Uint8List pixels,
     Paint? layerPaint,
   ) {
+    final tile = placed.tile;
     var drew = false;
     final pixelPaint = Paint()
       ..style = PaintingStyle.fill
@@ -406,12 +408,12 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     // and this path is the undecoded-tile fallback with a budget of four.
     if (layerPaint != null) {
       canvas.saveLayer(
-        tileOriginOffset(tile) & Size.square(tile.size.toDouble()),
+        tileOriginOffset(placed) & Size.square(tile.size.toDouble()),
         layerPaint,
       );
     }
-    final tileOriginX = tile.coord.x * tile.size;
-    final tileOriginY = tile.coord.y * tile.size;
+    final tileOriginX = placed.coord.x * tile.size;
+    final tileOriginY = placed.coord.y * tile.size;
 
     for (var localY = 0; localY < tile.size; localY += 1) {
       final globalY = tileOriginY + localY;

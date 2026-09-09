@@ -118,7 +118,8 @@ Future<ui.Image?> _composeAsync(
   var recorderClosed = false;
 
   try {
-    for (final tile in surface.tiles.values) {
+    for (final entry in surface.tiles.entries) {
+      final tile = entry.value;
       var image = reuse?.imageFor(tile);
       if (image == null) {
         if (shouldAbort?.call() ?? false) {
@@ -129,7 +130,11 @@ Future<ui.Image?> _composeAsync(
         image = await _decodeTile(tile);
         transient.add(image);
       }
-      canvas.drawImage(image, tileOriginOffset(tile), paint);
+      canvas.drawImage(
+        image,
+        tileOriginOffset((coord: entry.key, tile: tile)),
+        paint,
+      );
     }
 
     final picture = recorder.endRecording();
@@ -168,13 +173,18 @@ ui.Image? _composeSync(
   canvas.translate(-origin.dx, -origin.dy);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
 
-  for (final tile in surface.tiles.values) {
+  for (final entry in surface.tiles.entries) {
+    final tile = entry.value;
     final image = reuse.imageFor(tile);
     if (image == null) {
       recorder.endRecording().dispose();
       return null;
     }
-    canvas.drawImage(image, tileOriginOffset(tile), paint);
+    canvas.drawImage(
+      image,
+      tileOriginOffset((coord: entry.key, tile: tile)),
+      paint,
+    );
   }
 
   final picture = recorder.endRecording();

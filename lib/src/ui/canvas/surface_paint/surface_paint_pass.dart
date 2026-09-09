@@ -231,7 +231,7 @@ class _SurfacePaintPass {
   /// budgets.
   void _paintVisibleTiles() {
     for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
-      _paintTile(covered.tile);
+      _paintTile((coord: covered.coord, tile: covered.tile));
     }
   }
 
@@ -243,7 +243,8 @@ class _SurfacePaintPass {
   /// stroke settles, else the committed image — through a sync upload
   /// or the pixel fallback while their budgets last, and marked unpainted
   /// past them.
-  void _paintTile(BitmapTile tile) {
+  void _paintTile(PlacedTile placed) {
+    final tile = placed.tile;
     // The _overlay's result tile REPLACES this coordinate outright (it
     // already contains the committed pixels blended with the stroke) —
     // the committed tile is not drawn at all. The decode start ran in
@@ -273,11 +274,11 @@ class _SurfacePaintPass {
       //
       // Drawn HERE and skipped in the _overlay pass, never both: two
       // draws of the same coordinate is the double-density ghost.
-      _paintReplacedTile(tile);
+      _paintReplacedTile(placed);
       return;
     }
-    if (_settleHold != null && _settleHold.containsKey(tile.coord)) {
-      _paintHeldTile(tile);
+    if (_settleHold != null && _settleHold.containsKey(placed.coord)) {
+      _paintHeldTile(placed);
       return;
     }
     // While this tile version's decode is pending, show the latest
@@ -311,37 +312,41 @@ class _SurfacePaintPass {
     // per-pixel fallback, and it ADOPTS, so a coordinate pays it
     // once. Null on Skia (probed once per run), where the two
     // fallbacks below stay the whole answer.
-    _paintLiveTile(tile);
+    _paintLiveTile(placed);
   }
 
   /// A tile the overlay replaces: its settled image, if the overlay is
   /// settling and the image has landed; nothing otherwise (the overlay's
   /// own tile draws later). A drawn image wins over the overlay tile.
-  void _paintReplacedTile(BitmapTile tile) {
+  void _paintReplacedTile(PlacedTile placed) {
     final settledImage = _overlay!.settling
-        ? _painter.tileImageCache.imageFor(tile)
+        ? _painter.tileImageCache.imageFor(placed.tile)
         : null;
     if (settledImage == null) {
       return;
     }
-    _drawTileImage(settledImage, tile);
-    (_committedWins ??= <TileCoord>{}).add(tile.coord);
+    _drawTileImage(settledImage, placed);
+    (_committedWins ??= <TileCoord>{}).add(placed.coord);
   }
 
   /// [image] at [at]'s own origin, with the tile image paint.
-  void _drawTileImage(ui.Image image, BitmapTile at) =>
+  void _drawTileImage(ui.Image image, PlacedTile at) =>
       _canvas.drawImage(image, tileOriginOffset(at), _tileImagePaint);
 
   /// A tile the settling stroke holds: the pre-stroke tile, its image or
   /// its pixels.
-  void _paintHeldTile(BitmapTile tile) {
-    final preTile = _settleHold![tile.coord];
+  void _paintHeldTile(PlacedTile placed) {
+    final preTile = _settleHold![placed.coord];
     if (preTile != null) {
       final preImage = _painter.tileImageCache.imageFor(preTile);
       if (preImage != null) {
-        _drawTileImage(preImage, preTile);
+        _drawTileImage(preImage, (coord: placed.coord, tile: preTile));
       } else {
-        _painter._paintTilePixels(_canvas, preTile, _layerPaint);
+        _painter._paintTilePixels(
+          _canvas,
+          (coord: placed.coord, tile: preTile),
+          _layerPaint,
+        );
       }
     }
   }
@@ -349,7 +354,8 @@ class _SurfacePaintPass {
   /// The committed tile: its display image, a sync upload while that
   /// budget lasts, the latest image of the coord, the pixel fallback
   /// while its budget lasts — else marked unpainted.
-  void _paintLiveTile(BitmapTile tile) {
+  void _paintLiveTile(PlacedTile placed) {
+    final tile = placed.tile;
     var tileImage = _painter.tileImageCache.displayImageFor(tile);
     if (tileImage == null && _syncUploadBudget > 0) {
       tileImage = _painter.tileImageCache.adoptSyncUpload(
@@ -364,11 +370,11 @@ class _SurfacePaintPass {
       }
     }
     tileImage ??= _painter.tileImageCache.latestImageForCoord(
-      tile.coord,
+      placed.coord,
       scope: _painter.staleScope,
     );
     if (tileImage != null) {
-      _drawTileImage(tileImage, tile);
+      _drawTileImage(tileImage, placed);
     } else if (_pixelFallbackBudget > 0) {
       // First-ever content at this coordinate and not decoded yet:
       // draw per pixel for this frame only — within the budget. Every
@@ -382,7 +388,7 @@ class _SurfacePaintPass {
       // pasteboard row above the artwork and the float contributed
       // zero pixels. A transparent tile costs the same scan either
       // way — it just no longer costs a slot.
-      if (_painter._paintTilePixels(_canvas, tile, _layerPaint)) {
+      if (_painter._paintTilePixels(_canvas, placed, _layerPaint)) {
         _pixelFallbackBudget -= 1;
       }
     } else {
@@ -390,7 +396,7 @@ class _SurfacePaintPass {
       // left. This branch is the whole stale-tile family's event, and
       // it is invisible because its answer is silence — see
       // [MeasurementMode.showUnpaintedTiles].
-      _painter._markUnpainted(_canvas, tile);
+      _painter._markUnpainted(_canvas, placed);
     }
   }
 

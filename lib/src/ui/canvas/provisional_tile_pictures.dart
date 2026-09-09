@@ -127,7 +127,7 @@ final Paint _tilePaint = Paint()
       }
     }
 
-    final origin = tileOriginOffset(tile);
+    final origin = tileOriginOffset((coord: coord, tile: tile));
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(
       recorder,
@@ -224,7 +224,11 @@ ProvisionalInkPainter inkFromSurface(
         }
         return false;
       }
-      canvas.drawImage(image, tileOriginOffset(tile) + canvasDelta, _tilePaint);
+      canvas.drawImage(
+        image,
+        tileOriginOffset((coord: under.coord, tile: tile)) + canvasDelta,
+        _tilePaint,
+      );
     }
     return true;
   };

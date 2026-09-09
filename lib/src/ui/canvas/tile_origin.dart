@@ -1,13 +1,17 @@
 import 'dart:ui' show Offset;
 
-import '../../models/bitmap_tile.dart';
+import '../../models/placed_tile.dart';
 
-/// Where [tile]'s top-left corner sits in canvas space: the ONE place the
+/// Where [placed]'s top-left corner sits in canvas space: the ONE place the
 /// tile-coordinate-times-size product is turned into an [Offset] for a
 /// draw (the surface paint pass, the tiled compose, the provisional
 /// pictures, the painter's rects). Coordinates may be negative — the
 /// pasteboard's tiles are.
-Offset tileOriginOffset(BitmapTile tile) => Offset(
-  (tile.coord.x * tile.size).toDouble(),
-  (tile.coord.y * tile.size).toDouble(),
+///
+/// ⚠️It takes the PAIR, not the tile: a tile does not know where it sits.
+/// Its place is the map key it was stored under, and [PlacedTile] is how
+/// that travels alongside it.
+Offset tileOriginOffset(PlacedTile placed) => Offset(
+  (placed.coord.x * placed.tile.size).toDouble(),
+  (placed.coord.y * placed.tile.size).toDouble(),
 );

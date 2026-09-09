@@ -7,6 +7,7 @@ import 'tile_coord.dart';
 /// world pixels, and the part of the region that lands inside it (right
 /// and bottom exclusive, world coordinates).
 typedef CoveredTile = ({
+  TileCoord coord,
   BitmapTile tile,
   int worldLeft,
   int worldTop,
@@ -35,12 +36,14 @@ Iterable<CoveredTile> tilesCovering(
   for (var ty = firstY; ty <= lastY; ty += 1) {
     final worldTop = ty * tileSize;
     for (var tx = firstX; tx <= lastX; tx += 1) {
-      final tile = surface.tileAt(TileCoord(x: tx, y: ty));
+      final coord = TileCoord(x: tx, y: ty);
+      final tile = surface.tileAt(coord);
       if (tile == null) {
         continue;
       }
       final worldLeft = tx * tileSize;
       yield (
+        coord: coord,
         tile: tile,
         worldLeft: worldLeft,
         worldTop: worldTop,
