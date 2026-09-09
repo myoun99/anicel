@@ -5,9 +5,13 @@
 /// already speaks `tiltAzimuthDegrees` + a normalized `altitude`
 /// (`qa_tablet_bridge.dart`), so the sample carries that pair rather than
 /// Flutter's `tilt`/`orientation` radians — converting once, at the door
-/// where the pointer is read, beats converting at every reader. A pen held
-/// upright reports altitude 1.0, which is why that is the default: a device
-/// with no tilt to report is an upright pen, not a flat one.
+/// where the pointer is read, beats converting at every reader.
+///
+/// ⛔A pen held upright reports altitude 1.0, and that USED TO BE THE DEFAULT
+/// on the reasoning that "a device with no tilt to report is an upright pen,
+/// not a flat one". Half right: it is not a flat pen, but it is not an
+/// upright one either — a mouse never made that reading. The default is
+/// absent now (유저 2026-09-09, `brush-tilt-no-device-Q1` 답 1).
 class BrushInputSample {
   BrushInputSample({
     required this.x,
@@ -86,9 +90,9 @@ class BrushInputSample {
     'x': x,
     'y': y,
     'pressure': pressure,
-    // ⚠️Omitted at the resting value so a stored stroke from before tilt
-    // existed reads back byte-identical to one recorded now with an
-    // upright pen.
+    // ⚠️Omitted when absent, so a stored stroke from before tilt existed
+    // reads back byte-identical to one recorded now on a device that
+    // reports none. A MEASURED upright pen still writes its 1.0.
     if (tiltAltitude != null) 'tiltAltitude': tiltAltitude,
     if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
     if (speed != 0.0) 'speed': speed,
@@ -149,7 +153,7 @@ void _validateFiniteCoordinate(double value, String fieldName) {
 }
 
 /// Tilt is ONE reading of two numbers, so it has ONE way to be absent — the
-/// same law  enforces, because a sample and a dab that disagreed
+/// same law `BrushDab` enforces, because a sample and a dab that disagreed
 /// about what "no tilt" looks like would be two spellings of one fact.
 void _validateTilt(double? altitude, double azimuthDegrees) {
   if (altitude == null) {

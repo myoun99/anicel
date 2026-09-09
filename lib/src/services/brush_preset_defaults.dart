@@ -217,9 +217,14 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // 🚨THE 0.25 FLOOR ON THE TILT CURVE IS LOAD-BEARING, not taste.
       // `BrushPressureCurve.evaluate` returns `clamp(0,1) * maximum`, so the
       // pair (0.25, maximum 4.0) evaluates to exactly 1.0 at lean 0.0 — and
-      // lean 0.0 is where a MOUSE sits, because a device reporting no tilt
-      // reads as an upright pen. Lower the floor and this brush draws at a
-      // quarter size for everyone without a tablet.
+      // lean 0.0 is where a pen held UPRIGHT sits. Lower the floor and this
+      // brush draws at a quarter size for anyone who holds the stylus
+      // straight.
+      // ⛔The reason used to be "that is where a mouse sits, because a device
+      // reporting no tilt reads as an upright pen". That premise is gone: a
+      // device with no tilt now answers null and the source is SKIPPED, so a
+      // mouse never reaches this curve at all. The floor survives on its own
+      // merit, which is why it is restated rather than deleted.
       curves: {
         (BrushPressureTarget.size, BrushInputSource.pressure):
             BrushPressureCurve.linearFrom(0.45),

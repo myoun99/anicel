@@ -285,8 +285,7 @@ class _InteractiveBrushEditCanvasViewState
   double _currentPressure = 1.0;
 
   /// How the pen leaned at the latest sample: azimuth in degrees and a 0..1
-  /// altitude. An upright pen (and every device with no tilt to report)
-  /// rests at 1.0, so a mouse and a finger draw exactly as before.
+  /// altitude, or null when nothing measured one.
   /// ⚠️ONE FIELD, not two. Azimuth without altitude is a lean in a direction
   /// nothing reported, and `BrushDab` refuses that pair outright — so the
   /// reading is present or absent as a whole. Null is what a mouse and a

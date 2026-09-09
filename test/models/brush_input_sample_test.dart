@@ -105,11 +105,19 @@ void main() {
       );
     });
 
-    test('a pen with no tilt to report rests upright', () {
-      final sample = BrushInputSample(x: 1, y: 2);
+    test('🚨a pen with no tilt to report reads NULL, not upright', () {
+      // The two used to be the SAME NUMBER: a mouse and a stylus held
+      // perfectly vertical both answered 1.0, so nothing downstream could
+      // tell "never measured" from "straight up" — and a brush with a 傾き
+      // minimum drew at that minimum on a mouse, with nothing on screen
+      // able to say why.
+      final unmeasured = BrushInputSample(x: 1, y: 2);
+      expect(unmeasured.tiltAltitude, isNull);
+      expect(unmeasured.tiltAzimuthDegrees, 0.0);
 
-      expect(sample.tiltAltitude, 1.0);
-      expect(sample.tiltAzimuthDegrees, 0.0);
+      final upright = BrushInputSample(x: 1, y: 2, tiltAltitude: 1.0);
+      expect(upright.tiltAltitude, 1.0);
+      expect(upright, isNot(unmeasured));
     });
 
     test('tilt round-trips through json', () {
@@ -126,7 +134,7 @@ void main() {
       expect(restored, sample);
     });
 
-    test('an upright sample writes no tilt keys at all', () {
+    test('a sample with no tilt reported writes no tilt keys at all', () {
       // The point is byte-identity with strokes recorded before tilt
       // existed — not merely that they read back the same.
       expect(BrushInputSample(x: 1, y: 2).toJson().keys, [
@@ -149,10 +157,12 @@ void main() {
     });
 
     test('tilt takes part in equality', () {
-      final upright = BrushInputSample(x: 1, y: 2);
+      final measured = BrushInputSample(x: 1, y: 2, tiltAltitude: 1.0);
 
-      expect(upright == upright.copyWith(tiltAltitude: 0.5), isFalse);
-      expect(upright == upright.copyWith(tiltAzimuthDegrees: 90), isFalse);
+      expect(measured == measured.copyWith(tiltAltitude: 0.5), isFalse);
+      expect(measured == measured.copyWith(tiltAzimuthDegrees: 90), isFalse);
+      // ...and the ABSENCE is its own value, not a synonym for upright.
+      expect(measured == BrushInputSample(x: 1, y: 2), isFalse);
     });
 
     test('a pen that has not moved yet reads no speed', () {

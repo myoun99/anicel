@@ -273,8 +273,6 @@ class BrushDab {
     if (tipShape != BrushTipShape.round) 'tipShape': tipShape.toJson(),
     'pressure': pressure,
     'sequence': sequence,
-    // ⚠️Omitted at the resting value so a stroke recorded before tilt
-    // existed round-trips byte-identical to one drawn with an upright pen.
     // ⚠️Absent when the device reported none, which is also how a stroke
     // recorded before tilt existed reads back — the key is simply not there.
     if (tiltAltitude != null) 'tiltAltitude': tiltAltitude,

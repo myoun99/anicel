@@ -243,14 +243,31 @@ void main() {
       expect(dab.opacity, 1.0);
     });
 
-    test('an upright stroke leaves every dab upright', () {
-      final sequence = brushInputSamplesToBrushDabs(
+    test('🚨an unmeasured stroke stays unmeasured, a measured one stays '
+        'upright', () {
+      final unmeasured = brushInputSamplesToBrushDabs(
         samples: [BrushInputSample(x: 0, y: 0), BrushInputSample(x: 20, y: 0)],
         settings: settings,
       );
 
       expect(
-        sequence.dabs.every(
+        unmeasured.dabs.every((dab) => dab.tiltAltitude == null),
+        isTrue,
+        reason: 'absence must survive placement, not become an upright pen',
+      );
+
+      // BOTH halves, because a change that threw tilt away wholesale would
+      // pass the first one on its own.
+      final measured = brushInputSamplesToBrushDabs(
+        samples: [
+          BrushInputSample(x: 0, y: 0, tiltAltitude: 1.0),
+          BrushInputSample(x: 20, y: 0, tiltAltitude: 1.0),
+        ],
+        settings: settings,
+      );
+
+      expect(
+        measured.dabs.every(
           (dab) => dab.tiltAltitude == 1.0 && dab.tiltAzimuthDegrees == 0.0,
         ),
         isTrue,
