@@ -58,8 +58,8 @@ class BrushSettingsPanel extends StatelessWidget {
     return PressureCurveButton(
       keyValue: 'brush-tool-pressure-${target.name}',
       title: title,
-      curve: state.pressureCurveFor(target),
-      onChanged: (curve) => onChanged(state.withPressureCurve(target, curve)),
+      curves: state.targetCurves(target),
+      onChanged: (curves) => onChanged(state.withTargetCurves(target, curves)),
     );
   }
 

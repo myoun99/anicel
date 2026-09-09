@@ -842,6 +842,10 @@ enum AppStrings {
   String get colorBackgroundSwap => _s('colorBackgroundSwap');
   String get penPressureTitle => _s('penPressureTitle');
   String get penPressureAxis => _s('penPressureAxis');
+  String get brushDynamicsTitle => _s('brushDynamicsTitle');
+  String get curveSourcePressure => _s('curveSourcePressure');
+  String get curveSourceTilt => _s('curveSourceTilt');
+  String get curveSourceSpeed => _s('curveSourceSpeed');
   String get onionCurrentDrawing => _s('onionCurrentDrawing');
   String get audioLevelMeter => _s('audioLevelMeter');
   String get panelMedia => _s('panelMedia');
@@ -1609,6 +1613,10 @@ enum AppStrings {
     'colorBackgroundSwap': 'Background colour (tap to swap)',
     'penPressureTitle': 'Pen pressure',
     'penPressureAxis': 'Pressure →',
+    'brushDynamicsTitle': 'Response',
+    'curveSourcePressure': 'Pressure',
+    'curveSourceTilt': 'Tilt',
+    'curveSourceSpeed': 'Speed',
     'onionCurrentDrawing': 'Current drawing',
     'audioLevelMeter': 'audio level meter',
     'panelColorRgb': 'RGB',
@@ -2519,6 +2527,10 @@ enum AppStrings {
     'colorBackgroundSwap': '背景色（タップで入れ替え）',
     'penPressureTitle': '筆圧',
     'penPressureAxis': '筆圧 →',
+    'brushDynamicsTitle': '入り抜き',
+    'curveSourcePressure': '筆圧',
+    'curveSourceTilt': '傾き',
+    'curveSourceSpeed': '速度',
     'onionCurrentDrawing': '現在の絵',
     'audioLevelMeter': '音声レベルメーター',
     'panelColorRgb': 'RGB',
@@ -3453,6 +3465,10 @@ enum AppStrings {
     'colorBackgroundSwap': '배경색 (눌러서 교체)',
     'penPressureTitle': '필압',
     'penPressureAxis': '필압 →',
+    'brushDynamicsTitle': '반응',
+    'curveSourcePressure': '필압',
+    'curveSourceTilt': '기울기',
+    'curveSourceSpeed': '속도',
     'onionCurrentDrawing': '현재 그림',
     'audioLevelMeter': '오디오 레벨 미터',
     'panelColorRgb': 'RGB',
@@ -4416,6 +4432,10 @@ enum AppStrings {
     'colorBackgroundSwap': 'Couleur de fond (toucher pour échanger)',
     'penPressureTitle': 'Pression du stylet',
     'penPressureAxis': 'Pression →',
+    'brushDynamicsTitle': 'Réponse',
+    'curveSourcePressure': 'Pression',
+    'curveSourceTilt': 'Inclinaison',
+    'curveSourceSpeed': 'Vitesse',
     'onionCurrentDrawing': 'Dessin actuel',
     'audioLevelMeter': 'vumètre audio',
     'panelColorRgb': 'RVB',
@@ -5312,6 +5332,10 @@ enum AppStrings {
     'colorBackgroundSwap': '背景色（点按交换）',
     'penPressureTitle': '笔压',
     'penPressureAxis': '笔压 →',
+    'brushDynamicsTitle': '响应',
+    'curveSourcePressure': '笔压',
+    'curveSourceTilt': '倾斜',
+    'curveSourceSpeed': '速度',
     'onionCurrentDrawing': '当前画面',
     'audioLevelMeter': '音频电平表',
     'panelColorRgb': 'RGB',

@@ -4,6 +4,7 @@ import 'dart:ui' show ImageByteFormat;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/widgets/anchored_popup.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
@@ -23,8 +24,9 @@ void main() {
             child: PressureCurveButton(
               keyValue: 'test-pressure-button',
               title: 'Size',
-              curve: curve,
-              onChanged: onChanged,
+              curves: {BrushInputSource.pressure: curve},
+              onChanged: (bySource) =>
+                  onChanged(bySource[BrushInputSource.pressure]),
             ),
           ),
         ),
@@ -43,7 +45,7 @@ void main() {
     );
   }
 
-  final graph = find.byKey(const ValueKey<String>('pressure-curve-graph'));
+  final graph = find.byKey(const ValueKey<String>('pressure-curve-graph-pressure'));
 
   testWidgets('유저 R4 #9: pressure OFF wears an X, not a flat graph pinned '
       'to the top of the box', (tester) async {
@@ -74,7 +76,7 @@ void main() {
                 child: PressureCurveButton(
                   keyValue: 'test-pressure-button',
                   title: 'Size',
-                  curve: curve,
+                  curves: {BrushInputSource.pressure: curve},
                   onChanged: (_) {},
                 ),
               ),
@@ -157,7 +159,7 @@ void main() {
                 child: PressureCurveButton(
                   keyValue: 'test-pressure-button',
                   title: 'Size',
-                  curve: curve,
+                  curves: {BrushInputSource.pressure: curve},
                   onChanged: (_) {},
                 ),
               ),
@@ -217,11 +219,11 @@ void main() {
           )
           .first,
     );
-    expect(title.data, 'Size — Pen pressure');
+    expect(title.data, 'Size — Response');
     expect(title.style, AnchoredPopupText.title);
   });
 
-  testWidgets('the switch turns pressure on (identity) and off (null)', (
+  testWidgets('the source NAME toggles it on (identity) and off (null)', (
     tester,
   ) async {
     BrushPressureCurve? received;
@@ -237,14 +239,14 @@ void main() {
     await openPopup(tester);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
+      find.byKey(const ValueKey<String>('curve-source-pressure')),
     );
     await tester.pumpAndSettle();
     expect(calls, 1);
     expect(received, BrushPressureCurve.identity());
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
+      find.byKey(const ValueKey<String>('curve-source-pressure')),
     );
     await tester.pumpAndSettle();
     expect(calls, 2);
@@ -380,7 +382,7 @@ void main() {
     await openPopup(tester);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('pressure-curve-reset')),
+      find.byKey(const ValueKey<String>('curve-reset-pressure')),
     );
     await tester.pumpAndSettle();
     expect(received, BrushPressureCurve.identity());

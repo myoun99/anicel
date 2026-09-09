@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 
+import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
+import 'field_slider.dart' show sliderValueText;
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
 
@@ -25,7 +27,7 @@ class PressureCurveButton extends StatelessWidget {
     super.key,
     required this.keyValue,
     required this.title,
-    required this.curve,
+    required this.curves,
     required this.onChanged,
     this.enabled = true,
   });
@@ -42,8 +44,10 @@ class PressureCurveButton extends StatelessWidget {
   /// Popup header label (the setting's name, e.g. 'Size').
   final String title;
 
-  final BrushPressureCurve? curve;
-  final ValueChanged<BrushPressureCurve?> onChanged;
+  /// Every input source's curve for this setting; an absent or null entry is
+  /// a source that does not drive it.
+  final Map<BrushInputSource, BrushPressureCurve?> curves;
+  final ValueChanged<Map<BrushInputSource, BrushPressureCurve?>> onChanged;
 
   /// The OFF state's ink, mark and edge together.
   ///
@@ -96,7 +100,9 @@ class PressureCurveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = curve != null && enabled;
+    // ANY source counts: the button says "this setting is driven", and after
+    // the source axis that is no longer a question about pressure alone.
+    final active = enabled && curves.values.any((curve) => curve != null);
     final button = Tooltip(
       message: AppText.strings.penPressureTitle,
       child: Material(
@@ -106,7 +112,7 @@ class PressureCurveButton extends StatelessWidget {
               ? () => showPressureCurvePopup(
                   context,
                   title: title,
-                  curve: curve,
+                  initialCurves: curves,
                   onChanged: onChanged,
                 )
               : null,
@@ -118,7 +124,7 @@ class PressureCurveButton extends StatelessWidget {
                   ? () => showPressureCurvePopup(
                       context,
                       title: title,
-                      curve: curve,
+                      initialCurves: curves,
                       onChanged: onChanged,
                     )
                   : null,
@@ -138,7 +144,10 @@ class PressureCurveButton extends StatelessWidget {
                 child: CustomPaint(
                   size: _curveSize,
                   painter: _MiniCurvePainter(
-                    curve: curve,
+                    // The thumbnail draws PRESSURE — the source every device
+                    // has. A thumbnail that tried to show three would be
+                    // three unreadable lines at 22x14.
+                    curve: curves[BrushInputSource.pressure],
                     color: active ? AppColors.accent : _offInk,
                   ),
                 ),
@@ -228,14 +237,38 @@ Path pressureCurvePath(
   return path;
 }
 
+/// Popup geometry. The WIDTH is frozen at 248 (유저 확정 2026-09-08 ⑧); the
+/// height is the axis that gives.
+const double _popupWidth = 248;
+const double _popupHeight = 316;
+
+/// One source's row: the 60px name column beside the curve strip.
+const double _rowHeight = 84;
+const double _sourceColumnWidth = 60;
+const double _sourceColumnGap = 6;
+const double _rowGap = 6;
+const double _headerHeight = 24;
+
 /// Shows the anchored curve editor next to [anchorContext]'s widget.
-/// [onChanged] fires live on every edit (the popup keeps its own working
-/// state, so the caller may rebuild freely underneath).
+///
+/// [initialCurves] is every input source's curve for ONE setting, and
+/// [onChanged] hands back every source's curve for that setting — the whole
+/// target, every time.
+///
+/// 🚨IT IS THE WHOLE TARGET ON PURPOSE, and the reason replaced a comment
+/// that said the opposite. This used to read "the popup keeps its own working
+/// state, so the caller may rebuild freely underneath", which advertised the
+/// trap as a safety: `onChanged` closes over the tool state as it was when
+/// the BUTTON was built, and that closure outlives every edit in the popup.
+/// While one popup wrote one key, three writes off one stale base all landed
+/// on the same key and agreed by accident. Three sources do not — clearing
+/// tilt and then dragging pressure would read the stale base again and put
+/// tilt back. One call, one base.
 Future<void> showPressureCurvePopup(
   BuildContext anchorContext, {
   required String title,
-  required BrushPressureCurve? curve,
-  required ValueChanged<BrushPressureCurve?> onChanged,
+  required Map<BrushInputSource, BrushPressureCurve?> initialCurves,
+  required ValueChanged<Map<BrushInputSource, BrushPressureCurve?>> onChanged,
 }) {
   // R28 #9: placement and dismissal now live in the SHARED sub-window
   // shell — this popup is where that behaviour was designed, and every
@@ -243,11 +276,11 @@ Future<void> showPressureCurvePopup(
   return showAnchoredPopup<void>(
     anchorContext,
     label: 'pressure-curve-popup',
-    width: 216,
-    height: 236,
+    width: _popupWidth,
+    height: _popupHeight,
     builder: (context, _) => _PressureCurveEditor(
       title: title,
-      initialCurve: curve,
+      initialCurves: initialCurves,
       onChanged: onChanged,
     ),
   );
@@ -256,61 +289,100 @@ Future<void> showPressureCurvePopup(
 class _PressureCurveEditor extends StatefulWidget {
   const _PressureCurveEditor({
     required this.title,
-    required this.initialCurve,
+    required this.initialCurves,
     required this.onChanged,
   });
 
   final String title;
-  final BrushPressureCurve? initialCurve;
-  final ValueChanged<BrushPressureCurve?> onChanged;
+  final Map<BrushInputSource, BrushPressureCurve?> initialCurves;
+  final ValueChanged<Map<BrushInputSource, BrushPressureCurve?>> onChanged;
 
   @override
   State<_PressureCurveEditor> createState() => _PressureCurveEditorState();
+}
+
+/// One source's working curve while the popup is open.
+///
+/// The shape and the ceiling are kept apart because the model keeps them
+/// apart: points live in the unit square and `evaluate` multiplies by
+/// [maximum] afterwards, so the graph physically cannot draw the ceiling.
+class _SourceDraft {
+  _SourceDraft({
+    required this.points,
+    required this.maximum,
+    required this.enabled,
+  });
+
+  List<BrushCurvePoint> points;
+  double maximum;
+  bool enabled;
 }
 
 class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   static const int _maxPoints = 10;
   static const double _minXGap = 0.02;
 
-  /// The working points while enabled; kept when toggling OFF so ON
-  /// restores the shape within this popup session.
-  late List<BrushCurvePoint> _points;
-  late bool _enabled;
+  /// One working draft per source; the shape survives a toggle OFF so ON
+  /// restores it within this popup session.
+  final Map<BrushInputSource, _SourceDraft> _drafts = {};
 
-  /// Index of the grabbed point during a drag, or null. A grabbed middle
-  /// point dragged far outside is REMOVED but stays "in hand"
+  /// The grabbed point during a drag, and WHICH ROW it belongs to. A grabbed
+  /// middle point dragged far outside is REMOVED but stays "in hand"
   /// ([_dragRemoved]) so dragging back in re-adds it.
+  BrushInputSource? _dragSource;
   int? _dragIndex;
   bool _dragRemoved = false;
 
   @override
   void initState() {
     super.initState();
-    final curve = widget.initialCurve;
-    _enabled = curve != null;
-    _points = List.of((curve ?? BrushPressureCurve.identity()).points);
+    for (final source in BrushInputSource.values) {
+      final curve = widget.initialCurves[source];
+      _drafts[source] = _SourceDraft(
+        points: List.of((curve ?? BrushPressureCurve.identity()).points),
+        maximum: curve?.maximum ?? 1.0,
+        enabled: curve != null,
+      );
+    }
   }
 
+  /// Publishes EVERY source for this setting — see [showPressureCurvePopup]
+  /// for why one source at a time would lose an edit.
   void _commit() {
-    widget.onChanged(_enabled ? BrushPressureCurve(List.of(_points)) : null);
+    widget.onChanged({
+      for (final source in BrushInputSource.values)
+        source: _drafts[source]!.enabled
+            ? BrushPressureCurve(
+                List.of(_drafts[source]!.points),
+                maximum: _drafts[source]!.maximum,
+              )
+            : null,
+    });
   }
 
-  void _setEnabled(bool value) {
+  void _setEnabled(BrushInputSource source, bool value) {
     setState(() {
-      _enabled = value;
-      _dragIndex = null;
-      _dragRemoved = false;
+      _drafts[source]!.enabled = value;
+      _endDragState();
     });
     _commit();
   }
 
-  void _reset() {
+  void _reset(BrushInputSource source) {
     setState(() {
-      _points = BrushPressureCurve.identity().points.toList();
-      _dragIndex = null;
-      _dragRemoved = false;
+      // ⛔The ceiling is NOT reset with the shape: the model keeps them apart
+      // deliberately, and a reset that silently dropped an imported 最大値
+      // would throw away the one fact the graph cannot show.
+      _drafts[source]!.points = BrushPressureCurve.identity().points.toList();
+      _endDragState();
     });
     _commit();
+  }
+
+  void _endDragState() {
+    _dragSource = null;
+    _dragIndex = null;
+    _dragRemoved = false;
   }
 
   @override
@@ -321,106 +393,223 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     return Padding(
       key: const ValueKey<String>('pressure-curve-popup'),
       padding: AnchoredPopupText.bodyPadding,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AnchoredPopupHeader(
-            title: '${widget.title} — Pen pressure',
-            trailing: SizedBox(
-              height: 24,
-              child: FittedBox(
-                child: Switch(
-                  key: const ValueKey<String>('pressure-curve-enable-switch'),
-                  value: _enabled,
-                  onChanged: _setEnabled,
-                ),
+      // 🚨The declared popup height and the drawn height are the same number
+      // BY CONSTRUCTION, not by arithmetic that has to be kept in step. The
+      // declared height decides where the window is placed and which way it
+      // flips, so a body that drew short used to hang that far off its anchor.
+      child: SizedBox(
+        height:
+            _popupHeight -
+            AnchoredPopupText.bodyPadding.top -
+            AnchoredPopupText.bodyPadding.bottom,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ⛔NO master switch here any more. One switch above three rows is
+            // one control answering three questions; each row owns its own.
+            SizedBox(
+              height: _headerHeight,
+              child: AnchoredPopupHeader(
+                title: '${widget.title} — ${AppText.strings.brushDynamicsTitle}',
               ),
             ),
-          ),
-          const SizedBox(height: AnchoredPopupText.titleGap),
-          _buildGraph(),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  AppText.strings.penPressureAxis,
-                  style: AnchoredPopupText.caption,
-                ),
-              ),
-              ControlPressClaim(
-                onPressed: _enabled ? _reset : null,
-                child: InkWell(
-                  key: const ValueKey<String>('pressure-curve-reset'),
-                  onTap: silentPress(_enabled ? _reset : null),
-                  customBorder: AppShapes.container(3),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 2,
-                    ),
-                    child: Text(
-                      AppText.strings.commonReset,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _enabled
-                            ? AppColors.text
-                            : AppColors.textDim.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            const SizedBox(height: AnchoredPopupText.titleGap),
+            for (final source in BrushInputSource.values) ...[
+              if (source != BrushInputSource.values.first)
+                const SizedBox(height: _rowGap),
+              _buildRow(source),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  static const Size _graphSize = Size(196, 150);
-
-  Widget _buildGraph() {
-    // 🚨A drag on this graph IS the verb — it moves a curve point. So it
-    // takes the STRONG claim: no eager pan above may start from here, and
-    // the weak claim's absorber stands down for it.
-    return DragVerbClaim(
-      behavior: HitTestBehavior.opaque,
-      child: GestureDetector(
-        key: const ValueKey<String>('pressure-curve-graph'),
-        behavior: HitTestBehavior.opaque,
-        onPanStart: _enabled ? _handlePanStart : null,
-        onPanUpdate: _enabled ? _handlePanUpdate : null,
-        onPanEnd: _enabled ? _handlePanEnd : null,
-        child: CustomPaint(
-          size: _graphSize,
-          painter: _CurveGraphPainter(
-            points: _points,
-            enabled: _enabled,
-            accent: AppColors.accent,
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Offset _toUnit(Offset local) => Offset(
-    (local.dx / _graphSize.width).clamp(0.0, 1.0),
-    (1.0 - local.dy / _graphSize.height).clamp(0.0, 1.0),
+  /// 🚨ALL THREE SOURCES ARE VISIBLE AT ONCE, and that is the design, not a
+  /// layout convenience. A tab or a segmented selector would put a source
+  /// BEHIND a click — and the whole reason this axis exists is that the .sut
+  /// importer already builds tilt and speed curves the user cannot see. A
+  /// picker that hides two of three would leave that gap open by a different
+  /// door.
+  Widget _buildRow(BrushInputSource source) {
+    final draft = _drafts[source]!;
+    return SizedBox(
+      height: _rowHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: _sourceColumnWidth,
+            child: _buildSourceColumn(source, draft),
+          ),
+          const SizedBox(width: _sourceColumnGap),
+          Expanded(child: _buildStrip(source, draft)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceColumn(BrushInputSource source, _SourceDraft draft) {
+    final label = switch (source) {
+      BrushInputSource.pressure => AppText.strings.curveSourcePressure,
+      BrushInputSource.tilt => AppText.strings.curveSourceTilt,
+      BrushInputSource.speed => AppText.strings.curveSourceSpeed,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        // The NAME is the toggle — 「선택 표시는 색상만」, so on and off differ
+        // in ink and in nothing else. Fires on release inside the button:
+        // this is not a rail row, so it is not a tap-down.
+        SizedBox(
+          height: 40,
+          child: ControlPressClaim(
+            onPressed: () => _setEnabled(source, !draft.enabled),
+            child: InkWell(
+              key: ValueKey<String>('curve-source-${source.name}'),
+              customBorder: AppShapes.container(AppShapes.wellRadius),
+              onTap: silentPress(() => _setEnabled(source, !draft.enabled)),
+              child: Center(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: draft.enabled
+                        ? AppColors.accent
+                        : PressureCurveButton._offInk,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        // The ceiling, READ-ONLY and ALWAYS drawn — at ×1 too, because a
+        // readout that appears when the value leaves its default is UI that
+        // pops into existence.
+        //
+        // ⛔It is not editable, and not because a control would be hard: the
+        // ceiling only means anything on SIZE (the other three targets are
+        // clamped back into [0,1] downstream), so nine of the twelve cells
+        // would be a live control that does nothing. It arrives from an
+        // imported 最大値 and this says so.
+        SizedBox(
+          height: 18,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '×${sliderValueText(draft.maximum)}',
+              key: ValueKey<String>('curve-maximum-${source.name}'),
+              style: AnchoredPopupText.caption,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          height: 22,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ControlPressClaim(
+              onPressed: draft.enabled ? () => _reset(source) : null,
+              child: InkWell(
+                key: ValueKey<String>('curve-reset-${source.name}'),
+                onTap: silentPress(
+                  draft.enabled ? () => _reset(source) : null,
+                ),
+                customBorder: AppShapes.container(3),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  child: Text(
+                    AppText.strings.commonReset,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: draft.enabled
+                          ? AppColors.text
+                          : AppColors.textDim.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 🚨THE PAINTED BOX AND THE HIT BOX ARE ONE MEASUREMENT. They used to be
+  /// two: `_graphSize` was `Size(196, 150)` — the popup's old width minus its
+  /// padding, typed in by hand — while the painter took whatever tight
+  /// constraint the column handed it. They agreed only while nobody changed
+  /// the width. Widening to 248 with that arrangement would have left the
+  /// remove-slack boundary INSIDE the drawn graph, so dragging a middle point
+  /// to the right edge would delete it.
+  Widget _buildStrip(BrushInputSource source, _SourceDraft draft) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = constraints.biggest;
+        // 🚨A drag on this strip IS the verb — it moves a curve point. So it
+        // takes the STRONG claim: no eager pan above may start from here, and
+        // the weak claim's absorber stands down for it.
+        return DragVerbClaim(
+          behavior: HitTestBehavior.opaque,
+          child: GestureDetector(
+            key: ValueKey<String>('pressure-curve-graph-${source.name}'),
+            behavior: HitTestBehavior.opaque,
+            onPanStart: draft.enabled
+                ? (details) => _handlePanStart(source, box, details)
+                : null,
+            onPanUpdate: draft.enabled
+                ? (details) => _handlePanUpdate(source, box, details)
+                : null,
+            onPanEnd: draft.enabled
+                ? (_) => setState(_endDragState)
+                : null,
+            child: CustomPaint(
+              painter: _CurveGraphPainter(
+                points: draft.points,
+                enabled: draft.enabled,
+                accent: AppColors.accent,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Offset _toUnit(Size box, Offset local) => Offset(
+    (local.dx / box.width).clamp(0.0, 1.0),
+    (1.0 - local.dy / box.height).clamp(0.0, 1.0),
   );
 
-  void _handlePanStart(DragStartDetails details) {
+  void _handlePanStart(
+    BrushInputSource source,
+    Size box,
+    DragStartDetails details,
+  ) {
+    final points = _drafts[source]!.points;
     final local = details.localPosition;
     // Grab the nearest point within reach, else add one at the press.
+    //
+    // ⛔14 and the remove slack below stay ABSOLUTE across every strip size.
+    // They are the reach of a finger, not a fraction of the box — scaling
+    // them with the strip would be a rule nobody asked for.
     const grabRadius = 14.0;
     int? nearest;
     var nearestDistance = double.infinity;
-    for (var i = 0; i < _points.length; i += 1) {
-      final point = _points[i];
+    for (var i = 0; i < points.length; i += 1) {
+      final point = points[i];
       final position = Offset(
-        point.x * _graphSize.width,
-        (1.0 - point.y) * _graphSize.height,
+        point.x * box.width,
+        (1.0 - point.y) * box.height,
       );
       final distance = (position - local).distance;
       if (distance < nearestDistance) {
@@ -430,15 +619,16 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     }
     if (nearest != null && nearestDistance <= grabRadius) {
       setState(() {
+        _dragSource = source;
         _dragIndex = nearest;
         _dragRemoved = false;
       });
       return;
     }
-    if (_points.length >= _maxPoints) {
+    if (points.length >= _maxPoints) {
       return;
     }
-    _insertPointAt(local);
+    _insertPointAt(source, box, local);
   }
 
   /// Inserts a point at [local]'s x between its neighbours and starts
@@ -447,52 +637,60 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   ///
   /// ONE law for the press that adds a point and the drag that brings a
   /// removed point back in (the audit's clone scan, 2026-09-03).
-  void _insertPointAt(Offset local) {
-    final unit = _toUnit(local);
-    var insertAt = _points.length;
-    for (var i = 0; i < _points.length; i += 1) {
-      if (unit.dx < _points[i].x) {
+  void _insertPointAt(BrushInputSource source, Size box, Offset local) {
+    final points = _drafts[source]!.points;
+    final unit = _toUnit(box, local);
+    var insertAt = points.length;
+    for (var i = 0; i < points.length; i += 1) {
+      if (unit.dx < points[i].x) {
         insertAt = i;
         break;
       }
     }
-    if (insertAt == 0 || insertAt == _points.length) {
+    if (insertAt == 0 || insertAt == points.length) {
       return; // Outside the endpoints' x range (they sit at 0 and 1).
     }
     final clampedX = unit.dx.clamp(
-      _points[insertAt - 1].x + _minXGap,
-      _points[insertAt].x - _minXGap,
+      points[insertAt - 1].x + _minXGap,
+      points[insertAt].x - _minXGap,
     );
-    if (clampedX <= _points[insertAt - 1].x ||
-        clampedX >= _points[insertAt].x) {
+    if (clampedX <= points[insertAt - 1].x || clampedX >= points[insertAt].x) {
       return; // Neighbors too close to fit another point.
     }
     setState(() {
-      _points.insert(insertAt, BrushCurvePoint(clampedX, unit.dy));
+      points.insert(insertAt, BrushCurvePoint(clampedX, unit.dy));
+      _dragSource = source;
       _dragIndex = insertAt;
       _dragRemoved = false;
     });
     _commit();
   }
 
-  void _handlePanUpdate(DragUpdateDetails details) {
+  void _handlePanUpdate(
+    BrushInputSource source,
+    Size box,
+    DragUpdateDetails details,
+  ) {
     final index = _dragIndex;
-    if (index == null) {
+    // A drag belongs to the row it started in; a pointer that wandered over
+    // a neighbouring strip does not hand it over.
+    if (index == null || _dragSource != source) {
       return;
     }
+    final points = _drafts[source]!.points;
     final local = details.localPosition;
     // Middle points dragged far outside the graph are removed (CSP's
     // delete gesture); dragging back inside re-adds them.
     const removeSlack = 28.0;
     final outside =
         local.dx < -removeSlack ||
-        local.dx > _graphSize.width + removeSlack ||
+        local.dx > box.width + removeSlack ||
         local.dy < -removeSlack ||
-        local.dy > _graphSize.height + removeSlack;
-    final isMiddle = !_dragRemoved && index > 0 && index < _points.length - 1;
+        local.dy > box.height + removeSlack;
+    final isMiddle = !_dragRemoved && index > 0 && index < points.length - 1;
     if (outside && isMiddle) {
       setState(() {
-        _points.removeAt(index);
+        points.removeAt(index);
         _dragRemoved = true;
       });
       _commit();
@@ -502,32 +700,25 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
       if (outside) {
         return;
       }
-      _insertPointAt(local);
+      _insertPointAt(source, box, local);
       return;
     }
-    final unit = _toUnit(local);
+    final unit = _toUnit(box, local);
     final double x;
     if (index == 0) {
       x = 0.0;
-    } else if (index == _points.length - 1) {
+    } else if (index == points.length - 1) {
       x = 1.0;
     } else {
       x = unit.dx.clamp(
-        _points[index - 1].x + _minXGap,
-        _points[index + 1].x - _minXGap,
+        points[index - 1].x + _minXGap,
+        points[index + 1].x - _minXGap,
       );
     }
     setState(() {
-      _points[index] = BrushCurvePoint(x, unit.dy);
+      points[index] = BrushCurvePoint(x, unit.dy);
     });
     _commit();
-  }
-
-  void _handlePanEnd(DragEndDetails details) {
-    setState(() {
-      _dragIndex = null;
-      _dragRemoved = false;
-    });
   }
 }
 

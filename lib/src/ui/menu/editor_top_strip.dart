@@ -914,10 +914,10 @@ class _BrushValueBars extends StatelessWidget {
           return PressureCurveButton(
             keyValue: 'brush-tool-pressure-${target.name}',
             title: title,
-            curve: state.pressureCurveFor(target),
+            curves: state.targetCurves(target),
             enabled: pressureOn,
-            onChanged: (curve) =>
-                brushTool.value = state.withPressureCurve(target, curve),
+            onChanged: (curves) =>
+                brushTool.value = state.withTargetCurves(target, curves),
           );
         }
 

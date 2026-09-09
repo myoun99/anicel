@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +20,7 @@ void main() {
             child: PressureCurveButton(
               keyValue: 'slot-probe',
               title: 'Size',
-              curve: null,
+              curves: const {},
               onChanged: (_) {},
             ),
           ),
@@ -45,7 +46,9 @@ void main() {
             child: PressureCurveButton(
               keyValue: 'slot-probe',
               title: 'Size',
-              curve: BrushPressureCurve.identity(),
+              curves: {
+                BrushInputSource.pressure: BrushPressureCurve.identity(),
+              },
               onChanged: (_) {},
             ),
           ),

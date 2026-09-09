@@ -243,6 +243,39 @@ class BrushShape {
     return copyWith(curves: next);
   }
 
+  /// Replaces EVERY source's curve for one [target] in a single step — a
+  /// `null` entry clears that pairing, an absent key leaves it alone.
+  ///
+  /// 🚨THE CURVE EDITOR HAS TO COMMIT THROUGH THIS, not through three
+  /// [withCurve] calls. Its `onChanged` closes over the tool state as it was
+  /// when the button was BUILT, and that closure lives for the whole popup —
+  /// so committing one source at a time reads a stale base three times and
+  /// the second write resurrects what the first cleared. One call, one base.
+  BrushShape withTargetCurves(
+    BrushPressureTarget target,
+    Map<BrushInputSource, BrushPressureCurve?> bySource,
+  ) {
+    final next = Map<BrushDynamicsKey, BrushPressureCurve>.of(curves);
+    for (final entry in bySource.entries) {
+      final curve = entry.value;
+      if (curve == null) {
+        next.remove((target, entry.key));
+      } else {
+        next[(target, entry.key)] = curve;
+      }
+    }
+    return copyWith(curves: next);
+  }
+
+  /// Every source's curve for one [target], as the editor wants to read it —
+  /// an absent key means that pairing is off.
+  Map<BrushInputSource, BrushPressureCurve?> targetCurves(
+    BrushPressureTarget target,
+  ) => {
+    for (final source in BrushInputSource.values)
+      source: curveFor(target, source),
+  };
+
   /// [withCurve] for the pressure source — the call every existing site
   /// meant.
   BrushShape withPressureCurve(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 
@@ -21,8 +22,11 @@ void main() {
                   onPressed: () => showPressureCurvePopup(
                     context,
                     title: 'Size',
-                    curve: BrushPressureCurve.identity(),
-                    onChanged: (curve) => committed = curve,
+                    initialCurves: {
+                      BrushInputSource.pressure: BrushPressureCurve.identity(),
+                    },
+                    onChanged: (bySource) =>
+                        committed = bySource[BrushInputSource.pressure],
                   ),
                   child: const Text('open'),
                 ),
@@ -33,7 +37,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey<String>('open-curve')));
       await tester.pumpAndSettle();
-      final graph = find.byKey(const ValueKey<String>('pressure-curve-graph'));
+      final graph = find.byKey(const ValueKey<String>('pressure-curve-graph-pressure'));
       expect(graph, findsOneWidget, reason: '⛔the popup did not open');
 
       // A press in the middle of the graph is far from both endpoints, so

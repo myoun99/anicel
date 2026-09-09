@@ -1,5 +1,6 @@
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
@@ -971,6 +972,21 @@ class BrushToolState {
     BrushPressureCurve? curve,
   ) {
     return _withShape(shape.withPressureCurve(target, curve));
+  }
+
+  /// Every source's curve for [target] — what the curve editor opens with.
+  Map<BrushInputSource, BrushPressureCurve?> targetCurves(
+    BrushPressureTarget target,
+  ) => shape.targetCurves(target);
+
+  /// All three sources for one [target] in ONE write. See
+  /// [BrushShape.withTargetCurves] for why the editor may not commit them
+  /// one at a time.
+  BrushToolState withTargetCurves(
+    BrushPressureTarget target,
+    Map<BrushInputSource, BrushPressureCurve?> bySource,
+  ) {
+    return _withShape(shape.withTargetCurves(target, bySource));
   }
 
   static double clampSize(double value) {
