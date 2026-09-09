@@ -456,21 +456,7 @@ class _SurfacePaintPass {
           entry.key.x * overlayTileSize,
           entry.key.y * overlayTileSize,
         );
-        // 🚨★★★**THE SAME VISIBLE-RECT LAW THE BASE PASS KEEPS**
-        // (`tilesUnderRect` at the committed loop above), and this pass
-        // was the one place it was not applied. Overlay tiles ACCUMULATE
-        // for the whole life of a stroke — nothing leaves the map until
-        // pen-up — so by the third dab this was drawing the bounding box
-        // of the WHOLE stroke every frame, off-screen coordinates
-        // included, and a long line paid its full length on every step.
-        if (!_visibleRect.overlaps(
-          Rect.fromLTWH(
-            origin.dx,
-            origin.dy,
-            overlayTileSize,
-            overlayTileSize,
-          ),
-        )) {
+        if (!_overlayTileIsVisible(origin, overlayTileSize)) {
           continue;
         }
         _canvas.drawImage(entry.value, origin, overlayPaint);
@@ -483,6 +469,18 @@ class _SurfacePaintPass {
       }
     }
   }
+
+  /// 🚨★★★**THE SAME VISIBLE-RECT LAW THE BASE PASS KEEPS**
+  /// (`tilesUnderRect` at [_paintVisibleTiles]), and the overlay pass was
+  /// the one place it was not applied. Overlay tiles ACCUMULATE for the
+  /// whole life of a stroke — nothing leaves the map until pen-up — so by
+  /// the third dab that map is the bounding box of the WHOLE stroke, and
+  /// a long line paid its full length in draws on every frame of every
+  /// dab, off-screen coordinates included.
+  bool _overlayTileIsVisible(Offset origin, double tileSize) =>
+      _visibleRect.overlaps(
+        Rect.fromLTWH(origin.dx, origin.dy, tileSize, tileSize),
+      );
 
   /// The cut-piece stamp preview, over everything.
   void _paintStampPreview() {
