@@ -149,21 +149,13 @@ void main() {
       expect(original.tileAt(TileCoord(x: 0, y: 0)), isNull);
     });
 
-    test('removeTile removes a tile', () {
-      final tile = BitmapTile.blank(size: 256);
-      expect(
-        surface().putTiles([(coord: TileCoord(x: 0, y: 0), tile: tile)]).removeTile(TileCoord(x: 0, y: 0)).tileAt(TileCoord(x: 0, y: 0)),
-        isNull,
-      );
-    });
+    /// 🪦**`removeTile` IS GONE AND SO ARE ITS CASES.** Nothing in lib
+    /// ever called it. A surface does lose tiles — through
+    /// `putMaterializedTiles`, which drops one whose ink is gone as
+    /// part of the pass that emptied it, and through
+    /// `resizeBitmapSurfaceCanvas`, which drops what falls outside the
+    /// new pasteboard. Both are covered where they happen.
 
-    test('removeTile does not mutate original surface', () {
-      final tile = BitmapTile.blank(size: 256);
-      final original = surface().putTiles([(coord: TileCoord(x: 0, y: 0), tile: tile)]);
-      final next = original.removeTile(TileCoord(x: 0, y: 0));
-      expect(original.tileAt(TileCoord(x: 0, y: 0)), tile);
-      expect(next.tileAt(TileCoord(x: 0, y: 0)), isNull);
-    });
 
     /// 🪦**「constructor rejects tile whose coord does not match map key」**
     /// **IS GONE BECAUSE THE STATE IS.** A tile carried its own

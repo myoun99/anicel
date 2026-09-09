@@ -43,10 +43,6 @@ class DirtyTileSet {
 
   bool get isNotEmpty => _coords.isNotEmpty;
 
-  DirtyTileSet copyWith({Iterable<TileCoord>? coords}) {
-    return DirtyTileSet(coords ?? _coords);
-  }
-
   bool contains(TileCoord coord) => _coords.contains(coord);
 
   /// Adds coordinates — however few — in ONE set rebuild.
@@ -58,28 +54,19 @@ class DirtyTileSet {
   /// it is the fix rather than a note beside it — with no single-coord
   /// form there is nothing to reach for in a loop. `addAll([coord])` is
   /// the n = 1 case and costs exactly what the old `add` did.
+  ///
+  /// 🪦**AND IT IS THE ONLY SET OPERATION LEFT.** `remove`, `union`,
+  /// `intersect`, `difference` and `copyWith` were here too, each
+  /// rebuilding the set the way `add` did, and NOT ONE of them was ever
+  /// called from lib — only from the tests written to cover them. A set
+  /// algebra nobody asked for is a shape waiting to be reached for in a
+  /// loop, which is exactly the defect `add` turned out to be. Deleted
+  /// 2026-09-10; a caller that needs one can add it back with the call
+  /// site that justifies it.
   DirtyTileSet addAll(Iterable<TileCoord> coords) {
     return DirtyTileSet({..._coords, ...coords});
   }
 
-  DirtyTileSet remove(TileCoord coord) {
-    final nextCoords = Set<TileCoord>.of(_coords)..remove(coord);
-    return DirtyTileSet(nextCoords);
-  }
-
-  DirtyTileSet union(DirtyTileSet other) {
-    return DirtyTileSet({..._coords, ...other._coords});
-  }
-
-  DirtyTileSet intersect(DirtyTileSet other) {
-    return DirtyTileSet(_coords.where(other._coords.contains));
-  }
-
-  DirtyTileSet difference(DirtyTileSet other) {
-    return DirtyTileSet(
-      _coords.where((coord) => !other._coords.contains(coord)),
-    );
-  }
 
   Map<String, dynamic> toJson() => {
     'coords': _coords.map((coord) => coord.toJson()).toList(),

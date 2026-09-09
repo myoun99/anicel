@@ -273,16 +273,14 @@ class BitmapSurface {
                 (coord: entry.key, tile: entry.value),
             ]);
 
-  BitmapSurface removeTile(TileCoord coord) {
-    final nextTiles = Map<TileCoord, BitmapTile>.of(_tiles)..remove(coord);
-    return BitmapSurface._derived(
-      canvasSize: canvasSize,
-      tileSize: tileSize,
-      tiles: nextTiles,
-      // Nothing new goes in, so nothing new needs checking.
-      added: const [],
-    );
-  }
+  /// 🪦**`removeTile` LIVED HERE AND NOTHING EVER CALLED IT.** A surface
+  /// does lose tiles — but through [putMaterializedTiles], which drops a
+  /// tile whose ink is gone as part of the pass that emptied it, and
+  /// through [resizeBitmapSurfaceCanvas], which drops what falls outside
+  /// the new pasteboard. Both are the END of a pass that knows WHY the
+  /// tile is going. A bare "remove this coordinate" is the same operation
+  /// with the reason removed, and no caller ever wanted it. Deleted
+  /// 2026-09-10.
 
   BitmapSurface copyWith({
     CanvasSize? canvasSize,

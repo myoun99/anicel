@@ -67,33 +67,11 @@ void main() {
     test('addAll returns new set with all coords', () {
       expect(DirtyTileSet([a]).addAll([b, c]).coords, {a, b, c});
     });
-
-    test('remove returns new set without coord', () {
-      expect(DirtyTileSet([a, b]).remove(a).coords, {b});
-    });
-
-    test('remove does not mutate original', () {
-      final original = DirtyTileSet([a, b]);
-      final next = original.remove(a);
-      expect(original.coords, {a, b});
-      expect(next.coords, {b});
-    });
-
-    test('union combines two sets', () {
-      expect(DirtyTileSet([a, b]).union(DirtyTileSet([b, c])).coords, {
-        a,
-        b,
-        c,
-      });
-    });
-
-    test('intersect keeps shared coords', () {
-      expect(DirtyTileSet([a, b]).intersect(DirtyTileSet([b, c])).coords, {b});
-    });
-
-    test('difference removes coords from other set', () {
-      expect(DirtyTileSet([a, b]).difference(DirtyTileSet([b, c])).coords, {a});
-    });
+    /// 🪦**THE SET ALGEBRA IS GONE, AND SO ARE ITS CASES.** `remove`,
+    /// `union`, `intersect`, `difference` and `copyWith` were never called
+    /// from lib — these tests were the only reason they compiled. What a
+    /// commit actually does with a dirty set is build it once and read it,
+    /// which is `addAll`, `contains` and `coords`.
 
     test('fromRegion derives touched tiles', () {
       expect(

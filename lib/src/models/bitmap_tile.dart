@@ -314,16 +314,21 @@ class BitmapTile implements Finalizable {
     );
   }
 
-  /// 🧪**IT COMPARES EVERY BYTE, AND NOTHING HOT ASKS** (counted
+  /// 🧪**IT COMPARES EVERY BYTE, AND NO HOT PATH ASKS** (counted
   /// 2026-09-09). `listEquals` over the whole view, and `hashCode`
-  /// hashes it — which would matter if a tile were ever a Set
-  /// element or a Map key, or if `BitmapSurface ==` ran per frame.
-  /// Neither happens: `Set<BitmapTile>` and `Map<BitmapTile` have
-  /// zero hits across lib and test, no surface is compared to
-  /// another anywhere in lib, and the one place that could
-  /// (`SelectionFloatPaint`) uses `identical` on purpose. Left as
-  /// the honest answer to「are these the same picture」rather than
-  /// narrowed to defend a call site that does not exist.
+  /// hashes it — which would matter if a tile were ever a Set element or
+  /// a Map key, or if `BitmapSurface ==` ran per frame. Neither happens:
+  /// `Set<BitmapTile>` and `Map<BitmapTile` have zero hits across lib and
+  /// test, no surface is compared to another anywhere in lib, and the one
+  /// place that could (`SelectionFloatPaint`) uses `identical` on purpose.
+  ///
+  /// ⚠️**BUT IT IS NOT DEAD — THE TESTS HOLD IT AS A CONTRACT** (an
+  /// earlier note here said "a call site that does not exist", which was
+  /// wrong). `expectJsonRoundTrip` compares a decoded tile with the
+  /// original, `bitmap_surface_test` asks that two surfaces built in
+  /// different insertion orders are equal, and the history builder tests
+  /// compare whole surfaces. Value equality is what those measure; it
+  /// simply never runs where a frame would feel it.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
