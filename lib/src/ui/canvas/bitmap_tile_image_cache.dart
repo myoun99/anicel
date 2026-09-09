@@ -206,7 +206,11 @@ class BitmapTileImageCache extends ChangeNotifier {
       return;
     }
     _provisional[tile] = image;
-    _provisionalFinalizer.attach(tile, image, detach: tile);
+    _provisionalFinalizer.attach(
+      _provisional.keyFor(tile),
+      image,
+      detach: _provisional.keyFor(tile),
+    );
   }
 
   /// Retires [tile]'s stand-in, if it has one. Called the moment its real
@@ -219,7 +223,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     _provisional[tile] = null;
     // Detach first: without it the finalizer retires the same image a
     // second time when the tile is eventually collected.
-    _provisionalFinalizer.detach(tile);
+    _provisionalFinalizer.detach(_provisional.keyFor(tile));
     DeferredImageDisposer.instance.retire(provisional);
   }
 
@@ -286,7 +290,7 @@ class BitmapTileImageCache extends ChangeNotifier {
       }
       _decodeAsk[tile] = null;
       _images[tile] = image;
-      _imageFinalizer.attach(tile, image);
+      _imageFinalizer.attach(_images.keyFor(tile), image);
       // Truth has landed; the stand-in has nothing left to stand in for.
       _dropProvisional(tile);
       final scoped = _latestDecodedByScope.remove(staleScope);
@@ -361,7 +365,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     // 2026-09-09 audit.
     _decodeAsk[tile] = null;
     _images[tile] = image;
-    _imageFinalizer.attach(tile, image);
+    _imageFinalizer.attach(_images.keyFor(tile), image);
     // An adopted picture IS the truth (the overlay decoded exactly these
     // bytes), so it retires a stand-in just as a decode would.
     _dropProvisional(tile);
@@ -662,9 +666,24 @@ class _ByTilePixels<T extends Object> {
 
   final Expando<T> _slot;
 
-  T? operator [](BitmapTile tile) => _slot[tile.pixelsSource];
+  /// The object this slot hangs an entry on.
+  ///
+  /// 🚨★★★**A FINALIZER MUST HANG WHERE THE ENTRY HANGS.** The entry goes
+  /// under the tile's SOURCE, but a `Finalizer.attach(tile, …)` written
+  /// beside it would sit on the tile the caller passed — a different object
+  /// whenever that tile is a rebase. The rebase can be collected while its
+  /// source is still reachable (an undo snapshot holds the pre-resize
+  /// surface), and then the image is disposed while the entry under the
+  /// source still hands it out — a use-after-dispose. The mirror case is a
+  /// stand-in dropped through one tile while its finalizer sits on another,
+  /// which retires the same `ui.Image` twice. So the key is asked for, never
+  /// re-derived: there is one spelling of「which object」and both the entry
+  /// and its lifetime hook use it.
+  BitmapTile keyFor(BitmapTile tile) => tile.pixelsSource;
+
+  T? operator [](BitmapTile tile) => _slot[keyFor(tile)];
 
   void operator []=(BitmapTile tile, T? value) {
-    _slot[tile.pixelsSource] = value;
+    _slot[keyFor(tile)] = value;
   }
 }
