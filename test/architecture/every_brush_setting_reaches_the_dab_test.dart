@@ -21,16 +21,41 @@ import 'package:flutter_test/flutter_test.dart';
 /// preview picks its own colour); that the parameter is there at all is
 /// this test's.
 void main() {
-  /// `final <type> <name>;` — the shape of every field in both models.
-  Set<String> fieldsOf(String path) {
+  /// Every value a model exposes by name — stored (`final … name;`) AND
+  /// derived (`… get name`).
+  ///
+  /// ⚠️THE GETTERS COUNT. `BrushShape.textureMask` is derived (the picked
+  /// texture with its levels baked in) and a stored-fields-only scan lost
+  /// it the moment it stopped being a field — silently widening the hole
+  /// this test exists to close.
+  /// ⚠️`@override` members are skipped: `hashCode` is declared by both
+  /// models and is not a brush setting — it is the object protocol.
+  Set<String> namesIn(String path) {
     final names = <String>{};
+    var overridden = false;
     for (final line in File(path).readAsLinesSync()) {
-      final match = RegExp(
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('///')) {
+        continue;
+      }
+      if (trimmed == '@override') {
+        overridden = true;
+        continue;
+      }
+      final field = RegExp(
         r'^\s*final\s+[\w<>,?\s]+\s+(\w+);\s*$',
       ).firstMatch(line);
-      if (match != null) {
-        names.add(match.group(1)!);
+      final getter = RegExp(
+        r'^\s*[\w<>,?\s]+\s+get\s+(\w+)\s*[={]',
+      ).firstMatch(line);
+      if (!overridden) {
+        if (field != null) {
+          names.add(field.group(1)!);
+        } else if (getter != null) {
+          names.add(getter.group(1)!);
+        }
       }
+      overridden = false;
     }
     return names;
   }
@@ -56,11 +81,11 @@ void main() {
 
   test('🚨every setting a dab can carry is passed where one is built', () {
     final shared =
-        fieldsOf('lib/src/models/brush_shape.dart')
-          ..retainAll(fieldsOf('lib/src/models/brush_dab.dart'));
+        namesIn('lib/src/models/brush_shape.dart')
+          ..retainAll(namesIn('lib/src/models/brush_dab.dart'));
     expect(
       shared,
-      contains('antiAlias'),
+      containsAll(['antiAlias', 'textureMask']),
       reason: 'fixture premise: the two models really do share fields',
     );
 
