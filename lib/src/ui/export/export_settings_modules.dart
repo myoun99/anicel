@@ -661,7 +661,7 @@ class ExportFormatModule extends StatelessWidget {
   );
 
   Widget _backgroundRow() => ExportModuleRow(
-    label: 'BG',
+    label: AppText.strings.exBackground,
     child: Align(
       alignment: Alignment.centerLeft,
       child: ExportPillStrip(

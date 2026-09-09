@@ -640,6 +640,44 @@ void main() {
       expect(transport.data, contains('CUTCut · p1/1'));
     });
 
+    /// 🚨THE FILE-BAR PREVIEW AND THE OUTPUT LINE ARE ONE ANSWER.
+    ///
+    /// They used to work out 「what comes out」 separately, and the copies had
+    /// drifted: the preview printed a hardcoded `CUT1.xdts` for every
+    /// project, whatever the cut was called (감사 2026-09-09). Nothing
+    /// measured it — the whole branch could be deleted and the suite stayed
+    /// green. This pins the NAME, so a second implementation cannot come
+    /// back and lie again.
+    testWidgets('the XDTS name reads the cut, and the output line says the '
+        'same thing', (tester) async {
+      await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-tsformat-xdts')),
+      );
+      await tester.pump();
+
+      // The fixture's cut is named 'Cut', so the file is CUTCut.xdts — the
+      // same name the timesheet export actually writes.
+      final pattern = tester
+          .widget<Text>(
+            find.byKey(const ValueKey<String>('export-pattern-preview')),
+          )
+          .data;
+      expect(pattern, 'CUTCut.xdts');
+      final line = tester
+          .widget<Text>(
+            find.byKey(const ValueKey<String>('export-output-line')),
+          )
+          .data;
+      expect(line, contains('CUTCut.xdts'));
+    });
+
     testWidgets('a flushed preview shows the rendered picture',
         (tester) async {
       final state = await pumpDialog(tester, exportSession());

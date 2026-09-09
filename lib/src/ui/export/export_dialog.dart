@@ -1619,17 +1619,50 @@ class ExportDialogState extends State<ExportDialog> {
   String _outputLine() {
     final location = _location;
     if (location == null || location.isEmpty) {
-      return 'Choose a location to enable Export.';
+      return AppText.strings.exChooseLocation;
     }
+    final (:name, :more) = _firstOutputFile();
+    if (name == null) {
+      return '→ ${_nothingToWriteText()}';
+    }
+    return '→ $name${more ? ' …' : ''}';
+  }
+
+  /// THE FIRST FILE THIS TAB WRITES, and whether more follow.
+  ///
+  /// 🚨ONE ANSWER FOR TWO SURFACES (감사 2026-09-09). The output line under
+  /// the file bar and the naming accordion's summary both say 「what comes
+  /// out」, and each used to work it out for itself — the same walk over the
+  /// same plan, written twice. They had already drifted apart in three
+  /// places, and one of them was a LIE: the summary printed a hardcoded
+  /// `CUT1.xdts` for every project, whatever the cut was called. (The other
+  /// two: the summary showed nothing at all on the Image tab, and showed
+  /// the numbered still name while the Sequence tab was set to video.)
+  ///
+  /// ⛔The SHAPING stays with each caller — the arrow, the ellipsis, the
+  /// empty word. Only the question 「which file」 is answered here.
+  ({String? name, bool more}) _firstOutputFile() {
     switch (_tab) {
       case ExportTab.sequence:
         final spec = _specs.sequence;
         if (spec.format.isVideo) {
-          return '→ ${_singleFileName(_sequenceFileController, spec.format.container.fileExtension)}';
+          return (
+            name: _singleFileName(
+              _sequenceFileController,
+              spec.format.container.fileExtension,
+            ),
+            more: false,
+          );
         }
-        return '→ ${_sequenceFileNameFor(0)} …';
+        return (name: _sequenceFileNameFor(0), more: true);
       case ExportTab.image:
-        return '→ ${_singleFileName(_imageFileController, _specs.image.format.stillFormat.fileExtension)}';
+        return (
+          name: _singleFileName(
+            _imageFileController,
+            _specs.image.format.stillFormat.fileExtension,
+          ),
+          more: false,
+        );
       case ExportTab.cels:
         final plan = _celGroupPlan();
         final first = plan.cels.isNotEmpty
@@ -1637,38 +1670,53 @@ class ExportDialogState extends State<ExportDialog> {
             : plan.instructions.isNotEmpty
             ? plan.instructions.first.fileName
             : null;
-        return first == null ? '→ (no cels)' : '→ $first …';
+        return (name: first, more: plan.length > 1);
       case ExportTab.timesheet:
-        if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
-          final plan = _timesheetPagePlan();
-          return plan.isEmpty
-              ? '→ (no cuts)'
-              : '→ ${plan.first.fileName}${plan.length > 1 ? ' …' : ''}';
-        }
-        final cuts = _timesheetCuts();
-        return cuts.isEmpty
-            ? '→ (no cuts)'
-            : '→ CUT${sanitizeExportFileComponent(cuts.first.name)}.xdts'
-                  '${cuts.length > 1 ? ' …' : ''}';
+        return _firstTimesheetFile();
       case ExportTab.conte:
         final (_, pages) = _conteSheet();
         if (pages.isEmpty) {
-          return '→ (no cuts)';
+          return (name: null, more: false);
         }
         if (_specs.conte.format == ExportConteFormat.pdf) {
-          return '→ conte.pdf';
+          return (name: 'conte.pdf', more: false);
         }
-        return '→ ${_contePageFileName(0, pages.length)}'
-            '${pages.length > 1 ? ' …' : ''}';
+        return (
+          name: _contePageFileName(0, pages.length),
+          more: pages.length > 1,
+        );
       case ExportTab.envelope:
         final files = _envelopeFilePlan();
-        if (files.isEmpty) {
-          return '→ (no cuts)';
-        }
-        final first = _envelopeFileName(files.first.$1, files.first.$2);
-        return '→ $first${files.length > 1 ? ' …' : ''}';
+        return files.isEmpty
+            ? (name: null, more: false)
+            : (
+                name: _envelopeFileName(files.first.$1, files.first.$2),
+                more: files.length > 1,
+              );
     }
   }
+
+  ({String? name, bool more}) _firstTimesheetFile() {
+    if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
+      final plan = _timesheetPagePlan();
+      return plan.isEmpty
+          ? (name: null, more: false)
+          : (name: plan.first.fileName, more: plan.length > 1);
+    }
+    final cuts = _timesheetCuts();
+    return cuts.isEmpty
+        ? (name: null, more: false)
+        : (
+            name: 'CUT${sanitizeExportFileComponent(cuts.first.name)}.xdts',
+            more: cuts.length > 1,
+          );
+  }
+
+  /// What the two surfaces say when the tab writes nothing — the cel tab
+  /// counts cels, every other tab counts cuts.
+  String _nothingToWriteText() => _tab == ExportTab.cels
+      ? AppText.strings.exNoCels
+      : AppText.strings.exNoCuts;
 
   static const List<String> _knownExtensions = [
     '.mp4',
@@ -2589,7 +2637,7 @@ class ExportDialogState extends State<ExportDialog> {
           actions: [
             if (_isExporting)
               AppWindowAction(
-                label: 'Cancel',
+                label: AppText.strings.commonCancel,
                 actionKey: const ValueKey<String>('export-cancel-button'),
                 onPressed: cancelExport,
               ),
@@ -2695,46 +2743,15 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  String _patternPreview() {
-    switch (_tab) {
-      case ExportTab.sequence:
-        return _sequenceFileNameFor(0);
-      case ExportTab.cels:
-        final plan = _celGroupPlan();
-        return plan.cels.isEmpty
-            ? (plan.instructions.isEmpty
-                  ? '(no cels)'
-                  : plan.instructions.first.fileName)
-            : plan.cels.first.fileName;
-      case ExportTab.timesheet:
-        if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
-          final plan = _timesheetPagePlan();
-          return plan.isEmpty ? '(no cuts)' : plan.first.fileName;
-        }
-        return 'CUT1.xdts';
-      case ExportTab.conte:
-        if (_specs.conte.format == ExportConteFormat.pdf) {
-          return 'conte.pdf';
-        }
-        final (_, pages) = _conteSheet();
-        return pages.isEmpty
-            ? '(no cuts)'
-            : _contePageFileName(0, pages.length);
-      case ExportTab.envelope:
-        final files = _envelopeFilePlan();
-        return files.isEmpty
-            ? '(no cuts)'
-            : _envelopeFileName(files.first.$1, files.first.$2);
-      case ExportTab.image:
-        return '';
-    }
-  }
+  /// The name alone — the naming summary and the file-bar preview show what
+  /// the first file is called, without the output line's arrow.
+  String _patternPreview() => _firstOutputFile().name ?? _nothingToWriteText();
 
   Widget _presetsZone({required bool open}) {
     if (!open) {
       return ExportDrawerStrip(
         key: const ValueKey<String>('export-presets-strip'),
-        caption: 'Presets',
+        caption: AppText.strings.exPresets,
         chevron: Icons.chevron_right,
         onTap: () {
           setState(() => _presetsOpen = true);
@@ -3820,7 +3837,7 @@ class ExportDialogState extends State<ExportDialog> {
     required bool open,
     required void Function(ExportSizeMode mode) onChanged,
   }) => ExportAccordion(
-    title: 'Size',
+    title: AppText.strings.exSize,
     summary: ExportSizeModule.summarize(sizeMode),
     expansion: _expansion('size', open: open),
     child: ExportSizeModule(
@@ -3875,7 +3892,7 @@ class ExportDialogState extends State<ExportDialog> {
     final cutPaper = spec.paperMode == CutEnvelopePaperMode.cut;
     return [
       ExportAccordion(
-        title: 'Form',
+        title: AppText.strings.exForm,
         summary: CutEnvelopePresets.byId(spec.formId).name,
         expansion: _expansion('envelope-form', open: true),
         child: Align(
@@ -3894,7 +3911,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Paper',
+        title: AppText.strings.exPaperLabel,
         summary: cutPaper ? 'Cut size' : 'Sheet · ${spec.sheetWidth}px',
         expansion: _expansion('envelope-paper', open: true),
         child: Column(
@@ -3904,7 +3921,7 @@ class ExportDialogState extends State<ExportDialog> {
               items: [
                 _pill(
                   keyValue: 'export-envelope-paper-cut',
-                  label: 'Cut size',
+                  label: AppText.strings.exCutSize,
                   selected: cutPaper,
                   onPick: () => _updateSpec(
                     spec.copyWith(paperMode: CutEnvelopePaperMode.cut),
@@ -3912,7 +3929,7 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
                 _pill(
                   keyValue: 'export-envelope-paper-sheet',
-                  label: 'Real sheet',
+                  label: AppText.strings.exRealSheet,
                   selected: !cutPaper,
                   onPick: () => _updateSpec(
                     spec.copyWith(paperMode: CutEnvelopePaperMode.sheet),
@@ -3923,7 +3940,7 @@ class ExportDialogState extends State<ExportDialog> {
             if (!cutPaper) ...[
               const SizedBox(height: 6),
               ExportModuleRow(
-                label: 'Width',
+                label: AppText.strings.exWidth,
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: ExportPillStrip(
@@ -3955,7 +3972,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Layers',
+        title: AppText.strings.exSheetLayers,
         summary: spec.separateLayerFiles
             ? '${spec.orderedLayers.length} separate PNGs'
             : '${spec.orderedLayers.length} of 4, flat',
@@ -3976,10 +3993,10 @@ class ExportDialogState extends State<ExportDialog> {
                   _pill(
                     keyValue: 'export-envelope-layer-${layer.jsonValue}',
                     label: switch (layer) {
-                      SheetPaintLayer.paper => 'Paper',
-                      SheetPaintLayer.form => 'Form',
-                      SheetPaintLayer.content => 'Content',
-                      SheetPaintLayer.ink => 'Ink',
+                      SheetPaintLayer.paper => AppText.strings.exPaperLabel,
+                      SheetPaintLayer.form => AppText.strings.exForm,
+                      SheetPaintLayer.content => AppText.strings.exContent,
+                      SheetPaintLayer.ink => AppText.strings.exInk,
                     },
                     selected: spec.layers.contains(layer),
                     onPick: () => _updateSpec(
@@ -3990,21 +4007,21 @@ class ExportDialogState extends State<ExportDialog> {
             ),
             const SizedBox(height: 6),
             ExportModuleRow(
-              label: 'Files',
+              label: AppText.strings.exFiles,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: ExportPillStrip(
                   items: [
                     _pill(
                       keyValue: 'export-envelope-files-flat',
-                      label: 'One image',
+                      label: AppText.strings.exOneImage,
                       selected: !spec.separateLayerFiles,
                       onPick: () =>
                           _updateSpec(spec.copyWith(separateLayerFiles: false)),
                     ),
                     _pill(
                       keyValue: 'export-envelope-files-layered',
-                      label: 'One per layer',
+                      label: AppText.strings.exOnePerLayer,
                       selected: spec.separateLayerFiles,
                       onPick: () =>
                           _updateSpec(spec.copyWith(separateLayerFiles: true)),
@@ -4041,7 +4058,7 @@ class ExportDialogState extends State<ExportDialog> {
     if (!open) {
       return ExportDrawerStrip(
         key: const ValueKey<String>('export-queue-strip'),
-        caption: 'Queue',
+        caption: AppText.strings.exQueue,
         chevron: Icons.chevron_left,
         badgeCount: _queue.jobs.length,
         onTap: () {

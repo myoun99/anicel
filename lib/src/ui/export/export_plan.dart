@@ -20,11 +20,6 @@ export '../../models/export_size_mode.dart';
 /// active cut's track in storyboard order, or a subrange of the active cut.
 enum ExportRange { activeCut, allCuts, frameRange }
 
-/// Export container: a PNG file per frame, one H.264 MP4 encoded through
-/// an external ffmpeg (see VideoExportService), or XDTS digital timesheets
-/// (one .xdts per cut — sheet data, no rendering).
-enum ExportFormat { pngSequence, mp4Video, xdtsTimesheet }
-
 /// One composited output frame: [cut]'s local [frameIndex]. A negative
 /// [frameIndex] is a frame of [cut]'s LEADING GAP (empty space before the
 /// cut, played and exported as black): -1 is the gap frame right before

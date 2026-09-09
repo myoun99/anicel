@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
@@ -134,11 +135,20 @@ class _ImportFileTableState extends State<ImportFileTable> {
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 5),
           child: Row(
             children: [
-              Expanded(child: Text('Name', style: dim)),
-              SizedBox(width: 58, child: Text('Modified', style: dim)),
+              Expanded(
+                child: Text(AppText.strings.commonNameField, style: dim),
+              ),
+              SizedBox(
+                width: 58,
+                child: Text(AppText.strings.imModified, style: dim),
+              ),
               SizedBox(
                 width: 52,
-                child: Text('Size', style: dim, textAlign: TextAlign.right),
+                child: Text(
+                  AppText.strings.imSize,
+                  style: dim,
+                  textAlign: TextAlign.right,
+                ),
               ),
               for (final column in columns)
                 SizedBox(

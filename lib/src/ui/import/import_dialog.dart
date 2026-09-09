@@ -687,7 +687,7 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: AppText.strings.commonCancel,
           actionKey: const ValueKey<String>('import-cancel-button'),
           emphasis: AppWindowActionEmphasis.quiet,
           // Dead while the import is doing its OWN work — stopping a
@@ -700,7 +700,7 @@ class _ImportDialogState extends State<ImportDialog> {
               : (_running ? null : () => Navigator.of(context).pop()),
         ),
         AppWindowAction(
-          label: 'Import',
+          label: AppText.strings.imImport,
           actionKey: const ValueKey<String>('import-run-button'),
           onPressed: _canImport ? _runImport : null,
         ),
@@ -761,7 +761,7 @@ class _ImportDialogState extends State<ImportDialog> {
               items: [
                 ExportPillItem(
                   keyValue: 'import-place-pool',
-                  label: 'Pool',
+                  label: AppText.strings.imPool,
                   selected: !_placing,
                   onTap: _running
                       ? null
@@ -769,7 +769,7 @@ class _ImportDialogState extends State<ImportDialog> {
                 ),
                 ExportPillItem(
                   keyValue: 'import-place-timeline',
-                  label: 'Timeline',
+                  label: AppText.strings.panelTimeline,
                   selected: _placing,
                   onTap: _running || widget.poolOnly
                       ? null
@@ -814,7 +814,7 @@ class _ImportDialogState extends State<ImportDialog> {
             SizedBox(width: tableWidth, child: _fileTable(context)),
             DockEdgeSplitter(
               axis: Axis.horizontal,
-              tooltip: 'Resize',
+              tooltip: AppText.strings.commonResize,
               onDragDelta: (delta) {
                 setState(() => _tableWidth = tableWidth + delta);
                 return delta;
@@ -874,7 +874,7 @@ class _ImportDialogState extends State<ImportDialog> {
       ],
       columns: [
         ImportColumn<Object?>(
-          label: 'File',
+          label: AppText.strings.imFile,
           width: 62,
           values: ImportFileMode.values,
           labelOf: (value) => importModeLabel(value! as ImportFileMode),
@@ -896,7 +896,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
         ),
         ImportColumn<Object?>(
-          label: 'Into',
+          label: AppText.strings.imInto,
           width: 68,
           values: ImportDestination.values,
           labelOf: (value) => importIntoLabel(value! as ImportDestination),
@@ -916,7 +916,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
         ),
         ImportColumn<Object?>(
-          label: 'Fit',
+          label: AppText.strings.imFit,
           width: 62,
           values: MediaFitMode.values,
           labelOf: (value) => importFitLabel(value! as MediaFitMode),
@@ -1014,13 +1014,13 @@ class _ImportDialogState extends State<ImportDialog> {
           OutlinedButton(
             key: const ValueKey<String>('import-browse-files-button'),
             onPressed: _running ? null : _pickFiles,
-            child: const Text('Files…'),
+            child: Text(AppText.strings.imFilesButton),
           ),
           const SizedBox(width: 6),
           OutlinedButton(
             key: const ValueKey<String>('import-browse-folder-button'),
             onPressed: _running ? null : _pickFolder,
-            child: const Text('Cut folder…'),
+            child: Text(AppText.strings.imCutFolderButton),
           ),
         ],
       ),
@@ -1251,7 +1251,7 @@ class _ImportDialogState extends State<ImportDialog> {
           // states, and in this app a choice is shown by colour while a
           // checkbox means on/off.
           ExportChoiceRow<bool>(
-            label: 'Files',
+            label: AppText.strings.imFiles,
             keyPrefix: 'import-media',
             values: const [false, true],
             selected: _copyIntoProject,
@@ -1291,7 +1291,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
           const SizedBox(height: 6),
           ExportChoiceRow<MediaFitMode>(
-            label: 'Fit',
+            label: AppText.strings.imFit,
             keyPrefix: 'import-fit',
             values: MediaFitMode.values,
             selected: _fit,
@@ -1306,7 +1306,7 @@ class _ImportDialogState extends State<ImportDialog> {
           const SizedBox(height: 10),
           ExportToggleRow(
             key: const ValueKey<String>('import-subfolders-toggle'),
-            label: 'Archived processes (LO/, GEN/…)',
+            label: AppText.strings.imArchivedProcesses,
             value: _parseConfig.includeProcessSubfolders,
             onChanged: (value) => setState(() {
               _parseConfig = _parseConfig.copyWith(
@@ -1317,7 +1317,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
           ExportToggleRow(
             key: const ValueKey<String>('import-multicut-toggle'),
-            label: 'Multi-cut folders (겸용)',
+            label: AppText.strings.imMultiCutFolders,
             value: _parseConfig.multiCutFolders,
             onChanged: (value) => setState(() {
               _parseConfig = _parseConfig.copyWith(multiCutFolders: value);
@@ -1325,7 +1325,7 @@ class _ImportDialogState extends State<ImportDialog> {
             }),
           ),
           ExportChoiceRow<CelRevisionPolicy>(
-            label: 'Revisions',
+            label: AppText.strings.imRevisions,
             keyPrefix: 'import-revision',
             values: CelRevisionPolicy.values,
             selected: _parseConfig.revisionPolicy,

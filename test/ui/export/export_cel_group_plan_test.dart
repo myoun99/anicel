@@ -287,6 +287,51 @@ void main() {
     expect(names(raw.cels.first.members), ['A']);
   });
 
+  test('🚨paper alone does not keep a cel alive — 「그림이 존재하는 영역만」 '
+      'counts PICTURES', () {
+    // 감사 2026-09-09: the rule was written and nothing measured it. With the
+    // picture check dropped, every axis frame the paper covers became a cel
+    // — a delivery folder full of blank paper — and the suite stayed green.
+    //
+    // ⚠️The base is EXPOSED: an applied paper row has no cell link, so it
+    // resolves through the timeline, and without exposure it would come back
+    // null too — the fixture would then pass whatever the code did.
+    final baseA = base('a', 'A', [
+      frame('f1'),
+      frame('f2'),
+      frame('f3'),
+    ], timeline: true);
+    final sync = Layer(
+      id: const LayerId('a-color'),
+      name: 'A색',
+      frames: [frame('c1'), frame('c3')],
+      mark: key,
+      attachedToLayerId: const LayerId('a'),
+      attachedMode: AttachedMode.synced,
+      baseFrameLinks: {
+        const FrameId('f1'): const FrameId('c1'),
+        const FrameId('f3'): const FrameId('c3'),
+      },
+    );
+    final paperRow = Layer(
+      id: const LayerId('p'),
+      name: 'Paper',
+      frames: [frame('p1')],
+      mark: paper,
+      timeline: {0: const TimelineExposure.drawing(FrameId('p1'), length: 4)},
+    );
+
+    final built = plan([paperRow, baseA, sync], spec: attach);
+    expect(
+      built.cels.map((task) => task.celName),
+      ['1', '3'],
+      reason: 'cel 2 has paper under it and no picture — it is not a cel',
+    );
+    for (final task in built.cels) {
+      expect(names(task.members), ['Paper', 'A색']);
+    }
+  });
+
   test('an unticked bundle stays planned and listed, and is not written', () {
     final built = plan(
       [base('a', 'A', [frame('f1')]), base('b', 'B', [frame('g1')])],

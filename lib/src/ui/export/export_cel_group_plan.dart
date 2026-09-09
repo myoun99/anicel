@@ -196,81 +196,152 @@ Frame? celGroupMemberFrame({
 /// member has a frame: 「그림이 존재하는 영역만 출력」 — paper alone is not a
 /// picture. Bundles the user unticked in the cel list ([skipped]) are
 /// planned but marked, so the list keeps showing them.
+/// One cut as this export run sees it: the cut itself, the name its files
+/// carry (a 겸용 group's joined name), the run's namer and the bundles the
+/// user unticked. They travel together because every step of the walk needs
+/// all four.
+typedef _CutRun = ({
+  Cut cut,
+  String cutName,
+  _NamingRun run,
+  Set<LayerId> skipped,
+});
+
 Iterable<ExportCelGroupTask> _celGroupTasksFor(
-  Cut cut, {
-  required ExportCelsSelection selection,
-  required _NamingRun run,
-  required String cutName,
-  required Set<LayerId> skipped,
-}) sync* {
+  _CutRun cut,
+  ExportCelsSelection selection,
+) sync* {
+  for (final bundle in _celBundlesOf(cut.cut, selection)) {
+    yield* _bundleTasks(bundle, cut);
+  }
+}
+
+/// One bundle before its cels are counted: the layer whose frames number
+/// them, the stack slice each cel composites (pictures + applied paper,
+/// bottom-up), and which of those members are PICTURES — paper is not one,
+/// which is why it cannot keep a cel alive by itself.
+typedef _CelBundle = ({
+  Layer axis,
+  List<Layer> members,
+  Set<LayerId> pictureIds,
+});
+
+/// Every bundle the selection touches, in stack order: one per base whose
+/// own stack — itself or an attach row riding it — holds a selected
+/// picture. A base with none is not a bundle at all.
+Iterable<_CelBundle> _celBundlesOf(
+  Cut cut,
+  ExportCelsSelection selection,
+) sync* {
   final selectedIds = {for (final layer in selection.celLayers) layer.id};
   final paperIds = {for (final layer in selection.paperLayers) layer.id};
   for (final base in cut.layers) {
-    if (isAttachedLayer(base) ||
-        !base.kind.exportsCels ||
-        base.kind == LayerKind.instruction) {
+    if (!_canOwnABundle(base)) {
       continue;
     }
-    final riderIds = {
-      for (final rider in attachedLayersOf(base.id, cut.layers)) rider.id,
-    };
-    final pictures = [
-      for (final layer in cut.layers)
-        if ((layer.id == base.id || riderIds.contains(layer.id)) &&
-            selectedIds.contains(layer.id))
-          layer,
-    ];
+    final pictures = _bundlePictures(cut, base, selectedIds);
     if (pictures.isEmpty) {
       continue;
     }
-    final lone = pictures.length == 1 ? pictures.single : null;
-    final axis = lone != null && isAttachedLayer(lone) && !isSyncedAttachedLayer(lone)
-        ? lone
-        : base;
     final pictureIds = {for (final layer in pictures) layer.id};
-    final members = [
-      for (final layer in cut.layers)
-        if (pictureIds.contains(layer.id) || paperIds.contains(layer.id)) layer,
-    ];
-    for (final axisFrame in axis.frames) {
-      // An unnamed drawing is the in-between mark, not a cel: no file. The
-      // sheet prints ○ for the very same frame ([Frame.celNumber] decides
-      // for both); numbering it by position here invented a cel the sheet
-      // never listed (유저 2026-09-09).
-      final celName = axisFrame.celNumber;
-      if (celName == null) {
-        continue;
-      }
-      final frames = [
-        for (final member in members)
-          celGroupMemberFrame(base: axis, member: member, baseFrame: axisFrame),
-      ];
-      var hasPicture = false;
-      for (var i = 0; i < members.length; i += 1) {
-        if (pictureIds.contains(members[i].id) && frames[i] != null) {
-          hasPicture = true;
-          break;
-        }
-      }
-      if (!hasPicture) {
-        continue;
-      }
-      yield ExportCelGroupTask(
-        cut: cut,
-        baseLayer: axis,
-        members: members,
-        memberFrames: frames,
-        baseFrame: axisFrame,
-        celName: celName,
-        fileName: run.fileNameFor(
-          cutName: cutName,
-          labelName: axis.name,
-          celName: celName,
+    yield (
+      axis: _bundleAxis(pictures, base),
+      members: [
+        for (final layer in cut.layers)
+          if (pictureIds.contains(layer.id) || paperIds.contains(layer.id))
+            layer,
+      ],
+      pictureIds: pictureIds,
+    );
+  }
+}
+
+/// Whether a row can be the base a bundle hangs from: an attach row rides
+/// someone else's bundle, an instruction row exports its own events, and a
+/// row that holds no cel holds no bundle either.
+bool _canOwnABundle(Layer layer) =>
+    !isAttachedLayer(layer) &&
+    layer.kind.exportsCels &&
+    layer.kind != LayerKind.instruction;
+
+/// [base]'s own stack, filtered to what the selection keeps: the base
+/// itself and the rows attached to it, in cut order.
+List<Layer> _bundlePictures(Cut cut, Layer base, Set<LayerId> selectedIds) {
+  final riderIds = {
+    for (final rider in attachedLayersOf(base.id, cut.layers)) rider.id,
+  };
+  return [
+    for (final layer in cut.layers)
+      if (selectedIds.contains(layer.id) &&
+          (layer.id == base.id || riderIds.contains(layer.id)))
+        layer,
+  ];
+}
+
+/// The layer whose frames number the bundle's cels: the base — EXCEPT when
+/// a FREE attach row is the bundle's only picture, and then it is that row
+/// (its own frames, its own name). 유저 2026-09-09: 「여러개 선택되면
+/// 기준레이어 따라가고 프리부속 단독이면 단독 기준」.
+Layer _bundleAxis(List<Layer> pictures, Layer base) {
+  if (pictures.length != 1) {
+    return base;
+  }
+  final lone = pictures.single;
+  return isAttachedLayer(lone) && !isSyncedAttachedLayer(lone) ? lone : base;
+}
+
+/// One task per numbered cel of [bundle] — the axis frames that carry a
+/// cel number AND a picture.
+Iterable<ExportCelGroupTask> _bundleTasks(
+  _CelBundle bundle,
+  _CutRun cut,
+) sync* {
+  for (final axisFrame in bundle.axis.frames) {
+    // An unnamed drawing is the in-between mark, not a cel: no file. The
+    // sheet prints ○ for the very same frame ([Frame.celNumber] decides
+    // for both); numbering it by position here invented a cel the sheet
+    // never listed (유저 2026-09-09).
+    final celName = axisFrame.celNumber;
+    if (celName == null) {
+      continue;
+    }
+    final frames = [
+      for (final member in bundle.members)
+        celGroupMemberFrame(
+          base: bundle.axis,
+          member: member,
+          baseFrame: axisFrame,
         ),
-        skipped: skipped.contains(axis.id),
-      );
+    ];
+    if (!_holdsAPicture(bundle, frames)) {
+      continue;
+    }
+    yield ExportCelGroupTask(
+      cut: cut.cut,
+      baseLayer: bundle.axis,
+      members: bundle.members,
+      memberFrames: frames,
+      baseFrame: axisFrame,
+      celName: celName,
+      fileName: cut.run.fileNameFor(
+        cutName: cut.cutName,
+        labelName: bundle.axis.name,
+        celName: celName,
+      ),
+      skipped: cut.skipped.contains(bundle.axis.id),
+    );
+  }
+}
+
+/// Whether this cel has anything to draw: 「그림이 존재하는 영역만 출력」.
+/// Applied paper does not count — a cel of paper alone is not a cel.
+bool _holdsAPicture(_CelBundle bundle, List<Frame?> frames) {
+  for (var i = 0; i < bundle.members.length; i += 1) {
+    if (bundle.pictureIds.contains(bundle.members[i].id) && frames[i] != null) {
+      return true;
     }
   }
+  return false;
 }
 
 /// One export RUN's naming: the shared [ExportCelFileNamer] plus the two
@@ -392,13 +463,12 @@ ExportCelGroupPlan buildExportCelGroupPlan({
     );
     final cutName = celGroupCutName(project, cut);
     cels.addAll(
-      _celGroupTasksFor(
-        cut,
-        selection: selection,
-        run: run,
+      _celGroupTasksFor((
+        cut: cut,
         cutName: cutName,
+        run: run,
         skipped: delta?.skippedBases ?? const {},
-      ),
+      ), selection),
     );
     instructions.addAll(
       _instructionTasksFor(

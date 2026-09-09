@@ -952,12 +952,56 @@ enum AppStrings {
   String get exCut => _s('exCut');
   String get exWhite => _s('exWhite');
   String get exBlack => _s('exBlack');
+  String get exBackground => _s('exBackground');
+  String get exChooseLocation => _s('exChooseLocation');
+  String get exNoCels => _s('exNoCels');
+  String get exNoCuts => _s('exNoCuts');
+  String get exPresets => _s('exPresets');
+  String get exQueue => _s('exQueue');
+  String get exSize => _s('exSize');
+
+  /// The cut envelope's own words: its form (서식), the paper it prints on
+  /// and the layers it paints.
+  String get exForm => _s('exForm');
+  String get exCutSize => _s('exCutSize');
+  String get exRealSheet => _s('exRealSheet');
+  String get exWidth => _s('exWidth');
+  String get exSheetLayers => _s('exSheetLayers');
+  String get exContent => _s('exContent');
+  String get exInk => _s('exInk');
+  String get exFiles => _s('exFiles');
+  String get exOneImage => _s('exOneImage');
+  String get exOnePerLayer => _s('exOnePerLayer');
+
+  /// The import window's own words. ⚠️Cancel · Resize · Name · Timeline are
+  /// NOT here — they are `commonCancel`, `commonResize`, `commonNameField`
+  /// and `panelTimeline`, which already say them.
+  String get imImport => _s('imImport');
+  String get imPool => _s('imPool');
+  String get imFile => _s('imFile');
+  String get imFiles => _s('imFiles');
+  String get imInto => _s('imInto');
+  String get imFit => _s('imFit');
+  String get imRevisions => _s('imRevisions');
+  String get imFilesButton => _s('imFilesButton');
+  String get imCutFolderButton => _s('imCutFolderButton');
+
+  /// The file table's columns — 「size」 here is a file's BYTES, which is a
+  /// different question from the export's pixel [exSize].
+  String get imModified => _s('imModified');
+  String get imSize => _s('imSize');
+  String get imArchivedProcesses => _s('imArchivedProcesses');
+  String get imMultiCutFolders => _s('imMultiCutFolders');
+
+  /// The media pool's states and its rename prompt.
+  String get mpFileMissing => _s('mpFileMissing');
+  String get mpLinkedOnSeRows => _s('mpLinkedOnSeRows');
+  String get mpNameEmpty => _s('mpNameEmpty');
 
   /// '{w}'/'{h}' are the camera frame's pixel dimensions.
   String get exCameraTemplate => _s('exCameraTemplate');
 
   /// '{name}' is the current layer-group label.
-  String get exLayersTemplate => _s('exLayersTemplate');
 
   // --- Tools, the brush library and its settings ---
   String get toolBrush => _s('toolBrush');
@@ -1725,8 +1769,40 @@ enum AppStrings {
     'exCut': 'Cut',
     'exWhite': 'White',
     'exBlack': 'Black',
+    'exBackground': 'BG',
+    'exChooseLocation': 'Choose a location to enable Export.',
+    'exNoCels': '(no cels)',
+    'exNoCuts': '(no cuts)',
+    'exPresets': 'Presets',
+    'exQueue': 'Queue',
+    'exSize': 'Size',
+    'exForm': 'Form',
+    'exCutSize': 'Cut size',
+    'exRealSheet': 'Real sheet',
+    'exWidth': 'Width',
+    'exSheetLayers': 'Layers',
+    'exContent': 'Content',
+    'exInk': 'Ink',
+    'exFiles': 'Files',
+    'exOneImage': 'One image',
+    'exOnePerLayer': 'One per layer',
+    'imImport': 'Import',
+    'imPool': 'Pool',
+    'imFile': 'File',
+    'imFiles': 'Files',
+    'imInto': 'Into',
+    'imFit': 'Fit',
+    'imRevisions': 'Revisions',
+    'imFilesButton': 'Files…',
+    'imCutFolderButton': 'Cut folder…',
+    'imModified': 'Modified',
+    'imSize': 'Size',
+    'imArchivedProcesses': 'Archived processes (LO/, GEN/…)',
+    'imMultiCutFolders': 'Multi-cut folders (兼用)',
+    'mpFileMissing': 'File missing — relink it',
+    'mpLinkedOnSeRows': 'Linked on SE rows',
+    'mpNameEmpty': 'Media name cannot be empty.',
     'exCameraTemplate': 'Camera {w}×{h}',
-    'exLayersTemplate': 'Layers · {name}',
     'toolBrush': 'Brush',
     'toolEraser': 'Eraser',
     'toolEyedropper': 'Eyedropper',
@@ -2650,8 +2726,40 @@ enum AppStrings {
     'exCut': 'カット',
     'exWhite': '白',
     'exBlack': '黒',
+    'exBackground': '背景',
+    'exChooseLocation': '保存先を選ぶと書き出せます。',
+    'exNoCels': '（セルなし）',
+    'exNoCuts': '（カットなし）',
+    'exPresets': 'プリセット',
+    'exQueue': 'キュー',
+    'exSize': 'サイズ',
+    'exForm': '書式',
+    'exCutSize': 'カットサイズ',
+    'exRealSheet': '実寸用紙',
+    'exWidth': '幅',
+    'exSheetLayers': 'レイヤー',
+    'exContent': '内容',
+    'exInk': '線画',
+    'exFiles': 'ファイル',
+    'exOneImage': '画像1枚',
+    'exOnePerLayer': 'レイヤーごとに1枚',
+    'imImport': 'インポート',
+    'imPool': 'プール',
+    'imFile': 'ファイル',
+    'imFiles': 'ファイル',
+    'imInto': '配置先',
+    'imFit': 'フィット',
+    'imRevisions': 'リビジョン',
+    'imFilesButton': 'ファイル…',
+    'imCutFolderButton': 'カットフォルダ…',
+    'imModified': '更新日時',
+    'imSize': 'サイズ',
+    'imArchivedProcesses': '格納済み工程（LO/・GEN/…）',
+    'imMultiCutFolders': '兼用カットのフォルダ',
+    'mpFileMissing': 'ファイルが見つかりません — リンクし直してください',
+    'mpLinkedOnSeRows': 'SE行にリンク済み',
+    'mpNameEmpty': 'メディア名を入力してください。',
     'exCameraTemplate': 'カメラ {w}×{h}',
-    'exLayersTemplate': 'レイヤー · {name}',
     'toolBrush': 'ブラシ',
     'toolEraser': '消しゴム',
     'toolEyedropper': 'スポイト',
@@ -3597,8 +3705,40 @@ enum AppStrings {
     'exCut': '컷',
     'exWhite': '흰색',
     'exBlack': '검정',
+    'exBackground': '배경',
+    'exChooseLocation': '위치를 고르면 내보낼 수 있습니다.',
+    'exNoCels': '(셀 없음)',
+    'exNoCuts': '(컷 없음)',
+    'exPresets': '프리셋',
+    'exQueue': '대기열',
+    'exSize': '크기',
+    'exForm': '서식',
+    'exCutSize': '컷 크기',
+    'exRealSheet': '실측 용지',
+    'exWidth': '너비',
+    'exSheetLayers': '레이어',
+    'exContent': '내용',
+    'exInk': '선화',
+    'exFiles': '파일',
+    'exOneImage': '이미지 한 장',
+    'exOnePerLayer': '레이어마다 한 장',
+    'imImport': '임포트',
+    'imPool': '풀',
+    'imFile': '파일',
+    'imFiles': '파일',
+    'imInto': '넣을 곳',
+    'imFit': '맞춤',
+    'imRevisions': '리비전',
+    'imFilesButton': '파일…',
+    'imCutFolderButton': '컷 폴더…',
+    'imModified': '수정일',
+    'imSize': '크기',
+    'imArchivedProcesses': '보관된 공정 (LO/, GEN/…)',
+    'imMultiCutFolders': '겸용 컷 폴더',
+    'mpFileMissing': '파일이 없습니다 — 다시 연결하세요',
+    'mpLinkedOnSeRows': 'SE 행에 연결됨',
+    'mpNameEmpty': '미디어 이름을 비울 수 없습니다.',
     'exCameraTemplate': '카메라 {w}×{h}',
-    'exLayersTemplate': '레이어 · {name}',
     'toolBrush': '브러시',
     'toolEraser': '지우개',
     'toolEyedropper': '스포이트',
@@ -4579,8 +4719,40 @@ enum AppStrings {
     'exCut': 'Plan',
     'exWhite': 'Blanc',
     'exBlack': 'Noir',
+    'exBackground': 'Fond',
+    'exChooseLocation': 'Choisissez un emplacement pour exporter.',
+    'exNoCels': '(aucun cellulo)',
+    'exNoCuts': '(aucun plan)',
+    'exPresets': 'Préréglages',
+    'exQueue': 'File d\'attente',
+    'exSize': 'Taille',
+    'exForm': 'Formulaire',
+    'exCutSize': 'Taille du plan',
+    'exRealSheet': 'Feuille réelle',
+    'exWidth': 'Largeur',
+    'exSheetLayers': 'Calques',
+    'exContent': 'Contenu',
+    'exInk': 'Encre',
+    'exFiles': 'Fichiers',
+    'exOneImage': 'Une image',
+    'exOnePerLayer': 'Une par calque',
+    'imImport': 'Importer',
+    'imPool': 'Réserve',
+    'imFile': 'Fichier',
+    'imFiles': 'Fichiers',
+    'imInto': 'Vers',
+    'imFit': 'Ajuster',
+    'imRevisions': 'Révisions',
+    'imFilesButton': 'Fichiers…',
+    'imCutFolderButton': 'Dossier de plan…',
+    'imModified': 'Modifié',
+    'imSize': 'Taille',
+    'imArchivedProcesses': 'Étapes archivées (LO/, GEN/…)',
+    'imMultiCutFolders': 'Dossiers multi-plans (兼用)',
+    'mpFileMissing': 'Fichier introuvable — reliez-le',
+    'mpLinkedOnSeRows': 'Lié aux lignes SE',
+    'mpNameEmpty': 'Le nom du média ne peut pas être vide.',
     'exCameraTemplate': 'Caméra {w}×{h}',
-    'exLayersTemplate': 'Calques · {name}',
     'toolBrush': 'Pinceau',
     'toolEraser': 'Gomme',
     'toolEyedropper': 'Pipette',
@@ -5483,8 +5655,40 @@ enum AppStrings {
     'exCut': '镜头',
     'exWhite': '白色',
     'exBlack': '黑色',
+    'exBackground': '背景',
+    'exChooseLocation': '选择位置后即可导出。',
+    'exNoCels': '（无赛璐珞）',
+    'exNoCuts': '（无镜头）',
+    'exPresets': '预设',
+    'exQueue': '队列',
+    'exSize': '尺寸',
+    'exForm': '表单',
+    'exCutSize': '镜头尺寸',
+    'exRealSheet': '实际纸张',
+    'exWidth': '宽度',
+    'exSheetLayers': '图层',
+    'exContent': '内容',
+    'exInk': '线稿',
+    'exFiles': '文件',
+    'exOneImage': '单张图片',
+    'exOnePerLayer': '每图层一张',
+    'imImport': '导入',
+    'imPool': '素材池',
+    'imFile': '文件',
+    'imFiles': '文件',
+    'imInto': '放入',
+    'imFit': '适配',
+    'imRevisions': '修订',
+    'imFilesButton': '文件…',
+    'imCutFolderButton': '镜头文件夹…',
+    'imModified': '修改时间',
+    'imSize': '大小',
+    'imArchivedProcesses': '已归档工序（LO/、GEN/…）',
+    'imMultiCutFolders': '兼用镜头文件夹',
+    'mpFileMissing': '文件缺失 — 请重新链接',
+    'mpLinkedOnSeRows': '已链接到 SE 行',
+    'mpNameEmpty': '媒体名称不能为空。',
     'exCameraTemplate': '摄影机 {w}×{h}',
-    'exLayersTemplate': '图层 · {name}',
     'toolBrush': '画笔',
     'toolEraser': '橡皮',
     'toolEyedropper': '吸管',

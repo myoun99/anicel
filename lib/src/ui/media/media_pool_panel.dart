@@ -489,7 +489,7 @@ class MediaPoolPanel extends StatelessWidget {
                   size: 16,
                   color: colorScheme.onSurfaceVariant,
                 ) else Tooltip(
-                  message: 'File missing — relink it',
+                  message: AppText.strings.mpFileMissing,
                   child: Icon(
                     key: ValueKey<String>('media-asset-missing-${asset.path}'),
                     Icons.error_outline,
@@ -539,7 +539,7 @@ class MediaPoolPanel extends StatelessWidget {
           ),
           if (referenced)
             Tooltip(
-              message: 'Linked on SE rows',
+              message: AppText.strings.mpLinkedOnSeRows,
               child: Icon(
                 key: ValueKey<String>('media-asset-linked-${asset.path}'),
                 Icons.link,
@@ -673,10 +673,10 @@ class _RenameMediaDialog extends StatelessWidget {
       windowKey: const ValueKey<String>('media-rename-dialog'),
       title: AppText.strings.mediaRename,
       titleIcon: Icons.drive_file_rename_outline,
-      fieldLabel: 'Name',
+      fieldLabel: AppText.strings.commonNameField,
       initialValue: initialName,
-      confirmLabel: 'Rename',
-      emptyError: 'Media name cannot be empty.',
+      confirmLabel: AppText.strings.commonRename,
+      emptyError: AppText.strings.mpNameEmpty,
       fieldKey: const ValueKey<String>('media-rename-field'),
       cancelKey: const ValueKey<String>('media-rename-cancel-button'),
       confirmKey: const ValueKey<String>('media-rename-save-button'),
