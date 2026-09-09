@@ -78,7 +78,9 @@ class BitmapTileImageCache extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  final Expando<ui.Image> _images = Expando<ui.Image>('bitmapTileImages');
+  final _ByTilePixels<ui.Image> _images = _ByTilePixels<ui.Image>(
+    'bitmapTileImages',
+  );
 
   /// What this cache has been through for one tile's own picture, when it
   /// has no picture yet. Absent means nobody has asked.
@@ -97,7 +99,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// came true, so the settle window's two-second give-up dropped the
   /// stand-in and a tile-shaped patch of the stroke reverted to pre-stroke
   /// pixels — the exact failure the settle machinery exists to prevent.
-  final Expando<_TileDecodeAsk> _decodeAsk = Expando<_TileDecodeAsk>(
+  final _ByTilePixels<_TileDecodeAsk> _decodeAsk = _ByTilePixels<_TileDecodeAsk>(
     'bitmapTileImageDecodes',
   );
   // Deferred, not direct, disposal: the finalizer runs at GC time — pen-up
@@ -148,7 +150,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// TWO channel steps, at middling alpha on both operands
   /// (`tile_image_sync_compose_parity_test`). Adopting that outright would
   /// pin an off-by-two picture forever on those tiles.
-  final Expando<ui.Image> _provisional = Expando<ui.Image>(
+  final _ByTilePixels<ui.Image> _provisional = _ByTilePixels<ui.Image>(
     'bitmapTileProvisionalImages',
   );
 
@@ -633,4 +635,36 @@ class PremultipliedTileUpload {
 
   /// Call from the decode callback, once — never before it fires.
   void free() => _scratch?.free();
+}
+
+/// An [Expando] over tiles, keyed by WHOSE PIXELS THEY ARE rather than by
+/// the tile object.
+///
+/// 🚨★★★**A CANVAS RESIZE RE-DECODED EVERY CEL THOUGH NOT A BYTE MOVED.**
+/// A whole-tile shift renames a tile ([BitmapTile.rebasedTo]) — same
+/// bytes, same picture, new object — and three Expandos here are keyed by
+/// the object, so every image was lost and the whole cel decoded again
+/// (31 ms at 128px, per cel, on a command that runs over the whole cut).
+/// Normalising the key to [BitmapTile.pixelsSource] keeps them.
+///
+/// ⚠️**AND THE ENTRY CANNOT GO STALE OR DANGLE.** Stale is impossible
+/// because a tile is immutable, so the same pixels are the same picture
+/// forever. Dangling is impossible because a rebase holds a strong
+/// reference to its source, so the Expando's key outlives every tile that
+/// could still ask under it.
+///
+/// ⛔One wrapper rather than three call-site fixes: the normalisation is
+/// the SAME rule for all three slots, and spelling it at each `[tile]`
+/// would be the same algorithm written thirty times — the shape a
+/// forgotten call site hides in.
+class _ByTilePixels<T extends Object> {
+  _ByTilePixels(String name) : _slot = Expando<T>(name);
+
+  final Expando<T> _slot;
+
+  T? operator [](BitmapTile tile) => _slot[tile.pixelsSource];
+
+  void operator []=(BitmapTile tile, T? value) {
+    _slot[tile.pixelsSource] = value;
+  }
 }

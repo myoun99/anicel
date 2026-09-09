@@ -127,6 +127,18 @@ class BitmapTile implements Finalizable {
   /// alive for the length of the call, and the receiver holds this.
   final BitmapTile? _bufferOwner;
 
+  /// The tile whose BYTES these are — this one, or the tile it was
+  /// rebased from.
+  ///
+  /// 🚨★★★**WHAT AN IMAGE CACHE SHOULD BE KEYED BY.** A rebase is the
+  /// same picture at a new coordinate, and a cache keyed by the tile
+  /// OBJECT loses it: an anchored canvas resize re-decodes the whole cel
+  /// though not a byte moved. Keyed by this instead it keeps, and it is
+  /// safe for exactly the reason the sharing is safe — a rebase holds
+  /// its source alive, so an `Expando` entry under the source cannot be
+  /// collected while the rebase can still ask for it.
+  BitmapTile get pixelsSource => _bufferOwner ?? this;
+
   static Pointer<Uint8> _allocate(int byteLength) {
     final engine = QaNativeEngine.instance;
     if (engine != null) {
