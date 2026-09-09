@@ -1,4 +1,3 @@
-import 'dart:isolate';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -6,6 +5,7 @@ import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
 import '../models/tile_coord.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
+import 'persistence/compress_in_worker.dart';
 import 'persistence/scratch_file.dart';
 import 'persistence/volatile_scratch_files.dart';
 
@@ -351,7 +351,11 @@ class UndoSurfaceSnapshot {
       _letGo = true;
       return true;
     }
-    final entry = AnicelCelEntry.fromSurface(
+    // 🎯ONE copy of the payload, not four. The surface serialises
+    // straight into a flat buffer (no per-tile defensive copy), the
+    // buffer MOVES to the worker, and the compressed bytes move back
+    // — see [compressAnicelPayloadInWorker] for the measurement.
+    final body = encodeCelEntryFromSurface(
       key,
       BitmapSurface(
         canvasSize: _canvasSize,
@@ -359,7 +363,14 @@ class UndoSurfaceSnapshot {
         tiles: owned,
       ),
     );
-    final blob = await Isolate.run(() => AnicelCelBlob.encode(entry));
+    final compressed = await compressAnicelPayloadInWorker(body);
+    final blob = AnicelCelBlob.fromCompressedBody(
+      key: key,
+      canvasSize: _canvasSize,
+      tileSize: _tileSize,
+      codec: compressed.codec,
+      body: compressed.bytes,
+    );
     final path = VolatileScratchFiles.write(blob.bytes);
     if (path == null) {
       return false;

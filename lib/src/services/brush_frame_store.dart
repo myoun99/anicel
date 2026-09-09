@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:isolate';
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
@@ -12,6 +11,7 @@ import '../models/cut_id.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
+import 'persistence/compress_in_worker.dart';
 import 'persistence/open_project_file.dart';
 import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
@@ -794,8 +794,19 @@ class BrushFrameStore {
         continue;
       }
       final surface = _bakedSurfaces[key]!;
-      final entry = AnicelCelEntry.fromSurface(key, surface);
-      final blob = await Isolate.run(() => AnicelCelBlob.encode(entry));
+      // 🎯The park path's shape, and DELIBERATELY the same one: these
+      // two were matched on purpose (fixing one alone would make it a
+      // copy of the other), so they moved together. One copy of the
+      // payload instead of four — see [compressAnicelPayloadInWorker].
+      final body = encodeCelEntryFromSurface(key, surface);
+      final compressed = await compressAnicelPayloadInWorker(body);
+      final blob = AnicelCelBlob.fromCompressedBody(
+        key: key,
+        canvasSize: surface.canvasSize,
+        tileSize: surface.tileSize,
+        codec: compressed.codec,
+        body: compressed.bytes,
+      );
       if (identical(_bakedSurfaces[key], surface)) {
         // 🚨★★★**PARK IT BEFORE LETTING GO OF IT.** These bytes are
         // UNSAVED — the archive does not hold them — so the order here is

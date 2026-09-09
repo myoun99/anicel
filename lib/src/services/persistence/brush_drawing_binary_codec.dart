@@ -80,18 +80,54 @@ const int anicelCelBinaryVersion = 2;
 /// Encodes a baked cel: key, canvas geometry, then each tile's coord and
 /// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
 /// line art extremely well — no inner compression layer).
+/// The same bytes [encodeCelEntry] writes, taken straight off the
+/// SURFACE — without the defensive pixel copy per tile that building
+/// an [AnicelCelEntry] first would make.
+///
+/// 🚨★★★**PARKING IS WHAT MEMORY PRESSURE DOES, SO IT MUST NOT ASK
+/// FOR MEMORY.** The park path used to go surface → AnicelCelEntry
+/// (a `tile.pixels` copy each) → isolate message (another copy of
+/// all of it) → writer buffer (a third). 🧪Measured on a 4MB cel:
+/// the message round trip alone is 4.64ms and, worse, every one of
+/// those copies is live at the same moment — four times the cel,
+/// asked for at the instant the budget says there is no room.
+///
+/// ⛔`readPixels`, never the `pixels` getter: that getter IS the
+/// defensive copy this exists to avoid (see BitmapTile.readPixels for
+/// why the tile must stay the receiver).
+/// The cel stream's header, written in ONE place.
+///
+/// ⛔Two routes write this stream — one from an [AnicelCelEntry] and one
+/// straight off a [BitmapSurface] — and they must not each spell the
+/// header out. The clone ratchet caught exactly that when the second
+/// route arrived (88 → 89, 2026-09-10): a file format with two spellings
+/// of its own header is a format that can drift from itself.
+
+Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
+  final writer = _ByteWriter();
+  writer.celStreamHeader(
+    key,
+    surface.canvasSize,
+    surface.tileSize,
+    surface.tiles.length,
+  );
+  for (final entry in surface.tiles.entries) {
+    writer
+      ..i32(entry.key.x)
+      ..i32(entry.key.y);
+    entry.value.readPixels((_, view) => writer.bytes(view));
+  }
+  return writer.takeBytes();
+}
+
 Uint8List encodeCelEntry(AnicelCelEntry entry) {
-  final writer = _ByteWriter()
-    ..u8(anicelCelBinaryVersion)
-    ..string(entry.key.projectId.value)
-    ..string(entry.key.trackId.value)
-    ..string(entry.key.cutId.value)
-    ..string(entry.key.layerId.value)
-    ..string(entry.key.frameId.value)
-    ..u32(entry.canvasSize.width)
-    ..u32(entry.canvasSize.height)
-    ..u16(entry.tileSize)
-    ..u32(entry.tiles.length);
+  final writer = _ByteWriter();
+  writer.celStreamHeader(
+    entry.key,
+    entry.canvasSize,
+    entry.tileSize,
+    entry.tiles.length,
+  );
   for (final tile in entry.tiles) {
     writer
       ..i32(tile.x)
@@ -226,20 +262,42 @@ class AnicelCelBlob {
   }
 
   factory AnicelCelBlob.encode(AnicelCelEntry entry) {
-    final body = encodeCelEntry(entry);
-    final compressed = compressAnicelPayload(body);
+    final compressed = compressAnicelPayload(encodeCelEntry(entry));
+    return AnicelCelBlob.fromCompressedBody(
+      key: entry.key,
+      canvasSize: entry.canvasSize,
+      tileSize: entry.tileSize,
+      codec: compressed.codec,
+      body: compressed.bytes,
+    );
+  }
+
+  /// A blob assembled around a payload SOMEBODY ELSE compressed —
+  /// the shape the park and cool paths need, because they compress in
+  /// a worker isolate and hand the bytes back.
+  ///
+  /// ⛔The header is written HERE and only here. [encode] is the same
+  /// call with the compression done inline; two spellings of this
+  /// header is a file format that can drift from itself.
+  factory AnicelCelBlob.fromCompressedBody({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required int tileSize,
+    required int codec,
+    required Uint8List body,
+  }) {
     final writer = _ByteWriter()
       ..u8(_anicelCelBlobVersion)
-      ..string(entry.key.projectId.value)
-      ..string(entry.key.trackId.value)
-      ..string(entry.key.cutId.value)
-      ..string(entry.key.layerId.value)
-      ..string(entry.key.frameId.value)
-      ..u32(entry.canvasSize.width)
-      ..u32(entry.canvasSize.height)
-      ..u16(entry.tileSize)
-      ..u8(compressed.codec)
-      ..bytes(compressed.bytes);
+      ..string(key.projectId.value)
+      ..string(key.trackId.value)
+      ..string(key.cutId.value)
+      ..string(key.layerId.value)
+      ..string(key.frameId.value)
+      ..u32(canvasSize.width)
+      ..u32(canvasSize.height)
+      ..u16(tileSize)
+      ..u8(codec)
+      ..bytes(body);
     return AnicelCelBlob(writer.takeBytes());
   }
 
@@ -304,6 +362,31 @@ class _ByteWriter {
     final encoded = utf8.encode(value);
     u16(encoded.length);
     _builder.add(encoded);
+  }
+
+  /// The cel stream's header, written in ONE place.
+  ///
+  /// ⛔Two routes write this stream — one from an [AnicelCelEntry] and
+  /// one straight off a [BitmapSurface] — and they must not each spell
+  /// the header out. The clone ratchet caught exactly that when the
+  /// second route arrived (88 → 89, 2026-09-10): a file format with two
+  /// spellings of its own header is a format that can drift from itself.
+  void celStreamHeader(
+    BrushFrameKey key,
+    CanvasSize canvasSize,
+    int tileSize,
+    int tileCount,
+  ) {
+    u8(anicelCelBinaryVersion);
+    string(key.projectId.value);
+    string(key.trackId.value);
+    string(key.cutId.value);
+    string(key.layerId.value);
+    string(key.frameId.value);
+    u32(canvasSize.width);
+    u32(canvasSize.height);
+    u16(tileSize);
+    u32(tileCount);
   }
 
   void bytes(List<int> value) => _builder.add(value);
