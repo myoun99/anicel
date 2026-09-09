@@ -146,6 +146,30 @@ void main() {
       expect(bounds.left, 8);
     });
 
+    /// 🚨★★★**THE TWO BRANCHES DISAGREED ABOUT WHAT FALLS OFF.** The
+    /// function's own doc says the output is bounded by the TARGET
+    /// canvas's pasteboard and that pixels past it clip — and the
+    /// fractional branch did exactly that. The whole-tile branch built
+    /// its intermediate surface at the SOURCE canvas size instead, so a
+    /// rebase that carried a tile past the OLD pasteboard threw an
+    /// ArgumentError where its twin, one line down, would have clipped
+    /// it. One law now, and this is the case that tells them apart.
+    test('🚨a WHOLE-TILE shift CLIPS at the target pasteboard, like the '
+        'fractional one — it does not throw', () {
+      final coord = TileCoord(x: 0, y: 0);
+      final moved = translateBitmapSurface(
+        surfaceWith({coord: inkedTile(coord)}),
+        // A 16px canvas of 8px tiles: the pasteboard is x ∈ [-2, 4).
+        // Four tiles right puts this one at x = 4, one past the wall.
+        dx: 32,
+        dy: 0,
+        canvasSize: const CanvasSize(width: 16, height: 16),
+      );
+
+      expect(moved.tiles, isEmpty);
+      expect(bitmapSurfaceContentBounds(moved), isNull);
+    });
+
     test('🚨a FRACTIONAL shift moves the ink by exactly that many pixels, '
         'across the tile it lands in', () {
       final coord = TileCoord(x: 0, y: 0);

@@ -218,20 +218,40 @@ BitmapSurface translateBitmapSurface(
   final tileSize = surface.tileSize;
 
   if (dx % tileSize == 0 && dy % tileSize == 0) {
+    // 🚨★★★**ONE PASS, AND ONE CLIP LAW.** This built a whole map, handed
+    // it to the public constructor (which COPIES it and re-validates
+    // every tile), then handed THAT to `resizeBitmapSurfaceCanvas`, which
+    // built a second map and re-validated a second time: three maps and
+    // two full validations per cel, on a command that runs over every cel
+    // of a cut.
+    //
+    // ⛔**AND THE TWO BRANCHES OF THIS FUNCTION DISAGREED ABOUT CLIPPING.**
+    // The fractional branch below clips against the TARGET canvas's
+    // pasteboard, as this function's own doc says it does. This branch
+    // built its intermediate surface at the SOURCE canvas size, so a
+    // rebase that carried a tile past the OLD pasteboard threw an
+    // ArgumentError where the other branch would have clipped it. One
+    // law, applied here too.
     final tileDx = dx ~/ tileSize;
     final tileDy = dy ~/ tileSize;
+    final tileXMin = canvasSize.pasteboardTileXMin(tileSize);
+    final tileYMin = canvasSize.pasteboardTileYMin(tileSize);
+    final tileXEnd = canvasSize.pasteboardTileXEndExclusive(tileSize);
+    final tileYEnd = canvasSize.pasteboardTileYEndExclusive(tileSize);
     final rebased = <TileCoord, BitmapTile>{};
     for (final entry in surface.tiles.entries) {
-      final coord = TileCoord(x: entry.key.x + tileDx, y: entry.key.y + tileDy);
+      final x = entry.key.x + tileDx;
+      final y = entry.key.y + tileDy;
+      if (x < tileXMin || y < tileYMin || x >= tileXEnd || y >= tileYEnd) {
+        continue;
+      }
+      final coord = TileCoord(x: x, y: y);
       rebased[coord] = entry.value.copyWith(coord: coord);
     }
-    return resizeBitmapSurfaceCanvas(
-      BitmapSurface(
-        canvasSize: surface.canvasSize,
-        tileSize: tileSize,
-        tiles: rebased,
-      ),
-      canvasSize,
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: rebased,
     );
   }
 

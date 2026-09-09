@@ -452,11 +452,28 @@ class _SurfacePaintPass {
           // The base pass already drew this coordinate's finished tile.
           continue;
         }
-        _canvas.drawImage(
-          entry.value,
-          Offset(entry.key.x * overlayTileSize, entry.key.y * overlayTileSize),
-          overlayPaint,
+        final origin = Offset(
+          entry.key.x * overlayTileSize,
+          entry.key.y * overlayTileSize,
         );
+        // 🚨★★★**THE SAME VISIBLE-RECT LAW THE BASE PASS KEEPS**
+        // (`tilesUnderRect` at the committed loop above), and this pass
+        // was the one place it was not applied. Overlay tiles ACCUMULATE
+        // for the whole life of a stroke — nothing leaves the map until
+        // pen-up — so by the third dab this was drawing the bounding box
+        // of the WHOLE stroke every frame, off-screen coordinates
+        // included, and a long line paid its full length on every step.
+        if (!_visibleRect.overlaps(
+          Rect.fromLTWH(
+            origin.dx,
+            origin.dy,
+            overlayTileSize,
+            overlayTileSize,
+          ),
+        )) {
+          continue;
+        }
+        _canvas.drawImage(entry.value, origin, overlayPaint);
       }
       // R23: a fill tap's _overlay is ONE pre-decoded stamp image at the
       // commit's exact placement (never coexists with stroke tiles).
